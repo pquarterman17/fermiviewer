@@ -4,7 +4,7 @@
 
 import { useRef } from "react";
 
-import { measureProfile, measureRoi } from "../../lib/api";
+import { measurePolyline, measureProfile, measureRoi } from "../../lib/api";
 import {
   imageToScreen,
   physAngle,
@@ -71,8 +71,13 @@ export default function MeasureOverlay({
   // ── post-edit analysis refresh (on handle release) ──
   const refresh = (m: Measure) => {
     const px = toImagePx(m);
+    const width = useViewer.getState().profileWidth;
     if (m.kind === "profile") {
-      measureProfile(imageId, px[0], px[1])
+      measureProfile(imageId, px[0], px[1], width)
+        .then((r) => setProfile({ ...r, measureId: m.id }))
+        .catch((e: Error) => setStatus(e.message));
+    } else if (m.kind === "polyline") {
+      measurePolyline(imageId, px, width)
         .then((r) => setProfile({ ...r, measureId: m.id }))
         .catch((e: Error) => setStatus(e.message));
     } else if (m.kind === "roi") {
@@ -138,6 +143,15 @@ export default function MeasureOverlay({
           ? `${fmt(d.value)} ${pixelUnit}`
           : `${fmt(d.value)} px`;
       }
+      case "polyline": {
+        let total = 0;
+        for (let i = 1; i < px.length; i++) {
+          total += physDist(px[i - 1], px[i], pixelSize).value;
+        }
+        return pixelSize != null
+          ? `${fmt(total)} ${pixelUnit}`
+          : `${fmt(total)} px`;
+      }
       case "angle":
         return px.length === 3 ? `${physAngle(px[1], px[0], px[2]).toFixed(1)}°` : "";
       case "roi": {
@@ -189,6 +203,16 @@ export default function MeasureOverlay({
         />
       );
       labelAt = { x: pts[1].x + 10, y: pts[1].y - 10 };
+    } else if (m.kind === "polyline" && pts.length >= 2) {
+      shape = (
+        <polyline
+          points={pts.map((p) => `${p.x},${p.y}`).join(" ")}
+          strokeDasharray="6 4"
+          {...common}
+        />
+      );
+      const last = pts[pts.length - 1];
+      labelAt = { x: last.x + 10, y: last.y - 10 };
     } else if (pts.length >= 2) {
       shape = (
         <line

@@ -205,6 +205,9 @@ def _draw_annotations(img: Image.Image, annos: list[Annotation],
             draw.rectangle([x0, y0, x1, y1], outline=color, width=2)
         elif an.kind == "angle":
             draw.line([p[0], p[1], p[2]], fill=color, width=2)
+        elif an.kind == "polyline":
+            for i in range(len(p) - 1):
+                _dashed_line(draw, p[i], p[i + 1], color, 2)
         elif an.dashed:
             _dashed_line(draw, p[0], p[1], color, 2)
         else:
@@ -255,11 +258,12 @@ def _build_svg(img: Image.Image, bar: ScaleBar | None,
                 f'height="{h:.1f}" fill="none" stroke="{color}" '
                 f'stroke-width="2"/>'
             )
-        elif an.kind == "angle":
+        elif an.kind in ("angle", "polyline"):
             pts = " ".join(f"{x:.1f},{y:.1f}" for x, y in p)
+            dash = ' stroke-dasharray="6 4"' if an.dashed else ""
             parts.append(
                 f'<polyline points="{pts}" fill="none" '
-                f'stroke="{color}" stroke-width="2"/>'
+                f'stroke="{color}" stroke-width="2"{dash}/>'
             )
         else:
             dash = ' stroke-dasharray="6 4"' if an.dashed else ""

@@ -111,6 +111,7 @@ export async function measureProfile(
   id: string,
   a: { x: number; y: number },
   b: { x: number; y: number },
+  width = 1,
 ): Promise<ProfileResult> {
   return json(
     await fetch("/api/measure/profile", {
@@ -120,6 +121,26 @@ export async function measureProfile(
         image_id: id,
         a: [a.y + 1, a.x + 1],
         b: [b.y + 1, b.x + 1],
+        width,
+      }),
+    }),
+  );
+}
+
+/** Polyline profile through ≥2 vertices (0-based x/y in, 1-based out). */
+export async function measurePolyline(
+  id: string,
+  pts: { x: number; y: number }[],
+  width = 1,
+): Promise<ProfileResult> {
+  return json(
+    await fetch("/api/measure/profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        image_id: id,
+        points: pts.map((p) => [p.y + 1, p.x + 1]),
+        width,
       }),
     }),
   );

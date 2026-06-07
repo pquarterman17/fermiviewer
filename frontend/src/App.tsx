@@ -178,6 +178,10 @@ export default function App() {
         case "G":
           capture("angle");
           break;
+        case "p":
+        case "P":
+          capture("polyline");
+          break;
         case "r":
         case "R":
           capture("roi");

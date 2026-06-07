@@ -16,6 +16,7 @@ __all__ = [
     "azimuthal_integrate",
     "fit_interface_width",
     "line_profile",
+    "polyline_profile",
     "radial_profile",
     "roi_stats",
 ]
@@ -28,12 +29,18 @@ def line_profile(
     tilt_angle_deg: float = 0.0,
     tilt_axis: str = "Y",
     geometry: str = "cross-section",
+    width: float = 1.0,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Sub-pixel bilinear profile along a segment (port of lineProfile.m).
 
     Returns (dist, intensity); dist in pixels unless pixel_size given.
     Tilt correction stretches the in-tilt-axis component by 1/sin (cross
     sections) or 1/cos (surfaces).
+
+    width > 1 (NEW, not in the MATLAB original) averages round(width)
+    parallel lines spaced 1 px apart perpendicular to the segment,
+    ignoring out-of-image samples — width=1 is bit-identical to the
+    ported single-line path (goldens unchanged).
     """
     if not -90 < tilt_angle_deg < 90:
         raise ValueError("tilt_angle_deg must be in (-90, 90)")
@@ -42,11 +49,30 @@ def line_profile(
     n = max(2, int(np.ceil(pixel_dist)) + 1)
     xs = np.linspace(x1, x2, n)
     ys = np.linspace(y1, y2, n)
-    # 1-based pixel-centre coords → 0-based array indices
-    intensity = map_coordinates(
-        np.asarray(img, dtype=np.float64), [ys - 1, xs - 1],
-        order=1, mode="constant", cval=np.nan,
-    )
+    arr = np.asarray(img, dtype=np.float64)
+
+    n_lines = max(1, int(round(width)))
+    if n_lines > 1:
+        if pixel_dist == 0:
+            raise ValueError("zero-length segment cannot have width")
+        ux, uy = (x2 - x1) / pixel_dist, (y2 - y1) / pixel_dist
+        perp_x, perp_y = -uy, ux
+        offsets = np.arange(n_lines, dtype=np.float64) - (n_lines - 1) / 2
+        rows = [
+            map_coordinates(
+                arr, [ys + perp_y * o - 1, xs + perp_x * o - 1],
+                order=1, mode="constant", cval=np.nan,
+            )
+            for o in offsets
+        ]
+        with np.errstate(invalid="ignore"):
+            intensity = np.nanmean(np.stack(rows), axis=0)
+    else:
+        # 1-based pixel-centre coords → 0-based array indices
+        intensity = map_coordinates(
+            arr, [ys - 1, xs - 1],
+            order=1, mode="constant", cval=np.nan,
+        )
 
     dx, dy = x2 - x1, y2 - y1
     if tilt_angle_deg != 0:
@@ -63,6 +89,42 @@ def line_profile(
     if np.isfinite(pixel_size):
         dist = dist * pixel_size
     return dist, intensity
+
+
+def polyline_profile(
+    img: np.ndarray,
+    xs: np.ndarray,
+    ys: np.ndarray,
+    pixel_size: float = float("nan"),
+    width: float = 1.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Concatenated sub-pixel profile along polyline vertices (1-based
+    pixel-centre coords, NEW — no MATLAB counterpart). Distance
+    accumulates across segments; duplicated joint samples are dropped.
+    """
+    xv = np.asarray(xs, dtype=np.float64).ravel()
+    yv = np.asarray(ys, dtype=np.float64).ravel()
+    if xv.size != yv.size:
+        raise ValueError("xs and ys must have the same length")
+    if xv.size < 2:
+        raise ValueError("a polyline needs at least 2 vertices")
+
+    ds_list: list[np.ndarray] = []
+    vs_list: list[np.ndarray] = []
+    total = 0.0
+    for i in range(xv.size - 1):
+        d, v = line_profile(
+            img, xv[i], yv[i], xv[i + 1], yv[i + 1],
+            pixel_size=pixel_size, width=width,
+        )
+        if i == 0:
+            ds_list.append(d + total)
+            vs_list.append(v)
+        else:                       # joint sample == previous endpoint
+            ds_list.append(d[1:] + total)
+            vs_list.append(v[1:])
+        total += float(d[-1])
+    return np.concatenate(ds_list), np.concatenate(vs_list)
 
 
 def roi_stats(

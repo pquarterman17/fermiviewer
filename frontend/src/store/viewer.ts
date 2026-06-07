@@ -40,7 +40,12 @@ export const DEFAULT_DISPLAY: Display = {
   invert: false,
 };
 
-export type MeasureKind = "distance" | "profile" | "angle" | "roi";
+export type MeasureKind =
+  | "distance"
+  | "profile"
+  | "angle"
+  | "roi"
+  | "polyline";
 
 /** Points are normalized 0–1 image coords (handoff §6) so measures
  *  survive crops/derived images of the same aspect. */
@@ -245,6 +250,7 @@ interface ViewerState {
   // tools
   captureMode: CaptureMode;
   panTool: boolean;
+  profileWidth: number; // ⊥ averaging width (px) for profile captures
   // chrome
   leftCol: boolean;
   rightCol: boolean;
@@ -286,6 +292,7 @@ interface ViewerState {
   setRoiStats: (measureId: string, stats: RoiStats) => void;
   setCaptureMode: (mode: CaptureMode) => void;
   setPanTool: (on: boolean) => void;
+  setProfileWidth: (w: number) => void;
   setOverlay: (patch: Partial<OverlayStyle>) => void;
   toggleTheme: () => void;
   toggleLeft: () => void;
@@ -324,6 +331,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   overlay: loadJson<OverlayStyle>(OVERLAY_KEY, { size: "M", color: "#ffffff" }),
   captureMode: "none",
   panTool: false,
+  profileWidth: 1,
   leftCol: false,
   rightCol: false,
   cmdk: false,
@@ -583,6 +591,8 @@ export const useViewer = create<ViewerState>((set, get) => ({
     set((s) => ({ roiStats: { ...s.roiStats, [measureId]: stats } })),
 
   setCaptureMode: (mode) => set({ captureMode: mode }),
+  setProfileWidth: (w) =>
+    set({ profileWidth: Math.max(1, Math.min(99, Math.round(w))) }),
   setPanTool: (on) => set({ panTool: on }),
 
   setOverlay: (patch) => {

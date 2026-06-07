@@ -14,6 +14,7 @@ import {
 import { GLRenderer } from "../../gl/render";
 import {
   fetchData16,
+  measurePolyline,
   measureProfile,
   measureRoi,
   type Raster16,
@@ -52,7 +53,12 @@ interface Pt {
 
 const WHEEL_K = 0.0015;
 const MEASURE_KINDS = ["distance", "profile", "angle", "roi"] as const;
-const CLICKS: Record<string, number> = { distance: 2, profile: 2, angle: 3 };
+const CLICKS: Record<string, number> = {
+  distance: 2,
+  profile: 2,
+  angle: 3,
+  polyline: Infinity, // vertices accumulate; double-click finishes
+};
 
 const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   const activeId = useViewer((s) => s.activeId);
@@ -299,8 +305,13 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     const pts = ptsImg.map((p) => ({ x: p.x / imgSize.w, y: p.y / imgSize.h }));
     const mid = addMeasure(activeId, { kind, pts });
     setCaptureMode("none");
+    const width = useViewer.getState().profileWidth;
     if (kind === "profile") {
-      measureProfile(activeId, ptsImg[0], ptsImg[1])
+      measureProfile(activeId, ptsImg[0], ptsImg[1], width)
+        .then((r) => setProfile({ ...r, measureId: mid }))
+        .catch((e: Error) => setStatus(e.message));
+    } else if (kind === "polyline") {
+      measurePolyline(activeId, ptsImg, width)
         .then((r) => setProfile({ ...r, measureId: mid }))
         .catch((e: Error) => setStatus(e.message));
     } else if (kind === "roi") {
@@ -397,6 +408,15 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   };
 
   const onDoubleClick = () => {
+    if (pending?.kind === "polyline") {
+      // the double-click's two pointerdowns committed a duplicate
+      // vertex + a live cursor point — drop both
+      const committed = pending.pts.slice(0, -2);
+      if (committed.length >= 2) finalizeMeasure("polyline", committed);
+      else setCaptureMode("none");
+      setPending(null);
+      return;
+    }
     if (!pending && imgSize) apply(fitView(imgSize, vp));
   };
 
@@ -504,6 +524,7 @@ function FloatTools() {
     ["⬚", "Box zoom  Z", captureMode === "zoom", mode("zoom")],
     ["↔", "Distance  D", captureMode === "distance", mode("distance")],
     ["∿", "Line profile  L", captureMode === "profile", mode("profile")],
+    ["⌇", "Polyline  P", captureMode === "polyline", mode("polyline")],
     ["∠", "Angle  G", captureMode === "angle", mode("angle")],
     ["▭", "ROI stats  R", captureMode === "roi", mode("roi")],
   ];

@@ -11,6 +11,7 @@ const KIND_GLYPH: Record<Measure["kind"], string> = {
   profile: "∿",
   angle: "∠",
   roi: "▭",
+  polyline: "⌇",
 };
 
 const SIZES: OverlayStyle["size"][] = ["S", "M", "L", "XL"];
@@ -72,10 +73,12 @@ export default function MeasurePanel() {
 
   const captureMode = useViewer((s) => s.captureMode);
   const setCaptureMode = useViewer((s) => s.setCaptureMode);
+  const profileWidth = useViewer((s) => s.profileWidth);
+  const setProfileWidth = useViewer((s) => s.setProfileWidth);
   const capBtn = (
     label: string,
     glyph: string,
-    mode: "profile" | "distance" | "angle" | "roi",
+    mode: "profile" | "distance" | "angle" | "roi" | "polyline",
   ) => (
     <button
       className={`fvd-cap-btn${captureMode === mode ? " active" : ""}`}
@@ -93,7 +96,20 @@ export default function MeasurePanel() {
           {capBtn("Profile", "∿", "profile")}
           {capBtn("Distance", "↔", "distance")}
           {capBtn("Angle", "∠", "angle")}
+          {capBtn("Polyline", "⌇", "polyline")}
           {capBtn("ROI", "▭", "roi")}
+        </div>
+        <div className="fvd-slider-row">
+          <span className="k">Width (px)</span>
+          <input
+            type="number"
+            min={1}
+            max={99}
+            value={profileWidth}
+            style={{ width: 52 }}
+            title="Perpendicular averaging width for profile captures"
+            onChange={(e) => setProfileWidth(Number(e.target.value) || 1)}
+          />
         </div>
       </div>
       {measures.length > 0 && (

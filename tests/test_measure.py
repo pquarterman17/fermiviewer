@@ -124,3 +124,59 @@ def test_fft_endpoint_creates_derived(client, ramp_id) -> None:
     assert meta["meta"]["derived_from"] == ramp_id
     assert client.get(f"/api/image/{meta['id']}/render").status_code == 200
     assert client.post("/api/image/nope/fft").status_code == 404
+
+
+# ── width-averaged + polyline profiles (new, no MATLAB counterpart) ──
+
+def test_width_averaged_profile() -> None:
+    # img(y, x) = y → averaging ±1 row about y=4 still reads 4 exactly
+    # (the offsets are symmetric), while a single line at y=3.5 reads 3.5
+    img = np.tile(np.arange(1, 9, dtype=np.float64)[:, None], (1, 32))
+    _, single = line_profile(img, 2, 4, 30, 4)
+    _, wide = line_profile(img, 2, 4, 30, 4, width=3)
+    np.testing.assert_allclose(single, np.full(single.size, 4.0), rtol=1e-12)
+    np.testing.assert_allclose(wide, np.full(wide.size, 4.0), rtol=1e-12)
+    # width=1 is bit-identical to the original path
+    _, w1 = line_profile(img, 2, 4, 30, 4, width=1)
+    np.testing.assert_array_equal(w1, single)
+    # edge clipping: a 3-wide line hugging row 1 ignores the outside row
+    _, edge = line_profile(img, 2, 1, 30, 1, width=3)
+    np.testing.assert_allclose(edge, np.full(edge.size, 1.5), rtol=1e-12)
+
+
+def test_polyline_profile_l_shape() -> None:
+    from fermiviewer.calc.profiles import polyline_profile
+
+    img = np.tile(np.arange(1, 33, dtype=np.float64), (16, 1))  # img = x
+    # L-shape: horizontal run (x 1→11, y 2) then vertical (y 2→10)
+    d, v = polyline_profile(img, xs=[1, 11, 11], ys=[2, 2, 10])
+    assert d[0] == 0 and d[-1] == pytest.approx(18.0)   # 10 + 8
+    assert np.all(np.diff(d) > 0)                       # strictly increasing
+    # first leg reads x ramp; second leg constant x=11
+    np.testing.assert_allclose(v[:11], np.linspace(1, 11, 11), rtol=1e-12)
+    np.testing.assert_allclose(v[11:], 11.0, rtol=1e-12)
+    # calibrated distances accumulate across segments
+    d2, _ = polyline_profile(img, xs=[1, 11, 11], ys=[2, 2, 10], pixel_size=0.5)
+    assert d2[-1] == pytest.approx(9.0)
+    with pytest.raises(ValueError, match="at least 2"):
+        polyline_profile(img, xs=[1], ys=[2])
+
+
+def test_profile_endpoint_polyline_and_width(client, ramp_id) -> None:
+    # polyline through 3 vertices
+    r = client.post("/api/measure/profile", json={
+        "image_id": ramp_id,
+        "points": [[2, 1], [2, 11], [8, 11]],
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert body["length"] == pytest.approx(16.0 * 0.5)  # ramp fixture cal
+    # width-averaged two-point profile still works
+    r2 = client.post("/api/measure/profile", json={
+        "image_id": ramp_id, "a": [4, 2], "b": [4, 14], "width": 3,
+    })
+    assert r2.status_code == 200
+    # neither a/b nor points → 422
+    assert client.post("/api/measure/profile", json={
+        "image_id": ramp_id,
+    }).status_code == 422

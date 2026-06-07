@@ -144,6 +144,17 @@ def measure_annotations(
                    (opts[0][1] + opts[1][1]) / 2 - 8)
             out.append(Annotation(kind, opts[:2], label, mid,
                                   dashed=kind == "profile"))
+        elif kind == "polyline" and len(ipts) >= 2:
+            total = float(sum(
+                np.hypot(ipts[i + 1][0] - ipts[i][0],
+                         ipts[i + 1][1] - ipts[i][1])
+                for i in range(len(ipts) - 1)
+            ))
+            label = (f"{_fmt(total * pixel_size)} {pixel_unit}"
+                     if pixel_size else f"{_fmt(total)} px")
+            last = opts[-1]
+            out.append(Annotation(kind, opts, label,
+                                  (last[0] + 10, last[1] - 10), dashed=True))
         elif kind == "angle" and len(ipts) >= 3:
             v, a, b = ipts[1], ipts[0], ipts[2]
             a1 = np.arctan2(a[1] - v[1], a[0] - v[0])
