@@ -28,3 +28,6 @@ plans/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# TS incremental build state
+*.tsbuildinfo
