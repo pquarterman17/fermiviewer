@@ -428,6 +428,10 @@ export default function MenuBar({
         action: store.toggleMinimap,
       },
       {
+        label: store.colorbar ? "Hide Colorbar" : "Show Colorbar",
+        action: store.toggleColorbar,
+      },
+      {
         label: store.theme === "dark" ? "Light Theme" : "Dark Theme",
         shortcut: "⌘⇧L",
         action: store.toggleTheme,

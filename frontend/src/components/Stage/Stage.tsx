@@ -36,6 +36,7 @@ import {
   type Measure,
   type View,
 } from "../../store/viewer";
+import ColorbarChip from "./ColorbarChip";
 import DockPlot from "./DockPlot";
 import MeasureOverlay from "./MeasureOverlay";
 import Minimap from "./Minimap";
@@ -509,6 +510,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
             vp={vp}
             onNavigate={apply}
           />
+          <ColorbarChip />
           <ZoomChip
             onZoom={(f) => {
               if (view && imgSize) {

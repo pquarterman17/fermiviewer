@@ -307,3 +307,24 @@ def test_gif_export(client, tmp_path) -> None:
     assert client.post("/api/export/gif", json={
         "image_ids": [ids[0], big_id],
     }).status_code == 422
+
+
+def test_colorbar_baking(client, img_id) -> None:
+    base = client.post("/api/export", json={
+        "image_id": img_id, "format": "png", "scale": 2,
+    })
+    with_bar = client.post("/api/export", json={
+        "image_id": img_id, "format": "png", "scale": 2,
+        "include": ["colorbar"], "cmap": "viridis",
+    })
+    assert with_bar.status_code == 200
+    a = Image.open(io.BytesIO(base.content))
+    b = Image.open(io.BytesIO(with_bar.content))
+    assert b.width == a.width + 81          # pad 5 + strip 20 + labels 56
+    assert b.height == a.height
+    # SVG variant widens the canvas and embeds the strip
+    svg = client.post("/api/export", json={
+        "image_id": img_id, "format": "svg",
+        "include": ["colorbar"], "cmap": "viridis",
+    }).content.decode()
+    assert svg.count("base64,") == 2        # image + strip

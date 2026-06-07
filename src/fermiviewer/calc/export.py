@@ -18,11 +18,25 @@ from fermiviewer.calc.render import window_level
 __all__ = [
     "Annotation",
     "ScaleBar",
+    "colorbar_strip",
     "measure_annotations",
     "render_rgb",
     "render_u16",
     "scale_bar_geometry",
 ]
+
+
+def colorbar_strip(
+    cmap: str, height: int, width: int = 20
+) -> np.ndarray:
+    """Vertical colorbar strip (port of addColorbar.m's strip half):
+    max value at the TOP, uint8 RGB [height, width, 3]. Label text is
+    the caller's concern (mirrors the MATLAB design, which returns
+    label metadata instead of burning text)."""
+    lut = build_lut(cmap)                       # [256, 3] uint8
+    idx = np.linspace(255, 0, max(height, 2)).astype(np.uint8)
+    out: np.ndarray = np.repeat(lut[idx][:, None, :], width, axis=1)
+    return out
 
 
 def _upscale(arr: np.ndarray, scale: int) -> np.ndarray:

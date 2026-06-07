@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from fermiviewer.calc.export import (
     Annotation,
     ScaleBar,
+    colorbar_strip,
     measure_annotations,
     render_rgb,
     render_u16,
@@ -139,14 +140,19 @@ def export_image(req: ExportRequest) -> Response:
             ds.pixel_cal.units, req.scale, raster,
         )
 
+    cbar = ("colorbar" in req.include, lo, hi)
+
     if req.format == "svg":
-        svg = _build_svg(img, bar, annos, req.overlay_color)
+        svg = _build_svg(img, bar, annos, req.overlay_color,
+                         cbar=cbar, cmap=req.cmap)
         return _file_response(svg.encode(), f"{stem}.svg", "svg")
 
     if bar is not None:
         _draw_scale_bar(img, bar)
     if annos:
         _draw_annotations(img, annos, _hex_rgb(req.overlay_color))
+    if cbar[0]:
+        img = _composite_colorbar(img, req.cmap, lo, hi)
 
     return _encode_raster(img, req.format, stem)
 
@@ -289,22 +295,68 @@ def _draw_annotations(img: Image.Image, annos: list[Annotation],
                   stroke_width=2, stroke_fill=(0, 0, 0))
 
 
+def _fmt_tick(v: float) -> str:
+    a = abs(v)
+    if a != 0 and (a < 0.01 or a >= 1e5):
+        return f"{v:.2e}"
+    return f"{v:.4g}"
+
+
+def _composite_colorbar(img: Image.Image, cmap: str, lo: float,
+                        hi: float) -> Image.Image:
+    """Paste a right-edge colorbar strip with min/max labels (port of
+    addColorbar composite(): padding gap, black background)."""
+    pad, width, label_w = 5, 20, 56
+    strip = colorbar_strip(cmap, img.height, width)
+    out = Image.new("RGB", (img.width + pad + width + label_w, img.height))
+    out.paste(img, (0, 0))
+    out.paste(Image.fromarray(strip, mode="RGB"), (img.width + pad, 0))
+    draw = ImageDraw.Draw(out)
+    x = img.width + pad + width + 4
+    draw.text((x, 2), _fmt_tick(hi), fill=(255, 255, 255))
+    draw.text((x, img.height - 14), _fmt_tick(lo), fill=(255, 255, 255))
+    return out
+
+
 # ── SVG vector composition ───────────────────────────────────────────
 
 def _build_svg(img: Image.Image, bar: ScaleBar | None,
-               annos: list[Annotation], color: str) -> str:
+               annos: list[Annotation], color: str,
+               cbar: tuple[bool, float, float] = (False, 0.0, 1.0),
+               cmap: str = "gray") -> str:
     """Full-res PNG embedded as <image> + vector overlay elements."""
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     b64 = base64.b64encode(buf.getvalue()).decode()
 
+    total_w = img.width + (81 if cbar[0] else 0)  # pad+strip+labels
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" '
-        f'width="{img.width}" height="{img.height}" '
-        f'viewBox="0 0 {img.width} {img.height}">',
+        f'width="{total_w}" height="{img.height}" '
+        f'viewBox="0 0 {total_w} {img.height}">',
         f'<image width="{img.width}" height="{img.height}" '
         f'href="data:image/png;base64,{b64}"/>',
     ]
+    if cbar[0]:
+        strip = colorbar_strip(cmap, img.height, 20)
+        sb = io.BytesIO()
+        Image.fromarray(strip, mode="RGB").save(sb, format="PNG")
+        s64 = base64.b64encode(sb.getvalue()).decode()
+        cb_x = img.width + 5
+        parts.append(
+            f'<image x="{cb_x}" width="20" height="{img.height}" '
+            f'href="data:image/png;base64,{s64}"/>'
+        )
+        tx = cb_x + 24
+        parts.append(
+            f'<text x="{tx}" y="12" fill="white" font-family="monospace" '
+            f'font-size="11">{escape(_fmt_tick(cbar[2]))}</text>'
+        )
+        parts.append(
+            f'<text x="{tx}" y="{img.height - 3}" fill="white" '
+            f'font-family="monospace" font-size="11">'
+            f'{escape(_fmt_tick(cbar[1]))}</text>'
+        )
     text_attrs = ('font-family="monospace" font-size="12" '
                   'paint-order="stroke" stroke="rgba(0,0,0,0.75)" '
                   'stroke-width="3"')

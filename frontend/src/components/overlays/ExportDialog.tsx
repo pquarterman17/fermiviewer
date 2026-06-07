@@ -48,6 +48,7 @@ export default function ExportDialog() {
   const [scale, setScale] = useState(1);
   const [scaleBar, setScaleBar] = useState(true);
   const [bakeMeasures, setBakeMeasures] = useState(true);
+  const [colorbar, setColorbar] = useState(false);
   const [busy, setBusy] = useState(false);
 
   if (!open) return null;
@@ -77,6 +78,7 @@ export default function ExportDialog() {
     const include: string[] = [];
     if (canBar && scaleBar) include.push("scale_bar");
     if (canMeasure && bakeMeasures) include.push("measurements");
+    if (format !== "tiff16" && colorbar) include.push("colorbar");
     exportImage(activeId, {
       format,
       scale,
@@ -162,6 +164,15 @@ export default function ExportDialog() {
               onChange={(e) => setBakeMeasures(e.target.checked)}
             />
             Measurements ({measures.length})
+          </label>
+          <label className={`fvd-check${canBar ? "" : " disabled"}`}>
+            <input
+              type="checkbox"
+              checked={format !== "tiff16" && colorbar}
+              disabled={format === "tiff16"}
+              onChange={(e) => setColorbar(e.target.checked)}
+            />
+            Colorbar
           </label>
         </div>
 
