@@ -346,6 +346,68 @@ function out = captureImaging()
     bp3 = imaging.diffraction.backProject(base(1:31, :), Filter='none', ...
         OutputSize=96);
     out.backproject.none.sum = sum(bp3.reconstruction(:));
+
+    % ── atoms + grains (item 15) ─────────────────────────────────────
+    % Synthetic atom lattice: 10x12 grid, slight shear, alternating
+    % sublattice brightness, linear background. RNG-free closed form.
+    [Xa, Ya] = meshgrid(1:120, 1:100);
+    atomImg = 0.05 + 0.001 * Xa;
+    for gi = 0:9
+        for gj = 0:11
+            cxA = 8 + gj * 9.6;
+            cyA = 7 + gi * 9.2 + 0.15 * gj;
+            ampA = 1 + 0.3 * mod(gi + gj, 2);
+            atomImg = atomImg + ampA * exp(-((Xa - cxA).^2 + ...
+                (Ya - cyA).^2) / (2 * 1.8^2));
+        end
+    end
+    out.atoms.imgSum = sum(atomImg(:));
+
+    dc = imaging.atoms.detectColumns(atomImg, Sigma=2, Threshold=0.15, ...
+        MinSeparation=5);
+    out.atoms.detectN = size(dc.positions, 1);
+    out.atoms.detectPosSum = sum(dc.positions(:));
+    out.atoms.detectIntSum = sum(dc.intensities);
+
+    fg = imaging.atoms.fitGaussian2D(atomImg, dc.positions, WinRadius=4);
+    out.atoms.fitConverged = nnz(fg.converged);
+    out.atoms.fitPosSum = sum(fg.positions(:));
+    out.atoms.fitAmpSum = sum(fg.amplitude);
+    out.atoms.fitSigmaSum = sum(fg.sigma(:));
+    out.atoms.fitR2Min = min(fg.rsquared);
+
+    lv = imaging.atoms.findLatticeVectors(fg.positions);
+    out.atoms.lvValid = lv.valid;
+    out.atoms.a1 = lv.a1;  out.atoms.a2 = lv.a2;
+    out.atoms.spacing = lv.spacing;  out.atoms.origin = lv.origin;
+
+    st2 = imaging.atoms.peakPairStrain(fg.positions);
+    out.atoms.strainValid = st2.valid;
+    out.atoms.exxMean = mean(st2.exx, 'omitnan');
+    out.atoms.eyyMean = mean(st2.eyy, 'omitnan');
+    out.atoms.exyMean = mean(st2.exy, 'omitnan');
+    out.atoms.dispSum = sum(abs(st2.displacement(:)));
+
+    sub = imaging.atoms.assignSublattice(fg.amplitude, 2);
+    out.atoms.subCounts = [nnz(sub == 1), nnz(sub == 2)];
+    [~, brightestIdx] = max(fg.amplitude);
+    out.atoms.subBrightLabel = sub(brightestIdx);
+
+    % grains: two-texture synthetic (smooth left, busy right)
+    gImg = [base(:, 1:48), noisy(:, 49:96) + 1.5];
+    feats = imaging.grains.extractGrainFeatures(gImg);
+    out.grains.featSize = size(feats);
+    out.grains.featSum = sum(feats(:));
+    [saL, saInfo] = imaging.grains.segmentAuto(gImg, K=2, MinArea=25, ...
+        Seed=0, Replicates=3);
+    out.grains.numGrains = saInfo.numGrains;
+    areasG = accumarray(saL(saL > 0), 1);
+    out.grains.areasSorted = sort(areasG(areasG > 0))';
+    out.grains.inertia = saInfo.inertia;
+    gs = imaging.grains.grainStats(saL, gImg, PixelSize=0.4);
+    out.grains.boundaryLengthPx = gs.boundaryLengthPx;
+    out.grains.numBoundarySegments = gs.numBoundarySegments;
+    out.grains.areaPxSum = sum(gs.areaPx);
 end
 
 

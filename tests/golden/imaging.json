@@ -390,5 +390,58 @@
     "none": {
       "sum": 196.24885514528859
     }
+  },
+  "atoms": {
+    "imgSum": 4135.3129673369394,
+    "detectN": 120,
+    "detectPosSum": 13208,
+    "detectIntSum": 74.954197526877437,
+    "fitConverged": 120,
+    "fitPosSum": 13204.227838288238,
+    "fitAmpSum": 137.06058032885758,
+    "fitSigmaSum": 429.88436333120285,
+    "fitR2Min": 0.99913577696712663,
+    "lvValid": true,
+    "a1": [
+      9.5995777812592014,
+      0.1499336798981431
+    ],
+    "a2": [
+      9.5995902963790982,
+      -9.0489503657873929
+    ],
+    "spacing": 9.1979569939191173,
+    "origin": [
+      65.612520198298242,
+      44.7022467085507
+    ],
+    "strainValid": true,
+    "exxMean": -1.7607458781863548E-6,
+    "eyyMean": 3.5642805273572E-6,
+    "exyMean": -3.4035493718399521E-7,
+    "dispSum": 0.65330355892634628,
+    "subCounts": [
+      60,
+      60
+    ],
+    "subBrightLabel": 1
+  },
+  "grains": {
+    "featSize": [
+      64,
+      96,
+      12
+    ],
+    "featSum": 25038.462645265947,
+    "numGrains": 3,
+    "areasSorted": [
+      206,
+      2842,
+      3095
+    ],
+    "inertia": 57818.141540585479,
+    "boundaryLengthPx": 224,
+    "numBoundarySegments": 2,
+    "areaPxSum": 6143
   }
 }
