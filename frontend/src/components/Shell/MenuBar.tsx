@@ -591,6 +591,11 @@ export default function MenuBar({
         shortcut: "WINDOW",
         action: () => store.openTool("fftmask"),
       },
+      {
+        label: "Pixel Inspector",
+        shortcut: "WINDOW",
+        action: () => store.openTool("pixels"),
+      },
     ],
     Help: [
       {

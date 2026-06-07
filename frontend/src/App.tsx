@@ -24,6 +24,7 @@ import CalibrationManager from "./components/overlays/CalibrationManager";
 import ToolWindow from "./components/overlays/ToolWindow";
 import DiffractionWorkshop from "./components/workshops/DiffractionWorkshop";
 import FftMaskWorkshop from "./components/workshops/FftMaskWorkshop";
+import PixelInspector from "./components/workshops/PixelInspector";
 import EdsWorkshop from "./components/workshops/EdsWorkshop";
 import EelsWorkshop from "./components/workshops/EelsWorkshop";
 import { listImages } from "./lib/api";
@@ -468,17 +469,25 @@ export default function App() {
               eds: "EDS",
               diffraction: "Diffraction",
               fftmask: "FFT Mask",
+              pixels: "Pixel Inspector",
             }[t.kind]
           }
           x={t.x}
           y={t.y}
           z={t.z}
-          width={t.kind === "diffraction" || t.kind === "fftmask" ? 332 : 360}
+          width={
+            t.kind === "diffraction" || t.kind === "fftmask"
+              ? 332
+              : t.kind === "pixels"
+                ? 300
+                : 360
+          }
         >
           {t.kind === "eels" && <EelsWorkshop />}
           {t.kind === "eds" && <EdsWorkshop />}
           {t.kind === "diffraction" && <DiffractionWorkshop />}
           {t.kind === "fftmask" && <FftMaskWorkshop />}
+          {t.kind === "pixels" && <PixelInspector />}
         </ToolWindow>
       ))}
     </div>

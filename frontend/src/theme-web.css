@@ -280,6 +280,26 @@ body {
   padding: 3px;
 }
 
+.fvd-pixel-grid {
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  width: 100%;
+}
+
+.fvd-pixel-grid td {
+  border: 1px solid var(--border);
+  padding: 3px 4px;
+  text-align: right;
+  color: var(--text-dim);
+}
+
+.fvd-pixel-grid td.centre {
+  background: var(--capture-soft);
+  color: var(--capture);
+  font-weight: 600;
+}
+
 .fvd-minimap {
   position: absolute;
   top: 50px;

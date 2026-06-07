@@ -102,7 +102,12 @@ export type Theme = "dark" | "light";
 export type ListView = "thumbs" | "names";
 export type CompareMode = "split" | "flicker" | "subtract";
 export type SelectGesture = "single" | "toggle" | "range";
-export type ToolKind = "eels" | "eds" | "diffraction" | "fftmask";
+export type ToolKind =
+  | "eels"
+  | "eds"
+  | "diffraction"
+  | "fftmask"
+  | "pixels";
 
 export interface ToolWindowState {
   kind: ToolKind;
