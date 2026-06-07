@@ -545,6 +545,54 @@ export default function MenuBar({
           if (e) store.setStatus(`redo: ${undoLabel(e)}`);
         },
       },
+      {
+        label: "Clear Measurements",
+        disabled:
+          !store.activeId ||
+          (store.measures[store.activeId ?? ""] ?? []).length === 0,
+        action: () => {
+          if (store.activeId) {
+            store.clearMeasures(store.activeId, [
+              "distance",
+              "profile",
+              "angle",
+              "roi",
+              "ellipse",
+              "polyline",
+            ]);
+            store.setStatus("measurements cleared (undoable)");
+          }
+        },
+      },
+      {
+        label: "Clear Annotations",
+        disabled:
+          !store.activeId ||
+          (store.measures[store.activeId ?? ""] ?? []).length === 0,
+        action: () => {
+          if (store.activeId) {
+            store.clearMeasures(store.activeId, [
+              "text",
+              "arrow",
+              "box",
+              "circle",
+            ]);
+            store.setStatus("annotations cleared (undoable)");
+          }
+        },
+      },
+      {
+        label: "Clear All Overlays",
+        disabled:
+          !store.activeId ||
+          (store.measures[store.activeId ?? ""] ?? []).length === 0,
+        action: () => {
+          if (store.activeId) {
+            store.clearMeasures(store.activeId, null);
+            store.setStatus("overlays cleared (undoable)");
+          }
+        },
+      },
     ],
     View: [
       { label: "Fit", shortcut: "F", disabled: !store.activeId, action: onFit },

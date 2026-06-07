@@ -17,6 +17,7 @@ const KIND_GLYPH: Record<Measure["kind"], string> = {
   text: "T",
   arrow: "➹",
   box: "□",
+  circle: "◌",
 };
 
 const SIZES: OverlayStyle["size"][] = ["S", "M", "L", "XL"];
@@ -160,7 +161,12 @@ export default function MeasurePanel() {
       const s = roiStats[m.id];
       return s ? `μ ${Number(s.mean.toPrecision(4))}` : "…";
     }
-    if (m.kind === "text" || m.kind === "arrow" || m.kind === "box") {
+    if (
+      m.kind === "text" ||
+      m.kind === "arrow" ||
+      m.kind === "box" ||
+      m.kind === "circle"
+    ) {
       return m.text ?? "";
     }
     return "";
@@ -177,7 +183,17 @@ export default function MeasurePanel() {
   };
 
   const sel = measures.find((m) => m.id === selected);
-  const selStats = sel?.kind === "roi" ? roiStats[sel.id] : undefined;
+  const selStats =
+    sel?.kind === "roi" || sel?.kind === "ellipse"
+      ? roiStats[sel.id]
+      : undefined;
+  const selIsAnnotation =
+    sel !== undefined &&
+    (sel.kind === "text" ||
+      sel.kind === "arrow" ||
+      sel.kind === "box" ||
+      sel.kind === "circle");
+  const setMeasureText = useViewer((s) => s.setMeasureText);
 
   const captureMode = useViewer((s) => s.captureMode);
   const setCaptureMode = useViewer((s) => s.setCaptureMode);
@@ -212,6 +228,7 @@ export default function MeasurePanel() {
           {capBtn("Text", "T", "text")}
           {capBtn("Arrow", "➹", "arrow")}
           {capBtn("Box", "□", "box")}
+          {capBtn("Circle", "◌", "circle")}
         </div>
         <div className="fvd-slider-row">
           <span className="k">Width (px)</span>
@@ -268,6 +285,19 @@ export default function MeasurePanel() {
               </button>
             </div>
           ))}
+          {selIsAnnotation && sel && (
+            <div className="fvd-slider-row">
+              <span className="k">Text</span>
+              <input
+                style={{ flex: 1 }}
+                value={sel.text ?? ""}
+                placeholder="caption…"
+                onChange={(e) =>
+                  setMeasureText(activeId, sel.id, e.target.value)
+                }
+              />
+            </div>
+          )}
           {selStats && (
             <div className="fvd-roi-stats">
               {(

@@ -51,7 +51,8 @@ export type MeasureKind =
   // rendering, persistence, undo and export baking all come free
   | "text"
   | "arrow"
-  | "box";
+  | "box"
+  | "circle";
 
 /** Points are normalized 0–1 image coords (handoff §6) so measures
  *  survive crops/derived images of the same aspect. */
@@ -306,6 +307,9 @@ interface ViewerState {
     pts: Measure["pts"],
   ) => void;
   removeMeasure: (imageId: string, measureId: string) => void;
+  setMeasureText: (imageId: string, measureId: string, text: string) => void;
+  /** Remove all measures (or only the given kinds), undoably. */
+  clearMeasures: (imageId: string, kinds: MeasureKind[] | null) => void;
   setSelectedMeasure: (id: string | null) => void;
   setRoiStats: (measureId: string, stats: RoiStats) => void;
   setCaptureMode: (mode: CaptureMode) => void;
@@ -617,6 +621,44 @@ export const useViewer = create<ViewerState>((set, get) => ({
           ],
           redoStack: [],
         }),
+      };
+    }),
+
+  setMeasureText: (imageId, measureId, text) =>
+    set((s) => ({
+      measures: {
+        ...s.measures,
+        [imageId]: (s.measures[imageId] ?? []).map((m) =>
+          m.id === measureId ? { ...m, text } : m,
+        ),
+      },
+    })),
+
+  clearMeasures: (imageId, kinds) =>
+    set((s) => {
+      const all = s.measures[imageId] ?? [];
+      const victims = kinds
+        ? all.filter((m) => kinds.includes(m.kind))
+        : all;
+      if (victims.length === 0) return {};
+      const keep = all.filter((m) => !victims.includes(m));
+      const roiStats = { ...s.roiStats };
+      for (const v of victims) delete roiStats[v.id];
+      return {
+        measures: { ...s.measures, [imageId]: keep },
+        roiStats,
+        selectedMeasure: victims.some((v) => v.id === s.selectedMeasure)
+          ? null
+          : s.selectedMeasure,
+        undoStack: [
+          ...s.undoStack.slice(-UNDO_CAP),
+          ...victims.map((measure) => ({
+            t: "measure-del" as const,
+            imageId,
+            measure,
+          })),
+        ],
+        redoStack: [],
       };
     }),
 

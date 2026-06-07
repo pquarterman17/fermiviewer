@@ -63,6 +63,7 @@ const CLICKS: Record<string, number> = {
   text: 1,
   arrow: 2,
   box: 2,
+  circle: 2,
 };
 
 const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
@@ -309,7 +310,12 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     if (!activeId || !imgSize) return;
     const pts = ptsImg.map((p) => ({ x: p.x / imgSize.w, y: p.y / imgSize.h }));
     let text: string | undefined;
-    if (kind === "text" || kind === "arrow" || kind === "box") {
+    if (
+      kind === "text" ||
+      kind === "arrow" ||
+      kind === "box" ||
+      kind === "circle"
+    ) {
       text =
         window.prompt(
           kind === "text" ? "Annotation text:" : "Label (optional):",

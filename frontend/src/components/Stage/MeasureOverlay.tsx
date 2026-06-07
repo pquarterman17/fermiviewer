@@ -163,6 +163,7 @@ export default function MeasureOverlay({
       case "text":
       case "arrow":
       case "box":
+      case "circle":
         return m.text ?? "";
     }
   };
@@ -220,7 +221,10 @@ export default function MeasureOverlay({
         />
       );
       labelAt = { x, y: y - 6 };
-    } else if (m.kind === "ellipse" && pts.length === 2) {
+    } else if (
+      (m.kind === "ellipse" || m.kind === "circle") &&
+      pts.length === 2
+    ) {
       const cx = (pts[0].x + pts[1].x) / 2;
       const cy = (pts[0].y + pts[1].y) / 2;
       shape = (

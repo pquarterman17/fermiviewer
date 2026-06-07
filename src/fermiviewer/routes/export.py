@@ -260,12 +260,12 @@ def _draw_annotations(img: Image.Image, annos: list[Annotation],
     draw = ImageDraw.Draw(img)
     for an in annos:
         p = an.points
-        if an.kind in ("roi", "box", "ellipse"):
+        if an.kind in ("roi", "box", "ellipse", "circle"):
             x0 = min(p[0][0], p[1][0])
             y0 = min(p[0][1], p[1][1])
             x1 = max(p[0][0], p[1][0])
             y1 = max(p[0][1], p[1][1])
-            if an.kind == "ellipse":
+            if an.kind in ("ellipse", "circle"):
                 draw.ellipse([x0, y0, x1, y1], outline=color, width=2)
             else:
                 draw.rectangle([x0, y0, x1, y1], outline=color, width=2)
@@ -373,7 +373,7 @@ def _build_svg(img: Image.Image, bar: ScaleBar | None,
 
     for an in annos:
         p = an.points
-        if an.kind == "ellipse":
+        if an.kind in ("ellipse", "circle"):
             cx = (p[0][0] + p[1][0]) / 2
             cy = (p[0][1] + p[1][1]) / 2
             parts.append(

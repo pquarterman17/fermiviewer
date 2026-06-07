@@ -158,7 +158,7 @@ def measure_annotations(
             out.append(Annotation(kind, opts[:2], text,
                                   (opts[0][0] + 8, opts[0][1] - 8)))
             continue
-        if kind == "box":
+        if kind in ("box", "circle"):
             lx = min(opts[0][0], opts[1][0])
             ly = min(opts[0][1], opts[1][1]) - 6
             out.append(Annotation(kind, opts[:2], text, (lx, ly)))
