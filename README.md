@@ -28,10 +28,13 @@ npm run dev               # Vite on :5173, /api proxied to :8000
 
 | Doc | Purpose |
 |---|---|
-| `PORT_PLAN.md` | Execution order — workstreams W1–W8 |
-| `PORT_CHECKLIST.md` | ~150-item feature inventory from the MATLAB version |
-| `design/handoff/` | Frontend spec + interactive prototype (visual source of truth) |
+| `plans/PORT_PLAN.md` *(local-only)* | Execution order — workstreams W1–W8 |
+| `plans/PORT_CHECKLIST.md` *(local-only)* | ~150-item feature inventory from the MATLAB version |
+| `design/handoff/` *(local-only)* | Frontend spec + interactive prototype (visual source of truth) |
 | `tests/golden/` | Frozen MATLAB reference values (see `tools/matlab/`) |
+
+Planning docs are gitignored per-machine working files (fermi-viewer
+convention); the golden values and this README are the tracked surface.
 
 ## License
 

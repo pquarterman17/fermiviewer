@@ -19,8 +19,12 @@ src-tauri/target/
 # Local-only real-instrument test data (fetched on demand)
 tests/data/realdata/
 
-# Per-machine planning scratch (PORT_PLAN.md and PORT_CHECKLIST.md are tracked)
+# Per-machine planning docs — NOT tracked (fermi-viewer convention).
+# plans/PORT_PLAN.md, plans/PORT_CHECKLIST.md, design/handoff/ (frontend
+# spec + prototype HTML) all live here locally; copy between machines
+# manually or via OneDrive.
 plans/
+design/
 
 # IDE / OS
 .idea/
