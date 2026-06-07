@@ -1,0 +1,299 @@
+"""Structural-analysis endpoints: particles, grains, atom columns,
+template matching, stitching (plan item 28 — adapters over W3/W4 calc)."""
+
+from __future__ import annotations
+
+import numpy as np
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+
+from fermiviewer.calc.atoms import (
+    assign_sublattice,
+    detect_columns,
+    find_lattice_vectors,
+    fit_gaussian_2d,
+    peak_pair_strain,
+)
+from fermiviewer.calc.grains import grain_stats, segment_auto
+from fermiviewer.calc.particles import particle_analysis
+from fermiviewer.calc.stitch import stitch_images
+from fermiviewer.calc.texture import template_match
+from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
+from fermiviewer.models import ImageMeta
+from fermiviewer.session import UnknownImageError, store
+
+router = APIRouter(prefix="/api")
+
+
+def _raster(img_id: str) -> tuple[DataStruct, np.ndarray]:
+    try:
+        ds = store.get(img_id)
+    except UnknownImageError:
+        raise HTTPException(404, f"unknown image id: {img_id}") from None
+    if ds.kind is DataKind.IMAGE:
+        return ds, np.asarray(ds.data, dtype=np.float64)
+    if ds.kind is DataKind.SPECTRUM_IMAGE:
+        summed: np.ndarray = np.asarray(ds.data, dtype=np.float64).sum(axis=2)
+        return ds, summed
+    raise HTTPException(400, "1D spectra have no raster")
+
+
+def _register(
+    arr: np.ndarray, name: str, parent: DataStruct, parent_id: str,
+    keep_axes: bool = True,
+) -> dict:
+    axes = (
+        (parent.axes[0], parent.axes[1])
+        if keep_axes
+        else (AxisCal(), AxisCal())
+    )
+    derived = DataStruct(
+        data=np.ascontiguousarray(arr),
+        kind=DataKind.IMAGE,
+        axes=axes,
+        metadata={"source": name, "parser": "derived"},
+    )
+    new_id = store.add_derived(derived, name, parent_id)
+    return ImageMeta.from_datastruct(new_id, name, derived).model_dump()
+
+
+# ── particle analysis ─────────────────────────────────────────────────
+
+
+class ParticleRequest(BaseModel):
+    image_id: str
+    threshold: float | None = None
+    polarity: str = "bright"
+    min_area: int = Field(default=1, ge=0)
+    use_watershed: bool = False
+    min_marker_distance: float = 3.0
+
+
+@router.post("/analyze/particles")
+def analyze_particles(req: ParticleRequest) -> dict:
+    ds, raster = _raster(req.image_id)
+    px = ds.pixel_size if np.isfinite(ds.pixel_size) else float("nan")
+    try:
+        res = particle_analysis(
+            raster,
+            threshold=req.threshold,
+            polarity=req.polarity,
+            min_area=req.min_area,
+            pixel_size=px,
+            use_watershed=req.use_watershed,
+            min_marker_distance=req.min_marker_distance,
+        )
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    name = store.name(req.image_id)
+    return {
+        "n_particles": res.n_particles,
+        "threshold": res.threshold,
+        "labels": _register(
+            res.labels.astype(np.float64),
+            f"particles({name})", ds, req.image_id,
+        ),
+        "particles": [
+            {
+                "id": p.id,
+                "area": p.area,
+                "centroid": list(p.centroid),
+                "equiv_diameter": p.equiv_diameter,
+                "mean_intensity": p.mean_intensity,
+                "area_calibrated": _nan_none(p.area_calibrated),
+                "diameter_calibrated": _nan_none(p.diameter_calibrated),
+            }
+            for p in res.particles
+        ],
+        "unit": ds.pixel_unit or "px",
+    }
+
+
+def _nan_none(v: float) -> float | None:
+    return None if not np.isfinite(v) else float(v)
+
+
+# ── grain segmentation ───────────────────────────────────────────────
+
+
+class GrainRequest(BaseModel):
+    image_id: str
+    k: int = Field(default=4, ge=2, le=10)
+    min_area: int = 25
+    seed: int = 0
+    replicates: int = 3
+
+
+@router.post("/analyze/grains")
+def analyze_grains(req: GrainRequest) -> dict:
+    ds, raster = _raster(req.image_id)
+    px = ds.pixel_size if np.isfinite(ds.pixel_size) else float("nan")
+    seg = segment_auto(
+        raster, k=req.k, min_area=req.min_area,
+        seed=req.seed, replicates=req.replicates,
+    )
+    stats = grain_stats(seg.labels, raster, pixel_size=px)
+    name = store.name(req.image_id)
+    return {
+        "n_grains": seg.n_grains,
+        "labels": _register(
+            seg.labels.astype(np.float64),
+            f"grains({name})", ds, req.image_id,
+        ),
+        "boundary_length_px": stats.boundary_length_px,
+        "n_boundary_segments": stats.n_boundary_segments,
+        "mean_diameter_px": (
+            float(stats.equiv_diameter_px.mean())
+            if stats.equiv_diameter_px.size
+            else 0.0
+        ),
+        "areas_px": stats.area_px.tolist(),
+        "unit": ds.pixel_unit or "px",
+    }
+
+
+# ── atom columns ─────────────────────────────────────────────────────
+
+
+class AtomsRequest(BaseModel):
+    image_id: str
+    sigma: float = 2.0
+    threshold: float = 0.2
+    min_separation: float = 8.0
+    polarity: str = "bright"
+    refine: bool = True
+    win_radius: int = 6
+    strain: bool = False
+    sublattices: int = Field(default=1, ge=1, le=4)
+
+
+@router.post("/analyze/atoms")
+def analyze_atoms(req: AtomsRequest) -> dict:
+    _, raster = _raster(req.image_id)
+    try:
+        det = detect_columns(
+            raster, sigma=req.sigma, threshold=req.threshold,
+            min_separation=req.min_separation, polarity=req.polarity,
+        )
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+
+    positions = det.positions
+    amplitude = det.intensities
+    converged = None
+    if req.refine and positions.shape[0] > 0:
+        fit = fit_gaussian_2d(
+            raster, positions, win_radius=req.win_radius,
+            polarity=req.polarity,
+        )
+        positions = fit.positions
+        amplitude = fit.amplitude
+        converged = fit.converged.tolist()
+
+    out: dict = {
+        "n_columns": int(positions.shape[0]),
+        "positions": positions.tolist(),  # (x, y), 1-based
+        "amplitude": np.asarray(amplitude).tolist(),
+        "converged": converged,
+    }
+
+    lv = find_lattice_vectors(positions)
+    out["lattice"] = {
+        "valid": bool(lv.valid),
+        "a1": None if not lv.valid else lv.a1.tolist(),
+        "a2": None if not lv.valid else lv.a2.tolist(),
+        "spacing": _nan_none(lv.spacing),
+    }
+
+    if req.sublattices > 1 and positions.shape[0] > 0:
+        out["sublattice"] = assign_sublattice(
+            np.asarray(amplitude), req.sublattices
+        ).tolist()
+
+    if req.strain:
+        st = peak_pair_strain(positions)
+        out["strain"] = {
+            "valid": bool(st.valid),
+            "exx_mean": _nan_none(float(np.nanmean(st.exx))),
+            "eyy_mean": _nan_none(float(np.nanmean(st.eyy))),
+            "exy_mean": _nan_none(float(np.nanmean(st.exy))),
+            "exx": [_nan_none(v) for v in st.exx],
+            "eyy": [_nan_none(v) for v in st.eyy],
+        }
+    return out
+
+
+# ── template match ───────────────────────────────────────────────────
+
+
+class TemplateRequest(BaseModel):
+    image_id: str
+    # template cut from the same image: (row, col, height, width), 1-based
+    rect: tuple[int, int, int, int]
+    threshold: float = Field(default=0.7, ge=0, le=1)
+    max_matches: int = 100
+
+
+@router.post("/analyze/template-match")
+def analyze_template(req: TemplateRequest) -> dict:
+    _, raster = _raster(req.image_id)
+    r0, c0, th, tw = req.rect
+    h, w = raster.shape
+    if not (1 <= r0 <= h and 1 <= c0 <= w and th > 0 and tw > 0
+            and r0 + th - 1 <= h and c0 + tw - 1 <= w):
+        raise HTTPException(422, "template rect out of bounds")
+    template = raster[r0 - 1 : r0 - 1 + th, c0 - 1 : c0 - 1 + tw]
+    try:
+        res = template_match(
+            raster, template, threshold=req.threshold,
+            max_matches=req.max_matches,
+        )
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    return {
+        "n_matches": res.n_matches,
+        "locations": res.locations.tolist(),  # (row, col) centres
+        "scores": res.scores.tolist(),
+    }
+
+
+# ── stitching ────────────────────────────────────────────────────────
+
+
+class StitchRequest(BaseModel):
+    image_ids: list[str]
+    layout: str = "horizontal"
+    overlap_frac: float = Field(default=0.2, ge=0, le=0.5)
+    blend_width: float = 50.0
+
+
+@router.post("/analyze/stitch")
+def analyze_stitch(req: StitchRequest) -> dict:
+    if len(req.image_ids) < 2:
+        raise HTTPException(422, "need at least 2 images to stitch")
+    rasters = []
+    parent: DataStruct | None = None
+    for img_id in req.image_ids:
+        ds, raster = _raster(img_id)
+        if parent is None:
+            parent = ds
+        rasters.append(raster)
+    shapes = {r.shape for r in rasters}
+    if len(shapes) != 1:
+        raise HTTPException(422, "stitch requires equal-size tiles")
+    try:
+        res = stitch_images(
+            rasters, layout=req.layout,
+            overlap_frac=req.overlap_frac, blend_width=req.blend_width,
+        )
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    assert parent is not None
+    return {
+        "mosaic": _register(
+            res.mosaic, f"mosaic({len(rasters)})", parent,
+            req.image_ids[0],
+        ),
+        "offsets": res.offsets.tolist(),
+        "layout": res.layout,
+    }
