@@ -6,8 +6,8 @@ prototype (screenshots from the handoff extract), (3) verification
 state. Companion documents: `plans/PORT_CHECKLIST.md` (item-level,
 per-machine) and `docs/w3_imaging_audit.md` (algorithm decisions).
 
-## 1 · Feature parity vs MATLAB (checklist: 125/183 checked, 68 % —
-sweep #3, 2026-06-08)
+## 1 · Feature parity vs MATLAB (checklist: 166/183 checked, 91 % —
+sweep #4, 2026-06-08)
 
 The headline number undersells the state: parity is split sharply by
 layer.
@@ -68,16 +68,27 @@ pixel inspector, batch apply, macro record/replay, GIF builder, and
 the Structure workshop (first UI for atoms / template match / CTF /
 lattice / stitch).
 
-What remains is checklist partials and platform work:
+The finish-everything run (2026-06-08) closed the long tail: image
+math, stack alignment, MIP, ellipse ROI, batch crop, color overlay,
+colorbar, recents, RAW dialog, batch export/rename, measurement
+log/CSV/stats, profile CSV, circle annotations + captions + clear
+overlays, SI region spectra, EELS edge-ID overlay, live ROI FFT,
+particle threshold preview, prefs, metadata editor, GPA 2-click,
+diffraction rings, calibrate-from-measurement, interface/noise/
+defect analyses, batch profile, logging + bug report.
+
+What remains (17 checklist lines, all inline-noted partials):
 
 1. Tauri shell — blocked on Rust toolchain; `fv --desktop`
    (pywebview) delivers the desktop experience meanwhile
 2. Human side-by-side MATLAB session before declaring parity (user)
-3. Checklist partials (inline-noted): live-FFT toggle, diffraction
-   ring overlays, ROI-manager CSV export, multi-frame stacks, image
-   math, circle ROI/annotations, preferences dialog, journal export
-   presets, batch convert/rename, RAW import dialog, metadata editor,
-   logging/bug-report capture
+3. Multi-frame in-image stacks (frame slider) + stack nav dialog
+4. Partial halves: histogram transfer ramp, log/equalize transforms,
+   custom colormap parser, marquee multi-select + per-item styling,
+   annotation context menus, ROI histogram figure, surface plot,
+   morphology/multi-otsu dialogs, full-window thumbnail grid,
+   scale-bar auto-detect, journal presets, figure-panel builder,
+   collapsible panels
 
 ## 4 · Verification state
 
