@@ -87,6 +87,31 @@ export function viewForRect(
   };
 }
 
+/** Calibrated distance between two image-pixel points. */
+export function physDist(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  pixelSize: number | null,
+): { value: number; unit: "px" | "cal" } {
+  const d = Math.hypot(b.x - a.x, b.y - a.y);
+  return pixelSize != null
+    ? { value: d * pixelSize, unit: "cal" }
+    : { value: d, unit: "px" };
+}
+
+/** Angle at vertex v between rays v→a and v→b, in degrees [0, 180]. */
+export function physAngle(
+  v: { x: number; y: number },
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+): number {
+  const a1 = Math.atan2(a.y - v.y, a.x - v.x);
+  const a2 = Math.atan2(b.y - v.y, b.x - v.x);
+  let deg = Math.abs(((a1 - a2) * 180) / Math.PI);
+  if (deg > 180) deg = 360 - deg;
+  return deg;
+}
+
 /** Nice round scale-bar length: largest of 1/2/5×10ⁿ below `maxPhys`. */
 export function niceScaleLength(maxPhys: number): number {
   const exp = Math.floor(Math.log10(maxPhys));

@@ -1,6 +1,11 @@
-// Minimal WebGL image renderer (handoff §13 render path). Phase 1 draws
-// the backend's 8-bit /render PNG as a texture; Phase 2 swaps the texture
-// for raw data + a window/level/γ/LUT fragment shader — same draw call.
+// WebGL image renderer (handoff §13 render path): raw 16-bit intensities
+// on the GPU with window/level/gamma/colormap applied in the fragment
+// shader — instant contrast at any size, no PNG round-trips.
+//
+// The 16-bit value is packed into the R (high) and G (low) bytes of an
+// RGBA8 texture. v = 256·hi + lo is linear in both bytes, so fixed-
+// function LINEAR filtering interpolates it exactly — no float-texture
+// extensions, works on WebGL1.
 
 import type { View } from "../store/viewer";
 import type { Size } from "../lib/geometry";
@@ -19,17 +24,30 @@ void main() {
 }`;
 
 const FRAG = `
-precision mediump float;
-uniform sampler2D u_tex;
+precision highp float;
+uniform sampler2D u_tex;       // packed 16-bit: R=hi byte, G=lo byte
+uniform sampler2D u_lut;       // 256×1 colormap
+uniform vec3 u_window;         // lo, hi, gamma — normalized [0,1] units
 varying vec2 v_uv;
 void main() {
-  gl_FragColor = texture2D(u_tex, v_uv);
+  vec4 p = texture2D(u_tex, v_uv);
+  float v = (p.r * 255.0 * 256.0 + p.g * 255.0) / 65535.0;
+  float t = clamp((v - u_window.x) / max(u_window.y - u_window.x, 1e-6), 0.0, 1.0);
+  t = pow(t, 1.0 / max(u_window.z, 1e-3));
+  gl_FragColor = texture2D(u_lut, vec2(t, 0.5));
 }`;
+
+export interface Window16 {
+  lo: number; // normalized [0,1] against the image min/max
+  hi: number;
+  gamma: number;
+}
 
 export class GLRenderer {
   private gl: WebGLRenderingContext;
   private prog: WebGLProgram;
   private tex: WebGLTexture | null = null;
+  private lut: WebGLTexture | null = null;
   private imgSize: Size = { w: 0, h: 0 };
 
   constructor(private canvas: HTMLCanvasElement) {
@@ -43,6 +61,13 @@ export class GLRenderer {
     const loc = gl.getAttribLocation(this.prog, "a_pos");
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+    gl.uniform1i(this.u("u_tex"), 0);
+    gl.uniform1i(this.u("u_lut"), 1);
+  }
+
+  private u(name: string): WebGLUniformLocation | null {
+    return this.gl.getUniformLocation(this.prog, name);
   }
 
   private compile(): WebGLProgram {
@@ -69,25 +94,64 @@ export class GLRenderer {
     return prog;
   }
 
-  /** Upload a decoded PNG as the stage texture. */
-  setImage(img: HTMLImageElement): void {
+  /** Upload a normalized uint16 raster (row-major) as a packed texture. */
+  setImage16(data: Uint16Array, w: number, h: number): void {
     const { gl } = this;
+    const rgba = new Uint8Array(w * h * 4);
+    for (let i = 0; i < w * h; i++) {
+      const v = data[i];
+      rgba[i * 4] = v >> 8; // R = hi byte
+      rgba[i * 4 + 1] = v & 0xff; // G = lo byte
+      rgba[i * 4 + 3] = 255;
+    }
     if (this.tex) gl.deleteTexture(this.tex);
     this.tex = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.tex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
-    // NEAREST when zoomed in (see draw); pixel-exact inspection matters in EM
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      w,
+      h,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      rgba,
+    );
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    this.imgSize = { w: img.naturalWidth, h: img.naturalHeight };
+    this.imgSize = { w, h };
 
-    const { w, h } = this.imgSize;
     gl.bufferData(
       gl.ARRAY_BUFFER,
       new Float32Array([0, 0, w, 0, 0, h, 0, h, w, 0, w, h]),
       gl.STATIC_DRAW,
     );
+  }
+
+  /** Upload a 256×1 RGBA colormap LUT. */
+  setLut(rgba256: Uint8Array): void {
+    const { gl } = this;
+    if (!this.lut) this.lut = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.lut);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      256,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      rgba256,
+    );
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   }
 
   clear(): void {
@@ -101,7 +165,7 @@ export class GLRenderer {
     gl.clear(gl.COLOR_BUFFER_BIT);
   }
 
-  draw(view: View, vp: Size, dpr: number): void {
+  draw(view: View, vp: Size, dpr: number, win: Window16): void {
     const { gl, canvas } = this;
     const pw = Math.max(1, Math.round(vp.w * dpr));
     const ph = Math.max(1, Math.round(vp.h * dpr));
@@ -112,23 +176,27 @@ export class GLRenderer {
     gl.viewport(0, 0, pw, ph);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    if (!this.tex || this.imgSize.w === 0) return;
+    if (!this.tex || !this.lut || this.imgSize.w === 0) return;
 
-    // pixel-exact above 1:1, smooth below
+    // pixel-exact above 1:1, smooth below (EM: never invent intensities)
+    gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.tex);
     const filter = view.z * dpr >= 1 ? gl.NEAREST : gl.LINEAR;
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.lut);
 
-    const u = (name: string) => gl.getUniformLocation(this.prog, name);
-    gl.uniform2f(u("u_imgSize"), this.imgSize.w, this.imgSize.h);
-    gl.uniform2f(u("u_vpSize"), vp.w, vp.h);
-    gl.uniform3f(u("u_view"), view.z, view.px, view.py);
+    gl.uniform2f(this.u("u_imgSize"), this.imgSize.w, this.imgSize.h);
+    gl.uniform2f(this.u("u_vpSize"), vp.w, vp.h);
+    gl.uniform3f(this.u("u_view"), view.z, view.px, view.py);
+    gl.uniform3f(this.u("u_window"), win.lo, win.hi, win.gamma);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   }
 
   dispose(): void {
     if (this.tex) this.gl.deleteTexture(this.tex);
+    if (this.lut) this.gl.deleteTexture(this.lut);
     this.gl.getExtension("WEBGL_lose_context")?.loseContext();
   }
 }

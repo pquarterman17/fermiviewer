@@ -1,6 +1,6 @@
-// Central stage (handoff §4/§9): WebGL image render with pan / wheel-zoom
-// about cursor / box-zoom marquee / fit / 100 %, floating glass tool-bar,
-// zoom chip, cursor readout and scale bar.
+// Central stage (handoff §4/§9): WebGL render with client-side window/
+// level/γ/LUT, pan / wheel-zoom / box-zoom, measurement capture modes
+// (distance · profile · angle · ROI), dock plot, radial-menu trigger.
 
 import {
   forwardRef,
@@ -12,9 +12,14 @@ import {
 } from "react";
 
 import { GLRenderer } from "../../gl/render";
-import { renderUrl } from "../../lib/api";
 import {
-  clampZoom,
+  fetchData16,
+  measureProfile,
+  measureRoi,
+  type Raster16,
+} from "../../lib/api";
+import { buildLut } from "../../lib/colormaps";
+import {
   fitView,
   niceScaleLength,
   screenToImage,
@@ -22,8 +27,15 @@ import {
   zoomAbout,
   type Size,
 } from "../../lib/geometry";
-import { useStageInfo } from "../../store/stage";
-import { useViewer, type View } from "../../store/viewer";
+import { rasterValue, useStageInfo } from "../../store/stage";
+import {
+  DEFAULT_DISPLAY,
+  useViewer,
+  type Measure,
+  type View,
+} from "../../store/viewer";
+import DockPlot from "./DockPlot";
+import MeasureOverlay from "./MeasureOverlay";
 
 export interface StageHandle {
   fit: () => void;
@@ -38,6 +50,8 @@ interface Pt {
 }
 
 const WHEEL_K = 0.0015;
+const MEASURE_KINDS = ["distance", "profile", "angle", "roi"] as const;
+const CLICKS: Record<string, number> = { distance: 2, profile: 2, angle: 3 };
 
 const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   const activeId = useViewer((s) => s.activeId);
@@ -47,14 +61,22 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   const storedView = useViewer((s) =>
     s.activeId ? (s.views[s.activeId] ?? null) : null,
   );
+  const display = useViewer((s) =>
+    s.activeId ? (s.display[s.activeId] ?? DEFAULT_DISPLAY) : DEFAULT_DISPLAY,
+  );
   const setView = useViewer((s) => s.setView);
+  const setDisplay = useViewer((s) => s.setDisplay);
   const captureMode = useViewer((s) => s.captureMode);
   const setCaptureMode = useViewer((s) => s.setCaptureMode);
   const panTool = useViewer((s) => s.panTool);
-  const setPanTool = useViewer((s) => s.setPanTool);
+  const addMeasure = useViewer((s) => s.addMeasure);
+  const setRoiStats = useViewer((s) => s.setRoiStats);
+  const setRadial = useViewer((s) => s.setRadial);
   const setStatus = useViewer((s) => s.setStatus);
   const setCursor = useStageInfo((s) => s.setCursor);
   const setZoom = useStageInfo((s) => s.setZoom);
+  const setRaster = useStageInfo((s) => s.setRaster);
+  const setProfile = useStageInfo((s) => s.setProfile);
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -64,11 +86,19 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [panning, setPanning] = useState(false);
   const [marquee, setMarquee] = useState<{ a: Pt; b: Pt } | null>(null);
+  // in-progress click-capture (image-space pts; last pt tracks cursor)
+  const [pending, setPending] = useState<{
+    kind: Measure["kind"];
+    pts: Pt[];
+  } | null>(null);
   const dragRef = useRef<{ last: Pt } | null>(null);
+  const rasterRef = useRef<Raster16 | null>(null);
 
   const rasterless = meta?.kind === "spectrum";
-  const view: View | null =
-    imgSize && (storedView ?? fitView(imgSize, vp));
+  const view: View | null = imgSize && (storedView ?? fitView(imgSize, vp));
+  const isMeasureMode = (MEASURE_KINDS as readonly string[]).includes(
+    captureMode,
+  );
 
   // ── renderer lifecycle ──
   useEffect(() => {
@@ -92,38 +122,65 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     return () => ro.disconnect();
   }, []);
 
-  // ── load active image into the texture ──
+  // ── load active image (raw uint16 → GPU) ──
   useEffect(() => {
     setImgSize(null);
+    setPending(null);
+    setProfile(null);
+    rasterRef.current = null;
+    setRaster(null);
     if (!activeId || rasterless) {
       glRef.current?.clear();
       return;
     }
     let alive = true;
-    const img = new Image();
-    img.onload = () => {
-      if (!alive || !glRef.current) return;
-      glRef.current.setImage(img);
-      setImgSize({ w: img.naturalWidth, h: img.naturalHeight });
-    };
-    img.onerror = () => {
-      if (alive) setStatus(`failed to render image ${activeId}`);
-    };
-    img.src = renderUrl(activeId);
+    fetchData16(activeId)
+      .then((r) => {
+        if (!alive || !glRef.current) return;
+        glRef.current.setImage16(r.data, r.w, r.h);
+        rasterRef.current = r;
+        setRaster(r);
+        setImgSize({ w: r.w, h: r.h });
+        // honor DM-saved display window on first load (checklist I)
+        const st = useViewer.getState();
+        if (!st.display[activeId] && st.images[activeId]) {
+          const m = st.images[activeId].meta;
+          const dl = m["display_low"];
+          const dh = m["display_high"];
+          const dg = m["display_gamma"];
+          if (typeof dl === "number" && typeof dh === "number" && dh > dl) {
+            const span = r.vmax - r.vmin || 1;
+            setDisplay(activeId, {
+              lo: Math.max(0, (dl - r.vmin) / span),
+              hi: Math.min(1, (dh - r.vmin) / span),
+              gamma: typeof dg === "number" && dg > 0 ? dg : 1,
+            });
+          }
+        }
+      })
+      .catch((e: Error) => {
+        if (alive) setStatus(`load failed: ${e.message}`);
+      });
     return () => {
       alive = false;
     };
-  }, [activeId, rasterless, setStatus]);
+  }, [activeId, rasterless, setDisplay, setProfile, setRaster, setStatus]);
 
-  // ── draw on any view / size change ──
+  // ── colormap LUT upload ──
+  useEffect(() => {
+    glRef.current?.setLut(buildLut(display.cmap));
+  }, [display.cmap, imgSize]);
+
+  // ── draw on any view / window / size change ──
   useEffect(() => {
     if (!glRef.current || vp.w === 0) return;
     glRef.current.draw(
       view ?? { z: 1, px: 0.5, py: 0.5 },
       vp,
       window.devicePixelRatio || 1,
+      { lo: display.lo, hi: display.hi, gamma: display.gamma },
     );
-  }, [view, vp, imgSize]);
+  }, [view, vp, imgSize, display]);
 
   useEffect(() => {
     setZoom(view ? view.z : null);
@@ -150,6 +207,11 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       window.removeEventListener("keyup", up);
     };
   }, []);
+
+  // ── cancel pending capture when mode changes / esc ──
+  useEffect(() => {
+    if (!isMeasureMode) setPending(null);
+  }, [isMeasureMode, captureMode]);
 
   const apply = useCallback(
     (v: View) => {
@@ -209,10 +271,33 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     return () => el.removeEventListener("wheel", onWheel);
   }, [view, imgSize, vp, apply]);
 
-  // ── pointer: pan / marquee / readout ──
-  const local = (e: React.PointerEvent): Pt => {
+  // ── pointer: pan / marquee / capture / readout ──
+  const local = (e: React.PointerEvent | React.MouseEvent): Pt => {
     const r = wrapRef.current!.getBoundingClientRect();
     return { x: e.clientX - r.left, y: e.clientY - r.top };
+  };
+  const toImage = (p: Pt): Pt => {
+    const ip = screenToImage(p.x, p.y, view!, imgSize!, vp);
+    return {
+      x: Math.min(imgSize!.w, Math.max(0, ip.x)),
+      y: Math.min(imgSize!.h, Math.max(0, ip.y)),
+    };
+  };
+
+  const finalizeMeasure = (kind: Measure["kind"], ptsImg: Pt[]) => {
+    if (!activeId || !imgSize) return;
+    const pts = ptsImg.map((p) => ({ x: p.x / imgSize.w, y: p.y / imgSize.h }));
+    const mid = addMeasure(activeId, { kind, pts });
+    setCaptureMode("none");
+    if (kind === "profile") {
+      measureProfile(activeId, ptsImg[0], ptsImg[1])
+        .then((r) => setProfile({ ...r, measureId: mid }))
+        .catch((e: Error) => setStatus(e.message));
+    } else if (kind === "roi") {
+      measureRoi(activeId, ptsImg[0], ptsImg[1])
+        .then((r) => setRoiStats(mid, r))
+        .catch((e: Error) => setStatus(e.message));
+    }
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -225,9 +310,28 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       setPanning(true);
       e.currentTarget.setPointerCapture(e.pointerId);
       e.preventDefault();
-    } else if (e.button === 0 && captureMode === "zoom") {
+      return;
+    }
+    if (e.button !== 0) return;
+
+    if (captureMode === "zoom" || captureMode === "roi") {
       setMarquee({ a: p, b: p });
       e.currentTarget.setPointerCapture(e.pointerId);
+    } else if (captureMode in CLICKS) {
+      const ip = toImage(p);
+      const need = CLICKS[captureMode];
+      const cur = pending?.pts ?? [];
+      // replace the live cursor point with the committed click
+      const committed = pending ? [...cur.slice(0, -1), ip] : [ip];
+      if (committed.length >= need) {
+        finalizeMeasure(captureMode as Measure["kind"], committed);
+        setPending(null);
+      } else {
+        setPending({
+          kind: captureMode as Measure["kind"],
+          pts: [...committed, ip],
+        });
+      }
     }
   };
 
@@ -243,13 +347,18 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       const { last } = dragRef.current;
       apply({
         ...view,
-        z: view.z,
         px: view.px - (p.x - last.x) / (view.z * imgSize.w),
         py: view.py - (p.y - last.y) / (view.z * imgSize.h),
       });
       dragRef.current = { last: p };
     } else if (marquee) {
       setMarquee({ a: marquee.a, b: p });
+    } else if (pending && view && imgSize) {
+      const ip = toImage(p);
+      setPending({
+        kind: pending.kind,
+        pts: [...pending.pts.slice(0, -1), ip],
+      });
     }
   };
 
@@ -260,20 +369,35 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     } else if (marquee && view && imgSize) {
       const a = screenToImage(marquee.a.x, marquee.a.y, view, imgSize, vp);
       const b = screenToImage(marquee.b.x, marquee.b.y, view, imgSize, vp);
-      apply(viewForRect(a, b, imgSize, vp));
+      if (captureMode === "roi") {
+        const w = Math.abs(b.x - a.x);
+        const h = Math.abs(b.y - a.y);
+        if (w >= 2 && h >= 2) {
+          finalizeMeasure("roi", [toImage(marquee.a), toImage(marquee.b)]);
+        } else {
+          setCaptureMode("none");
+        }
+      } else {
+        apply(viewForRect(a, b, imgSize, vp));
+        setCaptureMode("none");
+      }
       setMarquee(null);
-      setCaptureMode("none");
     }
     e.currentTarget.releasePointerCapture(e.pointerId);
   };
 
   const onDoubleClick = () => {
-    if (imgSize) apply(fitView(imgSize, vp));
+    if (!pending && imgSize) apply(fitView(imgSize, vp));
+  };
+
+  const onContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setRadial({ x: e.clientX, y: e.clientY });
   };
 
   const cls = [
     "fvd-stage",
-    captureMode === "zoom" ? "box-zoom" : "",
+    captureMode !== "none" ? "box-zoom" : "",
     panning ? "panning" : panTool || spaceHeld ? "pan-ready" : "",
   ]
     .filter(Boolean)
@@ -288,6 +412,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       onPointerUp={onPointerUp}
       onPointerLeave={() => setCursor(null)}
       onDoubleClick={onDoubleClick}
+      onContextMenu={onContextMenu}
     >
       <canvas ref={canvasRef} />
 
@@ -312,41 +437,34 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
         />
       )}
 
-      {activeId && !rasterless && (
+      {activeId && !rasterless && imgSize && view && (
         <>
-          <FloatTools
-            panTool={panTool}
-            boxZoom={captureMode === "zoom"}
-            onPan={() => setPanTool(!panTool)}
-            onBoxZoom={() =>
-              setCaptureMode(captureMode === "zoom" ? "none" : "zoom")
-            }
-            onZoom={(f) => {
-              if (view && imgSize) {
-                apply(
-                  zoomAbout(
-                    { ...view, z: clampZoom(view.z) },
-                    f,
-                    vp.w / 2,
-                    vp.h / 2,
-                    imgSize,
-                    vp,
-                  ),
-                );
-              }
-            }}
-            onFit={() => imgSize && apply(fitView(imgSize, vp))}
-            onActual={() => view && apply({ ...view, z: 1 })}
+          <MeasureOverlay
+            imageId={activeId}
+            pixelSize={meta?.pixel_size ?? null}
+            pixelUnit={meta?.pixel_unit ?? "px"}
+            view={view}
+            img={imgSize}
+            vp={vp}
+            pending={pending}
           />
+          <FloatTools />
+          {captureMode !== "none" && (
+            <div className="fvd-glass fvd-capture-banner">
+              {captureHint(captureMode, pending?.pts.length ?? 0)} · Esc
+              cancels
+            </div>
+          )}
           <ZoomChip />
           <Readout />
-          {meta?.pixel_size != null && view && (
+          {meta?.pixel_size != null && (
             <ScaleBar
               pixelSize={meta.pixel_size}
               unit={meta.pixel_unit}
               z={view.z}
             />
           )}
+          <DockPlot />
         </>
       )}
     </div>
@@ -355,56 +473,54 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
 
 export default Stage;
 
-function FloatTools(props: {
-  panTool: boolean;
-  boxZoom: boolean;
-  onPan: () => void;
-  onBoxZoom: () => void;
-  onZoom: (f: number) => void;
-  onFit: () => void;
-  onActual: () => void;
-}) {
+function captureHint(mode: string, clicked: number): string {
+  switch (mode) {
+    case "zoom":
+      return "Drag a region to zoom";
+    case "roi":
+      return "Drag a region for statistics";
+    case "distance":
+    case "profile":
+      return clicked <= 1 ? "Click the first point" : "Click the end point";
+    case "angle":
+      return ["Click the first ray end", "Click the vertex", "Click the second ray end"][
+        Math.min(2, Math.max(0, clicked - 1))
+      ];
+    default:
+      return "";
+  }
+}
+
+function FloatTools() {
+  const captureMode = useViewer((s) => s.captureMode);
+  const setCaptureMode = useViewer((s) => s.setCaptureMode);
+  const panTool = useViewer((s) => s.panTool);
+  const setPanTool = useViewer((s) => s.setPanTool);
+
+  const mode = (m: typeof captureMode) => () =>
+    setCaptureMode(captureMode === m ? "none" : m);
+
+  const tools: [string, string, boolean, () => void][] = [
+    ["✥", "Hand tool  H", panTool, () => setPanTool(!panTool)],
+    ["⬚", "Box zoom  Z", captureMode === "zoom", mode("zoom")],
+    ["↔", "Distance  D", captureMode === "distance", mode("distance")],
+    ["∿", "Line profile  L", captureMode === "profile", mode("profile")],
+    ["∠", "Angle  G", captureMode === "angle", mode("angle")],
+    ["▭", "ROI stats  R", captureMode === "roi", mode("roi")],
+  ];
+
   return (
     <div className="fvd-glass fvd-float-tools">
-      <button
-        className={`fvd-tool-btn${props.panTool ? " active" : ""}`}
-        title="Hand tool  H"
-        onClick={props.onPan}
-      >
-        ✥
-      </button>
-      <button
-        className={`fvd-tool-btn${props.boxZoom ? " active" : ""}`}
-        title="Box zoom  Z"
-        onClick={props.onBoxZoom}
-      >
-        ⬚
-      </button>
-      <button
-        className="fvd-tool-btn"
-        title="Zoom in  +"
-        onClick={() => props.onZoom(1.25)}
-      >
-        +
-      </button>
-      <button
-        className="fvd-tool-btn"
-        title="Zoom out  −"
-        onClick={() => props.onZoom(0.8)}
-      >
-        −
-      </button>
-      <button className="fvd-tool-btn" title="Fit  F" onClick={props.onFit}>
-        ⤢
-      </button>
-      <button
-        className="fvd-tool-btn"
-        title="Actual size  1"
-        onClick={props.onActual}
-        style={{ width: 34 }}
-      >
-        1:1
-      </button>
+      {tools.map(([glyph, title, active, onClick]) => (
+        <button
+          key={title}
+          className={`fvd-tool-btn${active ? " active" : ""}`}
+          title={title}
+          onClick={onClick}
+        >
+          {glyph}
+        </button>
+      ))}
     </div>
   );
 }
@@ -419,10 +535,13 @@ function ZoomChip() {
 
 function Readout() {
   const cursor = useStageInfo((s) => s.cursor);
+  const raster = useStageInfo((s) => s.raster);
   if (!cursor) return null;
+  const v = rasterValue(raster, cursor.x, cursor.y);
   return (
     <div className="fvd-glass fvd-readout">
-      {Math.floor(cursor.x)}, {Math.floor(cursor.y)} px
+      {Math.floor(cursor.x)}, {Math.floor(cursor.y)}
+      {v !== null && ` · ${Number(v.toPrecision(5))}`}
     </div>
   );
 }
@@ -436,13 +555,13 @@ function ScaleBar({
   unit: string;
   z: number;
 }) {
-  // largest nice physical length that fits in ~120 css px
+  const color = useViewer((s) => s.overlay.color);
   const phys = niceScaleLength((120 * pixelSize) / z);
   const widthPx = (phys / pixelSize) * z;
   const label =
     phys >= 1 ? `${Number(phys.toPrecision(3))} ${unit}` : fmtSub(phys, unit);
   return (
-    <div className="fvd-scalebar">
+    <div className="fvd-scalebar" style={{ color }}>
       <div className="bar" style={{ width: widthPx }} />
       <div className="label">{label}</div>
     </div>

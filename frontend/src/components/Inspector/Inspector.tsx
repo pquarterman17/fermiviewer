@@ -3,6 +3,8 @@
 
 import type { ImageMeta } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
+import AdjustPanel from "./AdjustPanel";
+import MeasurePanel from "./MeasurePanel";
 
 function fmtPixelSize(meta: ImageMeta): string | null {
   if (meta.pixel_size === null) return null;
@@ -56,6 +58,8 @@ export default function Inspector() {
 
   return (
     <aside className="fvd-inspector">
+      {meta.kind !== "spectrum" && <AdjustPanel />}
+      <MeasurePanel />
       <div className="fvd-card">
         <h3>Image</h3>
         {rows.map(([k, v]) => (
