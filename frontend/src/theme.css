@@ -1,0 +1,104 @@
+/* FermiViewer design tokens — authored from handoff §7 (prototype theme.css
+   was unavailable on this machine; reconcile verbatim when it lands).
+   Surfaces climb in lightness; near-zero chroma keeps neutrals neutral. */
+
+:root,
+[data-theme="dark"] {
+  /* surfaces: app bg → elevated cells */
+  --surface-0: oklch(0.16 0.008 280);
+  --surface-1: oklch(0.2 0.008 280);
+  --surface-2: oklch(0.24 0.008 280);
+  --surface-3: oklch(0.29 0.009 280);
+
+  --border-soft: oklch(0.28 0.01 280);
+  --border: oklch(0.34 0.01 280);
+  --border-strong: oklch(0.44 0.012 280);
+
+  --text: oklch(0.93 0.005 280);
+  --text-dim: oklch(0.72 0.008 280);
+  --text-faint: oklch(0.55 0.01 280);
+
+  /* violet — user-chosen; swappable */
+  --accent: oklch(0.7 0.17 295);
+  --accent-soft: oklch(0.7 0.17 295 / 0.18);
+  --accent-text: oklch(0.82 0.12 295);
+
+  /* amber — ONLY while a capture mode is active */
+  --capture: oklch(0.78 0.14 75);
+  --capture-soft: oklch(0.78 0.14 75 / 0.16);
+
+  /* floating tool-bar, banners, windows */
+  --glass: oklch(0.2 0.008 280 / 0.78);
+  --glass-border: oklch(0.6 0.01 280 / 0.25);
+
+  /* image area stays dark in both themes (dark-adaptation) */
+  --axes-bg: oklch(0.13 0.006 280);
+
+  --shadow: 0 6px 24px oklch(0 0 0 / 0.4);
+  --radius: 8px;
+  --radius-sm: 5px;
+}
+
+[data-theme="light"] {
+  --surface-0: oklch(0.96 0.004 280);
+  --surface-1: oklch(0.93 0.004 280);
+  --surface-2: oklch(0.89 0.005 280);
+  --surface-3: oklch(0.85 0.006 280);
+
+  --border-soft: oklch(0.88 0.005 280);
+  --border: oklch(0.8 0.006 280);
+  --border-strong: oklch(0.68 0.008 280);
+
+  --text: oklch(0.22 0.01 280);
+  --text-dim: oklch(0.42 0.01 280);
+  --text-faint: oklch(0.58 0.01 280);
+
+  --accent: oklch(0.55 0.18 295);
+  --accent-soft: oklch(0.55 0.18 295 / 0.14);
+  --accent-text: oklch(0.45 0.16 295);
+
+  --capture: oklch(0.66 0.15 75);
+  --capture-soft: oklch(0.66 0.15 75 / 0.16);
+
+  --glass: oklch(0.96 0.004 280 / 0.82);
+  --glass-border: oklch(0.4 0.01 280 / 0.2);
+
+  /* image area stays dark even in light mode */
+  --axes-bg: oklch(0.13 0.006 280);
+
+  --shadow: 0 6px 24px oklch(0 0 0 / 0.18);
+}
+
+/* density: regular default (handoff §7) */
+:root,
+[data-density="regular"] {
+  --pad: 8px;
+  --pad-lg: 12px;
+  --row-h: 28px;
+  --font-size: 13px;
+  --font-size-sm: 11px;
+}
+
+[data-density="compact"] {
+  --pad: 5px;
+  --pad-lg: 8px;
+  --row-h: 24px;
+  --font-size: 12px;
+  --font-size-sm: 10px;
+}
+
+[data-density="comfy"] {
+  --pad: 11px;
+  --pad-lg: 16px;
+  --row-h: 32px;
+  --font-size: 14px;
+  --font-size-sm: 12px;
+}
+
+/* type: system-ui UI · JetBrains Mono values */
+:root {
+  --font-ui:
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas,
+    monospace;
+}
