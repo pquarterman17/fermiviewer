@@ -3,6 +3,8 @@ template matching, stitching (plan item 28 — adapters over W3/W4 calc)."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -19,6 +21,7 @@ from fermiviewer.calc.particles import particle_analysis
 from fermiviewer.calc.stitch import stitch_images
 from fermiviewer.calc.texture import template_match
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
+from fermiviewer.jobs import jobs
 from fermiviewer.models import ImageMeta
 from fermiviewer.session import UnknownImageError, store
 
@@ -122,15 +125,18 @@ class GrainRequest(BaseModel):
     min_area: int = 25
     seed: int = 0
     replicates: int = 3
+    run_async: bool = False
 
 
-@router.post("/analyze/grains")
-def analyze_grains(req: GrainRequest) -> dict:
+def _run_grains(
+    req: GrainRequest,
+    progress: Callable[[float, str], None] | None = None,
+) -> dict:
     ds, raster = _raster(req.image_id)
     px = ds.pixel_size if np.isfinite(ds.pixel_size) else float("nan")
     seg = segment_auto(
         raster, k=req.k, min_area=req.min_area,
-        seed=req.seed, replicates=req.replicates,
+        seed=req.seed, replicates=req.replicates, progress=progress,
     )
     stats = grain_stats(seg.labels, raster, pixel_size=px)
     name = store.name(req.image_id)
@@ -150,6 +156,15 @@ def analyze_grains(req: GrainRequest) -> dict:
         "areas_px": stats.area_px.tolist(),
         "unit": ds.pixel_unit or "px",
     }
+
+
+@router.post("/analyze/grains")
+def analyze_grains(req: GrainRequest) -> dict:
+    if req.run_async:
+        # validate the image id up front so the 404 is synchronous
+        _raster(req.image_id)
+        return {"job_id": jobs.submit(lambda p: _run_grains(req, p))}
+    return _run_grains(req)
 
 
 # ── atom columns ─────────────────────────────────────────────────────

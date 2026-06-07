@@ -6,7 +6,9 @@ import { useEffect, useRef, useState } from "react";
 import {
   analyzeGpa,
   analyzeGrains,
+  analyzeGrainsAsync,
   analyzeParticles,
+  runJob,
   analyzeRadial,
   analyzeRoughness,
   analyzeVdf,
@@ -385,7 +387,14 @@ export default function MenuBar({
             const id = store.activeId;
             if (!v || !id) return;
             store.setStatus("segmenting grains…");
-            analyzeGrains(id, v["k"] as number)
+            type GrainResult = Awaited<ReturnType<typeof analyzeGrains>>;
+            runJob<GrainResult>(
+              () => analyzeGrainsAsync(id, v["k"] as number),
+              (frac, msg) =>
+                store.setStatus(
+                  `grains: ${msg || "working"} ${(frac * 100).toFixed(0)}%`,
+                ),
+            )
               .then((r) => {
                 store.ingest([r.labels]);
                 store.setStatus(

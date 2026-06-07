@@ -8,6 +8,7 @@ segmentation and rendering/CSV helpers stay MATLAB-side for now.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
@@ -80,9 +81,12 @@ def segment_auto(
     replicates: int = 3,
     min_area: int = 25,
     connectivity: int = 8,
+    progress: Callable[[float, str], None] | None = None,
 ) -> GrainSegmentation:
     """Unsupervised grain segmentation — ported (pixel path; the
     superpixel fast path stays MATLAB-side until needed)."""
+    if progress:
+        progress(0.05, "extracting texture features")
     if features is None:
         feats = extract_grain_features(
             img, scales=scales, gradient_sigma=gradient_sigma
@@ -93,6 +97,8 @@ def segment_auto(
 
     # MATLAB reshape is column-major; keep the same sample order so the
     # RNG-dependent seeding sees the same rows
+    if progress:
+        progress(0.35, "clustering")
     x = feats.reshape(h * w, f, order="F")
     z, _, _ = standardize_features(x)
     labels_flat, _, info = kmeans_lite(
@@ -100,6 +106,8 @@ def segment_auto(
     )
     cluster_map = labels_flat.reshape(h, w, order="F")
 
+    if progress:
+        progress(0.8, "labelling grains")
     labels = np.zeros((h, w), dtype=np.int64)
     g = 0
     for c in range(1, info.k + 1):

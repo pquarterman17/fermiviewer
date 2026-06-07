@@ -427,6 +427,38 @@ export function analyzeParticles(
   });
 }
 
+export interface JobStatus {
+  id: string;
+  status: "running" | "done" | "error";
+  progress: number;
+  message: string;
+  result?: unknown;
+  error?: string;
+}
+
+/** Start an async job; poll until done; reports progress via callback. */
+export async function runJob<T>(
+  start: () => Promise<{ job_id: string }>,
+  onProgress: (fraction: number, message: string) => void,
+  pollMs = 400,
+): Promise<T> {
+  const { job_id } = await start();
+  for (;;) {
+    const s = await json<JobStatus>(await fetch(`/api/jobs/${job_id}`));
+    if (s.status === "done") return s.result as T;
+    if (s.status === "error") throw new Error(s.error ?? "job failed");
+    onProgress(s.progress, s.message);
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
+}
+
+export function analyzeGrainsAsync(
+  id: string,
+  k: number,
+): Promise<{ job_id: string }> {
+  return post("/api/analyze/grains", { image_id: id, k, run_async: true });
+}
+
 export function analyzeGrains(
   id: string,
   k: number,
