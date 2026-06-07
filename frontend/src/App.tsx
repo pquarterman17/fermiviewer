@@ -17,6 +17,10 @@ import CommandPalette, {
 } from "./components/overlays/CommandPalette";
 import RadialMenu from "./components/overlays/RadialMenu";
 import ShortcutsOverlay from "./components/overlays/ShortcutsOverlay";
+import ToolWindow from "./components/overlays/ToolWindow";
+import DiffractionWorkshop from "./components/workshops/DiffractionWorkshop";
+import EdsWorkshop from "./components/workshops/EdsWorkshop";
+import EelsWorkshop from "./components/workshops/EelsWorkshop";
 import { listImages } from "./lib/api";
 import { COLORMAP_NAMES } from "./lib/colormaps";
 import { autoWindow } from "./lib/display";
@@ -36,6 +40,7 @@ export default function App() {
   const leftCol = useViewer((s) => s.leftCol);
   const rightCol = useViewer((s) => s.rightCol);
   const comparing = useViewer((s) => s.compareSet !== null);
+  const tools = useViewer((s) => s.tools);
 
   // restore any prior session (backend keeps images open across reloads)
   useEffect(() => {
@@ -341,6 +346,25 @@ export default function App() {
           if (st.activeId) void st.closeImage(st.activeId);
         },
       },
+      // Analyze (workshop windows)
+      {
+        id: "ws-eels",
+        group: "Analyze",
+        label: "EELS workshop",
+        run: () => s().openTool("eels"),
+      },
+      {
+        id: "ws-eds",
+        group: "Analyze",
+        label: "EDS workshop",
+        run: () => s().openTool("eds"),
+      },
+      {
+        id: "ws-diffraction",
+        group: "Analyze",
+        label: "Diffraction workshop",
+        run: () => s().openTool("diffraction"),
+      },
       // Help
       {
         id: "shortcuts",
@@ -377,6 +401,23 @@ export default function App() {
       <CommandPalette actions={actions} />
       <ShortcutsOverlay />
       <RadialMenu />
+      {tools.map((t) => (
+        <ToolWindow
+          key={t.kind}
+          kind={t.kind}
+          title={
+            { eels: "EELS", eds: "EDS", diffraction: "Diffraction" }[t.kind]
+          }
+          x={t.x}
+          y={t.y}
+          z={t.z}
+          width={t.kind === "diffraction" ? 332 : 360}
+        >
+          {t.kind === "eels" && <EelsWorkshop />}
+          {t.kind === "eds" && <EdsWorkshop />}
+          {t.kind === "diffraction" && <DiffractionWorkshop />}
+        </ToolWindow>
+      ))}
     </div>
   );
 }

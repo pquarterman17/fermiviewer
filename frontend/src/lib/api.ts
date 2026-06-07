@@ -140,6 +140,159 @@ export async function measureRoi(
   );
 }
 
+// ── analysis (handoff §8, workshops) ────────────────────────────────
+
+export interface Spectrum {
+  energy: number[];
+  counts: number[];
+  units: string;
+}
+
+export async function fetchSpectrum(id: string): Promise<Spectrum> {
+  return json(await fetch(`/api/image/${id}/spectrum`));
+}
+
+async function post<T>(url: string, body: unknown): Promise<T> {
+  return json(
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+export interface EelsBackgroundResult {
+  energy: number[];
+  spectrum: number[];
+  background: number[];
+  signal: number[];
+  params: Record<string, number>;
+}
+
+export function eelsBackground(
+  id: string,
+  fitWindow: [number, number],
+  method = "powerlaw",
+): Promise<EelsBackgroundResult> {
+  return post("/api/eels/background", {
+    image_id: id,
+    fit_window: fitWindow,
+    method,
+  });
+}
+
+export function eelsMap(
+  id: string,
+  signalWindow: [number, number],
+  backgroundWindow: [number, number] | null,
+  method = "powerlaw",
+): Promise<ImageMeta> {
+  return post("/api/eels/map", {
+    image_id: id,
+    signal_window: signalWindow,
+    background_window: backgroundWindow,
+    method,
+  });
+}
+
+export interface EelsEdge {
+  element: string;
+  shell: string;
+  z: number;
+  onset_ev: number;
+  signal_window: [number, number];
+  bg_window: [number, number];
+}
+
+export interface EelsQuantResult {
+  elements: string[];
+  atomic_percent: number[];
+  intensity: number[];
+  sigma: number[];
+}
+
+export function eelsQuantify(
+  id: string,
+  edges: EelsEdge[],
+  e0Kv = 200,
+  betaMrad = 10,
+): Promise<EelsQuantResult> {
+  return post("/api/eels/quantify", {
+    image_id: id,
+    edges,
+    e0_kv: e0Kv,
+    beta_mrad: betaMrad,
+  });
+}
+
+export interface EdsQuantResult {
+  elements: string[];
+  lines: string[];
+  mean_atomic_pct: number[];
+  mean_weight_pct: number[];
+  k_factors: number[];
+  maps: ImageMeta[];
+}
+
+export function edsQuantify(
+  id: string,
+  elements: string[],
+  opts: {
+    method?: "cliff-lorimer" | "zaf";
+    thicknessNm?: number;
+    takeOffAngleDeg?: number;
+  } = {},
+): Promise<EdsQuantResult> {
+  return post("/api/eds/quantify", {
+    image_id: id,
+    elements,
+    method: opts.method ?? "cliff-lorimer",
+    thickness_nm: opts.thicknessNm ?? 100,
+    take_off_angle_deg: opts.takeOffAngleDeg ?? 20,
+  });
+}
+
+export interface DetectResult {
+  spots: [number, number][]; // 1-based (row, col)
+  n: number;
+}
+
+export function diffractionDetect(
+  id: string,
+  opts: { minRadius?: number; threshold?: number; minSeparation?: number } = {},
+): Promise<DetectResult> {
+  return post("/api/diffraction/detect", {
+    image_id: id,
+    min_radius: opts.minRadius ?? 10,
+    threshold: opts.threshold ?? 0.05,
+    min_separation: opts.minSeparation ?? 8,
+  });
+}
+
+export interface PhaseCandidate {
+  phase: string;
+  formula: string;
+  score: number;
+  n_matched: number;
+  matched_hkl: number[][];
+  zone_axis: number[];
+}
+
+export function diffractionIndex(
+  id: string,
+  spots: [number, number][],
+  opts: { pixelSizeMm?: number; cameraLengthMm?: number; accKv?: number } = {},
+): Promise<{ candidates: PhaseCandidate[] }> {
+  return post("/api/diffraction/index", {
+    image_id: id,
+    spots,
+    pixel_size_mm: opts.pixelSizeMm ?? 1.0,
+    camera_length_mm: opts.cameraLengthMm ?? null,
+    acc_voltage_kv: opts.accKv ?? 200,
+  });
+}
+
 /** URL for the windowed 8-bit PNG render (Stage texture + thumbnails). */
 export function renderUrl(
   id: string,

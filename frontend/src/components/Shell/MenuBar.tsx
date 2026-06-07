@@ -83,9 +83,21 @@ export default function MenuBar({
       },
     ],
     Analyze: [
-      { label: "EELS Workshop", shortcut: "WINDOW", disabled: true },
-      { label: "EDS Workshop", shortcut: "WINDOW", disabled: true },
-      { label: "Diffraction Workshop", shortcut: "WINDOW", disabled: true },
+      {
+        label: "EELS Workshop",
+        shortcut: "WINDOW",
+        action: () => store.openTool("eels"),
+      },
+      {
+        label: "EDS Workshop",
+        shortcut: "WINDOW",
+        action: () => store.openTool("eds"),
+      },
+      {
+        label: "Diffraction Workshop",
+        shortcut: "WINDOW",
+        action: () => store.openTool("diffraction"),
+      },
     ],
   };
 

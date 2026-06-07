@@ -879,6 +879,171 @@ body {
   font-size: 9px;
 }
 
+/* ── workshop tool windows ── */
+
+.fvd-tool-window {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  max-height: 75vh;
+}
+
+.fvd-tool-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-dim);
+  cursor: default;
+  user-select: none;
+  touch-action: none;
+}
+
+.fvd-tool-close {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-3);
+  cursor: default;
+  padding: 0;
+}
+
+.fvd-tool-close:hover {
+  background: #e0443e;
+  border-color: #e0443e;
+}
+
+.fvd-tool-body {
+  overflow-y: auto;
+  padding: var(--pad-lg);
+}
+
+.fvd-ws {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pad);
+}
+
+.fvd-ws-empty {
+  color: var(--text-faint);
+  font-size: var(--font-size-sm);
+  text-align: center;
+  padding: 18px 8px;
+}
+
+.fvd-ws-plot {
+  width: 100%;
+  min-height: 180px;
+}
+
+.fvd-ws-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+}
+
+.fvd-ws-row .k {
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.fvd-ws-row input,
+.fvd-ws-edge input {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  padding: 2px 5px;
+  width: 62px;
+  min-width: 0;
+}
+
+.fvd-ws-edge select,
+.fvd-ws-row select {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+}
+
+.fvd-ws-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--border-soft);
+  padding-top: var(--pad);
+  font-size: var(--font-size-sm);
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.fvd-ws-section .fvd-btn {
+  flex: 0 0 auto;
+  padding: 2px 9px;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.fvd-ws-edge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fvd-ws-note {
+  font-size: var(--font-size-sm);
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+}
+
+.fvd-ws-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+}
+
+.fvd-ws-table th {
+  text-align: left;
+  color: var(--text-faint);
+  font-weight: 500;
+  border-bottom: 1px solid var(--border-soft);
+  padding: 3px 6px;
+}
+
+.fvd-ws-table td {
+  padding: 3px 6px;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.fvd-ws-pattern {
+  position: relative;
+  background: var(--axes-bg);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  align-self: center;
+}
+
+.fvd-ws-pattern img {
+  display: block;
+}
+
+.fvd-ws-pattern svg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
 /* ── shared atoms ── */
 
 .fvd-icon-btn {

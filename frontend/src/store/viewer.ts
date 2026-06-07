@@ -50,6 +50,14 @@ export type Theme = "dark" | "light";
 export type ListView = "thumbs" | "names";
 export type CompareMode = "split" | "flicker" | "subtract";
 export type SelectGesture = "single" | "toggle" | "range";
+export type ToolKind = "eels" | "eds" | "diffraction";
+
+export interface ToolWindowState {
+  kind: ToolKind;
+  x: number;
+  y: number;
+  z: number;
+}
 
 const VIEWS_KEY = "fv_views";
 const OVERLAY_KEY = "fv_overlay";
@@ -94,6 +102,7 @@ interface ViewerState {
   cmdk: boolean;
   shorts: boolean;
   radial: { x: number; y: number } | null;
+  tools: ToolWindowState[]; // open workshop windows (handoff §6)
   status: string;
 
   openPaths: (paths: string[]) => Promise<void>;
@@ -126,6 +135,10 @@ interface ViewerState {
   setCmdk: (open: boolean) => void;
   setShorts: (open: boolean) => void;
   setRadial: (at: { x: number; y: number } | null) => void;
+  openTool: (kind: ToolKind) => void;
+  closeTool: (kind: ToolKind) => void;
+  focusTool: (kind: ToolKind) => void;
+  moveTool: (kind: ToolKind, x: number, y: number) => void;
   setStatus: (msg: string) => void;
 }
 
@@ -152,6 +165,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   cmdk: false,
   shorts: false,
   radial: null,
+  tools: [],
   status: "ready",
 
   openPaths: async (paths) => {
@@ -327,5 +341,42 @@ export const useViewer = create<ViewerState>((set, get) => ({
   setCmdk: (cmdk) => set({ cmdk }),
   setShorts: (shorts) => set({ shorts }),
   setRadial: (radial) => set({ radial }),
+
+  // one window per kind; opening an existing one refocuses it (§4)
+  openTool: (kind) =>
+    set((s) => {
+      const zTop = Math.max(0, ...s.tools.map((t) => t.z)) + 1;
+      if (s.tools.some((t) => t.kind === kind)) {
+        return {
+          tools: s.tools.map((t) =>
+            t.kind === kind ? { ...t, z: zTop } : t,
+          ),
+        };
+      }
+      const offset = s.tools.length * 32;
+      return {
+        tools: [
+          ...s.tools,
+          { kind, x: 140 + offset, y: 110 + offset, z: zTop },
+        ],
+      };
+    }),
+
+  closeTool: (kind) =>
+    set((s) => ({ tools: s.tools.filter((t) => t.kind !== kind) })),
+
+  focusTool: (kind) =>
+    set((s) => {
+      const zTop = Math.max(0, ...s.tools.map((t) => t.z)) + 1;
+      return {
+        tools: s.tools.map((t) => (t.kind === kind ? { ...t, z: zTop } : t)),
+      };
+    }),
+
+  moveTool: (kind, x, y) =>
+    set((s) => ({
+      tools: s.tools.map((t) => (t.kind === kind ? { ...t, x, y } : t)),
+    })),
+
   setStatus: (msg) => set({ status: msg }),
 }));

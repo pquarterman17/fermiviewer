@@ -131,6 +131,34 @@ def test_spectrum_image_renders_summed_map(client: TestClient, tmp_path) -> None
     assert Image.open(io.BytesIO(r.content)).size == (nx, ny)
 
 
+def test_spectrum_endpoint(client: TestClient, tmp_path, dm4_image) -> None:
+    nx, ny, ne = 4, 3, 5
+    flat = np.arange(nx * ny * ne)
+    f = write_mini_dm4(
+        tmp_path / "si.dm4", dims=[nx, ny, ne], data=flat,
+        cal=[
+            {"scale": 1, "origin": 0, "units": "nm"},
+            {"scale": 1, "origin": 0, "units": "nm"},
+            {"scale": 0.1, "origin": 0, "units": "eV"},
+        ],
+    )
+    m = client.post("/api/session/open", json={"paths": [str(f)]}).json()[0]
+    r = client.get(f"/api/image/{m['id']}/spectrum")
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["energy"]) == ne
+    assert len(body["counts"]) == ne
+    assert body["units"] == "eV"
+    # sum over all pixels equals the cube total
+    assert sum(body["counts"]) == pytest.approx(float(flat.sum()))
+
+    # plain 2D image has no spectral axis
+    img_id = client.post(
+        "/api/session/open", json={"paths": [str(dm4_image)]}
+    ).json()[0]["id"]
+    assert client.get(f"/api/image/{img_id}/spectrum").status_code == 400
+
+
 def test_error_paths(client: TestClient, tmp_path) -> None:
     assert client.get("/api/image/nope/render").status_code == 404
     r = client.post("/api/session/open", json={"paths": [str(tmp_path / "x.xyz")]})

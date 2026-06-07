@@ -102,6 +102,22 @@ def image_data16(img_id: str) -> Response:
     )
 
 
+@router.get("/image/{img_id}/spectrum")
+def image_spectrum(img_id: str) -> dict[str, object]:
+    """Sum spectrum (SI cubes) or the spectrum itself (1D) for the
+    EELS/EDS workshop plots."""
+    ds = _get(img_id)
+    if ds.kind is DataKind.IMAGE:
+        raise HTTPException(400, "2D images have no spectral axis")
+    energy = ds.energy_axis
+    counts = ds.sum_spectrum()
+    return {
+        "energy": energy.tolist(),
+        "counts": np.asarray(counts, dtype=np.float64).tolist(),
+        "units": ds.energy_cal.units,
+    }
+
+
 @router.get("/image/{img_id}/histogram")
 def image_histogram(img_id: str, bins: int = 256) -> dict[str, list[float]]:
     if not 2 <= bins <= 4096:
