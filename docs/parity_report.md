@@ -1,4 +1,4 @@
-# Parity report — 2026-06-07
+# Parity report — 2026-06-08 (orig. 2026-06-07)
 
 Three-way assessment: (1) feature parity vs the MATLAB reference
 (`../fermi-viewer` @ `36fb8a5`), (2) design parity vs the Claude Design
@@ -15,13 +15,13 @@ layer.
 | Layer | Parity | Notes |
 |---|---|---|
 | Parsers (A) | **12/12 — 100 %** | All formats; cross-validated three ways (goldens, rsciio oracle 25/25 @ 1e-9, MATLAB suite 77/77) |
-| Imaging algorithms (B) | **33/36 — 92 %** | Open: colorbar baking, figure-panel builder (export-era); accessors DONE post-sweep |
+| Imaging algorithms (B) | **35/36 — 97 %** | colorbar baking DONE 06-08; open: figure-panel builder |
 | EELS / EDS / Diffraction calc (C/D/E) | **100 %** | Every algorithm incl. constants, crystal DB, do-not-"fix" items |
 | Atom columns / grains / ML (F-adjacent) | **100 % calc** | Verbatim LM fits; partition-level k-means goldens |
 | API surface | **100 % of handoff §8** + 14 endpoints beyond it | tiles, jobs, calibration, fft-mask, session save/load, upload |
-| Infrastructure (O) | 4/6 | Open: undo-as-a-service, logging/bug-report capture |
+| Infrastructure (O) | **6/6 — 100 %** | undo service + logging/bug-report DONE 06-08 |
 | Verification (P) | **7/7 — 100 %** | incl. oracle harness + fetch script |
-| UI workflows (F–N) | ~45 % | The remaining gap is concentrated HERE — see §3 |
+| UI workflows (F–N) | **~90 %** | finish-everything run 06-08; only inline-noted partials remain (§3) |
 
 **Found-by-the-port upstream bugs (6):** stale golden manifest pin,
 radialProfile NumBins validator, morphOp logical rejection,
@@ -49,12 +49,12 @@ Known remaining design deltas (intentional or future):
 | Prototype | Ours today | Status |
 |---|---|---|
 | Inspector tabs Image · EELS · EDS · Diff | Workshops as floating windows only | Handoff §4 sanctions windows; tabs are a nice-to-have duplication |
-| Edit menu (undo/redo) | absent | blocked on undo service (checklist O) |
-| EDS Composite channel list (per-element colour/intensity/visibility, additive blend) | quant table + at% maps as derived images | **biggest workshop gap** |
-| Polyline measure button | not implemented | checklist G open item |
+| Edit menu (undo/redo) | ~~absent~~ DONE 06-07 | undo service shipped |
+| EDS Composite channel list | ~~gap~~ DONE 06-07 | channel list + additive blend shipped |
+| Polyline measure button | ~~missing~~ DONE 06-07 | N-click capture shipped |
 | Histogram handles embedded as thick rounded bars | thin lines | cosmetic |
-| Toolbar icon set (rotate/flip/crop icons w/ separators) | glyph buttons incl. measure modes | rotate/flip/crop UI not yet wired (calc exists for nothing — rotate/flip are trivial np ops, crop is checklist G) |
-| Export dialog format cards w/ descriptions + Measurements/Bake/Transparent includes | simpler seg controls; scale-bar include only | overlay baking of measurements is the functional gap |
+| Toolbar icon set (rotate/flip/crop w/ separators) | ~~unwired~~ DONE 06-07 | grouped toolbar shipped |
+| Export dialog includes (Measurements/Bake) | ~~scale-bar only~~ DONE 06-07/08 | measurements + colorbar includes shipped |
 | "connected/LOCAL/VIEW HRSTEM" status segments | LOCAL-equivalents absent | cosmetic |
 | WOFF2 embedded font (JetBrains Mono served) | system mono fallback stack | could vendor the font |
 
@@ -92,7 +92,7 @@ What remains (17 checklist lines, all inline-noted partials):
 
 ## 4 · Verification state
 
-- Python: **177 pytest** (10 realdata on the lunar corpus, 2 oracle),
+- Python: **203 pytest** (10 realdata on the lunar corpus, 2 oracle),
   ruff + mypy + tsc clean
 - Oracle: rsciio agrees on **25/25** corpus files + the real EELS cube
   at rel 1e-9
