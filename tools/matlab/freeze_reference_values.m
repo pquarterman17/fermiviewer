@@ -152,6 +152,55 @@ function out = captureImaging()
     out.distance.chamferSum = sum(d34(:));
     out.distance.chamferMax = max(d34(:));
     out.distance.cityblockSum = sum(dcb(isfinite(dcb)));
+
+    % ── tranche 2 ────────────────────────────────────────────────────
+    [Lw, nw] = imaging.watershed(bw, MinMarkerDistance=5);
+    out.watershed.n = nw;
+    areasW = accumarray(Lw(Lw > 0), 1);
+    out.watershed.areasSorted = sort(areasW(:))';
+    out.watershed.foreground = nnz(Lw > 0);
+
+    [L8b, ~] = imaging.bwlabel(bw, 8);
+    [parts, ~, nKept] = imaging.regionStats(L8b, base, ...
+        MinArea=50, PixelSize=0.4);
+    out.regions.nKept = nKept;
+    out.regions.areas = [parts.area];
+    out.regions.equivDiameters = [parts.equivDiameter];
+    out.regions.meanIntensities = [parts.meanIntensity];
+    cent = vertcat(parts.centroid);
+    out.regions.centroidSum = sum(cent(:));
+    out.regions.areaCalibratedSum = sum([parts.areaCalibrated]);
+
+    st = imaging.structureTensor(base, Sigma=3, GradientSigma=1);
+    out.structure.coherenceSum = sum(st.coherence(:));
+    out.structure.energySum = sum(st.energy(:));
+    out.structure.lambda1Sum = sum(st.lambda1(:));
+    out.structure.orientPx = st.orientation(20, 30);
+
+    ne1 = imaging.noiseEstimate(noisy, Method='mad');
+    out.noise.sigmaMad = ne1.sigma;
+    out.noise.snrDb = ne1.snr;
+    out.noise.type = char(ne1.noiseType);
+    ne2 = imaging.noiseEstimate(noisy, Method='localvar');
+    out.noise.sigmaLocalVar = ne2.sigma;
+
+    % NumBins=32 = floor(min(H,W)/2), the documented default — the
+    % actual default (0) violates radialProfile's own mustBePositive
+    % validator, so the no-arg call errors (latent MATLAB bug).
+    [rad, avgP, maxP] = imaging.radialProfile(base, NumBins=32);
+    out.radial.n = numel(rad);
+    out.radial.radiiSum = sum(rad);
+    out.radial.avgSum = sum(avgP(~isnan(avgP)));
+    out.radial.maxSum = sum(maxP(~isnan(maxP)));
+    out.radial.nanCount = nnz(isnan(avgP));
+
+    [r1, i1] = imaging.azimuthalIntegrate(base);
+    out.azimuthal.full.radiiSum = sum(r1);
+    out.azimuthal.full.intensitySum = sum(i1(~isnan(i1)));
+    out.azimuthal.full.n = numel(r1);
+    [~, i2] = imaging.azimuthalIntegrate(base, SectorMin=300, SectorMax=60);
+    out.azimuthal.wrap.intensitySum = sum(i2(~isnan(i2)));
+    out.azimuthal.wrap.nanCount = nnz(isnan(i2));
 end
 
 

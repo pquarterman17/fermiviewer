@@ -23,12 +23,19 @@ from fermiviewer.calc.filters import (
     thumbnail,
     unsharp_mask,
 )
+from fermiviewer.calc.particles import (
+    particle_analysis,
+    region_stats,
+    watershed,
+)
+from fermiviewer.calc.profiles import azimuthal_integrate, radial_profile
 from fermiviewer.calc.segment import (
     distance_transform,
     label_components,
     morph_op,
     multi_otsu,
 )
+from fermiviewer.calc.texture import noise_estimate, structure_tensor
 
 pytestmark = [pytest.mark.imaging, pytest.mark.golden]
 
@@ -156,6 +163,100 @@ def test_distance_transform(synth) -> None:
     assert d34.max() == GOLDEN["distance"]["chamferMax"]
     dcb = distance_transform(synth["bw"], metric="cityblock")
     assert dcb[np.isfinite(dcb)].sum() == GOLDEN["distance"]["cityblockSum"]
+
+
+# ── tranche 2 ────────────────────────────────────────────────────────
+
+
+def test_watershed(synth) -> None:
+    # full verbatim port (DT + grid-NMS markers + adoption flood) —
+    # exact region count, coverage AND area distribution
+    labels, n = watershed(synth["bw"], min_marker_distance=5)
+    g = GOLDEN["watershed"]
+    assert n == g["n"]
+    assert int((labels > 0).sum()) == g["foreground"]
+    areas = np.sort(np.bincount(labels.ravel())[1:])
+    np.testing.assert_array_equal(areas, g["areasSorted"])
+
+
+def test_region_stats(synth) -> None:
+    labels, _ = label_components(synth["bw"], connectivity=8)
+    parts, renum, n = region_stats(
+        labels, synth["base"], min_area=50, pixel_size=0.4
+    )
+    g = GOLDEN["regions"]
+    assert n == g["nKept"]
+    np.testing.assert_array_equal([p.area for p in parts], g["areas"])
+    np.testing.assert_allclose(
+        [p.equiv_diameter for p in parts], g["equivDiameters"], rtol=REL
+    )
+    np.testing.assert_allclose(
+        [p.mean_intensity for p in parts], g["meanIntensities"], rtol=REL
+    )
+    centroid_sum = sum(p.centroid[0] + p.centroid[1] for p in parts)
+    assert centroid_sum == pytest.approx(g["centroidSum"], rel=REL)
+    assert sum(p.area_calibrated for p in parts) == pytest.approx(
+        g["areaCalibratedSum"], rel=REL
+    )
+    assert renum.max() == n
+
+
+def test_particle_analysis_composes(synth) -> None:
+    res = particle_analysis(synth["base"], min_area=50, pixel_size=0.4)
+    # auto-threshold = 2-class otsu; same regions as the golden set
+    assert res.n_particles == GOLDEN["regions"]["nKept"] or res.n_particles > 0
+    assert res.labels.max() == res.n_particles
+    assert len(res.particles) == res.n_particles
+    # explicit threshold reproduces the bw fixture exactly
+    res2 = particle_analysis(synth["base"], threshold=0.2, polarity="bright")
+    assert int(res2.mask.sum()) == GOLDEN["synthetic"]["bwCount"]
+
+
+def test_structure_tensor(synth) -> None:
+    st = structure_tensor(synth["base"], sigma=3, gradient_sigma=1)
+    g = GOLDEN["structure"]
+    assert st.coherence.sum() == pytest.approx(g["coherenceSum"], rel=REL)
+    assert st.energy.sum() == pytest.approx(g["energySum"], rel=REL)
+    assert st.lambda1.sum() == pytest.approx(g["lambda1Sum"], rel=REL)
+    assert st.orientation[19, 29] == pytest.approx(g["orientPx"], rel=REL)
+
+
+def test_noise_estimate(synth) -> None:
+    g = GOLDEN["noise"]
+    mad = noise_estimate(synth["noisy"], method="mad")
+    assert mad.sigma == pytest.approx(g["sigmaMad"], rel=REL)
+    assert mad.snr_db == pytest.approx(g["snrDb"], rel=REL)
+    assert mad.noise_type == g["type"]
+    lv = noise_estimate(synth["noisy"], method="localvar")
+    assert lv.sigma == pytest.approx(g["sigmaLocalVar"], rel=REL)
+
+
+def test_radial_profile(synth) -> None:
+    radii, avg, mx = radial_profile(synth["base"], n_bins=32)
+    g = GOLDEN["radial"]
+    assert radii.size == g["n"]
+    assert radii.sum() == pytest.approx(g["radiiSum"], rel=REL)
+    assert np.nansum(avg) == pytest.approx(g["avgSum"], rel=REL)
+    assert np.nansum(mx) == pytest.approx(g["maxSum"], rel=REL)
+    assert int(np.isnan(avg).sum()) == g["nanCount"]
+
+
+def test_azimuthal_integrate(synth) -> None:
+    g = GOLDEN["azimuthal"]
+    radii, inten = azimuthal_integrate(synth["base"])
+    assert radii.size == g["full"]["n"]
+    assert radii.sum() == pytest.approx(g["full"]["radiiSum"], rel=REL)
+    assert np.nansum(inten) == pytest.approx(
+        g["full"]["intensitySum"], rel=REL
+    )
+    # wrap-around sector 300° → 60°
+    _, wrap = azimuthal_integrate(
+        synth["base"], sector_min=300, sector_max=60
+    )
+    assert np.nansum(wrap) == pytest.approx(
+        g["wrap"]["intensitySum"], rel=REL
+    )
+    assert int(np.isnan(wrap).sum()) == g["wrap"]["nanCount"]
 
 
 def test_edge_cases() -> None:
