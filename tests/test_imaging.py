@@ -23,6 +23,8 @@ from fermiviewer.calc.filters import (
     thumbnail,
     unsharp_mask,
 )
+from fermiviewer.calc.gpa import geometric_phase_analysis
+from fermiviewer.calc.lattice import lattice_measure
 from fermiviewer.calc.particles import (
     particle_analysis,
     region_stats,
@@ -33,6 +35,7 @@ from fermiviewer.calc.profiles import (
     fit_interface_width,
     radial_profile,
 )
+from fermiviewer.calc.roughness import surface_roughness
 from fermiviewer.calc.segment import (
     distance_transform,
     label_components,
@@ -300,6 +303,71 @@ def test_slic(synth) -> None:
     sizes = np.bincount(labels.ravel())[1:]
     assert int((sizes.astype(np.int64) ** 2).sum()) == g["sizeSqSum"]
     assert centres.sum() == pytest.approx(g["centersSum"], rel=REL)
+
+
+# ── tranche 3 ────────────────────────────────────────────────────────
+
+
+def test_gpa(synth) -> None:
+    # quadratic phase chirp in x → linear exx ramp; interior window
+    # avoids unwrap edge artifacts (same window as the MATLAB capture)
+    x = np.arange(96, dtype=np.float64)[None, :]
+    y = np.arange(64, dtype=np.float64)[:, None]
+    latt = np.cos(2 * np.pi * (12 * x / 96 + 0.15 * (x / 96) ** 2)) + np.cos(
+        2 * np.pi * 10 * y / 64
+    )
+    res = geometric_phase_analysis(latt, (12, 0), (0, 10))
+    g = GOLDEN["gpa"]
+    sl = (slice(16, 48), slice(24, 72))  # MATLAB 17:48, 25:72
+    assert res.exx[sl].mean() == pytest.approx(g["exxMean"], rel=REL)
+    assert res.eyy[sl].mean() == pytest.approx(g["eyyMean"], abs=1e-12)
+    assert res.exy[sl].mean() == pytest.approx(g["exyMean"], abs=1e-12)
+    assert res.rotation[sl].mean() == pytest.approx(
+        g["rotationMean"], abs=1e-12
+    )
+    assert res.phase1[sl].sum() == pytest.approx(g["phase1Sum"], rel=REL)
+    assert res.phase2[sl].sum() == pytest.approx(g["phase2Sum"], abs=1e-9)
+    assert res.displacement_x[sl].sum() == pytest.approx(
+        g["uxSum"], rel=REL
+    )
+    assert res.displacement_y[sl].sum() == pytest.approx(
+        g["uySum"], abs=1e-9
+    )
+    with pytest.raises(ValueError):
+        geometric_phase_analysis(latt, (12, 0), (24, 0))  # collinear
+
+
+def test_surface_roughness(synth) -> None:
+    res = surface_roughness(
+        synth["noisy"], pixel_size=0.4, level="quadratic"
+    )
+    g = GOLDEN["roughness"]
+    for attr, key in [
+        ("ra", "Ra"), ("rq", "Rq"), ("rz", "Rz"), ("rsk", "Rsk"),
+        ("rku", "Rku"), ("rp", "Rp"), ("rv", "Rv"), ("sar", "SAR"),
+    ]:
+        assert getattr(res, attr) == pytest.approx(g[key], rel=1e-9), attr
+    assert res.bearing_heights[9] == pytest.approx(
+        g["bearingH10"], rel=REL
+    )
+    assert res.bearing_fraction[-1] == 1.0
+
+
+def test_lattice_measure() -> None:
+    res = lattice_measure((35, 60), (44, 47), (64, 96), pixel_size=0.05)
+    g = GOLDEN["lattice"]
+    assert res.a == pytest.approx(g["a"], rel=REL)
+    assert res.b == pytest.approx(g["b"], rel=REL)
+    assert res.gamma_deg == pytest.approx(g["gamma"], rel=REL)
+    assert res.d_spacing1 == pytest.approx(g["d1"], rel=REL)
+    assert res.d_spacing2 == pytest.approx(g["d2"], rel=REL)
+    assert res.unit_cell_area == pytest.approx(g["cellArea"], rel=REL)
+    np.testing.assert_allclose(res.g1, g["g1"], rtol=REL)
+    np.testing.assert_allclose(res.g2, g["g2"], rtol=REL)
+    np.testing.assert_allclose(res.a1, g["a1"], rtol=REL)
+    np.testing.assert_allclose(res.a2, g["a2"], rtol=REL)
+    with pytest.raises(ValueError):
+        lattice_measure((33, 49), (44, 47), (64, 96))  # spot at centre
 
 
 def test_edge_cases() -> None:

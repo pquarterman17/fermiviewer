@@ -220,6 +220,38 @@ function out = captureImaging()
     sizes = accumarray(Ls(:), 1);
     out.slic.sizeSqSum = sum(sizes.^2);
     out.slic.centersSum = sum(cs(:));
+
+    % ── tranche 3 ────────────────────────────────────────────────────
+    % GPA on a synthetic lattice with a quadratic phase chirp in x
+    % (= linear exx strain ramp); interior window avoids unwrap edges.
+    [Xg, Yg] = meshgrid(0:95, 0:63);
+    latt = cos(2*pi*(12*Xg/96 + 0.15*(Xg/96).^2)) ...
+         + cos(2*pi*10*Yg/64);
+    gpa = imaging.geometricPhaseAnalysis(latt, [12 0], [0 10]);
+    ii = 17:48; jj = 25:72;
+    out.gpa.exxMean      = mean(gpa.exx(ii, jj), 'all');
+    out.gpa.eyyMean      = mean(gpa.eyy(ii, jj), 'all');
+    out.gpa.exyMean      = mean(gpa.exy(ii, jj), 'all');
+    out.gpa.rotationMean = mean(gpa.rotation(ii, jj), 'all');
+    out.gpa.phase1Sum    = sum(gpa.phase1(ii, jj), 'all');
+    out.gpa.phase2Sum    = sum(gpa.phase2(ii, jj), 'all');
+    out.gpa.uxSum        = sum(gpa.displacement_x(ii, jj), 'all');
+    out.gpa.uySum        = sum(gpa.displacement_y(ii, jj), 'all');
+
+    sr = imaging.surfaceRoughness(noisy, PixelSize=0.4, Level='quadratic');
+    out.roughness.Ra  = sr.Ra;   out.roughness.Rq  = sr.Rq;
+    out.roughness.Rz  = sr.Rz;   out.roughness.Rsk = sr.Rsk;
+    out.roughness.Rku = sr.Rku;  out.roughness.Rp  = sr.Rp;
+    out.roughness.Rv  = sr.Rv;   out.roughness.SAR = sr.SAR;
+    out.roughness.bearingH10 = sr.bearingRatio.heights(10);
+
+    lm = imaging.latticeMeasure([35 60], [44 47], [64 96], PixelSize=0.05);
+    out.lattice.a = lm.a;  out.lattice.b = lm.b;
+    out.lattice.gamma = lm.gamma;
+    out.lattice.d1 = lm.dSpacing1;  out.lattice.d2 = lm.dSpacing2;
+    out.lattice.cellArea = lm.unitCellArea;
+    out.lattice.g1 = lm.g1;  out.lattice.g2 = lm.g2;
+    out.lattice.a1 = lm.a1;  out.lattice.a2 = lm.a2;
 end
 
 
