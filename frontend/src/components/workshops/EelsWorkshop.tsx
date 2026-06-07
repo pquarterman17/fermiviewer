@@ -9,6 +9,7 @@ import {
   eelsBackground,
   eelsMap,
   eelsQuantify,
+  eelsQuantifyMap,
   fetchSpectrum,
   type EelsBackgroundResult,
   type EelsEdge,
@@ -210,6 +211,32 @@ export default function EelsWorkshop() {
       .catch((e: Error) => setStatus(`EELS quantify: ${e.message}`));
   };
 
+  const runQuantifyMaps = () => {
+    if (!activeId) return;
+    const clean = edges.filter((e) => e.element && e.z > 0);
+    if (clean.length === 0) {
+      setStatus("EELS maps: add at least one edge row");
+      return;
+    }
+    eelsQuantifyMap(
+      activeId,
+      clean.map(({ key: _key, ...e }) => e),
+    )
+      .then((r) => {
+        useViewer.getState().ingestDerived(r.maps);
+        setStatus(
+          `EELS composition maps: ` +
+            r.elements
+              .map(
+                (el, i) =>
+                  `${el} ${r.mean_atomic_percent[i].toFixed(1)}%`,
+              )
+              .join(" · "),
+        );
+      })
+      .catch((e: Error) => setStatus(`EELS maps: ${e.message}`));
+  };
+
   if (!spectral) {
     return (
       <div className="fvd-ws-empty">
@@ -289,6 +316,14 @@ export default function EelsWorkshop() {
           disabled={edges.length === 0}
         >
           Quantify
+        </button>
+        <button
+          className="fvd-btn"
+          title="Per-pixel at% composition maps (SI cubes)"
+          onClick={runQuantifyMaps}
+          disabled={edges.length === 0 || !isCube}
+        >
+          Maps
         </button>
       </div>
       {edges.map((row, i) => (
