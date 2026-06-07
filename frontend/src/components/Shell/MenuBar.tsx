@@ -14,11 +14,19 @@ import {
   analyzeVdf,
   applyCalibration,
   applyFilter,
+  exportGif,
   exportImage,
   imageFft,
   supportedExtensions,
   type ImageMeta,
 } from "../../lib/api";
+import {
+  isRecording,
+  loadMacro,
+  replayMacro,
+  startRecording,
+  stopRecording,
+} from "../../lib/macro";
 import { applyGeometry, cropToRoi } from "../../lib/stageOps";
 import { useStageInfo } from "../../store/stage";
 import { DEFAULT_DISPLAY as DD, undoLabel, useViewer } from "../../store/viewer";
@@ -42,6 +50,30 @@ interface Entry {
   action?: () => void;
 }
 
+/** Filter/transform definitions shared by the Image menu and Batch
+ *  Apply — one source of truth for kinds + their parameter fields. */
+const FILTER_DEFS: { label: string; kind: string; fields?: ParamField[] }[] = [
+  { label: "Gaussian Blur…", kind: "gaussian",
+    fields: [num("sigma", "Sigma (px)", 2)] },
+  { label: "Median Filter…", kind: "median",
+    fields: [{ key: "window_size", label: "Window", type: "select",
+               default: "3", options: ["3", "5", "7"] }] },
+  { label: "Unsharp Mask…", kind: "unsharp",
+    fields: [num("sigma", "Sigma (px)", 2), num("amount", "Amount", 1)] },
+  { label: "Butterworth…", kind: "butterworth",
+    fields: [num("low_cutoff", "Low cutoff (0=off)", 0.05),
+             num("high_cutoff", "High cutoff (0–1]", 0.5),
+             num("order", "Order", 2)] },
+  { label: "CLAHE…", kind: "clahe",
+    fields: [num("clip_limit", "Clip limit", 0.01),
+             num("num_bins", "Bins", 256)] },
+  { label: "Bin…", kind: "bin", fields: [num("bin_size", "Bin size", 2)] },
+  { label: "Plane Level", kind: "plane_level" },
+  { label: "Rotate 90° CW", kind: "rotate90" },
+  { label: "Flip Horizontal", kind: "fliph" },
+  { label: "Flip Vertical", kind: "flipv" },
+];
+
 export default function MenuBar({
   onFit,
   onActualSize,
@@ -51,6 +83,7 @@ export default function MenuBar({
 }) {
   const [open, setOpen] = useState<string | null>(null);
   const [accept, setAccept] = useState<string>("");
+  const [macroRec, setMacroRec] = useState(isRecording());
   const barRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const store = useViewer();
@@ -121,6 +154,43 @@ export default function MenuBar({
         store.setStatus(`${label} done`);
       })
       .catch((e: Error) => store.setStatus(`${label}: ${e.message}`));
+  };
+
+  // batch: pick op + params once, run across the filmstrip selection
+  const runBatch = async () => {
+    const choice = await askParams("Batch Apply", [
+      {
+        key: "op",
+        label: "Operation",
+        type: "select",
+        default: FILTER_DEFS[0].label,
+        options: FILTER_DEFS.map((d) => d.label),
+      },
+    ]);
+    if (!choice) return;
+    const def = FILTER_DEFS.find((d) => d.label === choice["op"]);
+    if (!def) return;
+    const params = def.fields ? await askParams(def.label, def.fields) : {};
+    if (params === null) return;
+    const targets =
+      store.selected.length > 0 ? store.selected : store.order;
+    store.setStatus(`batch ${def.kind}…`);
+    const metas: ImageMeta[] = [];
+    let failed = 0;
+    for (const id of targets) {
+      try {
+        metas.push(
+          await applyFilter(id, def.kind, params as Record<string, unknown>),
+        );
+      } catch {
+        failed++;
+      }
+    }
+    if (metas.length) store.ingestDerived(metas);
+    store.setStatus(
+      `batch ${def.kind}: ${metas.length} done` +
+        (failed ? `, ${failed} failed` : ""),
+    );
   };
 
   const filterEntry = (
@@ -217,6 +287,47 @@ export default function MenuBar({
             .catch((e: Error) =>
               store.setStatus(`clipboard: ${e.message}`),
             );
+        },
+      },
+      {
+        label: `Export GIF… (${store.selected.length} frames)`,
+        disabled: store.selected.length < 2,
+        action: () => {
+          void (async () => {
+            const v = await askParams("Export GIF", [
+              num("fps", "Frames per second", 4),
+              {
+                key: "scale",
+                label: "Resolution",
+                type: "select",
+                default: "1",
+                options: ["1", "2", "3", "4"],
+              },
+              {
+                key: "cmap",
+                label: "Colormap",
+                type: "select",
+                default: "gray",
+                options: ["gray", "viridis", "inferno", "magma", "plasma"],
+              },
+            ]);
+            if (!v) return;
+            exportGif(store.selected, {
+              fps: v["fps"] as number,
+              scale: Number(v["scale"]),
+              cmap: v["cmap"] as string,
+            })
+              .then(({ blob, filename }) => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = filename;
+                a.click();
+                URL.revokeObjectURL(url);
+                store.setStatus(`exported ${filename}`);
+              })
+              .catch((e: Error) => store.setStatus(`gif: ${e.message}`));
+          })();
         },
       },
       {
@@ -350,33 +461,42 @@ export default function MenuBar({
           })();
         },
       },
-      filterEntry("Gaussian Blur…", "gaussian", [
-        num("sigma", "Sigma (px)", 2),
-      ]),
-      filterEntry("Median Filter…", "median", [
-        {
-          key: "window_size",
-          label: "Window",
-          type: "select",
-          default: "3",
-          options: ["3", "5", "7"],
+      ...FILTER_DEFS.slice(0, 7).map((d) =>
+        filterEntry(d.label, d.kind, d.fields),
+      ),
+      {
+        label: "Batch Apply…",
+        disabled: store.order.length === 0,
+        action: () => void runBatch(),
+      },
+      {
+        label: macroRec ? "Stop Macro Recording" : "Record Macro",
+        action: () => {
+          if (macroRec) {
+            const n = stopRecording();
+            setMacroRec(false);
+            store.setStatus(`macro saved: ${n} step${n === 1 ? "" : "s"}`);
+          } else {
+            startRecording();
+            setMacroRec(true);
+            store.setStatus(
+              "recording macro — run Image/Analyze ops, then stop",
+            );
+          }
         },
-      ]),
-      filterEntry("Unsharp Mask…", "unsharp", [
-        num("sigma", "Sigma (px)", 2),
-        num("amount", "Amount", 1),
-      ]),
-      filterEntry("Butterworth…", "butterworth", [
-        num("low_cutoff", "Low cutoff (0=off)", 0.05),
-        num("high_cutoff", "High cutoff (0–1]", 0.5),
-        num("order", "Order", 2),
-      ]),
-      filterEntry("CLAHE…", "clahe", [
-        num("clip_limit", "Clip limit", 0.01),
-        num("num_bins", "Bins", 256),
-      ]),
-      filterEntry("Bin…", "bin", [num("bin_size", "Bin size", 2)]),
-      filterEntry("Plane Level", "plane_level"),
+      },
+      {
+        label: "Replay Macro",
+        disabled: !store.activeId || loadMacro().length === 0 || macroRec,
+        action: () => {
+          const id = store.activeId;
+          if (!id) return;
+          store.setStatus("replaying macro…");
+          replayMacro(id, (m) => store.ingestDerived([m]))
+            .then((n) => store.setStatus(`macro replayed: ${n} steps`))
+            .catch((e: Error) => store.setStatus(`macro: ${e.message}`));
+        },
+      },
       {
         label: "Calibrate Pixel Size…",
         disabled: !store.activeId,

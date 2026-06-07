@@ -1,6 +1,8 @@
 // Typed client for the FastAPI backend (handoff §8). Mirrors the
 // Pydantic wire models in src/fermiviewer/models.py — keep in sync.
 
+import { record, recordPathOp } from "./macro";
+
 export type DataKind = "image" | "spectrum" | "spectrum_image";
 
 export interface ImageMeta {
@@ -191,7 +193,8 @@ export async function fetchSpectrum(id: string): Promise<Spectrum> {
 }
 
 async function post<T>(url: string, body: unknown): Promise<T> {
-  return json(
+  record(url, body as Record<string, unknown>); // macro capture (no-op
+  return json(                                  // unless recording)
     await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -472,6 +475,7 @@ export function applyFilter(
 
 /** Log-magnitude FFT registered as a derived image. */
 export async function imageFft(id: string): Promise<ImageMeta> {
+  recordPathOp("/api/image/{id}/fft"); // macro capture
   return json(await fetch(`/api/image/${id}/fft`, { method: "POST" }));
 }
 
@@ -614,6 +618,35 @@ export function applyCalibration(
     unit,
     save_as_key: saveAsKey || null,
   });
+}
+
+/** Animate selected images into a GIF; returns the file blob. */
+export async function exportGif(
+  ids: string[],
+  opts: { fps?: number; scale?: number; cmap?: string } = {},
+): Promise<{ blob: Blob; filename: string }> {
+  const res = await fetch("/api/export/gif", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      image_ids: ids,
+      fps: opts.fps ?? 4,
+      scale: opts.scale ?? 1,
+      cmap: opts.cmap ?? "gray",
+    }),
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      detail = ((await res.json()) as { detail?: string }).detail ?? detail;
+    } catch {
+      /* binary or empty error body */
+    }
+    throw new Error(detail);
+  }
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = /filename="([^"]+)"/.exec(disposition);
+  return { blob: await res.blob(), filename: match?.[1] ?? "stack.gif" };
 }
 
 export interface CalibrationEntry {

@@ -37,6 +37,7 @@ _MEDIA = {
     "tiff16": "image/tiff",
     "svg": "image/svg+xml",
     "pdf": "application/pdf",
+    "gif": "image/gif",
 }
 
 
@@ -75,6 +76,16 @@ def _raster(ds: DataStruct) -> np.ndarray:
     raise HTTPException(400, "1D spectra have no raster to export")
 
 
+def _window_bounds(raster: np.ndarray, lo_n: float,
+                   hi_n: float) -> tuple[float, float]:
+    """Normalized [0,1] window → real units against the raster range."""
+    finite = raster[np.isfinite(raster)]
+    vmin = float(finite.min()) if finite.size else 0.0
+    vmax = float(finite.max()) if finite.size else 1.0
+    span = vmax - vmin if vmax > vmin else 1.0
+    return vmin + lo_n * span, vmin + hi_n * span
+
+
 def _hex_rgb(color: str) -> tuple[int, int, int]:
     c = color.lstrip("#")
     if len(c) != 6:
@@ -87,6 +98,8 @@ def _hex_rgb(color: str) -> tuple[int, int, int]:
 
 @router.post("/export")
 def export_image(req: ExportRequest) -> Response:
+    if req.format == "gif":
+        raise HTTPException(422, "use POST /export/gif for animations")
     if req.format not in _MEDIA:
         raise HTTPException(
             422, f"unknown format '{req.format}' (have: {sorted(_MEDIA)})"
@@ -96,14 +109,7 @@ def export_image(req: ExportRequest) -> Response:
     except UnknownImageError:
         raise HTTPException(404, f"unknown image id: {req.image_id}") from None
     raster = _raster(ds)
-
-    # normalized window → real units (window_level semantics)
-    finite = raster[np.isfinite(raster)]
-    vmin = float(finite.min()) if finite.size else 0.0
-    vmax = float(finite.max()) if finite.size else 1.0
-    span = vmax - vmin if vmax > vmin else 1.0
-    lo = vmin + req.lo * span
-    hi = vmin + req.hi * span
+    lo, hi = _window_bounds(raster, req.lo, req.hi)
 
     name = store.name(req.image_id)
     stem = name.rsplit(".", 1)[0] or name
@@ -163,6 +169,51 @@ def _export_tiff16(raster: np.ndarray, lo: float, hi: float,
     buf = io.BytesIO()
     tifffile.imwrite(buf, u16)
     return _file_response(buf.getvalue(), f"{stem}.tif", "tiff16")
+
+
+class GifRequest(BaseModel):
+    image_ids: list[str]
+    fps: float = Field(default=4.0, gt=0, le=60)
+    scale: int = Field(default=1, ge=1, le=4)
+    gamma: float = 1.0
+    cmap: str = "gray"
+    lo: float = 0.0   # normalized window applied per-frame
+    hi: float = 1.0
+
+
+@router.post("/export/gif")
+def export_gif(req: GifRequest) -> Response:
+    """Animate ≥2 equal-size images into a looping GIF (checklist N).
+    The normalized window is applied against EACH frame's own range, so
+    a time series with drifting intensity stays visible throughout."""
+    if len(req.image_ids) < 2:
+        raise HTTPException(422, "a GIF needs at least 2 images")
+    frames: list[Image.Image] = []
+    shape: tuple[int, ...] | None = None
+    for iid in req.image_ids:
+        try:
+            ds = store.get(iid)
+        except UnknownImageError:
+            raise HTTPException(404, f"unknown image id: {iid}") from None
+        raster = _raster(ds)
+        if shape is None:
+            shape = raster.shape
+        elif raster.shape != shape:
+            raise HTTPException(
+                422,
+                f"all frames must share dimensions ({store.name(iid)} is "
+                f"{raster.shape}, expected {shape})",
+            )
+        lo, hi = _window_bounds(raster, req.lo, req.hi)
+        rgb = render_rgb(raster, lo, hi, req.gamma, req.cmap, req.scale)
+        frames.append(Image.fromarray(rgb, mode="RGB"))
+    buf = io.BytesIO()
+    frames[0].save(
+        buf, format="GIF", save_all=True, append_images=frames[1:],
+        duration=max(20, int(round(1000 / req.fps))), loop=0,
+    )
+    stem = store.name(req.image_ids[0]).rsplit(".", 1)[0] or "stack"
+    return _file_response(buf.getvalue(), f"{stem}.gif", "gif")
 
 
 # ── PIL raster baking ────────────────────────────────────────────────

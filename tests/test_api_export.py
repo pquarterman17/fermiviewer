@@ -259,3 +259,51 @@ def test_annotation_export(client, img_id) -> None:
         "include": ["measurements"], "measures": ANNOTATIONS,
     }).content
     assert baked != base
+
+
+def _open_frame(client, tmp_path, name: str, offset: float) -> str:
+    w, h = 16, 12
+    # vary the PATTERN per frame (a constant offset would window
+    # away to identical frames, which PIL collapses to one)
+    flat = np.array(
+        [x * (1 + offset) + 10 * y * (2 - offset) for y in range(h)
+         for x in range(w)],
+        dtype=np.float32,
+    )
+    f = write_mini_dm4(tmp_path / name, dims=[w, h], data=flat, data_type=2,
+                       cal=[{"scale": 0.5, "origin": 0, "units": "nm"}] * 2)
+    return client.post(
+        "/api/session/open", json={"paths": [str(f)]}
+    ).json()[0]["id"]
+
+
+def test_gif_export(client, tmp_path) -> None:
+    ids = [_open_frame(client, tmp_path, f"f{i}.dm4", 0.5 * i)
+           for i in range(3)]
+    r = client.post("/api/export/gif", json={
+        "image_ids": ids, "fps": 5, "scale": 2,
+    })
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/gif"
+    assert r.content[:6] in (b"GIF87a", b"GIF89a")
+    gif = Image.open(io.BytesIO(r.content))
+    assert gif.n_frames == 3
+    assert gif.size == (32, 24)                      # 2× scaled
+    # one frame → 422; /export with gif → redirect hint 422
+    assert client.post("/api/export/gif", json={
+        "image_ids": ids[:1],
+    }).status_code == 422
+    assert client.post("/api/export", json={
+        "image_id": ids[0], "format": "gif",
+    }).status_code == 422
+    # mismatched dims → 422
+    big = np.arange(20 * 20, dtype=np.float32)
+    f = write_mini_dm4(tmp_path / "big.dm4", dims=[20, 20], data=big,
+                       data_type=2,
+                       cal=[{"scale": 1, "origin": 0, "units": "nm"}] * 2)
+    big_id = client.post(
+        "/api/session/open", json={"paths": [str(f)]}
+    ).json()[0]["id"]
+    assert client.post("/api/export/gif", json={
+        "image_ids": [ids[0], big_id],
+    }).status_code == 422
