@@ -847,6 +847,42 @@ export function analyzeCtf(
   });
 }
 
+export function analyzeInterfaceWidth(
+  x: number[],
+  y: (number | null)[],
+  model: "erf" | "sigmoid" = "erf",
+): Promise<{
+  center: number;
+  sigma: number;
+  width_10_90: number;
+  r_squared: number;
+}> {
+  return post("/api/analyze/interface-width", {
+    x,
+    y: y.map((v) => v ?? 0),
+    model,
+  });
+}
+
+export function analyzeNoise(id: string): Promise<{
+  sigma: number;
+  snr_db: number;
+  noise_type: string;
+  recommendation: string;
+}> {
+  return post("/api/analyze/noise", { image_id: id });
+}
+
+export function analyzeDefects(id: string): Promise<{
+  intersections: number;
+  test_lines: number;
+  density: number;
+  density_unit: string;
+  enhanced: ImageMeta;
+}> {
+  return post("/api/analyze/defects", { image_id: id });
+}
+
 export function analyzeImageMath(
   aId: string,
   bId: string,

@@ -289,3 +289,72 @@ def analyze_ctf(req: CtfRequest) -> dict:
         "radial_power": res.radial_power.tolist(),
         "ctf_fit": res.ctf_fit.tolist(),
     }
+
+
+# ── noise estimate + defect count (checklist F closers) ─────────────
+
+
+class NoiseRequest(BaseModel):
+    image_id: str
+    method: str = "mad"
+
+
+@router.post("/analyze/noise")
+def analyze_noise(req: NoiseRequest) -> dict:
+    from fermiviewer.calc.texture import noise_estimate
+
+    _, raster = _raster(req.image_id)
+    try:
+        res = noise_estimate(raster, method=req.method)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    # filter recommendation mirrors the MATLAB heuristic: Poisson-like
+    # noise → median; Gaussian-like → gaussian; low SNR → stronger
+    if res.noise_type == "poisson":
+        rec = "median (window 3–5)"
+    elif res.snr_db < 10:
+        rec = "gaussian (sigma 2) — low SNR"
+    else:
+        rec = "gaussian (sigma 1)"
+    return {
+        "sigma": res.sigma,
+        "snr_db": res.snr_db,
+        "snr_linear": res.snr_linear,
+        "noise_type": res.noise_type,
+        "method": res.method,
+        "recommendation": rec,
+    }
+
+
+class DefectsRequest(BaseModel):
+    image_id: str
+    direction: float | None = None
+    kernel_length: int = 15
+    grid_spacing: int = 50
+
+
+@router.post("/analyze/defects")
+def analyze_defects(req: DefectsRequest) -> dict:
+    from fermiviewer.calc.defects import count_defect_lines
+
+    ds, raster = _raster(req.image_id)
+    px = ds.pixel_size if np.isfinite(ds.pixel_size) else 1.0
+    try:
+        res = count_defect_lines(
+            raster, direction=req.direction,
+            kernel_length=req.kernel_length,
+            grid_spacing=req.grid_spacing,
+            pixel_size=px, pixel_unit=ds.pixel_unit or "px",
+        )
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    name = store.name(req.image_id)
+    return {
+        "intersections": res.intersection_count,
+        "test_lines": res.num_test_lines,
+        "density": res.density,
+        "density_unit": res.density_unit,
+        "enhanced": _register(
+            res.enhanced, f"defects({name})", ds, req.image_id,
+        ),
+    }

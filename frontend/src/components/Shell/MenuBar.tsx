@@ -12,7 +12,11 @@ import {
   analyzeMip,
   analyzeParticles,
   runJob,
+  analyzeDefects,
+  analyzeInterfaceWidth,
+  analyzeNoise,
   analyzeRadial,
+  measureProfile,
   analyzeRoughness,
   analyzeVdf,
   applyCalibration,
@@ -101,6 +105,59 @@ export default function MenuBar({
   const [open, setOpen] = useState<string | null>(null);
   const [accept, setAccept] = useState<string>("");
   const [macroRec, setMacroRec] = useState(isRecording());
+  const profile = useStageInfo((s) => s.profile);
+
+  // latest profile-like measure on the active image (batch profile)
+  const lastProfileMeasure = () => {
+    const id = store.activeId;
+    if (!id) return undefined;
+    return (store.measures[id] ?? [])
+      .filter((m) => m.kind === "profile" || m.kind === "distance")
+      .at(-1);
+  };
+
+  // same normalized line sampled across every selected image → one
+  // CSV-able table (distance + a column per image)
+  const runBatchProfile = async () => {
+    const m = lastProfileMeasure();
+    if (!m || store.selected.length < 2) return;
+    store.setStatus("batch profile…");
+    const columns = ["distance"];
+    const series: (number | null)[][] = [];
+    let dist: number[] | null = null;
+    for (const id of store.selected) {
+      const meta = store.images[id];
+      if (!meta) continue;
+      const [h, w] = meta.shape;
+      try {
+        const r = await measureProfile(
+          id,
+          { x: m.pts[0].x * w, y: m.pts[0].y * h },
+          { x: m.pts[1].x * w, y: m.pts[1].y * h },
+          store.profileWidth,
+        );
+        dist ??= r.dist;
+        columns.push(meta.name);
+        series.push(r.intensity);
+      } catch {
+        /* skip images the profile fails on (e.g. spectra) */
+      }
+    }
+    if (!dist || series.length === 0) {
+      store.setStatus("batch profile: no usable images");
+      return;
+    }
+    const n = Math.min(dist.length, ...series.map((s) => s.length));
+    useResults.getState().show({
+      title: `Batch profile (${series.length} images)`,
+      columns,
+      rows: Array.from({ length: n }, (_, i) => [
+        Number(dist![i].toPrecision(6)),
+        ...series.map((s) => s[i]),
+      ]),
+    });
+    store.setStatus(`batch profile: ${series.length} images`);
+  };
   const barRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const store = useViewer();
@@ -1048,6 +1105,62 @@ export default function MenuBar({
             })
             .catch((e: Error) => store.setStatus(e.message));
         },
+      },
+      {
+        label: "Interface Width (fit dock profile)",
+        disabled: !profile,
+        action: () => {
+          if (!profile) return;
+          analyzeInterfaceWidth(profile.dist, profile.intensity)
+            .then((r) =>
+              store.setStatus(
+                `interface: 10–90% width ${r.width_10_90.toPrecision(4)} ` +
+                  `${profile.unit} · σ ${r.sigma.toPrecision(4)} · ` +
+                  `R² ${r.r_squared.toFixed(3)}`,
+              ),
+            )
+            .catch((e: Error) => store.setStatus(`interface: ${e.message}`));
+        },
+      },
+      {
+        label: "Noise Estimate",
+        disabled: !store.activeId,
+        action: () => {
+          const id = store.activeId;
+          if (!id) return;
+          analyzeNoise(id)
+            .then((r) =>
+              store.setStatus(
+                `noise: σ ${r.sigma.toPrecision(4)} · ` +
+                  `SNR ${r.snr_db.toFixed(1)} dB (${r.noise_type}) → ` +
+                  `try ${r.recommendation}`,
+              ),
+            )
+            .catch((e: Error) => store.setStatus(`noise: ${e.message}`));
+        },
+      },
+      {
+        label: "Defect Count",
+        disabled: !store.activeId,
+        action: () => {
+          const id = store.activeId;
+          if (!id) return;
+          analyzeDefects(id)
+            .then((r) => {
+              store.ingestDerived([r.enhanced]);
+              store.setStatus(
+                `defects: ${r.intersections} intercepts on ` +
+                  `${r.test_lines} lines · ρ ${r.density.toExponential(2)} ` +
+                  r.density_unit,
+              );
+            })
+            .catch((e: Error) => store.setStatus(`defects: ${e.message}`));
+        },
+      },
+      {
+        label: `Batch Profile (${store.selected.length} images)`,
+        disabled: store.selected.length < 2 || !lastProfileMeasure(),
+        action: () => void runBatchProfile(),
       },
     ],
     Window: [
