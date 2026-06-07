@@ -148,11 +148,15 @@ def export_image(req: ExportRequest) -> Response:
     if annos:
         _draw_annotations(img, annos, _hex_rgb(req.overlay_color))
 
+    return _encode_raster(img, req.format, stem)
+
+
+def _encode_raster(img: Image.Image, fmt: str, stem: str) -> Response:
     buf = io.BytesIO()
-    if req.format == "pdf":
+    if fmt == "pdf":
         img.save(buf, format="PDF", resolution=150.0)
         return _file_response(buf.getvalue(), f"{stem}.pdf", "pdf")
-    if req.format == "jpeg":
+    if fmt == "jpeg":
         img.save(buf, format="JPEG", quality=92)
         return _file_response(buf.getvalue(), f"{stem}.jpg", "jpeg")
     img.save(buf, format="PNG")
