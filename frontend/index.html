@@ -8,6 +8,31 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // fatal-error trap: never show a silent black screen — paint the
+      // error so users (and headless debugging) can see what broke
+      window.addEventListener("error", function (e) {
+        var el = document.getElementById("fv-fatal");
+        if (!el) {
+          el = document.createElement("pre");
+          el.id = "fv-fatal";
+          el.style.cssText =
+            "position:fixed;top:8px;left:8px;right:8px;z-index:9999;" +
+            "color:#ff8a8a;background:#1c1320;border:1px solid #a33;" +
+            "border-radius:6px;padding:10px;font:12px monospace;white-space:pre-wrap";
+          document.body.appendChild(el);
+        }
+        el.textContent +=
+          (e.message || "unknown error") +
+          (e.filename ? "\n  at " + e.filename + ":" + e.lineno : "") +
+          "\n";
+      });
+      window.addEventListener("unhandledrejection", function (e) {
+        window.dispatchEvent(
+          new ErrorEvent("error", { message: "unhandled: " + (e.reason && e.reason.message ? e.reason.message : String(e.reason)) }),
+        );
+      });
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

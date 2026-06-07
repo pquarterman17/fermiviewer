@@ -16,13 +16,16 @@ const KIND_GLYPH: Record<Measure["kind"], string> = {
 const SIZES: OverlayStyle["size"][] = ["S", "M", "L", "XL"];
 const SWATCHES = ["#ffffff", "#22d3ee", "#fbbf24", "#f472b6", "#a3e635"];
 
+// stable empty result — fresh [] per snapshot loops React (#185)
+const NO_MEASURES: Measure[] = [];
+
 export default function MeasurePanel() {
   const activeId = useViewer((s) => s.activeId);
   const meta = useViewer((s) =>
     s.activeId ? (s.images[s.activeId] ?? null) : null,
   );
   const measures = useViewer((s) =>
-    s.activeId ? (s.measures[s.activeId] ?? []) : [],
+    s.activeId ? (s.measures[s.activeId] ?? NO_MEASURES) : NO_MEASURES,
   );
   const selected = useViewer((s) => s.selectedMeasure);
   const setSelected = useViewer((s) => s.setSelectedMeasure);

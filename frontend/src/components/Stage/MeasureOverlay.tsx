@@ -18,6 +18,10 @@ import { useViewer, type Measure, type View } from "../../store/viewer";
 const FONT_PX = { S: 10, M: 12, L: 15, XL: 19 } as const;
 const HANDLE_R = 5;
 
+// stable empty result — a fresh [] per snapshot makes zustand's
+// useSyncExternalStore loop forever (React #185, the black-screen bug)
+const NO_MEASURES: Measure[] = [];
+
 interface Props {
   imageId: string;
   pixelSize: number | null;
@@ -38,7 +42,7 @@ export default function MeasureOverlay({
   vp,
   pending,
 }: Props) {
-  const measures = useViewer((s) => s.measures[imageId] ?? []);
+  const measures = useViewer((s) => s.measures[imageId] ?? NO_MEASURES);
   const selected = useViewer((s) => s.selectedMeasure);
   const overlay = useViewer((s) => s.overlay);
   const roiStats = useViewer((s) => s.roiStats);
