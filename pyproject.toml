@@ -104,3 +104,7 @@ markers = [
     "realdata: needs the local-only instrument corpus (skips when absent)",
     "oracle: needs the rosettasciio dev oracle installed",
 ]
+
+[tool.uv]
+# OneDrive's cloud-file driver rejects hardlinks (os error 396)
+link-mode = "copy"
