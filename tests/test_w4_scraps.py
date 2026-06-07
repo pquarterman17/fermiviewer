@@ -121,3 +121,33 @@ def test_back_project(synth) -> None:
         back_project(sino, angles=np.array([1.0, 2.0]))
     with pytest.raises(ValueError):
         back_project(sino, filter_name="butter")
+
+
+@pytest.mark.imaging
+def test_fft_mask_inverse(synth) -> None:
+    from fermiviewer.calc.fourier import fft_mask_inverse
+
+    # pure lattice: pass-masking its g-spots reconstructs it
+    x = np.arange(96, dtype=np.float64)[None, :]
+    y = np.arange(64, dtype=np.float64)[:, None]
+    latt = np.cos(2 * np.pi * 12 * x / 96) + np.cos(2 * np.pi * 10 * y / 64)
+    # spots at DC±(12, 0) and DC±(0, 10); DC at (33, 49) 1-based
+    passed = fft_mask_inverse(
+        latt, [(33, 61, 2), (43, 49, 2)], mode="pass"
+    )
+    np.testing.assert_allclose(passed, latt - latt.mean() + passed.mean(),
+                               atol=1e-9)
+    assert np.corrcoef(passed.ravel(), latt.ravel())[0, 1] > 0.999
+
+    # rejecting the x-fringes leaves only the y-fringes
+    rejected = fft_mask_inverse(latt, [(33, 61, 2)], mode="reject")
+    y_only = np.broadcast_to(
+        np.cos(2 * np.pi * 10 * y / 64), latt.shape
+    )
+    assert (
+        np.corrcoef(rejected.ravel(), y_only.ravel())[0, 1] > 0.999
+    )
+    with pytest.raises(ValueError):
+        fft_mask_inverse(latt, [], mode="pass")
+    with pytest.raises(ValueError):
+        fft_mask_inverse(latt, [(33, 61, 2)], mode="blend")

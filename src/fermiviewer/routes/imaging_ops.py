@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from fermiviewer.calc.ctf import estimate_ctf
 from fermiviewer.calc.eds_maps import virtual_dark_field
+from fermiviewer.calc.fourier import fft_mask_inverse
 from fermiviewer.calc.gpa import geometric_phase_analysis
 from fermiviewer.calc.lattice import lattice_measure
 from fermiviewer.calc.profiles import (
@@ -112,6 +113,27 @@ def analyze_vdf(req: VdfRequest) -> dict:
         raise HTTPException(422, str(e)) from None
     name = store.name(req.image_id)
     return {"image": _register(out, f"VDF({name})", ds, req.image_id)}
+
+
+# ── FFT mask + inverse (mask editor backend) ─────────────────────────
+
+
+class FftMaskRequest(BaseModel):
+    image_id: str
+    masks: list[tuple[float, float, float]]  # (row, col, radius), 1-based
+    mode: str = "pass"
+
+
+@router.post("/analyze/fft-mask")
+def analyze_fft_mask(req: FftMaskRequest) -> dict:
+    ds, raster = _raster(req.image_id)
+    try:
+        out = fft_mask_inverse(raster, req.masks, mode=req.mode)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    name = store.name(req.image_id)
+    label = "FFTpass" if req.mode == "pass" else "FFTreject"
+    return {"image": _register(out, f"{label}({name})", ds, req.image_id)}
 
 
 # ── radial / azimuthal profiles ──────────────────────────────────────
