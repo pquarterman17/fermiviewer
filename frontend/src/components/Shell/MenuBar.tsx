@@ -269,6 +269,10 @@ export default function MenuBar({
         action: onActualSize,
       },
       {
+        label: store.minimap ? "Hide Minimap" : "Show Minimap",
+        action: store.toggleMinimap,
+      },
+      {
         label: store.theme === "dark" ? "Light Theme" : "Dark Theme",
         shortcut: "⌘⇧L",
         action: store.toggleTheme,

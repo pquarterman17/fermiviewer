@@ -424,7 +424,11 @@ export interface ExportOptions {
   gamma: number;
   cmap: string;
   include: string[]; // "scale_bar" | "measurements"
-  measures?: { kind: string; pts: { x: number; y: number }[] }[];
+  measures?: {
+    kind: string;
+    pts: { x: number; y: number }[];
+    text?: string;
+  }[];
   overlay_color?: string;
 }
 

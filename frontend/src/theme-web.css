@@ -280,6 +280,27 @@ body {
   padding: 3px;
 }
 
+.fvd-minimap {
+  position: absolute;
+  top: 50px;
+  right: 10px;
+  overflow: hidden;
+  padding: 0;
+  cursor: crosshair;
+}
+
+.fvd-minimap img {
+  display: block;
+  opacity: 0.85;
+}
+
+.fvd-minimap-rect {
+  position: absolute;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  pointer-events: none;
+}
+
 .fvd-tool-sep {
   width: 1px;
   align-self: stretch;

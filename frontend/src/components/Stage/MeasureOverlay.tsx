@@ -158,6 +158,10 @@ export default function MeasureOverlay({
         const s = roiStats[m.id];
         return s ? `μ ${fmt(s.mean)} · σ ${fmt(s.std)}` : "…";
       }
+      case "text":
+      case "arrow":
+      case "box":
+        return m.text ?? "";
     }
   };
 
@@ -182,7 +186,39 @@ export default function MeasureOverlay({
 
     let shape: React.ReactNode = null;
     let labelAt = pts[0];
-    if (m.kind === "roi" && pts.length === 2) {
+    if (m.kind === "text" && pts.length >= 1) {
+      shape = null; // pure caption — the <text> below carries it
+      labelAt = { x: pts[0].x + 6, y: pts[0].y - 6 };
+    } else if (m.kind === "arrow" && pts.length === 2) {
+      const [a, b] = pts;
+      const ang = Math.atan2(b.y - a.y, b.x - a.x);
+      const head = 9;
+      const wing = (da: number) =>
+        `${b.x - head * Math.cos(ang + da)},${b.y - head * Math.sin(ang + da)}`;
+      shape = (
+        <>
+          <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} {...common} />
+          <polyline
+            points={`${wing(-0.45)} ${b.x},${b.y} ${wing(0.45)}`}
+            {...common}
+          />
+        </>
+      );
+      labelAt = { x: a.x + 8, y: a.y - 8 };
+    } else if (m.kind === "box" && pts.length === 2) {
+      const x = Math.min(pts[0].x, pts[1].x);
+      const y = Math.min(pts[0].y, pts[1].y);
+      shape = (
+        <rect
+          x={x}
+          y={y}
+          width={Math.abs(pts[1].x - pts[0].x)}
+          height={Math.abs(pts[1].y - pts[0].y)}
+          {...common}
+        />
+      );
+      labelAt = { x, y: y - 6 };
+    } else if (m.kind === "roi" && pts.length === 2) {
       const x = Math.min(pts[0].x, pts[1].x);
       const y = Math.min(pts[0].y, pts[1].y);
       shape = (
@@ -233,7 +269,7 @@ export default function MeasureOverlay({
     return (
       <g key={m.id}>
         {shape}
-        {m.pts.length >= 2 && (
+        {(m.pts.length >= 2 || m.kind === "text") && (
           <text
             x={labelAt.x}
             y={labelAt.y}

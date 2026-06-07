@@ -87,7 +87,7 @@ export default function ExportDialog() {
       include,
       measures:
         canMeasure && bakeMeasures
-          ? measures.map((m) => ({ kind: m.kind, pts: m.pts }))
+          ? measures.map((m) => ({ kind: m.kind, pts: m.pts, text: m.text }))
           : undefined,
       overlay_color: overlayColor,
     })

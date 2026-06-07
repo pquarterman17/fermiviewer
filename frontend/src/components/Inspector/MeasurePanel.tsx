@@ -12,6 +12,9 @@ const KIND_GLYPH: Record<Measure["kind"], string> = {
   angle: "∠",
   roi: "▭",
   polyline: "⌇",
+  text: "T",
+  arrow: "➹",
+  box: "□",
 };
 
 const SIZES: OverlayStyle["size"][] = ["S", "M", "L", "XL"];
@@ -55,6 +58,9 @@ export default function MeasurePanel() {
       const s = roiStats[m.id];
       return s ? `μ ${Number(s.mean.toPrecision(4))}` : "…";
     }
+    if (m.kind === "text" || m.kind === "arrow" || m.kind === "box") {
+      return m.text ?? "";
+    }
     return "";
   };
 
@@ -78,7 +84,7 @@ export default function MeasurePanel() {
   const capBtn = (
     label: string,
     glyph: string,
-    mode: "profile" | "distance" | "angle" | "roi" | "polyline",
+    mode: Measure["kind"],
   ) => (
     <button
       className={`fvd-cap-btn${captureMode === mode ? " active" : ""}`}
@@ -98,6 +104,11 @@ export default function MeasurePanel() {
           {capBtn("Angle", "∠", "angle")}
           {capBtn("Polyline", "⌇", "polyline")}
           {capBtn("ROI", "▭", "roi")}
+        </div>
+        <div className="fvd-cap-grid">
+          {capBtn("Text", "T", "text")}
+          {capBtn("Arrow", "➹", "arrow")}
+          {capBtn("Box", "□", "box")}
         </div>
         <div className="fvd-slider-row">
           <span className="k">Width (px)</span>

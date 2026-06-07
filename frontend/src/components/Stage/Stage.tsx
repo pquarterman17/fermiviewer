@@ -38,6 +38,7 @@ import {
 } from "../../store/viewer";
 import DockPlot from "./DockPlot";
 import MeasureOverlay from "./MeasureOverlay";
+import Minimap from "./Minimap";
 
 export interface StageHandle {
   fit: () => void;
@@ -58,6 +59,9 @@ const CLICKS: Record<string, number> = {
   profile: 2,
   angle: 3,
   polyline: Infinity, // vertices accumulate; double-click finishes
+  text: 1,
+  arrow: 2,
+  box: 2,
 };
 
 const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
@@ -303,7 +307,18 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   const finalizeMeasure = (kind: Measure["kind"], ptsImg: Pt[]) => {
     if (!activeId || !imgSize) return;
     const pts = ptsImg.map((p) => ({ x: p.x / imgSize.w, y: p.y / imgSize.h }));
-    const mid = addMeasure(activeId, { kind, pts });
+    let text: string | undefined;
+    if (kind === "text" || kind === "arrow" || kind === "box") {
+      text =
+        window.prompt(
+          kind === "text" ? "Annotation text:" : "Label (optional):",
+        ) ?? undefined;
+      if (kind === "text" && !text) {
+        setCaptureMode("none");
+        return; // text annotation without text is nothing
+      }
+    }
+    const mid = addMeasure(activeId, { kind, pts, text });
     setCaptureMode("none");
     const width = useViewer.getState().profileWidth;
     if (kind === "profile") {
@@ -479,6 +494,13 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
             pending={pending}
           />
           <FloatTools />
+          <Minimap
+            imageId={activeId}
+            view={view}
+            img={imgSize}
+            vp={vp}
+            onNavigate={apply}
+          />
           <ZoomChip
             onZoom={(f) => {
               if (view && imgSize) {

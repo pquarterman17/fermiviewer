@@ -129,11 +129,26 @@ def measure_annotations(
     out: list[Annotation] = []
     for m in measures:
         kind = str(m.get("kind", ""))
+        text = str(m.get("text") or "")
         pts_n = [(float(p["x"]), float(p["y"])) for p in m.get("pts", [])]
-        if len(pts_n) < 2:
+        if len(pts_n) < (1 if kind == "text" else 2):
             continue
         ipts = [(x * img_w, y * img_h) for x, y in pts_n]       # image px
         opts = tuple((x * scale, y * scale) for x, y in ipts)   # output px
+
+        if kind == "text":
+            out.append(Annotation(kind, opts[:1], text,
+                                  (opts[0][0] + 6, opts[0][1] - 6)))
+            continue
+        if kind == "arrow":
+            out.append(Annotation(kind, opts[:2], text,
+                                  (opts[0][0] + 8, opts[0][1] - 8)))
+            continue
+        if kind == "box":
+            lx = min(opts[0][0], opts[1][0])
+            ly = min(opts[0][1], opts[1][1]) - 6
+            out.append(Annotation(kind, opts[:2], text, (lx, ly)))
+            continue
 
         if kind in ("distance", "profile"):
             d = float(np.hypot(ipts[1][0] - ipts[0][0],

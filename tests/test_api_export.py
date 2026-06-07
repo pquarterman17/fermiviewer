@@ -226,3 +226,36 @@ def test_annotation_labels() -> None:
     annos_px = measure_annotations(MEASURES[:1], 12, 16, None, "px", 2)
     assert annos_px[0].label == "16 px"
     assert annos_px[0].points[1] == (32.0, 0.0)         # 2× output coords
+
+
+ANNOTATIONS = [
+    {"kind": "text", "pts": [{"x": 0.5, "y": 0.5}], "text": "grain A"},
+    {"kind": "arrow", "pts": [{"x": 0.1, "y": 0.1}, {"x": 0.9, "y": 0.9}],
+     "text": "defect"},
+    {"kind": "box", "pts": [{"x": 0.2, "y": 0.2}, {"x": 0.8, "y": 0.6}],
+     "text": "ROI 1"},
+]
+
+
+def test_annotation_export(client, img_id) -> None:
+    # SVG: vector elements + captions present
+    r = client.post("/api/export", json={
+        "image_id": img_id, "format": "svg", "scale": 2,
+        "include": ["measurements"], "measures": ANNOTATIONS,
+    })
+    assert r.status_code == 200
+    svg = r.content.decode()
+    assert ">grain A</text>" in svg
+    assert ">defect</text>" in svg
+    assert ">ROI 1</text>" in svg
+    assert "<polyline" in svg          # arrowhead
+    assert "<rect" in svg              # box
+    # PNG baking renders without error and differs from base
+    base = client.post("/api/export", json={
+        "image_id": img_id, "format": "png", "scale": 4,
+    }).content
+    baked = client.post("/api/export", json={
+        "image_id": img_id, "format": "png", "scale": 4,
+        "include": ["measurements"], "measures": ANNOTATIONS,
+    }).content
+    assert baked != base

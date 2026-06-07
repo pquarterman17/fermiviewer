@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import io
+import math
 from xml.sax.saxutils import escape
 
 import numpy as np
@@ -45,8 +46,9 @@ class WirePoint(BaseModel):
 
 
 class WireMeasure(BaseModel):
-    kind: str                                  # distance|profile|angle|roi
-    pts: list[WirePoint]
+    kind: str                  # distance|profile|angle|roi|polyline|
+    pts: list[WirePoint]       #   text|arrow|box
+    text: str | None = None    # annotation caption
 
 
 class ExportRequest(BaseModel):
@@ -197,12 +199,25 @@ def _draw_annotations(img: Image.Image, annos: list[Annotation],
     draw = ImageDraw.Draw(img)
     for an in annos:
         p = an.points
-        if an.kind == "roi":
+        if an.kind in ("roi", "box"):
             x0 = min(p[0][0], p[1][0])
             y0 = min(p[0][1], p[1][1])
             x1 = max(p[0][0], p[1][0])
             y1 = max(p[0][1], p[1][1])
             draw.rectangle([x0, y0, x1, y1], outline=color, width=2)
+        elif an.kind == "text":
+            pass  # caption only — drawn below
+        elif an.kind == "arrow":
+            a, b = p[0], p[1]
+            draw.line([a, b], fill=color, width=2)
+            ang = float(np.arctan2(b[1] - a[1], b[0] - a[0]))
+            head = 9.0
+            for da in (-0.45, 0.45):
+                draw.line(
+                    [b, (b[0] - head * np.cos(ang + da),
+                         b[1] - head * np.sin(ang + da))],
+                    fill=color, width=2,
+                )
         elif an.kind == "angle":
             draw.line([p[0], p[1], p[2]], fill=color, width=2)
         elif an.kind == "polyline":
@@ -248,7 +263,7 @@ def _build_svg(img: Image.Image, bar: ScaleBar | None,
 
     for an in annos:
         p = an.points
-        if an.kind == "roi":
+        if an.kind in ("roi", "box"):
             x0 = min(p[0][0], p[1][0])
             y0 = min(p[0][1], p[1][1])
             w = abs(p[1][0] - p[0][0])
@@ -256,6 +271,27 @@ def _build_svg(img: Image.Image, bar: ScaleBar | None,
             parts.append(
                 f'<rect x="{x0:.1f}" y="{y0:.1f}" width="{w:.1f}" '
                 f'height="{h:.1f}" fill="none" stroke="{color}" '
+                f'stroke-width="2"/>'
+            )
+        elif an.kind == "text":
+            pass  # caption only — <text> emitted below
+        elif an.kind == "arrow":
+            a, b = p[0], p[1]
+            ang = math.atan2(b[1] - a[1], b[0] - a[0])
+            head = 9.0
+            wings = " ".join(
+                f"{b[0] - head * math.cos(ang + da):.1f},"
+                f"{b[1] - head * math.sin(ang + da):.1f}"
+                for da in (-0.45, 0.45)
+            ).split(" ")
+            parts.append(
+                f'<line x1="{a[0]:.1f}" y1="{a[1]:.1f}" '
+                f'x2="{b[0]:.1f}" y2="{b[1]:.1f}" '
+                f'stroke="{color}" stroke-width="2"/>'
+            )
+            parts.append(
+                f'<polyline points="{wings[0]} {b[0]:.1f},{b[1]:.1f} '
+                f'{wings[1]}" fill="none" stroke="{color}" '
                 f'stroke-width="2"/>'
             )
         elif an.kind in ("angle", "polyline"):
