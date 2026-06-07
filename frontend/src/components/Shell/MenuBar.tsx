@@ -50,6 +50,29 @@ export default function MenuBar({
     File: [
       { label: "Open…", shortcut: "⌘O", action: openFiles },
       {
+        label: "Save Session…",
+        disabled: store.order.length === 0,
+        action: () => {
+          const p = window.prompt("Save session to path (.json):");
+          if (p) {
+            store
+              .saveWorkspace(p)
+              .catch((e: Error) => store.setStatus(e.message));
+          }
+        },
+      },
+      {
+        label: "Load Session…",
+        action: () => {
+          const p = window.prompt("Load session from path (.json):");
+          if (p) {
+            store
+              .loadWorkspace(p)
+              .catch((e: Error) => store.setStatus(e.message));
+          }
+        },
+      },
+      {
         label: "Export…",
         shortcut: "⌘E",
         disabled: !store.activeId,

@@ -6,7 +6,9 @@ import { create } from "zustand";
 
 import {
   closeImage as apiClose,
+  loadSession,
   openSession,
+  saveSession,
   type ImageMeta,
   type RoiStats,
 } from "../lib/api";
@@ -107,6 +109,8 @@ interface ViewerState {
   status: string;
 
   openPaths: (paths: string[]) => Promise<void>;
+  saveWorkspace: (path: string) => Promise<void>;
+  loadWorkspace: (path: string) => Promise<void>;
   setActive: (id: string) => void;
   select: (id: string, gesture: SelectGesture) => void;
   setListView: (v: ListView) => void;
@@ -187,6 +191,49 @@ export const useViewer = create<ViewerState>((set, get) => ({
         activeId: last ? last.id : s.activeId,
         status: `opened ${metas.length} file${metas.length === 1 ? "" : "s"}`,
       };
+    });
+  },
+
+  saveWorkspace: async (path) => {
+    const s = get();
+    const r = await saveSession(path, {
+      order: s.order,
+      activeId: s.activeId,
+      views: s.views,
+      display: s.display,
+      measures: s.measures,
+      overlay: s.overlay,
+    });
+    set({ status: `saved ${r.n_images} images → ${r.json_path}` });
+  },
+
+  loadWorkspace: async (path) => {
+    const r = await loadSession(path);
+    const images: Record<string, ImageMeta> = {};
+    for (const m of r.images) images[m.id] = m;
+    const cs = r.client_state ?? {};
+    // saved order filtered to what actually loaded; fall back to manifest order
+    const loadedIds = r.images.map((m) => m.id);
+    const order = (
+      (cs.order as string[] | undefined)?.filter((id) => id in images) ??
+      loadedIds
+    ).concat(loadedIds.filter((id) => !(cs.order as string[])?.includes(id)));
+    const activeId =
+      typeof cs.activeId === "string" && cs.activeId in images
+        ? cs.activeId
+        : (order[0] ?? null);
+    set({
+      images,
+      order,
+      activeId,
+      selected: activeId ? [activeId] : [],
+      compareSet: null,
+      selectedMeasure: null,
+      views: (cs.views as Record<string, View>) ?? {},
+      display: (cs.display as Record<string, Display>) ?? {},
+      measures: (cs.measures as Record<string, Measure[]>) ?? {},
+      overlay: (cs.overlay as OverlayStyle) ?? get().overlay,
+      status: `loaded ${r.images.length} images`,
     });
   },
 

@@ -56,6 +56,17 @@ class SessionStore:
             self._names[img_id] = name
         return img_id
 
+    def restore(self, img_id: str, ds: DataStruct, name: str) -> str:
+        """Re-register a persisted image, preserving its saved id so
+        client-side state keyed by id (views, measures) survives the
+        round-trip. On collision a fresh id is generated."""
+        with self._lock:
+            if img_id in self._images:
+                img_id = uuid.uuid4().hex[:12]
+            self._images[img_id] = ds
+            self._names[img_id] = name
+        return img_id
+
     def get(self, img_id: str) -> DataStruct:
         try:
             return self._images[img_id]

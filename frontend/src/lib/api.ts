@@ -330,6 +330,30 @@ export async function exportImage(
   };
 }
 
+// ── workspace persistence ───────────────────────────────────────────
+
+export interface SessionClientState {
+  order?: string[];
+  activeId?: string | null;
+  views?: Record<string, unknown>;
+  display?: Record<string, unknown>;
+  measures?: Record<string, unknown>;
+  overlay?: unknown;
+}
+
+export async function saveSession(
+  path: string,
+  clientState: SessionClientState,
+): Promise<{ n_images: number; json_path: string }> {
+  return post("/api/session/save", { path, client_state: clientState });
+}
+
+export async function loadSession(
+  path: string,
+): Promise<{ images: ImageMeta[]; client_state: SessionClientState | null }> {
+  return post("/api/session/load", { path });
+}
+
 /** URL for the windowed 8-bit PNG render (Stage texture + thumbnails). */
 export function renderUrl(
   id: string,

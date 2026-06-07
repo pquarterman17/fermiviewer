@@ -14,6 +14,7 @@ def create_app() -> FastAPI:
     from fermiviewer.routes.filter import router as filter_router
     from fermiviewer.routes.images import router as images_router
     from fermiviewer.routes.measure import router as measure_router
+    from fermiviewer.routes.session_io import router as session_io_router
 
     app = FastAPI(title="fermiviewer", version=__version__)
     app.include_router(images_router)
@@ -21,6 +22,7 @@ def create_app() -> FastAPI:
     app.include_router(measure_router)
     app.include_router(filter_router)
     app.include_router(export_router)
+    app.include_router(session_io_router)
 
     @app.get("/api/health")
     def health() -> dict[str, str]:
