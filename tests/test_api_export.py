@@ -328,3 +328,48 @@ def test_colorbar_baking(client, img_id) -> None:
         "include": ["colorbar"], "cmap": "viridis",
     }).content.decode()
     assert svg.count("base64,") == 2        # image + strip
+
+
+def test_batch_export_zip(client, tmp_path) -> None:
+    import zipfile
+
+    ids = [_open_frame(client, tmp_path, f"z{i}.dm4", 0.3 * i)
+           for i in range(3)]
+    r = client.post("/api/export/batch", json={
+        "image_ids": ids, "format": "png", "scale": 2,
+    })
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/zip"
+    zf = zipfile.ZipFile(io.BytesIO(r.content))
+    names = zf.namelist()
+    assert len(names) == 3
+    assert all(n.endswith(".png") for n in names)
+    png = Image.open(io.BytesIO(zf.read(names[0])))
+    assert png.size == (32, 24)
+    assert client.post("/api/export/batch", json={
+        "image_ids": [], "format": "png",
+    }).status_code == 422
+
+
+def test_rename_and_open_raw(client, tmp_path) -> None:
+    ids = [_open_frame(client, tmp_path, "r0.dm4", 0.0)]
+    r = client.post(f"/api/image/{ids[0]}/rename", json={"name": "renamed"})
+    assert r.status_code == 200
+    assert r.json()["name"] == "renamed"
+    assert client.post(f"/api/image/{ids[0]}/rename",
+                       json={"name": "  "}).status_code == 422
+
+    # headerless RAW round-trip
+    arr = (np.arange(48, dtype="<u2") * 100).reshape(6, 8)
+    raw = tmp_path / "img.raw"
+    raw.write_bytes(arr.tobytes())
+    r = client.post("/api/session/open-raw", json={
+        "path": str(raw), "width": 8, "height": 6, "bit_depth": 16,
+    })
+    assert r.status_code == 200
+    meta = r.json()
+    assert meta["shape"] == [6, 8]
+    np.testing.assert_array_equal(store.get(meta["id"]).data, arr)
+    assert client.post("/api/session/open-raw", json={
+        "path": str(raw), "width": 8, "height": 6, "bit_depth": 12,
+    }).status_code == 422

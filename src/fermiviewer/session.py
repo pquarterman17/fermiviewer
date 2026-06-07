@@ -91,6 +91,12 @@ class SessionStore:
     def name(self, img_id: str) -> str:
         return self._names.get(img_id, img_id)
 
+    def rename(self, img_id: str, name: str) -> None:
+        with self._lock:
+            if img_id not in self._images:
+                raise UnknownImageError(img_id)
+            self._names[img_id] = name
+
     def ids(self) -> list[str]:
         return list(self._images)
 

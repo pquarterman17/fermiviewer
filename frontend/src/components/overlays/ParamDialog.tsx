@@ -8,7 +8,7 @@ import { create } from "zustand";
 export interface ParamField {
   key: string;
   label: string;
-  type: "number" | "select" | "boolean";
+  type: "number" | "select" | "boolean" | "text";
   default: number | string | boolean;
   options?: string[]; // for select
   hint?: string;
@@ -101,6 +101,16 @@ export default function ParamDialog() {
                     [f.key]: Number.isFinite(n) ? n : f.default,
                   });
                 }}
+              />
+            )}
+            {f.type === "text" && (
+              <input
+                autoFocus={f === fields[0]}
+                style={{ flex: 1 }}
+                value={String(values[f.key] ?? "")}
+                onChange={(e) =>
+                  setValues({ ...values, [f.key]: e.target.value })
+                }
               />
             )}
             {f.type === "select" && (

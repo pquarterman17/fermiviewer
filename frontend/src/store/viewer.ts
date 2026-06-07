@@ -367,6 +367,16 @@ export const useViewer = create<ViewerState>((set, get) => ({
 
   openPaths: async (paths) => {
     _ingest(set, await openSession(paths));
+    // recent-files list (checklist L) — successful path-opens only
+    try {
+      const prev = JSON.parse(
+        localStorage.getItem("fv_recent") ?? "[]",
+      ) as string[];
+      const next = [...paths, ...prev.filter((p) => !paths.includes(p))];
+      localStorage.setItem("fv_recent", JSON.stringify(next.slice(0, 8)));
+    } catch {
+      /* quota/parse — recents are best-effort */
+    }
   },
 
   openFiles: async (files) => {

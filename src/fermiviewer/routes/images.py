@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 from fastapi import APIRouter, HTTPException, Response, UploadFile
 from PIL import Image
+from pydantic import BaseModel
 
 from fermiviewer.calc.render import histogram, to_display, to_uint16_norm
 from fermiviewer.datastruct import DataKind, DataStruct
@@ -95,6 +96,50 @@ async def session_upload(files: list[UploadFile]) -> list[ImageMeta]:
                 ImageMeta.from_datastruct(img_id, name, store.get(img_id))
             )
     return metas
+
+
+class OpenRawRequest(BaseModel):
+    path: str
+    width: int
+    height: int
+    bit_depth: int = 16
+    byte_order: str = "little"
+    header_bytes: int = 0
+
+
+@router.post("/session/open-raw")
+def session_open_raw(req: OpenRawRequest) -> ImageMeta:
+    """Headerless binary import with explicit geometry (checklist L —
+    the RAW dialog flow; load_auto can't infer .raw dimensions)."""
+    from fermiviewer.io.images import load_raw
+
+    try:
+        ds = load_raw(req.path, req.width, req.height,
+                      bit_depth=req.bit_depth, byte_order=req.byte_order,
+                      header_bytes=req.header_bytes)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from None
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    name = Path(req.path).name
+    img_id = store.add_parsed(ds, name)
+    return ImageMeta.from_datastruct(img_id, name, store.get(img_id))
+
+
+class RenameRequest(BaseModel):
+    name: str
+
+
+@router.post("/image/{img_id}/rename")
+def image_rename(img_id: str, req: RenameRequest) -> ImageMeta:
+    if not req.name.strip():
+        raise HTTPException(422, "name cannot be empty")
+    try:
+        store.rename(img_id, req.name.strip())
+    except UnknownImageError:
+        raise HTTPException(404, f"unknown image id: {img_id}") from None
+    return ImageMeta.from_datastruct(img_id, store.name(img_id),
+                                     store.get(img_id))
 
 
 @router.get("/session/supported-extensions")

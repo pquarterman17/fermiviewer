@@ -622,6 +622,56 @@ export function applyCalibration(
   });
 }
 
+/** Headerless RAW import with explicit geometry (checklist L). */
+export function openRaw(opts: {
+  path: string;
+  width: number;
+  height: number;
+  bitDepth?: number;
+  byteOrder?: "little" | "big";
+  headerBytes?: number;
+}): Promise<ImageMeta> {
+  return post("/api/session/open-raw", {
+    path: opts.path,
+    width: opts.width,
+    height: opts.height,
+    bit_depth: opts.bitDepth ?? 16,
+    byte_order: opts.byteOrder ?? "little",
+    header_bytes: opts.headerBytes ?? 0,
+  });
+}
+
+export function renameImage(id: string, name: string): Promise<ImageMeta> {
+  return post(`/api/image/${id}/rename`, { name });
+}
+
+/** Render many images server-side into one ZIP. */
+export async function exportBatch(
+  ids: string[],
+  opts: { format?: string; scale?: number; cmap?: string } = {},
+): Promise<Blob> {
+  const res = await fetch("/api/export/batch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      image_ids: ids,
+      format: opts.format ?? "png",
+      scale: opts.scale ?? 1,
+      cmap: opts.cmap ?? "gray",
+    }),
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      detail = ((await res.json()) as { detail?: string }).detail ?? detail;
+    } catch {
+      /* binary error body */
+    }
+    throw new Error(detail);
+  }
+  return res.blob();
+}
+
 /** Animate selected images into a GIF; returns the file blob. */
 export async function exportGif(
   ids: string[],

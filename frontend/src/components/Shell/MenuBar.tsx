@@ -17,8 +17,11 @@ import {
   analyzeVdf,
   applyCalibration,
   applyFilter,
+  exportBatch,
   exportGif,
   exportImage,
+  openRaw,
+  renameImage,
   imageFft,
   supportedExtensions,
   type ImageMeta,
@@ -45,6 +48,16 @@ const num = (
   dflt: number,
   hint?: string,
 ): ParamField => ({ key, label, type: "number", default: dflt, hint });
+
+function recentPaths(): string[] {
+  try {
+    return (
+      JSON.parse(localStorage.getItem("fv_recent") ?? "[]") as string[]
+    ).slice(0, 5);
+  } catch {
+    return [];
+  }
+}
 
 interface Entry {
   label: string;
@@ -280,6 +293,124 @@ export default function MenuBar({
     File: [
       { label: "Open…", shortcut: "⌘O", action: openFiles },
       { label: "Open by Path…", action: openByPath },
+      ...recentPaths().map((p) => ({
+        label: `↻ ${p.split(/[\\/]/).pop()}`,
+        action: () =>
+          store.openPaths([p]).catch((e: Error) => store.setStatus(e.message)),
+      })),
+      {
+        label: "Open RAW…",
+        action: () => {
+          void (async () => {
+            const v = await askParams("Open RAW (headerless binary)", [
+              { key: "path", label: "File path", type: "text", default: "" },
+              num("width", "Width (px)", 1024),
+              num("height", "Height (px)", 1024),
+              {
+                key: "bits",
+                label: "Bit depth",
+                type: "select",
+                default: "16",
+                options: ["8", "16", "32"],
+              },
+              {
+                key: "order",
+                label: "Byte order",
+                type: "select",
+                default: "little",
+                options: ["little", "big"],
+              },
+              num("header", "Header bytes to skip", 0),
+            ]);
+            if (!v || !v["path"]) return;
+            openRaw({
+              path: v["path"] as string,
+              width: v["width"] as number,
+              height: v["height"] as number,
+              bitDepth: Number(v["bits"]),
+              byteOrder: v["order"] as "little" | "big",
+              headerBytes: v["header"] as number,
+            })
+              .then((m) => store.ingest([m]))
+              .catch((e: Error) => store.setStatus(`raw: ${e.message}`));
+          })();
+        },
+      },
+      {
+        label: `Batch Export… (${store.selected.length})`,
+        disabled: store.selected.length < 2,
+        action: () => {
+          void (async () => {
+            const v = await askParams("Batch Export (ZIP)", [
+              {
+                key: "format",
+                label: "Format",
+                type: "select",
+                default: "png",
+                options: ["png", "jpeg", "tiff16"],
+              },
+              {
+                key: "scale",
+                label: "Resolution",
+                type: "select",
+                default: "1",
+                options: ["1", "2", "3", "4"],
+              },
+            ]);
+            if (!v) return;
+            exportBatch(store.selected, {
+              format: v["format"] as string,
+              scale: Number(v["scale"]),
+            })
+              .then((blob) => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "export.zip";
+                a.click();
+                URL.revokeObjectURL(url);
+                store.setStatus(
+                  `batch exported ${store.selected.length} images`,
+                );
+              })
+              .catch((e: Error) => store.setStatus(`batch: ${e.message}`));
+          })();
+        },
+      },
+      {
+        label: `Batch Rename… (${store.selected.length})`,
+        disabled: store.selected.length < 2,
+        action: () => {
+          void (async () => {
+            const v = await askParams("Batch Rename", [
+              {
+                key: "prefix",
+                label: "Prefix (gets _001, _002…)",
+                type: "text",
+                default: "frame",
+              },
+            ]);
+            if (!v || !v["prefix"]) return;
+            const prefix = v["prefix"] as string;
+            let n = 0;
+            for (const id of store.selected) {
+              n++;
+              try {
+                const m = await renameImage(
+                  id,
+                  `${prefix}_${String(n).padStart(3, "0")}`,
+                );
+                useViewer.setState((s) => ({
+                  images: { ...s.images, [m.id]: m },
+                }));
+              } catch {
+                /* keep renaming the rest */
+              }
+            }
+            store.setStatus(`renamed ${n} images`);
+          })();
+        },
+      },
       {
         label: "Save Session…",
         disabled: store.order.length === 0,
