@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+
+# Node
+node_modules/
+frontend/dist/
+
+# Tauri (added in W7)
+src-tauri/target/
+
+# Local-only real-instrument test data (fetched on demand)
+tests/data/realdata/
+
+# Per-machine planning scratch (PORT_PLAN.md and PORT_CHECKLIST.md are tracked)
+plans/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
