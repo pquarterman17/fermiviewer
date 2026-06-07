@@ -50,6 +50,36 @@ export interface Measure {
   pts: { x: number; y: number }[];
 }
 
+/** Undoable mutations (Edit menu / ⌘Z). Derived-image entries remove
+ *  only the CLIENT registration — the server keeps the DataStruct for
+ *  the session, which is what makes redo instant and lossless. */
+export type UndoEntry =
+  | { t: "measure-add"; imageId: string; measure: Measure }
+  | { t: "measure-del"; imageId: string; measure: Measure }
+  | {
+      t: "measure-move";
+      imageId: string;
+      measureId: string;
+      before: Measure["pts"];
+      after: Measure["pts"];
+    }
+  | { t: "derived"; meta: ImageMeta; parentId: string };
+
+export function undoLabel(e: UndoEntry): string {
+  switch (e.t) {
+    case "measure-add":
+      return `add ${e.measure.kind}`;
+    case "measure-del":
+      return `delete ${e.measure.kind}`;
+    case "measure-move":
+      return "move measure";
+    case "derived":
+      return e.meta.name;
+  }
+}
+
+const UNDO_CAP = 99;
+
 export interface OverlayStyle {
   size: "S" | "M" | "L" | "XL";
   color: string;
@@ -116,6 +146,79 @@ function _ingest(set: SetState, metas: ImageMeta[]): void {
   });
 }
 
+type SetFull = (fn: (s: ViewerState) => Partial<ViewerState>) => void;
+
+/** Apply one undo entry in the given direction (pure state surgery —
+ *  never calls the public actions, so no re-push loops). */
+function applyUndoEntry(set: SetFull, e: UndoEntry, dir: "undo" | "redo"): void {
+  const inverse = dir === "undo";
+  switch (e.t) {
+    case "measure-add":
+    case "measure-del": {
+      const doRemove = (e.t === "measure-add") === inverse;
+      if (doRemove) {
+        set((s) => ({
+          measures: {
+            ...s.measures,
+            [e.imageId]: (s.measures[e.imageId] ?? []).filter(
+              (m) => m.id !== e.measure.id,
+            ),
+          },
+          selectedMeasure:
+            s.selectedMeasure === e.measure.id ? null : s.selectedMeasure,
+        }));
+      } else {
+        set((s) => ({
+          measures: {
+            ...s.measures,
+            [e.imageId]: [...(s.measures[e.imageId] ?? []), e.measure],
+          },
+        }));
+      }
+      break;
+    }
+    case "measure-move":
+      set((s) => ({
+        measures: {
+          ...s.measures,
+          [e.imageId]: (s.measures[e.imageId] ?? []).map((m) =>
+            m.id === e.measureId
+              ? { ...m, pts: inverse ? e.before : e.after }
+              : m,
+          ),
+        },
+      }));
+      break;
+    case "derived":
+      if (inverse) {
+        set((s) => {
+          const images = { ...s.images };
+          delete images[e.meta.id];
+          return {
+            images,
+            order: s.order.filter((i) => i !== e.meta.id),
+            selected: s.selected.filter((i) => i !== e.meta.id),
+            activeId:
+              s.activeId === e.meta.id
+                ? e.parentId in images
+                  ? e.parentId
+                  : null
+                : s.activeId,
+          };
+        });
+      } else {
+        set((s) => ({
+          images: { ...s.images, [e.meta.id]: e.meta },
+          order: s.order.includes(e.meta.id)
+            ? s.order
+            : [...s.order, e.meta.id],
+          activeId: e.meta.id,
+        }));
+      }
+      break;
+  }
+}
+
 interface ViewerState {
   // library
   order: string[];
@@ -133,6 +236,9 @@ interface ViewerState {
   measures: Record<string, Measure[]>;
   selectedMeasure: string | null;
   roiStats: Record<string, RoiStats>;
+  // undo/redo (Edit menu)
+  undoStack: UndoEntry[];
+  redoStack: UndoEntry[];
   // display chrome
   theme: Theme;
   overlay: OverlayStyle; // persisted "fv_overlay"
@@ -165,6 +271,10 @@ interface ViewerState {
   closeImage: (id: string) => Promise<void>;
   setView: (id: string, view: View) => void;
   setDisplay: (id: string, patch: Partial<Display>) => void;
+  ingestDerived: (metas: ImageMeta[]) => void;
+  pushUndo: (e: UndoEntry) => void;
+  undo: () => UndoEntry | null;
+  redo: () => UndoEntry | null;
   addMeasure: (imageId: string, m: Omit<Measure, "id">) => string;
   updateMeasure: (
     imageId: string,
@@ -204,6 +314,8 @@ export const useViewer = create<ViewerState>((set, get) => ({
   measures: {},
   selectedMeasure: null,
   roiStats: {},
+  undoStack: [],
+  redoStack: [],
   theme: (() => {
     const t = initialTheme();
     document.documentElement.setAttribute("data-theme", t);
@@ -231,6 +343,51 @@ export const useViewer = create<ViewerState>((set, get) => ({
 
   /** Register derived/analysis result images in the library. */
   ingest: (metas) => _ingest(set, metas),
+
+  /** Like ingest, but records each image on the undo stack (used by
+   *  single-result operations: filters, transforms, FFT masks…). */
+  ingestDerived: (metas) => {
+    _ingest(set, metas);
+    set((s) => ({
+      undoStack: [
+        ...s.undoStack.slice(-UNDO_CAP),
+        ...metas.map((m) => ({
+          t: "derived" as const,
+          meta: m,
+          parentId: String(m.meta["derived_from"] ?? ""),
+        })),
+      ],
+      redoStack: [],
+    }));
+  },
+
+  pushUndo: (e) =>
+    set((s) => ({
+      undoStack: [...s.undoStack.slice(-UNDO_CAP), e],
+      redoStack: [],
+    })),
+
+  undo: () => {
+    const e = get().undoStack.at(-1);
+    if (!e) return null;
+    applyUndoEntry(set, e, "undo");
+    set((s) => ({
+      undoStack: s.undoStack.slice(0, -1),
+      redoStack: [...s.redoStack, e],
+    }));
+    return e;
+  },
+
+  redo: () => {
+    const e = get().redoStack.at(-1);
+    if (!e) return null;
+    applyUndoEntry(set, e, "redo");
+    set((s) => ({
+      redoStack: s.redoStack.slice(0, -1),
+      undoStack: [...s.undoStack, e],
+    }));
+    return e;
+  },
 
   saveWorkspace: async (path) => {
     const s = get();
@@ -368,12 +525,18 @@ export const useViewer = create<ViewerState>((set, get) => ({
 
   addMeasure: (imageId, m) => {
     const id = `m${++measureSeq}`;
+    const measure = { ...m, id };
     set((s) => ({
       measures: {
         ...s.measures,
-        [imageId]: [...(s.measures[imageId] ?? []), { ...m, id }],
+        [imageId]: [...(s.measures[imageId] ?? []), measure],
       },
       selectedMeasure: id,
+      undoStack: [
+        ...s.undoStack.slice(-UNDO_CAP),
+        { t: "measure-add" as const, imageId, measure },
+      ],
+      redoStack: [],
     }));
     return id;
   },
@@ -392,6 +555,9 @@ export const useViewer = create<ViewerState>((set, get) => ({
     set((s) => {
       const roiStats = { ...s.roiStats };
       delete roiStats[measureId];
+      const victim = (s.measures[imageId] ?? []).find(
+        (m) => m.id === measureId,
+      );
       return {
         measures: {
           ...s.measures,
@@ -402,6 +568,13 @@ export const useViewer = create<ViewerState>((set, get) => ({
         roiStats,
         selectedMeasure:
           s.selectedMeasure === measureId ? null : s.selectedMeasure,
+        ...(victim && {
+          undoStack: [
+            ...s.undoStack.slice(-UNDO_CAP),
+            { t: "measure-del" as const, imageId, measure: victim },
+          ],
+          redoStack: [],
+        }),
       };
     }),
 

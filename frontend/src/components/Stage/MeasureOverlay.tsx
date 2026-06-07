@@ -52,7 +52,12 @@ export default function MeasureOverlay({
   const setProfile = useStageInfo((s) => s.setProfile);
   const setStatus = useViewer((s) => s.setStatus);
 
-  const dragRef = useRef<{ mid: string; pt: number } | null>(null);
+  const dragRef = useRef<{
+    mid: string;
+    pt: number;
+    before: Measure["pts"];
+  } | null>(null);
+  const pushUndo = useViewer((s) => s.pushUndo);
   const svgRef = useRef<SVGSVGElement>(null);
 
   const toScreen = (p: { x: number; y: number }) =>
@@ -79,7 +84,8 @@ export default function MeasureOverlay({
 
   const onHandleDown = (e: React.PointerEvent, mid: string, pt: number) => {
     e.stopPropagation();
-    dragRef.current = { mid, pt };
+    const m = measures.find((x) => x.id === mid);
+    dragRef.current = { mid, pt, before: m ? m.pts : [] };
     (e.target as Element).setPointerCapture(e.pointerId);
     setSelected(mid);
   };
@@ -105,10 +111,21 @@ export default function MeasureOverlay({
 
   const onHandleUp = (e: React.PointerEvent) => {
     if (!dragRef.current) return;
-    const m = measures.find((x) => x.id === dragRef.current!.mid);
+    const { mid, before } = dragRef.current;
+    const m = measures.find((x) => x.id === mid);
     dragRef.current = null;
     (e.target as Element).releasePointerCapture(e.pointerId);
-    if (m) refresh(m);
+    if (!m) return;
+    if (before.length && JSON.stringify(before) !== JSON.stringify(m.pts)) {
+      pushUndo({
+        t: "measure-move",
+        imageId,
+        measureId: mid,
+        before,
+        after: m.pts,
+      });
+    }
+    refresh(m);
   };
 
   const label = (m: Measure): string => {

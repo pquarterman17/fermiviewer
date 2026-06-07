@@ -21,7 +21,7 @@ export default function FftMaskWorkshop() {
   const meta = useViewer((s) =>
     s.activeId ? (s.images[s.activeId] ?? null) : null,
   );
-  const ingest = useViewer((s) => s.ingest);
+  const ingest = useViewer((s) => s.ingestDerived);
   const setStatus = useViewer((s) => s.setStatus);
 
   const [fftId, setFftId] = useState<string | null>(null);

@@ -29,7 +29,7 @@ import { listImages } from "./lib/api";
 import { COLORMAP_NAMES } from "./lib/colormaps";
 import { autoWindow } from "./lib/display";
 import { useStageInfo } from "./store/stage";
-import { useViewer, type CaptureMode } from "./store/viewer";
+import { undoLabel, useViewer, type CaptureMode } from "./store/viewer";
 
 const NUDGE = 50; // css px per arrow press
 
@@ -93,6 +93,15 @@ export default function App() {
       const s = useViewer.getState();
       const mod = e.metaKey || e.ctrlKey;
 
+      if (mod && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        const entry = e.shiftKey ? s.redo() : s.undo();
+        const verb = e.shiftKey ? "redo" : "undo";
+        s.setStatus(
+          entry ? `${verb}: ${undoLabel(entry)}` : `nothing to ${verb}`,
+        );
+        return;
+      }
       if (mod && e.key.toLowerCase() === "k") {
         e.preventDefault();
         s.setCmdk(!s.cmdk);

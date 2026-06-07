@@ -18,8 +18,7 @@ export function applyGeometry(kind: GeometryKind): void {
   if (!s.activeId) return;
   applyFilter(s.activeId, kind)
     .then((m) => {
-      s.ingest([m]);
-      s.setActive(m.id);
+      s.ingestDerived([m]);
       s.setStatus(`${kind} → ${m.name}`);
     })
     .catch((e: Error) => s.setStatus(`${kind}: ${e.message}`));
@@ -49,8 +48,7 @@ export function cropToRoi(): boolean {
     col1: px(roi.pts[1].x, w),
   })
     .then((m) => {
-      s.ingest([m]);
-      s.setActive(m.id);
+      s.ingestDerived([m]);
       s.setStatus(`crop → ${m.name}`);
     })
     .catch((e: Error) => s.setStatus(`crop: ${e.message}`));

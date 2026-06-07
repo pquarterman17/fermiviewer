@@ -21,7 +21,7 @@ import {
 } from "../../lib/api";
 import { applyGeometry, cropToRoi } from "../../lib/stageOps";
 import { useStageInfo } from "../../store/stage";
-import { DEFAULT_DISPLAY as DD, useViewer } from "../../store/viewer";
+import { DEFAULT_DISPLAY as DD, undoLabel, useViewer } from "../../store/viewer";
 import {
   askParams,
   type ParamField,
@@ -107,7 +107,7 @@ export default function MenuBar({
     }
   };
 
-  // run an analysis returning derived image(s); ingest + report
+  // run an analysis returning derived image(s); ingest (undoable) + report
   const derived = (
     label: string,
     run: (id: string) => Promise<ImageMeta[]>,
@@ -117,7 +117,7 @@ export default function MenuBar({
     store.setStatus(`${label}…`);
     run(id)
       .then((metas) => {
-        store.ingest(metas);
+        store.ingestDerived(metas);
         store.setStatus(`${label} done`);
       })
       .catch((e: Error) => store.setStatus(`${label}: ${e.message}`));
@@ -231,6 +231,32 @@ export default function MenuBar({
         disabled: !store.activeId,
         action: () => {
           if (store.activeId) void store.closeImage(store.activeId);
+        },
+      },
+    ],
+    Edit: [
+      {
+        label:
+          store.undoStack.length > 0
+            ? `Undo ${undoLabel(store.undoStack[store.undoStack.length - 1])}`
+            : "Undo",
+        shortcut: "⌘Z",
+        disabled: store.undoStack.length === 0,
+        action: () => {
+          const e = store.undo();
+          if (e) store.setStatus(`undo: ${undoLabel(e)}`);
+        },
+      },
+      {
+        label:
+          store.redoStack.length > 0
+            ? `Redo ${undoLabel(store.redoStack[store.redoStack.length - 1])}`
+            : "Redo",
+        shortcut: "⇧⌘Z",
+        disabled: store.redoStack.length === 0,
+        action: () => {
+          const e = store.redo();
+          if (e) store.setStatus(`redo: ${undoLabel(e)}`);
         },
       },
     ],
