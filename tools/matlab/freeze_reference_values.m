@@ -252,6 +252,36 @@ function out = captureImaging()
     out.lattice.cellArea = lm.unitCellArea;
     out.lattice.g1 = lm.g1;  out.lattice.g2 = lm.g2;
     out.lattice.a1 = lm.a1;  out.lattice.a2 = lm.a2;
+
+    % ── tranche 3b ───────────────────────────────────────────────────
+    lineImg = double(mod(C, 12) < 2) + 0.1 * sin(R/5) .* cos(C/9);
+    cd2 = imaging.countDefectLines(lineImg, KernelLength=9, ...
+        GridSpacing=20, PixelSize=2);
+    out.defects.intersections = cd2.intersectionCount;
+    out.defects.numTestLines = cd2.numTestLines;
+    out.defects.totalLineLength = cd2.totalLineLength;
+    out.defects.density2D = cd2.density;
+    out.defects.enhancedSum = sum(cd2.enhancedImg(:));
+    out.defects.maskCount = nnz(cd2.binaryMask);
+    cd3 = imaging.countDefectLines(lineImg, KernelLength=9, ...
+        GridSpacing=20, PixelSize=2, FoilThickness=50);
+    out.defects.density3D = cd3.density;
+
+    % stitchImages requires equal-size tiles (canvas placement uses
+    % image 1's dims for every tile)
+    stA = base(:, 1:56);  stB = base(:, 41:96);     % 64×56 each, 16 px overlap
+    sh = imaging.stitchImages({stA, stB}, Layout='horizontal', ...
+        OverlapFrac=0.3, BlendWidth=10);
+    out.stitch.h.offsets = sh.offsets(:)';
+    out.stitch.h.size = size(sh.mosaic);
+    out.stitch.h.mosaicSum = sum(sh.mosaic(:));
+    out.stitch.h.px = sh.mosaic(20, 60);
+    stC = base(1:36, :);  stD = base(29:64, :);     % 36×96 each, 8 px overlap
+    sv = imaging.stitchImages({stC, stD}, Layout='vertical', ...
+        OverlapFrac=0.35, BlendWidth=8);
+    out.stitch.v.offsets = sv.offsets(:)';
+    out.stitch.v.size = size(sv.mosaic);
+    out.stitch.v.mosaicSum = sum(sv.mosaic(:));
 end
 
 

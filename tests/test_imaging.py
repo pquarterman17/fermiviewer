@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from fermiviewer.calc.defects import count_defect_lines
 from fermiviewer.calc.filters import (
     apply_gaussian,
     apply_median,
@@ -43,6 +44,7 @@ from fermiviewer.calc.segment import (
     multi_otsu,
     slic,
 )
+from fermiviewer.calc.stitch import stitch_images
 from fermiviewer.calc.texture import noise_estimate, structure_tensor
 
 pytestmark = [pytest.mark.imaging, pytest.mark.golden]
@@ -368,6 +370,76 @@ def test_lattice_measure() -> None:
     np.testing.assert_allclose(res.a2, g["a2"], rtol=REL)
     with pytest.raises(ValueError):
         lattice_measure((33, 49), (44, 47), (64, 96))  # spot at centre
+
+
+def test_count_defect_lines() -> None:
+    r = np.arange(1, 65, dtype=np.float64)[:, None]
+    c = np.arange(1, 97, dtype=np.float64)[None, :]
+    line_img = (np.mod(c, 12) < 2).astype(np.float64) + 0.1 * np.sin(
+        r / 5
+    ) * np.cos(c / 9)
+    g = GOLDEN["defects"]
+    res = count_defect_lines(
+        line_img, kernel_length=9, grid_spacing=20, pixel_size=2
+    )
+    assert res.intersection_count == g["intersections"]
+    assert res.num_test_lines == g["numTestLines"]
+    assert res.total_line_length == pytest.approx(
+        g["totalLineLength"], rel=REL
+    )
+    assert res.density == pytest.approx(g["density2D"], rel=REL)
+    assert res.enhanced.sum() == pytest.approx(g["enhancedSum"], rel=REL)
+    assert int(res.binary_mask.sum()) == g["maskCount"]
+    res3 = count_defect_lines(
+        line_img,
+        kernel_length=9,
+        grid_spacing=20,
+        pixel_size=2,
+        foil_thickness=50,
+    )
+    assert res3.density == pytest.approx(g["density3D"], rel=REL)
+    assert res3.density_unit == "lines/px^3"
+
+
+def test_stitch_images(synth) -> None:
+    base = synth["base"]
+    g = GOLDEN["stitch"]
+    sh = stitch_images(
+        [base[:, :56], base[:, 40:]],
+        layout="horizontal",
+        overlap_frac=0.3,
+        blend_width=10,
+    )
+    np.testing.assert_array_equal(sh.offsets.ravel(order="F"), g["h"]["offsets"])
+    assert list(sh.mosaic.shape) == g["h"]["size"]
+    assert sh.mosaic.sum() == pytest.approx(g["h"]["mosaicSum"], rel=REL)
+    assert sh.mosaic[19, 59] == pytest.approx(g["h"]["px"], rel=REL)
+
+    sv = stitch_images(
+        [base[:36, :], base[28:, :]],
+        layout="vertical",
+        overlap_frac=0.35,
+        blend_width=8,
+    )
+    np.testing.assert_array_equal(sv.offsets.ravel(order="F"), g["v"]["offsets"])
+    assert list(sv.mosaic.shape) == g["v"]["size"]
+    assert sv.mosaic.sum() == pytest.approx(g["v"]["mosaicSum"], rel=REL)
+
+    # auto layout picks the stronger first-pair correlation; the winner
+    # is data-dependent on this smooth synthetic, so assert consistency
+    # with the explicit run rather than a hardcoded orientation
+    auto = stitch_images(
+        [base[:, :56], base[:, 40:]], layout="auto", overlap_frac=0.3
+    )
+    assert auto.layout in ("horizontal", "vertical")
+    explicit = stitch_images(
+        [base[:, :56], base[:, 40:]],
+        layout=auto.layout,
+        overlap_frac=0.3,
+    )
+    np.testing.assert_array_equal(auto.offsets, explicit.offsets)
+    with pytest.raises(ValueError):
+        stitch_images([base])
 
 
 def test_edge_cases() -> None:
