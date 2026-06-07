@@ -13,7 +13,13 @@ from pydantic import BaseModel
 from fermiviewer.calc import diffraction as diff
 from fermiviewer.calc.eds import ClResult, ZafResult, cliff_lorimer, zaf_correction
 from fermiviewer.calc.eds_maps import extract_element_maps
-from fermiviewer.calc.eels import background, extract_map
+from fermiviewer.calc.eels import background, extract_map, thickness_map
+from fermiviewer.calc.eels_advanced import (
+    align_zlp,
+    fourier_log,
+    kramers_kronig,
+    svd,
+)
 from fermiviewer.calc.eels_quant import ElementEdge, quantify
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.models import ImageMeta
@@ -133,6 +139,168 @@ def eels_quantify(req: EelsQuantifyRequest) -> dict:
         "atomic_percent": res.atomic_percent.tolist(),
         "intensity": res.intensity.tolist(),
         "sigma": res.sigma.tolist(),
+    }
+
+
+def _register_cube(arr: np.ndarray, name: str, parent: DataStruct,
+                   parent_id: str) -> ImageMeta:
+    """Register a derived SI cube (aligned / denoised) with the parent's
+    spatial + energy calibration intact."""
+    derived = DataStruct(
+        data=np.ascontiguousarray(arr), kind=DataKind.SPECTRUM_IMAGE,
+        axes=parent.axes,
+        metadata={"source": name, "parser": "derived"},
+    )
+    new_id = store.add_derived(derived, name, parent_id)
+    return ImageMeta.from_datastruct(new_id, name, derived)
+
+
+class EelsThicknessRequest(BaseModel):
+    image_id: str
+    zlp_window: tuple[float, float] = (-5.0, 5.0)
+    min_counts: float = 100.0
+
+
+@router.post("/eels/thickness")
+def eels_thickness(req: EelsThicknessRequest) -> dict:
+    """Log-ratio t/λ map (eelsThicknessMap.m). Registers the map as a
+    derived image; NaN (invalid) pixels render as 0."""
+    ds = _cube(req.image_id)
+    try:
+        t, valid = thickness_map(ds.data, ds.energy_axis,
+                                 req.zlp_window, req.min_counts)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    meta = _register_map(np.nan_to_num(t), "t/λ map", ds, req.image_id)
+    return {
+        "map": meta.model_dump(),
+        "mean_t_over_lambda": float(np.nanmean(t)) if valid.any() else 0.0,
+        "valid_fraction": float(valid.mean()),
+    }
+
+
+class EelsKKRequest(BaseModel):
+    image_id: str
+    zlp_window: tuple[float, float] = (-5.0, 5.0)
+    refractive_index: float | None = None     # None → unnormalised ELF
+    collection_angle_mrad: float = 10.0
+    acc_voltage_kv: float = 200.0
+    thickness_nm: float | None = None         # None → estimate from t/λ
+
+
+@router.post("/eels/kk")
+def eels_kk(req: EelsKKRequest) -> dict:
+    """Kramers-Kronig dielectric analysis of the sum spectrum
+    (eelsKramersKronig.m, Egerton Ch. 4)."""
+    ds = _spectral(req.image_id)
+    nan = float("nan")
+    try:
+        res = kramers_kronig(
+            ds.energy_axis, ds.sum_spectrum(), req.zlp_window,
+            refractive_index=req.refractive_index
+            if req.refractive_index is not None else nan,
+            collection_angle=req.collection_angle_mrad,
+            acc_voltage=req.acc_voltage_kv,
+            thickness=req.thickness_nm
+            if req.thickness_nm is not None else nan,
+        )
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    return {
+        "energy": res.energy.tolist(),
+        "eps1": res.eps1.tolist(),
+        "eps2": res.eps2.tolist(),
+        "elf": res.elf.tolist(),
+        "optical_conductivity": res.optical_conductivity.tolist(),
+        "refractive_index": res.refractive_index.tolist(),
+        "thickness_nm": res.thickness,
+        "t_over_lambda": res.t_over_lambda,
+    }
+
+
+class EelsFourierLogRequest(BaseModel):
+    image_id: str
+    zlp_window: tuple[float, float] = (-5.0, 5.0)
+    regularize: float = 1e-6
+
+
+@router.post("/eels/fourier-log")
+def eels_fourier_log(req: EelsFourierLogRequest) -> dict:
+    """Fourier-log plural-scattering removal on the sum spectrum
+    (eelsFourierLog.m). Returns the single-scattering distribution."""
+    ds = _spectral(req.image_id)
+    energy = ds.energy_axis
+    spec = ds.sum_spectrum()
+    try:
+        ssd, t_l = fourier_log(energy, spec, req.zlp_window,
+                               regularize=req.regularize)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    return {
+        "energy": energy.tolist(),
+        "spectrum": spec.tolist(),
+        "ssd": ssd.tolist(),
+        "t_over_lambda": t_l,
+    }
+
+
+class EelsSvdRequest(BaseModel):
+    image_id: str
+    n_components: int = 0                      # 0 → min(20, rank)
+    denoise: bool = False
+    n_score_maps: int = 4
+
+
+@router.post("/eels/svd")
+def eels_svd(req: EelsSvdRequest) -> dict:
+    """SVD/MSA decomposition of an SI cube (eelsSVD.m). Score maps
+    register as derived images; denoise=true registers a derived cube."""
+    ds = _cube(req.image_id)
+    try:
+        res = svd(ds.data, ds.energy_axis, req.n_components, req.denoise)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    k_show = min(req.n_score_maps, res.singular_values.size)
+    maps = [
+        _register_map(res.score_maps[:, :, j], f"SVD score {j + 1}",
+                      ds, req.image_id).model_dump()
+        for j in range(k_show)
+    ]
+    out: dict = {
+        "explained": res.explained.tolist(),
+        "cumulative": res.cumulative.tolist(),
+        "energy": ds.energy_axis.tolist(),
+        "eigenspectra": res.eigenspectra[:, :k_show].T.tolist(),
+        "score_maps": maps,
+    }
+    if res.denoised_cube is not None:
+        out["denoised"] = _register_cube(
+            res.denoised_cube, "SVD denoised", ds, req.image_id
+        ).model_dump()
+    return out
+
+
+class EelsAlignRequest(BaseModel):
+    image_id: str
+    window: tuple[float, float] = (-20.0, 20.0)
+    reference: str = "mean"                    # | "max"
+
+
+@router.post("/eels/align-zlp")
+def eels_align_zlp(req: EelsAlignRequest) -> dict:
+    """Integer-channel ZLP alignment (eelsAlignZLP.m). Registers the
+    aligned cube as a derived spectrum-image."""
+    ds = _cube(req.image_id)
+    try:
+        aligned, shifts = align_zlp(ds.data, ds.energy_axis,
+                                    req.window, req.reference)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    meta = _register_cube(aligned, "ZLP aligned", ds, req.image_id)
+    return {
+        "aligned": meta.model_dump(),
+        "max_shift": int(np.abs(shifts).max()),
+        "shifted_fraction": float((shifts != 0).mean()),
     }
 
 
