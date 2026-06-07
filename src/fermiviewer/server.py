@@ -128,6 +128,44 @@ def _open_browser_later(url: str, delay: float = 0.8) -> None:
     threading.Timer(delay, webbrowser.open, [url]).start()
 
 
+def _run_desktop() -> None:
+    """Desktop standalone (handoff §11 option B): uvicorn in a thread,
+    pywebview native window on top — pure Python, no Rust toolchain.
+    Closing the window stops the server."""
+    import threading
+
+    import uvicorn
+    import webview
+
+    if _frontend_dist() is None:
+        print(
+            "frontend/dist not found — build it once with:\n"
+            "    cd frontend && npm run build"
+        )
+        return
+
+    global _server
+    server = uvicorn.Server(
+        uvicorn.Config(app, host=_HOST, port=_PORT, log_level="warning")
+    )
+    _server = server
+    t = threading.Thread(target=server.run, daemon=True)
+    t.start()
+
+    webview.create_window(
+        "FermiViewer",
+        f"http://{_HOST}:{_PORT}",
+        width=1440,
+        height=920,
+        background_color="#16141d",
+    )
+    try:
+        webview.start()
+    finally:
+        server.should_exit = True
+        t.join(timeout=5)
+
+
 def _run_dev() -> None:
     """Vite dev server (HMR) + reloading uvicorn in one terminal."""
     import os
@@ -169,10 +207,18 @@ def main() -> None:
         action="store_true",
         help="keep the server running after the last tab closes",
     )
+    parser.add_argument(
+        "--desktop",
+        action="store_true",
+        help="run as a desktop app in a native window (pywebview)",
+    )
     args = parser.parse_args()
 
     if args.dev:
         _run_dev()
+        return
+    if args.desktop:
+        _run_desktop()
         return
 
     dist = _frontend_dist()

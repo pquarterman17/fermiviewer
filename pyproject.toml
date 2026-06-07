@@ -17,6 +17,7 @@ dependencies = [
     "tifffile>=2024.8",
     "orjson>=3.10",
     "python-multipart>=0.0.12",
+    "pywebview>=6.2.1",
 ]
 # LICENSE GUARDRAIL: no GPL packages (rosettasciio, hyperspy, exspy) may
 # ever appear in [project.dependencies] — this project is Apache-2.0.
