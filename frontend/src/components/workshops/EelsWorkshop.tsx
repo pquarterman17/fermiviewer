@@ -16,6 +16,7 @@ import {
   type Spectrum,
 } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
+import EelsAdvanced from "./EelsAdvanced";
 
 interface EdgeRow extends EelsEdge {
   key: number;
@@ -244,6 +245,12 @@ export default function EelsWorkshop() {
           </tbody>
         </table>
       )}
+
+      <EelsAdvanced
+        activeId={activeId}
+        isCube={isCube}
+        units={spectrum?.units ?? "eV"}
+      />
     </div>
   );
 }

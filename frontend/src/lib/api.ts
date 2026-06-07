@@ -234,6 +234,91 @@ export function eelsMap(
   });
 }
 
+// ── EELS advanced (thickness / KK / Fourier-log / SVD / align) ──────
+
+export function eelsThickness(
+  id: string,
+  zlpWindow: [number, number] = [-5, 5],
+): Promise<{
+  map: ImageMeta;
+  mean_t_over_lambda: number;
+  valid_fraction: number;
+}> {
+  return post("/api/eels/thickness", { image_id: id, zlp_window: zlpWindow });
+}
+
+export interface KKResult {
+  energy: number[];
+  eps1: number[];
+  eps2: number[];
+  elf: number[];
+  optical_conductivity: number[];
+  refractive_index: number[];
+  thickness_nm: number;
+  t_over_lambda: number;
+}
+
+export function eelsKK(
+  id: string,
+  opts: {
+    zlpWindow?: [number, number];
+    refractiveIndex?: number;
+    accKv?: number;
+  } = {},
+): Promise<KKResult> {
+  return post("/api/eels/kk", {
+    image_id: id,
+    zlp_window: opts.zlpWindow ?? [-5, 5],
+    refractive_index: opts.refractiveIndex ?? null,
+    acc_voltage_kv: opts.accKv ?? 200,
+  });
+}
+
+export function eelsFourierLog(
+  id: string,
+  zlpWindow: [number, number] = [-5, 5],
+): Promise<{
+  energy: number[];
+  spectrum: number[];
+  ssd: number[];
+  t_over_lambda: number;
+}> {
+  return post("/api/eels/fourier-log", {
+    image_id: id,
+    zlp_window: zlpWindow,
+  });
+}
+
+export function eelsSvd(
+  id: string,
+  opts: { nComponents?: number; denoise?: boolean; nScoreMaps?: number } = {},
+): Promise<{
+  explained: number[];
+  cumulative: number[];
+  energy: number[];
+  eigenspectra: number[][];
+  score_maps: ImageMeta[];
+  denoised?: ImageMeta;
+}> {
+  return post("/api/eels/svd", {
+    image_id: id,
+    n_components: opts.nComponents ?? 0,
+    denoise: opts.denoise ?? false,
+    n_score_maps: opts.nScoreMaps ?? 4,
+  });
+}
+
+export function eelsAlignZlp(
+  id: string,
+  window: [number, number] = [-20, 20],
+): Promise<{
+  aligned: ImageMeta;
+  max_shift: number;
+  shifted_fraction: number;
+}> {
+  return post("/api/eels/align-zlp", { image_id: id, window });
+}
+
 export interface EelsEdge {
   element: string;
   shell: string;
