@@ -134,6 +134,7 @@ interface ViewerState {
 
   openPaths: (paths: string[]) => Promise<void>;
   openFiles: (files: FileList | File[]) => Promise<void>;
+  ingest: (metas: ImageMeta[]) => void;
   saveWorkspace: (path: string) => Promise<void>;
   loadWorkspace: (path: string) => Promise<void>;
   setActive: (id: string) => void;
@@ -207,6 +208,9 @@ export const useViewer = create<ViewerState>((set, get) => ({
   openFiles: async (files) => {
     _ingest(set, await uploadFiles(files));
   },
+
+  /** Register derived/analysis result images in the library. */
+  ingest: (metas) => _ingest(set, metas),
 
   saveWorkspace: async (path) => {
     const s = get();

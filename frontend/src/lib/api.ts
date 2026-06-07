@@ -347,6 +347,88 @@ export async function exportImage(
   };
 }
 
+// ── item-28 analysis surface ────────────────────────────────────────
+
+/** Apply a server-side filter; returns the derived image's meta. */
+export function applyFilter(
+  id: string,
+  kind: string,
+  params: Record<string, unknown> = {},
+): Promise<ImageMeta> {
+  return post("/api/filter", { image_id: id, kind, params });
+}
+
+/** Log-magnitude FFT registered as a derived image. */
+export async function imageFft(id: string): Promise<ImageMeta> {
+  return json(await fetch(`/api/image/${id}/fft`, { method: "POST" }));
+}
+
+export function analyzeRadial(
+  id: string,
+  opts: {
+    azimuthal?: boolean;
+    sectorMin?: number;
+    sectorMax?: number;
+  } = {},
+): Promise<{
+  radii: number[];
+  intensity: (number | null)[];
+  unit: string;
+}> {
+  return post("/api/analyze/radial", {
+    image_id: id,
+    azimuthal: opts.azimuthal ?? false,
+    sector_min: opts.sectorMin ?? 0,
+    sector_max: opts.sectorMax ?? 360,
+  });
+}
+
+export function analyzeVdf(
+  id: string,
+  center: [number, number],
+  radius: number,
+): Promise<{ image: ImageMeta }> {
+  return post("/api/analyze/vdf", { image_id: id, center, radius });
+}
+
+export function analyzeGpa(
+  id: string,
+  g1: [number, number],
+  g2: [number, number],
+): Promise<{ maps: ImageMeta[]; mean: Record<string, number> }> {
+  return post("/api/analyze/gpa", { image_id: id, g1, g2 });
+}
+
+export function analyzeParticles(
+  id: string,
+  opts: { threshold?: number | null; minArea?: number; watershed?: boolean },
+): Promise<{
+  n_particles: number;
+  threshold: number;
+  labels: ImageMeta;
+  particles: unknown[];
+}> {
+  return post("/api/analyze/particles", {
+    image_id: id,
+    threshold: opts.threshold ?? null,
+    min_area: opts.minArea ?? 1,
+    use_watershed: opts.watershed ?? false,
+  });
+}
+
+export function analyzeGrains(
+  id: string,
+  k: number,
+): Promise<{ n_grains: number; labels: ImageMeta; mean_diameter_px: number }> {
+  return post("/api/analyze/grains", { image_id: id, k });
+}
+
+export function analyzeRoughness(
+  id: string,
+): Promise<Record<string, number | string>> {
+  return post("/api/analyze/roughness", { image_id: id });
+}
+
 // ── workspace persistence ───────────────────────────────────────────
 
 export interface SessionClientState {
