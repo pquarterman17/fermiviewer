@@ -27,13 +27,14 @@ const FRAG = `
 precision highp float;
 uniform sampler2D u_tex;       // packed 16-bit: R=hi byte, G=lo byte
 uniform sampler2D u_lut;       // 256×1 colormap
-uniform vec3 u_window;         // lo, hi, gamma — normalized [0,1] units
+uniform vec4 u_window;         // lo, hi, gamma, invert — normalized units
 varying vec2 v_uv;
 void main() {
   vec4 p = texture2D(u_tex, v_uv);
   float v = (p.r * 255.0 * 256.0 + p.g * 255.0) / 65535.0;
   float t = clamp((v - u_window.x) / max(u_window.y - u_window.x, 1e-6), 0.0, 1.0);
   t = pow(t, 1.0 / max(u_window.z, 1e-3));
+  t = mix(t, 1.0 - t, u_window.w);
   gl_FragColor = texture2D(u_lut, vec2(t, 0.5));
 }`;
 
@@ -41,6 +42,7 @@ export interface Window16 {
   lo: number; // normalized [0,1] against the image min/max
   hi: number;
   gamma: number;
+  invert?: boolean;
 }
 
 export class GLRenderer {
@@ -190,7 +192,13 @@ export class GLRenderer {
     gl.uniform2f(this.u("u_imgSize"), this.imgSize.w, this.imgSize.h);
     gl.uniform2f(this.u("u_vpSize"), vp.w, vp.h);
     gl.uniform3f(this.u("u_view"), view.z, view.px, view.py);
-    gl.uniform3f(this.u("u_window"), win.lo, win.hi, win.gamma);
+    gl.uniform4f(
+      this.u("u_window"),
+      win.lo,
+      win.hi,
+      win.gamma,
+      win.invert ? 1.0 : 0.0,
+    );
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   }
 

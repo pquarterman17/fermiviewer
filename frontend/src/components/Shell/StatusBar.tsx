@@ -10,6 +10,11 @@ export default function StatusBar() {
   const meta = useViewer((s) =>
     s.activeId ? (s.images[s.activeId] ?? null) : null,
   );
+  const nOfM = useViewer((s) => {
+    if (!s.activeId) return "";
+    const i = s.order.indexOf(s.activeId);
+    return i === -1 ? "" : `${i + 1} / ${s.order.length}`;
+  });
   const cursor = useStageInfo((s) => s.cursor);
   const zoom = useStageInfo((s) => s.zoom);
 
@@ -19,8 +24,14 @@ export default function StatusBar() {
       <span className="grow" />
       {meta && (
         <>
+          {nOfM && <span>{nOfM}</span>}
           <span>{meta.shape.join(" × ")}</span>
           <span>{meta.dtype}</span>
+          {meta.pixel_size !== null && (
+            <span>
+              {Number(meta.pixel_size.toPrecision(3))} {meta.pixel_unit}/px
+            </span>
+          )}
           {cursor && (
             <span>
               x {Math.floor(cursor.x)} · y {Math.floor(cursor.y)}

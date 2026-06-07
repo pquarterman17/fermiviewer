@@ -61,6 +61,27 @@ export default function App() {
       .catch(() => undefined);
   }, []);
 
+  // ── drag-drop open (checklist L) ──
+  useEffect(() => {
+    const onDragOver = (e: DragEvent) => {
+      if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
+    };
+    const onDrop = (e: DragEvent) => {
+      const files = e.dataTransfer?.files;
+      if (files && files.length > 0) {
+        e.preventDefault();
+        const s = useViewer.getState();
+        s.openFiles(files).catch((err: Error) => s.setStatus(err.message));
+      }
+    };
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, []);
+
   // ── keyboard map (handoff §9) ──
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

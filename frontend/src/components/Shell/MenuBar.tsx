@@ -11,12 +11,13 @@ import {
   analyzeRoughness,
   analyzeVdf,
   applyFilter,
+  exportImage,
   imageFft,
   supportedExtensions,
   type ImageMeta,
 } from "../../lib/api";
 import { useStageInfo } from "../../store/stage";
-import { useViewer } from "../../store/viewer";
+import { DEFAULT_DISPLAY as DD, useViewer } from "../../store/viewer";
 
 /** Prompt for a number; null = cancelled, default on empty input. */
 function askNum(label: string, fallback: number): number | null {
@@ -174,6 +175,36 @@ export default function MenuBar({
               .loadWorkspace(p)
               .catch((e: Error) => store.setStatus(e.message));
           }
+        },
+      },
+      {
+        label: "Copy to Clipboard",
+        disabled: !store.activeId,
+        action: () => {
+          const id = store.activeId;
+          if (!id) return;
+          const d = store.display[id] ?? DD;
+          // export mirrors the screen; invert folds into the gray LUT
+          const cmap =
+            d.invert && d.cmap === "gray" ? "invert" : d.cmap;
+          exportImage(id, {
+            format: "png",
+            scale: 1,
+            lo: d.lo,
+            hi: d.hi,
+            gamma: d.gamma,
+            cmap,
+            include: [],
+          })
+            .then(({ blob }) =>
+              navigator.clipboard.write([
+                new ClipboardItem({ "image/png": blob }),
+              ]),
+            )
+            .then(() => store.setStatus("copied image to clipboard"))
+            .catch((e: Error) =>
+              store.setStatus(`clipboard: ${e.message}`),
+            );
         },
       },
       {

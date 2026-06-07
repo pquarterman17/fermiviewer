@@ -168,6 +168,7 @@ function ComparePanel({
       lo: display.lo,
       hi: display.hi,
       gamma: display.gamma,
+      invert: display.invert,
     });
   }, [view, vp, display, loaded]);
 

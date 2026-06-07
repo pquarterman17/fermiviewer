@@ -169,6 +169,18 @@ export default function AdjustPanel() {
           ))}
         </select>
       </div>
+      <div className="fvd-slider-row">
+        <span className="k">Invert</span>
+        <label className="fvd-check">
+          <input
+            type="checkbox"
+            checked={display.invert}
+            onChange={(e) =>
+              setDisplay(activeId, { invert: e.target.checked })
+            }
+          />
+        </label>
+      </div>
       <div className="fvd-btn-row">
         <button
           className="fvd-btn"
@@ -179,7 +191,9 @@ export default function AdjustPanel() {
         </button>
         <button
           className="fvd-btn"
-          onClick={() => setDisplay(activeId, { lo: 0, hi: 1, gamma: 1 })}
+          onClick={() =>
+            setDisplay(activeId, { lo: 0, hi: 1, gamma: 1, invert: false })
+          }
         >
           Reset
         </button>

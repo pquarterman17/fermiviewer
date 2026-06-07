@@ -29,9 +29,16 @@ export interface Display {
   hi: number;
   gamma: number;
   cmap: ColormapName;
+  invert: boolean;
 }
 
-export const DEFAULT_DISPLAY: Display = { lo: 0, hi: 1, gamma: 1, cmap: "gray" };
+export const DEFAULT_DISPLAY: Display = {
+  lo: 0,
+  hi: 1,
+  gamma: 1,
+  cmap: "gray",
+  invert: false,
+};
 
 export type MeasureKind = "distance" | "profile" | "angle" | "roi";
 
@@ -64,6 +71,16 @@ export interface ToolWindowState {
 
 const VIEWS_KEY = "fv_views";
 const OVERLAY_KEY = "fv_overlay";
+const THEME_KEY = "fv_theme";
+
+function initialTheme(): Theme {
+  // persisted preference wins; otherwise follow the OS (checklist N)
+  const stored = localStorage.getItem(THEME_KEY);
+  if (stored === "dark" || stored === "light") return stored;
+  return window.matchMedia?.("(prefers-color-scheme: light)").matches
+    ? "light"
+    : "dark";
+}
 
 function loadJson<T>(key: string, fallback: T): T {
   try {
@@ -187,8 +204,11 @@ export const useViewer = create<ViewerState>((set, get) => ({
   measures: {},
   selectedMeasure: null,
   roiStats: {},
-  theme:
-    (document.documentElement.getAttribute("data-theme") as Theme) ?? "dark",
+  theme: (() => {
+    const t = initialTheme();
+    document.documentElement.setAttribute("data-theme", t);
+    return t;
+  })(),
   overlay: loadJson<OverlayStyle>(OVERLAY_KEY, { size: "M", color: "#ffffff" }),
   captureMode: "none",
   panTool: false,
@@ -401,6 +421,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   toggleTheme: () => {
     const theme: Theme = get().theme === "dark" ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem(THEME_KEY, theme);
     set({ theme });
   },
 

@@ -148,13 +148,17 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
           const dl = m["display_low"];
           const dh = m["display_high"];
           const dg = m["display_gamma"];
+          const di = m["display_inverted"];
           if (typeof dl === "number" && typeof dh === "number" && dh > dl) {
             const span = r.vmax - r.vmin || 1;
             setDisplay(activeId, {
               lo: Math.max(0, (dl - r.vmin) / span),
               hi: Math.min(1, (dh - r.vmin) / span),
               gamma: typeof dg === "number" && dg > 0 ? dg : 1,
+              invert: di === true,
             });
+          } else if (di === true) {
+            setDisplay(activeId, { invert: true });
           }
         }
       })
@@ -178,7 +182,12 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       view ?? { z: 1, px: 0.5, py: 0.5 },
       vp,
       window.devicePixelRatio || 1,
-      { lo: display.lo, hi: display.hi, gamma: display.gamma },
+      {
+        lo: display.lo,
+        hi: display.hi,
+        gamma: display.gamma,
+        invert: display.invert,
+      },
     );
   }, [view, vp, imgSize, display]);
 
