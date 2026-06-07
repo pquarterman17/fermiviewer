@@ -47,6 +47,14 @@ class SessionStore:
                 out.append((img_id, ds))
         return out
 
+    def add_parsed(self, ds: DataStruct, name: str) -> str:
+        """Register an already-decoded DataStruct (e.g. browser upload)."""
+        img_id = uuid.uuid4().hex[:12]
+        with self._lock:
+            self._images[img_id] = ds
+            self._names[img_id] = name
+        return img_id
+
     def add_derived(self, ds: DataStruct, name: str, parent_id: str) -> str:
         """Register a computed image (FFT/filter result) with lineage."""
         img_id = uuid.uuid4().hex[:12]

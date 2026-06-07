@@ -9,6 +9,7 @@ import {
   loadSession,
   openSession,
   saveSession,
+  uploadFiles,
   type ImageMeta,
   type RoiStats,
 } from "../lib/api";
@@ -75,6 +76,29 @@ function loadJson<T>(key: string, fallback: T): T {
 
 let measureSeq = 0;
 
+type SetState = (
+  fn: (s: { images: Record<string, ImageMeta>; order: string[]; activeId: string | null }) => object,
+) => void;
+
+/** Merge newly opened images into the library (shared by path + upload). */
+function _ingest(set: SetState, metas: ImageMeta[]): void {
+  set((s) => {
+    const images = { ...s.images };
+    const order = [...s.order];
+    for (const m of metas) {
+      if (!(m.id in images)) order.push(m.id);
+      images[m.id] = m;
+    }
+    const last = metas[metas.length - 1];
+    return {
+      images,
+      order,
+      activeId: last ? last.id : s.activeId,
+      status: `opened ${metas.length} file${metas.length === 1 ? "" : "s"}`,
+    };
+  });
+}
+
 interface ViewerState {
   // library
   order: string[];
@@ -109,6 +133,7 @@ interface ViewerState {
   status: string;
 
   openPaths: (paths: string[]) => Promise<void>;
+  openFiles: (files: FileList | File[]) => Promise<void>;
   saveWorkspace: (path: string) => Promise<void>;
   loadWorkspace: (path: string) => Promise<void>;
   setActive: (id: string) => void;
@@ -176,22 +201,11 @@ export const useViewer = create<ViewerState>((set, get) => ({
   status: "ready",
 
   openPaths: async (paths) => {
-    const metas = await openSession(paths);
-    set((s) => {
-      const images = { ...s.images };
-      const order = [...s.order];
-      for (const m of metas) {
-        if (!(m.id in images)) order.push(m.id);
-        images[m.id] = m;
-      }
-      const last = metas[metas.length - 1];
-      return {
-        images,
-        order,
-        activeId: last ? last.id : s.activeId,
-        status: `opened ${metas.length} file${metas.length === 1 ? "" : "s"}`,
-      };
-    });
+    _ingest(set, await openSession(paths));
+  },
+
+  openFiles: async (files) => {
+    _ingest(set, await uploadFiles(files));
   },
 
   saveWorkspace: async (path) => {

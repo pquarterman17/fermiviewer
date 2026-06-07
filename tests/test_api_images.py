@@ -91,6 +91,40 @@ def test_histogram(client: TestClient, dm4_image) -> None:
     assert client.get(f"/api/image/{img_id}/histogram", params={"bins": 1}).status_code == 422
 
 
+def test_upload_via_picker(client: TestClient, dm4_image) -> None:
+    # multipart upload = what the browser's native file picker sends
+    with open(dm4_image, "rb") as f:
+        r = client.post(
+            "/api/session/upload",
+            files=[("files", ("picked.dm4", f, "application/octet-stream"))],
+        )
+    assert r.status_code == 200
+    m = r.json()[0]
+    assert m["name"] == "picked.dm4"
+    assert m["shape"] == [4, 6]
+    assert m["pixel_size"] == pytest.approx(0.2)
+    # fully usable afterwards (temp staging file is gone, data in memory)
+    assert client.get(f"/api/image/{m['id']}/render").status_code == 200
+    # source metadata points at the picked name, not a temp path
+    meta = client.get(f"/api/image/{m['id']}/meta").json()
+    assert meta["meta"]["source"] == "picked.dm4"
+
+    # unsupported extension → 415; corrupt content → 422
+    r2 = client.post(
+        "/api/session/upload",
+        files=[("files", ("x.xyz", b"junk", "application/octet-stream"))],
+    )
+    assert r2.status_code == 415
+    r3 = client.post(
+        "/api/session/upload",
+        files=[("files", ("bad.dm4", b"notdm4", "application/octet-stream"))],
+    )
+    assert r3.status_code == 422
+
+    exts = client.get("/api/session/supported-extensions").json()["extensions"]
+    assert ".dm4" in exts and ".tif" in exts
+
+
 def test_data16_normalized_raster(client: TestClient, dm4_image) -> None:
     img_id = client.post(
         "/api/session/open", json={"paths": [str(dm4_image)]}

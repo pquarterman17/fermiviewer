@@ -3,6 +3,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { supportedExtensions } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
 
 interface Entry {
@@ -20,7 +21,9 @@ export default function MenuBar({
   onActualSize: () => void;
 }) {
   const [open, setOpen] = useState<string | null>(null);
+  const [accept, setAccept] = useState<string>("");
   const barRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const store = useViewer();
 
   useEffect(() => {
@@ -32,10 +35,39 @@ export default function MenuBar({
     return () => window.removeEventListener("mousedown", close);
   }, [open]);
 
-  const openFiles = () => {
-    // Dev shim until the Tauri native picker (handoff §10/§11): the
-    // backend opens server-side paths, so ask for one (or ;-separated).
-    const raw = window.prompt("Open file path(s) — separate with ;");
+  // accept filter from the backend's parser registry
+  useEffect(() => {
+    supportedExtensions()
+      .then((exts) => setAccept(exts.join(",")))
+      .catch(() => undefined);
+  }, []);
+
+  // native OS picker → multipart upload
+  const openFiles = () => fileRef.current?.click();
+
+  // ⌘O / Ctrl+O opens the picker (a keydown counts as a user gesture)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        fileRef.current?.click();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const onFilesPicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      store.openFiles(files).catch((err: Error) => store.setStatus(err.message));
+    }
+    e.target.value = ""; // allow re-picking the same file
+  };
+
+  // secondary: server-side path entry (large files, no upload copy)
+  const openByPath = () => {
+    const raw = window.prompt("Open server-side path(s) — separate with ;");
     if (!raw) return;
     const paths = raw
       .split(";")
@@ -49,6 +81,7 @@ export default function MenuBar({
   const menus: Record<string, Entry[]> = {
     File: [
       { label: "Open…", shortcut: "⌘O", action: openFiles },
+      { label: "Open by Path…", action: openByPath },
       {
         label: "Save Session…",
         disabled: store.order.length === 0,
@@ -132,6 +165,14 @@ export default function MenuBar({
 
   return (
     <nav className="fvd-menubar" ref={barRef}>
+      <input
+        ref={fileRef}
+        type="file"
+        multiple
+        accept={accept || undefined}
+        style={{ display: "none" }}
+        onChange={onFilesPicked}
+      />
       {Object.entries(menus).map(([name, entries]) => (
         <div key={name} style={{ position: "relative" }}>
           <div

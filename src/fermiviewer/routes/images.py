@@ -1,16 +1,22 @@
-"""Image endpoints: open, metadata, render, histogram (handoff §8)."""
+"""Image endpoints: open, upload, metadata, render, histogram (handoff §8)."""
 
 from __future__ import annotations
 
 import io
+import tempfile
+from pathlib import Path
 
 import numpy as np
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Response, UploadFile
 from PIL import Image
 
 from fermiviewer.calc.render import histogram, to_display, to_uint16_norm
 from fermiviewer.datastruct import DataKind, DataStruct
-from fermiviewer.io.registry import UnsupportedFormatError
+from fermiviewer.io.registry import (
+    UnsupportedFormatError,
+    load_auto,
+    supported_extensions,
+)
 from fermiviewer.models import ImageMeta, OpenRequest
 from fermiviewer.session import UnknownImageError, store
 
@@ -45,6 +51,42 @@ def session_open(req: OpenRequest) -> list[ImageMeta]:
     except ValueError as e:  # parser format errors
         raise HTTPException(422, str(e)) from None
     return [ImageMeta.from_datastruct(i, store.name(i), ds) for i, ds in opened]
+
+
+@router.post("/session/upload")
+async def session_upload(files: list[UploadFile]) -> list[ImageMeta]:
+    """Open files sent by the browser's native picker.
+
+    The SPA can't hand the server a filesystem path, so the picker
+    uploads bytes (a memcpy on localhost); each file is staged to a
+    temp file under its original name so extension dispatch and
+    content sniffers behave exactly like /session/open.
+    """
+    if not files:
+        raise HTTPException(422, "no files in upload")
+    metas: list[ImageMeta] = []
+    with tempfile.TemporaryDirectory(prefix="fv_upload_") as tmp:
+        for up in files:
+            name = Path(up.filename or "upload").name  # strip any path
+            staged = Path(tmp) / name
+            staged.write_bytes(await up.read())
+            try:
+                ds = load_auto(staged)
+            except UnsupportedFormatError as e:
+                raise HTTPException(415, str(e)) from None
+            except ValueError as e:
+                raise HTTPException(422, f"{name}: {e}") from None
+            # don't leak the vanishing temp path as the source
+            ds.metadata["source"] = name
+            img_id = store.add_parsed(ds, name)
+            metas.append(ImageMeta.from_datastruct(img_id, name, ds))
+    return metas
+
+
+@router.get("/session/supported-extensions")
+def session_supported_extensions() -> dict[str, list[str]]:
+    """Extension list for the picker's accept filter."""
+    return {"extensions": list(supported_extensions())}
 
 
 @router.get("/session/images")

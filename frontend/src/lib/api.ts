@@ -50,6 +50,23 @@ export async function listImages(): Promise<ImageMeta[]> {
   return json(await fetch("/api/session/images"));
 }
 
+/** Open files picked with the browser's native dialog (multipart). */
+export async function uploadFiles(files: FileList | File[]): Promise<ImageMeta[]> {
+  const form = new FormData();
+  for (const f of Array.from(files)) form.append("files", f, f.name);
+  return json(
+    await fetch("/api/session/upload", { method: "POST", body: form }),
+  );
+}
+
+/** Supported extensions for the picker's accept filter. */
+export async function supportedExtensions(): Promise<string[]> {
+  const r = await json<{ extensions: string[] }>(
+    await fetch("/api/session/supported-extensions"),
+  );
+  return r.extensions;
+}
+
 export async function closeImage(id: string): Promise<void> {
   await json(await fetch(`/api/image/${id}`, { method: "DELETE" }));
 }
