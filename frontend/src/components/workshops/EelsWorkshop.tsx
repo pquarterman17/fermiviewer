@@ -17,12 +17,24 @@ import {
 } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
 import EelsAdvanced from "./EelsAdvanced";
+import RegionPicker, { type Rect1 } from "./RegionPicker";
 
 interface EdgeRow extends EelsEdge {
   key: number;
 }
 
 let edgeSeq = 0;
+
+/** Common EELS edge onsets (eV) for the edge-ID overlay. */
+const KNOWN_EDGES: [string, number][] = [
+  ["Li-K", 55], ["B-K", 188], ["C-K", 284], ["N-K", 401], ["O-K", 532],
+  ["F-K", 685], ["Na-K", 1072], ["Mg-K", 1305], ["Al-K", 1560],
+  ["Si-K", 1839], ["Si-L2,3", 99], ["P-L2,3", 132], ["S-L2,3", 165],
+  ["Ca-L2,3", 346], ["Ti-L2,3", 456], ["V-L2,3", 513], ["Cr-L2,3", 575],
+  ["Mn-L2,3", 640], ["Fe-L2,3", 708], ["Co-L2,3", 779], ["Ni-L2,3", 855],
+  ["Cu-L2,3", 931], ["Zn-L2,3", 1020], ["Sr-L2,3", 1940],
+  ["La-M4,5", 832], ["Ce-M4,5", 883], ["Gd-M4,5", 1185],
+];
 
 export default function EelsWorkshop() {
   const activeId = useViewer((s) => s.activeId);
@@ -39,20 +51,23 @@ export default function EelsWorkshop() {
   const [sigHi, setSigHi] = useState("");
   const [edges, setEdges] = useState<EdgeRow[]>([]);
   const [quant, setQuant] = useState<EelsQuantResult | null>(null);
+  const [showEdges, setShowEdges] = useState(false);
+  const [explore, setExplore] = useState(false);
+  const [region, setRegion] = useState<Rect1 | null>(null);
   const plotHost = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
 
   const spectral = meta !== null && meta.kind !== "image";
   const isCube = meta?.kind === "spectrum_image";
 
-  // load the spectrum whenever the active image changes
+  // load the spectrum whenever the active image / region changes
   useEffect(() => {
     setSpectrum(null);
     setFit(null);
     setQuant(null);
     if (!activeId || !spectral) return;
     let alive = true;
-    fetchSpectrum(activeId)
+    fetchSpectrum(activeId, region ?? undefined)
       .then((s) => {
         if (!alive) return;
         setSpectrum(s);
@@ -69,7 +84,13 @@ export default function EelsWorkshop() {
     return () => {
       alive = false;
     };
-  }, [activeId, spectral, setStatus]);
+  }, [activeId, spectral, region, setStatus]);
+
+  // reset the explorer region when switching images
+  useEffect(() => {
+    setRegion(null);
+    setExplore(false);
+  }, [activeId]);
 
   // (re)build the plot when spectrum or fit changes
   useEffect(() => {
@@ -99,6 +120,32 @@ export default function EelsWorkshop() {
         ],
         legend: { show: false },
         cursor: { y: false },
+        hooks: {
+          draw: [
+            (u) => {
+              if (!showEdges) return;
+              // edge-ID overlay: vertical markers at known onsets
+              const ctx = u.ctx;
+              const sc = u.scales["x"];
+              const lo = sc?.min ?? 0;
+              const hi = sc?.max ?? 0;
+              ctx.save();
+              ctx.strokeStyle = "rgba(244, 63, 94, 0.55)";
+              ctx.fillStyle = "rgba(244, 63, 94, 0.9)";
+              ctx.font = "10px monospace";
+              for (const [name, ev] of KNOWN_EDGES) {
+                if (ev < lo || ev > hi) continue;
+                const x = u.valToPos(ev, "x", true);
+                ctx.beginPath();
+                ctx.moveTo(x, u.bbox.top);
+                ctx.lineTo(x, u.bbox.top + u.bbox.height);
+                ctx.stroke();
+                ctx.fillText(name, x + 2, u.bbox.top + 10);
+              }
+              ctx.restore();
+            },
+          ],
+        },
       },
       data,
       host,
@@ -107,7 +154,7 @@ export default function EelsWorkshop() {
       plotRef.current?.destroy();
       plotRef.current = null;
     };
-  }, [spectrum, fit]);
+  }, [spectrum, fit, showEdges]);
 
   const runFit = () => {
     if (!activeId) return;
@@ -174,6 +221,37 @@ export default function EelsWorkshop() {
   return (
     <div className="fvd-ws">
       <div ref={plotHost} className="fvd-ws-plot" />
+      <div className="fvd-ws-row">
+        <label className="fvd-check">
+          <input
+            type="checkbox"
+            checked={showEdges}
+            onChange={(e) => setShowEdges(e.target.checked)}
+          />
+          Edge IDs
+        </label>
+        {isCube && (
+          <label className="fvd-check">
+            <input
+              type="checkbox"
+              checked={explore}
+              onChange={(e) => {
+                setExplore(e.target.checked);
+                if (!e.target.checked) setRegion(null);
+              }}
+            />
+            Region explorer
+          </label>
+        )}
+        {region && (
+          <span className="k">
+            [{region[0]},{region[1]}]–[{region[2]},{region[3]}]
+          </span>
+        )}
+      </div>
+      {explore && activeId && (
+        <RegionPicker id={activeId} onRegion={setRegion} />
+      )}
       <div className="fvd-ws-row">
         <span className="k">Background</span>
         <input value={bgLo} onChange={(e) => setBgLo(e.target.value)} />

@@ -267,18 +267,43 @@ def image_tile(img_id: str, z: int = 0, x: int = 0, y: int = 0) -> Response:
 
 
 @router.get("/image/{img_id}/spectrum")
-def image_spectrum(img_id: str) -> dict[str, object]:
+def image_spectrum(
+    img_id: str,
+    row0: int | None = None,
+    col0: int | None = None,
+    row1: int | None = None,
+    col1: int | None = None,
+) -> dict[str, object]:
     """Sum spectrum (SI cubes) or the spectrum itself (1D) for the
-    EELS/EDS workshop plots."""
+    EELS/EDS workshop plots. Optional 1-based inclusive rect → the
+    region-summed spectrum (SI explorer: pixel/ROI spectra)."""
     ds = _get(img_id)
     if ds.kind is DataKind.IMAGE:
         raise HTTPException(400, "2D images have no spectral axis")
     energy = ds.energy_axis
-    counts = ds.sum_spectrum()
+    region = None
+    if ds.kind is DataKind.SPECTRUM_IMAGE and None not in (
+        row0, col0, row1, col1
+    ):
+        h, w, _ = ds.data.shape
+        assert row0 is not None and row1 is not None
+        assert col0 is not None and col1 is not None
+        r0, r1 = sorted((row0, row1))
+        c0, c1 = sorted((col0, col1))
+        r0, c0 = max(r0, 1), max(c0, 1)
+        r1, c1 = min(r1, h), min(c1, w)
+        if r0 > r1 or c0 > c1:
+            raise HTTPException(422, "region is empty after clamping")
+        cube = np.asarray(ds.data, dtype=np.float64)
+        counts = cube[r0 - 1:r1, c0 - 1:c1, :].sum(axis=(0, 1))
+        region = [r0, c0, r1, c1]
+    else:
+        counts = ds.sum_spectrum()
     return {
         "energy": energy.tolist(),
         "counts": np.asarray(counts, dtype=np.float64).tolist(),
         "units": ds.energy_cal.units,
+        "region": region,
     }
 
 

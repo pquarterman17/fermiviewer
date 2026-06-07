@@ -24,6 +24,10 @@ export default function FftMaskWorkshop() {
   const ingest = useViewer((s) => s.ingestDerived);
   const setStatus = useViewer((s) => s.setStatus);
 
+  const measures = useViewer((s) =>
+    s.activeId ? (s.measures[s.activeId] ?? null) : null,
+  );
+
   const [fftId, setFftId] = useState<string | null>(null);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(
     null,
@@ -31,6 +35,7 @@ export default function FftMaskWorkshop() {
   const [masks, setMasks] = useState<Mask[]>([]);
   const [radius, setRadius] = useState("6");
   const [mode, setMode] = useState<"pass" | "reject">("pass");
+  const [local, setLocal] = useState(false); // live/local FFT of the ROI
   const [busy, setBusy] = useState(false);
 
   // a derived FFT view of the active image powers the editor; the
@@ -38,13 +43,27 @@ export default function FftMaskWorkshop() {
   const isImage = meta?.kind === "image";
   const sourceLooksFft = meta?.name.startsWith("FFT(") ?? false;
 
+  // latest ROI rect (1-based) for the local-FFT toggle
+  const roi = (measures ?? []).filter((m) => m.kind === "roi").at(-1);
+  const roiRect: [number, number, number, number] | null =
+    roi && meta
+      ? [
+          Math.round(Math.min(roi.pts[0].y, roi.pts[1].y) * meta.shape[0]) + 1,
+          Math.round(Math.min(roi.pts[0].x, roi.pts[1].x) * meta.shape[1]) + 1,
+          Math.round(Math.max(roi.pts[0].y, roi.pts[1].y) * meta.shape[0]),
+          Math.round(Math.max(roi.pts[0].x, roi.pts[1].x) * meta.shape[1]),
+        ]
+      : null;
+  const rectKey = roiRect?.join(",") ?? "";
+
   useEffect(() => {
     setFftId(null);
     setNatural(null);
     setMasks([]);
     if (!activeId || !isImage || sourceLooksFft) return;
     let stale = false;
-    imageFft(activeId)
+    const rect = local && roiRect ? roiRect : undefined;
+    imageFft(activeId, rect)
       .then((m) => {
         if (!stale) setFftId(m.id);
       })
@@ -52,7 +71,9 @@ export default function FftMaskWorkshop() {
     return () => {
       stale = true;
     };
-  }, [activeId, isImage, sourceLooksFft, setStatus]);
+    // rectKey stands in for roiRect (fresh array per render)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, isImage, sourceLooksFft, local, rectKey, setStatus]);
 
   if (!isImage || sourceLooksFft) {
     return (
@@ -129,6 +150,20 @@ export default function FftMaskWorkshop() {
       </div>
 
       <div className="fvd-ws-row">
+        <label
+          className={`fvd-check${roiRect ? "" : " disabled"}`}
+          title={roiRect ? "" : "draw an ROI on the image first (R)"}
+        >
+          <input
+            type="checkbox"
+            checked={local && roiRect !== null}
+            disabled={!roiRect}
+            onChange={(e) => setLocal(e.target.checked)}
+          />
+          Live FFT of ROI
+        </label>
+      </div>
+      <div className="fvd-ws-row">
         <span className="k">radius</span>
         <input
           value={radius}
@@ -168,7 +203,12 @@ export default function FftMaskWorkshop() {
         </button>
         <button
           className="fvd-btn primary"
-          disabled={busy || masks.length === 0}
+          disabled={busy || masks.length === 0 || local}
+          title={
+            local
+              ? "masks apply to the full-image FFT — switch Live FFT off"
+              : ""
+          }
           onClick={apply}
         >
           {busy ? "Filtering…" : "Apply"}

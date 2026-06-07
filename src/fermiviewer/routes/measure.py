@@ -90,10 +90,25 @@ def measure_roi(req: RoiRequest) -> dict:
     return {**stats, "unit": ds.pixel_unit or "px"}
 
 
+class FftRequest(BaseModel):
+    # optional 1-based inclusive region (live/local FFT, checklist J)
+    rect: tuple[float, float, float, float] | None = None
+
+
 @router.post("/image/{img_id}/fft")
-def image_fft(img_id: str) -> ImageMeta:
-    """Log-magnitude FFT registered as a derived image."""
+def image_fft(img_id: str, req: FftRequest | None = None) -> ImageMeta:
+    """Log-magnitude FFT registered as a derived image. An optional
+    rect computes the LOCAL FFT of that region only."""
     ds, raster = _raster(img_id)
+    if req is not None and req.rect is not None:
+        h, w = raster.shape
+        r0, r1 = sorted((int(req.rect[0]), int(req.rect[2])))
+        c0, c1 = sorted((int(req.rect[1]), int(req.rect[3])))
+        r0, c0 = max(r0, 1), max(c0, 1)
+        r1, c1 = min(r1, h), min(c1, w)
+        if r1 - r0 < 4 or c1 - c0 < 4:
+            raise HTTPException(422, "FFT region too small (≥5 px)")
+        raster = raster[r0 - 1:r1, c0 - 1:c1]
     mag, _ = compute_fft(raster)
     derived = DataStruct(
         data=np.ascontiguousarray(mag), kind=DataKind.IMAGE,

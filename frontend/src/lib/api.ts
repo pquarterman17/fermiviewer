@@ -190,8 +190,14 @@ export interface Spectrum {
   units: string;
 }
 
-export async function fetchSpectrum(id: string): Promise<Spectrum> {
-  return json(await fetch(`/api/image/${id}/spectrum`));
+export async function fetchSpectrum(
+  id: string,
+  region?: [number, number, number, number], // (row0, col0, row1, col1) 1-based
+): Promise<Spectrum> {
+  const q = region
+    ? `?row0=${region[0]}&col0=${region[1]}&row1=${region[2]}&col1=${region[3]}`
+    : "";
+  return json(await fetch(`/api/image/${id}/spectrum${q}`));
 }
 
 async function post<T>(url: string, body: unknown): Promise<T> {
@@ -475,10 +481,20 @@ export function applyFilter(
   return post("/api/filter", { image_id: id, kind, params });
 }
 
-/** Log-magnitude FFT registered as a derived image. */
-export async function imageFft(id: string): Promise<ImageMeta> {
+/** Log-magnitude FFT registered as a derived image. Optional 1-based
+ *  rect computes the LOCAL FFT of that region (live-FFT). */
+export async function imageFft(
+  id: string,
+  rect?: [number, number, number, number],
+): Promise<ImageMeta> {
   recordPathOp("/api/image/{id}/fft"); // macro capture
-  return json(await fetch(`/api/image/${id}/fft`, { method: "POST" }));
+  return json(
+    await fetch(`/api/image/${id}/fft`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(rect ? { rect } : {}),
+    }),
+  );
 }
 
 /** Masked-FFT inverse (Fourier filter). Masks are (row, col, radius)
@@ -540,7 +556,12 @@ export interface ParticleRow {
 
 export function analyzeParticles(
   id: string,
-  opts: { threshold?: number | null; minArea?: number; watershed?: boolean },
+  opts: {
+    threshold?: number | null;
+    minArea?: number;
+    watershed?: boolean;
+    polarity?: "bright" | "dark";
+  },
 ): Promise<{
   n_particles: number;
   threshold: number;
@@ -553,6 +574,7 @@ export function analyzeParticles(
     threshold: opts.threshold ?? null,
     min_area: opts.minArea ?? 1,
     use_watershed: opts.watershed ?? false,
+    polarity: opts.polarity ?? "bright",
   });
 }
 

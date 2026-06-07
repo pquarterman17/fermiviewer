@@ -10,16 +10,27 @@ import {
   analyzeAtoms,
   analyzeCtf,
   analyzeLattice,
+  analyzeParticles,
   analyzeStitch,
   analyzeTemplate,
+  fetchData16,
   renderUrl,
   type AtomsResult,
   type CtfResult,
+  type Raster16,
 } from "../../lib/api";
 import { useViewer, type Measure } from "../../store/viewer";
+import { useResults } from "../overlays/ResultsWindow";
 
 const VIEW_W = 300;
-const MODES = ["Atoms", "Template", "CTF", "Lattice", "Stitch"] as const;
+const MODES = [
+  "Atoms",
+  "Particles",
+  "Template",
+  "CTF",
+  "Lattice",
+  "Stitch",
+] as const;
 type Mode = (typeof MODES)[number];
 
 const NO_MEASURES: Measure[] = [];
@@ -51,6 +62,9 @@ export default function StructureWorkshop() {
       ) : (
         <>
           {mode === "Atoms" && activeId && <AtomsMode id={activeId} />}
+          {mode === "Particles" && activeId && (
+            <ParticlesMode id={activeId} />
+          )}
           {mode === "Template" && activeId && (
             <TemplateMode id={activeId} />
           )}
@@ -197,6 +211,143 @@ function AtomsMode({ id }: { id: string }) {
             ` · ${res.converged.filter(Boolean).length} converged`}
         </div>
       )}
+    </>
+  );
+}
+
+// ── Particles (live threshold preview) ──────────────────────────────
+
+function ParticlesMode({ id }: { id: string }) {
+  const setStatus = useViewer((s) => s.setStatus);
+  const [thresh, setThresh] = useState(0.5); // normalized vs raster range
+  const [polarity, setPolarity] = useState<"bright" | "dark">("bright");
+  const [minArea, setMinArea] = useState("5");
+  const [busy, setBusy] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rasterRef = useRef<Raster16 | null>(null);
+  const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
+
+  // fetch the raw raster once per image
+  useEffect(() => {
+    rasterRef.current = null;
+    setDims(null);
+    let stale = false;
+    fetchData16(id)
+      .then((r) => {
+        if (stale) return;
+        rasterRef.current = r;
+        setDims({ w: r.w, h: r.h });
+      })
+      .catch((e: Error) => setStatus(`particles: ${e.message}`));
+    return () => {
+      stale = true;
+    };
+  }, [id, setStatus]);
+
+  // live preview: grayscale base + tinted mask at the threshold
+  useEffect(() => {
+    const r = rasterRef.current;
+    const cv = canvasRef.current;
+    if (!r || !cv || !dims) return;
+    cv.width = r.w;
+    cv.height = r.h;
+    const ctx = cv.getContext("2d");
+    if (!ctx) return;
+    const img = ctx.createImageData(r.w, r.h);
+    const cut = thresh * 65535;
+    for (let i = 0; i < r.w * r.h; i++) {
+      const v = r.data[i];
+      const g = v >> 8;
+      const hit = polarity === "bright" ? v >= cut : v <= cut;
+      const o = i * 4;
+      img.data[o] = hit ? 244 : g;
+      img.data[o + 1] = hit ? 63 : g;
+      img.data[o + 2] = hit ? 94 : g;
+      img.data[o + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+  }, [thresh, polarity, dims]);
+
+  const count = () => {
+    const r = rasterRef.current;
+    if (!r) return;
+    setBusy(true);
+    // slider is normalized — the endpoint wants real intensity
+    const realThr = r.vmin + thresh * (r.vmax - r.vmin);
+    analyzeParticles(id, {
+      threshold: realThr,
+      polarity,
+      minArea: Number(minArea) || 1,
+    })
+      .then((res) => {
+        const s = useViewer.getState();
+        s.ingestDerived([res.labels]);
+        s.setStatus(`particles: ${res.n_particles} found`);
+        useResults.getState().show({
+          title: `Particles (${res.n_particles}) — ${res.unit}`,
+          columns: ["id", "area", "equiv ⌀", "mean I", "cx", "cy"],
+          rows: res.particles.map((p) => [
+            p.id,
+            p.area,
+            Number(p.equiv_diameter.toPrecision(4)),
+            Number(p.mean_intensity.toPrecision(4)),
+            Number(p.centroid[0].toFixed(1)),
+            Number(p.centroid[1].toFixed(1)),
+          ]),
+        });
+      })
+      .catch((e: Error) => setStatus(`particles: ${e.message}`))
+      .finally(() => setBusy(false));
+  };
+
+  const viewH = dims ? (dims.h / dims.w) * VIEW_W : VIEW_W;
+  return (
+    <>
+      <div
+        className="fvd-ws-pattern"
+        style={{ width: VIEW_W, height: viewH }}
+      >
+        <canvas
+          ref={canvasRef}
+          style={{
+            width: VIEW_W,
+            height: viewH,
+            imageRendering: "pixelated",
+          }}
+        />
+      </div>
+      <div className="fvd-ws-row">
+        <span className="k">thr</span>
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.005}
+          value={thresh}
+          style={{ flex: 1 }}
+          onChange={(e) => setThresh(Number(e.target.value))}
+        />
+        <span className="k">{thresh.toFixed(3)}</span>
+      </div>
+      <div className="fvd-ws-row">
+        <div className="fvd-seg">
+          {(["bright", "dark"] as const).map((p) => (
+            <button
+              key={p}
+              className={`fvd-seg-btn${polarity === p ? " active" : ""}`}
+              onClick={() => setPolarity(p)}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+        <span className="k">min px</span>
+        <input value={minArea} style={{ width: 40 }}
+               onChange={(e) => setMinArea(e.target.value)} />
+        <button className="fvd-btn primary" onClick={count} disabled={busy}>
+          {busy ? "Counting…" : "Count"}
+        </button>
+      </div>
     </>
   );
 }
