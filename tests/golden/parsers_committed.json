@@ -1,0 +1,437 @@
+{
+  "images": [
+    {
+      "file": "EDW087-1.dm3",
+      "mode": "2D",
+      "height": 512,
+      "width": 512,
+      "bitDepth": 16,
+      "pixelSize": 0.90721768140792847,
+      "pixelUnit": "nm",
+      "pixSum": 2.268710398E+9,
+      "pixMean": 8654.4433517456055,
+      "pixMin": 7978,
+      "pixMax": 10758
+    },
+    {
+      "file": "EDW087-2.dm3",
+      "mode": "2D",
+      "height": 1024,
+      "width": 1024,
+      "bitDepth": 16,
+      "pixelSize": 0.28873187303543091,
+      "pixelUnit": "nm",
+      "pixSum": 4.80610009E+8,
+      "pixMean": 458.34542179107666,
+      "pixMin": 336,
+      "pixMax": 866
+    },
+    {
+      "file": "EDW087-3.dm3",
+      "mode": "2D",
+      "height": 1024,
+      "width": 1024,
+      "bitDepth": 16,
+      "pixelSize": 0.0012600134359672666,
+      "pixelUnit": "µm",
+      "pixSum": 8.689115563E+9,
+      "pixMean": 8286.5863447189331,
+      "pixMin": 4339,
+      "pixMax": 9131
+    },
+    {
+      "file": "EDW087-4.dm3",
+      "mode": "2D",
+      "height": 1024,
+      "width": 1024,
+      "bitDepth": 16,
+      "pixelSize": 0.63370490074157715,
+      "pixelUnit": "nm",
+      "pixSum": 2.403744982E+9,
+      "pixMean": 2292.3898525238037,
+      "pixMin": 1358,
+      "pixMax": 2835
+    },
+    {
+      "file": "EDW087-5.dm3",
+      "mode": "2D",
+      "height": 1024,
+      "width": 1024,
+      "bitDepth": 16,
+      "pixelSize": 0.90287536382675171,
+      "pixelUnit": "nm",
+      "pixSum": 4.956702534E+9,
+      "pixMean": 4727.0799007415771,
+      "pixMin": 2713,
+      "pixMax": 5500
+    },
+    {
+      "file": "Overview_0001.dm3",
+      "mode": "2D",
+      "height": 2048,
+      "width": 2048,
+      "bitDepth": 32,
+      "pixelSize": 0.8057553768157959,
+      "pixelUnit": "nm",
+      "pixSum": 1.939356038E+9,
+      "pixMean": 462.37851095199585,
+      "pixMin": -1432,
+      "pixMax": 2865
+    },
+    {
+      "file": "Overview_0002.dm3",
+      "mode": "2D",
+      "height": 2048,
+      "width": 2048,
+      "bitDepth": 32,
+      "pixelSize": 0.8057553768157959,
+      "pixelUnit": "nm",
+      "pixSum": 1.941267617E+9,
+      "pixMean": 462.83426690101624,
+      "pixMin": -1029,
+      "pixMax": 2099
+    },
+    {
+      "file": "Overview_0006.dm3",
+      "mode": "2D",
+      "height": 2048,
+      "width": 2048,
+      "bitDepth": 32,
+      "pixelSize": 0.16842105984687805,
+      "pixelUnit": "nm",
+      "pixSum": 2.04130288E+9,
+      "pixMean": 486.68453216552734,
+      "pixMin": -1083,
+      "pixMax": 2998
+    },
+    {
+      "file": "Overview_0007.dm3",
+      "mode": "2D",
+      "height": 2048,
+      "width": 2048,
+      "bitDepth": 32,
+      "pixelSize": 0.16842105984687805,
+      "pixelUnit": "nm",
+      "pixSum": 2.026300603E+9,
+      "pixMean": 483.10771059989929,
+      "pixMin": -1457,
+      "pixMax": 3137
+    },
+    {
+      "file": "PQ MnBi annealed SA 390 kx ss3 no OA aq 1s_2.dm3",
+      "mode": "2D",
+      "height": 2048,
+      "width": 2048,
+      "bitDepth": 32,
+      "pixelSize": 0.026638438925147057,
+      "pixelUnit": "nm",
+      "pixSum": 2.3082800823E+10,
+      "pixMean": 5503.3685739040375,
+      "pixMin": 1034,
+      "pixMax": 10854
+    },
+    {
+      "file": "PQ MnBi annealed SA 390 kx ss3 no OA aq 1s_3.dm3",
+      "mode": "2D",
+      "height": 2048,
+      "width": 2048,
+      "bitDepth": 32,
+      "pixelSize": 0.026638438925147057,
+      "pixelUnit": "nm",
+      "pixSum": 1.8967607254E+10,
+      "pixMean": 4522.22997045517,
+      "pixMin": 682,
+      "pixMax": 8895
+    },
+    {
+      "file": "PQ MnBi annealed SA 390 kx ss3 no OA aq 1s_4.dm3",
+      "mode": "2D",
+      "height": 2048,
+      "width": 2048,
+      "bitDepth": 32,
+      "pixelSize": 0.026638438925147057,
+      "pixelUnit": "nm",
+      "pixSum": 1.7515400875E+10,
+      "pixMean": 4175.9969890117645,
+      "pixMin": 540,
+      "pixMax": 8997
+    },
+    {
+      "file": "PQ MnBi annealed SA 390 kx ss3 no OA aq 1s_5.dm3",
+      "mode": "2D",
+      "height": 2048,
+      "width": 2048,
+      "bitDepth": 32,
+      "pixelSize": 0.026638438925147057,
+      "pixelUnit": "nm",
+      "pixSum": 1.680416393E+10,
+      "pixMean": 4006.4248871803284,
+      "pixMin": 140,
+      "pixMax": 9384
+    },
+    {
+      "file": "PQ MnBi annealed SA 390 kx ss3 no OA aq 1s_6.dm3",
+      "mode": "2D",
+      "height": 2048,
+      "width": 2048,
+      "bitDepth": 32,
+      "pixelSize": 0.026638438925147057,
+      "pixelUnit": "nm",
+      "pixSum": 1.9371678309E+10,
+      "pixMean": 4618.568017244339,
+      "pixMin": 428,
+      "pixMax": 9371
+    },
+    {
+      "file": "PQ MnBi annealed SA 390 kx ss3 no OA aq 1s_7.dm3",
+      "mode": "2D",
+      "height": 2048,
+      "width": 2048,
+      "bitDepth": 32,
+      "pixelSize": 0.026638438925147057,
+      "pixelUnit": "nm",
+      "pixSum": 1.9362874095E+10,
+      "pixMean": 4616.4689290523529,
+      "pixMin": 690,
+      "pixMax": 9649
+    },
+    {
+      "file": "openNCEM_carbon.dm3",
+      "mode": "2D",
+      "height": 1,
+      "width": 2048,
+      "bitDepth": 32,
+      "pixelSize": 0.10000000149011612,
+      "pixelUnit": "eV",
+      "pixSum": 3.5798239E+7,
+      "pixMean": 17479.60888671875,
+      "pixMin": 8674,
+      "pixMax": 33036
+    },
+    {
+      "file": "rosettasciio_2D_test1.dm3",
+      "mode": "2D",
+      "height": 2,
+      "width": 2,
+      "bitDepth": 16,
+      "pixelSize": null,
+      "pixelUnit": "",
+      "pixSum": 10,
+      "pixMean": 2.5,
+      "pixMin": 1,
+      "pixMax": 4
+    },
+    {
+      "file": "Fig3c_apatite_HAADF.dm4",
+      "mode": "2D",
+      "height": 1024,
+      "width": 1024,
+      "bitDepth": 32,
+      "pixelSize": 0.1220703125,
+      "pixelUnit": "nm",
+      "pixSum": 559824.56641323864,
+      "pixMean": 0.53389031068157067,
+      "pixMin": 0.1157633438706398,
+      "pixMax": 0.8251953125
+    },
+    {
+      "file": "Overview_0001.dm4",
+      "mode": "2D",
+      "height": 2048,
+      "width": 2048,
+      "bitDepth": 32,
+      "pixelSize": 0.8057553768157959,
+      "pixelUnit": "nm",
+      "pixSum": 1.939356038E+9,
+      "pixMean": 462.37851095199585,
+      "pixMin": -1432,
+      "pixMax": 2865
+    },
+    {
+      "file": "Overview_0002.dm4",
+      "mode": "2D",
+      "height": 2048,
+      "width": 2048,
+      "bitDepth": 32,
+      "pixelSize": 0.8057553768157959,
+      "pixelUnit": "nm",
+      "pixSum": 1.941267617E+9,
+      "pixMean": 462.83426690101624,
+      "pixMin": -1029,
+      "pixMax": 2099
+    },
+    {
+      "file": "openNCEM_nonSquare.dm4",
+      "mode": "2D",
+      "height": 64,
+      "width": 128,
+      "bitDepth": 32,
+      "pixelSize": 1,
+      "pixelUnit": "nm",
+      "pixSum": 520192,
+      "pixMean": 63.5,
+      "pixMin": 0,
+      "pixMax": 127
+    },
+    {
+      "file": "rosettasciio_2D_test1.dm4",
+      "mode": "2D",
+      "height": 2,
+      "width": 2,
+      "bitDepth": 16,
+      "pixelSize": null,
+      "pixelUnit": "",
+      "pixSum": 10,
+      "pixMean": 2.5,
+      "pixMin": 1,
+      "pixMax": 4
+    },
+    {
+      "file": "test_mrc.mrc",
+      "mode": "2D",
+      "height": 16,
+      "width": 16,
+      "bitDepth": 16,
+      "pixelSize": 56.791313171386719,
+      "pixelUnit": "A",
+      "pixSum": 66500,
+      "pixMean": 259.765625,
+      "pixMin": 0,
+      "pixMax": 49024
+    },
+    {
+      "file": "test_ser.ser",
+      "mode": "2D",
+      "height": 128,
+      "width": 128,
+      "bitDepth": 32,
+      "pixelSize": 5.2612142050470809E-9,
+      "pixelUnit": "m",
+      "pixSum": 1.69637782E+8,
+      "pixMean": 10353.868530273438,
+      "pixMin": 255,
+      "pixMax": 14171
+    },
+    {
+      "file": "EDW087-1.tif",
+      "mode": "2D",
+      "height": 512,
+      "width": 512,
+      "bitDepth": 16,
+      "pixelSize": null,
+      "pixelUnit": "",
+      "pixSum": 1.0859155804E+10,
+      "pixMean": 41424.391952514648,
+      "pixMin": 40746,
+      "pixMax": 43526
+    }
+  ],
+  "bcf": [
+    {
+      "file": "12bit_packed_16x16.bcf",
+      "nChannels": 4096,
+      "calibAbs": -0.47095867,
+      "calibLin": 0.009997,
+      "elements": [
+        []
+      ],
+      "sumSpectrumTotal": 20194,
+      "cubeSize": [
+        16,
+        16,
+        4096
+      ],
+      "cubeClass": "uint16",
+      "cubeTotal": 20194
+    },
+    {
+      "file": "Fig4b_EDSmap_Bruker.bcf",
+      "nChannels": 4096,
+      "calibAbs": -0.4725,
+      "calibLin": 0.01,
+      "elements": [
+        []
+      ],
+      "sumSpectrumTotal": 639893,
+      "cubeSize": [
+        0,
+        0
+      ],
+      "cubeClass": "double",
+      "cubeTotal": []
+    },
+    {
+      "file": "Hitachi_TM3030Plus.bcf",
+      "nChannels": 4096,
+      "calibAbs": -0.4746,
+      "calibLin": 0.01,
+      "elements": [
+        [
+          "Cu",
+          "Al",
+          "C",
+          "O"
+        ]
+      ],
+      "sumSpectrumTotal": 171804,
+      "cubeSize": [
+        240,
+        320,
+        4096
+      ],
+      "cubeClass": "uint16",
+      "cubeTotal": 171804
+    },
+    {
+      "file": "esprit_v2_50x50.bcf",
+      "nChannels": 4096,
+      "calibAbs": -0.47316066,
+      "calibLin": 0.009996,
+      "elements": [
+        []
+      ],
+      "sumSpectrumTotal": 949769,
+      "cubeSize": [
+        50,
+        50,
+        4096
+      ],
+      "cubeClass": "uint16",
+      "cubeTotal": 949769
+    },
+    {
+      "file": "over16bit_compressed.bcf",
+      "nChannels": 4096,
+      "calibAbs": -1.90077006,
+      "calibLin": 0.020006,
+      "elements": [
+        []
+      ],
+      "sumSpectrumTotal": 1.76786251E+8,
+      "cubeSize": [
+        3,
+        4,
+        4096
+      ],
+      "cubeClass": "uint32",
+      "cubeTotal": 1.76786251E+8
+    },
+    {
+      "file": "test_TEM.bcf",
+      "nChannels": 4096,
+      "calibAbs": -0.47544754,
+      "calibLin": 0.010001,
+      "elements": [
+        []
+      ],
+      "sumSpectrumTotal": 26005,
+      "cubeSize": [
+        64,
+        64,
+        4096
+      ],
+      "cubeClass": "uint16",
+      "cubeTotal": 26005
+    }
+  ]
+}

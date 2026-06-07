@@ -1,0 +1,41 @@
+# Normalize all text files to LF in the repository (lesson from
+# fermi-viewer: Windows/OneDrive working trees carry CRLF; normalizing on
+# add kills EOL-only churn permanently).
+* text=auto eol=lf
+
+# Source / text formats — always LF.
+*.py      text eol=lf
+*.ts      text eol=lf
+*.tsx     text eol=lf
+*.js      text eol=lf
+*.jsx     text eol=lf
+*.css     text eol=lf
+*.html    text eol=lf
+*.md      text eol=lf
+*.m       text eol=lf
+*.json    text eol=lf
+*.toml    text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+*.rs      text eol=lf
+*.sh      text eol=lf
+*.ps1     text eol=lf
+
+# Binary instrument data and images — never touch line endings.
+*.dm3     binary
+*.dm4     binary
+*.ser     binary
+*.bcf     binary
+*.mrc     binary
+*.emd     binary
+*.tif     binary
+*.tiff    binary
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.gif     binary
+*.raw     binary
+*.bin     binary
+*.npz     binary
+*.woff2   binary
+*.pdf     binary

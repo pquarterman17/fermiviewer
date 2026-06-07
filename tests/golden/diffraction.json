@@ -1,0 +1,309 @@
+{
+  "wavelengths": [
+    {
+      "kV": 60,
+      "lambda": 0.048660605029678596
+    },
+    {
+      "kV": 80,
+      "lambda": 0.041757160772834208
+    },
+    {
+      "kV": 100,
+      "lambda": 0.037014366137818111
+    },
+    {
+      "kV": 200,
+      "lambda": 0.025079340450548007
+    },
+    {
+      "kV": 300,
+      "lambda": 0.019687489006848795
+    }
+  ],
+  "phaseCount": 52,
+  "phases": [
+    {
+      "name": "Silicon"
+    },
+    {
+      "name": "Sapphire (Al2O3)"
+    },
+    {
+      "name": "SrTiO3"
+    },
+    {
+      "name": "MgO"
+    },
+    {
+      "name": "LaAlO3"
+    },
+    {
+      "name": "GaAs"
+    },
+    {
+      "name": "Ge"
+    },
+    {
+      "name": "GaN (wurtzite)"
+    },
+    {
+      "name": "TiO2 rutile"
+    },
+    {
+      "name": "SiC 4H"
+    },
+    {
+      "name": "Aluminum"
+    },
+    {
+      "name": "Copper"
+    },
+    {
+      "name": "Gold"
+    },
+    {
+      "name": "Silver"
+    },
+    {
+      "name": "Platinum"
+    },
+    {
+      "name": "Palladium"
+    },
+    {
+      "name": "Nickel"
+    },
+    {
+      "name": "Iron (BCC)"
+    },
+    {
+      "name": "Iron (FCC)"
+    },
+    {
+      "name": "Tungsten"
+    },
+    {
+      "name": "Chromium"
+    },
+    {
+      "name": "Titanium (HCP)"
+    },
+    {
+      "name": "Cobalt (HCP)"
+    },
+    {
+      "name": "Molybdenum"
+    },
+    {
+      "name": "Tantalum (BCC)"
+    },
+    {
+      "name": "ZnO (wurtzite)"
+    },
+    {
+      "name": "Fe2O3 (hematite)"
+    },
+    {
+      "name": "Fe3O4 (magnetite)"
+    },
+    {
+      "name": "NiO"
+    },
+    {
+      "name": "CoO"
+    },
+    {
+      "name": "CuO (tenorite)"
+    },
+    {
+      "name": "Cu2O (cuprite)"
+    },
+    {
+      "name": "TiO2 (anatase)"
+    },
+    {
+      "name": "SiO2 (quartz)"
+    },
+    {
+      "name": "SnO2 (cassiterite)"
+    },
+    {
+      "name": "In2O3 (bixbyite)"
+    },
+    {
+      "name": "Cr2O3 (eskolaite)"
+    },
+    {
+      "name": "BaTiO3"
+    },
+    {
+      "name": "PbTiO3"
+    },
+    {
+      "name": "La0.7Sr0.3MnO3"
+    },
+    {
+      "name": "BiFeO3"
+    },
+    {
+      "name": "LaNiO3"
+    },
+    {
+      "name": "SrRuO3"
+    },
+    {
+      "name": "InAs"
+    },
+    {
+      "name": "InP"
+    },
+    {
+      "name": "CdTe"
+    },
+    {
+      "name": "ZnSe"
+    },
+    {
+      "name": "AlN (wurtzite)"
+    },
+    {
+      "name": "LaB6 (standard)"
+    },
+    {
+      "name": "CaF2 (fluorite)"
+    },
+    {
+      "name": "NaCl (halite)"
+    },
+    {
+      "name": "BN (hexagonal)"
+    }
+  ],
+  "simulateSilicon001": {
+    "phaseName": "Silicon",
+    "lambda": 0.025079340450548007,
+    "nSpots": 13,
+    "imageSum": 735.08262103418861,
+    "topSpots": [
+      {
+        "hkl": [
+          0,
+          0,
+          0
+        ],
+        "dSpacing": null,
+        "intensity": 1,
+        "pixelRow": 256.5,
+        "pixelCol": 256.5
+      },
+      {
+        "hkl": [
+          -4,
+          -4,
+          0
+        ],
+        "dSpacing": 0.96005655448650518,
+        "intensity": 1,
+        "pixelRow": 330.386362703929,
+        "pixelCol": 182.61363729607098
+      },
+      {
+        "hkl": [
+          -4,
+          0,
+          0
+        ],
+        "dSpacing": 1.357725,
+        "intensity": 1,
+        "pixelRow": 330.386362703929,
+        "pixelCol": 256.5
+      },
+      {
+        "hkl": [
+          -4,
+          4,
+          0
+        ],
+        "dSpacing": 0.96005655448650518,
+        "intensity": 1,
+        "pixelRow": 330.386362703929,
+        "pixelCol": 330.386362703929
+      },
+      {
+        "hkl": [
+          -2,
+          -2,
+          0
+        ],
+        "dSpacing": 1.9201131089730104,
+        "intensity": 1,
+        "pixelRow": 293.44318135196448,
+        "pixelCol": 219.55681864803549
+      },
+      {
+        "hkl": [
+          -2,
+          2,
+          0
+        ],
+        "dSpacing": 1.9201131089730104,
+        "intensity": 1,
+        "pixelRow": 293.44318135196448,
+        "pixelCol": 293.44318135196448
+      },
+      {
+        "hkl": [
+          0,
+          -4,
+          0
+        ],
+        "dSpacing": 1.357725,
+        "intensity": 1,
+        "pixelRow": 256.5,
+        "pixelCol": 182.61363729607098
+      },
+      {
+        "hkl": [
+          0,
+          4,
+          0
+        ],
+        "dSpacing": 1.357725,
+        "intensity": 1,
+        "pixelRow": 256.5,
+        "pixelCol": 330.386362703929
+      },
+      {
+        "hkl": [
+          2,
+          -2,
+          0
+        ],
+        "dSpacing": 1.9201131089730104,
+        "intensity": 1,
+        "pixelRow": 219.55681864803549,
+        "pixelCol": 219.55681864803549
+      },
+      {
+        "hkl": [
+          2,
+          2,
+          0
+        ],
+        "dSpacing": 1.9201131089730104,
+        "intensity": 1,
+        "pixelRow": 219.55681864803549,
+        "pixelCol": 293.44318135196448
+      }
+    ]
+  },
+  "indexRoundTrip": {
+    "fields": [
+      "candidates",
+      "measuredD",
+      "measuredR",
+      "center"
+    ]
+  }
+}
