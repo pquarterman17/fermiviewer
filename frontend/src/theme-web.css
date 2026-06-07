@@ -879,6 +879,62 @@ body {
   font-size: 9px;
 }
 
+/* ── export dialog ── */
+
+.fvd-export {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(380px, 92vw);
+  padding: var(--pad-lg) 18px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pad-lg);
+}
+
+.fvd-export h2 {
+  margin: 2px 0 0;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fvd-export .fvd-ws-row .k {
+  min-width: 72px;
+}
+
+.fvd-export-info {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--text-faint);
+  border-top: 1px solid var(--border-soft);
+  padding-top: var(--pad);
+}
+
+.fvd-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+}
+
+.fvd-check.disabled {
+  color: var(--text-faint);
+}
+
+.fvd-check input {
+  accent-color: var(--accent);
+}
+
+.fvd-btn.primary {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
 /* ── workshop tool windows ── */
 
 .fvd-tool-window {

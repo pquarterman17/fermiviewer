@@ -50,6 +50,12 @@ export default function MenuBar({
     File: [
       { label: "Open…", shortcut: "⌘O", action: openFiles },
       {
+        label: "Export…",
+        shortcut: "⌘E",
+        disabled: !store.activeId,
+        action: () => store.setExportOpen(true),
+      },
+      {
         label: "Close Image",
         shortcut: "⌘W",
         disabled: !store.activeId,

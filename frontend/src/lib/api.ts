@@ -293,6 +293,43 @@ export function diffractionIndex(
   });
 }
 
+export interface ExportOptions {
+  format: "png" | "tiff16" | "jpeg";
+  scale: number;
+  lo: number; // normalized [0,1] window (display state)
+  hi: number;
+  gamma: number;
+  cmap: string;
+  include: string[];
+}
+
+/** Server-side export; returns the file blob + suggested filename. */
+export async function exportImage(
+  id: string,
+  opts: ExportOptions,
+): Promise<{ blob: Blob; filename: string }> {
+  const res = await fetch("/api/export", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image_id: id, ...opts }),
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      detail = ((await res.json()) as { detail?: string }).detail ?? detail;
+    } catch {
+      /* binary or empty error body */
+    }
+    throw new Error(detail);
+  }
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = /filename="([^"]+)"/.exec(disposition);
+  return {
+    blob: await res.blob(),
+    filename: match?.[1] ?? `export.${opts.format === "tiff16" ? "tif" : opts.format}`,
+  };
+}
+
 /** URL for the windowed 8-bit PNG render (Stage texture + thumbnails). */
 export function renderUrl(
   id: string,

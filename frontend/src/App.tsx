@@ -15,6 +15,7 @@ import Stage, { type StageHandle } from "./components/Stage/Stage";
 import CommandPalette, {
   type Action,
 } from "./components/overlays/CommandPalette";
+import ExportDialog from "./components/overlays/ExportDialog";
 import RadialMenu from "./components/overlays/RadialMenu";
 import ShortcutsOverlay from "./components/overlays/ShortcutsOverlay";
 import ToolWindow from "./components/overlays/ToolWindow";
@@ -71,6 +72,11 @@ export default function App() {
       if (mod && e.key.toLowerCase() === "k") {
         e.preventDefault();
         s.setCmdk(!s.cmdk);
+        return;
+      }
+      if (mod && e.key.toLowerCase() === "e") {
+        e.preventDefault();
+        if (s.activeId) s.setExportOpen(true);
         return;
       }
       if (mod && e.shiftKey && e.key.toLowerCase() === "l") {
@@ -346,6 +352,15 @@ export default function App() {
           if (st.activeId) void st.closeImage(st.activeId);
         },
       },
+      {
+        id: "export",
+        group: "Library",
+        label: "Export image…",
+        shortcut: "⌘E",
+        run: () => {
+          if (s().activeId) s().setExportOpen(true);
+        },
+      },
       // Analyze (workshop windows)
       {
         id: "ws-eels",
@@ -401,6 +416,7 @@ export default function App() {
       <CommandPalette actions={actions} />
       <ShortcutsOverlay />
       <RadialMenu />
+      <ExportDialog />
       {tools.map((t) => (
         <ToolWindow
           key={t.kind}

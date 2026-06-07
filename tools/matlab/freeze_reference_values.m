@@ -184,9 +184,10 @@ function out = captureImaging()
     ne2 = imaging.noiseEstimate(noisy, Method='localvar');
     out.noise.sigmaLocalVar = ne2.sigma;
 
-    % NumBins=32 = floor(min(H,W)/2), the documented default — the
-    % actual default (0) violates radialProfile's own mustBePositive
-    % validator, so the no-arg call errors (latent MATLAB bug).
+    % NumBins=32 = floor(min(H,W)/2), the resolved default. (Kept
+    % explicit for capture stability; the default-0 validator bug this
+    % originally worked around was fixed upstream in fermi-viewer
+    % 8aec1c4.)
     [rad, avgP, maxP] = imaging.radialProfile(base, NumBins=32);
     out.radial.n = numel(rad);
     out.radial.radiiSum = sum(rad);
