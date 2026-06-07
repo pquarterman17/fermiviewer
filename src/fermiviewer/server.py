@@ -10,6 +10,7 @@ from fermiviewer import __version__
 def create_app() -> FastAPI:
     """Build the FastAPI app. Routers attach here as they land (W5)."""
     from fermiviewer.routes.analysis import router as analysis_router
+    from fermiviewer.routes.filter import router as filter_router
     from fermiviewer.routes.images import router as images_router
     from fermiviewer.routes.measure import router as measure_router
 
@@ -17,6 +18,7 @@ def create_app() -> FastAPI:
     app.include_router(images_router)
     app.include_router(analysis_router)
     app.include_router(measure_router)
+    app.include_router(filter_router)
 
     @app.get("/api/health")
     def health() -> dict[str, str]:
