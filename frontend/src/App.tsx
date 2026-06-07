@@ -4,11 +4,13 @@
 
 import { useEffect, useMemo, useRef } from "react";
 
+import CompareInspector from "./components/Inspector/CompareInspector";
 import Inspector from "./components/Inspector/Inspector";
 import Filmstrip from "./components/Library/Filmstrip";
 import MenuBar from "./components/Shell/MenuBar";
 import StatusBar from "./components/Shell/StatusBar";
 import TitleBar from "./components/Shell/TitleBar";
+import CompareStage from "./components/Stage/CompareStage";
 import Stage, { type StageHandle } from "./components/Stage/Stage";
 import CommandPalette, {
   type Action,
@@ -33,6 +35,7 @@ export default function App() {
   const stageRef = useRef<StageHandle>(null);
   const leftCol = useViewer((s) => s.leftCol);
   const rightCol = useViewer((s) => s.rightCol);
+  const comparing = useViewer((s) => s.compareSet !== null);
 
   // restore any prior session (backend keeps images open across reloads)
   useEffect(() => {
@@ -151,6 +154,7 @@ export default function App() {
           }
           break;
         case "Escape":
+          if (s.compareSet) s.exitCompare();
           s.setCaptureMode("none");
           s.setShorts(false);
           s.setRadial(null);
@@ -290,6 +294,31 @@ export default function App() {
       })),
       // Library
       {
+        id: "compare",
+        group: "Library",
+        label: "Compare selected",
+        run: () => {
+          const st = s();
+          if (st.selected.length >= 2) st.startCompare(st.selected);
+        },
+      },
+      {
+        id: "exit-compare",
+        group: "Library",
+        label: "Exit compare",
+        shortcut: "Esc",
+        run: () => s().exitCompare(),
+      },
+      {
+        id: "list-view",
+        group: "Library",
+        label: "Toggle thumbnails / names",
+        run: () => {
+          const st = s();
+          st.setListView(st.listView === "thumbs" ? "names" : "thumbs");
+        },
+      },
+      {
         id: "next-img",
         group: "Library",
         label: "Next image",
@@ -341,8 +370,8 @@ export default function App() {
       />
       <div className={mainCls}>
         <Filmstrip />
-        <Stage ref={stageRef} />
-        <Inspector />
+        {comparing ? <CompareStage /> : <Stage ref={stageRef} />}
+        {comparing ? <CompareInspector /> : <Inspector />}
       </div>
       <StatusBar />
       <CommandPalette actions={actions} />

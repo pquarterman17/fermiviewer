@@ -47,6 +47,9 @@ export interface OverlayStyle {
 
 export type CaptureMode = "none" | "zoom" | MeasureKind;
 export type Theme = "dark" | "light";
+export type ListView = "thumbs" | "names";
+export type CompareMode = "split" | "flicker" | "subtract";
+export type SelectGesture = "single" | "toggle" | "range";
 
 const VIEWS_KEY = "fv_views";
 const OVERLAY_KEY = "fv_overlay";
@@ -67,6 +70,10 @@ interface ViewerState {
   order: string[];
   activeId: string | null;
   images: Record<string, ImageMeta>;
+  selected: string[];
+  listView: ListView;
+  compareSet: string[] | null;
+  compareMode: CompareMode;
   // per-image view, persisted (localStorage "fv_views")
   views: Record<string, View>;
   // per-image display pipeline (window/gamma/colormap)
@@ -91,6 +98,12 @@ interface ViewerState {
 
   openPaths: (paths: string[]) => Promise<void>;
   setActive: (id: string) => void;
+  select: (id: string, gesture: SelectGesture) => void;
+  setListView: (v: ListView) => void;
+  reorder: (id: string, beforeId: string | null) => void;
+  startCompare: (ids: string[]) => void;
+  exitCompare: () => void;
+  setCompareMode: (m: CompareMode) => void;
   cycleImage: (dir: 1 | -1) => void;
   closeImage: (id: string) => Promise<void>;
   setView: (id: string, view: View) => void;
@@ -120,6 +133,10 @@ export const useViewer = create<ViewerState>((set, get) => ({
   order: [],
   activeId: null,
   images: {},
+  selected: [],
+  listView: "thumbs",
+  compareSet: null,
+  compareMode: "split",
   views: loadJson<Record<string, View>>(VIEWS_KEY, {}),
   display: {},
   measures: {},
@@ -156,16 +173,59 @@ export const useViewer = create<ViewerState>((set, get) => ({
     });
   },
 
-  setActive: (id) => set({ activeId: id, selectedMeasure: null }),
+  setActive: (id) =>
+    set({ activeId: id, selected: [id], selectedMeasure: null }),
+
+  // ⌘/⇧-click multi-select (handoff §9 Library). Range anchors on the
+  // last-selected item, in current order.
+  select: (id, gesture) => {
+    const { selected, order } = get();
+    if (gesture === "single") {
+      set({ activeId: id, selected: [id], selectedMeasure: null });
+      return;
+    }
+    if (gesture === "toggle") {
+      set({
+        selected: selected.includes(id)
+          ? selected.filter((s) => s !== id)
+          : [...selected, id],
+      });
+      return;
+    }
+    const anchor = selected[selected.length - 1] ?? id;
+    const i = order.indexOf(anchor);
+    const j = order.indexOf(id);
+    if (i === -1 || j === -1) return;
+    set({ selected: order.slice(Math.min(i, j), Math.max(i, j) + 1) });
+  },
+
+  setListView: (listView) => set({ listView }),
+
+  /** Drag-reorder: move `id` before `beforeId` (null → end). */
+  reorder: (id, beforeId) =>
+    set((s) => {
+      if (id === beforeId) return {};
+      const order = s.order.filter((o) => o !== id);
+      const at = beforeId ? order.indexOf(beforeId) : order.length;
+      if (at === -1) return {};
+      order.splice(at, 0, id);
+      return { order };
+    }),
+
+  startCompare: (ids) => {
+    if (ids.length < 2) return;
+    set({ compareSet: ids, captureMode: "none", selectedMeasure: null });
+  },
+
+  exitCompare: () => set({ compareSet: null }),
+  setCompareMode: (compareMode) => set({ compareMode }),
 
   cycleImage: (dir) => {
     const { order, activeId } = get();
     if (order.length === 0) return;
     const i = activeId ? order.indexOf(activeId) : 0;
-    set({
-      activeId: order[(i + dir + order.length) % order.length],
-      selectedMeasure: null,
-    });
+    const next = order[(i + dir + order.length) % order.length];
+    set({ activeId: next, selected: [next], selectedMeasure: null });
   },
 
   closeImage: async (id) => {
@@ -178,7 +238,15 @@ export const useViewer = create<ViewerState>((set, get) => ({
       const order = s.order.filter((o) => o !== id);
       const activeId =
         s.activeId === id ? (order[order.length - 1] ?? null) : s.activeId;
-      return { images, order, measures, activeId };
+      const compareSet = s.compareSet?.filter((c) => c !== id) ?? null;
+      return {
+        images,
+        order,
+        measures,
+        activeId,
+        selected: s.selected.filter((x) => x !== id),
+        compareSet: compareSet && compareSet.length >= 2 ? compareSet : null,
+      };
     });
   },
 
