@@ -13,6 +13,9 @@ from pathlib import Path
 from fermiviewer.datastruct import DataStruct
 from fermiviewer.io.bcf import load_bcf
 from fermiviewer.io.dm import load_dm
+from fermiviewer.io.images import load_image, load_tiff
+from fermiviewer.io.mrc import load_mrc
+from fermiviewer.io.ser import load_ser
 
 __all__ = ["UnsupportedFormatError", "load_auto", "supported_extensions"]
 
@@ -25,7 +28,16 @@ _LOADERS: dict[str, Callable[[Path], DataStruct]] = {
     ".dm3": load_dm,
     ".dm4": load_dm,
     ".bcf": load_bcf,
-    # .ser / .mrc / .tif / … register here as they port (W2)
+    ".ser": load_ser,
+    ".mrc": load_mrc,
+    ".tif": load_tiff,
+    ".tiff": load_tiff,
+    ".png": load_image,
+    ".jpg": load_image,
+    ".jpeg": load_image,
+    ".bmp": load_image,
+    ".gif": load_image,
+    # .raw/.bin need explicit geometry — use io.images.load_raw directly
 }
 
 

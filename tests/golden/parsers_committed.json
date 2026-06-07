@@ -294,10 +294,10 @@
       "bitDepth": 16,
       "pixelSize": 56.791313171386719,
       "pixelUnit": "A",
-      "pixSum": 66500,
-      "pixMean": 259.765625,
-      "pixMin": 0,
-      "pixMax": 49024
+      "pixSum": 1.552947E+6,
+      "pixMean": 6066.19921875,
+      "pixMin": 3923,
+      "pixMax": 9399
     },
     {
       "file": "test_ser.ser",

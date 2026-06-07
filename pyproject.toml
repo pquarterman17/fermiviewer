@@ -73,6 +73,12 @@ warn_return_any = true
 warn_unused_ignores = true
 no_implicit_optional = true
 
+[[tool.mypy.overrides]]
+# tifffile's source uses py3.12 `type` statements; don't analyze it under
+# our 3.11 floor — treat it as an opaque dependency.
+module = "tifffile.*"
+follow_imports = "skip"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
