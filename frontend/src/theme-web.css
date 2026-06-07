@@ -1119,3 +1119,11 @@ body {
   background: var(--surface-3);
   color: var(--text);
 }
+
+.fvd-inline-toggle {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0 5px;
+  font-size: 10px;
+  margin-left: 4px;
+}

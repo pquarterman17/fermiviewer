@@ -1,7 +1,7 @@
 // Adjust card (handoff §4 Inspector · Image): histogram with draggable
 // black/white window handles, gamma slider, colormap picker, auto/reset.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { fetchHistogram, type Histogram } from "../../lib/api";
 import { COLORMAP_NAMES, type ColormapName } from "../../lib/colormaps";
@@ -21,7 +21,25 @@ export default function AdjustPanel() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hist, setHist] = useState<Histogram | null>(null);
+  const [logScale, setLogScale] = useState(false);
   const dragRef = useRef<"lo" | "hi" | null>(null);
+
+  // cumulative u16 histogram → clip fractions for the current window
+  const cumHist = useMemo(() => {
+    if (!raster) return null;
+    const counts = new Float64Array(65536);
+    for (let i = 0; i < raster.data.length; i++) counts[raster.data[i]]++;
+    for (let i = 1; i < 65536; i++) counts[i] += counts[i - 1];
+    return counts;
+  }, [raster]);
+
+  const clipPct = (norm: number, above: boolean): number => {
+    if (!cumHist || !raster) return 0;
+    const n = raster.data.length;
+    const idx = Math.min(65535, Math.max(0, Math.floor(norm * 65535)));
+    const below = cumHist[idx] / n;
+    return 100 * (above ? 1 - below : below);
+  };
 
   useEffect(() => {
     setHist(null);
@@ -58,8 +76,11 @@ export default function AdjustPanel() {
     const n = hist.counts.length;
     ctx.fillStyle = faint;
     for (let i = 0; i < n; i++) {
-      // sqrt scaling keeps sparse high-count bins from flattening the rest
-      const bh = Math.sqrt(hist.counts[i] / max) * (h - 4);
+      // sqrt by default; log-scale toggle for sparse spectra
+      const frac = logScale
+        ? Math.log1p(hist.counts[i]) / Math.log1p(max)
+        : Math.sqrt(hist.counts[i] / max);
+      const bh = frac * (h - 4);
       ctx.fillRect((i / n) * w, h - bh, Math.max(1, w / n - 0.5), bh);
     }
     // window handles + shaded out-of-window regions
@@ -85,7 +106,7 @@ export default function AdjustPanel() {
     ctx.lineTo(xHi, 0);
     ctx.stroke();
     ctx.setLineDash([]);
-  }, [hist, display.lo, display.hi]);
+  }, [hist, display.lo, display.hi, logScale]);
 
   // ── handle dragging ──
   const normAt = (e: React.PointerEvent): number => {
@@ -136,6 +157,22 @@ export default function AdjustPanel() {
         <span className="k">Window</span>
         <span className="v">
           {fmtReal(display.lo)} – {fmtReal(display.hi)}
+        </span>
+      </div>
+      <div className="fvd-meta-row">
+        <span className="k">
+          Clip{" "}
+          <button
+            className={`fvd-seg-btn fvd-inline-toggle${logScale ? " active" : ""}`}
+            title="Log-scale histogram"
+            onClick={() => setLogScale(!logScale)}
+          >
+            log
+          </button>
+        </span>
+        <span className="v">
+          ◢ {clipPct(display.lo, false).toFixed(1)}% · ◤{" "}
+          {clipPct(display.hi, true).toFixed(1)}%
         </span>
       </div>
       <div className="fvd-slider-row">
