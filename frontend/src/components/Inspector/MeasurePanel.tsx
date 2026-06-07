@@ -11,6 +11,7 @@ const KIND_GLYPH: Record<Measure["kind"], string> = {
   profile: "∿",
   angle: "∠",
   roi: "▭",
+  ellipse: "◯",
   polyline: "⌇",
   text: "T",
   arrow: "➹",
@@ -54,7 +55,7 @@ export default function MeasurePanel() {
         d.unit === "cal" ? meta.pixel_unit : "px"
       }`;
     }
-    if (m.kind === "roi") {
+    if (m.kind === "roi" || m.kind === "ellipse") {
       const s = roiStats[m.id];
       return s ? `μ ${Number(s.mean.toPrecision(4))}` : "…";
     }
@@ -104,6 +105,7 @@ export default function MeasurePanel() {
           {capBtn("Angle", "∠", "angle")}
           {capBtn("Polyline", "⌇", "polyline")}
           {capBtn("ROI", "▭", "roi")}
+          {capBtn("Ellipse", "◯", "ellipse")}
         </div>
         <div className="fvd-cap-grid">
           {capBtn("Text", "T", "text")}

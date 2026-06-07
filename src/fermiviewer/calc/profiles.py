@@ -131,8 +131,11 @@ def roi_stats(
     img: np.ndarray,
     row1: float, col1: float, row2: float, col2: float,
     pixel_size: float = float("nan"),
+    shape: str = "rect",
 ) -> dict[str, float]:
-    """Rectangle statistics (1-based inclusive bounds, clamped)."""
+    """Rectangle or inscribed-ellipse statistics (1-based inclusive
+    bounds, clamped). shape='ellipse' keeps only pixels inside the
+    ellipse inscribed in the bounding rect."""
     arr = np.asarray(img, dtype=np.float64)
     h, w = arr.shape
     r1, r2 = sorted((int(round(row1)), int(round(row2))))
@@ -142,6 +145,17 @@ def roi_stats(
     if r1 > r2 or c1 > c2:
         raise ValueError("ROI is empty after clamping to the image")
     sel = arr[r1 - 1 : r2, c1 - 1 : c2]
+    if shape == "ellipse":
+        sh, sw = sel.shape
+        cy, cx = (sh - 1) / 2, (sw - 1) / 2
+        ry, rx = max(sh / 2, 0.5), max(sw / 2, 0.5)
+        yy = (np.arange(sh)[:, None] - cy) / ry
+        xx = (np.arange(sw)[None, :] - cx) / rx
+        sel = sel[yy**2 + xx**2 <= 1.0]
+        if sel.size == 0:
+            raise ValueError("elliptical ROI contains no pixels")
+    elif shape != "rect":
+        raise ValueError("shape must be 'rect' or 'ellipse'")
     area_px = float(sel.size)
     area = area_px * pixel_size**2 if np.isfinite(pixel_size) else area_px
     return {

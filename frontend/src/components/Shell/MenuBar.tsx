@@ -4,9 +4,12 @@
 import { useEffect, useRef, useState } from "react";
 
 import {
+  analyzeAlignStack,
   analyzeGpa,
   analyzeGrains,
   analyzeGrainsAsync,
+  analyzeImageMath,
+  analyzeMip,
   analyzeParticles,
   runJob,
   analyzeRadial,
@@ -154,6 +157,47 @@ export default function MenuBar({
         store.setStatus(`${label} done`);
       })
       .catch((e: Error) => store.setStatus(`${label}: ${e.message}`));
+  };
+
+  // batch crop: the ACTIVE image's ROI (normalized) applied to every
+  // selected image — MATLAB doBatchCrop semantics, derived images out
+  const runBatchCrop = async () => {
+    const a = store.activeId;
+    if (!a) return;
+    const rois = (store.measures[a] ?? []).filter(
+      (m) => m.kind === "roi" || m.kind === "ellipse",
+    );
+    const roi = rois[rois.length - 1];
+    if (!roi) {
+      store.setStatus("batch crop: draw an ROI on the active image first");
+      return;
+    }
+    const metas: ImageMeta[] = [];
+    let failed = 0;
+    for (const id of store.selected) {
+      const meta = store.images[id];
+      if (!meta) continue;
+      const [h, w] = meta.shape;
+      const px = (v: number, n: number) =>
+        Math.min(n, Math.max(1, Math.round(v * n + 0.5)));
+      try {
+        metas.push(
+          await applyFilter(id, "crop", {
+            row0: px(roi.pts[0].y, h),
+            col0: px(roi.pts[0].x, w),
+            row1: px(roi.pts[1].y, h),
+            col1: px(roi.pts[1].x, w),
+          }),
+        );
+      } catch {
+        failed++;
+      }
+    }
+    if (metas.length) store.ingestDerived(metas);
+    store.setStatus(
+      `batch crop: ${metas.length} done` +
+        (failed ? `, ${failed} failed` : ""),
+    );
   };
 
   // batch: pick op + params once, run across the filmstrip selection
@@ -429,6 +473,76 @@ export default function MenuBar({
         label: "Crop to ROI",
         disabled: !store.activeId,
         action: () => cropToRoi(),
+      },
+      {
+        label: "Image Math…",
+        disabled: !store.activeId || store.order.length < 2,
+        action: () => {
+          void (async () => {
+            const a = store.activeId;
+            if (!a) return;
+            const others = store.order.filter((i) => i !== a);
+            const v = await askParams("Image Math (A = active)", [
+              {
+                key: "b",
+                label: "Image B",
+                type: "select",
+                default: store.images[others[0]]?.name ?? "",
+                options: others.map((i) => store.images[i]?.name ?? i),
+              },
+              {
+                key: "op",
+                label: "Operation",
+                type: "select",
+                default: "subtract",
+                options: ["subtract", "divide", "ratio", "add"],
+              },
+            ]);
+            if (!v) return;
+            const bId = others.find(
+              (i) => (store.images[i]?.name ?? i) === v["b"],
+            );
+            if (!bId) return;
+            analyzeImageMath(
+              a,
+              bId,
+              v["op"] as "subtract" | "divide" | "ratio" | "add",
+            )
+              .then((r) => store.ingestDerived([r.image]))
+              .catch((e: Error) => store.setStatus(`math: ${e.message}`));
+          })();
+        },
+      },
+      {
+        label: `Align Stack (${store.selected.length} selected)`,
+        disabled: store.selected.length < 2,
+        action: () => {
+          analyzeAlignStack(store.selected)
+            .then((r) => {
+              store.ingestDerived(r.images);
+              const mx = Math.max(
+                ...r.shifts.flat().map((v) => Math.abs(v)),
+              );
+              store.setStatus(
+                `aligned ${r.images.length} images · max shift ${mx} px`,
+              );
+            })
+            .catch((e: Error) => store.setStatus(`align: ${e.message}`));
+        },
+      },
+      {
+        label: "Maximum Intensity Projection",
+        disabled: store.selected.length < 2,
+        action: () => {
+          analyzeMip(store.selected)
+            .then((r) => store.ingestDerived([r.image]))
+            .catch((e: Error) => store.setStatus(`mip: ${e.message}`));
+        },
+      },
+      {
+        label: `Batch Crop to ROI (${store.selected.length})`,
+        disabled: !store.activeId || store.selected.length < 2,
+        action: () => void runBatchCrop(),
       },
       {
         label: "FFT",
@@ -720,6 +834,11 @@ export default function MenuBar({
         label: "Structure Workshop",
         shortcut: "WINDOW",
         action: () => store.openTool("structure"),
+      },
+      {
+        label: "Color Overlay",
+        shortcut: "WINDOW",
+        action: () => store.openTool("overlay"),
       },
     ],
     Help: [

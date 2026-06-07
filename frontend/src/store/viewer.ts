@@ -45,6 +45,7 @@ export type MeasureKind =
   | "profile"
   | "angle"
   | "roi"
+  | "ellipse"
   | "polyline"
   // annotations (checklist H) — ride the measure rails: overlay
   // rendering, persistence, undo and export baking all come free
@@ -108,7 +109,8 @@ export type ToolKind =
   | "diffraction"
   | "fftmask"
   | "pixels"
-  | "structure";
+  | "structure"
+  | "overlay";
 
 export interface ToolWindowState {
   kind: ToolKind;

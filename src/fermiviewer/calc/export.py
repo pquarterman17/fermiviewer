@@ -179,7 +179,7 @@ def measure_annotations(
                 deg = 360.0 - deg
             out.append(Annotation(kind, opts[:3], f"{deg:.1f}°",
                                   (opts[1][0] + 10, opts[1][1] - 10)))
-        elif kind == "roi":
+        elif kind in ("roi", "ellipse"):
             (x0, y0), (x1, y1) = ipts[0], ipts[1]
             if raster is not None:
                 r0, r1 = sorted((int(y0), int(y1)))

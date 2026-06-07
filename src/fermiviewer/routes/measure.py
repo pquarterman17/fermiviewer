@@ -76,13 +76,15 @@ def measure_profile(req: ProfileRequest) -> dict:
 class RoiRequest(BaseModel):
     image_id: str
     rect: tuple[float, float, float, float]   # (row1, col1, row2, col2), 1-based
+    shape: str = "rect"                        # rect | ellipse
 
 
 @router.post("/measure/roi")
 def measure_roi(req: RoiRequest) -> dict:
     ds, raster = _raster(req.image_id)
     try:
-        stats = roi_stats(raster, *req.rect, pixel_size=ds.pixel_size)
+        stats = roi_stats(raster, *req.rect, pixel_size=ds.pixel_size,
+                          shape=req.shape)
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
     return {**stats, "unit": ds.pixel_unit or "px"}

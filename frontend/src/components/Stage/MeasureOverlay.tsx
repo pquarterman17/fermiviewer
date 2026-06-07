@@ -80,8 +80,9 @@ export default function MeasureOverlay({
       measurePolyline(imageId, px, width)
         .then((r) => setProfile({ ...r, measureId: m.id }))
         .catch((e: Error) => setStatus(e.message));
-    } else if (m.kind === "roi") {
-      measureRoi(imageId, px[0], px[1])
+    } else if (m.kind === "roi" || m.kind === "ellipse") {
+      measureRoi(imageId, px[0], px[1],
+                 m.kind === "ellipse" ? "ellipse" : "rect")
         .then((r) => setRoiStats(m.id, r))
         .catch((e: Error) => setStatus(e.message));
     }
@@ -154,7 +155,8 @@ export default function MeasureOverlay({
       }
       case "angle":
         return px.length === 3 ? `${physAngle(px[1], px[0], px[2]).toFixed(1)}°` : "";
-      case "roi": {
+      case "roi":
+      case "ellipse": {
         const s = roiStats[m.id];
         return s ? `μ ${fmt(s.mean)} · σ ${fmt(s.std)}` : "…";
       }
@@ -218,6 +220,22 @@ export default function MeasureOverlay({
         />
       );
       labelAt = { x, y: y - 6 };
+    } else if (m.kind === "ellipse" && pts.length === 2) {
+      const cx = (pts[0].x + pts[1].x) / 2;
+      const cy = (pts[0].y + pts[1].y) / 2;
+      shape = (
+        <ellipse
+          cx={cx}
+          cy={cy}
+          rx={Math.abs(pts[1].x - pts[0].x) / 2}
+          ry={Math.abs(pts[1].y - pts[0].y) / 2}
+          {...common}
+        />
+      );
+      labelAt = {
+        x: Math.min(pts[0].x, pts[1].x),
+        y: Math.min(pts[0].y, pts[1].y) - 6,
+      };
     } else if (m.kind === "roi" && pts.length === 2) {
       const x = Math.min(pts[0].x, pts[1].x);
       const y = Math.min(pts[0].y, pts[1].y);

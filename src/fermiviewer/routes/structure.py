@@ -18,6 +18,7 @@ from fermiviewer.calc.atoms import (
 )
 from fermiviewer.calc.grains import grain_stats, segment_auto
 from fermiviewer.calc.particles import particle_analysis
+from fermiviewer.calc.stack import align_stack, image_math, mip
 from fermiviewer.calc.stitch import stitch_images
 from fermiviewer.calc.texture import template_match
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
@@ -312,3 +313,59 @@ def analyze_stitch(req: StitchRequest) -> dict:
         "offsets": res.offsets.tolist(),
         "layout": res.layout,
     }
+
+
+# ── stack ops (image math / drift alignment / MIP) ───────────────────
+
+
+class ImageMathRequest(BaseModel):
+    a_id: str
+    b_id: str
+    op: str = "subtract"  # subtract | divide | ratio | add
+
+
+@router.post("/analyze/image-math")
+def analyze_image_math(req: ImageMathRequest) -> dict:
+    ds_a, a = _raster(req.a_id)
+    _, b = _raster(req.b_id)
+    try:
+        out = image_math(a, b, req.op)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    name = f"{req.op}({store.name(req.a_id)}, {store.name(req.b_id)})"
+    return {"image": _register(out, name, ds_a, req.a_id)}
+
+
+class StackIdsRequest(BaseModel):
+    image_ids: list[str]
+
+
+@router.post("/analyze/align-stack")
+def analyze_align_stack(req: StackIdsRequest) -> dict:
+    """FFT cross-correlation drift correction; the first image is the
+    reference (kept as-is), movers register as aligned derived images."""
+    if len(req.image_ids) < 2:
+        raise HTTPException(422, "need at least 2 images to align")
+    pairs = [_raster(i) for i in req.image_ids]
+    try:
+        aligned, shifts = align_stack([r for _, r in pairs])
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    images = []
+    for i, img_id in enumerate(req.image_ids[1:], start=1):
+        ds = pairs[i][0]
+        images.append(_register(
+            aligned[i], f"aligned({store.name(img_id)})", ds, img_id,
+        ))
+    return {"images": images, "shifts": shifts.tolist()}
+
+
+@router.post("/analyze/mip")
+def analyze_mip(req: StackIdsRequest) -> dict:
+    """Maximum intensity projection across the given images."""
+    if len(req.image_ids) < 2:
+        raise HTTPException(422, "need at least 2 images for a MIP")
+    pairs = [_raster(i) for i in req.image_ids]
+    out = mip([r for _, r in pairs])
+    name = f"MIP({len(pairs)})"
+    return {"image": _register(out, name, pairs[0][0], req.image_ids[0])}

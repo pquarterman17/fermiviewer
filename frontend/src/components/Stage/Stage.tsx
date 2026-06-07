@@ -329,8 +329,9 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       measurePolyline(activeId, ptsImg, width)
         .then((r) => setProfile({ ...r, measureId: mid }))
         .catch((e: Error) => setStatus(e.message));
-    } else if (kind === "roi") {
-      measureRoi(activeId, ptsImg[0], ptsImg[1])
+    } else if (kind === "roi" || kind === "ellipse") {
+      measureRoi(activeId, ptsImg[0], ptsImg[1],
+                 kind === "ellipse" ? "ellipse" : "rect")
         .then((r) => setRoiStats(mid, r))
         .catch((e: Error) => setStatus(e.message));
     }
@@ -350,7 +351,11 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     }
     if (e.button !== 0) return;
 
-    if (captureMode === "zoom" || captureMode === "roi") {
+    if (
+      captureMode === "zoom" ||
+      captureMode === "roi" ||
+      captureMode === "ellipse"
+    ) {
       setMarquee({ a: p, b: p });
       e.currentTarget.setPointerCapture(e.pointerId);
     } else if (captureMode in CLICKS) {
@@ -405,11 +410,14 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     } else if (marquee && view && imgSize) {
       const a = screenToImage(marquee.a.x, marquee.a.y, view, imgSize, vp);
       const b = screenToImage(marquee.b.x, marquee.b.y, view, imgSize, vp);
-      if (captureMode === "roi") {
+      if (captureMode === "roi" || captureMode === "ellipse") {
         const w = Math.abs(b.x - a.x);
         const h = Math.abs(b.y - a.y);
         if (w >= 2 && h >= 2) {
-          finalizeMeasure("roi", [toImage(marquee.a), toImage(marquee.b)]);
+          finalizeMeasure(captureMode, [
+            toImage(marquee.a),
+            toImage(marquee.b),
+          ]);
         } else {
           setCaptureMode("none");
         }

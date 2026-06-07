@@ -25,6 +25,7 @@ import ToolWindow from "./components/overlays/ToolWindow";
 import DiffractionWorkshop from "./components/workshops/DiffractionWorkshop";
 import FftMaskWorkshop from "./components/workshops/FftMaskWorkshop";
 import PixelInspector from "./components/workshops/PixelInspector";
+import ColorOverlayWorkshop from "./components/workshops/ColorOverlayWorkshop";
 import StructureWorkshop from "./components/workshops/StructureWorkshop";
 import EdsWorkshop from "./components/workshops/EdsWorkshop";
 import EelsWorkshop from "./components/workshops/EelsWorkshop";
@@ -472,6 +473,7 @@ export default function App() {
               fftmask: "FFT Mask",
               pixels: "Pixel Inspector",
               structure: "Structure",
+              overlay: "Color Overlay",
             }[t.kind]
           }
           x={t.x}
@@ -491,6 +493,7 @@ export default function App() {
           {t.kind === "fftmask" && <FftMaskWorkshop />}
           {t.kind === "pixels" && <PixelInspector />}
           {t.kind === "structure" && <StructureWorkshop />}
+          {t.kind === "overlay" && <ColorOverlayWorkshop />}
         </ToolWindow>
       ))}
     </div>

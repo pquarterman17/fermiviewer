@@ -162,6 +162,7 @@ export async function measureRoi(
   id: string,
   a: { x: number; y: number },
   b: { x: number; y: number },
+  shape: "rect" | "ellipse" = "rect",
 ): Promise<RoiStats> {
   return json(
     await fetch("/api/measure/roi", {
@@ -175,6 +176,7 @@ export async function measureRoi(
           Math.max(a.y, b.y) + 1,
           Math.max(a.x, b.x) + 1,
         ],
+        shape,
       }),
     }),
   );
@@ -764,6 +766,24 @@ export function analyzeCtf(
     cs_mm: opts.csMm ?? 1.2,
     pixel_size_a: opts.pixelSizeA ?? 1,
   });
+}
+
+export function analyzeImageMath(
+  aId: string,
+  bId: string,
+  op: "subtract" | "divide" | "ratio" | "add",
+): Promise<{ image: ImageMeta }> {
+  return post("/api/analyze/image-math", { a_id: aId, b_id: bId, op });
+}
+
+export function analyzeAlignStack(
+  ids: string[],
+): Promise<{ images: ImageMeta[]; shifts: number[][] }> {
+  return post("/api/analyze/align-stack", { image_ids: ids });
+}
+
+export function analyzeMip(ids: string[]): Promise<{ image: ImageMeta }> {
+  return post("/api/analyze/mip", { image_ids: ids });
 }
 
 export function analyzeLattice(

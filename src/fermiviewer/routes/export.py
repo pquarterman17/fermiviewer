@@ -254,12 +254,15 @@ def _draw_annotations(img: Image.Image, annos: list[Annotation],
     draw = ImageDraw.Draw(img)
     for an in annos:
         p = an.points
-        if an.kind in ("roi", "box"):
+        if an.kind in ("roi", "box", "ellipse"):
             x0 = min(p[0][0], p[1][0])
             y0 = min(p[0][1], p[1][1])
             x1 = max(p[0][0], p[1][0])
             y1 = max(p[0][1], p[1][1])
-            draw.rectangle([x0, y0, x1, y1], outline=color, width=2)
+            if an.kind == "ellipse":
+                draw.ellipse([x0, y0, x1, y1], outline=color, width=2)
+            else:
+                draw.rectangle([x0, y0, x1, y1], outline=color, width=2)
         elif an.kind == "text":
             pass  # caption only — drawn below
         elif an.kind == "arrow":
@@ -318,7 +321,16 @@ def _build_svg(img: Image.Image, bar: ScaleBar | None,
 
     for an in annos:
         p = an.points
-        if an.kind in ("roi", "box"):
+        if an.kind == "ellipse":
+            cx = (p[0][0] + p[1][0]) / 2
+            cy = (p[0][1] + p[1][1]) / 2
+            parts.append(
+                f'<ellipse cx="{cx:.1f}" cy="{cy:.1f}" '
+                f'rx="{abs(p[1][0] - p[0][0]) / 2:.1f}" '
+                f'ry="{abs(p[1][1] - p[0][1]) / 2:.1f}" fill="none" '
+                f'stroke="{color}" stroke-width="2"/>'
+            )
+        elif an.kind in ("roi", "box"):
             x0 = min(p[0][0], p[1][0])
             y0 = min(p[0][1], p[1][1])
             w = abs(p[1][0] - p[0][0])
