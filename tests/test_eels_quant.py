@@ -86,17 +86,20 @@ def _spectrum(energy, c_amp, o_amp):
             + np.where(energy >= 532, o_amp, 0.0))
 
 
-def test_quantify_map_uniform_cube_matches_scalar() -> None:
+@pytest.mark.parametrize("method", ["powerlaw", "exponential"])
+def test_quantify_map_uniform_cube_matches_scalar(method: str) -> None:
     """The MATLAB oracle: a cube whose pixels all hold the same
-    spectrum reproduces eelsQuantify on that spectrum to round-off."""
+    spectrum reproduces eelsQuantify on that spectrum to round-off —
+    for BOTH background methods (upstream Tests 5-7)."""
     from fermiviewer.calc.eels_quant import quantify, quantify_map
 
     energy = np.linspace(200, 700, 600)
     spec = _spectrum(energy, 40.0, 25.0)
     cube = np.broadcast_to(spec, (4, 5, energy.size)).copy()
 
-    scalar = quantify(energy, spec, _edges_co(), 200, 10)
-    maps = quantify_map(cube, energy, _edges_co(), 200, 10)
+    scalar = quantify(energy, spec, _edges_co(), 200, 10, bg_method=method)
+    maps = quantify_map(cube, energy, _edges_co(), 200, 10,
+                        bg_method=method)
 
     assert maps.elements == scalar.elements
     np.testing.assert_allclose(maps.sigma, scalar.sigma, rtol=1e-12)
