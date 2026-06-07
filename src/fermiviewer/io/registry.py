@@ -11,6 +11,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from fermiviewer.datastruct import DataStruct
+from fermiviewer.io.bcf import load_bcf
 from fermiviewer.io.dm import load_dm
 
 __all__ = ["UnsupportedFormatError", "load_auto", "supported_extensions"]
@@ -23,7 +24,8 @@ class UnsupportedFormatError(ValueError):
 _LOADERS: dict[str, Callable[[Path], DataStruct]] = {
     ".dm3": load_dm,
     ".dm4": load_dm,
-    # .bcf / .ser / .mrc / .tif / … register here as they port (W2)
+    ".bcf": load_bcf,
+    # .ser / .mrc / .tif / … register here as they port (W2)
 }
 
 
