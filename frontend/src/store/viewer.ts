@@ -148,19 +148,55 @@ type SetState = (
   fn: (s: { images: Record<string, ImageMeta>; order: string[]; activeId: string | null }) => object,
 ) => void;
 
+/** Read one persisted preference with a fallback (lib/prefs.ts owns
+ *  the dialog; this avoids an import cycle at store-init time). */
+function _pref<T>(key: string, fallback: T): T {
+  try {
+    const p = JSON.parse(localStorage.getItem("fv_prefs") ?? "{}") as Record<
+      string,
+      T
+    >;
+    return p[key] ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 /** Merge newly opened images into the library (shared by path + upload). */
 function _ingest(set: SetState, metas: ImageMeta[]): void {
+  // preference: default colormap for images seen for the first time
+  let prefCmap = "gray";
+  try {
+    prefCmap =
+      (JSON.parse(localStorage.getItem("fv_prefs") ?? "{}") as {
+        defaultCmap?: string;
+      }).defaultCmap ?? "gray";
+  } catch {
+    /* defaults */
+  }
   set((s) => {
     const images = { ...s.images };
     const order = [...s.order];
+    const display = {
+      ...(s as unknown as { display: Record<string, Display> }).display,
+    };
     for (const m of metas) {
-      if (!(m.id in images)) order.push(m.id);
+      if (!(m.id in images)) {
+        order.push(m.id);
+        if (prefCmap !== "gray" && !(m.id in display)) {
+          display[m.id] = {
+            ...DEFAULT_DISPLAY,
+            cmap: prefCmap as Display["cmap"],
+          };
+        }
+      }
       images[m.id] = m;
     }
     const last = metas[metas.length - 1];
     return {
       images,
       order,
+      display,
       activeId: last ? last.id : s.activeId,
       status: `opened ${metas.length} file${metas.length === 1 ? "" : "s"}`,
     };
@@ -278,6 +314,8 @@ interface ViewerState {
   tools: ToolWindowState[]; // open workshop windows (handoff §6)
   exportOpen: boolean;
   calibOpen: boolean;
+  metaOpen: boolean;
+  prefsOpen: boolean;
   status: string;
 
   openPaths: (paths: string[]) => Promise<void>;
@@ -330,6 +368,8 @@ interface ViewerState {
   moveTool: (kind: ToolKind, x: number, y: number) => void;
   setExportOpen: (open: boolean) => void;
   setCalibOpen: (open: boolean) => void;
+  setMetaOpen: (open: boolean) => void;
+  setPrefsOpen: (open: boolean) => void;
   setStatus: (msg: string) => void;
 }
 
@@ -356,9 +396,9 @@ export const useViewer = create<ViewerState>((set, get) => ({
   overlay: loadJson<OverlayStyle>(OVERLAY_KEY, { size: "M", color: "#ffffff" }),
   captureMode: "none",
   panTool: false,
-  profileWidth: 1,
+  profileWidth: _pref("profileWidth", 1),
   leftCol: false,
-  minimap: true,
+  minimap: _pref("minimap", true),
   colorbar: false,
   rightCol: false,
   cmdk: false,
@@ -367,6 +407,8 @@ export const useViewer = create<ViewerState>((set, get) => ({
   tools: [],
   exportOpen: false,
   calibOpen: false,
+  metaOpen: false,
+  prefsOpen: false,
   status: "ready",
 
   openPaths: async (paths) => {
@@ -730,5 +772,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
 
   setExportOpen: (exportOpen) => set({ exportOpen }),
   setCalibOpen: (calibOpen) => set({ calibOpen }),
+  setMetaOpen: (metaOpen) => set({ metaOpen }),
+  setPrefsOpen: (prefsOpen) => set({ prefsOpen }),
   setStatus: (msg) => set({ status: msg }),
 }));

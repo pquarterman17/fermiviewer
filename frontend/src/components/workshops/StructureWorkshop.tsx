@@ -9,11 +9,13 @@ import uPlot from "uplot";
 import {
   analyzeAtoms,
   analyzeCtf,
+  analyzeGpa,
   analyzeLattice,
   analyzeParticles,
   analyzeStitch,
   analyzeTemplate,
   fetchData16,
+  imageFft,
   renderUrl,
   type AtomsResult,
   type CtfResult,
@@ -27,6 +29,7 @@ const MODES = [
   "Atoms",
   "Particles",
   "Template",
+  "GPA",
   "CTF",
   "Lattice",
   "Stitch",
@@ -68,6 +71,7 @@ export default function StructureWorkshop() {
           {mode === "Template" && activeId && (
             <TemplateMode id={activeId} />
           )}
+          {mode === "GPA" && activeId && <GpaMode id={activeId} />}
           {mode === "CTF" && activeId && <CtfMode id={activeId} />}
           {mode === "Lattice" && activeId && <LatticeMode id={activeId} />}
           {mode === "Stitch" && <StitchMode />}
@@ -428,6 +432,89 @@ function TemplateMode({ id }: { id: string }) {
       </div>
     </>
   );
+}
+
+// ── GPA (2-click g-vector picks on the FFT) ──────────────────────────
+
+function GpaMode({ id }: { id: string }) {
+  const setStatus = useViewer((s) => s.setStatus);
+  const ingestDerived = useViewer((s) => s.ingestDerived);
+  const meta = useViewer((s) => s.images[id] ?? null);
+  const [fftId, setFftId] = useState<string | null>(null);
+  const [spots, setSpots] = useState<[number, number][]>([]);
+  const [mean, setMean] = useState<Record<string, number> | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setFftId(null);
+    setSpots([]);
+    setMean(null);
+    let stale = false;
+    imageFft(id)
+      .then((m) => {
+        if (!stale) setFftId(m.id);
+      })
+      .catch((e: Error) => setStatus(`gpa: ${e.message}`));
+    return () => {
+      stale = true;
+    };
+  }, [id, setStatus]);
+
+  const onClick = (rc: [number, number]) => {
+    const next = [...spots, rc].slice(-2) as [number, number][];
+    setSpots(next);
+    setMean(null);
+    if (next.length === 2 && meta) {
+      // FFT centre at floor(N/2)+1 (1-based, the pinned convention)
+      const cr = Math.floor(meta.shape[0] / 2) + 1;
+      const cc = Math.floor(meta.shape[1] / 2) + 1;
+      const g = (s: [number, number]): [number, number] => [
+        s[1] - cc, // gx (cols)
+        s[0] - cr, // gy (rows)
+      ];
+      setBusy(true);
+      analyzeGpa(id, g(next[0]), g(next[1]))
+        .then((r) => {
+          ingestDerived(r.maps);
+          setMean(r.mean);
+          setStatus(`GPA: ${r.maps.length} strain maps registered`);
+        })
+        .catch((e: Error) => setStatus(`gpa: ${e.message}`))
+        .finally(() => setBusy(false));
+    }
+  };
+
+  return (
+    <>
+      {fftId && (
+        <Preview
+          id={fftId}
+          markers={spots.map(([r, c]) => ({ x: c, y: r }))}
+          color="var(--capture)"
+          onClick={onClick}
+        />
+      )}
+      <div className="fvd-ws-note">
+        {busy
+          ? "Computing strain maps…"
+          : spots.length < 2
+            ? `Click ${2 - spots.length} non-collinear g spot${
+                spots.length === 1 ? "" : "s"
+              } on the FFT.`
+            : "Click again to restart."}
+      </div>
+      {mean && (
+        <div className="fvd-ws-note">
+          ε̄xx {fmtMean(mean["exx"])} · ε̄yy {fmtMean(mean["eyy"])} · ε̄xy{" "}
+          {fmtMean(mean["exy"])}
+        </div>
+      )}
+    </>
+  );
+}
+
+function fmtMean(v: number | undefined): string {
+  return v === undefined ? "—" : v.toExponential(2);
 }
 
 // ── CTF ──────────────────────────────────────────────────────────────

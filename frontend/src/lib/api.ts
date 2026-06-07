@@ -667,6 +667,13 @@ export function renameImage(id: string, name: string): Promise<ImageMeta> {
   return post(`/api/image/${id}/rename`, { name });
 }
 
+export function updateMetadata(
+  id: string,
+  updates: Record<string, string | number | boolean>,
+): Promise<ImageMeta> {
+  return post(`/api/image/${id}/metadata`, { updates });
+}
+
 /** Render many images server-side into one ZIP. */
 export async function exportBatch(
   ids: string[],

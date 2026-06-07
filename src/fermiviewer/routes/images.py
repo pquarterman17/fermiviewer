@@ -142,6 +142,21 @@ def image_rename(img_id: str, req: RenameRequest) -> ImageMeta:
                                      store.get(img_id))
 
 
+class MetadataPatch(BaseModel):
+    updates: dict[str, str | float | int | bool]
+
+
+@router.post("/image/{img_id}/metadata")
+def image_metadata_update(img_id: str, req: MetadataPatch) -> ImageMeta:
+    """Edit/add metadata entries (checklist K metadata editor)."""
+    ds = _get(img_id)
+    for k, v in req.updates.items():
+        if not k.strip():
+            raise HTTPException(422, "metadata keys cannot be empty")
+        ds.metadata[k.strip()] = v
+    return ImageMeta.from_datastruct(img_id, store.name(img_id), ds)
+
+
 @router.get("/session/supported-extensions")
 def session_supported_extensions() -> dict[str, list[str]]:
     """Extension list for the picker's accept filter."""

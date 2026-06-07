@@ -616,6 +616,10 @@ export default function MenuBar({
         action: store.toggleTheme,
       },
       {
+        label: "Preferences…",
+        action: () => store.setPrefsOpen(true),
+      },
+      {
         label: store.leftCol ? "Show Library" : "Hide Library",
         shortcut: "⌘[",
         action: store.toggleLeft,
@@ -846,6 +850,64 @@ export default function MenuBar({
       {
         label: "Manage Calibrations…",
         action: () => store.setCalibOpen(true),
+      },
+      {
+        label: "Calibrate from Measurement…",
+        disabled:
+          !store.activeId ||
+          !(store.measures[store.activeId ?? ""] ?? []).some(
+            (m) => m.kind === "distance",
+          ),
+        action: () => {
+          void (async () => {
+            const id = store.activeId;
+            if (!id) return;
+            const meta = store.images[id];
+            const d = (store.measures[id] ?? [])
+              .filter((m) => m.kind === "distance")
+              .at(-1);
+            if (!meta || !d) return;
+            const [h, w] = meta.shape;
+            const lenPx = Math.hypot(
+              (d.pts[1].x - d.pts[0].x) * w,
+              (d.pts[1].y - d.pts[0].y) * h,
+            );
+            const v = await askParams(
+              `Calibrate (measured ${lenPx.toFixed(1)} px)`,
+              [
+                num("len", "Known physical length", 1),
+                {
+                  key: "unit",
+                  label: "Unit",
+                  type: "select",
+                  default: "nm",
+                  options: ["nm", "µm", "Å", "pm", "mm"],
+                },
+              ],
+            );
+            if (!v || lenPx <= 0) return;
+            applyCalibration(
+              id,
+              (v["len"] as number) / lenPx,
+              v["unit"] as string,
+            )
+              .then((r) => {
+                useViewer.setState((s) => ({
+                  images: { ...s.images, [r.image.id]: r.image },
+                }));
+                store.setStatus(
+                  `calibrated: ${r.image.pixel_size?.toPrecision(4)} ` +
+                    `${r.image.pixel_unit}/px`,
+                );
+              })
+              .catch((e: Error) => store.setStatus(e.message));
+          })();
+        },
+      },
+      {
+        label: "Edit Metadata…",
+        disabled: !store.activeId,
+        action: () => store.setMetaOpen(true),
       },
       {
         label: "Radial Profile",

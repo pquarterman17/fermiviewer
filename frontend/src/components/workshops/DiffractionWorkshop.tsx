@@ -13,6 +13,27 @@ import { useViewer } from "../../store/viewer";
 
 const VIEW_W = 300;
 
+/** Cluster detected-spot radii (about the pattern centre) into rings:
+ *  radii within 3 px merge; each cluster's mean becomes a ring. */
+function ringRadii(
+  spots: [number, number][],
+  nat: { w: number; h: number },
+): number[] {
+  const cx = nat.w / 2 + 0.5;
+  const cy = nat.h / 2 + 0.5;
+  const radii = spots
+    .map(([r, c]) => Math.hypot(c - cx, r - cy))
+    .filter((r) => r > 2)
+    .sort((a, b) => a - b);
+  const rings: number[][] = [];
+  for (const r of radii) {
+    const last = rings[rings.length - 1];
+    if (last && r - last[last.length - 1] < 3) last.push(r);
+    else rings.push([r]);
+  }
+  return rings.map((g) => g.reduce((s, v) => s + v, 0) / g.length);
+}
+
 export default function DiffractionWorkshop() {
   const activeId = useViewer((s) => s.activeId);
   const meta = useViewer((s) =>
@@ -27,6 +48,7 @@ export default function DiffractionWorkshop() {
   const [accKv, setAccKv] = useState("200");
   const [spots, setSpots] = useState<[number, number][]>([]);
   const [candidates, setCandidates] = useState<PhaseCandidate[]>([]);
+  const [rings, setRings] = useState(false);
   const [busy, setBusy] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(
@@ -110,6 +132,19 @@ export default function DiffractionWorkshop() {
                 strokeWidth={1.5}
               />
             ))}
+            {rings &&
+              ringRadii(spots, natural).map((rr, i) => (
+                <circle
+                  key={`ring-${i}`}
+                  cx={((natural.w / 2 + 0.5) - 0.5) * scale}
+                  cy={((natural.h / 2 + 0.5) - 0.5) * scale}
+                  r={rr * scale}
+                  fill="none"
+                  stroke="#f59e0b"
+                  strokeWidth={1}
+                  strokeDasharray="4 3"
+                />
+              ))}
           </svg>
         )}
       </div>
@@ -130,6 +165,14 @@ export default function DiffractionWorkshop() {
         <button className="fvd-btn" onClick={detect} disabled={busy}>
           Detect
         </button>
+        <label className="fvd-check">
+          <input
+            type="checkbox"
+            checked={rings}
+            onChange={(e) => setRings(e.target.checked)}
+          />
+          Rings
+        </label>
       </div>
       <div className="fvd-ws-row">
         <span className="k">px (mm)</span>

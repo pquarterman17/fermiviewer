@@ -21,6 +21,8 @@ import ResultsWindow from "./components/overlays/ResultsWindow";
 import RadialMenu from "./components/overlays/RadialMenu";
 import ShortcutsOverlay from "./components/overlays/ShortcutsOverlay";
 import CalibrationManager from "./components/overlays/CalibrationManager";
+import MetadataDialog from "./components/overlays/MetadataDialog";
+import PrefsDialog from "./components/overlays/PrefsDialog";
 import ToolWindow from "./components/overlays/ToolWindow";
 import DiffractionWorkshop from "./components/workshops/DiffractionWorkshop";
 import FftMaskWorkshop from "./components/workshops/FftMaskWorkshop";
@@ -459,6 +461,8 @@ export default function App() {
       <RadialMenu />
       <ExportDialog />
       <CalibrationManager />
+      <MetadataDialog />
+      <PrefsDialog />
       <ParamDialog />
       <ResultsWindow />
       {tools.map((t) => (
