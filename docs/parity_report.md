@@ -6,7 +6,8 @@ prototype (screenshots from the handoff extract), (3) verification
 state. Companion documents: `plans/PORT_CHECKLIST.md` (item-level,
 per-machine) and `docs/w3_imaging_audit.md` (algorithm decisions).
 
-## 1 · Feature parity vs MATLAB (checklist: 108/183 checked, 59 %)
+## 1 · Feature parity vs MATLAB (checklist: 125/183 checked, 68 % —
+sweep #3, 2026-06-08)
 
 The headline number undersells the state: parity is split sharply by
 layer.
@@ -57,23 +58,26 @@ Known remaining design deltas (intentional or future):
 | "connected/LOCAL/VIEW HRSTEM" status segments | LOCAL-equivalents absent | cosmetic |
 | WOFF2 embedded font (JetBrains Mono served) | system mono fallback stack | could vendor the font |
 
-## 3 · Top remaining work, ranked (updated 2026-06-07 night)
+## 3 · Top remaining work, ranked (updated 2026-06-08)
 
-Shipped since the morning run: ~~EDS composite mode~~ (`cdcac98`),
-~~measurement-overlay baking + SVG/PDF~~ (`d8e7709`), ~~FFT mask
-editor~~ (`ff7bbe8`), ~~EELS advanced endpoints + dialog~~
-(`f3ece0e`, `e672fc3`), ~~rotate/flip/crop + toolbar~~ (`ad4f137`),
-~~undo/redo + Edit menu~~ (`e827526`), ~~polyline + width-averaged
-profiles~~ (`d45e974`), ~~calibration manager~~ (`d02323c`),
-~~annotations text/arrow/box + minimap~~ (`0f0dc39`).
+The 2026-06-07/08 runs closed every previously-ranked item: EDS
+composite, overlay baking + SVG/PDF, FFT mask editor, EELS advanced
+(endpoints + dialog), rotate/flip/crop, undo/redo + Edit menu,
+polyline + width profiles, calibration manager, annotations + minimap,
+pixel inspector, batch apply, macro record/replay, GIF builder, and
+the Structure workshop (first UI for atoms / template match / CTF /
+lattice / stitch).
 
-1. Pixel inspector (magnified value grid), batch ops, macro record,
-   GIF builder — the long tail of checklist N
-2. Dedicated UI for atoms/template/stitch/CTF/lattice beyond the
-   Analyze-menu entries (results land as derived images/tables today)
-3. Tauri shell — blocked on Rust toolchain; `fv --desktop`
+What remains is checklist partials and platform work:
+
+1. Tauri shell — blocked on Rust toolchain; `fv --desktop`
    (pywebview) delivers the desktop experience meanwhile
-4. Human side-by-side MATLAB session before declaring parity (user)
+2. Human side-by-side MATLAB session before declaring parity (user)
+3. Checklist partials (inline-noted): live-FFT toggle, diffraction
+   ring overlays, ROI-manager CSV export, multi-frame stacks, image
+   math, circle ROI/annotations, preferences dialog, journal export
+   presets, batch convert/rename, RAW import dialog, metadata editor,
+   logging/bug-report capture
 
 ## 4 · Verification state
 
