@@ -57,19 +57,21 @@ Known remaining design deltas (intentional or future):
 | "connected/LOCAL/VIEW HRSTEM" status segments | LOCAL-equivalents absent | cosmetic |
 | WOFF2 embedded font (JetBrains Mono served) | system mono fallback stack | could vendor the font |
 
-## 3 · Top remaining work, ranked
+## 3 · Top remaining work, ranked (updated 2026-06-07 evening)
 
-1. **EDS composite mode** (channel list + additive blend) — the most
-   visible workshop gap vs both MATLAB and prototype
-2. Rotate/flip/crop stage operations + toolbar icons
-3. Measurement-overlay baking in /export (+ SVG/PDF)
-4. Undo service (enables the Edit menu)
-5. Polyline + width-averaged profile capture modes
-6. EELS advanced dialog (Fourier-log/KK/SVD have endpoints-able calc
-   but no UI), edge-overlay on spectra
-7. FFT mask *editor* UI (backend done — /analyze/fft-mask)
-8. Annotations suite (H), ROI manager, batch ops, minimap (N)
-9. Tauri shell — blocked on Rust toolchain; `fv --desktop`
+Shipped since the morning run: ~~EDS composite mode~~ (`cdcac98`),
+~~measurement-overlay baking + SVG/PDF~~ (`d8e7709`), ~~FFT mask
+editor~~ (`ff7bbe8`), ~~EELS advanced endpoints — thickness/KK/
+Fourier-log/SVD/align-zlp~~ (`f3ece0e`).
+
+1. Rotate/flip/crop stage operations + toolbar icons
+2. Undo service (enables the Edit menu)
+3. Polyline + width-averaged profile capture modes
+4. EELS advanced dialog (endpoints now exist — UI only),
+   edge-overlay on spectra
+5. Calibration management dialog (list/delete UI)
+6. Annotations suite (H), ROI manager, batch ops, minimap (N)
+7. Tauri shell — blocked on Rust toolchain; `fv --desktop`
    (pywebview) delivers the desktop experience meanwhile
 
 ## 4 · Verification state
