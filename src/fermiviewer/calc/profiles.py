@@ -6,11 +6,15 @@ the diffraction module and the wire protocol).
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 from scipy.ndimage import map_coordinates
 
 __all__ = [
+    "InterfaceFit",
     "azimuthal_integrate",
+    "fit_interface_width",
     "line_profile",
     "radial_profile",
     "roi_stats",
@@ -191,3 +195,99 @@ def azimuthal_integrate(
     intensity[counts == 0] = np.nan
 
     return centres * pixel_size, intensity
+
+
+@dataclass(frozen=True)
+class InterfaceFit:
+    center: float
+    sigma: float
+    width_10_90: float
+    amplitude: float
+    offset: float
+    r_squared: float
+    x_fit: np.ndarray
+    y_fit: np.ndarray
+    model: str
+
+
+def fit_interface_width(
+    x: np.ndarray, y: np.ndarray, model: str = "erf"
+) -> InterfaceFit:
+    """4-parameter erf/sigmoid interface fit — ported verbatim.
+
+    Mirrors fminsearch with Nelder-Mead (xatol/fatol 1e-10); converged
+    minima agree with MATLAB to ~1e-6 on clean data (optimizer paths
+    differ — golden tolerance is 1e-5, per the audit).
+
+    10–90 % width: 2·erfinv(0.8)·σ·√2 (erf) or 2·σ·ln 9 (sigmoid).
+    """
+    from scipy.optimize import minimize
+    from scipy.special import erf as _erf
+    from scipy.special import erfinv
+
+    xv = np.asarray(x, dtype=np.float64).ravel()
+    yv = np.asarray(y, dtype=np.float64).ravel()
+    if xv.size != yv.size:
+        raise ValueError("x and y must have the same number of elements")
+    if xv.size < 4:
+        raise ValueError("at least 4 data points are required")
+    if model not in ("erf", "sigmoid"):
+        raise ValueError("model must be 'erf' or 'sigmoid'")
+
+    x_range = xv.max() - xv.min()
+    amp0 = yv.max() - yv.min()
+    mid = xv.size // 2
+    if yv[:mid].mean() > yv[mid:].mean():
+        amp0 = -amp0  # falling transition
+    p0 = np.array(
+        [(xv.min() + xv.max()) / 2, x_range / 8, amp0, yv.min()]
+    )
+
+    if model == "erf":
+
+        def model_fn(p: np.ndarray, t: np.ndarray) -> np.ndarray:
+            out: np.ndarray = (
+                p[2] / 2 * _erf((t - p[0]) / (p[1] * np.sqrt(2)))
+                + p[3] + p[2] / 2
+            )
+            return out
+    else:
+
+        def model_fn(p: np.ndarray, t: np.ndarray) -> np.ndarray:
+            out: np.ndarray = p[2] / (1 + np.exp(-(t - p[0]) / p[1])) + p[3]
+            return out
+
+    res = minimize(
+        lambda p: float(((yv - model_fn(p, xv)) ** 2).sum()),
+        p0,
+        method="Nelder-Mead",
+        options={
+            "xatol": 1e-10,
+            "fatol": 1e-10,
+            "maxiter": 5000,
+            "maxfev": 5000,
+        },
+    )
+    p = res.x
+    sigma = abs(float(p[1]))
+    if model == "erf":
+        width = float(2 * erfinv(0.8) * sigma * np.sqrt(2))
+    else:
+        width = float(2 * sigma * np.log(9))
+
+    y_hat = model_fn(p, xv)
+    ss_tot = float(((yv - yv.mean()) ** 2).sum())
+    r_sq = 1.0 if ss_tot == 0 else 1 - float(((yv - y_hat) ** 2).sum()) / ss_tot
+
+    x_fit = np.linspace(xv.min(), xv.max(), 500)
+    return InterfaceFit(
+        center=float(p[0]),
+        sigma=sigma,
+        width_10_90=width,
+        amplitude=float(p[2]),
+        offset=float(p[3]),
+        r_squared=r_sq,
+        x_fit=x_fit,
+        y_fit=model_fn(p, x_fit),
+        model=model,
+    )

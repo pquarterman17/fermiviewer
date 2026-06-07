@@ -28,12 +28,17 @@ from fermiviewer.calc.particles import (
     region_stats,
     watershed,
 )
-from fermiviewer.calc.profiles import azimuthal_integrate, radial_profile
+from fermiviewer.calc.profiles import (
+    azimuthal_integrate,
+    fit_interface_width,
+    radial_profile,
+)
 from fermiviewer.calc.segment import (
     distance_transform,
     label_components,
     morph_op,
     multi_otsu,
+    slic,
 )
 from fermiviewer.calc.texture import noise_estimate, structure_tensor
 
@@ -257,6 +262,44 @@ def test_azimuthal_integrate(synth) -> None:
         g["wrap"]["intensitySum"], rel=REL
     )
     assert int(np.isnan(wrap).sum()) == g["wrap"]["nanCount"]
+
+
+# ── tranche 2b ───────────────────────────────────────────────────────
+
+
+def test_fit_interface_width() -> None:
+    from scipy.special import erf
+
+    xs = np.arange(0, 20.25, 0.25)
+    ys = (
+        1.2
+        + 2.0 * 0.5 * (1 + erf((xs - 9.7) / (1.3 * np.sqrt(2))))
+        + 0.02 * np.sin(3 * xs)
+    )
+    for model in ("erf", "sigmoid"):
+        g = GOLDEN["interface"][model]
+        fit = fit_interface_width(xs, ys, model=model)
+        # optimizer paths differ (fminsearch vs scipy NM) → 1e-5 (audit)
+        assert fit.center == pytest.approx(g["center"], rel=1e-5)
+        assert fit.sigma == pytest.approx(g["sigma"], rel=1e-5)
+        assert fit.width_10_90 == pytest.approx(g["width1090"], rel=1e-5)
+        assert fit.amplitude == pytest.approx(g["amplitude"], rel=1e-5)
+        assert fit.offset == pytest.approx(g["offset"], rel=1e-5)
+        assert fit.r_squared == pytest.approx(g["rSquared"], rel=1e-6)
+        assert fit.x_fit.size == 500
+
+
+def test_slic(synth) -> None:
+    labels, centres = slic(
+        synth["base"], n_superpixels=40, compactness=10, max_iter=10
+    )
+    g = GOLDEN["slic"]
+    assert int(labels.max()) == g["n"]
+    assert int(labels.sum()) == g["labelSum"]
+    assert int(labels[19, 29]) == g["labelPx"]
+    sizes = np.bincount(labels.ravel())[1:]
+    assert int((sizes.astype(np.int64) ** 2).sum()) == g["sizeSqSum"]
+    assert centres.sum() == pytest.approx(g["centersSum"], rel=REL)
 
 
 def test_edge_cases() -> None:

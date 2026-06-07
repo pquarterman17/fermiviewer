@@ -40,7 +40,7 @@ Legend — **map**: use scipy/skimage with parameter adaptation;
 | `multiOtsu` | **port** | `segment.multi_otsu` | skimage `threshold_multiotsu` differs in bin-edge→threshold mapping and has no 5-class coarse→fine scheme. Exhaustive search is simple — port for exact thresholds. |
 | `watershed` | **port** (revised from hybrid) | `particles.watershed` | DT + grid-NMS markers + adoption flood all verbatim. The hybrid (skimage priority-flood on −D) was tried first and diverged badly — basin areas off by up to ~70 px on the golden synthetic — so the descending-D adoption flood (column-major tie order, highest-D-neighbour adoption, multi-pass) is ported exactly. Goldens: count, coverage and sorted areas all exact. Python-loop flood OK to ~1k²; compiled path if 4k becomes interactive. |
 | `regionStats` | **map** | `skimage.measure.regionprops` (tranche 2) | area/centroid/bbox/equivalent_diameter/mean_intensity all standard; adapt 1-based centroid/bbox convention (+1) and add calibration + MinArea filter. Exact after convention shift. |
-| `slic` | **map** | `skimage.segmentation.slic` (tranche 2) | MATLAB version is grayscale-intensity SLIC with m²=(C/S)²; skimage labels won't match — no goldens depend on per-pixel labels. Property tests only (segment count, connectivity, boundary recall on synthetic). |
+| `slic` | **port** (revised from map) | `segment.slic` | The MATLAB version is deterministic (grid seeding, no RNG) — an exact port is golden-testable for free, where skimage's SLIC (LAB space, different seeding) never matches labels. Ported verbatim incl. column-major seed order and half-away rounding; goldens exact (labelSum/sizeSqSum/centres). |
 | `particleAnalysis` | **port** (thin orchestration, tranche 2) | `segment.particle_analysis` | composes multi_otsu → watershed/label → region stats; logic-level port over the pieces above. |
 
 ## Texture, statistics, profiles (→ `calc/texture.py`, `calc/profiles.py`)
@@ -53,7 +53,7 @@ Legend — **map**: use scipy/skimage with parameter adaptation;
 | `azimuthalIntegrate` | **port** | `profiles.azimuthal_integrate` (tranche 2) | sector wrap-around (sMin ≥ sMax) + (W+1)/2 center convention. Exact. |
 | `lineProfile` / `measureDistance` | done | `profiles.line_profile` / frontend `physDist` | tilt-corrected scalar distance available via the same correction factors |
 | `fitInterfaceWidth` | **port** | `profiles.fit_interface_width` (tranche 2) | erf/sigmoid 4-param fit; mirror fminsearch with `scipy.optimize.minimize(method='Nelder-Mead')`. Tolerance: params ≤1e-6 (optimizer paths differ). |
-| `templateMatch` | **hybrid** | `texture.template_match` (tranche 2) | NCC core maps to `skimage.feature.match_template` (same integral-image math); port the grid NMS + center-coordinate convention (template top-left + floor(size/2)). Peak positions exact, scores ≤1e-9. |
+| `templateMatch` | **port** (pending upstream fix) | `texture.template_match` | The MATLAB implementation has a confirmed FFT lag-selection bug (`xcorrFull(tmplH:imgH,…)` instead of `1:imgH−tmplH+1`) producing aliased false peaks — fix PR'd upstream (fix/template-match-xcorr-lag). Port the CORRECTED algorithm after the PR merges, then capture goldens; grid NMS + center convention port as written. |
 | `stitchImages` | **port** | `texture.stitch_images` (tranche 3) | strip FFT cross-correlation + peak-lag mapping + linear seam alpha-blend — domain-specific throughout. |
 
 ## Domain analysis (→ their own modules, tranche 3 / W4 items)

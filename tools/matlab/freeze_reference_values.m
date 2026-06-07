@@ -202,6 +202,24 @@ function out = captureImaging()
     [~, i2] = imaging.azimuthalIntegrate(base, SectorMin=300, SectorMax=60);
     out.azimuthal.wrap.intensitySum = sum(i2(~isnan(i2)));
     out.azimuthal.wrap.nanCount = nnz(isnan(i2));
+
+    % ── tranche 2b ───────────────────────────────────────────────────
+    xs = 0:0.25:20;
+    ys = 1.2 + 2.0 * 0.5 * (1 + erf((xs - 9.7) / (1.3 * sqrt(2)))) ...
+        + 0.02 * sin(3 * xs);
+    fe = imaging.fitInterfaceWidth(xs, ys, Model='erf');
+    out.interface.erf = rmfield(rmfield(fe, 'xFit'), 'yFit');
+    fs = imaging.fitInterfaceWidth(xs, ys, Model='sigmoid');
+    out.interface.sigmoid = rmfield(rmfield(fs, 'xFit'), 'yFit');
+
+    [Ls, cs] = imaging.slic(base, NumSuperpixels=40, Compactness=10, ...
+        MaxIter=10);
+    out.slic.n = max(Ls(:));
+    out.slic.labelSum = sum(Ls(:));
+    out.slic.labelPx = Ls(20, 30);
+    sizes = accumarray(Ls(:), 1);
+    out.slic.sizeSqSum = sum(sizes.^2);
+    out.slic.centersSum = sum(cs(:));
 end
 
 

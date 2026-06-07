@@ -19,6 +19,7 @@ __all__ = [
     "MultiOtsuResult",
     "distance_transform",
     "label_components",
+    "slic",
     "morph_op",
     "multi_otsu",
 ]
@@ -323,3 +324,92 @@ def distance_transform(
 
     dist[~mask] = 0.0
     return dist
+
+
+def slic(
+    img: np.ndarray,
+    n_superpixels: int = 200,
+    compactness: float = 10.0,
+    max_iter: int = 10,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Grayscale SLIC superpixels — ported verbatim (revised from "map").
+
+    The MATLAB implementation is deterministic (grid seeding, no RNG),
+    so an exact port is golden-testable — skimage's SLIC differs in
+    seeding/colour space and would never match labels. Distance =
+    (ΔI)² + (C/S)²·(Δspatial)²; centres update to member means with
+    MATLAB column-major seed ordering and half-away-from-zero rounding.
+
+    Returns (labels 1..K compact-relabelled, centres [row, col, I]).
+    """
+    d = np.asarray(img, dtype=np.float64)
+    lo, hi = d.min(), d.max()
+    inten = (d - lo) / (hi - lo) if hi > lo else np.zeros_like(d)
+    h, w = inten.shape
+    n = h * w
+
+    def mround(x: float) -> int:
+        return int(np.floor(x + 0.5))
+
+    step = max(1, mround(np.sqrt(n / n_superpixels)))
+    gr = np.arange(mround(step / 2), h + 1, step, dtype=np.int64)
+    gc = np.arange(mround(step / 2), w + 1, step, dtype=np.int64)
+    if gr.size == 0:
+        gr = np.array([mround(h / 2)], dtype=np.int64)
+    if gc.size == 0:
+        gc = np.array([mround(w / 2)], dtype=np.int64)
+    # MATLAB meshgrid(gc, gr) + (:) → column-major flatten
+    gcc, grr = np.meshgrid(gc, gr)
+    cr = grr.flatten(order="F").astype(np.float64)
+    cc = gcc.flatten(order="F").astype(np.float64)
+    ci = inten[cr.astype(np.int64) - 1, cc.astype(np.int64) - 1]
+    k = cr.size
+
+    m2 = (compactness / step) ** 2
+    xx = np.arange(1, w + 1, dtype=np.float64)[None, :]
+    yy = np.arange(1, h + 1, dtype=np.float64)[:, None]
+    xx2d = np.broadcast_to(xx, (h, w))
+    yy2d = np.broadcast_to(yy, (h, w))
+
+    labels = np.zeros((h, w), dtype=np.int64)
+    for _ in range(max_iter):
+        dist_best = np.full((h, w), np.inf)
+        labels[:] = 0
+        for ki in range(k):
+            r0 = max(1, int(cr[ki]) - step)
+            r1 = min(h, int(cr[ki]) + step)
+            c0 = max(1, int(cc[ki]) - step)
+            c1 = min(w, int(cc[ki]) + step)
+            sl = (slice(r0 - 1, r1), slice(c0 - 1, c1))
+            dist = (inten[sl] - ci[ki]) ** 2 + m2 * (
+                (xx2d[sl] - cc[ki]) ** 2 + (yy2d[sl] - cr[ki]) ** 2
+            )
+            upd = dist < dist_best[sl]
+            dist_best[sl][upd] = dist[upd]
+            lab_win = labels[sl]
+            lab_win[upd] = ki + 1
+            labels[sl] = lab_win
+
+        miss = labels == 0
+        if miss.any():
+            mr, mc = np.nonzero(miss)
+            for r, c in zip(mr, mc, strict=True):
+                dd = (cr - (r + 1)) ** 2 + (cc - (c + 1)) ** 2
+                labels[r, c] = int(np.argmin(dd)) + 1
+
+        flat = labels.ravel()
+        cnt = np.bincount(flat - 1, minlength=k).astype(np.float64)
+        cnt = np.maximum(cnt, 1)
+        sum_y = np.bincount(flat - 1, weights=yy2d.ravel(), minlength=k)
+        sum_x = np.bincount(flat - 1, weights=xx2d.ravel(), minlength=k)
+        sum_i = np.bincount(flat - 1, weights=inten.ravel(), minlength=k)
+        cr = np.clip(np.floor(sum_y / cnt + 0.5), 1, h)
+        cc = np.clip(np.floor(sum_x / cnt + 0.5), 1, w)
+        ci = sum_i / cnt
+
+    present = np.unique(labels)
+    remap = np.zeros(int(labels.max()) + 1, dtype=np.int64)
+    remap[present] = np.arange(1, present.size + 1)
+    labels = remap[labels]
+    centres = np.column_stack([cr, cc, ci])[present - 1]
+    return labels, centres
