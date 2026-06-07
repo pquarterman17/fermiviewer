@@ -57,22 +57,23 @@ Known remaining design deltas (intentional or future):
 | "connected/LOCAL/VIEW HRSTEM" status segments | LOCAL-equivalents absent | cosmetic |
 | WOFF2 embedded font (JetBrains Mono served) | system mono fallback stack | could vendor the font |
 
-## 3 · Top remaining work, ranked (updated 2026-06-07 evening)
+## 3 · Top remaining work, ranked (updated 2026-06-07 night)
 
 Shipped since the morning run: ~~EDS composite mode~~ (`cdcac98`),
 ~~measurement-overlay baking + SVG/PDF~~ (`d8e7709`), ~~FFT mask
-editor~~ (`ff7bbe8`), ~~EELS advanced endpoints — thickness/KK/
-Fourier-log/SVD/align-zlp~~ (`f3ece0e`).
+editor~~ (`ff7bbe8`), ~~EELS advanced endpoints + dialog~~
+(`f3ece0e`, `e672fc3`), ~~rotate/flip/crop + toolbar~~ (`ad4f137`),
+~~undo/redo + Edit menu~~ (`e827526`), ~~polyline + width-averaged
+profiles~~ (`d45e974`), ~~calibration manager~~ (`d02323c`),
+~~annotations text/arrow/box + minimap~~ (`0f0dc39`).
 
-1. Rotate/flip/crop stage operations + toolbar icons
-2. Undo service (enables the Edit menu)
-3. Polyline + width-averaged profile capture modes
-4. EELS advanced dialog (endpoints now exist — UI only),
-   edge-overlay on spectra
-5. Calibration management dialog (list/delete UI)
-6. Annotations suite (H), ROI manager, batch ops, minimap (N)
-7. Tauri shell — blocked on Rust toolchain; `fv --desktop`
+1. Pixel inspector (magnified value grid), batch ops, macro record,
+   GIF builder — the long tail of checklist N
+2. Dedicated UI for atoms/template/stitch/CTF/lattice beyond the
+   Analyze-menu entries (results land as derived images/tables today)
+3. Tauri shell — blocked on Rust toolchain; `fv --desktop`
    (pywebview) delivers the desktop experience meanwhile
+4. Human side-by-side MATLAB session before declaring parity (user)
 
 ## 4 · Verification state
 
