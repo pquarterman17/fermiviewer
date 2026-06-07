@@ -282,6 +282,22 @@ function out = captureImaging()
     out.stitch.v.offsets = sv.offsets(:)';
     out.stitch.v.size = size(sv.mosaic);
     out.stitch.v.mosaicSum = sum(sv.mosaic(:));
+
+    % templateMatch (requires fermi-viewer >= 36fb8a5, PR #23 lag fix):
+    % two embedded copies of a structured 7x9 patch on a gradient
+    [CG2, RG2] = meshgrid(1:80, 1:64);
+    [tcc, trr] = meshgrid(1:9, 1:7);
+    tpl = sin(trr) .* cos(tcc) + 0.1 * trr .* tcc;
+    tImg = zeros(64, 80);
+    tImg(21:27, 31:39) = tpl;
+    tImg(41:47, 11:19) = tpl;
+    tImg = tImg + 0.001 * RG2 + 0.002 * CG2;
+    tm = imaging.templateMatch(tImg, tpl, Threshold=0.5, MaxMatches=10);
+    out.templateMatch.n = tm.nMatches;
+    out.templateMatch.locations = tm.locations(:)';
+    out.templateMatch.scores = tm.scores(:)';
+    out.templateMatch.nccSum = sum(tm.nccMap(:));
+    out.templateMatch.nccAtCenter = tm.nccMap(24, 35);
 end
 
 

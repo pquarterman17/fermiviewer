@@ -15,7 +15,14 @@ from scipy import signal
 
 from fermiviewer.calc.filters import apply_gaussian
 
-__all__ = ["NoiseEstimate", "StructureTensor", "noise_estimate", "structure_tensor"]
+__all__ = [
+    "NoiseEstimate",
+    "StructureTensor",
+    "TemplateMatches",
+    "noise_estimate",
+    "structure_tensor",
+    "template_match",
+]
 
 
 @dataclass(frozen=True)
@@ -189,4 +196,166 @@ def noise_estimate(img: np.ndarray, method: str = "mad") -> NoiseEstimate:
         snr_linear=float(snr_linear),
         noise_type=_classify(means, variances),
         method=method,
+    )
+
+
+@dataclass(frozen=True)
+class TemplateMatches:
+    locations: np.ndarray  # (n, 2) 1-based (row, col) match CENTRES
+    scores: np.ndarray
+    ncc_map: np.ndarray
+    n_matches: int
+    threshold: float
+
+
+def _ncc_map(d: np.ndarray, t: np.ndarray) -> np.ndarray:
+    """Centre-embedded NCC map (corrected valid-lag FFT correlation)."""
+    img_h, img_w = d.shape
+    tmpl_h, tmpl_w = t.shape
+    eps = np.finfo(np.float64).eps
+
+    tz = t - t.mean()
+    tmpl_std = float(np.std(tz, ddof=1))  # N-1 (the upstream quirk)
+    if tmpl_std < eps:
+        tmpl_std = eps
+    n_tmpl = t.size
+
+    padded = np.zeros((img_h, img_w))
+    padded[:tmpl_h, :tmpl_w] = tz
+    xcorr = np.real(
+        np.fft.ifft2(np.fft.fft2(d) * np.conj(np.fft.fft2(padded)))
+    )
+    # valid (non-wrapped) lags: template top-left at rows 0..H-h
+    valid_h = img_h - tmpl_h + 1
+    valid_w = img_w - tmpl_w + 1
+    xcorr_valid = xcorr[:valid_h, :valid_w]
+
+    # sliding-window stats via integral images (population N variance)
+    cum = np.zeros((img_h + 1, img_w + 1))
+    cum_sq = np.zeros((img_h + 1, img_w + 1))
+    cum[1:, 1:] = d.cumsum(axis=0).cumsum(axis=1)
+    cum_sq[1:, 1:] = (d**2).cumsum(axis=0).cumsum(axis=1)
+
+    def box(c: np.ndarray) -> np.ndarray:
+        out: np.ndarray = (
+            c[tmpl_h : img_h + 1, tmpl_w : img_w + 1]
+            - c[:valid_h, tmpl_w : img_w + 1]
+            - c[tmpl_h : img_h + 1, :valid_w]
+            + c[:valid_h, :valid_w]
+        )
+        return out
+
+    local_sum = box(cum)
+    local_var = np.maximum(
+        box(cum_sq) / n_tmpl - (local_sum / n_tmpl) ** 2, 0.0
+    )
+    denom = np.sqrt(local_var) * (tmpl_std * n_tmpl)
+    denom[denom < eps] = eps
+    ncc_valid = np.clip(xcorr_valid / denom, -1.0, 1.0)
+
+    # embed so ncc_map[r, c] = NCC with the template CENTRED at (r, c)
+    half_r = tmpl_h // 2
+    half_c = tmpl_w // 2
+    ncc_map = np.zeros((img_h, img_w))
+    n_rows = min(valid_h, img_h - half_r)
+    n_cols = min(valid_w, img_w - half_c)
+    ncc_map[half_r : half_r + n_rows, half_c : half_c + n_cols] = ncc_valid[
+        :n_rows, :n_cols
+    ]
+    return ncc_map
+
+
+def _grid_nms(
+    cand_r: np.ndarray,
+    cand_c: np.ndarray,
+    min_dist: float,
+    max_keep: int,
+) -> list[int]:
+    """Greedy grid NMS over pre-sorted candidates; returns kept indices."""
+    cell = max(1.0, min_dist)
+    min_d2 = min_dist**2
+    grid: dict[tuple[int, int], list[int]] = {}
+    kept_idx: list[int] = []
+    kept_r: list[int] = []
+    kept_c: list[int] = []
+    for i in range(cand_r.size):
+        if len(kept_idx) >= max_keep:
+            break
+        r = int(cand_r[i])
+        c = int(cand_c[i])
+        gr = int(r // cell)
+        gc = int(c // cell)
+        too_close = False
+        for dgr in (-1, 0, 1):
+            for dgc in (-1, 0, 1):
+                for j in grid.get((gr + dgr, gc + dgc), ()):
+                    if (r - kept_r[j]) ** 2 + (c - kept_c[j]) ** 2 < min_d2:
+                        too_close = True
+                        break
+                if too_close:
+                    break
+            if too_close:
+                break
+        if too_close:
+            continue
+        grid.setdefault((gr, gc), []).append(len(kept_r))
+        kept_r.append(r)
+        kept_c.append(c)
+        kept_idx.append(i)
+    return kept_idx
+
+
+def template_match(
+    img: np.ndarray,
+    template: np.ndarray,
+    threshold: float = 0.7,
+    max_matches: int = 100,
+    min_distance: float = 0.0,
+) -> TemplateMatches:
+    """FFT-based normalized cross-correlation matching — ported verbatim
+    from the PR-#23-corrected MATLAB (valid lags 0..H-h, top-left pad).
+
+    Preserves the upstream normalization quirk: template std uses N-1
+    while the sliding-window std uses N, so perfect matches score
+    ~0.99, not 1.0. min_distance 0 resolves to max(template dims).
+    """
+    d = np.asarray(img, dtype=np.float64)
+    t = np.asarray(template, dtype=np.float64)
+    if t.shape[0] >= d.shape[0] or t.shape[1] >= d.shape[1]:
+        raise ValueError("template must be strictly smaller than image")
+    if not 0 <= threshold <= 1:
+        raise ValueError("threshold must be in [0, 1]")
+    min_dist = min_distance if min_distance > 0 else max(t.shape)
+
+    ncc_map = _ncc_map(d, t)
+    above = ncc_map >= threshold
+    if not above.any():
+        return TemplateMatches(
+            locations=np.zeros((0, 2)),
+            scores=np.zeros(0),
+            ncc_map=ncc_map,
+            n_matches=0,
+            threshold=threshold,
+        )
+
+    # candidates in MATLAB find() column-major order, stable-sorted desc
+    cand_c, cand_r = np.nonzero(above.T)
+    cand_scores = ncc_map[cand_r, cand_c]
+    order = np.argsort(-cand_scores, kind="stable")
+    cand_r, cand_c, cand_scores = (
+        cand_r[order],
+        cand_c[order],
+        cand_scores[order],
+    )
+
+    kept = _grid_nms(cand_r, cand_c, min_dist, max_matches)
+    locations = np.column_stack(
+        [cand_r[kept] + 1, cand_c[kept] + 1]
+    ).astype(np.float64)
+    return TemplateMatches(
+        locations=locations,
+        scores=cand_scores[kept],
+        ncc_map=ncc_map,
+        n_matches=len(kept),
+        threshold=threshold,
     )

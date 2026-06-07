@@ -53,7 +53,7 @@ Legend — **map**: use scipy/skimage with parameter adaptation;
 | `azimuthalIntegrate` | **port** | `profiles.azimuthal_integrate` (tranche 2) | sector wrap-around (sMin ≥ sMax) + (W+1)/2 center convention. Exact. |
 | `lineProfile` / `measureDistance` | done | `profiles.line_profile` / frontend `physDist` | tilt-corrected scalar distance available via the same correction factors |
 | `fitInterfaceWidth` | **port** | `profiles.fit_interface_width` (tranche 2) | erf/sigmoid 4-param fit; mirror fminsearch with `scipy.optimize.minimize(method='Nelder-Mead')`. Tolerance: params ≤1e-6 (optimizer paths differ). |
-| `templateMatch` | **port** (pending upstream fix) | `texture.template_match` | The MATLAB implementation has a confirmed FFT lag-selection bug (`xcorrFull(tmplH:imgH,…)` instead of `1:imgH−tmplH+1`) producing aliased false peaks — fix PR'd upstream (fix/template-match-xcorr-lag). Port the CORRECTED algorithm after the PR merges, then capture goldens; grid NMS + center convention port as written. |
+| `templateMatch` | **port** (done, post-fix) | `texture.template_match` | Porting exposed a confirmed FFT lag-selection bug (aliased false 1.0 peaks); fixed upstream via PR #23 (merged, `36fb8a5`), goldens captured from the corrected code. The N-vs-N−1 normalization quirk (perfect matches ≈0.992) is preserved verbatim. Locations, scores, NMS order all exact. |
 | `stitchImages` | **port** | `texture.stitch_images` (tranche 3) | strip FFT cross-correlation + peak-lag mapping + linear seam alpha-blend — domain-specific throughout. |
 
 ## Domain analysis (→ their own modules, tranche 3 / W4 items)

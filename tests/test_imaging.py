@@ -45,7 +45,11 @@ from fermiviewer.calc.segment import (
     slic,
 )
 from fermiviewer.calc.stitch import stitch_images
-from fermiviewer.calc.texture import noise_estimate, structure_tensor
+from fermiviewer.calc.texture import (
+    noise_estimate,
+    structure_tensor,
+    template_match,
+)
 
 pytestmark = [pytest.mark.imaging, pytest.mark.golden]
 
@@ -440,6 +444,38 @@ def test_stitch_images(synth) -> None:
     np.testing.assert_array_equal(auto.offsets, explicit.offsets)
     with pytest.raises(ValueError):
         stitch_images([base])
+
+
+def test_template_match() -> None:
+    # goldens from fermi-viewer 36fb8a5 (post PR #23 lag fix); two
+    # embedded copies of a structured patch on a gradient background
+    rr = np.arange(1, 8, dtype=np.float64)[:, None]
+    cc = np.arange(1, 10, dtype=np.float64)[None, :]
+    tpl = np.sin(rr) * np.cos(cc) + 0.1 * rr * cc
+    img = np.zeros((64, 80))
+    img[20:27, 30:39] = tpl
+    img[40:47, 10:19] = tpl
+    rg = np.arange(1, 65, dtype=np.float64)[:, None]
+    cg = np.arange(1, 81, dtype=np.float64)[None, :]
+    img = img + 0.001 * rg + 0.002 * cg
+
+    res = template_match(img, tpl, threshold=0.5, max_matches=10)
+    g = GOLDEN["templateMatch"]
+    assert res.n_matches == g["n"]
+    n = g["n"]
+    expect_locs = np.column_stack(
+        [g["locations"][:n], g["locations"][n:]]
+    )
+    np.testing.assert_array_equal(res.locations, expect_locs)
+    np.testing.assert_allclose(res.scores, g["scores"], rtol=1e-9)
+    assert res.ncc_map.sum() == pytest.approx(g["nccSum"], rel=1e-9)
+    assert res.ncc_map[23, 34] == pytest.approx(
+        g["nccAtCenter"], rel=1e-9
+    )
+    # both true embeds rank first with the quirk-limited ~0.992 score
+    assert res.scores[0] > 0.99 and res.scores[1] > 0.99
+    with pytest.raises(ValueError):
+        template_match(tpl, tpl)  # template not smaller
 
 
 def test_edge_cases() -> None:
