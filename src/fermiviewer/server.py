@@ -81,6 +81,27 @@ def create_app() -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok", "version": __version__}
 
+    # logging ring buffer + bug-report payload (checklist O)
+    from fermiviewer import logbuf
+    from fermiviewer.session import store as _store
+
+    logbuf.install()
+
+    @app.get("/api/debug/report")
+    def debug_report() -> dict[str, object]:
+        import platform
+        import sys
+
+        return {
+            "version": __version__,
+            "python": sys.version,
+            "platform": platform.platform(),
+            "open_images": [
+                {"id": i, "name": _store.name(i)} for i in _store.ids()
+            ],
+            "server_log": logbuf.entries(),
+        }
+
     @app.websocket("/api/ws")
     async def lifecycle_ws(ws: WebSocket) -> None:
         """Client-presence socket: the SPA connects on load; when the

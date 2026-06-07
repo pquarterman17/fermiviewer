@@ -35,7 +35,10 @@ import { listImages } from "./lib/api";
 import { COLORMAP_NAMES } from "./lib/colormaps";
 import { autoWindow } from "./lib/display";
 import { useStageInfo } from "./store/stage";
+import { installErrLog } from "./lib/errlog";
 import { undoLabel, useViewer, type CaptureMode } from "./store/viewer";
+
+installErrLog(); // module scope: catch errors from the very first render
 
 const NUDGE = 50; // css px per arrow press
 

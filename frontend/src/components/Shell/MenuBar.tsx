@@ -26,6 +26,7 @@ import {
   supportedExtensions,
   type ImageMeta,
 } from "../../lib/api";
+import { downloadBugReport } from "../../lib/errlog";
 import {
   isRecording,
   loadMacro,
@@ -1091,6 +1092,18 @@ export default function MenuBar({
         label: "Keyboard Shortcuts",
         shortcut: "?",
         action: () => store.setShorts(true),
+      },
+      {
+        label: "Report a Bug…",
+        action: () => {
+          downloadBugReport()
+            .then(() =>
+              store.setStatus(
+                "bug report downloaded — attach it to your issue",
+              ),
+            )
+            .catch((e: Error) => store.setStatus(`report: ${e.message}`));
+        },
       },
       {
         label: "Command Palette",

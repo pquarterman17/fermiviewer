@@ -14,6 +14,7 @@ import {
   type RoiStats,
 } from "../lib/api";
 import type { ColormapName } from "../lib/colormaps";
+import { logStatus } from "../lib/errlog";
 
 /** Per-image view: z = screen px per image px (1 → 100 %),
  *  (px, py) = normalized image point under the viewport centre. */
@@ -774,5 +775,8 @@ export const useViewer = create<ViewerState>((set, get) => ({
   setCalibOpen: (calibOpen) => set({ calibOpen }),
   setMetaOpen: (metaOpen) => set({ metaOpen }),
   setPrefsOpen: (prefsOpen) => set({ prefsOpen }),
-  setStatus: (msg) => set({ status: msg }),
+  setStatus: (msg) => {
+    logStatus(msg); // breadcrumb trail for the bug report
+    set({ status: msg });
+  },
 }));
