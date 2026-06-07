@@ -144,6 +144,69 @@ def image_data16(img_id: str) -> Response:
     )
 
 
+_TILE_SIZE = 256
+_LEVEL_CACHE: dict[tuple[str, int], np.ndarray] = {}
+
+
+def _pyramid_level(img_id: str, z: int) -> np.ndarray:
+    """8-bit full-range display raster downscaled 2^z by block mean."""
+    key = (img_id, z)
+    cached = _LEVEL_CACHE.get(key)
+    if cached is not None:
+        return cached
+    raster = _raster(_get(img_id))
+    buf8 = to_display(raster)
+    if z > 0:
+        f = 1 << z
+        h, w = buf8.shape
+        hb, wb = max(1, h // f), max(1, w // f)
+        buf8 = (
+            buf8[: hb * f, : wb * f]
+            .reshape(hb, f, wb, f)
+            .mean(axis=(1, 3))
+            .astype(np.uint8)
+        )
+    # tiny cache: a handful of levels per open image
+    if len(_LEVEL_CACHE) > 64:
+        _LEVEL_CACHE.clear()
+    _LEVEL_CACHE[key] = buf8
+    return buf8
+
+
+@router.get("/image/{img_id}/tile-info")
+def tile_info(img_id: str) -> dict[str, int]:
+    raster = _raster(_get(img_id))
+    h, w = raster.shape
+    levels = 1
+    while (max(h, w) >> (levels - 1)) > _TILE_SIZE:
+        levels += 1
+    return {
+        "tile_size": _TILE_SIZE,
+        "levels": levels,
+        "width": int(w),
+        "height": int(h),
+    }
+
+
+@router.get("/image/{img_id}/tile")
+def image_tile(img_id: str, z: int = 0, x: int = 0, y: int = 0) -> Response:
+    """PNG tile (x, y) of pyramid level z (downscale 2^z) — handoff §8.
+
+    Edge tiles are cropped; out-of-range tiles are 404.
+    """
+    if z < 0 or z > 12 or x < 0 or y < 0:
+        raise HTTPException(422, "z/x/y out of range")
+    level = _pyramid_level(img_id, z)
+    h, w = level.shape
+    r0, c0 = y * _TILE_SIZE, x * _TILE_SIZE
+    if r0 >= h or c0 >= w:
+        raise HTTPException(404, "tile outside image")
+    tile = level[r0 : r0 + _TILE_SIZE, c0 : c0 + _TILE_SIZE]
+    png = io.BytesIO()
+    Image.fromarray(tile, mode="L").save(png, format="PNG")
+    return Response(content=png.getvalue(), media_type="image/png")
+
+
 @router.get("/image/{img_id}/spectrum")
 def image_spectrum(img_id: str) -> dict[str, object]:
     """Sum spectrum (SI cubes) or the spectrum itself (1D) for the

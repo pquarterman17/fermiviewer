@@ -165,6 +165,51 @@ def test_spectrum_image_renders_summed_map(client: TestClient, tmp_path) -> None
     assert Image.open(io.BytesIO(r.content)).size == (nx, ny)
 
 
+def test_tile_pyramid(client: TestClient, tmp_path) -> None:
+    # 600×400 gradient → level 0 has 3×2 tiles of 256, level 1 fits
+    w, h = 600, 400
+    flat = np.arange(w * h) % 1000
+    f = write_mini_dm4(
+        tmp_path / "big.dm4", dims=[w, h], data=flat,
+        cal=[{"scale": 1, "origin": 0, "units": "nm"}] * 2,
+    )
+    img_id = client.post(
+        "/api/session/open", json={"paths": [str(f)]}
+    ).json()[0]["id"]
+
+    info = client.get(f"/api/image/{img_id}/tile-info").json()
+    assert info == {"tile_size": 256, "levels": 3, "width": 600, "height": 400}
+
+    import io as _io
+
+    from PIL import Image as _Image
+
+    t00 = client.get(f"/api/image/{img_id}/tile", params={"z": 0})
+    assert t00.status_code == 200
+    assert _Image.open(_io.BytesIO(t00.content)).size == (256, 256)
+    # right-edge tile is cropped: 600 - 2*256 = 88 wide
+    t20 = client.get(
+        f"/api/image/{img_id}/tile", params={"z": 0, "x": 2, "y": 0}
+    )
+    assert _Image.open(_io.BytesIO(t20.content)).size == (88, 256)
+    # level 1 = 300×200 → single tile is 256 then cropped second col
+    t_l1 = client.get(f"/api/image/{img_id}/tile", params={"z": 1})
+    assert _Image.open(_io.BytesIO(t_l1.content)).size == (256, 200)
+    # out of range
+    assert (
+        client.get(
+            f"/api/image/{img_id}/tile", params={"z": 0, "x": 9, "y": 0}
+        ).status_code
+        == 404
+    )
+    assert (
+        client.get(
+            f"/api/image/{img_id}/tile", params={"z": -1}
+        ).status_code
+        == 422
+    )
+
+
 def test_spectrum_endpoint(client: TestClient, tmp_path, dm4_image) -> None:
     nx, ny, ne = 4, 3, 5
     flat = np.arange(nx * ny * ne)
