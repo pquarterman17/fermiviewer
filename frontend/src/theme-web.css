@@ -1127,3 +1127,19 @@ body {
   font-size: 10px;
   margin-left: 4px;
 }
+
+.fvd-param-dialog .fvd-ws-row .k {
+  min-width: 150px;
+}
+
+.fvd-param-dialog input:not([type="checkbox"]),
+.fvd-param-dialog select {
+  flex: 1;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  padding: 3px 7px;
+}

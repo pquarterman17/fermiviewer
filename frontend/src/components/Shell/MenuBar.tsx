@@ -18,14 +18,17 @@ import {
 } from "../../lib/api";
 import { useStageInfo } from "../../store/stage";
 import { DEFAULT_DISPLAY as DD, useViewer } from "../../store/viewer";
+import {
+  askParams,
+  type ParamField,
+} from "../overlays/ParamDialog";
 
-/** Prompt for a number; null = cancelled, default on empty input. */
-function askNum(label: string, fallback: number): number | null {
-  const raw = window.prompt(label, String(fallback));
-  if (raw === null) return null;
-  const v = Number(raw);
-  return Number.isFinite(v) ? v : fallback;
-}
+const num = (
+  key: string,
+  label: string,
+  dflt: number,
+  hint?: string,
+): ParamField => ({ key, label, type: "number", default: dflt, hint });
 
 interface Entry {
   label: string;
@@ -118,16 +121,20 @@ export default function MenuBar({
   const filterEntry = (
     label: string,
     kind: string,
-    ask?: () => Record<string, unknown> | null,
+    fields?: ParamField[],
   ): Entry => ({
     label,
     disabled: !store.activeId,
     action: () => {
-      const params = ask ? ask() : {};
-      if (params === null) return; // cancelled
-      derived(label, (id) =>
-        applyFilter(id, kind, params).then((m) => [m]),
-      );
+      void (async () => {
+        const params = fields ? await askParams(label, fields) : {};
+        if (params === null) return; // cancelled
+        derived(label, (id) =>
+          applyFilter(id, kind, params as Record<string, unknown>).then(
+            (m) => [m],
+          ),
+        );
+      })();
     },
   });
 
@@ -256,42 +263,54 @@ export default function MenuBar({
         label: "Virtual Dark Field…",
         disabled: !store.activeId,
         action: () => {
-          const meta = store.activeId
-            ? store.images[store.activeId]
-            : undefined;
-          const h = meta?.shape[0] ?? 0;
-          const w = meta?.shape[1] ?? 0;
-          const row = askNum("Mask centre row (FFT px):", Math.round(h / 2));
-          if (row === null) return;
-          const col = askNum("Mask centre col (FFT px):", Math.round(w / 2));
-          if (col === null) return;
-          const rad = askNum("Mask radius (px):", 10);
-          if (rad === null) return;
-          derived("VDF", (id) =>
-            analyzeVdf(id, [row, col], rad).then((r) => [r.image]),
-          );
+          void (async () => {
+            const meta = store.activeId
+              ? store.images[store.activeId]
+              : undefined;
+            const h = meta?.shape[0] ?? 0;
+            const w = meta?.shape[1] ?? 0;
+            const v = await askParams("Virtual Dark Field", [
+              num("row", "Centre row (FFT px)", Math.round(h / 2)),
+              num("col", "Centre col (FFT px)", Math.round(w / 2)),
+              num("radius", "Mask radius (px)", 10),
+            ]);
+            if (!v) return;
+            derived("VDF", (id) =>
+              analyzeVdf(
+                id,
+                [v["row"] as number, v["col"] as number],
+                v["radius"] as number,
+              ).then((r) => [r.image]),
+            );
+          })();
         },
       },
-      filterEntry("Gaussian Blur…", "gaussian", () => {
-        const s = askNum("Sigma (px):", 2);
-        return s === null ? null : { sigma: s };
-      }),
-      filterEntry("Median Filter…", "median", () => {
-        const w = askNum("Window (3/5/7):", 3);
-        return w === null ? null : { window_size: w };
-      }),
-      filterEntry("Unsharp Mask…", "unsharp", () => {
-        const a = askNum("Amount:", 1);
-        return a === null ? null : { amount: a };
-      }),
-      filterEntry("Butterworth…", "butterworth", () => {
-        const lo = askNum("Low cutoff (0–1, 0=off):", 0.05);
-        if (lo === null) return null;
-        const hi = askNum("High cutoff (0–1]:", 0.5);
-        return hi === null ? null : { low_cutoff: lo, high_cutoff: hi };
-      }),
-      filterEntry("CLAHE", "clahe"),
-      filterEntry("Bin 2×", "bin", () => ({ bin_size: 2 })),
+      filterEntry("Gaussian Blur…", "gaussian", [
+        num("sigma", "Sigma (px)", 2),
+      ]),
+      filterEntry("Median Filter…", "median", [
+        {
+          key: "window_size",
+          label: "Window",
+          type: "select",
+          default: "3",
+          options: ["3", "5", "7"],
+        },
+      ]),
+      filterEntry("Unsharp Mask…", "unsharp", [
+        num("sigma", "Sigma (px)", 2),
+        num("amount", "Amount", 1),
+      ]),
+      filterEntry("Butterworth…", "butterworth", [
+        num("low_cutoff", "Low cutoff (0=off)", 0.05),
+        num("high_cutoff", "High cutoff (0–1]", 0.5),
+        num("order", "Order", 2),
+      ]),
+      filterEntry("CLAHE…", "clahe", [
+        num("clip_limit", "Clip limit", 0.01),
+        num("num_bins", "Bins", 256),
+      ]),
+      filterEntry("Bin…", "bin", [num("bin_size", "Bin size", 2)]),
       filterEntry("Plane Level", "plane_level"),
       {
         label: "Radial Profile",
@@ -309,62 +328,88 @@ export default function MenuBar({
         label: "Particle Analysis…",
         disabled: !store.activeId,
         action: () => {
-          const minArea = askNum("Min area (px):", 10);
-          if (minArea === null) return;
-          const id = store.activeId;
-          if (!id) return;
-          analyzeParticles(id, { minArea })
-            .then((r) => {
-              store.ingest([r.labels]);
-              store.setStatus(
-                `${r.n_particles} particles (threshold ${r.threshold.toPrecision(4)})`,
-              );
+          void (async () => {
+            const v = await askParams("Particle Analysis", [
+              num("minArea", "Min area (px)", 10),
+              {
+                key: "polarity",
+                label: "Polarity",
+                type: "select",
+                default: "bright",
+                options: ["bright", "dark"],
+              },
+              {
+                key: "watershed",
+                label: "Watershed split",
+                type: "boolean",
+                default: false,
+              },
+            ]);
+            const id = store.activeId;
+            if (!v || !id) return;
+            analyzeParticles(id, {
+              minArea: v["minArea"] as number,
+              watershed: v["watershed"] as boolean,
             })
-            .catch((e: Error) => store.setStatus(e.message));
+              .then((r) => {
+                store.ingest([r.labels]);
+                store.setStatus(
+                  `${r.n_particles} particles (threshold ${r.threshold.toPrecision(4)})`,
+                );
+              })
+              .catch((e: Error) => store.setStatus(e.message));
+          })();
         },
       },
       {
         label: "Grain Segmentation…",
         disabled: !store.activeId,
         action: () => {
-          const k = askNum("Number of texture classes K:", 2);
-          if (k === null) return;
-          const id = store.activeId;
-          if (!id) return;
-          store.setStatus("segmenting grains…");
-          analyzeGrains(id, k)
-            .then((r) => {
-              store.ingest([r.labels]);
-              store.setStatus(
-                `${r.n_grains} grains · mean d ${r.mean_diameter_px.toFixed(1)} px`,
-              );
-            })
-            .catch((e: Error) => store.setStatus(e.message));
+          void (async () => {
+            const v = await askParams("Grain Segmentation", [
+              num("k", "Texture classes K", 2),
+            ]);
+            const id = store.activeId;
+            if (!v || !id) return;
+            store.setStatus("segmenting grains…");
+            analyzeGrains(id, v["k"] as number)
+              .then((r) => {
+                store.ingest([r.labels]);
+                store.setStatus(
+                  `${r.n_grains} grains · mean d ${r.mean_diameter_px.toFixed(1)} px`,
+                );
+              })
+              .catch((e: Error) => store.setStatus(e.message));
+          })();
         },
       },
       {
         label: "GPA Strain…",
         disabled: !store.activeId,
         action: () => {
-          const g1x = askNum("g1 x (FFT px from centre):", 10);
-          if (g1x === null) return;
-          const g1y = askNum("g1 y:", 0);
-          if (g1y === null) return;
-          const g2x = askNum("g2 x:", 0);
-          if (g2x === null) return;
-          const g2y = askNum("g2 y:", 10);
-          if (g2y === null) return;
-          const id = store.activeId;
-          if (!id) return;
-          store.setStatus("GPA…");
-          analyzeGpa(id, [g1x, g1y], [g2x, g2y])
-            .then((r) => {
-              store.ingest(r.maps);
-              store.setStatus(
-                `GPA: exx ${r.mean["exx"].toExponential(2)} · eyy ${r.mean["eyy"].toExponential(2)}`,
-              );
-            })
-            .catch((e: Error) => store.setStatus(e.message));
+          void (async () => {
+            const v = await askParams("GPA Strain", [
+              num("g1x", "g1 x (FFT px from centre)", 10),
+              num("g1y", "g1 y", 0),
+              num("g2x", "g2 x", 0),
+              num("g2y", "g2 y", 10),
+            ]);
+            const id = store.activeId;
+            if (!v || !id) return;
+            store.setStatus("GPA…");
+            analyzeGpa(
+              id,
+              [v["g1x"] as number, v["g1y"] as number],
+              [v["g2x"] as number, v["g2y"] as number],
+            )
+              .then((r) => {
+                store.ingest(r.maps);
+                store.setStatus(
+                  `GPA: exx ${r.mean["exx"].toExponential(2)} · eyy ${r.mean["eyy"].toExponential(2)}`,
+                );
+              })
+              .catch((e: Error) => store.setStatus(e.message));
+          })();
         },
       },
       {
