@@ -91,6 +91,28 @@ def test_histogram(client: TestClient, dm4_image) -> None:
     assert client.get(f"/api/image/{img_id}/histogram", params={"bins": 1}).status_code == 422
 
 
+def test_data16_normalized_raster(client: TestClient, dm4_image) -> None:
+    img_id = client.post(
+        "/api/session/open", json={"paths": [str(dm4_image)]}
+    ).json()[0]["id"]
+
+    r = client.get(f"/api/image/{img_id}/data16")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/octet-stream"
+    assert r.headers["x-shape"] == "4,6"
+    vmin, vmax = float(r.headers["x-min"]), float(r.headers["x-max"])
+    assert (vmin, vmax) == (0.0, 35.0)   # v(x,y) = x + 10·y on 6×4
+
+    u16 = np.frombuffer(r.content, dtype="<u2").reshape(4, 6)
+    assert u16[0, 0] == 0 and u16[3, 5] == 65535
+    # reconstruction round-trips the original values exactly (integers)
+    rec = u16.astype(np.float64) / 65535.0 * (vmax - vmin) + vmin
+    expect = np.array([[x + 10 * y for x in range(6)] for y in range(4)])
+    np.testing.assert_allclose(rec, expect, atol=(vmax - vmin) / 65535.0)
+
+    assert client.get("/api/image/nope/data16").status_code == 404
+
+
 def test_spectrum_image_renders_summed_map(client: TestClient, tmp_path) -> None:
     nx, ny, ne = 4, 3, 5
     flat = np.arange(nx * ny * ne)

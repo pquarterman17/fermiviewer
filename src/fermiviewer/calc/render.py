@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import numpy as np
 
-__all__ = ["histogram", "to_display", "window_level"]
+__all__ = ["histogram", "to_display", "to_uint16_norm", "window_level"]
 
 
 def window_level(
@@ -38,6 +38,25 @@ def to_display(
 ) -> np.ndarray:
     """Window/level/gamma to an 8-bit grayscale display buffer."""
     return (window_level(data, lo, hi, gamma) * 255.0 + 0.5).astype(np.uint8)
+
+
+def to_uint16_norm(data: np.ndarray) -> tuple[np.ndarray, float, float]:
+    """Full-range normalize to uint16 for the client-side WebGL LUT.
+
+    Returns (u16, vmin, vmax) where u16 = (data - vmin)/(vmax - vmin)
+    * 65535 rounded; the client reconstructs real values from the
+    headers. NaN/Inf map to 0 (mirrors window_level's NaN policy).
+    """
+    d = np.asarray(data, dtype=np.float64)
+    finite = d[np.isfinite(d)]
+    if finite.size == 0:
+        return np.zeros(d.shape, dtype=np.uint16), 0.0, 1.0
+    vmin = float(finite.min())
+    vmax = float(finite.max())
+    span = vmax - vmin if vmax > vmin else 1.0
+    out = np.clip((d - vmin) / span, 0.0, 1.0)
+    out[~np.isfinite(d)] = 0.0
+    return (out * 65535.0 + 0.5).astype(np.uint16), vmin, vmax
 
 
 def histogram(data: np.ndarray, bins: int = 256) -> tuple[np.ndarray, np.ndarray]:

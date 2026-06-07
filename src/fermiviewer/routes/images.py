@@ -8,7 +8,7 @@ import numpy as np
 from fastapi import APIRouter, HTTPException, Response
 from PIL import Image
 
-from fermiviewer.calc.render import histogram, to_display
+from fermiviewer.calc.render import histogram, to_display, to_uint16_norm
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.io.registry import UnsupportedFormatError
 from fermiviewer.models import ImageMeta, OpenRequest
@@ -80,6 +80,26 @@ def image_render(
     png = io.BytesIO()
     Image.fromarray(buf8, mode="L").save(png, format="PNG")
     return Response(content=png.getvalue(), media_type="image/png")
+
+
+@router.get("/image/{img_id}/data16")
+def image_data16(img_id: str) -> Response:
+    """Full-range-normalized uint16 raster, little-endian, row-major.
+
+    Feeds the client-side WebGL window/level/gamma/LUT shader (handoff
+    section-13 render path). Real values reconstruct from X-Min/X-Max.
+    """
+    raster = _raster(_get(img_id))
+    u16, vmin, vmax = to_uint16_norm(raster)
+    return Response(
+        content=u16.astype("<u2").tobytes(),
+        media_type="application/octet-stream",
+        headers={
+            "X-Shape": f"{raster.shape[0]},{raster.shape[1]}",
+            "X-Min": repr(vmin),
+            "X-Max": repr(vmax),
+        },
+    )
 
 
 @router.get("/image/{img_id}/histogram")
