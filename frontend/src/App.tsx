@@ -17,6 +17,7 @@ import CommandPalette, {
 } from "./components/overlays/CommandPalette";
 import ExportDialog from "./components/overlays/ExportDialog";
 import ParamDialog from "./components/overlays/ParamDialog";
+import ResultsWindow from "./components/overlays/ResultsWindow";
 import RadialMenu from "./components/overlays/RadialMenu";
 import ShortcutsOverlay from "./components/overlays/ShortcutsOverlay";
 import ToolWindow from "./components/overlays/ToolWindow";
@@ -440,6 +441,7 @@ export default function App() {
       <RadialMenu />
       <ExportDialog />
       <ParamDialog />
+      <ResultsWindow />
       {tools.map((t) => (
         <ToolWindow
           key={t.kind}

@@ -1143,3 +1143,11 @@ body {
   font-size: var(--font-size-sm);
   padding: 3px 7px;
 }
+
+.fvd-results {
+  width: min(560px, 90vw);
+}
+
+.fvd-results-body {
+  max-height: 50vh;
+}

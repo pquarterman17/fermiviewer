@@ -22,6 +22,7 @@ import {
   askParams,
   type ParamField,
 } from "../overlays/ParamDialog";
+import { useResults } from "../overlays/ResultsWindow";
 
 const num = (
   key: string,
@@ -356,6 +357,18 @@ export default function MenuBar({
                 store.setStatus(
                   `${r.n_particles} particles (threshold ${r.threshold.toPrecision(4)})`,
                 );
+                useResults.getState().show({
+                  title: `Particles — ${r.n_particles} found`,
+                  columns: [
+                    "#", "area px", "row", "col", "d eq px",
+                    "mean I", `area ${r.unit}²`, `d ${r.unit}`,
+                  ],
+                  rows: r.particles.map((p) => [
+                    p.id, p.area, p.centroid[0], p.centroid[1],
+                    p.equiv_diameter, p.mean_intensity,
+                    p.area_calibrated, p.diameter_calibrated,
+                  ]),
+                });
               })
               .catch((e: Error) => store.setStatus(e.message));
           })();
@@ -378,6 +391,11 @@ export default function MenuBar({
                 store.setStatus(
                   `${r.n_grains} grains · mean d ${r.mean_diameter_px.toFixed(1)} px`,
                 );
+                useResults.getState().show({
+                  title: `Grains — ${r.n_grains} found`,
+                  columns: ["#", "area px"],
+                  rows: r.areas_px.map((a, i) => [i + 1, a]),
+                });
               })
               .catch((e: Error) => store.setStatus(e.message));
           })();

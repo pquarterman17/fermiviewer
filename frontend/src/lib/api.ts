@@ -399,6 +399,16 @@ export function analyzeGpa(
   return post("/api/analyze/gpa", { image_id: id, g1, g2 });
 }
 
+export interface ParticleRow {
+  id: number;
+  area: number;
+  centroid: [number, number];
+  equiv_diameter: number;
+  mean_intensity: number;
+  area_calibrated: number | null;
+  diameter_calibrated: number | null;
+}
+
 export function analyzeParticles(
   id: string,
   opts: { threshold?: number | null; minArea?: number; watershed?: boolean },
@@ -406,7 +416,8 @@ export function analyzeParticles(
   n_particles: number;
   threshold: number;
   labels: ImageMeta;
-  particles: unknown[];
+  particles: ParticleRow[];
+  unit: string;
 }> {
   return post("/api/analyze/particles", {
     image_id: id,
@@ -419,7 +430,14 @@ export function analyzeParticles(
 export function analyzeGrains(
   id: string,
   k: number,
-): Promise<{ n_grains: number; labels: ImageMeta; mean_diameter_px: number }> {
+): Promise<{
+  n_grains: number;
+  labels: ImageMeta;
+  mean_diameter_px: number;
+  areas_px: number[];
+  boundary_length_px: number;
+  unit: string;
+}> {
   return post("/api/analyze/grains", { image_id: id, k });
 }
 
