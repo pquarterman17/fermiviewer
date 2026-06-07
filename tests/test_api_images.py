@@ -1,0 +1,139 @@
+"""API tests for session/open + image endpoints — fixture-driven."""
+
+from __future__ import annotations
+
+import io
+
+import numpy as np
+import pytest
+from fastapi.testclient import TestClient
+from PIL import Image
+
+from fermiviewer.server import create_app
+from fermiviewer.session import store
+from fixtures.minidm4 import write_mini_dm4
+
+pytestmark = pytest.mark.api
+
+
+@pytest.fixture(autouse=True)
+def _clean_store():
+    store.clear()
+    yield
+    store.clear()
+
+
+@pytest.fixture()
+def client() -> TestClient:
+    return TestClient(create_app())
+
+
+@pytest.fixture()
+def dm4_image(tmp_path):
+    """A 6×4 gradient image fixture: v(x, y) = x + 10·y."""
+    w, h = 6, 4
+    flat = np.array([x + 10 * y for y in range(h) for x in range(w)])
+    return write_mini_dm4(
+        tmp_path / "img.dm4", dims=[w, h], data=flat,
+        cal=[{"scale": 0.2, "origin": 0, "units": "nm"}] * 2,
+    )
+
+
+def test_open_and_meta(client: TestClient, dm4_image) -> None:
+    r = client.post("/api/session/open", json={"paths": [str(dm4_image)]})
+    assert r.status_code == 200
+    metas = r.json()
+    assert len(metas) == 1
+    m = metas[0]
+    assert m["kind"] == "image"
+    assert m["shape"] == [4, 6]
+    assert m["pixel_size"] == pytest.approx(0.2)
+    assert m["pixel_unit"] == "nm"
+
+    r2 = client.get(f"/api/image/{m['id']}/meta")
+    assert r2.status_code == 200
+    assert r2.json() == m
+
+    r3 = client.get("/api/session/images")
+    assert [x["id"] for x in r3.json()] == [m["id"]]
+
+
+def test_render_png_window_level(client: TestClient, dm4_image) -> None:
+    img_id = client.post(
+        "/api/session/open", json={"paths": [str(dm4_image)]}
+    ).json()[0]["id"]
+
+    r = client.get(f"/api/image/{img_id}/render")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/png"
+    png = Image.open(io.BytesIO(r.content))
+    assert png.size == (6, 4)            # PIL size is (W, H)
+    arr = np.asarray(png)
+    # full-range auto window: min → 0, max → 255
+    assert arr.min() == 0 and arr.max() == 255
+    assert arr[0, 0] == 0                # v(0,0)=0 is the global min
+    assert arr[3, 5] == 255              # v(5,3)=35 is the global max
+
+    # explicit narrow window clips
+    r2 = client.get(f"/api/image/{img_id}/render", params={"lo": 0, "hi": 1})
+    arr2 = np.asarray(Image.open(io.BytesIO(r2.content)))
+    assert arr2[3, 5] == 255 and arr2[0, 1] == 255   # everything ≥ hi clips white
+
+
+def test_histogram(client: TestClient, dm4_image) -> None:
+    img_id = client.post(
+        "/api/session/open", json={"paths": [str(dm4_image)]}
+    ).json()[0]["id"]
+    r = client.get(f"/api/image/{img_id}/histogram", params={"bins": 16})
+    body = r.json()
+    assert len(body["bins"]) == 16 and len(body["counts"]) == 16
+    assert sum(body["counts"]) == 24     # every pixel counted
+    assert client.get(f"/api/image/{img_id}/histogram", params={"bins": 1}).status_code == 422
+
+
+def test_spectrum_image_renders_summed_map(client: TestClient, tmp_path) -> None:
+    nx, ny, ne = 4, 3, 5
+    flat = np.arange(nx * ny * ne)
+    f = write_mini_dm4(
+        tmp_path / "si.dm4", dims=[nx, ny, ne], data=flat,
+        cal=[
+            {"scale": 1, "origin": 0, "units": "nm"},
+            {"scale": 1, "origin": 0, "units": "nm"},
+            {"scale": 0.1, "origin": 0, "units": "eV"},
+        ],
+    )
+    m = client.post("/api/session/open", json={"paths": [str(f)]}).json()[0]
+    assert m["kind"] == "spectrum_image"
+    assert m["n_channels"] == ne
+    r = client.get(f"/api/image/{m['id']}/render")
+    assert Image.open(io.BytesIO(r.content)).size == (nx, ny)
+
+
+def test_error_paths(client: TestClient, tmp_path) -> None:
+    assert client.get("/api/image/nope/render").status_code == 404
+    r = client.post("/api/session/open", json={"paths": [str(tmp_path / "x.xyz")]})
+    assert r.status_code == 415          # unsupported extension
+    bad = tmp_path / "bad.dm4"
+    bad.write_bytes(b"notdm4")
+    assert client.post(
+        "/api/session/open", json={"paths": [str(bad)]}
+    ).status_code == 422                  # parser rejects cleanly
+
+    # close removes the image
+    f = write_mini_dm4(
+        tmp_path / "tiny.dm4", dims=[2, 2], data=np.arange(4),
+        cal=[{"scale": 1, "origin": 0, "units": "nm"}] * 2,
+    )
+    img_id = client.post("/api/session/open", json={"paths": [str(f)]}).json()[0]["id"]
+    assert client.delete(f"/api/image/{img_id}").status_code == 200
+    assert client.get(f"/api/image/{img_id}/meta").status_code == 404
+
+
+@pytest.mark.realdata
+def test_open_real_dm4(client: TestClient, eels_corpus) -> None:
+    f = eels_corpus / "FigS6_apatite_ZLP.dm4"
+    m = client.post("/api/session/open", json={"paths": [str(f)]}).json()[0]
+    assert m["kind"] == "spectrum_image"
+    assert m["shape"] == [50, 52, 2024]
+    r = client.get(f"/api/image/{m['id']}/render")
+    assert Image.open(io.BytesIO(r.content)).size == (52, 50)
