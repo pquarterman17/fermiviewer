@@ -298,6 +298,54 @@ function out = captureImaging()
     out.templateMatch.scores = tm.scores(:)';
     out.templateMatch.nccSum = sum(tm.nccMap(:));
     out.templateMatch.nccAtCenter = tm.nccMap(24, 35);
+
+    % ── W4 scraps ────────────────────────────────────────────────────
+    % VDF on the chirped lattice (g1 spot at centre col + 12)
+    v1 = imaging.eds.virtualDarkField(latt, MaskCenter=[33 61], MaskRadius=4);
+    out.vdf.circleSum = sum(v1(:));
+    out.vdf.circlePx = v1(20, 30);
+    v2 = imaging.eds.virtualDarkField(latt, MaskCenter=[33 49], ...
+        MaskRadius=10, MaskShape='annulus', InnerRadius=3);
+    out.vdf.annulusSum = sum(v2(:));
+
+    cp = imaging.eds.edsCompositionProfile({abs(base), abs(noisy)}, ...
+        {'Fe', 'O'}, 10, 8, 80, 50, NumPoints=64, PixelSize=0.4, Width=5);
+    out.compProfile.distEnd = cp.distance(end);
+    out.compProfile.sumA = sum(cp.atomicPct(:, 1));
+    out.compProfile.sumB = sum(cp.atomicPct(:, 2));
+    out.compProfile.mid = cp.atomicPct(32, 1);
+
+    % estimateCTF on an image whose |FFT|^2 IS a CTF^2 (real, symmetric
+    % spectrum -> exact Thon rings), Df0 = 15000 A at 200 kV / Cs 1.2 mm
+    lamC = 12.2643 / sqrt(200e3 + 0.97845e-6 * 200e3^2);
+    CsA = 1.2e7;
+    axC = (-64:63) / (128 * 2);                 % 128 px, 2 A/px
+    [KuC, KvC] = meshgrid(axC, axC);
+    K2DC = sqrt(KuC.^2 + KvC.^2);
+    ctfTrue = sin(pi*lamC*15000*K2DC.^2 - 0.5*pi*CsA*lamC^3*K2DC.^4);
+    imgCtf = real(ifft2(ifftshift(ctfTrue)));
+    rc = imaging.diffraction.estimateCTF(imgCtf, PixelSize=2);
+    out.ctf.defocus = rc.defocus;
+    out.ctf.rSquared = rc.rSquared;
+    out.ctf.lambda = rc.lambda;
+    out.ctf.radialN = size(rc.radialProfile, 1);
+    out.ctf.radialPowSum = sum(rc.radialProfile(:, 2));
+    out.ctf.ctfFitSum = sum(rc.ctfFit);
+
+    % OutputSize passed explicitly (= width, the documented default):
+    % the literal default 0 trips its own mustBePositive validator —
+    % same latent bug class as radialProfile NumBins (fix PR'd).
+    bp = imaging.diffraction.backProject(base(1:31, :), Filter='ramp', ...
+        OutputSize=96);
+    out.backproject.ramp.sum = sum(bp.reconstruction(:));
+    out.backproject.ramp.px = bp.reconstruction(40, 50);
+    out.backproject.ramp.size = size(bp.reconstruction);
+    bp2 = imaging.diffraction.backProject(base(1:31, :), ...
+        Filter='hamming', OutputSize=64);
+    out.backproject.hamming.sum = sum(bp2.reconstruction(:));
+    bp3 = imaging.diffraction.backProject(base(1:31, :), Filter='none', ...
+        OutputSize=96);
+    out.backproject.none.sum = sum(bp3.reconstruction(:));
 end
 
 

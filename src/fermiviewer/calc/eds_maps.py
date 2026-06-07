@@ -14,7 +14,9 @@ import numpy as np
 
 from fermiviewer.calc.eds import line_energy
 
-__all__ = ["ElementMapEntry", "element_map", "extract_element_maps", "pixel_spectrum"]
+__all__ = [
+    "composition_profile",
+    "virtual_dark_field","ElementMapEntry", "element_map", "extract_element_maps", "pixel_spectrum"]
 
 
 def element_map(
@@ -140,3 +142,90 @@ def extract_element_maps(
         out.append(ElementMapEntry(sym, line, e, (e - half_window, e + half_window),
                                    m, float(m.sum())))
     return out
+
+
+def virtual_dark_field(
+    img: np.ndarray,
+    mask_center: tuple[float, float],
+    mask_radius: float = 10.0,
+    mask_shape: str = "circle",
+    inner_radius: float = 0.0,
+) -> np.ndarray:
+    """Virtual dark-field image via FFT aperture masking — ported.
+
+    mask_center is (row, col), 1-based, on the fftshifted FFT.
+    """
+    if mask_shape not in ("circle", "annulus"):
+        raise ValueError("mask_shape must be 'circle' or 'annulus'")
+    d = np.asarray(img, dtype=np.float64)
+    h, w = d.shape
+    f = np.fft.fftshift(np.fft.fft2(d))
+
+    rr = np.arange(1, h + 1, dtype=np.float64)[:, None]
+    cc = np.arange(1, w + 1, dtype=np.float64)[None, :]
+    dist = np.hypot(rr - mask_center[0], cc - mask_center[1])
+    if mask_shape == "circle":
+        mask = dist <= mask_radius
+    else:
+        mask = (dist >= inner_radius) & (dist <= mask_radius)
+
+    out: np.ndarray = np.abs(np.fft.ifft2(np.fft.ifftshift(f * mask)))
+    return out
+
+
+def composition_profile(
+    atomic_pct_maps: list[np.ndarray],
+    elements: list[str],
+    x1: float,
+    y1: float,
+    x2: float,
+    y2: float,
+    n_points: int = 200,
+    pixel_size: float = 1.0,
+    width: float = 1.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Width-averaged line profile through element at% maps — ported.
+
+    Coordinates are 1-based (x=col, y=row) like the MATLAB interp2 call.
+    Returns (distance, atomic_pct[M, n_elements]).
+    """
+    from scipy.ndimage import map_coordinates
+
+    if len(atomic_pct_maps) != len(elements):
+        raise ValueError("maps and elements must have the same length")
+    maps = [np.asarray(m, dtype=np.float64) for m in atomic_pct_maps]
+    h, w = maps[0].shape
+    for m in maps[1:]:
+        if m.shape != (h, w):
+            raise ValueError("all maps must be the same size")
+
+    m_pts = int(n_points)
+    xi = np.linspace(x1, x2, m_pts)
+    yi = np.linspace(y1, y2, m_pts)
+    dx = x2 - x1
+    dy = y2 - y1
+    line_len = float(np.hypot(dx, dy))
+    if line_len == 0:
+        return np.zeros(m_pts), np.zeros((m_pts, len(maps)))
+
+    perp_x = -dy / line_len
+    perp_y = dx / line_len
+    n_off = max(1, round(width))
+    offsets = (
+        np.array([0.0])
+        if n_off == 1
+        else np.linspace(-(n_off - 1) / 2, (n_off - 1) / 2, n_off)
+    )
+
+    out = np.zeros((m_pts, len(maps)))
+    for i, mp in enumerate(maps):
+        acc = np.zeros(m_pts)
+        for off in offsets:
+            xq = np.clip(xi + off * perp_x, 1, w)
+            yq = np.clip(yi + off * perp_y, 1, h)
+            # 1-based coords -> 0-based for map_coordinates (bilinear)
+            acc += map_coordinates(mp, [yq - 1, xq - 1], order=1)
+        out[:, i] = acc / n_off
+
+    distance = np.linspace(0, line_len, m_pts) * pixel_size
+    return distance, out
