@@ -311,13 +311,15 @@ export function diffractionIndex(
 }
 
 export interface ExportOptions {
-  format: "png" | "tiff16" | "jpeg";
+  format: "png" | "tiff16" | "jpeg" | "svg" | "pdf";
   scale: number;
   lo: number; // normalized [0,1] window (display state)
   hi: number;
   gamma: number;
   cmap: string;
-  include: string[];
+  include: string[]; // "scale_bar" | "measurements"
+  measures?: { kind: string; pts: { x: number; y: number }[] }[];
+  overlay_color?: string;
 }
 
 /** Server-side export; returns the file blob + suggested filename. */

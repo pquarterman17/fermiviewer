@@ -4,7 +4,7 @@
 import { useState } from "react";
 
 import { exportImage, type ExportOptions } from "../../lib/api";
-import { DEFAULT_DISPLAY, useViewer } from "../../store/viewer";
+import { DEFAULT_DISPLAY, useViewer, type Measure } from "../../store/viewer";
 
 type Format = ExportOptions["format"];
 
@@ -12,6 +12,8 @@ const FORMATS: { key: Format; label: string }[] = [
   { key: "png", label: "PNG" },
   { key: "tiff16", label: "TIFF-16" },
   { key: "jpeg", label: "JPEG" },
+  { key: "svg", label: "SVG" },
+  { key: "pdf", label: "PDF" },
 ];
 
 // rough compressed-size factors vs raw bytes (estimate only)
@@ -19,7 +21,12 @@ const SIZE_FACTOR: Record<Format, number> = {
   png: 0.5,
   tiff16: 1.0,
   jpeg: 0.15,
+  svg: 0.7, // base64 PNG payload
+  pdf: 0.5,
 };
+
+// stable empty snapshot (zustand React #185 — never return a fresh [])
+const NO_MEASURES: Measure[] = [];
 
 export default function ExportDialog() {
   const open = useViewer((s) => s.exportOpen);
@@ -32,10 +39,15 @@ export default function ExportDialog() {
     s.activeId ? (s.display[s.activeId] ?? DEFAULT_DISPLAY) : DEFAULT_DISPLAY,
   );
   const setStatus = useViewer((s) => s.setStatus);
+  const measures = useViewer((s) =>
+    s.activeId ? (s.measures[s.activeId] ?? NO_MEASURES) : NO_MEASURES,
+  );
+  const overlayColor = useViewer((s) => s.overlay.color);
 
   const [format, setFormat] = useState<Format>("png");
   const [scale, setScale] = useState(1);
   const [scaleBar, setScaleBar] = useState(true);
+  const [bakeMeasures, setBakeMeasures] = useState(true);
   const [busy, setBusy] = useState(false);
 
   if (!open) return null;
@@ -58,9 +70,13 @@ export default function ExportDialog() {
   const bytesPerPx = format === "tiff16" ? 2 : 3;
   const estBytes = w * h * bytesPerPx * SIZE_FACTOR[format];
   const canBar = format !== "tiff16" && meta.pixel_size !== null;
+  const canMeasure = format !== "tiff16" && measures.length > 0;
 
   const run = () => {
     setBusy(true);
+    const include: string[] = [];
+    if (canBar && scaleBar) include.push("scale_bar");
+    if (canMeasure && bakeMeasures) include.push("measurements");
     exportImage(activeId, {
       format,
       scale,
@@ -68,7 +84,12 @@ export default function ExportDialog() {
       hi: display.hi,
       gamma: display.gamma,
       cmap: display.cmap,
-      include: canBar && scaleBar ? ["scale_bar"] : [],
+      include,
+      measures:
+        canMeasure && bakeMeasures
+          ? measures.map((m) => ({ kind: m.kind, pts: m.pts }))
+          : undefined,
+      overlay_color: overlayColor,
     })
       .then(({ blob, filename }) => {
         const url = URL.createObjectURL(blob);
@@ -133,11 +154,22 @@ export default function ExportDialog() {
             />
             Scale bar
           </label>
+          <label className={`fvd-check${canMeasure ? "" : " disabled"}`}>
+            <input
+              type="checkbox"
+              checked={canMeasure && bakeMeasures}
+              disabled={!canMeasure}
+              onChange={(e) => setBakeMeasures(e.target.checked)}
+            />
+            Measurements ({measures.length})
+          </label>
         </div>
 
         <div className="fvd-export-info">
           {w} × {h} px · ~{fmtBytes(estBytes)}
           {format === "tiff16" && " · 16-bit grayscale (data export)"}
+          {format === "svg" && " · vector overlays + embedded PNG"}
+          {format === "pdf" && " · single-page raster PDF"}
         </div>
 
         <div className="fvd-btn-row">

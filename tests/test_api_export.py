@@ -122,12 +122,6 @@ def test_jpeg_and_errors(client, img_id) -> None:
     )
     assert (
         client.post(
-            "/api/export", json={"image_id": img_id, "format": "svg"}
-        ).status_code
-        == 422
-    )
-    assert (
-        client.post(
             "/api/export", json={"image_id": img_id, "format": "bmp"}
         ).status_code
         == 422
@@ -139,3 +133,96 @@ def test_jpeg_and_errors(client, img_id) -> None:
         ).status_code
         == 422  # pydantic le=4
     )
+
+
+# ── vector formats + measurement baking ──────────────────────────────
+
+MEASURES = [
+    {"kind": "distance", "pts": [{"x": 0.0, "y": 0.0}, {"x": 1.0, "y": 0.0}]},
+    {"kind": "profile", "pts": [{"x": 0.0, "y": 0.5}, {"x": 1.0, "y": 0.5}]},
+    {"kind": "angle", "pts": [{"x": 0.0, "y": 0.0}, {"x": 0.5, "y": 0.5},
+                              {"x": 1.0, "y": 0.5}]},
+    {"kind": "roi", "pts": [{"x": 0.25, "y": 0.25}, {"x": 0.75, "y": 0.75}]},
+]
+
+
+def test_svg_vector_export(client, img_id) -> None:
+    r = client.post("/api/export", json={
+        "image_id": img_id, "format": "svg", "scale": 2,
+        "include": ["scale_bar", "measurements"], "measures": MEASURES,
+    })
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("image/svg+xml")
+    assert 'filename="img.svg"' in r.headers["content-disposition"]
+    svg = r.content.decode()
+    assert svg.startswith("<svg")
+    assert "data:image/png;base64," in svg     # embedded raster
+    assert svg.count("<line") == 2             # distance + profile
+    assert 'stroke-dasharray="6 4"' in svg     # profile dashed
+    assert "<polyline" in svg                  # angle
+    assert svg.count("<rect") == 2             # roi + scale bar
+    assert "°" in svg                          # angle label
+    # distance: 16 px × 0.5 nm = 8 nm, mirrored fmt
+    assert ">8 nm</text>" in svg
+    # embedded PNG decodes at output size
+    b64 = svg.split("base64,")[1].split('"')[0]
+    import base64
+
+    png = Image.open(io.BytesIO(base64.b64decode(b64)))
+    assert png.size == (32, 24)
+
+
+def test_pdf_export(client, img_id) -> None:
+    r = client.post("/api/export", json={
+        "image_id": img_id, "format": "pdf",
+        "include": ["measurements"], "measures": MEASURES,
+    })
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/pdf"
+    assert r.content[:5] == b"%PDF-"
+    assert 'filename="img.pdf"' in r.headers["content-disposition"]
+
+
+def test_measurement_baking_png(client, img_id) -> None:
+    base = client.post("/api/export", json={
+        "image_id": img_id, "format": "png", "scale": 4,
+    }).content
+    baked = client.post("/api/export", json={
+        "image_id": img_id, "format": "png", "scale": 4,
+        "include": ["measurements"], "measures": MEASURES,
+        "overlay_color": "#ff0000",
+    }).content
+    assert base != baked
+    a = np.asarray(Image.open(io.BytesIO(baked)))
+    b = np.asarray(Image.open(io.BytesIO(base)))
+    changed = (a != b).any(axis=2)
+    assert changed.sum() > 100                 # lines + labels baked
+    # pure red overlay pixels exist (line interiors, away from AA text)
+    assert ((a[..., 0] == 255) & (a[..., 1] == 0) & (a[..., 2] == 0)).any()
+    # measures without the include flag → ignored (no accidental baking)
+    plain = client.post("/api/export", json={
+        "image_id": img_id, "format": "png", "scale": 4,
+        "measures": MEASURES,
+    }).content
+    assert plain == base
+
+
+def test_annotation_labels() -> None:
+    """calc-level: labels mirror MeasureOverlay (fmt, vertex, μ/σ)."""
+    from fermiviewer.calc.export import measure_annotations
+
+    raster = np.full((12, 16), 7.0)
+    annos = measure_annotations(
+        MEASURES, 12, 16, pixel_size=0.5, pixel_unit="nm",
+        scale=1, raster=raster,
+    )
+    by_kind = {a.kind: a for a in annos}
+    assert by_kind["distance"].label == "8 nm"          # 16 px × 0.5
+    assert by_kind["profile"].dashed
+    # vertex (8,6) px; rays to (0,0) and (16,6): |atan2 Δ| = 143.13°
+    assert by_kind["angle"].label == "143.1°"
+    assert by_kind["roi"].label == "μ 7 · σ 0"          # uniform raster
+    # uncalibrated → px labels
+    annos_px = measure_annotations(MEASURES[:1], 12, 16, None, "px", 2)
+    assert annos_px[0].label == "16 px"
+    assert annos_px[0].points[1] == (32.0, 0.0)         # 2× output coords

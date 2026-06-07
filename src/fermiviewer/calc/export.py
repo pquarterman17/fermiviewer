@@ -15,7 +15,14 @@ import numpy as np
 from fermiviewer.calc.colormaps import build_lut
 from fermiviewer.calc.render import window_level
 
-__all__ = ["ScaleBar", "render_rgb", "render_u16", "scale_bar_geometry"]
+__all__ = [
+    "Annotation",
+    "ScaleBar",
+    "measure_annotations",
+    "render_rgb",
+    "render_u16",
+    "scale_bar_geometry",
+]
 
 
 def _upscale(arr: np.ndarray, scale: int) -> np.ndarray:
@@ -80,6 +87,88 @@ def _nice_length(max_phys: float) -> float:
         if m * base <= max_phys:
             return float(m * base)
     return float(base / 2.0)
+
+
+@dataclass(frozen=True)
+class Annotation:
+    """One measurement in OUTPUT pixels, ready for any renderer
+    (PIL baking or SVG elements). Mirrors MeasureOverlay.tsx exactly:
+    line for distance, dashed line for profile, polyline for angle
+    (vertex = pts[1]), rect for roi; same label text and offsets."""
+
+    kind: str                                  # distance|profile|angle|roi
+    points: tuple[tuple[float, float], ...]    # (x, y) output px
+    label: str
+    label_xy: tuple[float, float]
+    dashed: bool = False
+
+
+def _fmt(v: float) -> str:
+    """Mirror MeasureOverlay's fmt(): 4 sig figs, exponential outside
+    [0.01, 1e5)."""
+    if not np.isfinite(v):
+        return "—"
+    a = abs(v)
+    if a != 0 and (a < 0.01 or a >= 1e5):
+        return f"{v:.2e}"
+    return f"{v:.4g}"
+
+
+def measure_annotations(
+    measures: list[dict],
+    img_h: int,
+    img_w: int,
+    pixel_size: float | None,
+    pixel_unit: str,
+    scale: int,
+    raster: np.ndarray | None = None,
+) -> list[Annotation]:
+    """Measures (normalized 0–1 pts, the client's store format) →
+    output-pixel annotations. `raster` (source resolution) enables the
+    on-screen μ/σ label for ROIs; without it ROIs get W×H dims."""
+    out: list[Annotation] = []
+    for m in measures:
+        kind = str(m.get("kind", ""))
+        pts_n = [(float(p["x"]), float(p["y"])) for p in m.get("pts", [])]
+        if len(pts_n) < 2:
+            continue
+        ipts = [(x * img_w, y * img_h) for x, y in pts_n]       # image px
+        opts = tuple((x * scale, y * scale) for x, y in ipts)   # output px
+
+        if kind in ("distance", "profile"):
+            d = float(np.hypot(ipts[1][0] - ipts[0][0],
+                               ipts[1][1] - ipts[0][1]))
+            label = (f"{_fmt(d * pixel_size)} {pixel_unit}"
+                     if pixel_size else f"{_fmt(d)} px")
+            mid = ((opts[0][0] + opts[1][0]) / 2 + 8,
+                   (opts[0][1] + opts[1][1]) / 2 - 8)
+            out.append(Annotation(kind, opts[:2], label, mid,
+                                  dashed=kind == "profile"))
+        elif kind == "angle" and len(ipts) >= 3:
+            v, a, b = ipts[1], ipts[0], ipts[2]
+            a1 = np.arctan2(a[1] - v[1], a[0] - v[0])
+            a2 = np.arctan2(b[1] - v[1], b[0] - v[0])
+            deg = abs(float(a1 - a2)) * 180.0 / np.pi
+            if deg > 180.0:
+                deg = 360.0 - deg
+            out.append(Annotation(kind, opts[:3], f"{deg:.1f}°",
+                                  (opts[1][0] + 10, opts[1][1] - 10)))
+        elif kind == "roi":
+            (x0, y0), (x1, y1) = ipts[0], ipts[1]
+            if raster is not None:
+                r0, r1 = sorted((int(y0), int(y1)))
+                c0, c1 = sorted((int(x0), int(x1)))
+                sel = raster[max(r0, 0):r1 + 1, max(c0, 0):c1 + 1]
+                label = (f"μ {_fmt(float(sel.mean()))} · "
+                         f"σ {_fmt(float(sel.std()))}"
+                         if sel.size else "—")
+            else:
+                w_px, h_px = abs(x1 - x0), abs(y1 - y0)
+                label = f"{_fmt(w_px)} × {_fmt(h_px)} px"
+            lx = min(opts[0][0], opts[1][0])
+            ly = min(opts[0][1], opts[1][1]) - 6
+            out.append(Annotation(kind, opts[:2], label, (lx, ly)))
+    return out
 
 
 def scale_bar_geometry(
