@@ -75,6 +75,28 @@ export default function DockPlot() {
         </span>
         <button
           className="fvd-icon-btn"
+          title="Download profile as CSV (calibrated x-axis)"
+          onClick={() => {
+            const csv = [
+              `distance_${profile.unit},intensity`,
+              ...profile.dist.map(
+                (d, i) => `${d},${profile.intensity[i] ?? ""}`,
+              ),
+            ].join("\n");
+            const url = URL.createObjectURL(
+              new Blob([csv], { type: "text/csv" }),
+            );
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "profile.csv";
+            a.click();
+            URL.revokeObjectURL(url);
+          }}
+        >
+          ⤓
+        </button>
+        <button
+          className="fvd-icon-btn"
           title="Close plot"
           onClick={() => setProfile(null)}
         >

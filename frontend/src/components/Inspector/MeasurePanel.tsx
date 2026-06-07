@@ -5,6 +5,7 @@ import { measureProfile } from "../../lib/api";
 import { physAngle, physDist } from "../../lib/geometry";
 import { useStageInfo } from "../../store/stage";
 import { useViewer, type Measure, type OverlayStyle } from "../../store/viewer";
+import { useResults } from "../overlays/ResultsWindow";
 
 const KIND_GLYPH: Record<Measure["kind"], string> = {
   distance: "↔",
@@ -23,6 +24,106 @@ const SWATCHES = ["#ffffff", "#22d3ee", "#fbbf24", "#f472b6", "#a3e635"];
 
 // stable empty result — fresh [] per snapshot loops React (#185)
 const NO_MEASURES: Measure[] = [];
+
+type MetaLike = {
+  pixel_size: number | null;
+  pixel_unit: string;
+} | null;
+
+/** Distance values (calibrated when possible) from line-like measures. */
+function distanceValues(
+  measures: Measure[],
+  img: { w: number; h: number },
+  meta: MetaLike,
+): number[] {
+  const out: number[] = [];
+  for (const m of measures) {
+    if (m.kind !== "distance" && m.kind !== "profile" && m.kind !== "polyline")
+      continue;
+    const px = m.pts.map((p) => ({ x: p.x * img.w, y: p.y * img.h }));
+    let total = 0;
+    for (let i = 1; i < px.length; i++) {
+      total += physDist(px[i - 1], px[i], meta?.pixel_size ?? null).value;
+    }
+    out.push(total);
+  }
+  return out;
+}
+
+function showLog(
+  measures: Measure[],
+  img: { w: number; h: number },
+  meta: MetaLike,
+  roiStats: Record<string, { mean: number; std: number }>,
+): void {
+  const unit = meta?.pixel_size != null ? (meta?.pixel_unit ?? "px") : "px";
+  const rows = measures.map((m, i) => {
+    const px = m.pts.map((p) => ({ x: p.x * img.w, y: p.y * img.h }));
+    let value = "";
+    if (m.kind === "angle" && px.length === 3) {
+      value = `${physAngle(px[1], px[0], px[2]).toFixed(2)}°`;
+    } else if (
+      m.kind === "distance" ||
+      m.kind === "profile" ||
+      m.kind === "polyline"
+    ) {
+      let d = 0;
+      for (let k = 1; k < px.length; k++) {
+        d += physDist(px[k - 1], px[k], meta?.pixel_size ?? null).value;
+      }
+      value = `${Number(d.toPrecision(6))} ${unit}`;
+    } else if (m.kind === "roi" || m.kind === "ellipse") {
+      const s = roiStats[m.id];
+      value = s ? `μ=${s.mean} σ=${s.std}` : "";
+    } else {
+      value = m.text ?? "";
+    }
+    return [
+      i + 1,
+      m.kind,
+      value,
+      ...px.slice(0, 2).flatMap((p) => [
+        Number(p.x.toFixed(2)),
+        Number(p.y.toFixed(2)),
+      ]),
+    ] as (string | number | null)[];
+  });
+  useResults.getState().show({
+    title: "Measurement log",
+    columns: ["#", "kind", "value", "x0", "y0", "x1", "y1"],
+    rows,
+  });
+}
+
+function showStats(
+  measures: Measure[],
+  img: { w: number; h: number },
+  meta: MetaLike,
+): void {
+  const vals = distanceValues(measures, img, meta).sort((a, b) => a - b);
+  if (vals.length === 0) {
+    useViewer.getState().setStatus("stats: no distance-like measurements");
+    return;
+  }
+  const unit = meta?.pixel_size != null ? (meta?.pixel_unit ?? "px") : "px";
+  const mean = vals.reduce((s, v) => s + v, 0) / vals.length;
+  const std = Math.sqrt(
+    vals.reduce((s, v) => s + (v - mean) ** 2, 0) / vals.length,
+  );
+  const rows: (string | number | null)[][] = vals.map((v, i) => [
+    i + 1,
+    Number(v.toPrecision(6)),
+  ]);
+  rows.push(["mean", Number(mean.toPrecision(6))]);
+  rows.push(["std", Number(std.toPrecision(6))]);
+  rows.push(["min", Number(vals[0].toPrecision(6))]);
+  rows.push(["max", Number(vals[vals.length - 1].toPrecision(6))]);
+  useResults.getState().show({
+    title: `Distance statistics (${unit})`,
+    columns: ["#", `value (${unit})`],
+    rows,
+  });
+}
 
 export default function MeasurePanel() {
   const activeId = useViewer((s) => s.activeId);
@@ -128,6 +229,22 @@ export default function MeasurePanel() {
       {measures.length > 0 && (
         <div className="fvd-card">
           <h3>Measurements</h3>
+          <div className="fvd-ws-row">
+            <button
+              className="fvd-btn"
+              title="Open the measurement log table (CSV-exportable)"
+              onClick={() => showLog(measures, img, meta, roiStats)}
+            >
+              Log / CSV
+            </button>
+            <button
+              className="fvd-btn"
+              title="Sorted distances + summary statistics"
+              onClick={() => showStats(measures, img, meta)}
+            >
+              Stats
+            </button>
+          </div>
           {measures.map((m, i) => (
             <div
               key={m.id}
