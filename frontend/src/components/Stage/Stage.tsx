@@ -27,6 +27,7 @@ import {
   zoomAbout,
   type Size,
 } from "../../lib/geometry";
+import { applyGeometry, cropToRoi } from "../../lib/stageOps";
 import { rasterValue, useStageInfo } from "../../store/stage";
 import {
   DEFAULT_DISPLAY,
@@ -491,6 +492,13 @@ function FloatTools() {
   const mode = (m: typeof captureMode) => () =>
     setCaptureMode(captureMode === m ? "none" : m);
 
+  // prototype toolbar groups: transforms · capture/zoom · crop
+  const transforms: [string, string, () => void][] = [
+    ["⟲", "Rotate 90° CCW", () => applyGeometry("rotate270")],
+    ["⟳", "Rotate 90° CW", () => applyGeometry("rotate90")],
+    ["⬌", "Flip horizontal", () => applyGeometry("fliph")],
+    ["⬍", "Flip vertical", () => applyGeometry("flipv")],
+  ];
   const tools: [string, string, boolean, () => void][] = [
     ["✥", "Hand tool  H", panTool, () => setPanTool(!panTool)],
     ["⬚", "Box zoom  Z", captureMode === "zoom", mode("zoom")],
@@ -502,6 +510,17 @@ function FloatTools() {
 
   return (
     <div className="fvd-glass fvd-float-tools">
+      {transforms.map(([glyph, title, onClick]) => (
+        <button
+          key={title}
+          className="fvd-tool-btn"
+          title={title}
+          onClick={onClick}
+        >
+          {glyph}
+        </button>
+      ))}
+      <span className="fvd-tool-sep" />
       {tools.map(([glyph, title, active, onClick]) => (
         <button
           key={title}
@@ -512,6 +531,14 @@ function FloatTools() {
           {glyph}
         </button>
       ))}
+      <span className="fvd-tool-sep" />
+      <button
+        className="fvd-tool-btn"
+        title="Crop to ROI"
+        onClick={() => cropToRoi()}
+      >
+        ✂
+      </button>
     </div>
   );
 }

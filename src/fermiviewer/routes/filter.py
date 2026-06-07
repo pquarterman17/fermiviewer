@@ -35,6 +35,18 @@ def _scaled_axes(ds: DataStruct, factor_r: float, factor_c: float) -> tuple:
     return (scaled(ds.axes[0], factor_r), scaled(ds.axes[1], factor_c))
 
 
+def _crop(d: np.ndarray, p: dict[str, Any]) -> np.ndarray:
+    """Crop to a 1-based inclusive (row0, col0)–(row1, col1) rect
+    (MATLAB convention, matching the measure endpoints)."""
+    r0, r1 = sorted((int(p["row0"]), int(p["row1"])))
+    c0, c1 = sorted((int(p["col0"]), int(p["col1"])))
+    r0, c0 = max(r0, 1), max(c0, 1)
+    out = d[r0 - 1:r1, c0 - 1:c1]
+    if out.size == 0:
+        raise ValueError("crop rectangle is empty")
+    return out
+
+
 # kind → (callable, resamples?) — dispatch table, never eval
 _FILTERS: dict[str, Callable[[np.ndarray, dict[str, Any]], np.ndarray]] = {
     "gaussian": lambda d, p: filters.apply_gaussian(
@@ -64,9 +76,17 @@ _FILTERS: dict[str, Callable[[np.ndarray, dict[str, Any]], np.ndarray]] = {
     "plane_level": lambda d, p: filters.plane_level(
         d, order=int(p.get("order", 1))
     ).leveled,
+    # geometric ops (stage toolbar): np.rot90 k>0 is CCW, so CW = k=-1
+    "rotate90": lambda d, p: np.rot90(d, k=-1),     # 90° clockwise
+    "rotate180": lambda d, p: np.rot90(d, k=2),
+    "rotate270": lambda d, p: np.rot90(d, k=1),     # 90° CCW
+    "fliph": lambda d, p: d[:, ::-1],               # mirror left-right
+    "flipv": lambda d, p: d[::-1, :],               # mirror top-bottom
+    "crop": _crop,
 }
 
 _RESAMPLING = {"bin"}
+_SWAPS_AXES = {"rotate90", "rotate270"}             # row/col cal swap
 
 
 @router.post("/filter")
@@ -89,6 +109,8 @@ def apply_filter(req: FilterRequest) -> ImageMeta:
         )
     try:
         out = fn(raster, req.params)
+    except KeyError as e:
+        raise HTTPException(422, f"missing param: {e}") from None
     except (ValueError, TypeError) as e:
         raise HTTPException(422, str(e)) from None
 
@@ -96,6 +118,8 @@ def apply_filter(req: FilterRequest) -> ImageMeta:
         axes = _scaled_axes(
             ds, raster.shape[0] / out.shape[0], raster.shape[1] / out.shape[1]
         )
+    elif req.kind in _SWAPS_AXES:
+        axes = (ds.axes[1], ds.axes[0])
     else:
         axes = (ds.axes[0], ds.axes[1])
 

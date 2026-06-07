@@ -19,6 +19,7 @@ import {
   supportedExtensions,
   type ImageMeta,
 } from "../../lib/api";
+import { applyGeometry, cropToRoi } from "../../lib/stageOps";
 import { useStageInfo } from "../../store/stage";
 import { DEFAULT_DISPLAY as DD, useViewer } from "../../store/viewer";
 import {
@@ -258,6 +259,36 @@ export default function MenuBar({
       },
     ],
     Image: [
+      {
+        label: "Rotate 90° CW",
+        disabled: !store.activeId,
+        action: () => applyGeometry("rotate90"),
+      },
+      {
+        label: "Rotate 90° CCW",
+        disabled: !store.activeId,
+        action: () => applyGeometry("rotate270"),
+      },
+      {
+        label: "Rotate 180°",
+        disabled: !store.activeId,
+        action: () => applyGeometry("rotate180"),
+      },
+      {
+        label: "Flip Horizontal",
+        disabled: !store.activeId,
+        action: () => applyGeometry("fliph"),
+      },
+      {
+        label: "Flip Vertical",
+        disabled: !store.activeId,
+        action: () => applyGeometry("flipv"),
+      },
+      {
+        label: "Crop to ROI",
+        disabled: !store.activeId,
+        action: () => cropToRoi(),
+      },
       {
         label: "FFT",
         disabled: !store.activeId,

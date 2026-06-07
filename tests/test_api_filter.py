@@ -114,3 +114,74 @@ def test_error_paths(client, img_id) -> None:
         ).status_code
         == 422
     )
+
+
+# ── geometric ops (stage toolbar) ────────────────────────────────────
+
+def test_rotate_and_flip(client, img_id) -> None:
+    src = np.asarray(store.get(img_id).data, dtype=np.float64)
+
+    r = client.post("/api/filter",
+                    json={"image_id": img_id, "kind": "rotate90"})
+    assert r.status_code == 200
+    meta = r.json()
+    assert meta["shape"] == [16, 12]                 # H/W swapped
+    np.testing.assert_array_equal(
+        store.get(meta["id"]).data, np.rot90(src, k=-1))
+
+    r = client.post("/api/filter",
+                    json={"image_id": img_id, "kind": "rotate270"})
+    np.testing.assert_array_equal(
+        store.get(r.json()["id"]).data, np.rot90(src, k=1))
+
+    r = client.post("/api/filter",
+                    json={"image_id": img_id, "kind": "rotate180"})
+    m180 = r.json()
+    assert m180["shape"] == [12, 16]                 # dims unchanged
+    np.testing.assert_array_equal(
+        store.get(m180["id"]).data, src[::-1, ::-1])
+
+    r = client.post("/api/filter",
+                    json={"image_id": img_id, "kind": "fliph"})
+    np.testing.assert_array_equal(
+        store.get(r.json()["id"]).data, src[:, ::-1])
+
+    r = client.post("/api/filter",
+                    json={"image_id": img_id, "kind": "flipv"})
+    np.testing.assert_array_equal(
+        store.get(r.json()["id"]).data, src[::-1, :])
+
+
+def test_rotate_round_trip_identity(client, img_id) -> None:
+    """rotate90 then rotate270 of the derived image == original."""
+    src = np.asarray(store.get(img_id).data, dtype=np.float64)
+    cw = client.post("/api/filter",
+                     json={"image_id": img_id, "kind": "rotate90"}).json()
+    back = client.post("/api/filter",
+                       json={"image_id": cw["id"], "kind": "rotate270"}).json()
+    np.testing.assert_array_equal(store.get(back["id"]).data, src)
+    assert back["pixel_size"] == pytest.approx(0.5)  # cal survives
+
+
+def test_crop(client, img_id) -> None:
+    src = np.asarray(store.get(img_id).data, dtype=np.float64)
+    r = client.post("/api/filter", json={
+        "image_id": img_id, "kind": "crop",
+        "params": {"row0": 3, "col0": 5, "row1": 8, "col1": 12},
+    })
+    assert r.status_code == 200
+    meta = r.json()
+    assert meta["shape"] == [6, 8]                   # inclusive 1-based
+    np.testing.assert_array_equal(
+        store.get(meta["id"]).data, src[2:8, 4:12])
+    assert meta["pixel_size"] == pytest.approx(0.5)
+
+    # fully out-of-range rect → clean 422
+    assert client.post("/api/filter", json={
+        "image_id": img_id, "kind": "crop",
+        "params": {"row0": 50, "col0": 5, "row1": 60, "col1": 12},
+    }).status_code == 422
+    # missing params → clean 422 (not a 500)
+    assert client.post("/api/filter", json={
+        "image_id": img_id, "kind": "crop", "params": {"row0": 1},
+    }).status_code == 422

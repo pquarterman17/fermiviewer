@@ -280,6 +280,13 @@ body {
   padding: 3px;
 }
 
+.fvd-tool-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 3px 2px;
+  background: var(--border);
+}
+
 .fvd-tool-btn {
   width: 26px;
   height: 26px;
