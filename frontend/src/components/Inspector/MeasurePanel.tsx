@@ -70,11 +70,35 @@ export default function MeasurePanel() {
   const sel = measures.find((m) => m.id === selected);
   const selStats = sel?.kind === "roi" ? roiStats[sel.id] : undefined;
 
+  const captureMode = useViewer((s) => s.captureMode);
+  const setCaptureMode = useViewer((s) => s.setCaptureMode);
+  const capBtn = (
+    label: string,
+    glyph: string,
+    mode: "profile" | "distance" | "angle" | "roi",
+  ) => (
+    <button
+      className={`fvd-cap-btn${captureMode === mode ? " active" : ""}`}
+      onClick={() => setCaptureMode(captureMode === mode ? "none" : mode)}
+    >
+      <span className="glyph">{glyph}</span> {label}
+    </button>
+  );
+
   return (
     <>
+      <div className="fvd-card">
+        <h3>Measure</h3>
+        <div className="fvd-cap-grid">
+          {capBtn("Profile", "∿", "profile")}
+          {capBtn("Distance", "↔", "distance")}
+          {capBtn("Angle", "∠", "angle")}
+          {capBtn("ROI", "▭", "roi")}
+        </div>
+      </div>
       {measures.length > 0 && (
         <div className="fvd-card">
-          <h3>Measure</h3>
+          <h3>Measurements</h3>
           {measures.map((m, i) => (
             <div
               key={m.id}

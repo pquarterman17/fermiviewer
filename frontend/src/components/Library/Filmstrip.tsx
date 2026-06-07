@@ -55,9 +55,7 @@ export default function Filmstrip() {
   return (
     <aside className="fvd-filmstrip">
       <div className="fvd-film-head">
-        <span className="count">
-          {order.length} image{order.length === 1 ? "" : "s"}
-        </span>
+        <span className="count">DOCS · {order.length}</span>
         <button
           className="fvd-icon-btn"
           title={listView === "thumbs" ? "Names view" : "Thumbnail view"}

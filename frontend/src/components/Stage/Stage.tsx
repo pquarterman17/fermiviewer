@@ -458,13 +458,13 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
             pending={pending}
           />
           <FloatTools />
-          {captureMode !== "none" && (
-            <div className="fvd-glass fvd-capture-banner">
-              {captureHint(captureMode, pending?.pts.length ?? 0)} · Esc
-              cancels
-            </div>
-          )}
-          <ZoomChip />
+          <ZoomChip
+            onZoom={(f) => {
+              if (view && imgSize) {
+                apply(zoomAbout(view, f, vp.w / 2, vp.h / 2, imgSize, vp));
+              }
+            }}
+          />
           <Readout />
           {meta?.pixel_size != null && (
             <ScaleBar
@@ -481,24 +481,6 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
 });
 
 export default Stage;
-
-function captureHint(mode: string, clicked: number): string {
-  switch (mode) {
-    case "zoom":
-      return "Drag a region to zoom";
-    case "roi":
-      return "Drag a region for statistics";
-    case "distance":
-    case "profile":
-      return clicked <= 1 ? "Click the first point" : "Click the end point";
-    case "angle":
-      return ["Click the first ray end", "Click the vertex", "Click the second ray end"][
-        Math.min(2, Math.max(0, clicked - 1))
-      ];
-    default:
-      return "";
-  }
-}
 
 function FloatTools() {
   const captureMode = useViewer((s) => s.captureMode);
@@ -534,11 +516,19 @@ function FloatTools() {
   );
 }
 
-function ZoomChip() {
+function ZoomChip({ onZoom }: { onZoom: (f: number) => void }) {
   const zoom = useStageInfo((s) => s.zoom);
   if (zoom === null) return null;
   return (
-    <div className="fvd-glass fvd-zoom-chip">{Math.round(zoom * 100)} %</div>
+    <div className="fvd-glass fvd-zoom-chip">
+      <button className="fvd-icon-btn" onClick={() => onZoom(0.8)}>
+        ⊖
+      </button>
+      <span>{Math.round(zoom * 100)} %</span>
+      <button className="fvd-icon-btn" onClick={() => onZoom(1.25)}>
+        ⊕
+      </button>
+    </div>
   );
 }
 

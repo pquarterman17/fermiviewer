@@ -17,10 +17,17 @@ export default function StatusBar() {
   });
   const cursor = useStageInfo((s) => s.cursor);
   const zoom = useStageInfo((s) => s.zoom);
+  const captureMode = useViewer((s) => s.captureMode);
 
   return (
     <footer className="fvd-statusbar">
       <span>{status}</span>
+      <span className="grow" />
+      {captureMode !== "none" && (
+        <span className="fvd-capture-hint">
+          ● {captureMode} — Esc cancels
+        </span>
+      )}
       <span className="grow" />
       {meta && (
         <>

@@ -257,7 +257,7 @@ export default function MenuBar({
         action: store.toggleRight,
       },
     ],
-    Process: [
+    Image: [
       {
         label: "FFT",
         disabled: !store.activeId,
@@ -376,7 +376,7 @@ export default function MenuBar({
         action: () => radialDock(true),
       },
     ],
-    Analyze: [
+    Analysis: [
       {
         label: "Particle Analysis…",
         disabled: !store.activeId,
@@ -504,20 +504,34 @@ export default function MenuBar({
             .catch((e: Error) => store.setStatus(e.message));
         },
       },
+    ],
+    Window: [
       {
         label: "EELS Workshop",
         shortcut: "WINDOW",
         action: () => store.openTool("eels"),
       },
       {
-        label: "EDS Workshop",
+        label: "EDS Composite",
         shortcut: "WINDOW",
         action: () => store.openTool("eds"),
       },
       {
-        label: "Diffraction Workshop",
+        label: "Diffraction Indexing",
         shortcut: "WINDOW",
         action: () => store.openTool("diffraction"),
+      },
+    ],
+    Help: [
+      {
+        label: "Keyboard Shortcuts",
+        shortcut: "?",
+        action: () => store.setShorts(true),
+      },
+      {
+        label: "Command Palette",
+        shortcut: "⌘K",
+        action: () => store.setCmdk(true),
       },
     ],
   };
@@ -563,6 +577,15 @@ export default function MenuBar({
           )}
         </div>
       ))}
+      <span style={{ flex: 1 }} />
+      <button
+        className="fvd-search-box"
+        onClick={() => store.setCmdk(true)}
+        title="Command palette"
+      >
+        <span className="icon">⌕</span> Search actions…
+        <span className="fvd-shortcut">⌘K</span>
+      </button>
     </nav>
   );
 }

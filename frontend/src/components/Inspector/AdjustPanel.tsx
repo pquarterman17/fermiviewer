@@ -145,6 +145,35 @@ export default function AdjustPanel() {
   return (
     <div className="fvd-card">
       <h3>Adjust</h3>
+      <div className="fvd-adjust-top">
+        <button
+          className="fvd-btn"
+          title="Percentile auto-contrast  A"
+          onClick={() => raster && setDisplay(activeId, autoWindow(raster))}
+        >
+          ◑ Auto
+        </button>
+        <button
+          className="fvd-btn"
+          onClick={() =>
+            setDisplay(activeId, { lo: 0, hi: 1, gamma: 1, invert: false })
+          }
+        >
+          Reset
+        </button>
+        <select
+          value={display.cmap}
+          onChange={(e) =>
+            setDisplay(activeId, { cmap: e.target.value as ColormapName })
+          }
+        >
+          {COLORMAP_NAMES.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+      </div>
       <canvas
         ref={canvasRef}
         className="fvd-hist"
@@ -153,11 +182,37 @@ export default function AdjustPanel() {
         onPointerMove={onMove}
         onPointerUp={onUp}
       />
-      <div className="fvd-meta-row">
-        <span className="k">Window</span>
-        <span className="v">
-          {fmtReal(display.lo)} – {fmtReal(display.hi)}
-        </span>
+      <div className="fvd-bw-row">
+        <span className="k">Black</span>
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.002}
+          value={display.lo}
+          onChange={(e) =>
+            setDisplay(activeId, {
+              lo: Math.min(Number(e.target.value), display.hi - 1 / 255),
+            })
+          }
+        />
+        <span className="v">{fmtReal(display.lo)}</span>
+      </div>
+      <div className="fvd-bw-row">
+        <span className="k">White</span>
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.002}
+          value={display.hi}
+          onChange={(e) =>
+            setDisplay(activeId, {
+              hi: Math.max(Number(e.target.value), display.lo + 1 / 255),
+            })
+          }
+        />
+        <span className="v">{fmtReal(display.hi)}</span>
       </div>
       <div className="fvd-meta-row">
         <span className="k">
@@ -175,66 +230,31 @@ export default function AdjustPanel() {
           {clipPct(display.hi, true).toFixed(1)}%
         </span>
       </div>
-      <div className="fvd-slider-row">
-        <span className="k">γ</span>
-        <input
-          type="range"
-          min={-1}
-          max={1}
-          step={0.01}
-          value={Math.log10(display.gamma)}
-          onChange={(e) =>
-            setDisplay(activeId, {
-              gamma: Math.pow(10, Number(e.target.value)),
-            })
-          }
-        />
-        <span className="v">{display.gamma.toFixed(2)}</span>
-      </div>
-      <div className="fvd-slider-row">
-        <span className="k">Map</span>
-        <select
-          value={display.cmap}
-          onChange={(e) =>
-            setDisplay(activeId, { cmap: e.target.value as ColormapName })
-          }
-        >
-          {COLORMAP_NAMES.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="fvd-slider-row">
-        <span className="k">Invert</span>
-        <label className="fvd-check">
+      <div className="fvd-chip-row">
+        <span className="fvd-chip" title="Gamma — scroll or drag">
+          γ{" "}
           <input
-            type="checkbox"
-            checked={display.invert}
+            type="range"
+            min={-1}
+            max={1}
+            step={0.01}
+            value={Math.log10(display.gamma)}
             onChange={(e) =>
-              setDisplay(activeId, { invert: e.target.checked })
+              setDisplay(activeId, {
+                gamma: Math.pow(10, Number(e.target.value)),
+              })
             }
-          />
-        </label>
-      </div>
-      <div className="fvd-btn-row">
+          />{" "}
+          {display.gamma.toFixed(2)}
+        </span>
         <button
-          className="fvd-btn"
-          title="Percentile auto-contrast  A"
-          onClick={() => raster && setDisplay(activeId, autoWindow(raster))}
+          className={`fvd-chip${display.invert ? " active" : ""}`}
+          onClick={() => setDisplay(activeId, { invert: !display.invert })}
         >
-          Auto
-        </button>
-        <button
-          className="fvd-btn"
-          onClick={() =>
-            setDisplay(activeId, { lo: 0, hi: 1, gamma: 1, invert: false })
-          }
-        >
-          Reset
+          invert {display.invert ? "on" : "off"}
         </button>
       </div>
+
     </div>
   );
 }
