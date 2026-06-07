@@ -55,18 +55,20 @@ def test_no_god_modules() -> None:
 
 
 def test_pure_layers_do_not_import_server_stack() -> None:
-    offenders = []
+    pure_files = [SRC / "datastruct.py"]
     for layer in PURE_LAYERS:
-        for f in (SRC / layer).rglob("*.py"):
-            text = f.read_text(encoding="utf-8")
-            for line in text.splitlines():
-                stripped = line.strip()
-                if not (stripped.startswith("import ") or stripped.startswith("from ")):
-                    continue
-                if any(bad in stripped for bad in FORBIDDEN_IN_PURE):
-                    offenders.append(f"{f.relative_to(ROOT)}: {stripped}")
+        pure_files.extend((SRC / layer).rglob("*.py"))
+
+    offenders = []
+    for f in pure_files:
+        for line in f.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if not (stripped.startswith("import ") or stripped.startswith("from ")):
+                continue
+            if any(bad in stripped for bad in FORBIDDEN_IN_PURE):
+                offenders.append(f"{f.relative_to(ROOT)}: {stripped}")
     assert not offenders, (
-        "io/ and calc/ are pure libraries — no server-stack imports:\n  "
+        "datastruct/io/calc are pure libraries — no server-stack imports:\n  "
         + "\n  ".join(offenders)
     )
 

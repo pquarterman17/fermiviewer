@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
+
+# Make tests/fixtures/ importable (synthetic file generators)
+sys.path.insert(0, str(Path(__file__).parent))
 
 GOLDEN_DIR = Path(__file__).parent / "golden"
 ML_ROOT = Path(__file__).resolve().parents[2] / "fermi-viewer"
