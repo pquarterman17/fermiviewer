@@ -63,6 +63,11 @@ select = [
 [tool.ruff.lint.mccabe]
 max-complexity = 12
 
+[tool.ruff.lint.per-file-ignores]
+# Data tables read best one-record-per-line; wrapping 47 phase rows at
+# 100 chars destroys the column alignment that makes them auditable.
+"src/fermiviewer/calc/crystal.py" = ["E501"]
+
 [tool.ruff.lint.pylint]
 max-statements = 60
 
