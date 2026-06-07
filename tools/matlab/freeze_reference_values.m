@@ -70,6 +70,13 @@ function freeze_reference_values()
         skipped{end+1} = sprintf('diffraction: %s', ME.message);
     end
 
+    % ── imaging: filter/segment fingerprints on closed-form synthetics ─
+    try
+        writeGolden(goldenDir, 'imaging.json', captureImaging());
+    catch ME
+        skipped{end+1} = sprintf('imaging: %s', ME.message);
+    end
+
     manifest.skipped = skipped;
     writeGolden(goldenDir, 'manifest.json', manifest);
 
@@ -78,6 +85,83 @@ function freeze_reference_values()
         fprintf('SKIPPED (%d):\n', numel(skipped));
         fprintf('  - %s\n', skipped{:});
     end
+end
+
+
+% ════════════════════════════════════════════════════════════════════
+function out = captureImaging()
+    % Closed-form deterministic synthetics — defined identically in
+    % tests/test_imaging.py (docs/w3_imaging_audit.md). 1-based r, c.
+    [C, R] = meshgrid(1:96, 1:64);
+    base  = sin(R/7) .* cos(C/11) + 0.001 * (R .* C) / (64*96);
+    noisy = base + 0.05 * sin(13*R + 7*C);
+    bw    = base > 0.2;
+
+    out.synthetic.baseSum  = sum(base(:));
+    out.synthetic.noisySum = sum(noisy(:));
+    out.synthetic.bwCount  = nnz(bw);
+
+    g = imaging.applyGaussian(base, Sigma=2);
+    out.gaussian = fingerprint(g);
+
+    m = imaging.applyMedian(noisy, WindowSize=5);
+    out.median = fingerprint(m);
+
+    u = imaging.unsharpMask(base, Sigma=2, Amount=1.5);
+    out.unsharp = fingerprint(u);
+
+    b = imaging.butterworthFilter(base, LowCutoff=0.05, HighCutoff=0.5, Order=2);
+    out.butterworth = fingerprint(real(b));
+
+    cl = imaging.clahe(base, TileSize=[8 8], ClipLimit=0.01, NumBins=256);
+    out.clahe = fingerprint(cl);
+
+    out.binAvg = fingerprint(imaging.binImage(base, BinSize=4, Mode='average'));
+    out.binSum = fingerprint(imaging.binImage(base, BinSize=4, Mode='sum'));
+
+    out.downsample = fingerprint(imaging.areaDownsample(base, 16, 24));
+    out.thumbnail  = fingerprint(imaging.generateThumbnail(base, MaxSize=32));
+
+    pl = imaging.planeLevel(noisy, Order=2);
+    out.planeLevel.coeffs     = pl.coeffs(:)';
+    out.planeLevel.leveledSum = sum(abs(pl.leveled(:)));
+
+    out.percentiles = [imaging.percentile(base(:), 1), ...
+                       imaging.percentile(base(:), 50), ...
+                       imaging.percentile(base(:), 99)];
+
+    mo = imaging.multiOtsu(base, NumClasses=3, NumBins=256);
+    out.multiOtsu.thresholds = mo.thresholds(:)';
+
+    ops = {'erode', 'dilate', 'open', 'close'};
+    for k = 1:numel(ops)
+        % morphOp validates mustBeNumeric — pass the mask as double 0/1
+        r = imaging.morphOp(double(bw), ops{k}, Radius=2, Shape="disk");
+        out.morph.(ops{k}) = nnz(r);
+    end
+
+    [L8, n8] = imaging.bwlabel(bw, 8);
+    [~,  n4] = imaging.bwlabel(bw, 4);
+    out.label.n8 = n8;
+    out.label.n4 = n4;
+    areas = accumarray(L8(L8 > 0), 1);
+    out.label.areas8Sorted = sort(areas(:))';
+
+    d34 = imaging.distanceTransform(bw, Metric="chamfer34");
+    dcb = imaging.distanceTransform(bw, Metric="cityblock");
+    out.distance.chamferSum = sum(d34(:));
+    out.distance.chamferMax = max(d34(:));
+    out.distance.cityblockSum = sum(dcb(isfinite(dcb)));
+end
+
+
+function fp = fingerprint(img)
+    % Scalar fingerprints for array equivalence at rel 1e-9.
+    img = double(img);
+    fp.size   = size(img);
+    fp.sum    = sum(img(:));
+    fp.sumAbs = sum(abs(img(:)));
+    fp.px     = img(min(20, end), min(30, end));   % spot check
 end
 
 
