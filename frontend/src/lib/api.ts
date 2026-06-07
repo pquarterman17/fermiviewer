@@ -612,6 +612,37 @@ export function applyCalibration(
   });
 }
 
+export interface CalibrationEntry {
+  pixel_size: number;
+  unit: string;
+  note: string;
+  saved: string;
+}
+
+export async function listCalibrations(): Promise<
+  Record<string, CalibrationEntry>
+> {
+  const r = await fetch("/api/calibration");
+  if (!r.ok) throw new Error(`calibration list failed: ${r.status}`);
+  return ((await r.json()) as { entries: Record<string, CalibrationEntry> })
+    .entries;
+}
+
+export async function deleteCalibration(key: string): Promise<void> {
+  const r = await fetch(`/api/calibration/${encodeURIComponent(key)}`, {
+    method: "DELETE",
+  });
+  if (!r.ok) throw new Error(`calibration delete failed: ${r.status}`);
+}
+
+/** Apply a STORED calibration (by key) to an image. */
+export function applyCalibrationKey(
+  id: string,
+  key: string,
+): Promise<{ image: ImageMeta }> {
+  return post("/api/calibration/apply", { image_id: id, key });
+}
+
 // ── workspace persistence ───────────────────────────────────────────
 
 export interface SessionClientState {

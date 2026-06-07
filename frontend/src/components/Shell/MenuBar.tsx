@@ -423,6 +423,10 @@ export default function MenuBar({
         },
       },
       {
+        label: "Manage Calibrations…",
+        action: () => store.setCalibOpen(true),
+      },
+      {
         label: "Radial Profile",
         disabled: !store.activeId,
         action: () => radialDock(false),

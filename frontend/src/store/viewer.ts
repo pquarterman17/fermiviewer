@@ -259,6 +259,7 @@ interface ViewerState {
   radial: { x: number; y: number } | null;
   tools: ToolWindowState[]; // open workshop windows (handoff §6)
   exportOpen: boolean;
+  calibOpen: boolean;
   status: string;
 
   openPaths: (paths: string[]) => Promise<void>;
@@ -305,6 +306,7 @@ interface ViewerState {
   focusTool: (kind: ToolKind) => void;
   moveTool: (kind: ToolKind, x: number, y: number) => void;
   setExportOpen: (open: boolean) => void;
+  setCalibOpen: (open: boolean) => void;
   setStatus: (msg: string) => void;
 }
 
@@ -339,6 +341,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   radial: null,
   tools: [],
   exportOpen: false,
+  calibOpen: false,
   status: "ready",
 
   openPaths: async (paths) => {
@@ -651,5 +654,6 @@ export const useViewer = create<ViewerState>((set, get) => ({
     })),
 
   setExportOpen: (exportOpen) => set({ exportOpen }),
+  setCalibOpen: (calibOpen) => set({ calibOpen }),
   setStatus: (msg) => set({ status: msg }),
 }));
