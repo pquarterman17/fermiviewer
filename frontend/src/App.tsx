@@ -22,6 +22,7 @@ import RadialMenu from "./components/overlays/RadialMenu";
 import ShortcutsOverlay from "./components/overlays/ShortcutsOverlay";
 import ToolWindow from "./components/overlays/ToolWindow";
 import DiffractionWorkshop from "./components/workshops/DiffractionWorkshop";
+import FftMaskWorkshop from "./components/workshops/FftMaskWorkshop";
 import EdsWorkshop from "./components/workshops/EdsWorkshop";
 import EelsWorkshop from "./components/workshops/EelsWorkshop";
 import { listImages } from "./lib/api";
@@ -447,16 +448,22 @@ export default function App() {
           key={t.kind}
           kind={t.kind}
           title={
-            { eels: "EELS", eds: "EDS", diffraction: "Diffraction" }[t.kind]
+            {
+              eels: "EELS",
+              eds: "EDS",
+              diffraction: "Diffraction",
+              fftmask: "FFT Mask",
+            }[t.kind]
           }
           x={t.x}
           y={t.y}
           z={t.z}
-          width={t.kind === "diffraction" ? 332 : 360}
+          width={t.kind === "diffraction" || t.kind === "fftmask" ? 332 : 360}
         >
           {t.kind === "eels" && <EelsWorkshop />}
           {t.kind === "eds" && <EdsWorkshop />}
           {t.kind === "diffraction" && <DiffractionWorkshop />}
+          {t.kind === "fftmask" && <FftMaskWorkshop />}
         </ToolWindow>
       ))}
     </div>

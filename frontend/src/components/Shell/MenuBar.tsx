@@ -521,6 +521,11 @@ export default function MenuBar({
         shortcut: "WINDOW",
         action: () => store.openTool("diffraction"),
       },
+      {
+        label: "FFT Mask Editor",
+        shortcut: "WINDOW",
+        action: () => store.openTool("fftmask"),
+      },
     ],
     Help: [
       {

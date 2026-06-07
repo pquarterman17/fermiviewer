@@ -365,6 +365,17 @@ export async function imageFft(id: string): Promise<ImageMeta> {
   return json(await fetch(`/api/image/${id}/fft`, { method: "POST" }));
 }
 
+/** Masked-FFT inverse (Fourier filter). Masks are (row, col, radius)
+ *  in 1-based FFT pixels; the backend mirrors conjugate-symmetric
+ *  partners. Returns the filtered real-space derived image. */
+export function analyzeFftMask(
+  id: string,
+  masks: [number, number, number][],
+  mode: "pass" | "reject",
+): Promise<{ image: ImageMeta }> {
+  return post("/api/analyze/fft-mask", { image_id: id, masks, mode });
+}
+
 export function analyzeRadial(
   id: string,
   opts: {
