@@ -479,6 +479,20 @@ export function analyzeRoughness(
   return post("/api/analyze/roughness", { image_id: id });
 }
 
+export function applyCalibration(
+  id: string,
+  pixelSize: number,
+  unit: string,
+  saveAsKey?: string,
+): Promise<{ image: ImageMeta }> {
+  return post("/api/calibration/apply", {
+    image_id: id,
+    pixel_size: pixelSize,
+    unit,
+    save_as_key: saveAsKey || null,
+  });
+}
+
 // ── workspace persistence ───────────────────────────────────────────
 
 export interface SessionClientState {

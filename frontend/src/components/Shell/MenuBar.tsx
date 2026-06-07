@@ -12,6 +12,7 @@ import {
   analyzeRadial,
   analyzeRoughness,
   analyzeVdf,
+  applyCalibration,
   applyFilter,
   exportImage,
   imageFft,
@@ -315,6 +316,55 @@ export default function MenuBar({
       ]),
       filterEntry("Bin…", "bin", [num("bin_size", "Bin size", 2)]),
       filterEntry("Plane Level", "plane_level"),
+      {
+        label: "Calibrate Pixel Size…",
+        disabled: !store.activeId,
+        action: () => {
+          void (async () => {
+            const v = await askParams("Calibrate Pixel Size", [
+              num("px", "Pixel size", 1),
+              {
+                key: "unit",
+                label: "Unit",
+                type: "select",
+                default: "nm",
+                options: ["nm", "µm", "Å", "pm", "mm"],
+              },
+              {
+                key: "save",
+                label: "Save to calibration DB",
+                type: "boolean",
+                default: false,
+              },
+            ]);
+            const id = store.activeId;
+            if (!v || !id) return;
+            let saveKey: string | undefined;
+            if (v["save"]) {
+              saveKey =
+                window.prompt(
+                  "Calibration key (instrument|mag):",
+                  "scope|mag",
+                ) ?? undefined;
+            }
+            applyCalibration(
+              id,
+              v["px"] as number,
+              v["unit"] as string,
+              saveKey,
+            )
+              .then((r) => {
+                useViewer.setState((s) => ({
+                  images: { ...s.images, [r.image.id]: r.image },
+                }));
+                store.setStatus(
+                  `calibrated: ${r.image.pixel_size} ${r.image.pixel_unit}/px`,
+                );
+              })
+              .catch((e: Error) => store.setStatus(e.message));
+          })();
+        },
+      },
       {
         label: "Radial Profile",
         disabled: !store.activeId,

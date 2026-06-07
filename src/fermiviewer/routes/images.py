@@ -50,7 +50,14 @@ def session_open(req: OpenRequest) -> list[ImageMeta]:
         raise HTTPException(415, str(e)) from None
     except ValueError as e:  # parser format errors
         raise HTTPException(422, str(e)) from None
-    return [ImageMeta.from_datastruct(i, store.name(i), ds) for i, ds in opened]
+    from fermiviewer.routes.calibration import auto_apply_calibration
+
+    for i, ds in opened:
+        auto_apply_calibration(i, ds)
+    return [
+        ImageMeta.from_datastruct(i, store.name(i), store.get(i))
+        for i, _ in opened
+    ]
 
 
 @router.post("/session/upload")
@@ -79,7 +86,14 @@ async def session_upload(files: list[UploadFile]) -> list[ImageMeta]:
             # don't leak the vanishing temp path as the source
             ds.metadata["source"] = name
             img_id = store.add_parsed(ds, name)
-            metas.append(ImageMeta.from_datastruct(img_id, name, ds))
+            from fermiviewer.routes.calibration import (
+                auto_apply_calibration,
+            )
+
+            auto_apply_calibration(img_id, ds)
+            metas.append(
+                ImageMeta.from_datastruct(img_id, name, store.get(img_id))
+            )
     return metas
 
 

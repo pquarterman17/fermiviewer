@@ -75,6 +75,13 @@ class SessionStore:
             self._names[img_id] = name
         return img_id
 
+    def replace(self, img_id: str, ds: DataStruct) -> None:
+        """Swap an image's DataStruct in place (e.g. recalibration)."""
+        with self._lock:
+            if img_id not in self._images:
+                raise UnknownImageError(img_id)
+            self._images[img_id] = ds
+
     def get(self, img_id: str) -> DataStruct:
         try:
             return self._images[img_id]

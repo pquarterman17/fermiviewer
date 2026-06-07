@@ -53,6 +53,7 @@ def _frontend_dist() -> Path | None:
 def create_app() -> FastAPI:
     """Build the FastAPI app. Routers attach here as they land (W5)."""
     from fermiviewer.routes.analysis import router as analysis_router
+    from fermiviewer.routes.calibration import router as calibration_router
     from fermiviewer.routes.export import router as export_router
     from fermiviewer.routes.filter import router as filter_router
     from fermiviewer.routes.images import router as images_router
@@ -72,6 +73,7 @@ def create_app() -> FastAPI:
     app.include_router(imaging_ops_router)
     app.include_router(structure_router)
     app.include_router(jobs_router)
+    app.include_router(calibration_router)
 
     @app.get("/api/health")
     def health() -> dict[str, str]:
