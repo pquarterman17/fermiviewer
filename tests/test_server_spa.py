@@ -17,6 +17,19 @@ def test_health_always_available() -> None:
     assert r.json()["status"] == "ok"
 
 
+def test_lifecycle_ws_safe_without_arming() -> None:
+    # connect/disconnect must NOT shut anything down outside main():
+    # auto-shutdown arms only in the fv entry point, never under tests
+    import fermiviewer.server as srv
+
+    client = TestClient(create_app())
+    assert srv._auto_shutdown is False
+    with client.websocket_connect("/api/ws"):
+        pass  # presence registered then dropped
+    # still serving after the socket closed
+    assert client.get("/api/health").status_code == 200
+
+
 @pytest.mark.skipif(
     _frontend_dist() is None,
     reason="frontend/dist not built (run `npm run build` in frontend/)",
