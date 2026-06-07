@@ -107,7 +107,8 @@ export type ToolKind =
   | "eds"
   | "diffraction"
   | "fftmask"
-  | "pixels";
+  | "pixels"
+  | "structure";
 
 export interface ToolWindowState {
   kind: ToolKind;

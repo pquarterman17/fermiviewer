@@ -716,6 +716,11 @@ export default function MenuBar({
         shortcut: "WINDOW",
         action: () => store.openTool("pixels"),
       },
+      {
+        label: "Structure Workshop",
+        shortcut: "WINDOW",
+        action: () => store.openTool("structure"),
+      },
     ],
     Help: [
       {

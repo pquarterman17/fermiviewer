@@ -680,6 +680,108 @@ export function applyCalibrationKey(
   return post("/api/calibration/apply", { image_id: id, key });
 }
 
+// ── structure analysis (atoms / template / CTF / lattice / stitch) ──
+
+export interface AtomsResult {
+  n_columns: number;
+  positions: [number, number][]; // (x, y), 1-based
+  amplitude: number[];
+  converged: boolean[] | null;
+  lattice: {
+    valid: boolean;
+    a1: [number, number] | null;
+    a2: [number, number] | null;
+    spacing: number | null;
+  };
+  sublattice?: number[];
+  strain?: Record<string, unknown>;
+}
+
+export function analyzeAtoms(
+  id: string,
+  opts: {
+    sigma?: number;
+    threshold?: number;
+    minSeparation?: number;
+    polarity?: "bright" | "dark";
+    refine?: boolean;
+  } = {},
+): Promise<AtomsResult> {
+  return post("/api/analyze/atoms", {
+    image_id: id,
+    sigma: opts.sigma ?? 2,
+    threshold: opts.threshold ?? 0.2,
+    min_separation: opts.minSeparation ?? 8,
+    polarity: opts.polarity ?? "bright",
+    refine: opts.refine ?? true,
+  });
+}
+
+export function analyzeTemplate(
+  id: string,
+  rect: [number, number, number, number], // (row, col, h, w) 1-based
+  threshold = 0.7,
+): Promise<{
+  n_matches: number;
+  locations: [number, number][]; // (row, col) centres
+  scores: number[];
+}> {
+  return post("/api/analyze/template-match", {
+    image_id: id,
+    rect,
+    threshold,
+  });
+}
+
+export function analyzeStitch(
+  ids: string[],
+  opts: { layout?: string; overlapFrac?: number } = {},
+): Promise<{ mosaic: ImageMeta; offsets: number[][]; layout: string }> {
+  return post("/api/analyze/stitch", {
+    image_ids: ids,
+    layout: opts.layout ?? "horizontal",
+    overlap_frac: opts.overlapFrac ?? 0.2,
+  });
+}
+
+export interface CtfResult {
+  defocus_a: number;
+  defocus_nm: number;
+  r_squared: number;
+  lambda_a: number;
+  radial_freq: number[];
+  radial_power: number[];
+  ctf_fit: number[];
+}
+
+export function analyzeCtf(
+  id: string,
+  opts: { voltageKv?: number; csMm?: number; pixelSizeA?: number } = {},
+): Promise<CtfResult> {
+  return post("/api/analyze/ctf", {
+    image_id: id,
+    voltage_kv: opts.voltageKv ?? 200,
+    cs_mm: opts.csMm ?? 1.2,
+    pixel_size_a: opts.pixelSizeA ?? 1,
+  });
+}
+
+export function analyzeLattice(
+  id: string,
+  spot1: [number, number], // (row, col) 1-based on the FFT image
+  spot2: [number, number],
+): Promise<{
+  a: number;
+  b: number;
+  gamma_deg: number;
+  d_spacing1: number;
+  d_spacing2: number;
+  unit_cell_area: number;
+  unit: string;
+}> {
+  return post("/api/analyze/lattice", { image_id: id, spot1, spot2 });
+}
+
 // ── workspace persistence ───────────────────────────────────────────
 
 export interface SessionClientState {
