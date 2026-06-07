@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { edsQuantify, type EdsQuantResult } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
+import EdsComposite, { EDS_PALETTE, type Channel } from "./EdsComposite";
 
 export default function EdsWorkshop() {
   const activeId = useViewer((s) => s.activeId);
@@ -20,6 +21,7 @@ export default function EdsWorkshop() {
   const [thickness, setThickness] = useState("100");
   const [takeOff, setTakeOff] = useState("20");
   const [result, setResult] = useState<EdsQuantResult | null>(null);
+  const [channels, setChannels] = useState<Channel[]>([]);
   const [busy, setBusy] = useState(false);
 
   const isCube = meta?.kind === "spectrum_image";
@@ -52,6 +54,15 @@ export default function EdsWorkshop() {
           }
           return { images, order };
         });
+        setChannels(
+          r.maps.map((m, i) => ({
+            id: m.id,
+            el: r.elements[i],
+            color: EDS_PALETTE[i % EDS_PALETTE.length],
+            intensity: 1,
+            visible: true,
+          })),
+        );
         setStatus(`EDS: quantified ${r.elements.join(", ")}`);
       })
       .catch((e: Error) => setStatus(`EDS: ${e.message}`))
@@ -143,6 +154,7 @@ export default function EdsWorkshop() {
           added to the library.
         </div>
       )}
+      <EdsComposite channels={channels} onChange={setChannels} />
     </div>
   );
 }
