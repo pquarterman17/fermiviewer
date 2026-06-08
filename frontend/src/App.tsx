@@ -22,6 +22,7 @@ import RadialMenu from "./components/overlays/RadialMenu";
 import ShortcutsOverlay from "./components/overlays/ShortcutsOverlay";
 import CalibrationManager from "./components/overlays/CalibrationManager";
 import MetadataDialog from "./components/overlays/MetadataDialog";
+import GalleryGrid from "./components/overlays/GalleryGrid";
 import PrefsDialog from "./components/overlays/PrefsDialog";
 import ToolWindow from "./components/overlays/ToolWindow";
 import DiffractionWorkshop from "./components/workshops/DiffractionWorkshop";
@@ -29,6 +30,7 @@ import FftMaskWorkshop from "./components/workshops/FftMaskWorkshop";
 import PixelInspector from "./components/workshops/PixelInspector";
 import ColorOverlayWorkshop from "./components/workshops/ColorOverlayWorkshop";
 import StructureWorkshop from "./components/workshops/StructureWorkshop";
+import SurfaceView from "./components/workshops/SurfaceView";
 import EdsWorkshop from "./components/workshops/EdsWorkshop";
 import EelsWorkshop from "./components/workshops/EelsWorkshop";
 import { listImages } from "./lib/api";
@@ -190,6 +192,10 @@ export default function App() {
         case "p":
         case "P":
           capture("polyline");
+          break;
+        case "v":
+        case "V":
+          s.setGalleryOpen(!s.galleryOpen);
           break;
         case "r":
         case "R":
@@ -472,6 +478,7 @@ export default function App() {
       <CalibrationManager />
       <MetadataDialog />
       <PrefsDialog />
+      <GalleryGrid />
       <ParamDialog />
       <ResultsWindow />
       {tools.map((t) => (
@@ -487,6 +494,7 @@ export default function App() {
               pixels: "Pixel Inspector",
               structure: "Structure",
               overlay: "Color Overlay",
+              surface: "Surface Plot",
             }[t.kind]
           }
           x={t.x}
@@ -507,6 +515,7 @@ export default function App() {
           {t.kind === "pixels" && <PixelInspector />}
           {t.kind === "structure" && <StructureWorkshop />}
           {t.kind === "overlay" && <ColorOverlayWorkshop />}
+          {t.kind === "surface" && <SurfaceView />}
         </ToolWindow>
       ))}
     </div>

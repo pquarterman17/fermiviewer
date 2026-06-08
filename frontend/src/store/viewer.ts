@@ -122,7 +122,8 @@ export type ToolKind =
   | "fftmask"
   | "pixels"
   | "structure"
-  | "overlay";
+  | "overlay"
+  | "surface";
 
 export interface ToolWindowState {
   kind: ToolKind;
@@ -327,6 +328,7 @@ interface ViewerState {
   calibOpen: boolean;
   metaOpen: boolean;
   prefsOpen: boolean;
+  galleryOpen: boolean;
   status: string;
 
   openPaths: (paths: string[]) => Promise<void>;
@@ -389,6 +391,7 @@ interface ViewerState {
   setCalibOpen: (open: boolean) => void;
   setMetaOpen: (open: boolean) => void;
   setPrefsOpen: (open: boolean) => void;
+  setGalleryOpen: (open: boolean) => void;
   setStatus: (msg: string) => void;
 }
 
@@ -428,6 +431,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   calibOpen: false,
   metaOpen: false,
   prefsOpen: false,
+  galleryOpen: false,
   status: "ready",
 
   openPaths: async (paths) => {
@@ -806,6 +810,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   setCalibOpen: (calibOpen) => set({ calibOpen }),
   setMetaOpen: (metaOpen) => set({ metaOpen }),
   setPrefsOpen: (prefsOpen) => set({ prefsOpen }),
+  setGalleryOpen: (galleryOpen) => set({ galleryOpen }),
   setStatus: (msg) => {
     logStatus(msg); // breadcrumb trail for the bug report
     set({ status: msg });

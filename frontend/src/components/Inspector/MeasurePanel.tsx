@@ -254,8 +254,8 @@ export default function MeasurePanel() {
 
   return (
     <>
-      <div className="fvd-card">
-        <h3>Measure</h3>
+      <details className="fvd-card" open>
+        <summary>Measure</summary>
         <div className="fvd-cap-grid">
           {capBtn("Profile", "∿", "profile")}
           {capBtn("Distance", "↔", "distance")}
@@ -282,10 +282,10 @@ export default function MeasurePanel() {
             onChange={(e) => setProfileWidth(Number(e.target.value) || 1)}
           />
         </div>
-      </div>
+      </details>
       {measures.length > 0 && (
-        <div className="fvd-card">
-          <h3>Measurements</h3>
+        <details className="fvd-card" open>
+          <summary>Measurements</summary>
           <div className="fvd-ws-row">
             <button
               className="fvd-btn"
@@ -400,11 +400,11 @@ export default function MeasurePanel() {
               ))}
             </div>
           )}
-        </div>
+        </details>
       )}
 
-      <div className="fvd-card">
-        <h3>Overlay style</h3>
+      <details className="fvd-card" open>
+        <summary>Overlay style</summary>
         <div className="fvd-slider-row">
           <span className="k">Size</span>
           <div className="fvd-seg">
@@ -432,7 +432,7 @@ export default function MeasurePanel() {
             ))}
           </div>
         </div>
-      </div>
+      </details>
     </>
   );
 }

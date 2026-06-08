@@ -10,6 +10,7 @@ import {
   analyzeAtoms,
   analyzeCtf,
   analyzeGpa,
+  analyzeGrainsAsync,
   analyzeLattice,
   analyzeParticles,
   analyzeStitch,
@@ -17,8 +18,10 @@ import {
   fetchData16,
   imageFft,
   renderUrl,
+  runJob,
   type AtomsResult,
   type CtfResult,
+  type ImageMeta,
   type Raster16,
 } from "../../lib/api";
 import { useViewer, type Measure } from "../../store/viewer";
@@ -28,6 +31,7 @@ const VIEW_W = 300;
 const MODES = [
   "Atoms",
   "Particles",
+  "Grains",
   "Template",
   "GPA",
   "CTF",
@@ -68,6 +72,7 @@ export default function StructureWorkshop() {
           {mode === "Particles" && activeId && (
             <ParticlesMode id={activeId} />
           )}
+          {mode === "Grains" && activeId && <GrainsMode id={activeId} />}
           {mode === "Template" && activeId && (
             <TemplateMode id={activeId} />
           )}
@@ -352,6 +357,75 @@ function ParticlesMode({ id }: { id: string }) {
           {busy ? "Counting…" : "Count"}
         </button>
       </div>
+    </>
+  );
+}
+
+// ── Grains (interactive identification window) ───────────────────────
+
+function GrainsMode({ id }: { id: string }) {
+  const setStatus = useViewer((s) => s.setStatus);
+  const ingestDerived = useViewer((s) => s.ingestDerived);
+  const [k, setK] = useState("3");
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState("");
+  const [labelsId, setLabelsId] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+
+  useEffect(() => {
+    setLabelsId(null);
+    setNote("");
+  }, [id]);
+
+  const run = () => {
+    setBusy(true);
+    setProgress("starting…");
+    runJob<{
+      n_grains: number;
+      labels: ImageMeta;
+      mean_diameter_px: number;
+      unit: string;
+      areas_px: number[];
+    }>(
+      () => analyzeGrainsAsync(id, Number(k) || 3),
+      (f, msg) => setProgress(`${Math.round(f * 100)}% ${msg}`),
+    )
+      .then((r) => {
+        ingestDerived([r.labels]);
+        setLabelsId(r.labels.id);
+        setNote(
+          `${r.n_grains} grains · mean ⌀ ` +
+            `${r.mean_diameter_px.toFixed(1)} px`,
+        );
+        useResults.getState().show({
+          title: `Grains (${r.n_grains})`,
+          columns: ["#", "area (px)"],
+          rows: r.areas_px.map((a, i) => [i + 1, a]),
+        });
+      })
+      .catch((e: Error) => setStatus(`grains: ${e.message}`))
+      .finally(() => {
+        setBusy(false);
+        setProgress("");
+      });
+  };
+
+  return (
+    <>
+      {labelsId ? (
+        <Preview id={labelsId} markers={[]} color="var(--capture)" />
+      ) : (
+        <Preview id={id} markers={[]} color="var(--capture)" />
+      )}
+      <div className="fvd-ws-row">
+        <span className="k">classes</span>
+        <input value={k} style={{ width: 36 }}
+               onChange={(e) => setK(e.target.value)} />
+        <button className="fvd-btn primary" onClick={run} disabled={busy}>
+          {busy ? progress || "Segmenting…" : "Identify grains"}
+        </button>
+      </div>
+      {note && <div className="fvd-ws-note">{note}</div>}
     </>
   );
 }

@@ -1,10 +1,56 @@
 // Right inspector (handoff §4/§5). Phase 1 skeleton: scene-switched shell
 // with the Image metadata card. Phase 2 fills Adjust/Measure/OverlayStyle…
 
+import { useRef } from "react";
+
 import type { ImageMeta } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
 import AdjustPanel from "./AdjustPanel";
 import MeasurePanel from "./MeasurePanel";
+
+/** Drag grip on the inspector's left edge — writes the grid's
+ *  --right-w CSS variable (checklist N panel resize); persisted. */
+function PanelGrip() {
+  const drag = useRef<{ startX: number; startW: number } | null>(null);
+  const setW = (w: number) => {
+    const clamped = Math.min(520, Math.max(220, Math.round(w)));
+    document.documentElement.style.setProperty("--right-w", `${clamped}px`);
+    localStorage.setItem("fv_right_w", String(clamped));
+  };
+  return (
+    <div
+      className="fvd-panel-grip"
+      title="Drag to resize the inspector"
+      onPointerDown={(e) => {
+        const cur = parseInt(
+          getComputedStyle(document.documentElement).getPropertyValue(
+            "--right-w",
+          ) || "280",
+          10,
+        );
+        drag.current = { startX: e.clientX, startW: cur || 280 };
+        (e.target as Element).setPointerCapture(e.pointerId);
+      }}
+      onPointerMove={(e) => {
+        if (drag.current) {
+          setW(drag.current.startW - (e.clientX - drag.current.startX));
+        }
+      }}
+      onPointerUp={(e) => {
+        drag.current = null;
+        (e.target as Element).releasePointerCapture(e.pointerId);
+      }}
+    />
+  );
+}
+
+// restore the persisted width once at module load
+{
+  const saved = Number(localStorage.getItem("fv_right_w"));
+  if (saved >= 220 && saved <= 520) {
+    document.documentElement.style.setProperty("--right-w", `${saved}px`);
+  }
+}
 
 function fmtPixelSize(meta: ImageMeta): string | null {
   if (meta.pixel_size === null) return null;
@@ -30,6 +76,7 @@ export default function Inspector() {
   if (!meta) {
     return (
       <aside className="fvd-inspector">
+        <PanelGrip />
         <div className="fvd-card">
           <h3>Image</h3>
           <div className="fvd-meta-row">
@@ -57,7 +104,8 @@ export default function Inspector() {
   const extra = Object.entries(meta.meta).slice(0, 12);
 
   return (
-    <aside className="fvd-inspector">
+    <aside className="fvd-inspector" style={{ position: "relative" }}>
+      <PanelGrip />
       {meta.kind !== "spectrum" && <AdjustPanel />}
       <MeasurePanel />
       <div className="fvd-card">

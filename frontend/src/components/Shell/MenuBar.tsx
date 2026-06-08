@@ -718,6 +718,12 @@ export default function MenuBar({
         action: store.toggleMinimap,
       },
       {
+        label: "Image Gallery",
+        shortcut: "V",
+        disabled: store.order.length === 0,
+        action: () => store.setGalleryOpen(true),
+      },
+      {
         label: store.colorbar ? "Hide Colorbar" : "Show Colorbar",
         action: store.toggleColorbar,
       },
@@ -1320,6 +1326,11 @@ export default function MenuBar({
         label: "Color Overlay",
         shortcut: "WINDOW",
         action: () => store.openTool("overlay"),
+      },
+      {
+        label: "Surface Plot",
+        shortcut: "WINDOW",
+        action: () => store.openTool("surface"),
       },
     ],
     Help: [

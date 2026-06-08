@@ -280,6 +280,96 @@ body {
   padding: 3px;
 }
 
+.fvd-gallery {
+  max-width: 80vw;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.fvd-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.fvd-gallery-cell {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: default;
+}
+
+.fvd-gallery-cell.active {
+  border-color: var(--accent);
+}
+
+.fvd-gallery-cell img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+  background: black;
+  border-radius: 2px;
+}
+
+.fvd-gallery-cell .name {
+  font-size: 10px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fvd-gallery-spec {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  font-size: 28px;
+  color: var(--text-dim);
+}
+
+details.fvd-card > summary {
+  cursor: default;
+  list-style: none;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+  user-select: none;
+}
+
+details.fvd-card > summary::before {
+  content: "▾ ";
+  font-size: 9px;
+}
+
+details.fvd-card:not([open]) > summary::before {
+  content: "▸ ";
+}
+
+details.fvd-card:not([open]) > summary {
+  margin-bottom: 0;
+}
+
+.fvd-panel-grip {
+  position: absolute;
+  left: -3px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 50;
+}
+
+.fvd-panel-grip:hover {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
 .fvd-ctx-backdrop {
   position: fixed;
   inset: 0;
