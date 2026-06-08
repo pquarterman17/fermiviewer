@@ -1,5 +1,7 @@
-// Native-style window chrome: traffic lights, centred doc title,
-// panel toggles (handoff §4 "Shell"). Lights are decorative until Tauri.
+// App title bar: brand, centred doc title, panel toggles (handoff §4
+// "Shell"). The prototype's macOS traffic lights were a Claude-Design
+// artifact — on Windows the browser/native window owns that chrome,
+// so they are intentionally NOT rendered (plan #36).
 
 import { useViewer } from "../../store/viewer";
 
@@ -20,11 +22,6 @@ export default function TitleBar() {
   return (
     <header className="fvd-titlebar">
       <div className="fvd-brand">
-        <div className="fvd-traffic">
-          <span className="r" />
-          <span className="y" />
-          <span className="g" />
-        </div>
         <span className="fvd-app-icon" />
         <span className="fvd-app-name">FermiViewer</span>
       </div>

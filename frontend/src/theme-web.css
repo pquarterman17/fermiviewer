@@ -59,18 +59,7 @@ body {
   padding: 0 var(--pad-lg);
 }
 
-.fvd-traffic {
-  display: flex;
-  gap: 8px;
-}
 
-.fvd-traffic span {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--surface-3);
-  border: 1px solid var(--border);
-}
 
 .fvd-doc-title {
   text-align: center;
@@ -1387,9 +1376,6 @@ details.fvd-card:not([open]) > summary {
   gap: 9px;
 }
 
-.fvd-traffic .r { background: #e0443e; border-color: #e0443e; }
-.fvd-traffic .y { background: #dea123; border-color: #dea123; }
-.fvd-traffic .g { background: #1aab29; border-color: #1aab29; }
 
 .fvd-app-icon {
   width: 18px;
