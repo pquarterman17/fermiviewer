@@ -325,6 +325,37 @@ export default function MeasurePanel() {
               </button>
             </div>
           ))}
+          {sel && (
+            <div className="fvd-slider-row">
+              <span className="k">Item color</span>
+              <input
+                type="color"
+                value={sel.color ?? overlay.color}
+                style={{ width: 28, height: 20, padding: 0, border: "none" }}
+                onChange={(e) =>
+                  useViewer
+                    .getState()
+                    .setMeasureStyle(activeId, sel.id, {
+                      color: e.target.value,
+                    })
+                }
+              />
+              {sel.color && (
+                <button
+                  className="fvd-btn"
+                  onClick={() =>
+                    useViewer
+                      .getState()
+                      .setMeasureStyle(activeId, sel.id, {
+                        color: undefined,
+                      })
+                  }
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+          )}
           {selIsAnnotation && sel && (
             <div className="fvd-slider-row">
               <span className="k">Text</span>

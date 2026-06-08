@@ -408,7 +408,8 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     if (
       captureMode === "zoom" ||
       captureMode === "roi" ||
-      captureMode === "ellipse"
+      captureMode === "ellipse" ||
+      (captureMode === "none" && e.shiftKey) // marquee measure-select
     ) {
       setMarquee({ a: p, b: p });
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -475,6 +476,22 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
         } else {
           setCaptureMode("none");
         }
+      } else if (captureMode === "none") {
+        // shift-drag marquee: select every measure with a point inside
+        const s = useViewer.getState();
+        const x0 = Math.min(a.x, b.x) / imgSize.w;
+        const x1 = Math.max(a.x, b.x) / imgSize.w;
+        const y0 = Math.min(a.y, b.y) / imgSize.h;
+        const y1 = Math.max(a.y, b.y) / imgSize.h;
+        const hits = (s.measures[activeId ?? ""] ?? [])
+          .filter((m) =>
+            m.pts.some(
+              (p2) => p2.x >= x0 && p2.x <= x1 && p2.y >= y0 && p2.y <= y1,
+            ),
+          )
+          .map((m) => m.id);
+        s.setSelectedMulti(hits);
+        if (hits.length) setStatus(`${hits.length} measures selected`);
       } else {
         apply(viewForRect(a, b, imgSize, vp));
         setCaptureMode("none");

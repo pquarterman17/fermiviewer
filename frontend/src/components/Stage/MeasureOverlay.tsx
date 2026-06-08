@@ -2,7 +2,7 @@
 // angle / ROI rendered at wrap level — handles stay constant-size at any
 // zoom; labels live-update in calibrated units.
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 import { measurePolyline, measureProfile, measureRoi } from "../../lib/api";
 import {
@@ -57,7 +57,22 @@ export default function MeasureOverlay({
     pt: number;
     before: Measure["pts"];
   } | null>(null);
+  const labelDragRef = useRef<{
+    mid: string;
+    startX: number;
+    startY: number;
+    dx0: number;
+    dy0: number;
+  } | null>(null);
   const pushUndo = useViewer((s) => s.pushUndo);
+  const setMeasureStyle = useViewer((s) => s.setMeasureStyle);
+  const removeMeasure = useViewer((s) => s.removeMeasure);
+  const selectedMulti = useViewer((s) => s.selectedMulti);
+  const [ctxMenu, setCtxMenu] = useState<{
+    mid: string;
+    x: number;
+    y: number;
+  } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
   const toScreen = (p: { x: number; y: number }) =>
@@ -170,8 +185,12 @@ export default function MeasureOverlay({
 
   const renderMeasure = (m: Measure, isPending = false) => {
     const pts = m.pts.map(toScreen);
-    const sel = m.id === selected;
-    const stroke = isPending ? "var(--capture)" : sel ? "var(--accent)" : color;
+    const sel = m.id === selected || selectedMulti.includes(m.id);
+    const stroke = isPending
+      ? "var(--capture)"
+      : sel
+        ? "var(--accent)"
+        : (m.color ?? color);
     const sw = sel ? 2 : 1.5;
     const common = {
       stroke,
@@ -183,6 +202,14 @@ export default function MeasureOverlay({
         : (e: React.PointerEvent) => {
             e.stopPropagation();
             setSelected(m.id);
+          },
+      onContextMenu: isPending
+        ? undefined
+        : (e: React.MouseEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setSelected(m.id);
+            setCtxMenu({ mid: m.id, x: e.clientX, y: e.clientY });
           },
       pointerEvents: (isPending ? "none" : "stroke") as "none" | "stroke",
     };
@@ -293,15 +320,52 @@ export default function MeasureOverlay({
         {shape}
         {(m.pts.length >= 2 || m.kind === "text") && (
           <text
-            x={labelAt.x}
-            y={labelAt.y}
-            fill={isPending ? "var(--capture)" : color}
+            x={labelAt.x + (m.labelDx ?? 0)}
+            y={labelAt.y + (m.labelDy ?? 0)}
+            fill={isPending ? "var(--capture)" : (m.color ?? color)}
             fontSize={font}
             fontFamily="var(--font-mono)"
             paintOrder="stroke"
             stroke="rgba(0,0,0,0.75)"
             strokeWidth={3}
-            pointerEvents="none"
+            pointerEvents={isPending ? "none" : "all"}
+            style={{ cursor: isPending ? "default" : "move" }}
+            onPointerDown={
+              isPending
+                ? undefined
+                : (e) => {
+                    e.stopPropagation();
+                    labelDragRef.current = {
+                      mid: m.id,
+                      startX: e.clientX,
+                      startY: e.clientY,
+                      dx0: m.labelDx ?? 0,
+                      dy0: m.labelDy ?? 0,
+                    };
+                    (e.target as Element).setPointerCapture(e.pointerId);
+                  }
+            }
+            onPointerMove={(e) => {
+              const d = labelDragRef.current;
+              if (!d || d.mid !== m.id) return;
+              setMeasureStyle(imageId, m.id, {
+                labelDx: d.dx0 + e.clientX - d.startX,
+                labelDy: d.dy0 + e.clientY - d.startY,
+              });
+            }}
+            onPointerUp={(e) => {
+              labelDragRef.current = null;
+              (e.target as Element).releasePointerCapture(e.pointerId);
+            }}
+            onContextMenu={
+              isPending
+                ? undefined
+                : (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setCtxMenu({ mid: m.id, x: e.clientX, y: e.clientY });
+                  }
+            }
           >
             {label(m)}
           </text>
@@ -328,6 +392,7 @@ export default function MeasureOverlay({
   };
 
   return (
+    <>
     <svg
       ref={svgRef}
       className="fvd-measure-layer"
@@ -346,6 +411,73 @@ export default function MeasureOverlay({
           true,
         )}
     </svg>
+    {ctxMenu && (
+      <div
+        className="fvd-ctx-menu fvd-glass"
+        style={{ left: ctxMenu.x, top: ctxMenu.y }}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <div className="fvd-ctx-swatches">
+          {["#ffffff", "#22d3ee", "#fbbf24", "#f472b6", "#a3e635",
+            "#f43f5e"].map((c) => (
+            <button
+              key={c}
+              className="fvd-swatch"
+              style={{ background: c }}
+              onClick={() => {
+                setMeasureStyle(imageId, ctxMenu.mid, { color: c });
+                setCtxMenu(null);
+              }}
+            />
+          ))}
+        </div>
+        <button
+          className="fvd-ctx-item"
+          onClick={() => {
+            const m = measures.find((x) => x.id === ctxMenu.mid);
+            const t = window.prompt("Caption:", m?.text ?? "");
+            if (t !== null) {
+              useViewer.getState().setMeasureText(imageId, ctxMenu.mid, t);
+            }
+            setCtxMenu(null);
+          }}
+        >
+          Edit caption…
+        </button>
+        <button
+          className="fvd-ctx-item"
+          onClick={() => {
+            setMeasureStyle(imageId, ctxMenu.mid, {
+              labelDx: 0,
+              labelDy: 0,
+            });
+            setCtxMenu(null);
+          }}
+        >
+          Reset label position
+        </button>
+        <button
+          className="fvd-ctx-item danger"
+          onClick={() => {
+            removeMeasure(imageId, ctxMenu.mid);
+            setCtxMenu(null);
+          }}
+        >
+          Delete
+        </button>
+      </div>
+    )}
+    {ctxMenu && (
+      <div
+        className="fvd-ctx-backdrop"
+        onPointerDown={() => setCtxMenu(null)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setCtxMenu(null);
+        }}
+      />
+    )}
+    </>
   );
 }
 

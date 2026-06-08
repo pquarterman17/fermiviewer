@@ -201,7 +201,12 @@ export default function App() {
           break;
         case "Delete":
         case "Backspace":
-          if (s.activeId && s.selectedMeasure) {
+          if (s.activeId && s.selectedMulti.length > 0) {
+            for (const mid of s.selectedMulti) {
+              s.removeMeasure(s.activeId, mid);
+            }
+            s.setSelectedMulti([]);
+          } else if (s.activeId && s.selectedMeasure) {
             const sel = s.selectedMeasure;
             s.removeMeasure(s.activeId, sel);
             const prof = useStageInfo.getState().profile;
@@ -215,6 +220,7 @@ export default function App() {
           s.setCaptureMode("none");
           s.setShorts(false);
           s.setRadial(null);
+          s.setSelectedMulti([]);
           break;
         case "ArrowLeft":
           stageRef.current?.nudge(NUDGE, 0);

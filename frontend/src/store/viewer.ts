@@ -68,6 +68,11 @@ export interface Measure {
   pts: { x: number; y: number }[];
   /** annotation caption (text / arrow / box kinds) */
   text?: string;
+  /** per-item colour override (falls back to the overlay style) */
+  color?: string;
+  /** dragged label offset in screen px (from the default anchor) */
+  labelDx?: number;
+  labelDy?: number;
 }
 
 /** Undoable mutations (Edit menu / ⌘Z). Derived-image entries remove
@@ -352,6 +357,14 @@ interface ViewerState {
   ) => void;
   removeMeasure: (imageId: string, measureId: string) => void;
   setMeasureText: (imageId: string, measureId: string, text: string) => void;
+  setMeasureStyle: (
+    imageId: string,
+    measureId: string,
+    patch: Partial<Pick<Measure, "color" | "labelDx" | "labelDy">>,
+  ) => void;
+  /** marquee multi-selection (shift-drag on the stage) */
+  selectedMulti: string[];
+  setSelectedMulti: (ids: string[]) => void;
   /** Remove all measures (or only the given kinds), undoably. */
   clearMeasures: (imageId: string, kinds: MeasureKind[] | null) => void;
   setSelectedMeasure: (id: string | null) => void;
@@ -681,6 +694,19 @@ export const useViewer = create<ViewerState>((set, get) => ({
         ),
       },
     })),
+
+  setMeasureStyle: (imageId, measureId, patch) =>
+    set((s) => ({
+      measures: {
+        ...s.measures,
+        [imageId]: (s.measures[imageId] ?? []).map((m) =>
+          m.id === measureId ? { ...m, ...patch } : m,
+        ),
+      },
+    })),
+
+  selectedMulti: [],
+  setSelectedMulti: (selectedMulti) => set({ selectedMulti }),
 
   clearMeasures: (imageId, kinds) =>
     set((s) => {
