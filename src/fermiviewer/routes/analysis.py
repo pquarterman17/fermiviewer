@@ -20,7 +20,7 @@ from fermiviewer.calc.eels_advanced import (
     kramers_kronig,
     svd,
 )
-from fermiviewer.calc.eels_quant import ElementEdge, quantify
+from fermiviewer.calc.eels_quant import ElementEdge, quantify, quantify_map
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.models import ImageMeta
 from fermiviewer.session import UnknownImageError, store
@@ -139,6 +139,35 @@ def eels_quantify(req: EelsQuantifyRequest) -> dict:
         "atomic_percent": res.atomic_percent.tolist(),
         "intensity": res.intensity.tolist(),
         "sigma": res.sigma.tolist(),
+    }
+
+
+@router.post("/eels/quantify-map")
+def eels_quantify_map(req: EelsQuantifyRequest) -> dict:
+    """Per-pixel SI composition maps (eelsQuantifyMap.m — upstream PR
+    #25). Same request shape as /eels/quantify; needs a cube. The at%
+    maps register as derived images."""
+    ds = _cube(req.image_id)
+    edges = [ElementEdge(e.element, e.shell, e.z, e.onset_ev,
+                         e.signal_window, e.bg_window) for e in req.edges]
+    try:
+        res = quantify_map(ds.data, ds.energy_axis, edges,
+                           req.e0_kv, req.beta_mrad, req.method)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    maps = [
+        _register_map(res.atomic_percent[:, :, k], f"{sym} at% (EELS)",
+                      ds, req.image_id).model_dump()
+        for k, sym in enumerate(res.elements)
+    ]
+    return {
+        "elements": res.elements,
+        "sigma": res.sigma.tolist(),
+        "mean_atomic_percent": [
+            float(np.nanmean(res.atomic_percent[:, :, k]))
+            for k in range(len(res.elements))
+        ],
+        "maps": maps,
     }
 
 

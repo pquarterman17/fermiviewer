@@ -115,6 +115,118 @@ def quantify(
 
 
 @dataclass(frozen=True)
+class QuantMapResult:
+    elements: list[str]
+    atomic_percent: np.ndarray   # [Ny, Nx, M] — sums to 100 where signal
+    intensity: np.ndarray        # [Ny, Nx, M]
+    sigma: np.ndarray            # [M]
+    areal_ratio: np.ndarray      # [Ny, Nx, M]
+
+
+def quantify_map(
+    cube: np.ndarray,
+    energy: np.ndarray,
+    elements: list[ElementEdge],
+    e0_kv: float,
+    beta_mrad: float,
+    bg_method: str = "powerlaw",
+) -> QuantMapResult:
+    """Per-pixel SI at% maps (port of eelsQuantifyMap.m). Identical
+    per-channel arithmetic to quantify() — a uniform cube reproduces the
+    scalar result to round-off — with ONE vectorised background solve
+    per element (the eelsExtractMap approach) and σ computed once per
+    element, never per pixel."""
+    cube = np.asarray(cube, dtype=np.float64)
+    energy = np.asarray(energy, dtype=np.float64).ravel()
+    if cube.ndim != 3:
+        raise ValueError("cube must be [Ny, Nx, nE]")
+    ny, nx, ne = cube.shape
+    if energy.size != ne:
+        raise ValueError("energy length must match cube channels")
+    if bg_method not in ("powerlaw", "exponential"):
+        raise ValueError("bg_method must be 'powerlaw' or 'exponential'")
+
+    n_px = ny * nx
+    m = len(elements)
+    spec = cube.reshape(n_px, ne).T                       # [nE, Np]
+    eps = np.finfo(np.float64).eps
+
+    syms: list[str] = []
+    sigma = np.zeros(m)
+    intensity = np.zeros((m, n_px))
+    areal = np.zeros((m, n_px))
+
+    for k, el in enumerate(elements):
+        fit_mask = (energy >= el.bg_window[0]) & (energy <= el.bg_window[1])
+        if fit_mask.sum() < 2:
+            raise ValueError(
+                f"{el.element}: bg window {el.bg_window} has < 2 channels"
+            )
+        sig_mask = (
+            (energy >= el.signal_window[0]) & (energy <= el.signal_window[1])
+        )
+        if sig_mask.sum() < 2:
+            raise ValueError(
+                f"{el.element}: signal window {el.signal_window} "
+                "has < 2 channels"
+            )
+
+        e_fit = energy[fit_mask]
+        e_sig = energy[sig_mask][:, None]                  # [Ks, 1]
+        i_fit = np.maximum(spec[fit_mask], eps)            # [K, Np]
+
+        # vectorised background fit — the exp(A)·… two-step matches the
+        # scalar eelsBackground so degenerate pixels over/underflow
+        # identically (parity note ported from eelsExtractMap)
+        if bg_method == "powerlaw":
+            design = np.column_stack([np.log(e_fit), np.ones(e_fit.size)])
+            coeffs, *_ = np.linalg.lstsq(design, np.log(i_fit), rcond=None)
+            a = np.exp(coeffs[1])                          # [Np]
+            r = -coeffs[0]
+            with np.errstate(over="ignore"):
+                bg_sig = np.maximum(e_sig, eps) ** (-r) * a
+        else:
+            design = np.column_stack([e_fit, np.ones(e_fit.size)])
+            coeffs, *_ = np.linalg.lstsq(design, np.log(i_fit), rcond=None)
+            a = np.exp(coeffs[1])
+            bg_sig = np.exp(e_sig * coeffs[0]) * a
+
+        # subtract + clamp per channel BEFORE integrating (scalar order)
+        resid = np.maximum(spec[sig_mask] - bg_sig, 0.0)
+        resid[~np.isfinite(resid)] = 0.0
+        i_x = np.maximum(
+            np.trapezoid(resid, energy[sig_mask], axis=0), 0.0
+        )                                                  # [Np]
+
+        delta = el.signal_window[1] - el.signal_window[0]
+        s_x = cross_section(
+            el.z, el.shell, e0_kv, beta_mrad, delta, el.onset_ev
+        )
+        syms.append(el.element)
+        sigma[k] = s_x
+        intensity[k] = i_x
+        if s_x > 0:
+            areal[k] = i_x / s_x
+
+    total = areal.sum(axis=0)                              # [Np]
+    at_pct = np.zeros((m, n_px))
+    has = total > 0
+    at_pct[:, has] = 100.0 * areal[:, has] / total[has]
+
+    def to_maps(arr: np.ndarray) -> np.ndarray:
+        out: np.ndarray = np.moveaxis(arr.reshape(m, ny, nx), 0, 2)
+        return out
+
+    return QuantMapResult(
+        elements=syms,
+        atomic_percent=to_maps(at_pct),
+        intensity=to_maps(intensity),
+        sigma=sigma,
+        areal_ratio=to_maps(areal),
+    )
+
+
+@dataclass(frozen=True)
 class ElnesResult:
     relative_energy: np.ndarray
     intensity: np.ndarray

@@ -360,6 +360,25 @@ export function eelsQuantify(
   });
 }
 
+/** Per-pixel SI composition maps (eelsQuantifyMap — upstream PR #25). */
+export function eelsQuantifyMap(
+  id: string,
+  edges: EelsEdge[],
+  e0Kv = 200,
+  betaMrad = 10,
+): Promise<{
+  elements: string[];
+  mean_atomic_percent: number[];
+  maps: ImageMeta[];
+}> {
+  return post("/api/eels/quantify-map", {
+    image_id: id,
+    edges,
+    e0_kv: e0Kv,
+    beta_mrad: betaMrad,
+  });
+}
+
 export interface EdsQuantResult {
   elements: string[];
   lines: string[];

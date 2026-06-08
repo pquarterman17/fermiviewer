@@ -66,3 +66,87 @@ def test_elnes_normalisation_and_window() -> None:
 
     with pytest.raises(ValueError, match="below edge_onset"):
         elnes(e, bg, edge_onset=500, fit_window=(460, 525))
+
+
+# ── quantify_map (port of eelsQuantifyMap.m, upstream PR #25) ────────
+
+def _edges_co():
+    from fermiviewer.calc.eels_quant import ElementEdge
+
+    return [
+        ElementEdge("C", "K", 6, 284, (284, 384), (230, 280)),
+        ElementEdge("O", "K", 8, 532, (532, 632), (470, 525)),
+    ]
+
+
+def _spectrum(energy, c_amp, o_amp):
+    bg = 5e5 * energy**-2.2
+    return (bg
+            + np.where(energy >= 284, c_amp, 0.0)
+            + np.where(energy >= 532, o_amp, 0.0))
+
+
+@pytest.mark.parametrize("method", ["powerlaw", "exponential"])
+def test_quantify_map_uniform_cube_matches_scalar(method: str) -> None:
+    """The MATLAB oracle: a cube whose pixels all hold the same
+    spectrum reproduces eelsQuantify on that spectrum to round-off —
+    for BOTH background methods (upstream Tests 5-7)."""
+    from fermiviewer.calc.eels_quant import quantify, quantify_map
+
+    energy = np.linspace(200, 700, 600)
+    spec = _spectrum(energy, 40.0, 25.0)
+    cube = np.broadcast_to(spec, (4, 5, energy.size)).copy()
+
+    scalar = quantify(energy, spec, _edges_co(), 200, 10, bg_method=method)
+    maps = quantify_map(cube, energy, _edges_co(), 200, 10,
+                        bg_method=method)
+
+    assert maps.elements == scalar.elements
+    np.testing.assert_allclose(maps.sigma, scalar.sigma, rtol=1e-12)
+    for k in range(2):
+        np.testing.assert_allclose(
+            maps.atomic_percent[:, :, k], scalar.atomic_percent[k],
+            rtol=1e-9)
+        np.testing.assert_allclose(
+            maps.intensity[:, :, k], scalar.intensity[k], rtol=1e-9)
+    # per-pixel at% sums to 100 where there is signal
+    np.testing.assert_allclose(
+        maps.atomic_percent.sum(axis=2), 100.0, rtol=1e-9)
+
+
+def test_quantify_map_two_region_gradient() -> None:
+    """Left half carbon-rich, right half oxygen-rich → the maps
+    separate the regions (the MATLAB two-region case)."""
+    from fermiviewer.calc.eels_quant import quantify_map
+
+    energy = np.linspace(200, 700, 600)
+    cube = np.empty((3, 6, energy.size))
+    cube[:, :3, :] = _spectrum(energy, 60.0, 5.0)   # C-rich left
+    cube[:, 3:, :] = _spectrum(energy, 5.0, 60.0)   # O-rich right
+
+    res = quantify_map(cube, energy, _edges_co(), 200, 10)
+    c_map = res.atomic_percent[:, :, 0]
+    assert c_map[:, :3].mean() > 60
+    assert c_map[:, 3:].mean() < 40
+    # spatial ordering preserved (no transpose slip in the reshape)
+    assert c_map[0, 0] > c_map[0, 5]
+
+
+def test_quantify_map_guards() -> None:
+    from fermiviewer.calc.eels_quant import quantify_map
+
+    energy = np.linspace(200, 700, 600)
+    cube = np.zeros((2, 2, 600))
+    with pytest.raises(ValueError, match="energy length"):
+        quantify_map(cube, energy[:-5], _edges_co(), 200, 10)
+    with pytest.raises(ValueError, match="cube must be"):
+        quantify_map(cube[0], energy, _edges_co(), 200, 10)
+    bad = _edges_co()
+    from fermiviewer.calc.eels_quant import ElementEdge
+
+    bad[0] = ElementEdge("C", "K", 6, 284, (284, 384), (1000, 1001))
+    with pytest.raises(ValueError, match="bg window"):
+        quantify_map(cube, energy, bad, 200, 10)
+    # all-zero cube → defined zeros, not NaN
+    res = quantify_map(cube, energy, _edges_co(), 200, 10)
+    assert np.all(res.atomic_percent == 0)
