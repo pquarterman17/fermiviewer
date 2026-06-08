@@ -104,7 +104,7 @@ def export_figure(req: FigureRequest) -> Response:
     n = len(req.image_ids)
     if n < 2:
         raise HTTPException(422, "a figure panel needs at least 2 images")
-    panels: list["Image.Image"] = []
+    panels: list[Image.Image] = []
     for iid in req.image_ids:
         try:
             ds = store.get(iid)
