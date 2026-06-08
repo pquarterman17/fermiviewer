@@ -53,7 +53,7 @@ Known remaining design deltas (intentional or future):
 | Edit menu (undo/redo) | ~~absent~~ DONE 06-07 | undo service shipped |
 | EDS Composite channel list | ~~gap~~ DONE 06-07 | channel list + additive blend shipped |
 | Polyline measure button | ~~missing~~ DONE 06-07 | N-click capture shipped |
-| Histogram handles as thick rounded bars | thin lines | the last remaining delta — cosmetic |
+| Histogram handles as thick rounded bars | ~~thin lines~~ DONE 06-08 | design-delta table fully closed |
 | Toolbar icon set (rotate/flip/crop w/ separators) | ~~unwired~~ DONE 06-07 | grouped toolbar shipped |
 | Export dialog includes (Measurements/Bake) | ~~scale-bar only~~ DONE 06-07/08 | measurements + colorbar includes shipped |
 | "connected/LOCAL" status segments | ~~absent~~ DONE 06-08 | live off the lifecycle WS |

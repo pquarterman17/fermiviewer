@@ -89,13 +89,15 @@ export default function AdjustPanel() {
     ctx.fillStyle = "rgba(0,0,0,0.35)";
     ctx.fillRect(0, 0, xLo, h);
     ctx.fillRect(xHi, 0, w - xHi, h);
-    ctx.strokeStyle = accent;
-    ctx.lineWidth = 2;
+    // thick rounded handle bars (prototype style)
+    ctx.fillStyle = accent;
+    const hw = 6; // handle width
+    const hh = Math.round(h * 0.55);
     for (const x of [xLo, xHi]) {
+      const hx = Math.min(Math.max(x - hw / 2, 0), w - hw);
       ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, h);
-      ctx.stroke();
+      ctx.roundRect(hx, (h - hh) / 2, hw, hh, 3);
+      ctx.fill();
     }
     // transfer ramp lo→hi
     ctx.strokeStyle = accent;
