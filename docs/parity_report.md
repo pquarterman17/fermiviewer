@@ -49,15 +49,15 @@ Known remaining design deltas (intentional or future):
 
 | Prototype | Ours today | Status |
 |---|---|---|
-| Inspector tabs Image · EELS · EDS · Diff | Workshops as floating windows only | Handoff §4 sanctions windows; tabs are a nice-to-have duplication |
+| Inspector tabs Image · EELS · EDS · Diff | ~~windows only~~ DONE 06-08 | tabs AND floating windows both available |
 | Edit menu (undo/redo) | ~~absent~~ DONE 06-07 | undo service shipped |
 | EDS Composite channel list | ~~gap~~ DONE 06-07 | channel list + additive blend shipped |
 | Polyline measure button | ~~missing~~ DONE 06-07 | N-click capture shipped |
-| Histogram handles embedded as thick rounded bars | thin lines | cosmetic |
+| Histogram handles as thick rounded bars | thin lines | the last remaining delta — cosmetic |
 | Toolbar icon set (rotate/flip/crop w/ separators) | ~~unwired~~ DONE 06-07 | grouped toolbar shipped |
 | Export dialog includes (Measurements/Bake) | ~~scale-bar only~~ DONE 06-07/08 | measurements + colorbar includes shipped |
-| "connected/LOCAL/VIEW HRSTEM" status segments | LOCAL-equivalents absent | cosmetic |
-| WOFF2 embedded font (JetBrains Mono served) | system mono fallback stack | could vendor the font |
+| "connected/LOCAL" status segments | ~~absent~~ DONE 06-08 | live off the lifecycle WS |
+| WOFF2 embedded font (JetBrains Mono) | ~~fallback stack~~ DONE 06-08 | vendored w/ OFL.txt |
 
 ## 3 · Top remaining work, ranked (updated 2026-06-08)
 

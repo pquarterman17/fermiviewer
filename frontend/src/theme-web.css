@@ -280,6 +280,38 @@ body {
   padding: 3px;
 }
 
+.fvd-inspector-tabs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fvd-inspector-tabs .title {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.fvd-seg-label {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+
+.fvd-conn {
+  font-size: 10px;
+  color: #f43f5e;
+}
+
+.fvd-conn.on {
+  color: #22c55e;
+}
+
 .fvd-gallery {
   max-width: 80vw;
   max-height: 80vh;

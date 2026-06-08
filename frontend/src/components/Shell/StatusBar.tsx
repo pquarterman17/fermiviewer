@@ -2,6 +2,7 @@
 // Cursor/zoom come from the ephemeral stage store so 120 Hz pointermove
 // re-renders only this strip, never the shell.
 
+import { useConnection } from "../../lib/lifecycle";
 import { useStageInfo } from "../../store/stage";
 import { useViewer } from "../../store/viewer";
 
@@ -18,6 +19,7 @@ export default function StatusBar() {
   const cursor = useStageInfo((s) => s.cursor);
   const zoom = useStageInfo((s) => s.zoom);
   const captureMode = useViewer((s) => s.captureMode);
+  const connected = useConnection((s) => s.connected);
 
   return (
     <footer className="fvd-statusbar">
@@ -47,6 +49,10 @@ export default function StatusBar() {
           {zoom !== null && <span>{Math.round(zoom * 100)} %</span>}
         </>
       )}
+      <span className="fvd-seg-label">LOCAL</span>
+      <span className={`fvd-conn${connected ? " on" : ""}`}>
+        {connected ? "connected" : "offline"}
+      </span>
     </footer>
   );
 }

@@ -1,12 +1,18 @@
 // Right inspector (handoff §4/§5). Phase 1 skeleton: scene-switched shell
 // with the Image metadata card. Phase 2 fills Adjust/Measure/OverlayStyle…
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 import type { ImageMeta } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
+import DiffractionWorkshop from "../workshops/DiffractionWorkshop";
+import EdsWorkshop from "../workshops/EdsWorkshop";
+import EelsWorkshop from "../workshops/EelsWorkshop";
 import AdjustPanel from "./AdjustPanel";
 import MeasurePanel from "./MeasurePanel";
+
+const TABS = ["Image", "EELS", "EDS", "Diff"] as const;
+type Tab = (typeof TABS)[number];
 
 /** Drag grip on the inspector's left edge — writes the grid's
  *  --right-w CSS variable (checklist N panel resize); persisted. */
@@ -72,6 +78,7 @@ export default function Inspector() {
   const meta = useViewer((s) =>
     s.activeId ? (s.images[s.activeId] ?? null) : null,
   );
+  const [tab, setTab] = useState<Tab>("Image");
 
   if (!meta) {
     return (
@@ -106,8 +113,26 @@ export default function Inspector() {
   return (
     <aside className="fvd-inspector" style={{ position: "relative" }}>
       <PanelGrip />
-      {meta.kind !== "spectrum" && <AdjustPanel />}
-      <MeasurePanel />
+      <div className="fvd-inspector-tabs">
+        <span className="title">INSPECTOR</span>
+        <div className="fvd-seg">
+          {TABS.map((t) => (
+            <button
+              key={t}
+              className={`fvd-seg-btn${tab === t ? " active" : ""}`}
+              onClick={() => setTab(t)}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      </div>
+      {tab === "EELS" && <EelsWorkshop />}
+      {tab === "EDS" && <EdsWorkshop />}
+      {tab === "Diff" && <DiffractionWorkshop />}
+      {tab === "Image" && meta.kind !== "spectrum" && <AdjustPanel />}
+      {tab === "Image" && <MeasurePanel />}
+      {tab === "Image" && (
       <div className="fvd-card">
         <h3>Image</h3>
         {rows.map(([k, v]) => (
@@ -119,7 +144,8 @@ export default function Inspector() {
           </div>
         ))}
       </div>
-      {extra.length > 0 && (
+      )}
+      {tab === "Image" && extra.length > 0 && (
         <div className="fvd-card">
           <h3>Metadata</h3>
           {extra.map(([k, v]) => (

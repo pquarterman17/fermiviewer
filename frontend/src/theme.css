@@ -95,7 +95,24 @@
   --font-size-sm: 12px;
 }
 
-/* type: system-ui UI · JetBrains Mono values */
+/* type: system-ui UI · JetBrains Mono values (vendored WOFF2 — see
+   public/fonts/OFL.txt for the SIL Open Font License) */
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --font-ui:
     system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
