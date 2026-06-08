@@ -31,6 +31,11 @@ dev = [
     "mypy>=1.13",
     "httpx>=0.27",
 ]
+bundle = [
+    # build-time only (GPL w/ bundling exception - never a runtime dep):
+    # packages the server as a self-contained sidecar for the installer
+    "pyinstaller>=6.10",
+]
 oracle = [
     # GPL-3 — dev/test only, never shipped. Cross-validates our parsers.
     "rosettasciio>=0.6",

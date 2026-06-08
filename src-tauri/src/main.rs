@@ -29,14 +29,43 @@ fn repo_root() -> PathBuf {
 }
 
 fn spawn_server(repo: &PathBuf) -> std::io::Result<Child> {
-    // venv python directly (not the fv.exe launcher) so kill() reaches
-    // uvicorn itself rather than orphaning a grandchild interpreter
+    // 1) installed app: the PyInstaller sidecar ships as a resource
+    //    next to the shell exe (<install>/fv-server/fv-server.exe)
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            for cand in [
+                dir.join("fv-server").join("fv-server.exe"),
+                dir.join("resources").join("fv-server").join("fv-server.exe"),
+            ] {
+                if cand.is_file() {
+                    let mut cmd = Command::new(&cand);
+                    cmd.args(["--no-browser", "--no-auto-shutdown"]);
+                    hide_console(&mut cmd);
+                    return cmd.spawn();
+                }
+            }
+        }
+    }
+    // 2) dev fallback: repo venv python directly (not the fv.exe
+    //    launcher) so kill() reaches uvicorn itself rather than
+    //    orphaning a grandchild interpreter
     let python = repo.join(".venv").join("Scripts").join("python.exe");
-    Command::new(python)
-        .args(["-m", "fermiviewer", "--no-browser", "--no-auto-shutdown"])
-        .current_dir(repo)
-        .spawn()
+    let mut cmd = Command::new(python);
+    cmd.args(["-m", "fermiviewer", "--no-browser", "--no-auto-shutdown"])
+        .current_dir(repo);
+    hide_console(&mut cmd);
+    cmd.spawn()
 }
+
+#[cfg(target_os = "windows")]
+fn hide_console(cmd: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    cmd.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(target_os = "windows"))]
+fn hide_console(_cmd: &mut Command) {}
 
 fn wait_for_server(timeout: Duration) -> bool {
     let deadline = std::time::Instant::now() + timeout;

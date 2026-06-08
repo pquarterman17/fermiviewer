@@ -45,9 +45,24 @@ def _request_shutdown() -> None:
 
 
 def _frontend_dist() -> Path | None:
-    """frontend/dist relative to the repo layout, if built."""
-    dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
-    return dist if (dist / "index.html").is_file() else None
+    """frontend/dist — repo layout in dev, bundled data when frozen
+    (PyInstaller sidecar packs the SPA under <bundle>/frontend/dist)."""
+    import sys
+
+    candidates = []
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:  # PyInstaller: one-dir puts datas under _internal
+        candidates.append(Path(meipass) / "frontend" / "dist")
+        candidates.append(
+            Path(sys.executable).resolve().parent / "frontend" / "dist"
+        )
+    candidates.append(
+        Path(__file__).resolve().parents[2] / "frontend" / "dist"
+    )
+    for dist in candidates:
+        if (dist / "index.html").is_file():
+            return dist
+    return None
 
 
 def create_app() -> FastAPI:

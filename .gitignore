@@ -35,3 +35,8 @@ desktop.ini
 
 # TS incremental build state
 *.tsbuildinfo
+
+# PyInstaller sidecar build output
+dist-sidecar/
+build/
+*.spec.bak
