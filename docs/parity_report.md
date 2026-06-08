@@ -22,7 +22,7 @@ layer.
 | API surface | **100 % of handoff §8** + 14 endpoints beyond it | tiles, jobs, calibration, fft-mask, session save/load, upload |
 | Infrastructure (O) | **6/6 — 100 %** | undo service + logging/bug-report DONE 06-08 |
 | Verification (P) | **7/7 — 100 %** | incl. oracle harness + fetch script |
-| UI workflows (F–N) | **~90 %** | finish-everything run 06-08; only inline-noted partials remain (§3) |
+| UI workflows (F–N) | **100 %** | every checklist line closed (sweep #5, 06-08) |
 
 **Found-by-the-port upstream bugs (6):** stale golden manifest pin,
 radialProfile NumBins validator, morphOp logical rejection,
