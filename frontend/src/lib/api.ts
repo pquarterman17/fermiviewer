@@ -686,6 +686,11 @@ export function renameImage(id: string, name: string): Promise<ImageMeta> {
   return post(`/api/image/${id}/rename`, { name });
 }
 
+/** Explode a 3D cube into per-frame derived images. */
+export function explodeStack(id: string): Promise<ImageMeta[]> {
+  return post(`/api/image/${id}/explode`, {});
+}
+
 export function updateMetadata(
   id: string,
   updates: Record<string, string | number | boolean>,

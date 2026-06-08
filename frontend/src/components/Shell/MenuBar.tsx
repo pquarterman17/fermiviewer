@@ -21,6 +21,7 @@ import {
   analyzeVdf,
   applyCalibration,
   applyFilter,
+  explodeStack,
   exportBatch,
   exportGif,
   exportImage,
@@ -756,6 +757,26 @@ export default function MenuBar({
               .then((r) => store.ingestDerived([r.image]))
               .catch((e: Error) => store.setStatus(`math: ${e.message}`));
           })();
+        },
+      },
+      {
+        label: "Stack → Frames",
+        disabled:
+          !store.activeId ||
+          store.images[store.activeId ?? ""]?.kind !== "spectrum_image",
+        action: () => {
+          const id = store.activeId;
+          if (!id) return;
+          store.setStatus("exploding stack…");
+          explodeStack(id)
+            .then((metas) => {
+              store.ingestDerived(metas);
+              store.setStatus(
+                `stack exploded: ${metas.length} frames — use [ ] to ` +
+                  "navigate, Align Stack / MIP / GIF to process",
+              );
+            })
+            .catch((e: Error) => store.setStatus(`explode: ${e.message}`));
         },
       },
       {

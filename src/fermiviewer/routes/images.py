@@ -142,6 +142,43 @@ def image_rename(img_id: str, req: RenameRequest) -> ImageMeta:
                                      store.get(img_id))
 
 
+@router.post("/image/{img_id}/explode")
+def image_explode(img_id: str) -> list[ImageMeta]:
+    """Register every slice of a 3D cube as its own derived image
+    (checklist K multi-frame stacks: the filmstrip becomes the frame
+    navigator, and align/MIP/GIF then operate on the frames)."""
+    ds = _get(img_id)
+    if ds.kind is not DataKind.SPECTRUM_IMAGE:
+        raise HTTPException(400, "only 3D cubes can be exploded")
+    n = int(ds.data.shape[2])
+    if n > 256:
+        raise HTTPException(
+            422, f"cube has {n} slices — explode is capped at 256"
+        )
+    name = store.name(img_id)
+    stem = name.rsplit(".", 1)[0] or name
+    metas: list[ImageMeta] = []
+    for k in range(n):
+        frame = np.ascontiguousarray(
+            np.asarray(ds.data[:, :, k], dtype=np.float64)
+        )
+        derived = DataStruct(
+            data=frame,
+            kind=DataKind.IMAGE,
+            axes=(ds.axes[0], ds.axes[1]),
+            metadata={
+                "source": f"frame {k + 1} of {name}",
+                "parser": "derived",
+                "frame_index": k + 1,
+            },
+        )
+        fid = store.add_derived(derived, f"{stem}[{k + 1}]", img_id)
+        metas.append(
+            ImageMeta.from_datastruct(fid, store.name(fid), derived)
+        )
+    return metas
+
+
 class MetadataPatch(BaseModel):
     updates: dict[str, str | float | int | bool]
 
