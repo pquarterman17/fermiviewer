@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 
+import { setCustomColormap } from "../../lib/colormaps";
 import { loadPrefs, savePrefs, type Prefs } from "../../lib/prefs";
 import { useViewer } from "../../store/viewer";
 
@@ -15,9 +16,30 @@ export default function PrefsDialog() {
   const setProfileWidth = useViewer((s) => s.setProfileWidth);
 
   const [p, setP] = useState<Prefs>(loadPrefs());
+  const [customCmap, setCustomCmap] = useState("");
 
   useEffect(() => {
-    if (open) setP(loadPrefs());
+    if (open) {
+      setP(loadPrefs());
+      try {
+        const stops = JSON.parse(
+          localStorage.getItem("fv_custom_cmap") ?? "[]",
+        ) as number[][];
+        setCustomCmap(
+          stops
+            .map(
+              ([r, g, b]) =>
+                "#" +
+                [r, g, b]
+                  .map((v) => v.toString(16).padStart(2, "0"))
+                  .join(""),
+            )
+            .join(", "),
+        );
+      } catch {
+        setCustomCmap("");
+      }
+    }
   }, [open]);
 
   if (!open) return null;
@@ -25,7 +47,11 @@ export default function PrefsDialog() {
   const save = () => {
     savePrefs(p);
     setProfileWidth(p.profileWidth);
-    setStatus("preferences saved");
+    if (customCmap.trim() && !setCustomColormap(customCmap)) {
+      setStatus("prefs: custom colormap needs ≥2 hex stops — not saved");
+    } else {
+      setStatus("preferences saved");
+    }
     setOpen(false);
   };
 
@@ -58,6 +84,16 @@ export default function PrefsDialog() {
             onChange={(e) =>
               setP({ ...p, profileWidth: Number(e.target.value) || 1 })
             }
+          />
+        </div>
+        <div className="fvd-ws-row">
+          <span className="k">Custom cmap</span>
+          <input
+            style={{ flex: 1 }}
+            placeholder="#000, #a070f0, #fff"
+            value={customCmap}
+            title="2+ comma-separated hex stops for the 'custom' colormap"
+            onChange={(e) => setCustomCmap(e.target.value)}
           />
         </div>
         <div className="fvd-ws-row">

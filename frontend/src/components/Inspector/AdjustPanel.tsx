@@ -253,6 +253,22 @@ export default function AdjustPanel() {
         >
           invert {display.invert ? "on" : "off"}
         </button>
+        <button
+          className={`fvd-chip${display.transform !== "linear" ? " active" : ""}`}
+          title="Intensity transform: linear → log → equalize"
+          onClick={() =>
+            setDisplay(activeId, {
+              transform:
+                display.transform === "linear"
+                  ? "log"
+                  : display.transform === "log"
+                    ? "equalize"
+                    : "linear",
+            })
+          }
+        >
+          {display.transform}
+        </button>
       </div>
 
     </div>

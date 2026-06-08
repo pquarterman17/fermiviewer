@@ -31,6 +31,12 @@ _STOPS: dict[str, list[tuple[int, int, int]]] = {
         (0, 0, 0), (0, 40, 110), (0, 110, 190), (60, 180, 230),
         (180, 235, 255), (255, 255, 255),
     ],
+    # diverging blue-white-red (strain / difference maps) — keep in
+    # sync with frontend lib/colormaps.ts
+    "redblue": [
+        (25, 60, 180), (120, 160, 230), (245, 245, 245),
+        (230, 120, 100), (180, 25, 35),
+    ],
 }
 
 COLORMAP_NAMES = tuple(_STOPS)

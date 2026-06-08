@@ -96,6 +96,46 @@ function showLog(
   });
 }
 
+/** Binned intensity histogram of the selected ROI/ellipse, from the
+ *  client-side raster (no request). */
+function showRoiHistogram(m: Measure, img: { w: number; h: number }): void {
+  const r = useStageInfo.getState().raster;
+  if (!r || m.pts.length < 2) {
+    useViewer.getState().setStatus("histogram: raster not loaded");
+    return;
+  }
+  const x0 = Math.max(0, Math.floor(Math.min(m.pts[0].x, m.pts[1].x) * img.w));
+  const x1 = Math.min(r.w, Math.ceil(Math.max(m.pts[0].x, m.pts[1].x) * img.w));
+  const y0 = Math.max(0, Math.floor(Math.min(m.pts[0].y, m.pts[1].y) * img.h));
+  const y1 = Math.min(r.h, Math.ceil(Math.max(m.pts[0].y, m.pts[1].y) * img.h));
+  const BINS = 64;
+  const counts = new Array<number>(BINS).fill(0);
+  const cx = (x0 + x1 - 1) / 2;
+  const cy = (y0 + y1 - 1) / 2;
+  const rx = Math.max((x1 - x0) / 2, 0.5);
+  const ry = Math.max((y1 - y0) / 2, 0.5);
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      if (
+        m.kind === "ellipse" &&
+        ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 > 1
+      ) {
+        continue;
+      }
+      counts[Math.min(BINS - 1, r.data[y * r.w + x] >> 10)]++;
+    }
+  }
+  const span = r.vmax - r.vmin || 1;
+  useResults.getState().show({
+    title: `ROI histogram (${m.kind})`,
+    columns: ["bin centre", "count"],
+    rows: counts.map((c, b) => [
+      Number((r.vmin + ((b + 0.5) / BINS) * span).toPrecision(6)),
+      c,
+    ]),
+  });
+}
+
 function showStats(
   measures: Measure[],
   img: { w: number; h: number },
@@ -296,6 +336,17 @@ export default function MeasurePanel() {
                   setMeasureText(activeId, sel.id, e.target.value)
                 }
               />
+            </div>
+          )}
+          {selStats && sel && (
+            <div className="fvd-ws-row">
+              <button
+                className="fvd-btn"
+                title="Binned intensity histogram of this ROI (CSV-able)"
+                onClick={() => showRoiHistogram(sel, img)}
+              >
+                ROI histogram
+              </button>
             </div>
           )}
           {selStats && (

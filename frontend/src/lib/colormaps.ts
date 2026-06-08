@@ -8,7 +8,9 @@ export type ColormapName =
   | "viridis"
   | "inferno"
   | "fire"
-  | "ice";
+  | "ice"
+  | "redblue"
+  | "custom";
 
 export const COLORMAP_NAMES: ColormapName[] = [
   "gray",
@@ -17,6 +19,8 @@ export const COLORMAP_NAMES: ColormapName[] = [
   "inferno",
   "fire",
   "ice",
+  "redblue",
+  "custom",
 ];
 
 type Stop = [number, number, number]; // rgb 0–255, evenly spaced in t
@@ -71,11 +75,59 @@ const STOPS: Record<ColormapName, Stop[]> = {
     [180, 235, 255],
     [255, 255, 255],
   ],
+  // diverging blue-white-red (strain / difference maps)
+  redblue: [
+    [25, 60, 180],
+    [120, 160, 230],
+    [245, 245, 245],
+    [230, 120, 100],
+    [180, 25, 35],
+  ],
+  custom: [
+    [0, 0, 0],
+    [255, 255, 255],
+  ], // placeholder — resolved from localStorage at build time
 };
+
+function hexToStop(h: string): Stop | null {
+  const c = h.replace("#", "").trim();
+  const v =
+    c.length === 3
+      ? c.split("").map((x) => parseInt(x + x, 16))
+      : c.length === 6
+        ? [c.slice(0, 2), c.slice(2, 4), c.slice(4, 6)].map((x) =>
+            parseInt(x, 16),
+          )
+        : null;
+  return v && v.every((n) => Number.isFinite(n)) ? (v as Stop) : null;
+}
+
+/** Parse "#000, #a070f0, #fff" → stops; store for the custom cmap.
+ *  Returns false (and stores nothing) when fewer than 2 stops parse. */
+export function setCustomColormap(spec: string): boolean {
+  const stops = spec
+    .split(",")
+    .map((s) => hexToStop(s))
+    .filter((s): s is Stop => s !== null);
+  if (stops.length < 2) return false;
+  localStorage.setItem("fv_custom_cmap", JSON.stringify(stops));
+  return true;
+}
+
+function customStops(): Stop[] {
+  try {
+    const stops = JSON.parse(
+      localStorage.getItem("fv_custom_cmap") ?? "[]",
+    ) as Stop[];
+    return stops.length >= 2 ? stops : STOPS.gray;
+  } catch {
+    return STOPS.gray;
+  }
+}
 
 /** 256×1 RGBA8 LUT for upload as a texture. */
 export function buildLut(name: ColormapName): Uint8Array {
-  const stops = STOPS[name];
+  const stops = name === "custom" ? customStops() : STOPS[name];
   const out = new Uint8Array(256 * 4);
   const n = stops.length - 1;
   for (let i = 0; i < 256; i++) {

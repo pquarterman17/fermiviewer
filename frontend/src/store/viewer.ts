@@ -25,12 +25,16 @@ export interface View {
 }
 
 /** Per-image display: lo/hi normalized [0,1] against image min/max. */
+export type DisplayTransform = "linear" | "log" | "equalize";
+
 export interface Display {
   lo: number;
   hi: number;
   gamma: number;
   cmap: ColormapName;
   invert: boolean;
+  /** intensity transform applied to the texture before window/γ/LUT */
+  transform: DisplayTransform;
 }
 
 export const DEFAULT_DISPLAY: Display = {
@@ -39,6 +43,7 @@ export const DEFAULT_DISPLAY: Display = {
   gamma: 1,
   cmap: "gray",
   invert: false,
+  transform: "linear",
 };
 
 export type MeasureKind =

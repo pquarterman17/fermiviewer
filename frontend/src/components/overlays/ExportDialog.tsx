@@ -85,7 +85,9 @@ export default function ExportDialog() {
       lo: display.lo,
       hi: display.hi,
       gamma: display.gamma,
-      cmap: display.cmap,
+      // custom is client-local (localStorage stops) — export falls
+      // back to gray rather than guessing server-side
+      cmap: display.cmap === "custom" ? "gray" : display.cmap,
       include,
       measures:
         canMeasure && bakeMeasures
