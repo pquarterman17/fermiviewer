@@ -118,6 +118,34 @@ export default function ExportDialog() {
         <h2>Export — {meta.name}</h2>
 
         <div className="fvd-ws-row">
+          <span className="k">Preset</span>
+          <div className="fvd-seg">
+            {(
+              [
+                ["Draft", "png", 1, true, false, false],
+                ["Slides", "png", 2, true, false, true],
+                ["Journal", "png", 4, true, true, false],
+                ["Data", "tiff16", 1, false, false, false],
+              ] as [string, Format, number, boolean, boolean, boolean][]
+            ).map(([name, f, s, bar, meas, cbar]) => (
+              <button
+                key={name}
+                className="fvd-seg-btn"
+                title={`${f} ${s}× — publication-style defaults`}
+                onClick={() => {
+                  setFormat(f);
+                  setScale(s);
+                  setScaleBar(bar);
+                  setBakeMeasures(meas);
+                  setColorbar(cbar);
+                }}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="fvd-ws-row">
           <span className="k">Format</span>
           <div className="fvd-seg">
             {FORMATS.map((f) => (

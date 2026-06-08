@@ -373,3 +373,46 @@ def test_rename_and_open_raw(client, tmp_path) -> None:
     assert client.post("/api/session/open-raw", json={
         "path": str(raw), "width": 8, "height": 6, "bit_depth": 12,
     }).status_code == 422
+
+
+def test_figure_panel(client, tmp_path) -> None:
+    ids = [_open_frame(client, tmp_path, f"p{i}.dm4", 0.2 * i)
+           for i in range(3)]
+    r = client.post("/api/export/figure", json={
+        "image_ids": ids, "cols": 2, "gap": 4, "scale": 1,
+    })
+    assert r.status_code == 200
+    fig = Image.open(io.BytesIO(r.content))
+    # 2 cols × 2 rows of 16×12 panels + one 4px gap each way
+    assert fig.size == (16 * 2 + 4, 12 * 2 + 4)
+    assert client.post("/api/export/figure", json={
+        "image_ids": ids[:1],
+    }).status_code == 422
+
+
+def test_scale_bar_detection() -> None:
+    from fermiviewer.calc.scalebar_detect import detect_scale_bar
+
+    # realistic banner strip: mid-gray background (so it normalizes
+    # away from both thresholds), a small dark speck, a white bar
+    img = np.full((100, 200), 120.0)
+    img[20:60, 30:170] = 160.0                 # specimen texture
+    img[94:96, 10:14] = 0.0                    # dark speck (< 20 px run)
+    img[92:96, 60:121] = 255.0                 # white bar, 61 px wide
+    r = detect_scale_bar(img)
+    assert r.found
+    assert r.bar_len == 61
+    assert (r.bar_x1, r.bar_x2) == (60 + 1, 120 + 1)   # 1-based
+    assert r.bar_y >= 90
+    # uniform strip → graceful not-found
+    flat = np.zeros((100, 200))
+    assert not detect_scale_bar(flat).found
+    # tiny image guard
+    assert not detect_scale_bar(np.zeros((5, 5))).found
+
+
+def test_scale_bar_detect_endpoint(client, img_id) -> None:
+    r = client.post("/api/calibration/detect-bar",
+                    json={"image_id": img_id})
+    assert r.status_code == 200
+    assert "found" in r.json()

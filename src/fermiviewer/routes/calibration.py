@@ -106,6 +106,31 @@ class CalibrationApplyRequest(BaseModel):
     save_as_key: str | None = None  # offer-save after manual calibration
 
 
+@router.post("/calibration/detect-bar")
+def calibration_detect_bar(req: CalibrationApplyRequest) -> dict[str, Any]:
+    """Auto-detect a burned-in scale bar (bottom-strip search). Only
+    image_id is used from the request body."""
+    from fermiviewer.calc.scalebar_detect import detect_scale_bar
+
+    ds = _get(req.image_id)
+    if ds.kind is DataKind.SPECTRUM:
+        raise HTTPException(400, "1D spectra have no scale bar")
+    raster = (
+        np.asarray(ds.data, dtype=np.float64).sum(axis=2)
+        if ds.kind is DataKind.SPECTRUM_IMAGE
+        else np.asarray(ds.data, dtype=np.float64)
+    )
+    r = detect_scale_bar(raster)
+    return {
+        "found": r.found,
+        "bar_len": r.bar_len,
+        "bar_x1": r.bar_x1,
+        "bar_x2": r.bar_x2,
+        "bar_y": r.bar_y,
+        "msg": r.msg,
+    }
+
+
 @router.post("/calibration/apply")
 def calibration_apply(req: CalibrationApplyRequest) -> dict[str, Any]:
     ds = _get(req.image_id)

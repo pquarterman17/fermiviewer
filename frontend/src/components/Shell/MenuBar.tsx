@@ -21,8 +21,10 @@ import {
   analyzeVdf,
   applyCalibration,
   applyFilter,
+  detectScaleBar,
   explodeStack,
   exportBatch,
+  exportFigure,
   exportGif,
   exportImage,
   openRaw,
@@ -446,6 +448,43 @@ export default function MenuBar({
                 );
               })
               .catch((e: Error) => store.setStatus(`batch: ${e.message}`));
+          })();
+        },
+      },
+      {
+        label: `Export Figure Panel… (${store.selected.length})`,
+        disabled: store.selected.length < 2,
+        action: () => {
+          void (async () => {
+            const v = await askParams("Figure panel (labeled grid)", [
+              num("cols", "Columns (0 = auto)", 0),
+              num("gap", "Gap (px)", 4),
+              {
+                key: "scale",
+                label: "Resolution",
+                type: "select",
+                default: "1",
+                options: ["1", "2", "3", "4"],
+              },
+            ]);
+            if (!v) return;
+            exportFigure(store.selected, {
+              cols: v["cols"] as number,
+              gap: v["gap"] as number,
+              scale: Number(v["scale"]),
+            })
+              .then((blob) => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "figure.png";
+                a.click();
+                URL.revokeObjectURL(url);
+                store.setStatus(
+                  `figure panel: ${store.selected.length} panels`,
+                );
+              })
+              .catch((e: Error) => store.setStatus(`figure: ${e.message}`));
           })();
         },
       },
@@ -942,6 +981,55 @@ export default function MenuBar({
       {
         label: "Manage Calibrations…",
         action: () => store.setCalibOpen(true),
+      },
+      {
+        label: "Auto-detect Scale Bar…",
+        disabled: !store.activeId,
+        action: () => {
+          void (async () => {
+            const id = store.activeId;
+            if (!id) return;
+            const det = await detectScaleBar(id).catch((e: Error) => {
+              store.setStatus(`detect: ${e.message}`);
+              return null;
+            });
+            if (!det) return;
+            if (!det.found) {
+              store.setStatus(det.msg);
+              return;
+            }
+            const v = await askParams(
+              `Scale bar found: ${det.bar_len} px — physical length?`,
+              [
+                num("len", "Bar length", 100),
+                {
+                  key: "unit",
+                  label: "Unit",
+                  type: "select",
+                  default: "nm",
+                  options: ["nm", "µm", "Å", "pm", "mm"],
+                },
+              ],
+            );
+            if (!v) return;
+            applyCalibration(
+              id,
+              (v["len"] as number) / det.bar_len,
+              v["unit"] as string,
+            )
+              .then((r) => {
+                useViewer.setState((s) => ({
+                  images: { ...s.images, [r.image.id]: r.image },
+                }));
+                store.setStatus(
+                  `calibrated from detected bar: ` +
+                    `${r.image.pixel_size?.toPrecision(4)} ` +
+                    `${r.image.pixel_unit}/px`,
+                );
+              })
+              .catch((e: Error) => store.setStatus(e.message));
+          })();
+        },
       },
       {
         label: "Calibrate from Measurement…",

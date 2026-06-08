@@ -82,3 +82,65 @@ def export_batch(req: BatchExportRequest) -> Response:
             "Content-Disposition": 'attachment; filename="export.zip"'
         },
     )
+
+
+class FigureRequest(BaseModel):
+    image_ids: list[str]
+    cols: int = Field(default=0, ge=0, le=8)   # 0 → auto grid
+    gap: int = Field(default=4, ge=0, le=64)
+    scale: int = Field(default=1, ge=1, le=4)
+    cmap: str = "gray"
+    labels: list[str] | None = None            # default a, b, c…
+
+
+@router.post("/export/figure")
+def export_figure(req: FigureRequest) -> Response:
+    """Multi-panel labeled figure (port of buildFigurePanel.m: grid +
+    gaps + panel letters; PIL text replaces the bitmap font)."""
+    import math
+
+    from PIL import Image, ImageDraw
+
+    n = len(req.image_ids)
+    if n < 2:
+        raise HTTPException(422, "a figure panel needs at least 2 images")
+    panels: list["Image.Image"] = []
+    for iid in req.image_ids:
+        try:
+            ds = store.get(iid)
+        except UnknownImageError:
+            raise HTTPException(404, f"unknown image id: {iid}") from None
+        raster = _raster(ds)
+        lo, hi = _window_bounds(raster, 0.0, 1.0)
+        panels.append(Image.fromarray(
+            render_rgb(raster, lo, hi, 1.0, req.cmap, req.scale), "RGB",
+        ))
+
+    # UniformSize: pad every panel onto the max canvas (black gaps)
+    pw = max(p.width for p in panels)
+    ph = max(p.height for p in panels)
+    cols = req.cols or math.ceil(math.sqrt(n))
+    rows = math.ceil(n / cols)
+    gap = req.gap
+    fig = Image.new(
+        "RGB", (cols * pw + (cols - 1) * gap, rows * ph + (rows - 1) * gap)
+    )
+    draw = ImageDraw.Draw(fig)
+    labels = req.labels or [chr(ord("a") + k) for k in range(n)]
+    for k, p in enumerate(panels):
+        r, c = divmod(k, cols)
+        x = c * (pw + gap)
+        y = r * (ph + gap)
+        fig.paste(p, (x, y))
+        if k < len(labels) and labels[k]:
+            draw.text((x + 6, y + 4), labels[k], fill=(255, 255, 255),
+                      stroke_width=2, stroke_fill=(0, 0, 0))
+    buf = io.BytesIO()
+    fig.save(buf, format="PNG")
+    return Response(
+        content=buf.getvalue(),
+        media_type="image/png",
+        headers={
+            "Content-Disposition": 'attachment; filename="figure.png"'
+        },
+    )

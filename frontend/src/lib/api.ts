@@ -686,6 +686,43 @@ export function renameImage(id: string, name: string): Promise<ImageMeta> {
   return post(`/api/image/${id}/rename`, { name });
 }
 
+/** Multi-panel labeled figure → PNG blob. */
+export async function exportFigure(
+  ids: string[],
+  opts: { cols?: number; gap?: number; scale?: number; cmap?: string } = {},
+): Promise<Blob> {
+  const res = await fetch("/api/export/figure", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      image_ids: ids,
+      cols: opts.cols ?? 0,
+      gap: opts.gap ?? 4,
+      scale: opts.scale ?? 1,
+      cmap: opts.cmap ?? "gray",
+    }),
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      detail = ((await res.json()) as { detail?: string }).detail ?? detail;
+    } catch {
+      /* binary error body */
+    }
+    throw new Error(detail);
+  }
+  return res.blob();
+}
+
+/** Auto-detect a burned-in scale bar in the bottom strip. */
+export function detectScaleBar(id: string): Promise<{
+  found: boolean;
+  bar_len: number;
+  msg: string;
+}> {
+  return post("/api/calibration/detect-bar", { image_id: id });
+}
+
 /** Explode a 3D cube into per-frame derived images. */
 export function explodeStack(id: string): Promise<ImageMeta[]> {
   return post(`/api/image/${id}/explode`, {});
