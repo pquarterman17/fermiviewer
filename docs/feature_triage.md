@@ -18,6 +18,15 @@ queued or awaiting a pick, in one place. 2026-06-08.
   metadata. **Open sub-question:** show corrected value only, or raw +
   corrected side by side?
 
+## User-reported gaps (queued, no decision needed)
+
+- **#37 Collapsible right-panel sections — everywhere** (user,
+  2026-06-08): only the three Measure cards collapse today
+  (`<details>` in MeasurePanel); Adjust, Image, Metadata and the
+  workshop-tab content do not. Make every inspector card collapsible
+  with the same summary affordance, and persist the collapsed state
+  per card.
+
 ## Absent from the port — pick which to build (A1–A10)
 
 | Pick | ID | Feature | Effort | Notes |
