@@ -91,6 +91,19 @@ const FILTER_DEFS: { label: string; kind: string; fields?: ParamField[] }[] = [
              num("num_bins", "Bins", 256)] },
   { label: "Bin…", kind: "bin", fields: [num("bin_size", "Bin size", 2)] },
   { label: "Plane Level", kind: "plane_level" },
+  { label: "Morphology…", kind: "morph",
+    fields: [
+      { key: "operation", label: "Operation", type: "select",
+        default: "open", options: ["erode", "dilate", "open", "close"] },
+      num("radius", "Radius (px)", 1),
+      { key: "shape", label: "Element", type: "select",
+        default: "square", options: ["square", "disk"] },
+    ] },
+  { label: "Multi-Otsu…", kind: "multiotsu",
+    fields: [
+      { key: "n_classes", label: "Classes", type: "select",
+        default: "3", options: ["2", "3", "4", "5"] },
+    ] },
   { label: "Rotate 90° CW", kind: "rotate90" },
   { label: "Flip Horizontal", kind: "fliph" },
   { label: "Flip Vertical", kind: "flipv" },
@@ -841,7 +854,7 @@ export default function MenuBar({
           })();
         },
       },
-      ...FILTER_DEFS.slice(0, 7).map((d) =>
+      ...FILTER_DEFS.slice(0, 9).map((d) =>
         filterEntry(d.label, d.kind, d.fields),
       ),
       {

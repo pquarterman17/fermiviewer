@@ -185,3 +185,23 @@ def test_crop(client, img_id) -> None:
     assert client.post("/api/filter", json={
         "image_id": img_id, "kind": "crop", "params": {"row0": 1},
     }).status_code == 422
+
+
+def test_morph_and_multiotsu_kinds(client, img_id) -> None:
+    r = client.post("/api/filter", json={
+        "image_id": img_id, "kind": "morph",
+        "params": {"operation": "dilate", "radius": 1, "shape": "disk"},
+    })
+    assert r.status_code == 200
+    out = np.asarray(store.get(r.json()["id"]).data)
+    assert set(np.unique(out)) <= {0.0, 1.0}          # binary result
+
+    r = client.post("/api/filter", json={
+        "image_id": img_id, "kind": "multiotsu", "params": {"n_classes": 3},
+    })
+    assert r.status_code == 200
+    labels = np.asarray(store.get(r.json()["id"]).data)
+    assert set(np.unique(labels)) <= {1.0, 2.0, 3.0}  # MATLAB 1-based
+    assert client.post("/api/filter", json={
+        "image_id": img_id, "kind": "multiotsu", "params": {"n_classes": 9},
+    }).status_code == 422

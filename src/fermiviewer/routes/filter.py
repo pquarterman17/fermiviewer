@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from fermiviewer.calc import filters
+from fermiviewer.calc.segment import morph_op, multi_otsu
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.models import ImageMeta
 from fermiviewer.session import UnknownImageError, store
@@ -83,6 +84,18 @@ _FILTERS: dict[str, Callable[[np.ndarray, dict[str, Any]], np.ndarray]] = {
     "fliph": lambda d, p: d[:, ::-1],               # mirror left-right
     "flipv": lambda d, p: d[::-1, :],               # mirror top-bottom
     "crop": _crop,
+    # segmentation dialogs (checklist K): morphology thresholds at the
+    # image mean first (binary op on grayscale input); multi-Otsu
+    # returns the class-label map for visualization
+    "morph": lambda d, p: morph_op(
+        d > d.mean(),
+        operation=str(p.get("operation", "open")),
+        radius=int(p.get("radius", 1)),
+        shape=str(p.get("shape", "square")),
+    ).astype(float),
+    "multiotsu": lambda d, p: multi_otsu(
+        d, n_classes=int(p.get("n_classes", 3))
+    ).label_map.astype(float),
 }
 
 _RESAMPLING = {"bin"}
