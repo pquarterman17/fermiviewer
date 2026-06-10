@@ -979,6 +979,34 @@ details.fvd-card:not([open]) > summary {
   font-size: var(--font-size-sm);
 }
 
+/* dark-theme number/text inputs + selects in panel rows — the ws-row
+   rule above only covered workshops; Scale Bar (.fvd-sb-spin /
+   .fvd-meta-row) and Measure width (.fvd-slider-row) clashed white */
+.fvd-slider-row input[type="number"],
+.fvd-slider-row input[type="text"],
+.fvd-meta-row input[type="number"],
+.fvd-meta-row input[type="text"],
+.fvd-sb-spin input {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  padding: 2px 5px;
+  min-width: 0;
+}
+
+.fvd-meta-row select,
+.fvd-sb-spin select {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  padding: 2px 4px;
+}
+
 .fvd-btn-row {
   display: flex;
   gap: var(--pad);
