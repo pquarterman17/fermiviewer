@@ -320,6 +320,7 @@ interface ViewerState {
   rightCol: boolean;
   minimap: boolean;
   colorbar: boolean;
+  scaleBarVisible: boolean;
   cmdk: boolean;
   shorts: boolean;
   radial: { x: number; y: number } | null;
@@ -380,6 +381,7 @@ interface ViewerState {
   toggleRight: () => void;
   toggleMinimap: () => void;
   toggleColorbar: () => void;
+  toggleScaleBar: () => void;
   setCmdk: (open: boolean) => void;
   setShorts: (open: boolean) => void;
   setRadial: (at: { x: number; y: number } | null) => void;
@@ -422,6 +424,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   leftCol: false,
   minimap: _pref("minimap", true),
   colorbar: false,
+  scaleBarVisible: true,
   rightCol: false,
   cmdk: false,
   shorts: false,
@@ -766,6 +769,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   toggleRight: () => set((s) => ({ rightCol: !s.rightCol })),
   toggleMinimap: () => set((s) => ({ minimap: !s.minimap })),
   toggleColorbar: () => set((s) => ({ colorbar: !s.colorbar })),
+  toggleScaleBar: () => set((s) => ({ scaleBarVisible: !s.scaleBarVisible })),
   setCmdk: (cmdk) => set({ cmdk }),
   setShorts: (shorts) => set({ shorts }),
   setRadial: (radial) => set({ radial }),

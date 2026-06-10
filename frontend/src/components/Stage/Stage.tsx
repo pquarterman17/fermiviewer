@@ -9,6 +9,7 @@ import {
   useImperativeHandle,
   useRef,
   useState,
+  type RefObject,
 } from "react";
 
 import { GLRenderer } from "../../gl/render";
@@ -40,6 +41,12 @@ import ColorbarChip from "./ColorbarChip";
 import DockPlot from "./DockPlot";
 import MeasureOverlay from "./MeasureOverlay";
 import Minimap from "./Minimap";
+import {
+  ScaleBarCtxMenu,
+  EmptyAreaCtxMenu,
+  buildCtxTarget,
+  type CtxTarget,
+} from "./StageCtxMenu";
 
 export interface StageHandle {
   fit: () => void;
@@ -119,7 +126,6 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   const panTool = useViewer((s) => s.panTool);
   const addMeasure = useViewer((s) => s.addMeasure);
   const setRoiStats = useViewer((s) => s.setRoiStats);
-  const setRadial = useViewer((s) => s.setRadial);
   const setStatus = useViewer((s) => s.setStatus);
   const setCursor = useStageInfo((s) => s.setCursor);
   const setZoom = useStageInfo((s) => s.setZoom);
@@ -128,12 +134,14 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const scaleBarRef = useRef<HTMLDivElement>(null) as RefObject<HTMLDivElement>;
   const glRef = useRef<GLRenderer | null>(null);
   const [vp, setVp] = useState<Size>({ w: 0, h: 0 });
   const [imgSize, setImgSize] = useState<Size | null>(null);
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [panning, setPanning] = useState(false);
   const [marquee, setMarquee] = useState<{ a: Pt; b: Pt } | null>(null);
+  const [stageCtx, setStageCtx] = useState<CtxTarget | null>(null);
   // in-progress click-capture (image-space pts; last pt tracks cursor)
   const [pending, setPending] = useState<{
     kind: Measure["kind"];
@@ -516,7 +524,30 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
 
   const onContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
-    setRadial({ x: e.clientX, y: e.clientY });
+    // right-click during an active drag stays inert
+    if (dragRef.current) return;
+    const measures = activeId
+      ? (useViewer.getState().measures[activeId] ?? [])
+      : [];
+    const target = buildCtxTarget(
+      e,
+      scaleBarRef.current,
+      measures,
+      imgSize,
+      view,
+      vp,
+    );
+    if (target.kind === "measure" && target.measureId) {
+      // delegate to MeasureOverlay's own ctx menu by selecting the measure
+      // and synthesising a contextmenu event — instead, just open the
+      // radial which is harmless, OR re-use our empty handler.
+      // The measure's own onContextMenu handler (inside MeasureOverlay)
+      // fires first because it stopPropagates — so this branch only runs
+      // when the click missed all measure handles/labels. Treat as empty.
+      setStageCtx({ kind: "empty", x: target.x, y: target.y });
+    } else {
+      setStageCtx(target);
+    }
   };
 
   const cls = [
@@ -590,14 +621,30 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
           />
           <Readout />
           {meta?.pixel_size != null && (
-            <ScaleBar
+            <ScaleBarOverlay
               pixelSize={meta.pixel_size}
               unit={meta.pixel_unit}
               z={view.z}
+              barRef={scaleBarRef}
             />
           )}
           <DockPlot />
         </>
+      )}
+
+      {stageCtx?.kind === "scalebar" && (
+        <ScaleBarCtxMenu
+          x={stageCtx.x}
+          y={stageCtx.y}
+          onClose={() => setStageCtx(null)}
+        />
+      )}
+      {stageCtx?.kind === "empty" && (
+        <EmptyAreaCtxMenu
+          x={stageCtx.x}
+          y={stageCtx.y}
+          onClose={() => setStageCtx(null)}
+        />
       )}
     </div>
   );
@@ -695,22 +742,26 @@ function Readout() {
   );
 }
 
-function ScaleBar({
+function ScaleBarOverlay({
   pixelSize,
   unit,
   z,
+  barRef,
 }: {
   pixelSize: number;
   unit: string;
   z: number;
+  barRef: RefObject<HTMLDivElement>;
 }) {
   const color = useViewer((s) => s.overlay.color);
+  const visible = useViewer((s) => s.scaleBarVisible);
   const phys = niceScaleLength((120 * pixelSize) / z);
   const widthPx = (phys / pixelSize) * z;
   const label =
     phys >= 1 ? `${Number(phys.toPrecision(3))} ${unit}` : fmtSub(phys, unit);
+  if (!visible) return null;
   return (
-    <div className="fvd-scalebar" style={{ color }}>
+    <div ref={barRef} className="fvd-scalebar" style={{ color }}>
       <div className="bar" style={{ width: widthPx }} />
       <div className="label">{label}</div>
     </div>

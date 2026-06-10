@@ -433,6 +433,18 @@ details.fvd-card:not([open]) > summary {
   color: #f43f5e;
 }
 
+.fvd-ctx-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+
+.fvd-ctx-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 3px 4px;
+}
+
 .fvd-colorbar {
   position: absolute;
   right: 10px;
