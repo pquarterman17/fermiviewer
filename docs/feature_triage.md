@@ -1,68 +1,48 @@
-# Feature triage — pending user decisions
+# Feature triage — DECIDED 2026-06-09
 
 Companion to `docs/gui_audit.md` (full button-by-button tables).
-This is the come-back-later decision sheet: everything currently
-queued or awaiting a pick, in one place. 2026-06-08.
+The user triaged all pending items on 2026-06-09; outcomes below.
+Execution is tracked as plan workstream **W9** (items #38–#45, plus
+moved #33/#34/#37).
 
-## Already queued (plan items, no decision needed)
+## Decisions — absent features (A1–A10)
 
-- **#33 Scale-bar interactivity** — drag to reposition, resize
-  (length/thickness/font), controls in BOTH the right panel and a
-  right-click menu on the bar; export baking honours the custom
-  position. *Goes beyond MATLAB — even the original's bar is fixed.*
-- **#34 Tilt-corrected distance measurements** — port
-  `measureDistance.m`: in-tilt-axis component × 1/sin θ (FIB
-  cross-section) or × 1/cos θ (plan-view), TiltAxis X|Y,
-  θ ∈ (−90°, 90°). Math already ported in `calc/profiles.line_profile`;
-  `io/metadata.get_stage_tilt` can auto-seed the angle from file
-  metadata. **Open sub-question:** show corrected value only, or raw +
-  corrected side by side?
+| Pick | ID | Feature | Outcome |
+|---|---|---|---|
+| ✔ | A1 | Toggle Scale Bar | **BUILD** — folded into #33 (scale-bar card + ctx menu) |
+| ✔ | A2 | Fixed Size Zoom | **BUILD** — #41 |
+| ✔ | A3 | Back Project (FBP) | **BUILD** — #39 (wire-up only) |
+| ✔ | A4 | Composition Profile | **BUILD** — #39 (wire-up only) |
+| ✔ | A5 | ELNES fingerprint | **BUILD** — #39 (wire-up only) |
+| ✘ | A6 | EELS Navigate Pixel (live hover) | **DECLINED** — region explorer's click navigation suffices |
+| ✔ | A7 | Manual Click Spots | **BUILD** — #41 |
+| ✔ | A8 | Kinematic Simulate UI | **BUILD** — #39 (wire-up only) |
+| ✔ | A9 | Measurement end symbols | **BUILD** — #42 |
+| ✘ | A10 | Export Profile → BosonPlotter DP | **DECLINED** — CSV export suffices |
 
-## User-reported gaps (queued, no decision needed)
+## Decisions — different by design (D1–D13)
 
-- **#37 Collapsible right-panel sections — everywhere** (user,
-  2026-06-08): only the three Measure cards collapse today
-  (`<details>` in MeasurePanel); Adjust, Image, Metadata and the
-  workshop-tab content do not. Make every inspector card collapsible
-  with the same summary affordance, and persist the collapsed state
-  per card.
+| Pick | ID | Outcome |
+|---|---|---|
+| keep | D1 | undo/redo service over derived images — **keep ours** |
+| keep | D2 | derived crop, display-only invert — **keep ours** |
+| keep | D3 | Batch Export ZIP — **keep ours** |
+| ✔ | D4 | **ADD single rename** (filmstrip ctx + F2) — #43 |
+| keep | D5 | live FFT of the ROI — **keep ours** (A6 declined removes the revisit) |
+| keep | D6 | watershed as particles option — **keep ours** |
+| keep | D7 | 4 preset buttons in Export — **keep ours** |
+| keep | D8 | per-call ROI scoping — **keep ours** |
+| keep | D9 | quantify-driven channels + Color Overlay — **keep ours** |
+| ✔ | D10 | **ADD auto-assign elements** from peak energies — #44 |
+| ✔ | D11 | **ADD in-image stepper, with keyboard step**, alongside explode — #40 |
+| ✔ | D12 | **Contextual right-click** (user design): hit-test the click — scale bar → scale-bar menu; measurement/annotation → their existing menus; empty image → the as-is radial menu **plus a default Copy entry** — #38 |
+| ✔ | D13 | **ADD prefs**: auto-contrast %, export DPI, inspector size — #45 |
 
-## Absent from the port — pick which to build (A1–A10)
-
-| Pick | ID | Feature | Effort | Notes |
-|---|---|---|---|---|
-| ☐ | A1 | Toggle Scale Bar (hide/show) | trivial | View-menu toggle like minimap |
-| ☐ | A2 | Fixed Size Zoom (type W×H, click to place, Enter) | small | new capture flow |
-| ☐ | A3 | Back Project (FBP) | small | **calc ported & tested — wire-up only** |
-| ☐ | A4 | Composition Profile (SI element-fraction line) | small | **calc ported & tested — wire-up only** |
-| ☐ | A5 | ELNES fingerprint comparison | small | **calc ported & tested — wire-up only** |
-| ☐ | A6 | EELS Navigate Pixel (live hover spectrum) | medium | region explorer covers click; hover is new |
-| ☐ | A7 | Manual Click Spots (diffraction) | small | Preview-click pattern exists |
-| ☐ | A8 | Kinematic pattern Simulate UI | small | calc ported — wire-up only |
-| ☐ | A9 | Measurement end symbols (circle/cross/square) | small | overlay + export baking |
-| ☐ | A10 | Export Profile → BosonPlotter format | small | CSV exists; needs the DP header |
-
-## Different by design — confirm or change (D1–D13)
-
-| Pick | ID | MATLAB | Ours | Default recommendation |
-|---|---|---|---|---|
-| ☐ | D1 | destructive Undo Filters | undo/redo service over derived images | keep ours |
-| ☐ | D2 | destructive crop/invert | derived crop, display-only invert | keep ours |
-| ☐ | D3 | Batch Convert in place | Batch Export ZIP | keep ours |
-| ☐ | D4 | single Rename Selected | batch rename only | **add single rename** (filmstrip ctx) |
-| ☐ | D5 | Live FFT follows the view | live FFT of the ROI | revisit with A6 |
-| ☐ | D6 | standalone Watershed op | particles option only | expose as filter kind? |
-| ☐ | D7 | per-journal preset dialog | 4 preset buttons in Export | enough? |
-| ☐ | D8 | persistent analysis ROI scoping all ops | per-call ROI scoping | formalise global ROI? |
-| ☐ | D9 | compose composite from any images | quantify-driven channels + Color Overlay window | covered |
-| ☐ | D10 | auto Assign Elements from peak energies | manual symbols | **worth adding** |
-| ☐ | D11 | in-image stack stepper ◀ ▶ | explode → filmstrip | stepper still wanted? |
-| ☐ | D12 | image right-click: zoom/copy/save actions | radial capture menu only | add an actions ring/menu? |
-| ☐ | D13 | prefs: contrast %, export DPI, inspector size | not in prefs | **add the three settings** |
-
-## Other parked items
+## Other parked items (unchanged)
 
 - Code signing for the installer (cert purchase — user decision).
 - Goldens manifest still pins `36fb8a5`; re-pin to `6b1e6b7+` at the
   next golden regeneration (both upstream changes since are additive).
 - #31 human side-by-side MATLAB session — the final parity sign-off.
+- #34 open sub-question: distance labels show raw + corrected
+  side-by-side, or corrected only? (decide during implementation)
