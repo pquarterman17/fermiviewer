@@ -17,7 +17,6 @@ from PIL import Image, ImageDraw
 
 from fermiviewer.calc.export import Annotation, ScaleBar, colorbar_strip
 
-
 # ── PIL raster baking ────────────────────────────────────────────────
 
 def draw_scale_bar(img: Image.Image, bar: ScaleBar) -> None:
