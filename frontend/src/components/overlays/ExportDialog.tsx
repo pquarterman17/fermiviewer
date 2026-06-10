@@ -44,6 +44,10 @@ export default function ExportDialog() {
     s.activeId ? (s.measures[s.activeId] ?? NO_MEASURES) : NO_MEASURES,
   );
   const overlayColor = useViewer((s) => s.overlay.color);
+  const overlayEndSymbol = useViewer((s) => s.overlay.endSymbol);
+  const tilt = useViewer((s) =>
+    s.activeId ? (s.tilts[s.activeId] ?? null) : null,
+  );
   const sbState = useViewer((s) =>
     s.activeId ? s.scaleBars[s.activeId] : undefined,
   );
@@ -104,9 +108,24 @@ export default function ExportDialog() {
       include,
       measures:
         canMeasure && bakeMeasures
-          ? measures.map((m) => ({ kind: m.kind, pts: m.pts, text: m.text }))
+          ? measures.map((m) => ({
+              kind: m.kind,
+              pts: m.pts,
+              text: m.text,
+              // resolve per-item override against the style default so
+              // baked glyphs match the on-screen overlay (A9)
+              endSymbol: m.endSymbol ?? overlayEndSymbol ?? "none",
+            }))
           : undefined,
       overlay_color: overlayColor,
+      // #34: baked distance labels match the on-screen corrected values
+      ...(tilt && tilt.angle !== 0
+        ? {
+            tilt_angle_deg: tilt.angle,
+            tilt_axis: tilt.axis,
+            tilt_geometry: tilt.geometry,
+          }
+        : {}),
       // pass custom scale bar geometry when the bar has been repositioned/resized
       ...(canBar && scaleBar && sbState
         ? {

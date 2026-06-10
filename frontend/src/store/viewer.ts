@@ -15,6 +15,9 @@ import {
 } from "../lib/api";
 import type { ColormapName } from "../lib/colormaps";
 import { logStatus } from "../lib/errlog";
+import type { TiltSettings } from "../lib/geometry";
+
+export type { TiltSettings };
 
 /** Per-image view: z = screen px per image px (1 → 100 %),
  *  (px, py) = normalized image point under the viewport centre. */
@@ -174,7 +177,12 @@ function loadJson<T>(key: string, fallback: T): T {
 let measureSeq = 0;
 
 type SetState = (
-  fn: (s: { images: Record<string, ImageMeta>; order: string[]; activeId: string | null }) => object,
+  fn: (s: {
+    images: Record<string, ImageMeta>;
+    order: string[];
+    activeId: string | null;
+    tilts: Record<string, TiltSettings>;
+  }) => object,
 ) => void;
 
 /** Read one persisted preference with a fallback (lib/prefs.ts owns
@@ -206,6 +214,7 @@ function _ingest(set: SetState, metas: ImageMeta[]): void {
   set((s) => {
     const images = { ...s.images };
     const order = [...s.order];
+    const tilts = { ...s.tilts };
     const display = {
       ...(s as unknown as { display: Record<string, Display> }).display,
     };
@@ -218,6 +227,16 @@ function _ingest(set: SetState, metas: ImageMeta[]): void {
             cmap: prefCmap as Display["cmap"],
           };
         }
+        // #34: seed tilt from stage metadata; angle 0 keeps it off
+        // until the user enables it in the Tilt card
+        if (m.stage_tilt_deg != null && !(m.id in tilts)) {
+          tilts[m.id] = {
+            angle: 0,
+            seedAngle: m.stage_tilt_deg,
+            axis: "Y",
+            geometry: "cross-section",
+          };
+        }
       }
       images[m.id] = m;
     }
@@ -225,6 +244,7 @@ function _ingest(set: SetState, metas: ImageMeta[]): void {
     return {
       images,
       order,
+      tilts,
       display,
       activeId: last ? last.id : s.activeId,
       status: `opened ${metas.length} file${metas.length === 1 ? "" : "s"}`,
@@ -330,6 +350,8 @@ interface ViewerState {
   overlay: OverlayStyle; // persisted "fv_overlay"
   // per-image scale bar position/size overrides
   scaleBars: Record<string, ScaleBarState>;
+  // per-image tilt-correction settings (#34); absent = off
+  tilts: Record<string, TiltSettings>;
   // per-image stack frame index (0-based; only relevant for spectrum_image)
   stackFrames: Record<string, number>;
   /** fixed-zoom dimensions in image pixels (A2 capture mode) */
@@ -401,6 +423,8 @@ interface ViewerState {
   setProfileWidth: (w: number) => void;
   setOverlay: (patch: Partial<OverlayStyle>) => void;
   setScaleBar: (imageId: string, patch: Partial<ScaleBarState>) => void;
+  /** Set or clear (null) the per-image tilt correction (#34). */
+  setTilt: (imageId: string, t: TiltSettings | null) => void;
   setStackFrame: (imageId: string, frame: number) => void;
   setFixedZoomDims: (w: number, h: number) => void;
   toggleTheme: () => void;
@@ -446,6 +470,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   })(),
   overlay: loadJson<OverlayStyle>(OVERLAY_KEY, { size: "M", color: "#ffffff", endSymbol: "none" }),
   scaleBars: {},
+  tilts: {},
   stackFrames: {},
   fixedZoomW: 256,
   fixedZoomH: 256,
@@ -799,6 +824,14 @@ export const useViewer = create<ViewerState>((set, get) => ({
 
   setStackFrame: (imageId, frame) =>
     set((s) => ({ stackFrames: { ...s.stackFrames, [imageId]: frame } })),
+
+  setTilt: (imageId, t) =>
+    set((s) => {
+      const tilts = { ...s.tilts };
+      if (t === null) delete tilts[imageId];
+      else tilts[imageId] = t;
+      return { tilts };
+    }),
 
   setFixedZoomDims: (fixedZoomW, fixedZoomH) => set({ fixedZoomW, fixedZoomH }),
 

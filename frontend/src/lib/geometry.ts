@@ -99,6 +99,39 @@ export function physDist(
     : { value: d, unit: "px" };
 }
 
+/** Per-image stage-tilt correction settings (#34). angle 0 = off. */
+export interface TiltSettings {
+  angle: number; // degrees, (−90, 90) exclusive; 0 = correction off
+  axis: "X" | "Y";
+  geometry: "cross-section" | "surface";
+  /** stage tilt detected in file metadata — shown as a one-click
+   *  "apply" hint in the Tilt card; never auto-applied */
+  seedAngle?: number;
+}
+
+/** Tilt-corrected distance — mirrors calc/profiles.measure_distance:
+ *  the in-tilt-axis component scales by 1/sin θ (cross-section) or
+ *  1/cos θ (surface). Sign of θ is irrelevant (component is squared);
+ *  θ=0 → plain physDist (avoids 1/sin(0)). */
+export function tiltDist(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  pixelSize: number | null,
+  tilt: TiltSettings | null,
+): { value: number; unit: "px" | "cal" } {
+  if (!tilt || tilt.angle === 0) return physDist(a, b, pixelSize);
+  let dx = b.x - a.x;
+  let dy = b.y - a.y;
+  const rad = (tilt.angle * Math.PI) / 180;
+  const f = tilt.geometry === "surface" ? 1 / Math.cos(rad) : 1 / Math.sin(rad);
+  if (tilt.axis === "X") dx *= f;
+  else dy *= f;
+  const d = Math.hypot(dx, dy);
+  return pixelSize != null
+    ? { value: d * pixelSize, unit: "cal" }
+    : { value: d, unit: "px" };
+}
+
 /** Angle at vertex v between rays v→a and v→b, in degrees [0, 180]. */
 export function physAngle(
   v: { x: number; y: number },

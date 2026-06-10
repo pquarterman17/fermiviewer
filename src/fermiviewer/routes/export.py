@@ -81,6 +81,11 @@ class ExportRequest(BaseModel):
     scale_bar_norm_y: float | None = None
     scale_bar_length_phys: float | None = None
     scale_bar_thickness: int | None = None
+    # tilt correction for distance/profile/polyline labels (item #34);
+    # 0 → off (backward-compatible)
+    tilt_angle_deg: float = 0.0
+    tilt_axis: str = "Y"                    # Y | X
+    tilt_geometry: str = "cross-section"    # cross-section | surface
 
 
 def _raster(ds: DataStruct) -> np.ndarray:
@@ -159,6 +164,9 @@ def export_image(req: ExportRequest) -> Response:
             raster.shape[0], raster.shape[1],
             ds.pixel_cal.scale if ds.pixel_cal.calibrated else None,
             ds.pixel_cal.units, req.scale, raster,
+            tilt_angle_deg=req.tilt_angle_deg,
+            tilt_axis=req.tilt_axis,
+            tilt_geometry=req.tilt_geometry,
         )
 
     cbar = ("colorbar" in req.include, lo, hi)

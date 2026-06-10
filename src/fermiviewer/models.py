@@ -6,11 +6,13 @@ evolve with the frontend; the internal contract evolves with analysis.
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from pydantic import BaseModel
 
 from fermiviewer.datastruct import DataKind, DataStruct
+from fermiviewer.io.metadata import get_stage_tilt
 
 __all__ = ["ImageMeta", "OpenRequest"]
 
@@ -31,6 +33,7 @@ class ImageMeta(BaseModel):
     energy_first: float | None = None
     energy_last: float | None = None
     energy_units: str = ""
+    stage_tilt_deg: float | None = None  # from io.metadata.get_stage_tilt
     meta: dict[str, Any] = {}
 
     @classmethod
@@ -41,6 +44,7 @@ class ImageMeta(BaseModel):
         if ds.kind is not DataKind.SPECTRUM and ds.pixel_cal.calibrated:
             px, unit = ds.pixel_cal.scale, ds.pixel_cal.units
         ax = ds.energy_axis if spectral else None
+        tilt_deg, _ = get_stage_tilt(ds.metadata)
         return cls(
             id=img_id,
             name=name,
@@ -53,6 +57,7 @@ class ImageMeta(BaseModel):
             energy_first=float(ax[0]) if ax is not None else None,
             energy_last=float(ax[-1]) if ax is not None else None,
             energy_units=ds.energy_cal.units if spectral else "",
+            stage_tilt_deg=None if math.isnan(tilt_deg) else tilt_deg,
             meta={
                 k: v
                 for k, v in ds.metadata.items()

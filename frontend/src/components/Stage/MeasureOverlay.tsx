@@ -8,8 +8,8 @@ import { measurePolyline, measureProfile, measureRoi } from "../../lib/api";
 import {
   imageToScreen,
   physAngle,
-  physDist,
   screenToImage,
+  tiltDist,
   type Size,
 } from "../../lib/geometry";
 import { useStageInfo } from "../../store/stage";
@@ -99,6 +99,7 @@ export default function MeasureOverlay({
   const measures = useViewer((s) => s.measures[imageId] ?? NO_MEASURES);
   const selected = useViewer((s) => s.selectedMeasure);
   const overlay = useViewer((s) => s.overlay);
+  const tilt = useViewer((s) => s.tilts[imageId] ?? null);
   const roiStats = useViewer((s) => s.roiStats);
   const updateMeasure = useViewer((s) => s.updateMeasure);
   const setSelected = useViewer((s) => s.setSelectedMeasure);
@@ -143,7 +144,7 @@ export default function MeasureOverlay({
     const px = toImagePx(m);
     const width = useViewer.getState().profileWidth;
     if (m.kind === "profile") {
-      measureProfile(imageId, px[0], px[1], width)
+      measureProfile(imageId, px[0], px[1], width, tilt)
         .then((r) => setProfile({ ...r, measureId: m.id }))
         .catch((e: Error) => setStatus(e.message));
     } else if (m.kind === "polyline") {
@@ -204,24 +205,28 @@ export default function MeasureOverlay({
     refresh(m);
   };
 
+  // #34: non-zero tilt corrects line-like labels; θ suffix flags it
+  const tiltOn = tilt != null && tilt.angle !== 0;
+  const theta = tiltOn ? " θ" : "";
+
   const label = (m: Measure): string => {
     const px = toImagePx(m);
     switch (m.kind) {
       case "distance":
       case "profile": {
-        const d = physDist(px[0], px[1], pixelSize);
+        const d = tiltDist(px[0], px[1], pixelSize, tilt);
         return d.unit === "cal"
-          ? `${fmt(d.value)} ${pixelUnit}`
-          : `${fmt(d.value)} px`;
+          ? `${fmt(d.value)} ${pixelUnit}${theta}`
+          : `${fmt(d.value)} px${theta}`;
       }
       case "polyline": {
         let total = 0;
         for (let i = 1; i < px.length; i++) {
-          total += physDist(px[i - 1], px[i], pixelSize).value;
+          total += tiltDist(px[i - 1], px[i], pixelSize, tilt).value;
         }
         return pixelSize != null
-          ? `${fmt(total)} ${pixelUnit}`
-          : `${fmt(total)} px`;
+          ? `${fmt(total)} ${pixelUnit}${theta}`
+          : `${fmt(total)} px${theta}`;
       }
       case "angle":
         return px.length === 3 ? `${physAngle(px[1], px[0], px[2]).toFixed(1)}°` : "";

@@ -17,6 +17,7 @@ export interface ImageMeta {
   energy_first: number | null;
   energy_last: number | null;
   energy_units: string;
+  stage_tilt_deg: number | null;
   meta: Record<string, string | number | boolean>;
 }
 
@@ -121,6 +122,11 @@ export async function measureProfile(
   a: { x: number; y: number },
   b: { x: number; y: number },
   width = 1,
+  tilt?: {
+    angle: number;
+    axis: "X" | "Y";
+    geometry: "cross-section" | "surface";
+  } | null,
 ): Promise<ProfileResult> {
   return json(
     await fetch("/api/measure/profile", {
@@ -131,6 +137,15 @@ export async function measureProfile(
         a: [a.y + 1, a.x + 1],
         b: [b.y + 1, b.x + 1],
         width,
+        // #34: line_profile applies the same tilt correction as
+        // measure_distance; 0/absent → off
+        ...(tilt && tilt.angle !== 0
+          ? {
+              tilt_angle_deg: tilt.angle,
+              tilt_axis: tilt.axis,
+              geometry: tilt.geometry,
+            }
+          : {}),
       }),
     }),
   );
@@ -465,6 +480,7 @@ export interface ExportOptions {
     kind: string;
     pts: { x: number; y: number }[];
     text?: string;
+    endSymbol?: string;
   }[];
   overlay_color?: string;
   // custom scale bar geometry (item #33); all optional — null → auto
@@ -472,6 +488,10 @@ export interface ExportOptions {
   scale_bar_norm_y?: number | null;
   scale_bar_length_phys?: number | null;
   scale_bar_thickness?: number | null;
+  // tilt correction for distance/profile/polyline labels (#34); 0 → off
+  tilt_angle_deg?: number;
+  tilt_axis?: "X" | "Y";
+  tilt_geometry?: "cross-section" | "surface";
 }
 
 /** Server-side export; returns the file blob + suggested filename. */

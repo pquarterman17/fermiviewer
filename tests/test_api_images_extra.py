@@ -83,7 +83,6 @@ def test_data16_frame_param(tmp_path) -> None:
     # with frame=1 → second channel (value=200); u16 max should be 65535
     r1 = client.get(f"/api/image/{sid}/data16?frame=1")
     assert r1.status_code == 200
-    import struct
     data1 = np.frombuffer(r1.content, dtype="<u2")
     # all pixels in frame 1 are uniform (200.0); normalized → all same value
     assert data1.min() == data1.max()   # uniform frame

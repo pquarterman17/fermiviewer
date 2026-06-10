@@ -276,6 +276,55 @@ def test_annotation_labels() -> None:
     assert annos_px[0].points[1] == (32.0, 0.0)         # 2× output coords
 
 
+def test_annotation_labels_tilt_corrected() -> None:
+    """#34: tilt correction scales the in-axis component of distance/
+    profile/polyline LABELS (1/sin θ cross-section, 1/cos θ surface);
+    drawn geometry stays untouched; off-axis lines are unchanged."""
+    from fermiviewer.calc.export import measure_annotations
+
+    # MEASURES[0]: horizontal 16 px distance (Δx=16, Δy=0)
+    base = measure_annotations(MEASURES[:1], 12, 16, None, "px", 1)
+    # in-axis (X) cross-section at 30°: 16 / sin(30°) = 32
+    ax = measure_annotations(MEASURES[:1], 12, 16, None, "px", 1,
+                             tilt_angle_deg=30.0, tilt_axis="X")
+    assert ax[0].label == "32 px"
+    assert ax[0].points == base[0].points          # geometry untouched
+    # off-axis (Y) tilt leaves a horizontal line unchanged
+    off = measure_annotations(MEASURES[:1], 12, 16, None, "px", 1,
+                              tilt_angle_deg=30.0, tilt_axis="Y")
+    assert off[0].label == "16 px"
+    # surface geometry: 16 / cos(60°) = 32
+    surf = measure_annotations(MEASURES[:1], 12, 16, None, "px", 1,
+                               tilt_angle_deg=60.0, tilt_axis="X",
+                               tilt_geometry="surface")
+    assert surf[0].label == "32 px"
+    # negative angle is equivalent (the component is squared)
+    neg = measure_annotations(MEASURES[:1], 12, 16, None, "px", 1,
+                              tilt_angle_deg=-30.0, tilt_axis="X")
+    assert neg[0].label == "32 px"
+
+
+def test_export_tilt_baking(client, img_id) -> None:
+    """#34 API: tilt params change the baked label bytes; 0 is a no-op."""
+    body = {
+        "image_id": img_id,
+        "format": "png",
+        "scale": 4,
+        "include": ["measurements"],
+        "measures": MEASURES[:1],
+    }
+    plain = client.post("/api/export", json=body).content
+    zero = client.post(
+        "/api/export", json={**body, "tilt_angle_deg": 0.0},
+    ).content
+    assert zero == plain
+    tilted = client.post(
+        "/api/export",
+        json={**body, "tilt_angle_deg": 30.0, "tilt_axis": "X"},
+    ).content
+    assert tilted != plain
+
+
 ANNOTATIONS = [
     {"kind": "text", "pts": [{"x": 0.5, "y": 0.5}], "text": "grain A"},
     {"kind": "arrow", "pts": [{"x": 0.1, "y": 0.1}, {"x": 0.9, "y": 0.9}],

@@ -2,7 +2,12 @@
 // the stage labels, ROI stats, and the persisted overlay font/colour.
 
 import { measureProfile } from "../../lib/api";
-import { physAngle, physDist } from "../../lib/geometry";
+import {
+  physAngle,
+  physDist,
+  tiltDist,
+  type TiltSettings,
+} from "../../lib/geometry";
 import { useStageInfo } from "../../store/stage";
 import {
   useViewer,
@@ -43,11 +48,14 @@ type MetaLike = {
   pixel_unit: string;
 } | null;
 
-/** Distance values (calibrated when possible) from line-like measures. */
+/** Distance values (calibrated when possible) from line-like measures.
+ *  Applies the per-image tilt correction (#34) when active so stats
+ *  match the on-screen labels. */
 function distanceValues(
   measures: Measure[],
   img: { w: number; h: number },
   meta: MetaLike,
+  tilt: TiltSettings | null,
 ): number[] {
   const out: number[] = [];
   for (const m of measures) {
@@ -56,7 +64,7 @@ function distanceValues(
     const px = m.pts.map((p) => ({ x: p.x * img.w, y: p.y * img.h }));
     let total = 0;
     for (let i = 1; i < px.length; i++) {
-      total += physDist(px[i - 1], px[i], meta?.pixel_size ?? null).value;
+      total += tiltDist(px[i - 1], px[i], meta?.pixel_size ?? null, tilt).value;
     }
     out.push(total);
   }
@@ -68,11 +76,16 @@ function showLog(
   img: { w: number; h: number },
   meta: MetaLike,
   roiStats: Record<string, { mean: number; std: number }>,
+  tilt: TiltSettings | null,
 ): void {
   const unit = meta?.pixel_size != null ? (meta?.pixel_unit ?? "px") : "px";
+  // #34: with tilt active the log/CSV carries BOTH columns — value is
+  // the corrected length (matches labels), raw is the uncorrected one
+  const tiltOn = tilt != null && tilt.angle !== 0;
   const rows = measures.map((m, i) => {
     const px = m.pts.map((p) => ({ x: p.x * img.w, y: p.y * img.h }));
     let value = "";
+    let raw: string | null = tiltOn ? "" : null;
     if (m.kind === "angle" && px.length === 3) {
       value = `${physAngle(px[1], px[0], px[2]).toFixed(2)}°`;
     } else if (
@@ -81,10 +94,13 @@ function showLog(
       m.kind === "polyline"
     ) {
       let d = 0;
+      let dRaw = 0;
       for (let k = 1; k < px.length; k++) {
-        d += physDist(px[k - 1], px[k], meta?.pixel_size ?? null).value;
+        d += tiltDist(px[k - 1], px[k], meta?.pixel_size ?? null, tilt).value;
+        dRaw += physDist(px[k - 1], px[k], meta?.pixel_size ?? null).value;
       }
       value = `${Number(d.toPrecision(6))} ${unit}`;
+      if (tiltOn) raw = `${Number(dRaw.toPrecision(6))} ${unit}`;
     } else if (m.kind === "roi" || m.kind === "ellipse") {
       const s = roiStats[m.id];
       value = s ? `μ=${s.mean} σ=${s.std}` : "";
@@ -95,6 +111,7 @@ function showLog(
       i + 1,
       m.kind,
       value,
+      ...(tiltOn ? [raw] : []),
       ...px.slice(0, 2).flatMap((p) => [
         Number(p.x.toFixed(2)),
         Number(p.y.toFixed(2)),
@@ -102,8 +119,12 @@ function showLog(
     ] as (string | number | null)[];
   });
   useResults.getState().show({
-    title: "Measurement log",
-    columns: ["#", "kind", "value", "x0", "y0", "x1", "y1"],
+    title: tiltOn
+      ? `Measurement log (tilt ${tilt.angle}° ${tilt.axis}, ${tilt.geometry})`
+      : "Measurement log",
+    columns: tiltOn
+      ? ["#", "kind", "corrected", "raw", "x0", "y0", "x1", "y1"]
+      : ["#", "kind", "value", "x0", "y0", "x1", "y1"],
     rows,
   });
 }
@@ -152,8 +173,9 @@ function showStats(
   measures: Measure[],
   img: { w: number; h: number },
   meta: MetaLike,
+  tilt: TiltSettings | null,
 ): void {
-  const vals = distanceValues(measures, img, meta).sort((a, b) => a - b);
+  const vals = distanceValues(measures, img, meta, tilt).sort((a, b) => a - b);
   if (vals.length === 0) {
     useViewer.getState().setStatus("stats: no distance-like measurements");
     return;
@@ -194,6 +216,10 @@ export default function MeasurePanel() {
   const setOverlay = useViewer((s) => s.setOverlay);
   const setProfile = useStageInfo((s) => s.setProfile);
   const setStatus = useViewer((s) => s.setStatus);
+  const tilt = useViewer((s) =>
+    s.activeId ? (s.tilts[s.activeId] ?? null) : null,
+  );
+  const setTilt = useViewer((s) => s.setTilt);
 
   if (!activeId || !meta) return null;
   const img = { w: meta.shape[1] ?? 1, h: meta.shape[0] ?? 1 };
@@ -204,10 +230,11 @@ export default function MeasurePanel() {
       return `${physAngle(px[1], px[0], px[2]).toFixed(1)}°`;
     }
     if ((m.kind === "distance" || m.kind === "profile") && px.length === 2) {
-      const d = physDist(px[0], px[1], meta.pixel_size);
+      const d = tiltDist(px[0], px[1], meta.pixel_size, tilt);
+      const theta = tilt != null && tilt.angle !== 0 ? " θ" : "";
       return `${Number(d.value.toPrecision(4))} ${
         d.unit === "cal" ? meta.pixel_unit : "px"
-      }`;
+      }${theta}`;
     }
     if (m.kind === "roi" || m.kind === "ellipse") {
       const s = roiStats[m.id];
@@ -228,7 +255,7 @@ export default function MeasurePanel() {
     setSelected(m.id);
     if (m.kind === "profile") {
       const px = m.pts.map((p) => ({ x: p.x * img.w, y: p.y * img.h }));
-      measureProfile(activeId, px[0], px[1])
+      measureProfile(activeId, px[0], px[1], 1, tilt)
         .then((r) => setProfile({ ...r, measureId: m.id }))
         .catch((e: Error) => setStatus(e.message));
     }
@@ -300,14 +327,14 @@ export default function MeasurePanel() {
             <button
               className="fvd-btn"
               title="Open the measurement log table (CSV-exportable)"
-              onClick={() => showLog(measures, img, meta, roiStats)}
+              onClick={() => showLog(measures, img, meta, roiStats, tilt)}
             >
               Log / CSV
             </button>
             <button
               className="fvd-btn"
               title="Sorted distances + summary statistics"
-              onClick={() => showStats(measures, img, meta)}
+              onClick={() => showStats(measures, img, meta, tilt)}
             >
               Stats
             </button>
@@ -452,6 +479,97 @@ export default function MeasurePanel() {
                 onClick={() => setOverlay({ endSymbol: sym })}
               >
                 {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </Card>
+
+      <Card title="Tilt correction">
+        <div className="fvd-ws-note">
+          Corrects distance/profile/polyline lengths for stage tilt
+          (#34). 0° = off; labels gain a θ marker when active.
+        </div>
+        <div className="fvd-slider-row">
+          <span className="k">Angle (°)</span>
+          <input
+            type="number"
+            min={-89.9}
+            max={89.9}
+            step={0.1}
+            style={{ width: 64 }}
+            value={tilt?.angle ?? 0}
+            onChange={(e) => {
+              const v = Math.max(-89.9, Math.min(89.9, Number(e.target.value) || 0));
+              setTilt(activeId, {
+                angle: v,
+                axis: tilt?.axis ?? "Y",
+                geometry: tilt?.geometry ?? "cross-section",
+                seedAngle: tilt?.seedAngle,
+              });
+            }}
+          />
+          {tilt?.seedAngle != null && (tilt?.angle ?? 0) === 0 && (
+            <button
+              className="fvd-btn"
+              title="Apply the stage tilt found in the file metadata"
+              onClick={() =>
+                setTilt(activeId, {
+                  angle: Number(tilt.seedAngle!.toFixed(2)),
+                  axis: tilt.axis,
+                  geometry: tilt.geometry,
+                  seedAngle: tilt.seedAngle,
+                })
+              }
+            >
+              Stage: {tilt.seedAngle.toFixed(1)}°
+            </button>
+          )}
+        </div>
+        <div className="fvd-slider-row">
+          <span className="k">Axis</span>
+          <div className="fvd-seg">
+            {(["X", "Y"] as const).map((ax) => (
+              <button
+                key={ax}
+                className={`fvd-seg-btn${(tilt?.axis ?? "Y") === ax ? " active" : ""}`}
+                onClick={() =>
+                  setTilt(activeId, {
+                    angle: tilt?.angle ?? 0,
+                    axis: ax,
+                    geometry: tilt?.geometry ?? "cross-section",
+                    seedAngle: tilt?.seedAngle,
+                  })
+                }
+              >
+                {ax}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="fvd-slider-row">
+          <span className="k">Geometry</span>
+          <div className="fvd-seg">
+            {(
+              [
+                ["cross-section", "1/sin θ"],
+                ["surface", "1/cos θ"],
+              ] as const
+            ).map(([g, lbl]) => (
+              <button
+                key={g}
+                className={`fvd-seg-btn${(tilt?.geometry ?? "cross-section") === g ? " active" : ""}`}
+                title={g}
+                onClick={() =>
+                  setTilt(activeId, {
+                    angle: tilt?.angle ?? 0,
+                    axis: tilt?.axis ?? "Y",
+                    geometry: g,
+                    seedAngle: tilt?.seedAngle,
+                  })
+                }
+              >
+                {lbl}
               </button>
             ))}
           </div>

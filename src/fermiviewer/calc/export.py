@@ -129,6 +129,29 @@ def _fmt(v: float) -> str:
     return f"{v:.4g}"
 
 
+def _tilt_seg_len(
+    p0: tuple[float, float],
+    p1: tuple[float, float],
+    tilt_angle_deg: float,
+    tilt_axis: str,
+    tilt_geometry: str,
+) -> float:
+    """Segment length with the measure_distance tilt correction:
+    in-tilt-axis component × 1/sin θ (cross-section) or 1/cos θ
+    (surface). No-op at θ=0. Mirrors calc/profiles.measure_distance."""
+    dx = p1[0] - p0[0]
+    dy = p1[1] - p0[1]
+    if tilt_angle_deg:
+        rad = float(np.radians(tilt_angle_deg))
+        f = (1.0 / np.cos(rad) if tilt_geometry == "surface"
+             else 1.0 / np.sin(rad))
+        if tilt_axis.upper() == "X":
+            dx *= f
+        else:
+            dy *= f
+    return float(np.hypot(dx, dy))
+
+
 def measure_annotations(
     measures: list[dict],
     img_h: int,
@@ -137,10 +160,16 @@ def measure_annotations(
     pixel_unit: str,
     scale: int,
     raster: np.ndarray | None = None,
+    tilt_angle_deg: float = 0.0,
+    tilt_axis: str = "Y",
+    tilt_geometry: str = "cross-section",
 ) -> list[Annotation]:
     """Measures (normalized 0–1 pts, the client's store format) →
     output-pixel annotations. `raster` (source resolution) enables the
-    on-screen μ/σ label for ROIs; without it ROIs get W×H dims."""
+    on-screen μ/σ label for ROIs; without it ROIs get W×H dims.
+    Non-zero `tilt_angle_deg` applies the measure_distance correction
+    to distance/profile/polyline LABELS (geometry is drawn as-is),
+    matching the on-screen corrected labels."""
     out: list[Annotation] = []
     for m in measures:
         kind = str(m.get("kind", ""))
@@ -170,8 +199,8 @@ def measure_annotations(
             continue
 
         if kind in ("distance", "profile"):
-            d = float(np.hypot(ipts[1][0] - ipts[0][0],
-                               ipts[1][1] - ipts[0][1]))
+            d = _tilt_seg_len(ipts[0], ipts[1], tilt_angle_deg,
+                              tilt_axis, tilt_geometry)
             label = (f"{_fmt(d * pixel_size)} {pixel_unit}"
                      if pixel_size else f"{_fmt(d)} px")
             mid = ((opts[0][0] + opts[1][0]) / 2 + 8,
@@ -181,8 +210,8 @@ def measure_annotations(
                                   end_symbol=end_symbol))
         elif kind == "polyline" and len(ipts) >= 2:
             total = float(sum(
-                np.hypot(ipts[i + 1][0] - ipts[i][0],
-                         ipts[i + 1][1] - ipts[i][1])
+                _tilt_seg_len(ipts[i], ipts[i + 1], tilt_angle_deg,
+                              tilt_axis, tilt_geometry)
                 for i in range(len(ipts) - 1)
             ))
             label = (f"{_fmt(total * pixel_size)} {pixel_unit}"
