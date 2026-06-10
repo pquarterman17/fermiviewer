@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 
 import {
   analyzeAlignStack,
+  analyzeBackProject,
   analyzeGpa,
   analyzeGrains,
   analyzeGrainsAsync,
@@ -1289,6 +1290,37 @@ export default function MenuBar({
         label: `Batch Profile (${store.selected.length} images)`,
         disabled: store.selected.length < 2 || !lastProfileMeasure(),
         action: () => void runBatchProfile(),
+      },
+      {
+        label: "Back Project (FBP)…",
+        disabled: !store.activeId,
+        action: () => {
+          void (async () => {
+            const v = await askParams("Filtered Back-Projection", [
+              {
+                key: "filter",
+                label: "Filter",
+                type: "select",
+                default: "ramp",
+                options: ["ramp", "shepp-logan", "hamming", "none"],
+              },
+              num("output_size", "Output size (0 = auto)", 0),
+            ]);
+            const id = store.activeId;
+            if (!v || !id) return;
+            store.setStatus("back-project…");
+            analyzeBackProject(
+              id,
+              v["filter"] as "ramp" | "shepp-logan" | "hamming" | "none",
+              v["output_size"] as number,
+            )
+              .then((m) => {
+                store.ingestDerived([m]);
+                store.setStatus("back-project done");
+              })
+              .catch((e: Error) => store.setStatus(`back-project: ${e.message}`));
+          })();
+        },
       },
     ],
     Window: [

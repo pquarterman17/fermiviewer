@@ -978,6 +978,188 @@ export function analyzeLattice(
   return post("/api/analyze/lattice", { image_id: id, spot1, spot2 });
 }
 
+// ── A3 Back Project ─────────────────────────────────────────────────
+
+export function analyzeBackProject(
+  id: string,
+  filter: "ramp" | "shepp-logan" | "hamming" | "none" = "ramp",
+  outputSize = 0,
+): Promise<ImageMeta> {
+  return post("/api/analyze/back-project", {
+    image_id: id,
+    filter,
+    output_size: outputSize,
+  });
+}
+
+// ── A4 Composition Profile ───────────────────────────────────────────
+
+export interface CompositionProfileResult {
+  distance: number[];
+  atomic_pct: number[][];   // [n_elements][n_points]
+  elements: string[];
+  unit: string;
+}
+
+export function analyzeCompositionProfile(
+  mapIds: string[],
+  elements: string[],
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  opts: { nPoints?: number; width?: number } = {},
+): Promise<CompositionProfileResult> {
+  return post("/api/analyze/composition-profile", {
+    image_id: mapIds[0] ?? "",
+    map_ids: mapIds,
+    elements,
+    x1: a.x + 1,   // 0-based → 1-based
+    y1: a.y + 1,
+    x2: b.x + 1,
+    y2: b.y + 1,
+    n_points: opts.nPoints ?? 200,
+    width: opts.width ?? 1,
+  });
+}
+
+// ── A5 ELNES ────────────────────────────────────────────────────────
+
+export interface ElnesResult {
+  relative_energy: number[];
+  intensity: number[];
+  edge_jump: number;
+  edge_onset: number;
+  background_params: Record<string, number>;
+  reference_energy?: number[];
+  reference_intensity?: number[];
+}
+
+export function analyzeElnes(
+  id: string,
+  edgeOnset: number,
+  fitWindow: [number, number],
+  opts: {
+    elnesWindow?: [number, number];
+    method?: string;
+    normalize?: boolean;
+    referenceId?: string;
+  } = {},
+): Promise<ElnesResult> {
+  return post("/api/analyze/elnes", {
+    image_id: id,
+    edge_onset: edgeOnset,
+    fit_window: fitWindow,
+    elnes_window: opts.elnesWindow ?? [0, 30],
+    method: opts.method ?? "powerlaw",
+    normalize: opts.normalize ?? true,
+    reference_id: opts.referenceId ?? null,
+  });
+}
+
+// ── A8 Simulate + phase list ─────────────────────────────────────────
+
+export interface PhaseInfo {
+  name: string;
+  formula: string;
+  category: string;
+}
+
+export async function listDiffractionPhases(): Promise<PhaseInfo[]> {
+  const r = await json<{ phases: PhaseInfo[] }>(
+    await fetch("/api/diffraction/phases"),
+  );
+  return r.phases;
+}
+
+export interface SimSpot {
+  hkl: [number, number, number];
+  d_spacing: number | null;
+  intensity: number;
+  row: number;
+  col: number;
+}
+
+export interface SimulateResult {
+  phase: string;
+  formula: string;
+  zone_axis: [number, number, number];
+  lam_angstrom: number;
+  spots: SimSpot[];
+  image: ImageMeta | null;
+}
+
+export function analyzeDiffractionSimulate(
+  phaseName: string,
+  zoneAxis: [number, number, number],
+  opts: {
+    accVoltage?: number;
+    cameraLength?: number;
+    pixelSize?: number;
+    imageSize?: [number, number];
+    parentImageId?: string;
+  } = {},
+): Promise<SimulateResult> {
+  return post("/api/analyze/simulate", {
+    phase_name: phaseName,
+    zone_axis: zoneAxis,
+    acc_voltage: opts.accVoltage ?? 200,
+    camera_length: opts.cameraLength ?? 200,
+    pixel_size: opts.pixelSize ?? 0.05,
+    image_size: opts.imageSize ?? [512, 512],
+    parent_image_id: opts.parentImageId ?? null,
+  });
+}
+
+// ── A44 EDS auto-assign ──────────────────────────────────────────────
+
+export interface EdsAutoAssignResult {
+  peaks_kev: number[];
+  assignments: { peak_kev: number; candidates: { symbol: string; line: string; energy_kev: number; delta_kev: number }[] }[];
+}
+
+export function edsAutoAssign(
+  id: string,
+  opts: { toleranceKev?: number; threshold?: number } = {},
+): Promise<EdsAutoAssignResult> {
+  return post("/api/eds/auto-assign", {
+    image_id: id,
+    tolerance_kev: opts.toleranceKev ?? 0.15,
+    threshold: opts.threshold ?? 0.05,
+  });
+}
+
+// ── #34 Tilt-corrected distance ──────────────────────────────────────
+
+export interface TiltDistanceResult {
+  raw_px: number;
+  raw_calibrated: number | null;
+  corrected_px: number;
+  corrected_calibrated: number | null;
+  unit: string;
+  tilt_angle_deg: number;
+  tilt_axis: string;
+  geometry: string;
+}
+
+export function measureDistanceTilted(
+  id: string,
+  x1: number, y1: number,
+  x2: number, y2: number,
+  opts: {
+    tiltAngleDeg?: number;
+    tiltAxis?: "X" | "Y";
+    geometry?: "cross-section" | "surface";
+  } = {},
+): Promise<TiltDistanceResult> {
+  return post("/api/measure/distance-tilted", {
+    image_id: id,
+    x1: x1 + 1, y1: y1 + 1,
+    x2: x2 + 1, y2: y2 + 1,
+    tilt_angle_deg: opts.tiltAngleDeg ?? 0,
+    tilt_axis: opts.tiltAxis ?? "Y",
+    geometry: opts.geometry ?? "cross-section",
+  });
+}
+
 // ── workspace persistence ───────────────────────────────────────────
 
 export interface SessionClientState {
