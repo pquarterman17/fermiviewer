@@ -12,14 +12,122 @@ import numpy as np
 from scipy.ndimage import map_coordinates
 
 __all__ = [
+    "DistanceResult",
     "InterfaceFit",
     "azimuthal_integrate",
     "fit_interface_width",
     "line_profile",
+    "measure_distance",
     "polyline_profile",
     "radial_profile",
     "roi_stats",
 ]
+
+
+@dataclass(frozen=True)
+class DistanceResult:
+    raw_px: float
+    corrected_px: float
+    raw_calibrated: float | None    # None when uncalibrated
+    corrected_calibrated: float | None
+    unit: str                       # physical unit string, 'px' when uncalibrated
+    tilt_angle_deg: float
+    tilt_axis: str
+    geometry: str
+
+
+def measure_distance(
+    x1: float, y1: float,
+    x2: float, y2: float,
+    pixel_size: float = float("nan"),
+    pixel_unit: str = "px",
+    tilt_angle_deg: float = 0.0,
+    tilt_axis: str = "Y",
+    geometry: str = "cross-section",
+) -> DistanceResult:
+    """Euclidean distance between two points with optional tilt correction.
+
+    Port of imaging.measureDistance.m (verbatim geometry, validator, and
+    correction logic).
+
+    Formula
+    -------
+    Let dx = X2 - X1, dy = Y2 - Y1. When tilt_angle_deg != 0, the
+    in-tilt-axis component is scaled::
+
+        cross-section (FIB): dy *= 1/sin(theta)   (TiltAxis='Y')
+        surface (plan-view):  dy *= 1/cos(theta)
+
+    Then: corrected_px = sqrt(dx^2 + dy^2).
+
+    Parameters
+    ----------
+    x1, y1 : start point (column, row) in 1-based pixel coordinates
+    x2, y2 : end   point (column, row) in 1-based pixel coordinates
+    pixel_size : nm (or other unit) per pixel; NaN → uncalibrated
+    pixel_unit : unit label ('nm', 'um', etc.)
+    tilt_angle_deg : stage tilt in degrees; must be in (-90, 90) exclusive
+    tilt_axis : 'Y' (row axis, default) or 'X' (column axis)
+    geometry : 'cross-section' (1/sin, default) or 'surface' (1/cos)
+
+    Returns
+    -------
+    DistanceResult with raw and corrected distances in pixels and in
+    calibrated units (None when uncalibrated).
+
+    Examples
+    --------
+    >>> r = measure_distance(0, 0, 3, 4)          # 3-4-5 triangle
+    >>> r.raw_px
+    5.0
+    >>> r = measure_distance(0, 0, 0, 10, tilt_angle_deg=30)  # cross-section
+    >>> round(r.corrected_px, 4)   # 10 / sin(30) = 20.0
+    20.0
+
+    References
+    ----------
+    Goldstein et al., "Scanning Electron Microscopy and X-Ray Microanalysis",
+    4th ed., Springer 2018, ch. 4 (geometric distortions).
+    Giannuzzi & Stevie, "Introduction to Focused Ion Beams", Springer 2005,
+    ch. 10 (cross-section metrology).
+    """
+    if not (-90 < tilt_angle_deg < 90):
+        raise ValueError("tilt_angle_deg must be in (-90, 90) exclusive")
+    axis = tilt_axis.upper()
+    if axis not in ("X", "Y"):
+        raise ValueError("tilt_axis must be 'X' or 'Y'")
+    geom = geometry.lower().replace("-", "").replace("_", "")
+
+    dx = float(x2 - x1)
+    dy = float(y2 - y1)
+    raw_px = float(np.hypot(dx, dy))
+
+    if tilt_angle_deg != 0.0:
+        if geom == "surface":
+            scale = 1.0 / np.cos(np.deg2rad(tilt_angle_deg))
+        else:                        # 'crosssection'
+            scale = 1.0 / np.sin(np.deg2rad(tilt_angle_deg))
+        if axis == "Y":
+            dy *= scale
+        else:
+            dx *= scale
+    corrected_px = float(np.hypot(dx, dy))
+
+    calibrated = np.isfinite(pixel_size)
+    raw_cal = raw_px * pixel_size if calibrated else None
+    corr_cal = corrected_px * pixel_size if calibrated else None
+    unit = pixel_unit if calibrated else "px"
+
+    return DistanceResult(
+        raw_px=raw_px,
+        corrected_px=corrected_px,
+        raw_calibrated=raw_cal,
+        corrected_calibrated=corr_cal,
+        unit=unit,
+        tilt_angle_deg=tilt_angle_deg,
+        tilt_axis=axis,
+        geometry=geometry,
+    )
 
 
 def line_profile(

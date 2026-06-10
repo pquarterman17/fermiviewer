@@ -2,6 +2,9 @@
 
 Thin adapters over calc/ — spectra cross the wire as JSON arrays (uPlot
 sized), maps register as derived images and return ImageMeta.
+
+A3/A4/A5/A8 wire-up endpoints live in routes/analysis_wireups.py to
+keep this module under the 500-line god-module ceiling.
 """
 
 from __future__ import annotations

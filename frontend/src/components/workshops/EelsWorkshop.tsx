@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import uPlot from "uplot";
 
 import {
+  analyzeElnes,
   eelsBackground,
   eelsMap,
   eelsQuantify,
@@ -14,6 +15,7 @@ import {
   type EelsBackgroundResult,
   type EelsEdge,
   type EelsQuantResult,
+  type ElnesResult,
   type Spectrum,
 } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
@@ -52,6 +54,7 @@ export default function EelsWorkshop() {
   const [sigHi, setSigHi] = useState("");
   const [edges, setEdges] = useState<EdgeRow[]>([]);
   const [quant, setQuant] = useState<EelsQuantResult | null>(null);
+  const [elnes, setElnes] = useState<ElnesResult | null>(null);
   const [showEdges, setShowEdges] = useState(false);
   const [explore, setExplore] = useState(false);
   const [region, setRegion] = useState<Rect1 | null>(null);
@@ -237,6 +240,31 @@ export default function EelsWorkshop() {
       .catch((e: Error) => setStatus(`EELS maps: ${e.message}`));
   };
 
+  const runElnes = () => {
+    if (!activeId || edges.length === 0) {
+      setStatus("ELNES: add an edge row first to define edge_onset");
+      return;
+    }
+    const edge = edges[edges.length - 1];
+    const onset = edge.onset_ev || 0;
+    if (onset <= 0) {
+      setStatus("ELNES: set edge onset (eV) in the edge row first");
+      return;
+    }
+    const fitWin: [number, number] = [
+      edge.bg_window[0] || onset - 100,
+      edge.bg_window[1] || onset - 10,
+    ];
+    analyzeElnes(activeId, onset, fitWin)
+      .then((r) => {
+        setElnes(r);
+        setStatus(
+          `ELNES: jump ${r.edge_jump.toExponential(2)} · onset ${r.edge_onset.toFixed(1)} eV`,
+        );
+      })
+      .catch((e: Error) => setStatus(`ELNES: ${e.message}`));
+  };
+
   if (!spectral) {
     return (
       <div className="fvd-ws-empty">
@@ -325,7 +353,22 @@ export default function EelsWorkshop() {
         >
           Maps
         </button>
+        <button
+          className="fvd-btn"
+          title="ELNES fine-structure extraction (uses last edge row's onset + bg window)"
+          onClick={runElnes}
+          disabled={edges.length === 0}
+        >
+          ELNES
+        </button>
       </div>
+      {elnes && (
+        <div className="fvd-ws-note">
+          ELNES · edge jump {elnes.edge_jump.toExponential(2)} · onset{" "}
+          {elnes.edge_onset.toFixed(1)} eV ·{" "}
+          {elnes.relative_energy.length} pts
+        </div>
+      )}
       {edges.map((row, i) => (
         <EdgeEditor
           key={row.key}

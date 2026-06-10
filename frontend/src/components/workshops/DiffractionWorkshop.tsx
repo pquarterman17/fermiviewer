@@ -4,10 +4,14 @@
 import { useEffect, useRef, useState } from "react";
 
 import {
+  analyzeDiffractionSimulate,
   diffractionDetect,
   diffractionIndex,
+  listDiffractionPhases,
   renderUrl,
   type PhaseCandidate,
+  type PhaseInfo,
+  type SimulateResult,
 } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
 
@@ -50,6 +54,11 @@ export default function DiffractionWorkshop() {
   const [candidates, setCandidates] = useState<PhaseCandidate[]>([]);
   const [rings, setRings] = useState(false);
   const [busy, setBusy] = useState(false);
+  // A8 simulate
+  const [phases, setPhases] = useState<PhaseInfo[]>([]);
+  const [simPhase, setSimPhase] = useState("");
+  const [simZa, setSimZa] = useState("0 0 1");
+  const [simResult, setSimResult] = useState<SimulateResult | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(
     null,
@@ -62,6 +71,16 @@ export default function DiffractionWorkshop() {
     setCandidates([]);
     setNatural(null);
   }, [activeId]);
+
+  // Load the phase list once (static catalog from the backend)
+  useEffect(() => {
+    listDiffractionPhases()
+      .then((list) => {
+        setPhases(list);
+        if (list.length > 0) setSimPhase(list[0].name);
+      })
+      .catch(() => undefined);
+  }, []);
 
   const detect = () => {
     if (!activeId) return;
@@ -88,6 +107,31 @@ export default function DiffractionWorkshop() {
     })
       .then((r) => setCandidates(r.candidates))
       .catch((e: Error) => setStatus(`index: ${e.message}`))
+      .finally(() => setBusy(false));
+  };
+
+  const simulate = () => {
+    if (!simPhase) return;
+    const parts = simZa.trim().split(/\s+/).map(Number);
+    if (parts.length !== 3 || parts.some(isNaN)) {
+      setStatus("Simulate: zone axis must be three integers, e.g. 0 0 1");
+      return;
+    }
+    setBusy(true);
+    analyzeDiffractionSimulate(simPhase, parts as [number, number, number], {
+      parentImageId: activeId ?? undefined,
+    })
+      .then((r) => {
+        setSimResult(r);
+        setStatus(
+          `sim: ${r.phase} [${r.zone_axis.join(" ")}] · ` +
+            `${r.spots.length} spots · λ ${r.lam_angstrom.toFixed(4)} Å`,
+        );
+        if (r.image) {
+          useViewer.getState().ingestDerived([r.image]);
+        }
+      })
+      .catch((e: Error) => setStatus(`simulate: ${e.message}`))
       .finally(() => setBusy(false));
   };
 
@@ -224,6 +268,69 @@ export default function DiffractionWorkshop() {
             ))}
           </tbody>
         </table>
+      )}
+
+      {/* A8 — Kinematic zone-axis simulation */}
+      <div className="fvd-ws-section">
+        <span>Simulate (A8)</span>
+      </div>
+      <div className="fvd-ws-row">
+        <span className="k">Phase</span>
+        <select
+          value={simPhase}
+          style={{ flex: 1 }}
+          onChange={(e) => setSimPhase(e.target.value)}
+        >
+          {phases.map((p) => (
+            <option key={p.name} value={p.name} title={p.formula}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="fvd-ws-row">
+        <span className="k">Zone axis</span>
+        <input
+          value={simZa}
+          style={{ width: 80 }}
+          placeholder="0 0 1"
+          onChange={(e) => setSimZa(e.target.value)}
+        />
+        <button
+          className="fvd-btn"
+          onClick={simulate}
+          disabled={busy || !simPhase}
+        >
+          Simulate
+        </button>
+      </div>
+      {simResult && (
+        <>
+          <div className="fvd-ws-note">
+            {simResult.phase} ({simResult.formula}) [{simResult.zone_axis.join(" ")}
+            ] · {simResult.spots.length} spots · λ{" "}
+            {simResult.lam_angstrom.toFixed(4)} Å
+            {simResult.image && " · pattern added to library"}
+          </div>
+          <table className="fvd-ws-table">
+            <thead>
+              <tr>
+                <th>hkl</th>
+                <th>d (Å)</th>
+                <th>I</th>
+              </tr>
+            </thead>
+            <tbody>
+              {simResult.spots.slice(0, 12).map((s, i) => (
+                <tr key={i}>
+                  <td>[{s.hkl.join(" ")}]</td>
+                  <td>{s.d_spacing != null ? s.d_spacing.toFixed(3) : "—"}</td>
+                  <td>{s.intensity.toFixed(3)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
       )}
     </div>
   );
