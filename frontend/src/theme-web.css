@@ -433,6 +433,75 @@ details.fvd-card:not([open]) > summary {
   color: #f43f5e;
 }
 
+.fvd-ctx-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+
+.fvd-ctx-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 3px 4px;
+}
+
+.fvd-ctx-label {
+  padding: 3px 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.5;
+  display: block;
+}
+
+.fvd-ctx-sym-row {
+  display: flex;
+  gap: 2px;
+  padding: 2px 6px 4px;
+}
+
+.fvd-ctx-sym {
+  flex: 1;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+  font-size: 14px;
+  padding: 3px 0;
+  cursor: pointer;
+}
+
+.fvd-ctx-sym.active {
+  background: var(--capture-soft);
+  border-color: var(--capture);
+  color: var(--capture);
+}
+
+.fvd-sb-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.fvd-sb-presets .fvd-seg-btn {
+  font-size: 10px;
+  padding: 2px 5px;
+}
+
+.fvd-sb-spin {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.fvd-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
 .fvd-colorbar {
   position: absolute;
   right: 10px;
@@ -540,23 +609,81 @@ details.fvd-card:not([open]) > summary {
 
 .fvd-scalebar {
   position: absolute;
-  bottom: 44px;
-  left: 14px;
   pointer-events: none;
   color: var(--overlay-color, #fff);
+  /* legacy default placement — overridden by inline style when draggable */
+  bottom: 44px;
+  left: 14px;
+}
+
+.fvd-scalebar-drag {
+  /* when the bar is repositioned via drag, bottom/left are replaced
+     by explicit left/top from the store (inline style) */
+  bottom: unset;
+  left: unset;
+  pointer-events: all;
+  cursor: move;
+  user-select: none;
 }
 
 .fvd-scalebar .bar {
-  height: 3px;
   background: currentColor;
   border-radius: 1px;
 }
 
 .fvd-scalebar .label {
   font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
+  font-size: inherit;
   margin-top: 3px;
   text-shadow: 0 1px 3px rgb(0 0 0 / 0.7);
+}
+
+.fvd-fixed-zoom-badge {
+  position: absolute;
+  top: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  z-index: 10;
+  pointer-events: all;
+  font-size: var(--font-size-sm);
+}
+
+.fvd-fixed-zoom-badge input {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 2px 4px;
+  font-size: var(--font-size-sm);
+}
+
+.fvd-text-faint {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.fvd-stack-stepper {
+  position: absolute;
+  bottom: 44px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  z-index: 10;
+  pointer-events: all;
+}
+
+.fvd-stack-label {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  min-width: 60px;
+  text-align: center;
 }
 
 .fvd-stage-empty {
@@ -1222,6 +1349,12 @@ details.fvd-card:not([open]) > summary {
 .fvd-ws-row .k {
   color: var(--text-faint);
   white-space: nowrap;
+}
+
+.fvd-ws-hint {
+  color: var(--text-faint);
+  font-size: 10px;
+  font-style: italic;
 }
 
 .fvd-ws-row input,

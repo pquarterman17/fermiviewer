@@ -60,6 +60,8 @@ export type MeasureKind =
   | "box"
   | "circle";
 
+export type EndSymbol = "circle" | "cross" | "square" | "none";
+
 /** Points are normalized 0–1 image coords (handoff §6) so measures
  *  survive crops/derived images of the same aspect. */
 export interface Measure {
@@ -73,6 +75,8 @@ export interface Measure {
   /** dragged label offset in screen px (from the default anchor) */
   labelDx?: number;
   labelDy?: number;
+  /** endpoint glyph override (falls back to overlay style default) */
+  endSymbol?: EndSymbol;
 }
 
 /** Undoable mutations (Edit menu / ⌘Z). Derived-image entries remove
@@ -108,9 +112,22 @@ const UNDO_CAP = 99;
 export interface OverlayStyle {
   size: "S" | "M" | "L" | "XL";
   color: string;
+  endSymbol: EndSymbol;
 }
 
-export type CaptureMode = "none" | "zoom" | MeasureKind;
+/** Per-image scale bar display overrides.
+ *  x/y are fractional positions 0–1 relative to the stage viewport
+ *  (default bottom-left ≈ 0.02, 0.92).
+ *  lengthPhys null means auto (nice-number); thickness/fontSize null = auto. */
+export interface ScaleBarState {
+  x: number;          // normalized stage x (0 = left, 1 = right)
+  y: number;          // normalized stage y (0 = top, 1 = bottom)
+  lengthPhys: number | null;  // physical length override (in pixel_unit)
+  thickness: number | null;   // bar thickness in screen px (null = auto)
+  fontSize: number | null;    // label font size in px (null = auto)
+}
+
+export type CaptureMode = "none" | "zoom" | "fixed-zoom" | MeasureKind;
 export type Theme = "dark" | "light";
 export type ListView = "thumbs" | "names";
 export type CompareMode = "split" | "flicker" | "subtract";
@@ -311,6 +328,13 @@ interface ViewerState {
   // display chrome
   theme: Theme;
   overlay: OverlayStyle; // persisted "fv_overlay"
+  // per-image scale bar position/size overrides
+  scaleBars: Record<string, ScaleBarState>;
+  // per-image stack frame index (0-based; only relevant for spectrum_image)
+  stackFrames: Record<string, number>;
+  /** fixed-zoom dimensions in image pixels (A2 capture mode) */
+  fixedZoomW: number;
+  fixedZoomH: number;
   // tools
   captureMode: CaptureMode;
   panTool: boolean;
@@ -320,6 +344,7 @@ interface ViewerState {
   rightCol: boolean;
   minimap: boolean;
   colorbar: boolean;
+  scaleBarVisible: boolean;
   cmdk: boolean;
   shorts: boolean;
   radial: { x: number; y: number } | null;
@@ -362,7 +387,7 @@ interface ViewerState {
   setMeasureStyle: (
     imageId: string,
     measureId: string,
-    patch: Partial<Pick<Measure, "color" | "labelDx" | "labelDy">>,
+    patch: Partial<Pick<Measure, "color" | "labelDx" | "labelDy" | "endSymbol">>,
   ) => void;
   /** marquee multi-selection (shift-drag on the stage) */
   selectedMulti: string[];
@@ -375,11 +400,15 @@ interface ViewerState {
   setPanTool: (on: boolean) => void;
   setProfileWidth: (w: number) => void;
   setOverlay: (patch: Partial<OverlayStyle>) => void;
+  setScaleBar: (imageId: string, patch: Partial<ScaleBarState>) => void;
+  setStackFrame: (imageId: string, frame: number) => void;
+  setFixedZoomDims: (w: number, h: number) => void;
   toggleTheme: () => void;
   toggleLeft: () => void;
   toggleRight: () => void;
   toggleMinimap: () => void;
   toggleColorbar: () => void;
+  toggleScaleBar: () => void;
   setCmdk: (open: boolean) => void;
   setShorts: (open: boolean) => void;
   setRadial: (at: { x: number; y: number } | null) => void;
@@ -415,13 +444,18 @@ export const useViewer = create<ViewerState>((set, get) => ({
     document.documentElement.setAttribute("data-theme", t);
     return t;
   })(),
-  overlay: loadJson<OverlayStyle>(OVERLAY_KEY, { size: "M", color: "#ffffff" }),
+  overlay: loadJson<OverlayStyle>(OVERLAY_KEY, { size: "M", color: "#ffffff", endSymbol: "none" }),
+  scaleBars: {},
+  stackFrames: {},
+  fixedZoomW: 256,
+  fixedZoomH: 256,
   captureMode: "none",
   panTool: false,
   profileWidth: _pref("profileWidth", 1),
   leftCol: false,
   minimap: _pref("minimap", true),
   colorbar: false,
+  scaleBarVisible: true,
   rightCol: false,
   cmdk: false,
   shorts: false,
@@ -755,6 +789,19 @@ export const useViewer = create<ViewerState>((set, get) => ({
     set({ overlay });
   },
 
+  setScaleBar: (imageId, patch) =>
+    set((s) => {
+      const prev = s.scaleBars[imageId] ?? {
+        x: 0.02, y: 0.92, lengthPhys: null, thickness: null, fontSize: null,
+      };
+      return { scaleBars: { ...s.scaleBars, [imageId]: { ...prev, ...patch } } };
+    }),
+
+  setStackFrame: (imageId, frame) =>
+    set((s) => ({ stackFrames: { ...s.stackFrames, [imageId]: frame } })),
+
+  setFixedZoomDims: (fixedZoomW, fixedZoomH) => set({ fixedZoomW, fixedZoomH }),
+
   toggleTheme: () => {
     const theme: Theme = get().theme === "dark" ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", theme);
@@ -766,6 +813,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   toggleRight: () => set((s) => ({ rightCol: !s.rightCol })),
   toggleMinimap: () => set((s) => ({ minimap: !s.minimap })),
   toggleColorbar: () => set((s) => ({ colorbar: !s.colorbar })),
+  toggleScaleBar: () => set((s) => ({ scaleBarVisible: !s.scaleBarVisible })),
   setCmdk: (cmdk) => set({ cmdk }),
   setShorts: (shorts) => set({ shorts }),
   setRadial: (radial) => set({ radial }),

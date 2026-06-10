@@ -719,6 +719,11 @@ export default function MenuBar({
         action: store.toggleMinimap,
       },
       {
+        label: store.scaleBarVisible ? "Hide Scale Bar" : "Show Scale Bar",
+        disabled: !store.activeId,
+        action: store.toggleScaleBar,
+      },
+      {
         label: "Image Gallery",
         shortcut: "V",
         disabled: store.order.length === 0,

@@ -59,6 +59,8 @@ export default function DiffractionWorkshop() {
   const [simPhase, setSimPhase] = useState("");
   const [simZa, setSimZa] = useState("0 0 1");
   const [simResult, setSimResult] = useState<SimulateResult | null>(null);
+  // A7 manual click-spots
+  const [clickMode, setClickMode] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(
     null,
@@ -146,6 +148,29 @@ export default function DiffractionWorkshop() {
   const scale = natural ? VIEW_W / natural.w : 0;
   const viewH = natural ? natural.h * scale : VIEW_W;
 
+  // A7: manual click — add spot on click, remove if within 6px of existing
+  const HIT_R = 6;
+  const onPatternClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (!clickMode || !natural || scale === 0) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const sx = e.clientX - r.left;
+    const sy = e.clientY - r.top;
+    // convert display px → 1-based (row, col) image coords
+    const col = sx / scale + 0.5;
+    const row = sy / scale + 0.5;
+    const hit = spots.findIndex(([sr, sc]) => {
+      const dx = (sc - col) * scale;
+      const dy = (sr - row) * scale;
+      return Math.hypot(dx, dy) <= HIT_R;
+    });
+    if (hit >= 0) {
+      // remove existing spot
+      setSpots(spots.filter((_, i) => i !== hit));
+    } else {
+      setSpots([...spots, [row, col]]);
+    }
+  };
+
   return (
     <div className="fvd-ws">
       <div className="fvd-ws-pattern" style={{ width: VIEW_W, height: viewH }}>
@@ -163,17 +188,23 @@ export default function DiffractionWorkshop() {
           />
         )}
         {natural && (
-          <svg width={VIEW_W} height={viewH}>
+          <svg
+            width={VIEW_W}
+            height={viewH}
+            onClick={onPatternClick}
+            style={{ cursor: clickMode ? "crosshair" : "default" }}
+          >
             {spots.map(([r, c], i) => (
               <circle
                 key={i}
                 // backend spots are 1-based (row, col)
                 cx={(c - 0.5) * scale}
                 cy={(r - 0.5) * scale}
-                r={4}
-                fill="none"
+                r={clickMode ? 6 : 4}
+                fill={clickMode ? "rgba(var(--capture-rgb,53,224,194),0.2)" : "none"}
                 stroke="var(--capture)"
                 strokeWidth={1.5}
+                style={{ cursor: clickMode ? "pointer" : "default" }}
               />
             ))}
             {rings &&
@@ -217,6 +248,23 @@ export default function DiffractionWorkshop() {
           />
           Rings
         </label>
+      </div>
+      <div className="fvd-ws-row">
+        <button
+          className={`fvd-btn${clickMode ? " active" : ""}`}
+          onClick={() => setClickMode((v) => !v)}
+          title="Click spots manually on the pattern preview (A7)"
+        >
+          {clickMode ? "Done Clicking" : "Click Spots"}
+        </button>
+        {clickMode && (
+          <span className="fvd-ws-hint">
+            Click to add · click existing to remove
+          </span>
+        )}
+        {spots.length > 0 && !clickMode && (
+          <span className="fvd-ws-hint">{spots.length} spots</span>
+        )}
       </div>
       <div className="fvd-ws-row">
         <span className="k">px (mm)</span>

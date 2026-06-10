@@ -107,6 +107,54 @@ def test_scale_bar_baking(client, img_id) -> None:
     assert (a != b).any(axis=2).sum() > 20  # bar + label pixels differ
 
 
+def test_scale_bar_custom_geometry(client, img_id) -> None:
+    """Custom norm_x/y and length_phys honour overrides without breaking
+    existing golden/export tests (all defaults remain backward-compatible)."""
+    # default bar — bottom-left
+    default = np.asarray(
+        Image.open(
+            io.BytesIO(
+                client.post(
+                    "/api/export",
+                    json={
+                        "image_id": img_id,
+                        "format": "png",
+                        "scale": 4,
+                        "include": ["scale_bar"],
+                    },
+                ).content
+            )
+        )
+    )
+    # custom bar — top-right corner (norm_x=0.7, norm_y=0.1)
+    custom = np.asarray(
+        Image.open(
+            io.BytesIO(
+                client.post(
+                    "/api/export",
+                    json={
+                        "image_id": img_id,
+                        "format": "png",
+                        "scale": 4,
+                        "include": ["scale_bar"],
+                        "scale_bar_norm_x": 0.7,
+                        "scale_bar_norm_y": 0.1,
+                        "scale_bar_length_phys": 1.0,
+                        "scale_bar_thickness": 4,
+                    },
+                ).content
+            )
+        )
+    )
+    # images must differ (bar is in different location)
+    assert (default != custom).any()
+    # custom thickness=4 means 4 white rows somewhere near the top half
+    # (the bar is white in a gray image; verify some white pixels exist
+    # in the upper portion of the image)
+    top_half = custom[: custom.shape[0] // 2, :, :]
+    assert (top_half == 255).any()
+
+
 def test_jpeg_and_errors(client, img_id) -> None:
     r = client.post(
         "/api/export", json={"image_id": img_id, "format": "jpeg"}
@@ -328,6 +376,69 @@ def test_colorbar_baking(client, img_id) -> None:
         "include": ["colorbar"], "cmap": "viridis",
     }).content.decode()
     assert svg.count("base64,") == 2        # image + strip
+
+
+def test_end_symbol_baking_png(client, img_id) -> None:
+    """Endpoint glyphs differ from no-glyph for each symbol kind (PIL path)."""
+    base_body = {
+        "image_id": img_id, "format": "png", "scale": 4,
+        "include": ["measurements"],
+        "measures": [{"kind": "distance",
+                      "pts": [{"x": 0.2, "y": 0.5}, {"x": 0.8, "y": 0.5}]}],
+    }
+    no_glyph = np.asarray(Image.open(io.BytesIO(
+        client.post("/api/export", json={**base_body}).content
+    )))
+    for sym in ("circle", "square", "cross"):
+        body = dict(base_body)
+        body["measures"] = [{"kind": "distance",
+                              "pts": [{"x": 0.2, "y": 0.5},
+                                      {"x": 0.8, "y": 0.5}],
+                              "endSymbol": sym}]
+        arr = np.asarray(Image.open(io.BytesIO(
+            client.post("/api/export", json=body).content
+        )))
+        # with a glyph the images must differ from none
+        assert (arr != no_glyph).any(), f"glyph '{sym}' produced no difference"
+
+
+def test_end_symbol_baking_svg(client, img_id) -> None:
+    """Endpoint glyphs appear in SVG output for each symbol kind."""
+    body = {
+        "image_id": img_id, "format": "svg", "scale": 2,
+        "include": ["measurements"],
+        "measures": [{"kind": "distance",
+                      "pts": [{"x": 0.2, "y": 0.5}, {"x": 0.8, "y": 0.5}],
+                      "endSymbol": "circle"}],
+    }
+    svg = client.post("/api/export", json=body).content.decode()
+    # endpoint circles added (there is already a distance <line>)
+    assert svg.count("<circle") == 2  # one per endpoint
+
+    body["measures"][0]["endSymbol"] = "square"  # type: ignore[index]
+    svg = client.post("/api/export", json=body).content.decode()
+    # two endpoint rects — in addition to the distance line
+    assert svg.count("<rect") == 2
+
+    body["measures"][0]["endSymbol"] = "cross"  # type: ignore[index]
+    svg = client.post("/api/export", json=body).content.decode()
+    # 2 endpoints × 2 lines per cross = 4 lines total (distance line + 4 cross lines)
+    # (distance line also counts as <line>): 1 + 2*2 = 5
+    assert svg.count("<line") == 5
+
+
+def test_end_symbol_none_unchanged(client, img_id) -> None:
+    """endSymbol=none produces the same bytes as omitting the field."""
+    base_measures = [{"kind": "distance",
+                      "pts": [{"x": 0.1, "y": 0.3}, {"x": 0.9, "y": 0.7}]}]
+    none_measures = [{"kind": "distance",
+                      "pts": [{"x": 0.1, "y": 0.3}, {"x": 0.9, "y": 0.7}],
+                      "endSymbol": "none"}]
+    common = {"image_id": img_id, "format": "png", "scale": 2,
+              "include": ["measurements"]}
+    r_base = client.post("/api/export", json={**common, "measures": base_measures})
+    r_none = client.post("/api/export", json={**common, "measures": none_measures})
+    assert r_base.content == r_none.content
 
 
 def test_batch_export_zip(client, tmp_path) -> None:

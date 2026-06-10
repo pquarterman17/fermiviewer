@@ -11,6 +11,7 @@ import EelsWorkshop from "../workshops/EelsWorkshop";
 import AdjustPanel from "./AdjustPanel";
 import Card from "./Card";
 import MeasurePanel from "./MeasurePanel";
+import ScaleBarCard from "./ScaleBarCard";
 
 const TABS = ["Image", "EELS", "EDS", "Diff"] as const;
 type Tab = (typeof TABS)[number];
@@ -144,6 +145,7 @@ export default function Inspector() {
       )}
       {tab === "Image" && meta.kind !== "spectrum" && <AdjustPanel />}
       {tab === "Image" && <MeasurePanel />}
+      {tab === "Image" && <ScaleBarCard />}
       {tab === "Image" && (
         <Card title="Image">
           {rows.map(([k, v]) => (

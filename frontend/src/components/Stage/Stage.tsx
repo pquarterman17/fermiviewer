@@ -9,6 +9,7 @@ import {
   useImperativeHandle,
   useRef,
   useState,
+  type RefObject,
 } from "react";
 
 import { GLRenderer } from "../../gl/render";
@@ -40,6 +41,12 @@ import ColorbarChip from "./ColorbarChip";
 import DockPlot from "./DockPlot";
 import MeasureOverlay from "./MeasureOverlay";
 import Minimap from "./Minimap";
+import {
+  ScaleBarCtxMenu,
+  EmptyAreaCtxMenu,
+  buildCtxTarget,
+  type CtxTarget,
+} from "./StageCtxMenu";
 
 export interface StageHandle {
   fit: () => void;
@@ -114,12 +121,17 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   );
   const setView = useViewer((s) => s.setView);
   const setDisplay = useViewer((s) => s.setDisplay);
+  const stackFrame = useViewer((s) =>
+    s.activeId ? (s.stackFrames[s.activeId] ?? 0) : 0,
+  );
+  const setStackFrame = useViewer((s) => s.setStackFrame);
   const captureMode = useViewer((s) => s.captureMode);
   const setCaptureMode = useViewer((s) => s.setCaptureMode);
+  const fixedZoomW = useViewer((s) => s.fixedZoomW);
+  const fixedZoomH = useViewer((s) => s.fixedZoomH);
   const panTool = useViewer((s) => s.panTool);
   const addMeasure = useViewer((s) => s.addMeasure);
   const setRoiStats = useViewer((s) => s.setRoiStats);
-  const setRadial = useViewer((s) => s.setRadial);
   const setStatus = useViewer((s) => s.setStatus);
   const setCursor = useStageInfo((s) => s.setCursor);
   const setZoom = useStageInfo((s) => s.setZoom);
@@ -128,12 +140,15 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const scaleBarRef = useRef<HTMLDivElement>(null) as RefObject<HTMLDivElement>;
   const glRef = useRef<GLRenderer | null>(null);
   const [vp, setVp] = useState<Size>({ w: 0, h: 0 });
   const [imgSize, setImgSize] = useState<Size | null>(null);
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [panning, setPanning] = useState(false);
   const [marquee, setMarquee] = useState<{ a: Pt; b: Pt } | null>(null);
+  const [stageCtx, setStageCtx] = useState<CtxTarget | null>(null);
+  const [nFrames, setNFrames] = useState<number | null>(null);
   // in-progress click-capture (image-space pts; last pt tracks cursor)
   const [pending, setPending] = useState<{
     kind: Measure["kind"];
@@ -171,6 +186,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   }, []);
 
   // ── load active image (raw uint16 → GPU) ──
+  // Depends on stackFrame so re-fetches when frame index changes.
   useEffect(() => {
     setImgSize(null);
     setPending(null);
@@ -181,13 +197,16 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       glRef.current?.clear();
       return;
     }
+    const isStack = meta?.kind === "spectrum_image";
+    const frameArg = isStack ? stackFrame : undefined;
     let alive = true;
-    fetchData16(activeId)
+    fetchData16(activeId, frameArg)
       .then((r) => {
         if (!alive || !glRef.current) return;
         glRef.current.setImage16(r.data, r.w, r.h);
         rasterRef.current = r;
         setRaster(r);
+        setNFrames(r.nFrames);
         setImgSize({ w: r.w, h: r.h });
         // honor DM-saved display window on first load (checklist I)
         const st = useViewer.getState();
@@ -216,7 +235,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     return () => {
       alive = false;
     };
-  }, [activeId, rasterless, setDisplay, setProfile, setRaster, setStatus]);
+  }, [activeId, rasterless, stackFrame, meta?.kind, setDisplay, setProfile, setRaster, setStatus]);
 
   // ── colormap LUT upload ──
   useEffect(() => {
@@ -276,6 +295,24 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       window.removeEventListener("keyup", up);
     };
   }, []);
+
+  // ── stack frame keyboard navigation ( , / . ) ──
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return;
+      if (!activeId || !nFrames || nFrames < 2) return;
+      if (e.key === "," || e.key === "<") {
+        e.preventDefault();
+        setStackFrame(activeId, Math.max(0, stackFrame - 1));
+      } else if (e.key === "." || e.key === ">") {
+        e.preventDefault();
+        setStackFrame(activeId, Math.min(nFrames - 1, stackFrame + 1));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [activeId, nFrames, stackFrame, setStackFrame]);
 
   // ── cancel pending capture when mode changes / esc ──
   useEffect(() => {
@@ -405,6 +442,17 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     }
     if (e.button !== 0) return;
 
+    if (captureMode === "fixed-zoom" && imgSize) {
+      // A2: click places a fixed W×H box centred at the cursor, then zooms
+      const ip = toImage(p);
+      const hw = fixedZoomW / 2;
+      const hh = fixedZoomH / 2;
+      const a = { x: ip.x - hw, y: ip.y - hh };
+      const b = { x: ip.x + hw, y: ip.y + hh };
+      apply(viewForRect(a, b, imgSize, vp));
+      setCaptureMode("none");
+      return;
+    }
     if (
       captureMode === "zoom" ||
       captureMode === "roi" ||
@@ -516,12 +564,35 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
 
   const onContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
-    setRadial({ x: e.clientX, y: e.clientY });
+    // right-click during an active drag stays inert
+    if (dragRef.current) return;
+    const measures = activeId
+      ? (useViewer.getState().measures[activeId] ?? [])
+      : [];
+    const target = buildCtxTarget(
+      e,
+      scaleBarRef.current,
+      measures,
+      imgSize,
+      view,
+      vp,
+    );
+    if (target.kind === "measure" && target.measureId) {
+      // delegate to MeasureOverlay's own ctx menu by selecting the measure
+      // and synthesising a contextmenu event — instead, just open the
+      // radial which is harmless, OR re-use our empty handler.
+      // The measure's own onContextMenu handler (inside MeasureOverlay)
+      // fires first because it stopPropagates — so this branch only runs
+      // when the click missed all measure handles/labels. Treat as empty.
+      setStageCtx({ kind: "empty", x: target.x, y: target.y });
+    } else {
+      setStageCtx(target);
+    }
   };
 
   const cls = [
     "fvd-stage",
-    captureMode !== "none" ? "box-zoom" : "",
+    captureMode === "fixed-zoom" ? "box-zoom" : captureMode !== "none" ? "box-zoom" : "",
     panning ? "panning" : panTool || spaceHeld ? "pan-ready" : "",
   ]
     .filter(Boolean)
@@ -590,14 +661,46 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
           />
           <Readout />
           {meta?.pixel_size != null && (
-            <ScaleBar
+            <ScaleBarOverlay
+              imageId={activeId}
               pixelSize={meta.pixel_size}
               unit={meta.pixel_unit}
               z={view.z}
+              vp={vp}
+              barRef={scaleBarRef}
             />
           )}
           <DockPlot />
         </>
+      )}
+
+      {captureMode === "fixed-zoom" && (
+        <FixedZoomBadge w={fixedZoomW} h={fixedZoomH} />
+      )}
+      {nFrames && nFrames > 1 && activeId && (
+        <StackStepper
+          imageId={activeId}
+          frame={stackFrame}
+          total={nFrames}
+          onStep={(delta) => {
+            const next = Math.min(nFrames - 1, Math.max(0, stackFrame + delta));
+            setStackFrame(activeId, next);
+          }}
+        />
+      )}
+      {stageCtx?.kind === "scalebar" && (
+        <ScaleBarCtxMenu
+          x={stageCtx.x}
+          y={stageCtx.y}
+          onClose={() => setStageCtx(null)}
+        />
+      )}
+      {stageCtx?.kind === "empty" && (
+        <EmptyAreaCtxMenu
+          x={stageCtx.x}
+          y={stageCtx.y}
+          onClose={() => setStageCtx(null)}
+        />
       )}
     </div>
   );
@@ -624,6 +727,7 @@ function FloatTools() {
   const tools: [string, string, boolean, () => void][] = [
     ["✥", "Hand tool  H", panTool, () => setPanTool(!panTool)],
     ["⬚", "Box zoom  Z", captureMode === "zoom", mode("zoom")],
+    ["⊞", "Fixed Size Zoom  F", captureMode === "fixed-zoom", mode("fixed-zoom")],
     ["↔", "Distance  D", captureMode === "distance", mode("distance")],
     ["∿", "Line profile  L", captureMode === "profile", mode("profile")],
     ["⌇", "Polyline  P", captureMode === "polyline", mode("polyline")],
@@ -695,24 +799,176 @@ function Readout() {
   );
 }
 
-function ScaleBar({
+function ScaleBarOverlay({
+  imageId,
   pixelSize,
   unit,
   z,
+  vp,
+  barRef,
 }: {
+  imageId: string;
   pixelSize: number;
   unit: string;
   z: number;
+  vp: Size;
+  barRef: RefObject<HTMLDivElement>;
 }) {
   const color = useViewer((s) => s.overlay.color);
-  const phys = niceScaleLength((120 * pixelSize) / z);
+  const visible = useViewer((s) => s.scaleBarVisible);
+  const sbState = useViewer((s) => s.scaleBars[imageId]);
+  const setScaleBar = useViewer((s) => s.setScaleBar);
+  const dragRef = useRef<{ startX: number; startY: number; x0: number; y0: number } | null>(null);
+
+  if (!visible) return null;
+
+  // position defaults: bottom-left (2% / 92% of viewport)
+  const normX = sbState?.x ?? 0.02;
+  const normY = sbState?.y ?? 0.92;
+  const leftPx = normX * vp.w;
+  const topPx = normY * vp.h;
+
+  // size
+  const autoPhys = niceScaleLength((120 * pixelSize) / z);
+  const phys = sbState?.lengthPhys ?? autoPhys;
   const widthPx = (phys / pixelSize) * z;
-  const label =
-    phys >= 1 ? `${Number(phys.toPrecision(3))} ${unit}` : fmtSub(phys, unit);
+  const thickness = sbState?.thickness ?? Math.max(2, Math.round(vp.h / 80));
+  const fontSize = sbState?.fontSize ?? 12;
+  const label = phys >= 1
+    ? `${Number(phys.toPrecision(3))} ${unit}`
+    : fmtSub(phys, unit);
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    dragRef.current = { startX: e.clientX, startY: e.clientY, x0: normX, y0: normY };
+    (e.target as Element).setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!dragRef.current || vp.w === 0 || vp.h === 0) return;
+    const dx = (e.clientX - dragRef.current.startX) / vp.w;
+    const dy = (e.clientY - dragRef.current.startY) / vp.h;
+    const nx = Math.min(0.98, Math.max(0, dragRef.current.x0 + dx));
+    const ny = Math.min(0.98, Math.max(0, dragRef.current.y0 + dy));
+    setScaleBar(imageId, { x: nx, y: ny });
+  };
+  const onPointerUp = (e: React.PointerEvent) => {
+    dragRef.current = null;
+    (e.target as Element).releasePointerCapture(e.pointerId);
+  };
+
   return (
-    <div className="fvd-scalebar" style={{ color }}>
-      <div className="bar" style={{ width: widthPx }} />
+    <div
+      ref={barRef}
+      className="fvd-scalebar fvd-scalebar-drag"
+      style={{ color, left: leftPx, top: topPx, fontSize }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+    >
+      <div className="bar" style={{ width: widthPx, height: thickness }} />
       <div className="label">{label}</div>
+    </div>
+  );
+}
+
+// ── Fixed-size zoom badge (item #41 A2) ──────────────────────────────
+
+function FixedZoomBadge({ w, h }: { w: number; h: number }) {
+  const setFixedZoomDims = useViewer((s) => s.setFixedZoomDims);
+  const setCaptureMode = useViewer((s) => s.setCaptureMode);
+  const [wStr, setWStr] = useState(String(w));
+  const [hStr, setHStr] = useState(String(h));
+
+  const apply = () => {
+    const nw = Math.max(1, parseInt(wStr) || w);
+    const nh = Math.max(1, parseInt(hStr) || h);
+    setFixedZoomDims(nw, nh);
+  };
+
+  return (
+    <div className="fvd-glass fvd-fixed-zoom-badge">
+      <span>Fixed Zoom</span>
+      <input
+        value={wStr}
+        style={{ width: 44 }}
+        onChange={(e) => setWStr(e.target.value)}
+        onBlur={apply}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            apply();
+            e.stopPropagation();
+          }
+        }}
+        placeholder="W"
+        aria-label="Width in pixels"
+      />
+      <span>×</span>
+      <input
+        value={hStr}
+        style={{ width: 44 }}
+        onChange={(e) => setHStr(e.target.value)}
+        onBlur={apply}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            apply();
+            e.stopPropagation();
+          }
+        }}
+        placeholder="H"
+        aria-label="Height in pixels"
+      />
+      <span className="fvd-text-faint">px — click to place</span>
+      <button
+        className="fvd-icon-btn"
+        title="Cancel"
+        onClick={() => setCaptureMode("none")}
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+// ── Stack frame stepper overlay (item #40 / D11) ─────────────────────
+
+function StackStepper({
+  imageId: _imageId,
+  frame,
+  total,
+  onStep,
+}: {
+  imageId: string;
+  frame: number;
+  total: number;
+  onStep: (delta: number) => void;
+}) {
+  return (
+    <div className="fvd-glass fvd-stack-stepper">
+      <button
+        className="fvd-icon-btn"
+        disabled={frame <= 0}
+        onClick={(e) => {
+          e.stopPropagation();
+          onStep(-1);
+        }}
+        title="Previous frame  ,"
+      >
+        ◀
+      </button>
+      <span className="fvd-stack-label">
+        {frame + 1} / {total}
+      </span>
+      <button
+        className="fvd-icon-btn"
+        disabled={frame >= total - 1}
+        onClick={(e) => {
+          e.stopPropagation();
+          onStep(1);
+        }}
+        title="Next frame  ."
+      >
+        ▶
+      </button>
     </div>
   );
 }
