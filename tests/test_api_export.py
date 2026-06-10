@@ -304,6 +304,39 @@ def test_annotation_labels_tilt_corrected() -> None:
     assert neg[0].label == "32 px"
 
 
+def test_box_profile_outline_annotation() -> None:
+    """Box profiles (width set) bake the averaging-box outline around
+    the dashed centerline — mirrors MeasureOverlay."""
+    from fermiviewer.calc.export import measure_annotations
+
+    m = [{"kind": "profile", "width": 4,
+          "pts": [{"x": 0.0, "y": 0.5}, {"x": 1.0, "y": 0.5}]}]
+    annos = measure_annotations(m, 12, 16, None, "px", 2)
+    kinds = [a.kind for a in annos]
+    assert kinds == ["outline", "profile"]
+    # horizontal centerline (0,6)→(16,6), width 4 → corners y = 6±2,
+    # everything ×2 output scale
+    assert annos[0].points == ((0.0, 16.0), (32.0, 16.0),
+                               (32.0, 8.0), (0.0, 8.0))
+    assert annos[0].label == ""
+    # plain profiles (no width) bake no outline
+    plain = measure_annotations(MEASURES[1:2], 12, 16, None, "px", 2)
+    assert [a.kind for a in plain] == ["profile"]
+
+
+def test_box_profile_outline_svg(client, img_id) -> None:
+    """SVG export contains the box polygon for width-carrying profiles."""
+    body = {
+        "image_id": img_id, "format": "svg", "scale": 2,
+        "include": ["measurements"],
+        "measures": [{"kind": "profile", "width": 3,
+                      "pts": [{"x": 0.2, "y": 0.5}, {"x": 0.8, "y": 0.5}],
+                      "endSymbol": "none"}],
+    }
+    svg = client.post("/api/export", json=body).content.decode()
+    assert svg.count("<polygon") == 1
+
+
 def test_export_tilt_baking(client, img_id) -> None:
     """#34 API: tilt params change the baked label bytes; 0 is a no-op."""
     body = {

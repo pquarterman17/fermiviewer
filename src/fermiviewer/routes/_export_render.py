@@ -120,6 +120,10 @@ def draw_annotations(img: Image.Image, annos: list[Annotation],
     for an in annos:
         p = an.points
         sym = an.end_symbol
+        if an.kind == "outline":
+            # box-profile averaging box: closed solid polygon, no label
+            draw.polygon([tuple(pt) for pt in p], outline=color, width=2)
+            continue
         if an.kind in ("roi", "box", "ellipse", "circle"):
             _draw_box_kind(draw, an, color)
         elif an.kind == "text":
@@ -251,6 +255,14 @@ def build_svg(img: Image.Image, bar: ScaleBar | None,
     for an in annos:
         p = an.points
         sym = an.end_symbol
+        if an.kind == "outline":
+            # box-profile averaging box: closed polygon, no label/glyphs
+            pts_str = " ".join(f"{x:.1f},{y:.1f}" for x, y in p)
+            parts.append(
+                f'<polygon points="{pts_str}" fill="none" '
+                f'stroke="{color}" stroke-width="2"/>'
+            )
+            continue
         if an.kind in ("ellipse", "circle"):
             cx = (p[0][0] + p[1][0]) / 2
             cy = (p[0][1] + p[1][1]) / 2

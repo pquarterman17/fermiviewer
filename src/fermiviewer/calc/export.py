@@ -152,6 +152,30 @@ def _tilt_seg_len(
     return float(np.hypot(dx, dy))
 
 
+def _box_outline(
+    m: dict,
+    kind: str,
+    ipts: list[tuple[float, float]],
+    opts: tuple[tuple[float, float], ...],
+    scale: int,
+) -> list[Annotation]:
+    """Box profiles (width set) bake the averaging-box outline around
+    the dashed centerline — mirrors MeasureOverlay. Empty list for
+    plain profiles/distances."""
+    box_w = m.get("width")
+    if kind != "profile" or not box_w:
+        return []
+    ang = np.arctan2(ipts[1][1] - ipts[0][1], ipts[1][0] - ipts[0][0])
+    half = float(box_w) / 2.0 * scale
+    ox = float(-np.sin(ang)) * half
+    oy = float(np.cos(ang)) * half
+    (ax, ay), (bx, by) = opts[0], opts[1]
+    corners = ((ax + ox, ay + oy), (bx + ox, by + oy),
+               (bx - ox, by - oy), (ax - ox, ay - oy))
+    return [Annotation("outline", corners, "", (0.0, 0.0),
+                       end_symbol="none")]
+
+
 def measure_annotations(
     measures: list[dict],
     img_h: int,
@@ -205,6 +229,7 @@ def measure_annotations(
                      if pixel_size else f"{_fmt(d)} px")
             mid = ((opts[0][0] + opts[1][0]) / 2 + 8,
                    (opts[0][1] + opts[1][1]) / 2 - 8)
+            out.extend(_box_outline(m, kind, ipts, opts, scale))
             out.append(Annotation(kind, opts[:2], label, mid,
                                   dashed=kind == "profile",
                                   end_symbol=end_symbol))

@@ -481,6 +481,7 @@ export interface ExportOptions {
     pts: { x: number; y: number }[];
     text?: string;
     endSymbol?: string;
+    width?: number; // box-profile ⊥ averaging width (image px)
   }[];
   overlay_color?: string;
   // custom scale bar geometry (item #33); all optional — null → auto

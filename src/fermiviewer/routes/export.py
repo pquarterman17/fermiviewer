@@ -57,10 +57,12 @@ class WireMeasure(BaseModel):
     kind: str                  # distance|profile|angle|roi|polyline|
     pts: list[WirePoint]       #   text|arrow|box
     text: str | None = None    # annotation caption
-    # circle|cross|square|none — wire key is camelCase (mirrors the
+    # circle|cross|square|none|bar — wire key is camelCase (mirrors the
     # frontend Measure.endSymbol); model_dump() emits end_symbol,
     # which calc.measure_annotations also accepts
     end_symbol: str = Field(default="none", alias="endSymbol")
+    # box-profile ⊥ averaging width in image px → bakes the box outline
+    width: float | None = None
 
 
 class ExportRequest(BaseModel):

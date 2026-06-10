@@ -376,15 +376,38 @@ export default function MeasureOverlay({
       const last = pts[pts.length - 1];
       labelAt = { x: last.x + 10, y: last.y - 10 };
     } else if (pts.length >= 2) {
+      // box profiles (m.width set): show the averaging BOX, with the
+      // dashed centerline marking where the profile runs (user request
+      // 2026-06-09 — a bare line after drawing a box was confusing)
+      let outline = null;
+      if (m.kind === "profile" && m.width != null) {
+        // screen px per image px (uniform zoom)
+        const o = imageToScreen(0, 0, view, img, vp);
+        const u = imageToScreen(1, 0, view, img, vp);
+        const pxScale = Math.hypot(u.x - o.x, u.y - o.y);
+        const ang = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
+        const half = (m.width / 2) * pxScale;
+        const ox = -Math.sin(ang) * half;
+        const oy = Math.cos(ang) * half;
+        outline = (
+          <polygon
+            points={`${pts[0].x + ox},${pts[0].y + oy} ${pts[1].x + ox},${pts[1].y + oy} ${pts[1].x - ox},${pts[1].y - oy} ${pts[0].x - ox},${pts[0].y - oy}`}
+            {...common}
+          />
+        );
+      }
       shape = (
-        <line
-          x1={pts[0].x}
-          y1={pts[0].y}
-          x2={pts[1].x}
-          y2={pts[1].y}
-          strokeDasharray={m.kind === "profile" ? "6 4" : undefined}
-          {...common}
-        />
+        <>
+          {outline}
+          <line
+            x1={pts[0].x}
+            y1={pts[0].y}
+            x2={pts[1].x}
+            y2={pts[1].y}
+            strokeDasharray={m.kind === "profile" ? "6 4" : undefined}
+            {...common}
+          />
+        </>
       );
       labelAt = {
         x: (pts[0].x + pts[1].x) / 2 + 8,
