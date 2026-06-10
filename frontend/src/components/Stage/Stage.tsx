@@ -867,7 +867,8 @@ function ScaleBarOverlay({
   const phys = sbState?.lengthPhys ?? autoPhys;
   const widthPx = (phys / pixelSize) * z;
   const thickness = sbState?.thickness ?? Math.max(2, Math.round(vp.h / 80));
-  const fontSize = sbState?.fontSize ?? 12;
+  // default 20 (user request 2026-06-09 — readable at presentation size)
+  const fontSize = sbState?.fontSize ?? 20;
   const label = phys >= 1
     ? `${Number(phys.toPrecision(3))} ${unit}`
     : fmtSub(phys, unit);
@@ -1009,14 +1010,26 @@ function StackStepper({
 
 /** Render sub-unit lengths in the next unit down (0.5 nm → 500 pm style). */
 function fmtSub(phys: number, unit: string): string {
-  const down: Record<string, [string, number]> = {
-    µm: ["nm", 1e3],
-    um: ["nm", 1e3],
-    nm: ["pm", 1e3],
+  // step down through the first sub-unit that lands ≥ 1; Å preferred
+  // over pm for sub-nm lengths (EM convention)
+  const chains: Record<string, [string, number][]> = {
+    µm: [
+      ["nm", 1e3],
+      ["Å", 1e4],
+    ],
+    um: [
+      ["nm", 1e3],
+      ["Å", 1e4],
+    ],
+    nm: [
+      ["Å", 10],
+      ["pm", 1e3],
+    ],
   };
-  const d = down[unit];
-  if (d && phys * d[1] >= 1) {
-    return `${Number((phys * d[1]).toPrecision(3))} ${d[0]}`;
+  for (const [u, f] of chains[unit] ?? []) {
+    if (phys * f >= 1) {
+      return `${Number((phys * f).toPrecision(3))} ${u}`;
+    }
   }
   return `${Number(phys.toPrecision(3))} ${unit}`;
 }

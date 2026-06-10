@@ -175,6 +175,17 @@ export function boxProfileLine(
       };
 }
 
+/** Length-unit factor to nm for the units the scale bar offers
+ *  (Å / nm / µm, tolerant of ASCII spellings); null = not convertible
+ *  (e.g. reciprocal-space "1/nm" calibrations). */
+export function unitToNm(u: string): number | null {
+  const s = u.trim().toLowerCase().replace("μ", "µ");
+  if (s === "å" || s === "a" || s === "ang" || s === "angstrom") return 0.1;
+  if (s === "nm") return 1;
+  if (s === "µm" || s === "um") return 1000;
+  return null;
+}
+
 /** Nice round scale-bar length: largest of 1/2/5×10ⁿ below `maxPhys`. */
 export function niceScaleLength(maxPhys: number): number {
   const exp = Math.floor(Math.log10(maxPhys));

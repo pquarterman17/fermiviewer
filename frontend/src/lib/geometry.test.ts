@@ -10,6 +10,7 @@ import {
   physAngle,
   physDist,
   tiltDist,
+  unitToNm,
   type TiltSettings,
 } from "./geometry";
 
@@ -141,6 +142,27 @@ describe("boxProfileLine (box-profile capture)", () => {
   it("width is rounded and at least 1", () => {
     const r = boxProfileLine(P(0, 0), P(50, 2.4));
     expect(r!.width).toBe(2);
+  });
+});
+
+describe("unitToNm (scale-bar unit dropdown)", () => {
+  it("converts the three offered units", () => {
+    expect(unitToNm("Å")).toBe(0.1);
+    expect(unitToNm("nm")).toBe(1);
+    expect(unitToNm("µm")).toBe(1000);
+  });
+
+  it("tolerates ASCII spellings and case", () => {
+    expect(unitToNm("A")).toBe(0.1);
+    expect(unitToNm("angstrom")).toBe(0.1);
+    expect(unitToNm("um")).toBe(1000);
+    expect(unitToNm(" NM ")).toBe(1);
+  });
+
+  it("returns null for non-length calibrations", () => {
+    expect(unitToNm("1/nm")).toBeNull();
+    expect(unitToNm("px")).toBeNull();
+    expect(unitToNm("")).toBeNull();
   });
 });
 

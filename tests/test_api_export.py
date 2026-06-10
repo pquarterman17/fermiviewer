@@ -562,6 +562,19 @@ def test_figure_panel(client, tmp_path) -> None:
     }).status_code == 422
 
 
+def test_scale_bar_label_subunit() -> None:
+    """Bar labels step down to Å below 1 nm (EM convention — mirrors
+    fmtSub in Stage.tsx; keep both sides in sync)."""
+    from fermiviewer.calc.export import _bar_label
+
+    assert _bar_label(20, "nm") == "20 nm"
+    assert _bar_label(0.5, "nm") == "5 Å"          # not "500 pm"
+    assert _bar_label(0.005, "nm") == "5 pm"       # below 1 Å
+    assert _bar_label(0.5, "µm") == "500 nm"
+    assert _bar_label(0.0005, "µm") == "5 Å"       # µm → Å step-down
+    assert _bar_label(3, "px") == "3 px"           # unknown unit unchanged
+
+
 def test_scale_bar_detection() -> None:
     from fermiviewer.calc.scalebar_detect import detect_scale_bar
 

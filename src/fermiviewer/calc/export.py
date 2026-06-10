@@ -249,6 +249,21 @@ def measure_annotations(
     return out
 
 
+def _bar_label(phys: float, unit: str) -> str:
+    """Scale-bar label with sub-unit step-down — mirrors fmtSub() in
+    Stage.tsx (Å preferred over pm below 1 nm, EM convention)."""
+    chains: dict[str, list[tuple[str, float]]] = {
+        "µm": [("nm", 1e3), ("Å", 1e4)],
+        "um": [("nm", 1e3), ("Å", 1e4)],
+        "nm": [("Å", 10.0), ("pm", 1e3)],
+    }
+    if phys < 1:
+        for u, f in chains.get(unit, []):
+            if phys * f >= 1:
+                return f"{float(f'{phys * f:.3g}'):g} {u}"
+    return f"{float(f'{phys:.3g}'):g} {unit}"
+
+
 def scale_bar_geometry(
     out_w: int,
     out_h: int,
@@ -283,7 +298,7 @@ def scale_bar_geometry(
         x = margin
         y = out_h - margin - height
 
-    label = f"{phys:g} {pixel_unit}"
+    label = _bar_label(phys, pixel_unit)
     return ScaleBar(
         x=x,
         y=y,
