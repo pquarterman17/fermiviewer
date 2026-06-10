@@ -2,11 +2,17 @@
 // around the cursor — ImageJ-style value magnifier. Reads the same
 // client-side raster that drives the GL stage, so it costs no requests.
 
+import { useState } from "react";
+
+import { loadPrefs } from "../../lib/prefs";
 import { rasterValue, useStageInfo } from "../../store/stage";
 import { useViewer } from "../../store/viewer";
 
-const N = 7; // grid is N×N, centre = cursor
-const HALF = Math.floor(N / 2);
+/** Grid is N×N, centre = cursor. Pref-driven (D13), clamped odd 3–15. */
+function gridSize(): number {
+  const n = Math.round(loadPrefs().inspectorGrid);
+  return Math.min(15, Math.max(3, n)) | 1;
+}
 
 function cell(v: number | null): string {
   if (v === null) return "·";
@@ -16,6 +22,9 @@ function cell(v: number | null): string {
 }
 
 export default function PixelInspector() {
+  // read once per mount — reopening the window picks up a pref change
+  const [N] = useState(gridSize);
+  const HALF = Math.floor(N / 2);
   const meta = useViewer((s) =>
     s.activeId ? (s.images[s.activeId] ?? null) : null,
   );

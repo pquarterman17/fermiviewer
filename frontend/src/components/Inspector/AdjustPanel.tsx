@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchHistogram, type Histogram } from "../../lib/api";
 import { COLORMAP_NAMES, type ColormapName } from "../../lib/colormaps";
 import { autoWindow, toReal } from "../../lib/display";
+import { loadPrefs } from "../../lib/prefs";
 import { useStageInfo } from "../../store/stage";
 import { DEFAULT_DISPLAY, useViewer } from "../../store/viewer";
 import Card from "./Card";
@@ -151,7 +152,11 @@ export default function AdjustPanel() {
         <button
           className="fvd-btn"
           title="Percentile auto-contrast  A"
-          onClick={() => raster && setDisplay(activeId, autoWindow(raster))}
+          onClick={() => {
+            if (!raster) return;
+            const p = loadPrefs();
+            setDisplay(activeId, autoWindow(raster, p.autoLoPct, p.autoHiPct));
+          }}
         >
           ◑ Auto
         </button>

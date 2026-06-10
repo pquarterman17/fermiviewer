@@ -36,6 +36,7 @@ import EelsWorkshop from "./components/workshops/EelsWorkshop";
 import { listImages } from "./lib/api";
 import { COLORMAP_NAMES } from "./lib/colormaps";
 import { autoWindow } from "./lib/display";
+import { loadPrefs } from "./lib/prefs";
 import { useStageInfo } from "./store/stage";
 import { installErrLog } from "./lib/errlog";
 import { undoLabel, useViewer, type CaptureMode } from "./store/viewer";
@@ -47,7 +48,10 @@ const NUDGE = 50; // css px per arrow press
 function applyAutoContrast(): void {
   const s = useViewer.getState();
   const raster = useStageInfo.getState().raster;
-  if (s.activeId && raster) s.setDisplay(s.activeId, autoWindow(raster));
+  if (s.activeId && raster) {
+    const p = loadPrefs();
+    s.setDisplay(s.activeId, autoWindow(raster, p.autoLoPct, p.autoHiPct));
+  }
 }
 
 export default function App() {

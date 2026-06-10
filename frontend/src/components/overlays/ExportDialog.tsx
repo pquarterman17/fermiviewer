@@ -1,9 +1,10 @@
 // Export dialog (handoff §4 "Export"): format · resolution · includes,
 // live output dims + size estimate → POST /export → browser download.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { exportImage, type ExportOptions } from "../../lib/api";
+import { loadPrefs } from "../../lib/prefs";
 import { DEFAULT_DISPLAY, useViewer, type Measure } from "../../store/viewer";
 
 type Format = ExportOptions["format"];
@@ -47,6 +48,15 @@ export default function ExportDialog() {
   const [format, setFormat] = useState<Format>("png");
   const [scale, setScale] = useState(1);
   const [scaleBar, setScaleBar] = useState(true);
+
+  // re-seed the resolution from prefs each time the dialog opens
+  // (D13 "export DPI" — our pipeline is integer-scale, not DPI)
+  useEffect(() => {
+    if (open) {
+      const s = Math.round(loadPrefs().exportScale);
+      setScale(Math.min(4, Math.max(1, s)));
+    }
+  }, [open]);
   const [bakeMeasures, setBakeMeasures] = useState(true);
   const [colorbar, setColorbar] = useState(false);
   const [busy, setBusy] = useState(false);
