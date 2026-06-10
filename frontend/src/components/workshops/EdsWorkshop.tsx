@@ -1,15 +1,67 @@
 // EDS workshop (handoff §4 Inspector · EDS): element list, Cliff-Lorimer
 // or ZAF quantification; derived at% maps register into the library.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import uPlot from "uplot";
 
 import {
+  analyzeCompositionProfile,
   edsAutoAssign,
   edsQuantify,
+  type CompositionProfileResult,
   type EdsQuantResult,
 } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
 import EdsComposite, { EDS_PALETTE, type Channel } from "./EdsComposite";
+
+/** Per-element at% line plot for the composition profile (#46/A4). */
+function CompProfilePlot({ r }: { r: CompositionProfileResult }) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const plotRef = useRef<uPlot | null>(null);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    plotRef.current?.destroy();
+    const series: uPlot.Series[] = [
+      { label: `d (${r.unit})` },
+      ...r.elements.map((el, i) => ({
+        label: el,
+        stroke: EDS_PALETTE[i % EDS_PALETTE.length],
+        width: 1.5,
+        points: { show: false },
+      })),
+    ];
+    plotRef.current = new uPlot(
+      {
+        width: host.clientWidth || 300,
+        height: 160,
+        series,
+        axes: [
+          { stroke: "#888", grid: { stroke: "rgba(128,128,128,0.15)" } },
+          { stroke: "#888", grid: { stroke: "rgba(128,128,128,0.15)" } },
+        ],
+        legend: { show: true },
+        cursor: { y: false },
+      },
+      [r.distance, ...r.atomic_pct] as uPlot.AlignedData,
+      host,
+    );
+    const ro = new ResizeObserver(() => {
+      if (plotRef.current && host.clientWidth > 0) {
+        plotRef.current.setSize({ width: host.clientWidth, height: 160 });
+      }
+    });
+    ro.observe(host);
+    return () => {
+      ro.disconnect();
+      plotRef.current?.destroy();
+      plotRef.current = null;
+    };
+  }, [r]);
+
+  return <div ref={hostRef} className="fvd-ws-plot" />;
+}
 
 export default function EdsWorkshop() {
   const activeId = useViewer((s) => s.activeId);
@@ -28,8 +80,48 @@ export default function EdsWorkshop() {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [busy, setBusy] = useState(false);
   const [autoAssignBusy, setAutoAssignBusy] = useState(false);
+  const [comp, setComp] = useState<CompositionProfileResult | null>(null);
+  const [compBusy, setCompBusy] = useState(false);
 
   const isCube = meta?.kind === "spectrum_image";
+
+  // #46 (A4): element-fraction line profile across the quantified maps,
+  // along the most recent distance/profile measure drawn on the cube
+  const runCompProfile = () => {
+    if (!activeId || !meta || channels.length === 0) return;
+    const s = useViewer.getState();
+    const line = [...(s.measures[activeId] ?? [])]
+      .reverse()
+      .find(
+        (m) =>
+          (m.kind === "distance" || m.kind === "profile") &&
+          m.pts.length === 2,
+      );
+    if (!line) {
+      setStatus("comp profile: draw a Distance or Profile line on the cube first");
+      return;
+    }
+    const w = meta.shape[1] ?? 1;
+    const h = meta.shape[0] ?? 1;
+    const a = { x: line.pts[0].x * w, y: line.pts[0].y * h };
+    const b = { x: line.pts[1].x * w, y: line.pts[1].y * h };
+    setCompBusy(true);
+    analyzeCompositionProfile(
+      channels.map((c) => c.id),
+      channels.map((c) => c.el),
+      a,
+      b,
+      { width: s.profileWidth },
+    )
+      .then((r) => {
+        setComp(r);
+        setStatus(`comp profile: ${r.elements.join(", ")} along ${
+          Number(r.distance[r.distance.length - 1]?.toPrecision(4)) || 0
+        } ${r.unit}`);
+      })
+      .catch((e: Error) => setStatus(`comp profile: ${e.message}`))
+      .finally(() => setCompBusy(false));
+  };
 
   const run = () => {
     if (!activeId) return;
@@ -185,6 +277,28 @@ export default function EdsWorkshop() {
           added to the library.
         </div>
       )}
+      {channels.length > 0 && (
+        <div className="fvd-ws-row">
+          <button
+            className="fvd-btn"
+            disabled={compBusy}
+            title="Element-fraction line profile across the at% maps, along the last Distance/Profile measure (A4)"
+            onClick={runCompProfile}
+          >
+            {compBusy ? "Profiling…" : "Comp Profile"}
+          </button>
+          {comp && (
+            <button
+              className="fvd-icon-btn"
+              title="Close composition profile"
+              onClick={() => setComp(null)}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
+      {comp && <CompProfilePlot r={comp} />}
       <EdsComposite channels={channels} onChange={setChannels} />
     </div>
   );
