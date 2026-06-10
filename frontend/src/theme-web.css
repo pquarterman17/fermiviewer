@@ -615,6 +615,34 @@ details.fvd-card:not([open]) > summary {
   text-shadow: 0 1px 3px rgb(0 0 0 / 0.7);
 }
 
+.fvd-fixed-zoom-badge {
+  position: absolute;
+  top: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  z-index: 10;
+  pointer-events: all;
+  font-size: var(--font-size-sm);
+}
+
+.fvd-fixed-zoom-badge input {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 2px 4px;
+  font-size: var(--font-size-sm);
+}
+
+.fvd-text-faint {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
 .fvd-stack-stepper {
   position: absolute;
   bottom: 44px;
@@ -1298,6 +1326,12 @@ details.fvd-card:not([open]) > summary {
 .fvd-ws-row .k {
   color: var(--text-faint);
   white-space: nowrap;
+}
+
+.fvd-ws-hint {
+  color: var(--text-faint);
+  font-size: 10px;
+  font-style: italic;
 }
 
 .fvd-ws-row input,

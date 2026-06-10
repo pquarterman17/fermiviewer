@@ -122,7 +122,7 @@ export interface ScaleBarState {
   fontSize: number | null;    // label font size in px (null = auto)
 }
 
-export type CaptureMode = "none" | "zoom" | MeasureKind;
+export type CaptureMode = "none" | "zoom" | "fixed-zoom" | MeasureKind;
 export type Theme = "dark" | "light";
 export type ListView = "thumbs" | "names";
 export type CompareMode = "split" | "flicker" | "subtract";
@@ -327,6 +327,9 @@ interface ViewerState {
   scaleBars: Record<string, ScaleBarState>;
   // per-image stack frame index (0-based; only relevant for spectrum_image)
   stackFrames: Record<string, number>;
+  /** fixed-zoom dimensions in image pixels (A2 capture mode) */
+  fixedZoomW: number;
+  fixedZoomH: number;
   // tools
   captureMode: CaptureMode;
   panTool: boolean;
@@ -394,6 +397,7 @@ interface ViewerState {
   setOverlay: (patch: Partial<OverlayStyle>) => void;
   setScaleBar: (imageId: string, patch: Partial<ScaleBarState>) => void;
   setStackFrame: (imageId: string, frame: number) => void;
+  setFixedZoomDims: (w: number, h: number) => void;
   toggleTheme: () => void;
   toggleLeft: () => void;
   toggleRight: () => void;
@@ -438,6 +442,8 @@ export const useViewer = create<ViewerState>((set, get) => ({
   overlay: loadJson<OverlayStyle>(OVERLAY_KEY, { size: "M", color: "#ffffff" }),
   scaleBars: {},
   stackFrames: {},
+  fixedZoomW: 256,
+  fixedZoomH: 256,
   captureMode: "none",
   panTool: false,
   profileWidth: _pref("profileWidth", 1),
@@ -788,6 +794,8 @@ export const useViewer = create<ViewerState>((set, get) => ({
 
   setStackFrame: (imageId, frame) =>
     set((s) => ({ stackFrames: { ...s.stackFrames, [imageId]: frame } })),
+
+  setFixedZoomDims: (fixedZoomW, fixedZoomH) => set({ fixedZoomW, fixedZoomH }),
 
   toggleTheme: () => {
     const theme: Theme = get().theme === "dark" ? "light" : "dark";

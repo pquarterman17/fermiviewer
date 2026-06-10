@@ -127,6 +127,8 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   const setStackFrame = useViewer((s) => s.setStackFrame);
   const captureMode = useViewer((s) => s.captureMode);
   const setCaptureMode = useViewer((s) => s.setCaptureMode);
+  const fixedZoomW = useViewer((s) => s.fixedZoomW);
+  const fixedZoomH = useViewer((s) => s.fixedZoomH);
   const panTool = useViewer((s) => s.panTool);
   const addMeasure = useViewer((s) => s.addMeasure);
   const setRoiStats = useViewer((s) => s.setRoiStats);
@@ -440,6 +442,17 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     }
     if (e.button !== 0) return;
 
+    if (captureMode === "fixed-zoom" && imgSize) {
+      // A2: click places a fixed W×H box centred at the cursor, then zooms
+      const ip = toImage(p);
+      const hw = fixedZoomW / 2;
+      const hh = fixedZoomH / 2;
+      const a = { x: ip.x - hw, y: ip.y - hh };
+      const b = { x: ip.x + hw, y: ip.y + hh };
+      apply(viewForRect(a, b, imgSize, vp));
+      setCaptureMode("none");
+      return;
+    }
     if (
       captureMode === "zoom" ||
       captureMode === "roi" ||
@@ -579,7 +592,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
 
   const cls = [
     "fvd-stage",
-    captureMode !== "none" ? "box-zoom" : "",
+    captureMode === "fixed-zoom" ? "box-zoom" : captureMode !== "none" ? "box-zoom" : "",
     panning ? "panning" : panTool || spaceHeld ? "pan-ready" : "",
   ]
     .filter(Boolean)
@@ -661,6 +674,9 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
         </>
       )}
 
+      {captureMode === "fixed-zoom" && (
+        <FixedZoomBadge w={fixedZoomW} h={fixedZoomH} />
+      )}
       {nFrames && nFrames > 1 && activeId && (
         <StackStepper
           imageId={activeId}
@@ -711,6 +727,7 @@ function FloatTools() {
   const tools: [string, string, boolean, () => void][] = [
     ["✥", "Hand tool  H", panTool, () => setPanTool(!panTool)],
     ["⬚", "Box zoom  Z", captureMode === "zoom", mode("zoom")],
+    ["⊞", "Fixed Size Zoom  F", captureMode === "fixed-zoom", mode("fixed-zoom")],
     ["↔", "Distance  D", captureMode === "distance", mode("distance")],
     ["∿", "Line profile  L", captureMode === "profile", mode("profile")],
     ["⌇", "Polyline  P", captureMode === "polyline", mode("polyline")],
@@ -850,6 +867,64 @@ function ScaleBarOverlay({
     >
       <div className="bar" style={{ width: widthPx, height: thickness }} />
       <div className="label">{label}</div>
+    </div>
+  );
+}
+
+// ── Fixed-size zoom badge (item #41 A2) ──────────────────────────────
+
+function FixedZoomBadge({ w, h }: { w: number; h: number }) {
+  const setFixedZoomDims = useViewer((s) => s.setFixedZoomDims);
+  const setCaptureMode = useViewer((s) => s.setCaptureMode);
+  const [wStr, setWStr] = useState(String(w));
+  const [hStr, setHStr] = useState(String(h));
+
+  const apply = () => {
+    const nw = Math.max(1, parseInt(wStr) || w);
+    const nh = Math.max(1, parseInt(hStr) || h);
+    setFixedZoomDims(nw, nh);
+  };
+
+  return (
+    <div className="fvd-glass fvd-fixed-zoom-badge">
+      <span>Fixed Zoom</span>
+      <input
+        value={wStr}
+        style={{ width: 44 }}
+        onChange={(e) => setWStr(e.target.value)}
+        onBlur={apply}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            apply();
+            e.stopPropagation();
+          }
+        }}
+        placeholder="W"
+        aria-label="Width in pixels"
+      />
+      <span>×</span>
+      <input
+        value={hStr}
+        style={{ width: 44 }}
+        onChange={(e) => setHStr(e.target.value)}
+        onBlur={apply}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            apply();
+            e.stopPropagation();
+          }
+        }}
+        placeholder="H"
+        aria-label="Height in pixels"
+      />
+      <span className="fvd-text-faint">px — click to place</span>
+      <button
+        className="fvd-icon-btn"
+        title="Cancel"
+        onClick={() => setCaptureMode("none")}
+      >
+        ✕
+      </button>
     </div>
   );
 }
