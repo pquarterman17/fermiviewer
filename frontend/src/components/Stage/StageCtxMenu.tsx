@@ -2,11 +2,11 @@
 // Hit-test order: scale bar → measure/annotation → empty image area.
 // The empty-area branch delegates to the radial capture ring AND adds
 // a "Copy Image" shortcut entry. Scale-bar hits open a dedicated menu
-// whose wired actions grow in item #33.
+// wired to hide/show + length/position controls (item #33).
 
-import { useViewer, type Measure } from "../../store/viewer";
+import { niceScaleLength } from "../../lib/geometry";
+import { useViewer, type Measure, DEFAULT_DISPLAY } from "../../store/viewer";
 import { exportImage } from "../../lib/api";
-import { DEFAULT_DISPLAY } from "../../store/viewer";
 
 export interface CtxTarget {
   kind: "scalebar" | "measure" | "empty";
@@ -27,6 +27,21 @@ interface ScaleBarCtxProps {
 export function ScaleBarCtxMenu({ x, y, onClose }: ScaleBarCtxProps) {
   const toggleScaleBar = useViewer((s) => s.toggleScaleBar);
   const scaleBarVisible = useViewer((s) => s.scaleBarVisible);
+  const activeId = useViewer((s) => s.activeId);
+  const meta = useViewer((s) =>
+    s.activeId ? (s.images[s.activeId] ?? null) : null,
+  );
+  const setScaleBar = useViewer((s) => s.setScaleBar);
+
+  const pixelSize = meta?.pixel_size ?? null;
+  const unit = meta?.pixel_unit ?? "px";
+
+  // compute a couple of nice presets relative to current zoom
+  const presets: number[] =
+    pixelSize != null
+      ? [1, 2, 4].map((z) => niceScaleLength((120 * pixelSize) / z))
+          .filter((v, i, a) => a.indexOf(v) === i)
+      : [];
 
   return (
     <>
@@ -52,6 +67,49 @@ export function ScaleBarCtxMenu({ x, y, onClose }: ScaleBarCtxProps) {
         >
           {scaleBarVisible ? "Hide Scale Bar" : "Show Scale Bar"}
         </button>
+        {activeId && pixelSize != null && presets.length > 0 && (
+          <>
+            <div className="fvd-ctx-sep" />
+            <span className="fvd-ctx-label">Length</span>
+            <button
+              className="fvd-ctx-item"
+              onClick={() => {
+                setScaleBar(activeId, { lengthPhys: null });
+                onClose();
+              }}
+            >
+              Auto
+            </button>
+            {presets.map((p) => (
+              <button
+                key={p}
+                className="fvd-ctx-item"
+                onClick={() => {
+                  setScaleBar(activeId, { lengthPhys: p });
+                  onClose();
+                }}
+              >
+                {p >= 1
+                  ? `${Number(p.toPrecision(3))} ${unit}`
+                  : `${Number((p * 1000).toPrecision(3))} p${unit}`}
+              </button>
+            ))}
+          </>
+        )}
+        {activeId && (
+          <>
+            <div className="fvd-ctx-sep" />
+            <button
+              className="fvd-ctx-item"
+              onClick={() => {
+                setScaleBar(activeId, { x: 0.02, y: 0.92, lengthPhys: null, thickness: null, fontSize: null });
+                onClose();
+              }}
+            >
+              Reset position
+            </button>
+          </>
+        )}
       </div>
     </>
   );

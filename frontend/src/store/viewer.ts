@@ -110,6 +110,18 @@ export interface OverlayStyle {
   color: string;
 }
 
+/** Per-image scale bar display overrides.
+ *  x/y are fractional positions 0–1 relative to the stage viewport
+ *  (default bottom-left ≈ 0.02, 0.92).
+ *  lengthPhys null means auto (nice-number); thickness/fontSize null = auto. */
+export interface ScaleBarState {
+  x: number;          // normalized stage x (0 = left, 1 = right)
+  y: number;          // normalized stage y (0 = top, 1 = bottom)
+  lengthPhys: number | null;  // physical length override (in pixel_unit)
+  thickness: number | null;   // bar thickness in screen px (null = auto)
+  fontSize: number | null;    // label font size in px (null = auto)
+}
+
 export type CaptureMode = "none" | "zoom" | MeasureKind;
 export type Theme = "dark" | "light";
 export type ListView = "thumbs" | "names";
@@ -311,6 +323,8 @@ interface ViewerState {
   // display chrome
   theme: Theme;
   overlay: OverlayStyle; // persisted "fv_overlay"
+  // per-image scale bar position/size overrides
+  scaleBars: Record<string, ScaleBarState>;
   // tools
   captureMode: CaptureMode;
   panTool: boolean;
@@ -376,6 +390,7 @@ interface ViewerState {
   setPanTool: (on: boolean) => void;
   setProfileWidth: (w: number) => void;
   setOverlay: (patch: Partial<OverlayStyle>) => void;
+  setScaleBar: (imageId: string, patch: Partial<ScaleBarState>) => void;
   toggleTheme: () => void;
   toggleLeft: () => void;
   toggleRight: () => void;
@@ -418,6 +433,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
     return t;
   })(),
   overlay: loadJson<OverlayStyle>(OVERLAY_KEY, { size: "M", color: "#ffffff" }),
+  scaleBars: {},
   captureMode: "none",
   panTool: false,
   profileWidth: _pref("profileWidth", 1),
@@ -757,6 +773,14 @@ export const useViewer = create<ViewerState>((set, get) => ({
     localStorage.setItem(OVERLAY_KEY, JSON.stringify(overlay));
     set({ overlay });
   },
+
+  setScaleBar: (imageId, patch) =>
+    set((s) => {
+      const prev = s.scaleBars[imageId] ?? {
+        x: 0.02, y: 0.92, lengthPhys: null, thickness: null, fontSize: null,
+      };
+      return { scaleBars: { ...s.scaleBars, [imageId]: { ...prev, ...patch } } };
+    }),
 
   toggleTheme: () => {
     const theme: Theme = get().theme === "dark" ? "light" : "dark";

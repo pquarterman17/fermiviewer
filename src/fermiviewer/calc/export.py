@@ -217,20 +217,38 @@ def scale_bar_geometry(
     pixel_size: float,
     pixel_unit: str,
     scale: int,
+    *,
+    norm_x: float | None = None,
+    norm_y: float | None = None,
+    length_phys: float | None = None,
+    thickness: int | None = None,
 ) -> ScaleBar:
-    """Scale bar sized to ≤ ~25 % of the output width, bottom-left.
+    """Scale bar sized to ≤ ~25 % of the output width.
 
     pixel_size is per SOURCE pixel; the output is `scale`× finer.
+
+    Optional keyword overrides (all backward-compatible defaults):
+    - norm_x / norm_y: normalised position (0–1) in the output image.
+    - length_phys: physical bar length in pixel_unit; None → auto.
+    - thickness: bar height in output px; None → auto.
     """
     eff_px = pixel_size / scale  # physical size per output pixel
-    phys = _nice_length(0.25 * out_w * eff_px)
+    phys = length_phys if length_phys is not None else _nice_length(0.25 * out_w * eff_px)
     width = max(1, round(phys / eff_px))
-    height = max(2, out_h // 80)
+    height = thickness if thickness is not None else max(2, out_h // 80)
     margin = max(8, out_w // 50)
+
+    if norm_x is not None and norm_y is not None:
+        x = max(margin, min(out_w - width - margin, round(norm_x * out_w)))
+        y = max(margin + height, min(out_h - margin - height, round(norm_y * out_h)))
+    else:
+        x = margin
+        y = out_h - margin - height
+
     label = f"{phys:g} {pixel_unit}"
     return ScaleBar(
-        x=margin,
-        y=out_h - margin - height,
+        x=x,
+        y=y,
         width=width,
         height=height,
         label=label,

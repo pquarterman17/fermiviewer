@@ -66,6 +66,11 @@ class ExportRequest(BaseModel):
     include: list[str] = []  # ["scale_bar", "measurements"]
     measures: list[WireMeasure] = []
     overlay_color: str = "#35e0c2"
+    # custom scale-bar geometry (item #33); None → auto (backward-compatible)
+    scale_bar_norm_x: float | None = None
+    scale_bar_norm_y: float | None = None
+    scale_bar_length_phys: float | None = None
+    scale_bar_thickness: int | None = None
 
 
 def _raster(ds: DataStruct) -> np.ndarray:
@@ -127,9 +132,15 @@ def export_image(req: ExportRequest) -> Response:
 
     bar: ScaleBar | None = None
     if "scale_bar" in req.include and ds.pixel_cal.calibrated:
-        bar = scale_bar_geometry(img.width, img.height,
-                                 ds.pixel_cal.scale, ds.pixel_cal.units,
-                                 req.scale)
+        bar = scale_bar_geometry(
+            img.width, img.height,
+            ds.pixel_cal.scale, ds.pixel_cal.units,
+            req.scale,
+            norm_x=req.scale_bar_norm_x,
+            norm_y=req.scale_bar_norm_y,
+            length_phys=req.scale_bar_length_phys,
+            thickness=req.scale_bar_thickness,
+        )
 
     annos: list[Annotation] = []
     if "measurements" in req.include and req.measures:

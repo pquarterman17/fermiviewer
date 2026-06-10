@@ -107,6 +107,54 @@ def test_scale_bar_baking(client, img_id) -> None:
     assert (a != b).any(axis=2).sum() > 20  # bar + label pixels differ
 
 
+def test_scale_bar_custom_geometry(client, img_id) -> None:
+    """Custom norm_x/y and length_phys honour overrides without breaking
+    existing golden/export tests (all defaults remain backward-compatible)."""
+    # default bar — bottom-left
+    default = np.asarray(
+        Image.open(
+            io.BytesIO(
+                client.post(
+                    "/api/export",
+                    json={
+                        "image_id": img_id,
+                        "format": "png",
+                        "scale": 4,
+                        "include": ["scale_bar"],
+                    },
+                ).content
+            )
+        )
+    )
+    # custom bar — top-right corner (norm_x=0.7, norm_y=0.1)
+    custom = np.asarray(
+        Image.open(
+            io.BytesIO(
+                client.post(
+                    "/api/export",
+                    json={
+                        "image_id": img_id,
+                        "format": "png",
+                        "scale": 4,
+                        "include": ["scale_bar"],
+                        "scale_bar_norm_x": 0.7,
+                        "scale_bar_norm_y": 0.1,
+                        "scale_bar_length_phys": 1.0,
+                        "scale_bar_thickness": 4,
+                    },
+                ).content
+            )
+        )
+    )
+    # images must differ (bar is in different location)
+    assert (default != custom).any()
+    # custom thickness=4 means 4 white rows somewhere near the top half
+    # (the bar is white in a gray image; verify some white pixels exist
+    # in the upper portion of the image)
+    top_half = custom[: custom.shape[0] // 2, :, :]
+    assert (top_half == 255).any()
+
+
 def test_jpeg_and_errors(client, img_id) -> None:
     r = client.post(
         "/api/export", json={"image_id": img_id, "format": "jpeg"}

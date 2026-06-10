@@ -622,9 +622,11 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
           <Readout />
           {meta?.pixel_size != null && (
             <ScaleBarOverlay
+              imageId={activeId}
               pixelSize={meta.pixel_size}
               unit={meta.pixel_unit}
               z={view.z}
+              vp={vp}
               barRef={scaleBarRef}
             />
           )}
@@ -743,26 +745,72 @@ function Readout() {
 }
 
 function ScaleBarOverlay({
+  imageId,
   pixelSize,
   unit,
   z,
+  vp,
   barRef,
 }: {
+  imageId: string;
   pixelSize: number;
   unit: string;
   z: number;
+  vp: Size;
   barRef: RefObject<HTMLDivElement>;
 }) {
   const color = useViewer((s) => s.overlay.color);
   const visible = useViewer((s) => s.scaleBarVisible);
-  const phys = niceScaleLength((120 * pixelSize) / z);
-  const widthPx = (phys / pixelSize) * z;
-  const label =
-    phys >= 1 ? `${Number(phys.toPrecision(3))} ${unit}` : fmtSub(phys, unit);
+  const sbState = useViewer((s) => s.scaleBars[imageId]);
+  const setScaleBar = useViewer((s) => s.setScaleBar);
+  const dragRef = useRef<{ startX: number; startY: number; x0: number; y0: number } | null>(null);
+
   if (!visible) return null;
+
+  // position defaults: bottom-left (2% / 92% of viewport)
+  const normX = sbState?.x ?? 0.02;
+  const normY = sbState?.y ?? 0.92;
+  const leftPx = normX * vp.w;
+  const topPx = normY * vp.h;
+
+  // size
+  const autoPhys = niceScaleLength((120 * pixelSize) / z);
+  const phys = sbState?.lengthPhys ?? autoPhys;
+  const widthPx = (phys / pixelSize) * z;
+  const thickness = sbState?.thickness ?? Math.max(2, Math.round(vp.h / 80));
+  const fontSize = sbState?.fontSize ?? 12;
+  const label = phys >= 1
+    ? `${Number(phys.toPrecision(3))} ${unit}`
+    : fmtSub(phys, unit);
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    dragRef.current = { startX: e.clientX, startY: e.clientY, x0: normX, y0: normY };
+    (e.target as Element).setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!dragRef.current || vp.w === 0 || vp.h === 0) return;
+    const dx = (e.clientX - dragRef.current.startX) / vp.w;
+    const dy = (e.clientY - dragRef.current.startY) / vp.h;
+    const nx = Math.min(0.98, Math.max(0, dragRef.current.x0 + dx));
+    const ny = Math.min(0.98, Math.max(0, dragRef.current.y0 + dy));
+    setScaleBar(imageId, { x: nx, y: ny });
+  };
+  const onPointerUp = (e: React.PointerEvent) => {
+    dragRef.current = null;
+    (e.target as Element).releasePointerCapture(e.pointerId);
+  };
+
   return (
-    <div ref={barRef} className="fvd-scalebar" style={{ color }}>
-      <div className="bar" style={{ width: widthPx }} />
+    <div
+      ref={barRef}
+      className="fvd-scalebar fvd-scalebar-drag"
+      style={{ color, left: leftPx, top: topPx, fontSize }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+    >
+      <div className="bar" style={{ width: widthPx, height: thickness }} />
       <div className="label">{label}</div>
     </div>
   );

@@ -445,6 +445,40 @@ details.fvd-card:not([open]) > summary {
   margin: 3px 4px;
 }
 
+.fvd-ctx-label {
+  padding: 3px 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.5;
+  display: block;
+}
+
+.fvd-sb-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.fvd-sb-presets .fvd-seg-btn {
+  font-size: 10px;
+  padding: 2px 5px;
+}
+
+.fvd-sb-spin {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.fvd-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
 .fvd-colorbar {
   position: absolute;
   right: 10px;
@@ -552,21 +586,31 @@ details.fvd-card:not([open]) > summary {
 
 .fvd-scalebar {
   position: absolute;
-  bottom: 44px;
-  left: 14px;
   pointer-events: none;
   color: var(--overlay-color, #fff);
+  /* legacy default placement — overridden by inline style when draggable */
+  bottom: 44px;
+  left: 14px;
+}
+
+.fvd-scalebar-drag {
+  /* when the bar is repositioned via drag, bottom/left are replaced
+     by explicit left/top from the store (inline style) */
+  bottom: unset;
+  left: unset;
+  pointer-events: all;
+  cursor: move;
+  user-select: none;
 }
 
 .fvd-scalebar .bar {
-  height: 3px;
   background: currentColor;
   border-radius: 1px;
 }
 
 .fvd-scalebar .label {
   font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
+  font-size: inherit;
   margin-top: 3px;
   text-shadow: 0 1px 3px rgb(0 0 0 / 0.7);
 }

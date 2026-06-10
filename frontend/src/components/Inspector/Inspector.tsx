@@ -10,6 +10,7 @@ import EdsWorkshop from "../workshops/EdsWorkshop";
 import EelsWorkshop from "../workshops/EelsWorkshop";
 import AdjustPanel from "./AdjustPanel";
 import MeasurePanel from "./MeasurePanel";
+import ScaleBarCard from "./ScaleBarCard";
 
 const TABS = ["Image", "EELS", "EDS", "Diff"] as const;
 type Tab = (typeof TABS)[number];
@@ -132,6 +133,7 @@ export default function Inspector() {
       {tab === "Diff" && <DiffractionWorkshop />}
       {tab === "Image" && meta.kind !== "spectrum" && <AdjustPanel />}
       {tab === "Image" && <MeasurePanel />}
+      {tab === "Image" && <ScaleBarCard />}
       {tab === "Image" && (
       <div className="fvd-card">
         <h3>Image</h3>

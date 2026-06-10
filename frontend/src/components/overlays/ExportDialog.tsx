@@ -43,6 +43,9 @@ export default function ExportDialog() {
     s.activeId ? (s.measures[s.activeId] ?? NO_MEASURES) : NO_MEASURES,
   );
   const overlayColor = useViewer((s) => s.overlay.color);
+  const sbState = useViewer((s) =>
+    s.activeId ? s.scaleBars[s.activeId] : undefined,
+  );
 
   const [format, setFormat] = useState<Format>("png");
   const [scale, setScale] = useState(1);
@@ -94,6 +97,15 @@ export default function ExportDialog() {
           ? measures.map((m) => ({ kind: m.kind, pts: m.pts, text: m.text }))
           : undefined,
       overlay_color: overlayColor,
+      // pass custom scale bar geometry when the bar has been repositioned/resized
+      ...(canBar && scaleBar && sbState
+        ? {
+            scale_bar_norm_x: sbState.x,
+            scale_bar_norm_y: sbState.y,
+            scale_bar_length_phys: sbState.lengthPhys,
+            scale_bar_thickness: sbState.thickness,
+          }
+        : {}),
     })
       .then(({ blob, filename }) => {
         const url = URL.createObjectURL(blob);

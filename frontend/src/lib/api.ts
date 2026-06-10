@@ -460,6 +460,11 @@ export interface ExportOptions {
     text?: string;
   }[];
   overlay_color?: string;
+  // custom scale bar geometry (item #33); all optional — null → auto
+  scale_bar_norm_x?: number | null;
+  scale_bar_norm_y?: number | null;
+  scale_bar_length_phys?: number | null;
+  scale_bar_thickness?: number | null;
 }
 
 /** Server-side export; returns the file blob + suggested filename. */
