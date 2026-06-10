@@ -4,6 +4,10 @@
 
 :root,
 [data-theme="dark"] {
+  /* tell the browser the UI is dark so NATIVE widget chrome (number-
+     input spinners, select arrows, scrollbars) renders dark too */
+  color-scheme: dark;
+
   /* surfaces: app bg → elevated cells */
   --surface-0: oklch(0.16 0.008 280);
   --surface-1: oklch(0.2 0.008 280);
@@ -40,6 +44,8 @@
 }
 
 [data-theme="light"] {
+  color-scheme: light;
+
   --surface-0: oklch(0.96 0.004 280);
   --surface-1: oklch(0.93 0.004 280);
   --surface-2: oklch(0.89 0.005 280);
