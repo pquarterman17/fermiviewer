@@ -4,7 +4,12 @@
 import { measureProfile } from "../../lib/api";
 import { physAngle, physDist } from "../../lib/geometry";
 import { useStageInfo } from "../../store/stage";
-import { useViewer, type Measure, type OverlayStyle } from "../../store/viewer";
+import {
+  useViewer,
+  type EndSymbol,
+  type Measure,
+  type OverlayStyle,
+} from "../../store/viewer";
 import { useResults } from "../overlays/ResultsWindow";
 
 const KIND_GLYPH: Record<Measure["kind"], string> = {
@@ -22,6 +27,12 @@ const KIND_GLYPH: Record<Measure["kind"], string> = {
 
 const SIZES: OverlayStyle["size"][] = ["S", "M", "L", "XL"];
 const SWATCHES = ["#ffffff", "#22d3ee", "#fbbf24", "#f472b6", "#a3e635"];
+const END_SYMBOLS: { sym: EndSymbol; label: string }[] = [
+  { sym: "none", label: "—" },
+  { sym: "circle", label: "○" },
+  { sym: "square", label: "□" },
+  { sym: "cross", label: "×" },
+];
 
 // stable empty result — fresh [] per snapshot loops React (#185)
 const NO_MEASURES: Measure[] = [];
@@ -429,6 +440,21 @@ export default function MeasurePanel() {
                 style={{ background: c }}
                 onClick={() => setOverlay({ color: c })}
               />
+            ))}
+          </div>
+        </div>
+        <div className="fvd-slider-row">
+          <span className="k">End symbol</span>
+          <div className="fvd-seg">
+            {END_SYMBOLS.map(({ sym, label }) => (
+              <button
+                key={sym}
+                className={`fvd-seg-btn${(overlay.endSymbol ?? "none") === sym ? " active" : ""}`}
+                title={sym}
+                onClick={() => setOverlay({ endSymbol: sym })}
+              >
+                {label}
+              </button>
             ))}
           </div>
         </div>

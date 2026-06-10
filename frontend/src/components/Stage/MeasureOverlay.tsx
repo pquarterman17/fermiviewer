@@ -13,10 +13,64 @@ import {
   type Size,
 } from "../../lib/geometry";
 import { useStageInfo } from "../../store/stage";
-import { useViewer, type Measure, type View } from "../../store/viewer";
+import {
+  useViewer,
+  type EndSymbol,
+  type Measure,
+  type View,
+} from "../../store/viewer";
 
 const FONT_PX = { S: 10, M: 12, L: 15, XL: 19 } as const;
 const HANDLE_R = 5;
+
+/** SVG glyph for an endpoint handle. The hit-circle (transparent, R=8)
+ *  is always rendered so draggability is consistent regardless of glyph. */
+function EndpointGlyph({
+  cx,
+  cy,
+  sym,
+  stroke,
+}: {
+  cx: number;
+  cy: number;
+  sym: EndSymbol;
+  stroke: string;
+}) {
+  const r = HANDLE_R;
+  const vis =
+    sym === "circle" ? (
+      <circle
+        cx={cx}
+        cy={cy}
+        r={r}
+        fill="var(--surface-0)"
+        stroke={stroke}
+        strokeWidth={1.5}
+      />
+    ) : sym === "square" ? (
+      <rect
+        x={cx - r}
+        y={cy - r}
+        width={r * 2}
+        height={r * 2}
+        fill="var(--surface-0)"
+        stroke={stroke}
+        strokeWidth={1.5}
+      />
+    ) : sym === "cross" ? (
+      <>
+        <line x1={cx - r} y1={cy - r} x2={cx + r} y2={cy + r} stroke={stroke} strokeWidth={1.5} />
+        <line x1={cx + r} y1={cy - r} x2={cx - r} y2={cy + r} stroke={stroke} strokeWidth={1.5} />
+      </>
+    ) : null; /* "none" → invisible; hit circle still captures events */
+  return (
+    <>
+      {vis}
+      {/* transparent hit target — always present for drag capture */}
+      <circle cx={cx} cy={cy} r={r + 3} fill="transparent" stroke="none" />
+    </>
+  );
+}
 
 // stable empty result — a fresh [] per snapshot makes zustand's
 // useSyncExternalStore loop forever (React #185, the black-screen bug)
@@ -82,6 +136,7 @@ export default function MeasureOverlay({
 
   const font = FONT_PX[overlay.size];
   const color = overlay.color;
+  const defaultEndSymbol = overlay.endSymbol ?? "none";
 
   // ── post-edit analysis refresh (on handle release) ──
   const refresh = (m: Measure) => {
@@ -372,20 +427,21 @@ export default function MeasureOverlay({
         )}
         {!isPending &&
           pts.map((p, i) => (
-            <circle
+            <g
               key={i}
-              cx={p.x}
-              cy={p.y}
-              r={HANDLE_R}
-              fill="var(--surface-0)"
-              stroke={sel ? "var(--accent)" : color}
-              strokeWidth={1.5}
               pointerEvents="all"
               style={{ cursor: "move" }}
               onPointerDown={(e) => onHandleDown(e, m.id, i)}
               onPointerMove={onHandleMove}
               onPointerUp={onHandleUp}
-            />
+            >
+              <EndpointGlyph
+                cx={p.x}
+                cy={p.y}
+                sym={m.endSymbol ?? defaultEndSymbol}
+                stroke={sel ? "var(--accent)" : color}
+              />
+            </g>
           ))}
       </g>
     );
@@ -431,6 +487,28 @@ export default function MeasureOverlay({
             />
           ))}
         </div>
+        <div className="fvd-ctx-label">End symbol</div>
+        <div className="fvd-ctx-sym-row">
+          {(["none", "circle", "square", "cross"] as EndSymbol[]).map((sym) => {
+            const active =
+              (measures.find((x) => x.id === ctxMenu.mid)?.endSymbol ??
+                defaultEndSymbol) === sym;
+            return (
+              <button
+                key={sym}
+                className={`fvd-ctx-sym${active ? " active" : ""}`}
+                title={sym}
+                onClick={() => {
+                  setMeasureStyle(imageId, ctxMenu.mid, { endSymbol: sym });
+                  setCtxMenu(null);
+                }}
+              >
+                {sym === "none" ? "—" : sym === "circle" ? "○" : sym === "square" ? "□" : "×"}
+              </button>
+            );
+          })}
+        </div>
+        <div className="fvd-ctx-sep" />
         <button
           className="fvd-ctx-item"
           onClick={() => {

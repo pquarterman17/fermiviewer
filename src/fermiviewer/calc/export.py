@@ -115,6 +115,7 @@ class Annotation:
     label: str
     label_xy: tuple[float, float]
     dashed: bool = False
+    end_symbol: str = "none"  # circle|cross|square|none
 
 
 def _fmt(v: float) -> str:
@@ -144,6 +145,7 @@ def measure_annotations(
     for m in measures:
         kind = str(m.get("kind", ""))
         text = str(m.get("text") or "")
+        end_symbol = str(m.get("endSymbol") or m.get("end_symbol") or "none")
         pts_n = [(float(p["x"]), float(p["y"])) for p in m.get("pts", [])]
         if len(pts_n) < (1 if kind == "text" else 2):
             continue
@@ -152,16 +154,19 @@ def measure_annotations(
 
         if kind == "text":
             out.append(Annotation(kind, opts[:1], text,
-                                  (opts[0][0] + 6, opts[0][1] - 6)))
+                                  (opts[0][0] + 6, opts[0][1] - 6),
+                                  end_symbol=end_symbol))
             continue
         if kind == "arrow":
             out.append(Annotation(kind, opts[:2], text,
-                                  (opts[0][0] + 8, opts[0][1] - 8)))
+                                  (opts[0][0] + 8, opts[0][1] - 8),
+                                  end_symbol=end_symbol))
             continue
         if kind in ("box", "circle"):
             lx = min(opts[0][0], opts[1][0])
             ly = min(opts[0][1], opts[1][1]) - 6
-            out.append(Annotation(kind, opts[:2], text, (lx, ly)))
+            out.append(Annotation(kind, opts[:2], text, (lx, ly),
+                                  end_symbol=end_symbol))
             continue
 
         if kind in ("distance", "profile"):
@@ -172,7 +177,8 @@ def measure_annotations(
             mid = ((opts[0][0] + opts[1][0]) / 2 + 8,
                    (opts[0][1] + opts[1][1]) / 2 - 8)
             out.append(Annotation(kind, opts[:2], label, mid,
-                                  dashed=kind == "profile"))
+                                  dashed=kind == "profile",
+                                  end_symbol=end_symbol))
         elif kind == "polyline" and len(ipts) >= 2:
             total = float(sum(
                 np.hypot(ipts[i + 1][0] - ipts[i][0],
@@ -183,7 +189,8 @@ def measure_annotations(
                      if pixel_size else f"{_fmt(total)} px")
             last = opts[-1]
             out.append(Annotation(kind, opts, label,
-                                  (last[0] + 10, last[1] - 10), dashed=True))
+                                  (last[0] + 10, last[1] - 10), dashed=True,
+                                  end_symbol=end_symbol))
         elif kind == "angle" and len(ipts) >= 3:
             v, a, b = ipts[1], ipts[0], ipts[2]
             a1 = np.arctan2(a[1] - v[1], a[0] - v[0])
@@ -192,7 +199,8 @@ def measure_annotations(
             if deg > 180.0:
                 deg = 360.0 - deg
             out.append(Annotation(kind, opts[:3], f"{deg:.1f}°",
-                                  (opts[1][0] + 10, opts[1][1] - 10)))
+                                  (opts[1][0] + 10, opts[1][1] - 10),
+                                  end_symbol=end_symbol))
         elif kind in ("roi", "ellipse"):
             (x0, y0), (x1, y1) = ipts[0], ipts[1]
             if raster is not None:
@@ -207,7 +215,8 @@ def measure_annotations(
                 label = f"{_fmt(w_px)} × {_fmt(h_px)} px"
             lx = min(opts[0][0], opts[1][0])
             ly = min(opts[0][1], opts[1][1]) - 6
-            out.append(Annotation(kind, opts[:2], label, (lx, ly)))
+            out.append(Annotation(kind, opts[:2], label, (lx, ly),
+                                  end_symbol=end_symbol))
     return out
 
 

@@ -454,6 +454,29 @@ details.fvd-card:not([open]) > summary {
   display: block;
 }
 
+.fvd-ctx-sym-row {
+  display: flex;
+  gap: 2px;
+  padding: 2px 6px 4px;
+}
+
+.fvd-ctx-sym {
+  flex: 1;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+  font-size: 14px;
+  padding: 3px 0;
+  cursor: pointer;
+}
+
+.fvd-ctx-sym.active {
+  background: var(--capture-soft);
+  border-color: var(--capture);
+  color: var(--capture);
+}
+
 .fvd-sb-presets {
   display: flex;
   flex-wrap: wrap;

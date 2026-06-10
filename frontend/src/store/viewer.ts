@@ -60,6 +60,8 @@ export type MeasureKind =
   | "box"
   | "circle";
 
+export type EndSymbol = "circle" | "cross" | "square" | "none";
+
 /** Points are normalized 0–1 image coords (handoff §6) so measures
  *  survive crops/derived images of the same aspect. */
 export interface Measure {
@@ -73,6 +75,8 @@ export interface Measure {
   /** dragged label offset in screen px (from the default anchor) */
   labelDx?: number;
   labelDy?: number;
+  /** endpoint glyph override (falls back to overlay style default) */
+  endSymbol?: EndSymbol;
 }
 
 /** Undoable mutations (Edit menu / ⌘Z). Derived-image entries remove
@@ -108,6 +112,7 @@ const UNDO_CAP = 99;
 export interface OverlayStyle {
   size: "S" | "M" | "L" | "XL";
   color: string;
+  endSymbol: EndSymbol;
 }
 
 /** Per-image scale bar display overrides.
@@ -382,7 +387,7 @@ interface ViewerState {
   setMeasureStyle: (
     imageId: string,
     measureId: string,
-    patch: Partial<Pick<Measure, "color" | "labelDx" | "labelDy">>,
+    patch: Partial<Pick<Measure, "color" | "labelDx" | "labelDy" | "endSymbol">>,
   ) => void;
   /** marquee multi-selection (shift-drag on the stage) */
   selectedMulti: string[];
@@ -439,7 +444,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
     document.documentElement.setAttribute("data-theme", t);
     return t;
   })(),
-  overlay: loadJson<OverlayStyle>(OVERLAY_KEY, { size: "M", color: "#ffffff" }),
+  overlay: loadJson<OverlayStyle>(OVERLAY_KEY, { size: "M", color: "#ffffff", endSymbol: "none" }),
   scaleBars: {},
   stackFrames: {},
   fixedZoomW: 256,
