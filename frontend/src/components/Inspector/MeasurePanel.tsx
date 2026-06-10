@@ -6,6 +6,7 @@ import { physAngle, physDist } from "../../lib/geometry";
 import { useStageInfo } from "../../store/stage";
 import { useViewer, type Measure, type OverlayStyle } from "../../store/viewer";
 import { useResults } from "../overlays/ResultsWindow";
+import Card from "./Card";
 
 const KIND_GLYPH: Record<Measure["kind"], string> = {
   distance: "↔",
@@ -254,8 +255,7 @@ export default function MeasurePanel() {
 
   return (
     <>
-      <details className="fvd-card" open>
-        <summary>Measure</summary>
+      <Card title="Measure">
         <div className="fvd-cap-grid">
           {capBtn("Profile", "∿", "profile")}
           {capBtn("Distance", "↔", "distance")}
@@ -282,10 +282,9 @@ export default function MeasurePanel() {
             onChange={(e) => setProfileWidth(Number(e.target.value) || 1)}
           />
         </div>
-      </details>
+      </Card>
       {measures.length > 0 && (
-        <details className="fvd-card" open>
-          <summary>Measurements</summary>
+        <Card title="Measurements">
           <div className="fvd-ws-row">
             <button
               className="fvd-btn"
@@ -400,11 +399,10 @@ export default function MeasurePanel() {
               ))}
             </div>
           )}
-        </details>
+        </Card>
       )}
 
-      <details className="fvd-card" open>
-        <summary>Overlay style</summary>
+      <Card title="Overlay style">
         <div className="fvd-slider-row">
           <span className="k">Size</span>
           <div className="fvd-seg">
@@ -432,7 +430,7 @@ export default function MeasurePanel() {
             ))}
           </div>
         </div>
-      </details>
+      </Card>
     </>
   );
 }
