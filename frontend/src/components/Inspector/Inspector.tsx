@@ -9,6 +9,7 @@ import DiffractionWorkshop from "../workshops/DiffractionWorkshop";
 import EdsWorkshop from "../workshops/EdsWorkshop";
 import EelsWorkshop from "../workshops/EelsWorkshop";
 import AdjustPanel from "./AdjustPanel";
+import Card from "./Card";
 import MeasurePanel from "./MeasurePanel";
 
 const TABS = ["Image", "EELS", "EDS", "Diff"] as const;
@@ -84,12 +85,11 @@ export default function Inspector() {
     return (
       <aside className="fvd-inspector">
         <PanelGrip />
-        <div className="fvd-card">
-          <h3>Image</h3>
+        <Card title="Image">
           <div className="fvd-meta-row">
             <span className="k">No image selected</span>
           </div>
-        </div>
+        </Card>
       </aside>
     );
   }
@@ -127,27 +127,37 @@ export default function Inspector() {
           ))}
         </div>
       </div>
-      {tab === "EELS" && <EelsWorkshop />}
-      {tab === "EDS" && <EdsWorkshop />}
-      {tab === "Diff" && <DiffractionWorkshop />}
+      {tab === "EELS" && (
+        <Card title="EELS">
+          <EelsWorkshop />
+        </Card>
+      )}
+      {tab === "EDS" && (
+        <Card title="EDS">
+          <EdsWorkshop />
+        </Card>
+      )}
+      {tab === "Diff" && (
+        <Card title="Diffraction">
+          <DiffractionWorkshop />
+        </Card>
+      )}
       {tab === "Image" && meta.kind !== "spectrum" && <AdjustPanel />}
       {tab === "Image" && <MeasurePanel />}
       {tab === "Image" && (
-      <div className="fvd-card">
-        <h3>Image</h3>
-        {rows.map(([k, v]) => (
-          <div key={k} className="fvd-meta-row">
-            <span className="k">{k}</span>
-            <span className="v" title={v}>
-              {v}
-            </span>
-          </div>
-        ))}
-      </div>
+        <Card title="Image">
+          {rows.map(([k, v]) => (
+            <div key={k} className="fvd-meta-row">
+              <span className="k">{k}</span>
+              <span className="v" title={v}>
+                {v}
+              </span>
+            </div>
+          ))}
+        </Card>
       )}
       {tab === "Image" && extra.length > 0 && (
-        <div className="fvd-card">
-          <h3>Metadata</h3>
+        <Card title="Metadata">
           {extra.map(([k, v]) => (
             <div key={k} className="fvd-meta-row">
               <span className="k">{k}</span>
@@ -156,7 +166,7 @@ export default function Inspector() {
               </span>
             </div>
           ))}
-        </div>
+        </Card>
       )}
     </aside>
   );

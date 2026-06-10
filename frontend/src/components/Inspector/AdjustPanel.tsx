@@ -8,6 +8,7 @@ import { COLORMAP_NAMES, type ColormapName } from "../../lib/colormaps";
 import { autoWindow, toReal } from "../../lib/display";
 import { useStageInfo } from "../../store/stage";
 import { DEFAULT_DISPLAY, useViewer } from "../../store/viewer";
+import Card from "./Card";
 
 const HIST_H = 80;
 
@@ -145,8 +146,7 @@ export default function AdjustPanel() {
     raster ? Number(toReal(norm, raster).toPrecision(5)).toString() : "—";
 
   return (
-    <div className="fvd-card">
-      <h3>Adjust</h3>
+    <Card title="Adjust">
       <div className="fvd-adjust-top">
         <button
           className="fvd-btn"
@@ -273,6 +273,6 @@ export default function AdjustPanel() {
         </button>
       </div>
 
-    </div>
+    </Card>
   );
 }
