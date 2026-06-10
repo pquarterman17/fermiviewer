@@ -37,6 +37,7 @@ import { listImages } from "./lib/api";
 import { COLORMAP_NAMES } from "./lib/colormaps";
 import { autoWindow } from "./lib/display";
 import { loadPrefs } from "./lib/prefs";
+import { renameSingleImage } from "./lib/rename";
 import { useStageInfo } from "./store/stage";
 import { installErrLog } from "./lib/errlog";
 import { undoLabel, useViewer, type CaptureMode } from "./store/viewer";
@@ -151,6 +152,9 @@ export default function App() {
       switch (e.key) {
         case "?":
           s.setShorts(!s.shorts);
+          break;
+        case "F2":
+          if (s.activeId) void renameSingleImage(s.activeId);
           break;
         case "[":
           s.cycleImage(-1);

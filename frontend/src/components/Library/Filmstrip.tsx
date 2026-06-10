@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { renderUrl } from "../../lib/api";
+import { renameSingleImage } from "../../lib/rename";
 import { useViewer, type SelectGesture } from "../../store/viewer";
 
 interface CtxMenu {
@@ -148,6 +149,7 @@ export default function Filmstrip() {
           canCompare={selected.length >= 2}
           onShow={() => select(ctx.id, "single")}
           onCompare={() => startCompare(selected)}
+          onRename={() => void renameSingleImage(ctx.id)}
           onClose={() => {
             for (const id of selected.includes(ctx.id) ? selected : [ctx.id]) {
               void closeImage(id);
@@ -165,6 +167,7 @@ function ContextMenu({
   canCompare,
   onShow,
   onCompare,
+  onRename,
   onClose,
   dismiss,
 }: {
@@ -172,6 +175,7 @@ function ContextMenu({
   canCompare: boolean;
   onShow: () => void;
   onCompare: () => void;
+  onRename: () => void;
   onClose: () => void;
   dismiss: () => void;
 }) {
@@ -196,6 +200,7 @@ function ContextMenu({
     >
       {item("Show in stage", onShow)}
       {item("Compare selected", onCompare, !canCompare)}
+      {item("Rename…  F2", onRename)}
       <div className="fvd-menu-sep" />
       {item("Close", onClose)}
     </div>

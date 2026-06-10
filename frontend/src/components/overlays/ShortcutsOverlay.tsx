@@ -33,6 +33,7 @@ const GROUPS: [string, [string, string][]][] = [
     [
       ["⌘K", "Command palette"],
       ["?", "This overlay"],
+      ["F2", "Rename active image"],
       ["[ / ]", "Previous / next image"],
       ["⌘[ / ⌘]", "Toggle library / inspector"],
       ["⌘⇧L", "Toggle theme"],
