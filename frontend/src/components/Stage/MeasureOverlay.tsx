@@ -24,21 +24,37 @@ const FONT_PX = { S: 10, M: 12, L: 15, XL: 19 } as const;
 const HANDLE_R = 5;
 
 /** SVG glyph for an endpoint handle. The hit-circle (transparent, R=8)
- *  is always rendered so draggability is consistent regardless of glyph. */
+ *  is always rendered so draggability is consistent regardless of glyph.
+ *  `angle` (radians) is the adjacent-segment direction — used by the
+ *  "bar" glyph, a dimension-style tick drawn perpendicular to the line. */
 function EndpointGlyph({
   cx,
   cy,
   sym,
   stroke,
+  angle = 0,
 }: {
   cx: number;
   cy: number;
   sym: EndSymbol;
   stroke: string;
+  angle?: number;
 }) {
   const r = HANDLE_R;
+  const bl = r + 2; // bar half-length
+  const px = -Math.sin(angle); // unit perpendicular
+  const py = Math.cos(angle);
   const vis =
-    sym === "circle" ? (
+    sym === "bar" ? (
+      <line
+        x1={cx + bl * px}
+        y1={cy + bl * py}
+        x2={cx - bl * px}
+        y2={cy - bl * py}
+        stroke={stroke}
+        strokeWidth={1.5}
+      />
+    ) : sym === "circle" ? (
       <circle
         cx={cx}
         cy={cy}
@@ -137,12 +153,13 @@ export default function MeasureOverlay({
 
   const font = FONT_PX[overlay.size];
   const color = overlay.color;
-  const defaultEndSymbol = overlay.endSymbol ?? "none";
+  const defaultEndSymbol = overlay.endSymbol ?? "bar";
 
   // ── post-edit analysis refresh (on handle release) ──
   const refresh = (m: Measure) => {
     const px = toImagePx(m);
-    const width = useViewer.getState().profileWidth;
+    // box-profile measures carry their own ⊥ width (the box's short axis)
+    const width = m.width ?? useViewer.getState().profileWidth;
     if (m.kind === "profile") {
       measureProfile(imageId, px[0], px[1], width, tilt)
         .then((r) => setProfile({ ...r, measureId: m.id }))
@@ -431,23 +448,29 @@ export default function MeasureOverlay({
           </text>
         )}
         {!isPending &&
-          pts.map((p, i) => (
-            <g
-              key={i}
-              pointerEvents="all"
-              style={{ cursor: "move" }}
-              onPointerDown={(e) => onHandleDown(e, m.id, i)}
-              onPointerMove={onHandleMove}
-              onPointerUp={onHandleUp}
-            >
-              <EndpointGlyph
-                cx={p.x}
-                cy={p.y}
-                sym={m.endSymbol ?? defaultEndSymbol}
-                stroke={sel ? "var(--accent)" : color}
-              />
-            </g>
-          ))}
+          pts.map((p, i) => {
+            // adjacent-segment direction for the perpendicular bar glyph
+            const nb = pts.length > 1 ? (i === 0 ? pts[1] : pts[i - 1]) : null;
+            const ang = nb ? Math.atan2(nb.y - p.y, nb.x - p.x) : 0;
+            return (
+              <g
+                key={i}
+                pointerEvents="all"
+                style={{ cursor: "move" }}
+                onPointerDown={(e) => onHandleDown(e, m.id, i)}
+                onPointerMove={onHandleMove}
+                onPointerUp={onHandleUp}
+              >
+                <EndpointGlyph
+                  cx={p.x}
+                  cy={p.y}
+                  sym={m.endSymbol ?? defaultEndSymbol}
+                  stroke={sel ? "var(--accent)" : color}
+                  angle={ang}
+                />
+              </g>
+            );
+          })}
       </g>
     );
   };
@@ -494,7 +517,7 @@ export default function MeasureOverlay({
         </div>
         <div className="fvd-ctx-label">End symbol</div>
         <div className="fvd-ctx-sym-row">
-          {(["none", "circle", "square", "cross"] as EndSymbol[]).map((sym) => {
+          {(["bar", "none", "circle", "square", "cross"] as EndSymbol[]).map((sym) => {
             const active =
               (measures.find((x) => x.id === ctxMenu.mid)?.endSymbol ??
                 defaultEndSymbol) === sym;
@@ -508,7 +531,7 @@ export default function MeasureOverlay({
                   setCtxMenu(null);
                 }}
               >
-                {sym === "none" ? "—" : sym === "circle" ? "○" : sym === "square" ? "□" : "×"}
+                {sym === "bar" ? "|" : sym === "none" ? "—" : sym === "circle" ? "○" : sym === "square" ? "□" : "×"}
               </button>
             );
           })}

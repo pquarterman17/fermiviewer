@@ -11,6 +11,7 @@ import {
 import { useStageInfo } from "../../store/stage";
 import {
   useViewer,
+  type CaptureMode,
   type EndSymbol,
   type Measure,
   type OverlayStyle,
@@ -34,6 +35,7 @@ const KIND_GLYPH: Record<Measure["kind"], string> = {
 const SIZES: OverlayStyle["size"][] = ["S", "M", "L", "XL"];
 const SWATCHES = ["#ffffff", "#22d3ee", "#fbbf24", "#f472b6", "#a3e635"];
 const END_SYMBOLS: { sym: EndSymbol; label: string }[] = [
+  { sym: "bar", label: "|" },
   { sym: "none", label: "—" },
   { sym: "circle", label: "○" },
   { sym: "square", label: "□" },
@@ -255,7 +257,7 @@ export default function MeasurePanel() {
     setSelected(m.id);
     if (m.kind === "profile") {
       const px = m.pts.map((p) => ({ x: p.x * img.w, y: p.y * img.h }));
-      measureProfile(activeId, px[0], px[1], 1, tilt)
+      measureProfile(activeId, px[0], px[1], m.width ?? 1, tilt)
         .then((r) => setProfile({ ...r, measureId: m.id }))
         .catch((e: Error) => setStatus(e.message));
     }
@@ -281,7 +283,7 @@ export default function MeasurePanel() {
   const capBtn = (
     label: string,
     glyph: string,
-    mode: Measure["kind"],
+    mode: CaptureMode,
   ) => (
     <button
       className={`fvd-cap-btn${captureMode === mode ? " active" : ""}`}
@@ -296,6 +298,7 @@ export default function MeasurePanel() {
       <Card title="Measure">
         <div className="fvd-cap-grid">
           {capBtn("Profile", "∿", "profile")}
+          {capBtn("Box Prof", "⧈", "box-profile")}
           {capBtn("Distance", "↔", "distance")}
           {capBtn("Angle", "∠", "angle")}
           {capBtn("Polyline", "⌇", "polyline")}
@@ -474,7 +477,7 @@ export default function MeasurePanel() {
             {END_SYMBOLS.map(({ sym, label }) => (
               <button
                 key={sym}
-                className={`fvd-seg-btn${(overlay.endSymbol ?? "none") === sym ? " active" : ""}`}
+                className={`fvd-seg-btn${(overlay.endSymbol ?? "bar") === sym ? " active" : ""}`}
                 title={sym}
                 onClick={() => setOverlay({ endSymbol: sym })}
               >
@@ -509,22 +512,23 @@ export default function MeasurePanel() {
               });
             }}
           />
-          {tilt?.seedAngle != null && (tilt?.angle ?? 0) === 0 && (
-            <button
-              className="fvd-btn"
-              title="Apply the stage tilt found in the file metadata"
-              onClick={() =>
-                setTilt(activeId, {
-                  angle: Number(tilt.seedAngle!.toFixed(2)),
-                  axis: tilt.axis,
-                  geometry: tilt.geometry,
-                  seedAngle: tilt.seedAngle,
-                })
-              }
-            >
-              Stage: {tilt.seedAngle.toFixed(1)}°
-            </button>
-          )}
+          {tilt?.seedAngle != null &&
+            (tilt?.angle ?? 0) !== Number(tilt.seedAngle.toFixed(2)) && (
+              <button
+                className="fvd-btn"
+                title="Apply the stage tilt found in the file metadata"
+                onClick={() =>
+                  setTilt(activeId, {
+                    angle: Number(tilt.seedAngle!.toFixed(2)),
+                    axis: tilt.axis,
+                    geometry: tilt.geometry,
+                    seedAngle: tilt.seedAngle,
+                  })
+                }
+              >
+                Stage: {tilt.seedAngle.toFixed(1)}°
+              </button>
+            )}
         </div>
         <div className="fvd-slider-row">
           <span className="k">Axis</span>
@@ -552,14 +556,17 @@ export default function MeasurePanel() {
           <div className="fvd-seg">
             {(
               [
-                ["cross-section", "1/sin θ"],
-                ["surface", "1/cos θ"],
+                // MATLAB names on the buttons; formula on hover
+                ["cross-section", "Cross-section",
+                 "1/sin θ — FIB cross-section"],
+                ["surface", "Plan-view",
+                 "1/cos θ — tilted plan-view surface"],
               ] as const
-            ).map(([g, lbl]) => (
+            ).map(([g, lbl, hint]) => (
               <button
                 key={g}
                 className={`fvd-seg-btn${(tilt?.geometry ?? "cross-section") === g ? " active" : ""}`}
-                title={g}
+                title={hint}
                 onClick={() =>
                   setTilt(activeId, {
                     angle: tilt?.angle ?? 0,

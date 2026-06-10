@@ -63,7 +63,7 @@ export type MeasureKind =
   | "box"
   | "circle";
 
-export type EndSymbol = "circle" | "cross" | "square" | "none";
+export type EndSymbol = "bar" | "circle" | "cross" | "square" | "none";
 
 /** Points are normalized 0–1 image coords (handoff §6) so measures
  *  survive crops/derived images of the same aspect. */
@@ -80,6 +80,9 @@ export interface Measure {
   labelDy?: number;
   /** endpoint glyph override (falls back to overlay style default) */
   endSymbol?: EndSymbol;
+  /** ⊥ averaging width in image px (box-profile captures); falls back
+   *  to the global profileWidth when absent */
+  width?: number;
 }
 
 /** Undoable mutations (Edit menu / ⌘Z). Derived-image entries remove
@@ -130,7 +133,12 @@ export interface ScaleBarState {
   fontSize: number | null;    // label font size in px (null = auto)
 }
 
-export type CaptureMode = "none" | "zoom" | "fixed-zoom" | MeasureKind;
+export type CaptureMode =
+  | "none"
+  | "zoom"
+  | "fixed-zoom"
+  | "box-profile"
+  | MeasureKind;
 export type Theme = "dark" | "light";
 export type ListView = "thumbs" | "names";
 export type CompareMode = "split" | "flicker" | "subtract";
@@ -468,7 +476,9 @@ export const useViewer = create<ViewerState>((set, get) => ({
     document.documentElement.setAttribute("data-theme", t);
     return t;
   })(),
-  overlay: loadJson<OverlayStyle>(OVERLAY_KEY, { size: "M", color: "#ffffff", endSymbol: "none" }),
+  // default endSymbol "bar" (user request 2026-06-09): dimension-style
+  // perpendicular ticks at measurement line ends
+  overlay: loadJson<OverlayStyle>(OVERLAY_KEY, { size: "M", color: "#ffffff", endSymbol: "bar" }),
   scaleBars: {},
   tilts: {},
   stackFrames: {},

@@ -145,6 +145,36 @@ export function physAngle(
   return deg;
 }
 
+/** Box-profile geometry: a dragged box becomes a profile along its
+ *  LONG axis, ⊥-averaged over the short axis (more signal than a 1-px
+ *  line). Returns null for degenerate boxes (< 2 px either side). */
+export function boxProfileLine(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+): {
+  p0: { x: number; y: number };
+  p1: { x: number; y: number };
+  width: number;
+} | null {
+  const w = Math.abs(b.x - a.x);
+  const h = Math.abs(b.y - a.y);
+  if (w < 2 || h < 2) return null;
+  const horizontal = w >= h;
+  const cx = (a.x + b.x) / 2;
+  const cy = (a.y + b.y) / 2;
+  return horizontal
+    ? {
+        p0: { x: Math.min(a.x, b.x), y: cy },
+        p1: { x: Math.max(a.x, b.x), y: cy },
+        width: Math.max(1, Math.round(h)),
+      }
+    : {
+        p0: { x: cx, y: Math.min(a.y, b.y) },
+        p1: { x: cx, y: Math.max(a.y, b.y) },
+        width: Math.max(1, Math.round(w)),
+      };
+}
+
 /** Nice round scale-bar length: largest of 1/2/5×10ⁿ below `maxPhys`. */
 export function niceScaleLength(maxPhys: number): number {
   const exp = Math.floor(Math.log10(maxPhys));

@@ -140,6 +140,10 @@ describe("measures + undo", () => {
 });
 
 describe("overlay style", () => {
+  it('default endSymbol is "bar" (user request 2026-06-09)', () => {
+    expect(useViewer.getState().overlay.endSymbol).toBe("bar");
+  });
+
   it("setOverlay merges and persists to fv_overlay (incl. #42 endSymbol)", () => {
     useViewer.getState().setOverlay({ endSymbol: "circle" });
     expect(useViewer.getState().overlay.endSymbol).toBe("circle");

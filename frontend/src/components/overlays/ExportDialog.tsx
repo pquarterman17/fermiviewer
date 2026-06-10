@@ -114,7 +114,7 @@ export default function ExportDialog() {
               text: m.text,
               // resolve per-item override against the style default so
               // baked glyphs match the on-screen overlay (A9)
-              endSymbol: m.endSymbol ?? overlayEndSymbol ?? "none",
+              endSymbol: m.endSymbol ?? overlayEndSymbol ?? "bar",
             }))
           : undefined,
       overlay_color: overlayColor,

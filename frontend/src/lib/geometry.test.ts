@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  boxProfileLine,
   niceScaleLength,
   physAngle,
   physDist,
@@ -104,6 +105,42 @@ describe("tiltDist (#34 — mirrors calc/profiles.measure_distance)", () => {
     const d = tiltDist(P(0, 0), P(0, 10), 0.5, cs(30));
     expect(d.unit).toBe("cal");
     expect(d.value).toBeCloseTo(10, 9); // 20 px × 0.5 nm/px
+  });
+});
+
+describe("boxProfileLine (box-profile capture)", () => {
+  it("wide box → horizontal centerline, width = short (vertical) side", () => {
+    const r = boxProfileLine(P(10, 20), P(110, 60));
+    expect(r).toEqual({
+      p0: { x: 10, y: 40 },
+      p1: { x: 110, y: 40 },
+      width: 40,
+    });
+  });
+
+  it("tall box → vertical centerline, width = horizontal side", () => {
+    const r = boxProfileLine(P(10, 20), P(40, 220));
+    expect(r).toEqual({
+      p0: { x: 25, y: 20 },
+      p1: { x: 25, y: 220 },
+      width: 30,
+    });
+  });
+
+  it("drag direction does not matter", () => {
+    expect(boxProfileLine(P(110, 60), P(10, 20))).toEqual(
+      boxProfileLine(P(10, 20), P(110, 60)),
+    );
+  });
+
+  it("degenerate boxes return null", () => {
+    expect(boxProfileLine(P(0, 0), P(100, 1))).toBeNull();
+    expect(boxProfileLine(P(0, 0), P(1, 100))).toBeNull();
+  });
+
+  it("width is rounded and at least 1", () => {
+    const r = boxProfileLine(P(0, 0), P(50, 2.4));
+    expect(r!.width).toBe(2);
   });
 });
 

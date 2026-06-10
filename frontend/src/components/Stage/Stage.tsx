@@ -22,6 +22,7 @@ import {
 } from "../../lib/api";
 import { buildLut } from "../../lib/colormaps";
 import {
+  boxProfileLine,
   fitView,
   niceScaleLength,
   screenToImage,
@@ -428,6 +429,35 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     }
   };
 
+  /** Box profile (user request 2026-06-09): drag a box → profile runs
+   *  along its LONG axis, ⊥-averaged across the short axis for more
+   *  signal. Stored as a profile measure with a per-measure width. */
+  const finalizeBoxProfile = (a: Pt, b: Pt) => {
+    if (!activeId || !imgSize) {
+      setCaptureMode("none");
+      return;
+    }
+    const line = boxProfileLine(a, b);
+    if (!line) {
+      setCaptureMode("none");
+      return;
+    }
+    const { p0, p1, width } = line;
+    const pts = [p0, p1].map((p) => ({
+      x: p.x / imgSize.w,
+      y: p.y / imgSize.h,
+    }));
+    const mid = addMeasure(activeId, { kind: "profile", pts, width });
+    setCaptureMode("none");
+    const tilt = useViewer.getState().tilts[activeId] ?? null;
+    measureProfile(activeId, p0, p1, width, tilt)
+      .then((r) => {
+        setProfile({ ...r, measureId: mid });
+        setStatus(`profile integrated over ${width} px`);
+      })
+      .catch((e: Error) => setStatus(e.message));
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
     if (!view || !imgSize) return;
     const p = local(e);
@@ -457,6 +487,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       captureMode === "zoom" ||
       captureMode === "roi" ||
       captureMode === "ellipse" ||
+      captureMode === "box-profile" ||
       (captureMode === "none" && e.shiftKey) // marquee measure-select
     ) {
       setMarquee({ a: p, b: p });
@@ -524,6 +555,8 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
         } else {
           setCaptureMode("none");
         }
+      } else if (captureMode === "box-profile") {
+        finalizeBoxProfile(toImage(marquee.a), toImage(marquee.b));
       } else if (captureMode === "none") {
         // shift-drag marquee: select every measure with a point inside
         const s = useViewer.getState();
@@ -730,6 +763,7 @@ function FloatTools() {
     ["⊞", "Fixed Size Zoom  F", captureMode === "fixed-zoom", mode("fixed-zoom")],
     ["↔", "Distance  D", captureMode === "distance", mode("distance")],
     ["∿", "Line profile  L", captureMode === "profile", mode("profile")],
+    ["⧈", "Box profile (integrated)  B", captureMode === "box-profile", mode("box-profile")],
     ["⌇", "Polyline  P", captureMode === "polyline", mode("polyline")],
     ["∠", "Angle  G", captureMode === "angle", mode("angle")],
     ["▭", "ROI stats  R", captureMode === "roi", mode("roi")],

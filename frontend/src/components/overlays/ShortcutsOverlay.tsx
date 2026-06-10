@@ -21,6 +21,7 @@ const GROUPS: [string, [string, string][]][] = [
     [
       ["D", "Distance"],
       ["L", "Line profile"],
+      ["B", "Box profile (integrated)"],
       ["G", "Angle (3-point)"],
       ["R", "ROI statistics"],
       ["A", "Auto contrast"],

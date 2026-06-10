@@ -48,10 +48,18 @@ def _dashed_line(draw: ImageDraw.ImageDraw, a: tuple[float, float],
 
 
 def _draw_end_glyph(draw: ImageDraw.ImageDraw, cx: float, cy: float,
-                    sym: str, color: tuple[int, int, int], r: int = 5) -> None:
-    """Draw a measurement endpoint glyph (circle / square / cross) at (cx, cy).
-    Mirrors the SVG EndpointGlyph in MeasureOverlay.tsx."""
-    if sym == "circle":
+                    sym: str, color: tuple[int, int, int], r: int = 5,
+                    ang: float = 0.0) -> None:
+    """Draw a measurement endpoint glyph (bar / circle / square / cross)
+    at (cx, cy). Mirrors the SVG EndpointGlyph in MeasureOverlay.tsx.
+    `ang` is the adjacent-segment direction (radians) — the "bar" glyph
+    is a dimension-style tick drawn perpendicular to it."""
+    if sym == "bar":
+        bl = r + 2
+        ux, uy = -math.sin(ang), math.cos(ang)
+        draw.line([(cx + bl * ux, cy + bl * uy),
+                   (cx - bl * ux, cy - bl * uy)], fill=color, width=2)
+    elif sym == "circle":
         draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=color, width=2)
     elif sym == "square":
         draw.rectangle([cx - r, cy - r, cx + r, cy + r], outline=color, width=2)
@@ -61,11 +69,20 @@ def _draw_end_glyph(draw: ImageDraw.ImageDraw, cx: float, cy: float,
     # "none" → no glyph
 
 
+def _seg_angle(pts: Sequence[tuple[float, float]], i: int) -> float:
+    """Direction (radians) of the segment adjacent to pts[i]."""
+    if len(pts) < 2:
+        return 0.0
+    nb = pts[1] if i == 0 else pts[i - 1]
+    return math.atan2(nb[1] - pts[i][1], nb[0] - pts[i][0])
+
+
 def _draw_glyphs(draw: ImageDraw.ImageDraw,
                  pts: Sequence[tuple[float, float]], sym: str,
                  color: tuple[int, int, int]) -> None:
-    for pt in pts:
-        _draw_end_glyph(draw, pt[0], pt[1], sym, color)
+    for i, pt in enumerate(pts):
+        _draw_end_glyph(draw, pt[0], pt[1], sym, color,
+                        ang=_seg_angle(pts, i))
 
 
 def _draw_box_kind(draw: ImageDraw.ImageDraw, an: Annotation,
@@ -93,7 +110,8 @@ def _draw_arrow_kind(draw: ImageDraw.ImageDraw, an: Annotation,
                  b[1] - head * np.sin(ang + da))],
             fill=color, width=2,
         )
-    _draw_end_glyph(draw, a[0], a[1], an.end_symbol, color)
+    _draw_end_glyph(draw, a[0], a[1], an.end_symbol, color,
+                    ang=math.atan2(b[1] - a[1], b[0] - a[0]))
 
 
 def draw_annotations(img: Image.Image, annos: list[Annotation],
@@ -150,8 +168,16 @@ def composite_colorbar(img: Image.Image, cmap: str, lo: float,
 # ── SVG vector composition ───────────────────────────────────────────
 
 def _svg_end_glyph(cx: float, cy: float, sym: str, color: str,
-                   r: float = 5.0) -> list[str]:
+                   r: float = 5.0, ang: float = 0.0) -> list[str]:
     """SVG elements for an endpoint glyph. Mirrors _draw_end_glyph()."""
+    if sym == "bar":
+        bl = r + 2
+        ux, uy = -math.sin(ang), math.cos(ang)
+        return [
+            f'<line x1="{cx + bl * ux:.1f}" y1="{cy + bl * uy:.1f}" '
+            f'x2="{cx - bl * ux:.1f}" y2="{cy - bl * uy:.1f}" '
+            f'stroke="{color}" stroke-width="2"/>',
+        ]
     if sym == "circle":
         return [f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{r}" '
                 f'fill="none" stroke="{color}" stroke-width="2"/>']
@@ -265,7 +291,8 @@ def build_svg(img: Image.Image, bar: ScaleBar | None,
                 f'{wings[1]}" fill="none" stroke="{color}" '
                 f'stroke-width="2"/>'
             )
-            parts.extend(_svg_end_glyph(p[0][0], p[0][1], sym, color))
+            parts.extend(_svg_end_glyph(p[0][0], p[0][1], sym, color,
+                                        ang=_seg_angle(p, 0)))
         elif an.kind in ("angle", "polyline"):
             pts_str = " ".join(f"{x:.1f},{y:.1f}" for x, y in p)
             dash = ' stroke-dasharray="6 4"' if an.dashed else ""
@@ -273,8 +300,9 @@ def build_svg(img: Image.Image, bar: ScaleBar | None,
                 f'<polyline points="{pts_str}" fill="none" '
                 f'stroke="{color}" stroke-width="2"{dash}/>'
             )
-            for pt in p:
-                parts.extend(_svg_end_glyph(pt[0], pt[1], sym, color))
+            for i, pt in enumerate(p):
+                parts.extend(_svg_end_glyph(pt[0], pt[1], sym, color,
+                                            ang=_seg_angle(p, i)))
         else:
             dash = ' stroke-dasharray="6 4"' if an.dashed else ""
             parts.append(
@@ -282,8 +310,9 @@ def build_svg(img: Image.Image, bar: ScaleBar | None,
                 f'x2="{p[1][0]:.1f}" y2="{p[1][1]:.1f}" '
                 f'stroke="{color}" stroke-width="2"{dash}/>'
             )
-            for pt in p[:2]:
-                parts.extend(_svg_end_glyph(pt[0], pt[1], sym, color))
+            for i, pt in enumerate(p[:2]):
+                parts.extend(_svg_end_glyph(pt[0], pt[1], sym, color,
+                                            ang=_seg_angle(p, i)))
         parts.append(
             f'<text x="{an.label_xy[0]:.1f}" y="{an.label_xy[1]:.1f}" '
             f'fill="{color}" {text_attrs}>{escape(an.label)}</text>'

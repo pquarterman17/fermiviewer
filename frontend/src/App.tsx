@@ -193,6 +193,10 @@ export default function App() {
         case "L":
           capture("profile");
           break;
+        case "b":
+        case "B":
+          capture("box-profile");
+          break;
         case "g":
         case "G":
           capture("angle");

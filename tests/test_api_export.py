@@ -438,7 +438,7 @@ def test_end_symbol_baking_png(client, img_id) -> None:
     no_glyph = np.asarray(Image.open(io.BytesIO(
         client.post("/api/export", json={**base_body}).content
     )))
-    for sym in ("circle", "square", "cross"):
+    for sym in ("bar", "circle", "square", "cross"):
         body = dict(base_body)
         body["measures"] = [{"kind": "distance",
                               "pts": [{"x": 0.2, "y": 0.5},
@@ -474,6 +474,18 @@ def test_end_symbol_baking_svg(client, img_id) -> None:
     # 2 endpoints × 2 lines per cross = 4 lines total (distance line + 4 cross lines)
     # (distance line also counts as <line>): 1 + 2*2 = 5
     assert svg.count("<line") == 5
+
+    body["measures"][0]["endSymbol"] = "bar"  # type: ignore[index]
+    svg = client.post("/api/export", json=body).content.decode()
+    # bar = 1 perpendicular tick per endpoint: distance line + 2 = 3
+    assert svg.count("<line") == 3
+    # the measure is horizontal → bar ticks are vertical (x1 == x2)
+    import re
+    ticks = re.findall(
+        r'<line x1="([\d.]+)" y1="[\d.]+" x2="([\d.]+)" y2="[\d.]+"', svg,
+    )
+    vertical = [t for t in ticks if t[0] == t[1]]
+    assert len(vertical) == 2
 
 
 def test_end_symbol_none_unchanged(client, img_id) -> None:
