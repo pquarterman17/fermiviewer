@@ -8,7 +8,12 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from fermiviewer.calc.fourier import compute_fft
-from fermiviewer.calc.profiles import line_profile, polyline_profile, roi_stats
+from fermiviewer.calc.profiles import (
+    line_profile,
+    measure_distance,
+    polyline_profile,
+    roi_stats,
+)
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.models import ImageMeta
 from fermiviewer.session import UnknownImageError, store
@@ -88,6 +93,55 @@ def measure_roi(req: RoiRequest) -> dict:
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
     return {**stats, "unit": ds.pixel_unit or "px"}
+
+
+class TiltedDistanceRequest(BaseModel):
+    image_id: str
+    x1: float                       # 1-based (col, row) pixel coords
+    y1: float
+    x2: float
+    y2: float
+    tilt_angle_deg: float = 0.0
+    tilt_axis: str = "Y"            # Y | X
+    geometry: str = "cross-section" # cross-section | surface
+
+
+@router.post("/measure/distance-tilted")
+def measure_distance_tilted(req: TiltedDistanceRequest) -> dict:
+    """Tilt-corrected Euclidean distance (#34 — port of measureDistance.m).
+
+    Returns both the raw pixel distance and the tilt-corrected distance in
+    both pixels and calibrated units (null when the image is uncalibrated).
+    The correction scales the in-tilt-axis component by 1/sin(θ) for
+    cross-section geometry or 1/cos(θ) for plan-view surface geometry.
+    """
+    try:
+        ds = store.get(req.image_id)
+    except UnknownImageError:
+        raise HTTPException(404, f"unknown image id: {req.image_id}") from None
+    px = ds.pixel_size
+    pu = ds.pixel_unit or "px"
+    try:
+        result = measure_distance(
+            req.x1, req.y1, req.x2, req.y2,
+            pixel_size=px,
+            pixel_unit=pu,
+            tilt_angle_deg=req.tilt_angle_deg,
+            tilt_axis=req.tilt_axis,
+            geometry=req.geometry,
+        )
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    return {
+        "raw_px": result.raw_px,
+        "raw_calibrated": result.raw_calibrated,
+        "corrected_px": result.corrected_px,
+        "corrected_calibrated": result.corrected_calibrated,
+        "unit": result.unit,
+        "tilt_angle_deg": result.tilt_angle_deg,
+        "tilt_axis": result.tilt_axis,
+        "geometry": result.geometry,
+    }
 
 
 class FftRequest(BaseModel):
