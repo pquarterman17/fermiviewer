@@ -18,8 +18,12 @@ from fermiviewer.calc.elements import ELEMENTS, atomic_mass, bulk_density
 __all__ = [
     "K_FACTORS_200KV",
     "ClResult",
+    "ElementAssignment",
+    "PeakAssignment",
     "ZafResult",
+    "assign_elements",
     "cliff_lorimer",
+    "detect_peaks",
     "line_energy",
     "mass_absorption_coeff",
     "zaf_correction",
@@ -314,3 +318,117 @@ def zaf_correction(
         at_maps, w_maps, list(elements), cl.k_factors, mask,
         mean_at, mean_wt, z_f, a_f, f_f, cl,
     )
+
+
+# ── EDS auto-assign (D10) ─────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class ElementAssignment:
+    symbol: str
+    line: str     # 'K', 'L', or 'M'
+    energy_kev: float
+    delta_kev: float
+
+
+@dataclass(frozen=True)
+class PeakAssignment:
+    peak_kev: float
+    candidates: tuple[ElementAssignment, ...]
+
+
+def detect_peaks(
+    energy: np.ndarray,
+    counts: np.ndarray,
+    threshold: float = 0.05,
+) -> np.ndarray:
+    """Local-maxima peak detection on an EDS sum spectrum.
+
+    Returns the energies (keV) of peaks above threshold * max(counts).
+    Minima-separated local maxima — three-point comparison on the smoothed
+    spectrum (box-3 average to suppress single-channel noise).
+
+    Parameters
+    ----------
+    energy    : 1-D energy axis in keV
+    counts    : 1-D count spectrum aligned to energy
+    threshold : fraction of the global maximum; peaks below are ignored
+    """
+    energy = np.asarray(energy, dtype=np.float64).ravel()
+    counts = np.asarray(counts, dtype=np.float64).ravel()
+    if energy.size != counts.size:
+        raise ValueError("energy and counts must have equal length")
+    if counts.size < 3:
+        return np.array([], dtype=np.float64)
+
+    # simple box-3 smoothing to suppress single-channel spikes
+    smoothed = np.convolve(counts, [1 / 3, 1 / 3, 1 / 3], mode="same")
+    floor = float(smoothed.max()) * threshold
+    # strictly greater than both neighbours → local max
+    is_max = (
+        (smoothed[1:-1] > smoothed[:-2])
+        & (smoothed[1:-1] > smoothed[2:])
+        & (smoothed[1:-1] >= floor)
+    )
+    # energy indices are offset by 1 because we sliced [1:-1]
+    peak_idx = np.where(is_max)[0] + 1
+    return energy[peak_idx]
+
+
+# Build a flat lookup: [(symbol, line, energy_kev), ...] from the known tables.
+def _build_line_table() -> list[tuple[str, str, float]]:
+    table = []
+    for sym, e in _K_LINES.items():
+        if not np.isnan(e):
+            table.append((sym, "K", e))
+    for sym, e in _L_LINES.items():
+        if not np.isnan(e):
+            table.append((sym, "L", e))
+    for sym, e in _M_LINES.items():
+        if not np.isnan(e):
+            table.append((sym, "M", e))
+    return table
+
+
+_LINE_TABLE: list[tuple[str, str, float]] = _build_line_table()
+
+
+def assign_elements(
+    peak_energies_kev: np.ndarray,
+    tolerance_kev: float = 0.15,
+) -> list[PeakAssignment]:
+    """Match detected EDS peak energies to candidate element lines (D10).
+
+    For each peak, all known K/L/M lines within tolerance_kev are returned,
+    sorted by absolute delta (closest first). The caller decides which
+    assignment to accept.
+
+    Parameters
+    ----------
+    peak_energies_kev : 1-D array of detected peak centres in keV
+    tolerance_kev     : match window half-width (default 0.15 keV)
+
+    Returns
+    -------
+    list[PeakAssignment] — one entry per input peak; candidates may be empty.
+
+    Examples
+    --------
+    >>> r = assign_elements(np.array([6.404, 8.048, 0.525]))
+    >>> r[0].candidates[0].symbol   # Fe Kα
+    'Fe'
+    >>> r[1].candidates[0].symbol   # Cu Kα
+    'Cu'
+    >>> r[2].candidates[0].symbol   # O Kα
+    'O'
+    """
+    peaks = np.asarray(peak_energies_kev, dtype=np.float64).ravel()
+    result = []
+    for pk in peaks:
+        cands = []
+        for sym, line, e in _LINE_TABLE:
+            d = abs(pk - e)
+            if d <= tolerance_kev:
+                cands.append(ElementAssignment(sym, line, e, round(d, 4)))
+        cands.sort(key=lambda c: c.delta_kev)
+        result.append(PeakAssignment(float(pk), tuple(cands)))
+    return result

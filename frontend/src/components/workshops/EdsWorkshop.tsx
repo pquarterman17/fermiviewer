@@ -3,7 +3,11 @@
 
 import { useState } from "react";
 
-import { edsQuantify, type EdsQuantResult } from "../../lib/api";
+import {
+  edsAutoAssign,
+  edsQuantify,
+  type EdsQuantResult,
+} from "../../lib/api";
 import { useViewer } from "../../store/viewer";
 import EdsComposite, { EDS_PALETTE, type Channel } from "./EdsComposite";
 
@@ -23,6 +27,7 @@ export default function EdsWorkshop() {
   const [result, setResult] = useState<EdsQuantResult | null>(null);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [busy, setBusy] = useState(false);
+  const [autoAssignBusy, setAutoAssignBusy] = useState(false);
 
   const isCube = meta?.kind === "spectrum_image";
 
@@ -87,6 +92,32 @@ export default function EdsWorkshop() {
           placeholder="Fe, O, Si"
           onChange={(e) => setElements(e.target.value)}
         />
+        <button
+          className="fvd-btn"
+          title="Auto-detect element lines from sum spectrum peaks (#44)"
+          disabled={autoAssignBusy || !activeId}
+          onClick={() => {
+            if (!activeId) return;
+            setAutoAssignBusy(true);
+            edsAutoAssign(activeId)
+              .then((r) => {
+                const syms = r.assignments
+                  .filter((a) => a.candidates.length > 0)
+                  .map((a) => a.candidates[0].symbol);
+                const unique = [...new Set(syms)];
+                if (unique.length > 0) {
+                  setElements(unique.join(", "));
+                  setStatus(`EDS auto-assign: ${unique.join(", ")}`);
+                } else {
+                  setStatus("EDS auto-assign: no peaks detected above threshold");
+                }
+              })
+              .catch((e: Error) => setStatus(`auto-assign: ${e.message}`))
+              .finally(() => setAutoAssignBusy(false));
+          }}
+        >
+          {autoAssignBusy ? "…" : "Auto-assign"}
+        </button>
       </div>
       <div className="fvd-ws-row">
         <span className="k">Method</span>
