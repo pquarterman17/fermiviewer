@@ -236,14 +236,34 @@ def image_render(
 
 
 @router.get("/image/{img_id}/data16")
-def image_data16(img_id: str) -> Response:
+def image_data16(img_id: str, frame: int | None = None) -> Response:
     """Full-range-normalized uint16 raster, little-endian, row-major.
 
     Feeds the client-side WebGL window/level/gamma/LUT shader (handoff
     section-13 render path). Real values reconstruct from X-Min/X-Max.
+
+    For spectrum_image (3D stack) kinds, the optional `frame` query param
+    selects a channel (0-based). Without frame, falls back to the energy sum.
+    The response header X-N-Frames reports the total frame count so the
+    client can build the stepper without a separate metadata call.
     """
-    raster = _raster(_get(img_id))
+    ds = _get(img_id)
+    n_frames: int | None = None
+    if ds.kind is DataKind.SPECTRUM_IMAGE:
+        n_frames = int(ds.data.shape[2])
+        if frame is not None:
+            clamped = max(0, min(n_frames - 1, frame))
+            raster = np.ascontiguousarray(
+                np.asarray(ds.data[:, :, clamped], dtype=np.float64)
+            )
+        else:
+            raster = np.asarray(ds.data, dtype=np.float64).sum(axis=2)
+    else:
+        raster = _raster(ds)
     u16, vmin, vmax = to_uint16_norm(raster)
+    extra: dict[str, str] = {}
+    if n_frames is not None:
+        extra["X-N-Frames"] = str(n_frames)
     return Response(
         content=u16.astype("<u2").tobytes(),
         media_type="application/octet-stream",
@@ -251,6 +271,7 @@ def image_data16(img_id: str) -> Response:
             "X-Shape": f"{raster.shape[0]},{raster.shape[1]}",
             "X-Min": repr(vmin),
             "X-Max": repr(vmax),
+            **extra,
         },
     )
 

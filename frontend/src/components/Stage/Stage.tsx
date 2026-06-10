@@ -121,6 +121,10 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   );
   const setView = useViewer((s) => s.setView);
   const setDisplay = useViewer((s) => s.setDisplay);
+  const stackFrame = useViewer((s) =>
+    s.activeId ? (s.stackFrames[s.activeId] ?? 0) : 0,
+  );
+  const setStackFrame = useViewer((s) => s.setStackFrame);
   const captureMode = useViewer((s) => s.captureMode);
   const setCaptureMode = useViewer((s) => s.setCaptureMode);
   const panTool = useViewer((s) => s.panTool);
@@ -142,6 +146,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   const [panning, setPanning] = useState(false);
   const [marquee, setMarquee] = useState<{ a: Pt; b: Pt } | null>(null);
   const [stageCtx, setStageCtx] = useState<CtxTarget | null>(null);
+  const [nFrames, setNFrames] = useState<number | null>(null);
   // in-progress click-capture (image-space pts; last pt tracks cursor)
   const [pending, setPending] = useState<{
     kind: Measure["kind"];
@@ -179,6 +184,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   }, []);
 
   // ── load active image (raw uint16 → GPU) ──
+  // Depends on stackFrame so re-fetches when frame index changes.
   useEffect(() => {
     setImgSize(null);
     setPending(null);
@@ -189,13 +195,16 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       glRef.current?.clear();
       return;
     }
+    const isStack = meta?.kind === "spectrum_image";
+    const frameArg = isStack ? stackFrame : undefined;
     let alive = true;
-    fetchData16(activeId)
+    fetchData16(activeId, frameArg)
       .then((r) => {
         if (!alive || !glRef.current) return;
         glRef.current.setImage16(r.data, r.w, r.h);
         rasterRef.current = r;
         setRaster(r);
+        setNFrames(r.nFrames);
         setImgSize({ w: r.w, h: r.h });
         // honor DM-saved display window on first load (checklist I)
         const st = useViewer.getState();
@@ -224,7 +233,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     return () => {
       alive = false;
     };
-  }, [activeId, rasterless, setDisplay, setProfile, setRaster, setStatus]);
+  }, [activeId, rasterless, stackFrame, meta?.kind, setDisplay, setProfile, setRaster, setStatus]);
 
   // ── colormap LUT upload ──
   useEffect(() => {
@@ -284,6 +293,24 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       window.removeEventListener("keyup", up);
     };
   }, []);
+
+  // ── stack frame keyboard navigation ( , / . ) ──
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return;
+      if (!activeId || !nFrames || nFrames < 2) return;
+      if (e.key === "," || e.key === "<") {
+        e.preventDefault();
+        setStackFrame(activeId, Math.max(0, stackFrame - 1));
+      } else if (e.key === "." || e.key === ">") {
+        e.preventDefault();
+        setStackFrame(activeId, Math.min(nFrames - 1, stackFrame + 1));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [activeId, nFrames, stackFrame, setStackFrame]);
 
   // ── cancel pending capture when mode changes / esc ──
   useEffect(() => {
@@ -634,6 +661,17 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
         </>
       )}
 
+      {nFrames && nFrames > 1 && activeId && (
+        <StackStepper
+          imageId={activeId}
+          frame={stackFrame}
+          total={nFrames}
+          onStep={(delta) => {
+            const next = Math.min(nFrames - 1, Math.max(0, stackFrame + delta));
+            setStackFrame(activeId, next);
+          }}
+        />
+      )}
       {stageCtx?.kind === "scalebar" && (
         <ScaleBarCtxMenu
           x={stageCtx.x}
@@ -812,6 +850,50 @@ function ScaleBarOverlay({
     >
       <div className="bar" style={{ width: widthPx, height: thickness }} />
       <div className="label">{label}</div>
+    </div>
+  );
+}
+
+// ── Stack frame stepper overlay (item #40 / D11) ─────────────────────
+
+function StackStepper({
+  imageId: _imageId,
+  frame,
+  total,
+  onStep,
+}: {
+  imageId: string;
+  frame: number;
+  total: number;
+  onStep: (delta: number) => void;
+}) {
+  return (
+    <div className="fvd-glass fvd-stack-stepper">
+      <button
+        className="fvd-icon-btn"
+        disabled={frame <= 0}
+        onClick={(e) => {
+          e.stopPropagation();
+          onStep(-1);
+        }}
+        title="Previous frame  ,"
+      >
+        ◀
+      </button>
+      <span className="fvd-stack-label">
+        {frame + 1} / {total}
+      </span>
+      <button
+        className="fvd-icon-btn"
+        disabled={frame >= total - 1}
+        onClick={(e) => {
+          e.stopPropagation();
+          onStep(1);
+        }}
+        title="Next frame  ."
+      >
+        ▶
+      </button>
     </div>
   );
 }

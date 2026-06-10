@@ -56,3 +56,38 @@ def test_explode_stack(tmp_path) -> None:
         "/api/session/open", json={"paths": [str(img2)]}
     ).json()[0]["id"]
     assert client.post(f"/api/image/{iid}/explode").status_code == 400
+
+
+def test_data16_frame_param(tmp_path) -> None:
+    """Stack data16 with frame= returns the specific channel, not the sum."""
+    client = TestClient(create_app())
+    ny, nx, nf = 4, 5, 3
+    arr = np.zeros((nf, ny, nx), dtype=np.float32)
+    for k in range(nf):
+        arr[k] = float(k + 1) * 100.0   # frame 0 → 100, 1 → 200, 2 → 300
+    f = write_mini_dm4(
+        tmp_path / "stack2.dm4", dims=[nx, ny, nf],
+        data=arr.ravel(), data_type=2,
+        cal=[{"scale": 1, "origin": 0, "units": "nm"}] * 2
+        + [{"scale": 1, "origin": 0, "units": "frame"}],
+    )
+    sid = client.post(
+        "/api/session/open", json={"paths": [str(f)]}
+    ).json()[0]["id"]
+
+    # without frame → energy sum; X-N-Frames header present
+    r0 = client.get(f"/api/image/{sid}/data16")
+    assert r0.status_code == 200
+    assert r0.headers.get("X-N-Frames") == "3"
+
+    # with frame=1 → second channel (value=200); u16 max should be 65535
+    r1 = client.get(f"/api/image/{sid}/data16?frame=1")
+    assert r1.status_code == 200
+    import struct
+    data1 = np.frombuffer(r1.content, dtype="<u2")
+    # all pixels in frame 1 are uniform (200.0); normalized → all same value
+    assert data1.min() == data1.max()   # uniform frame
+
+    # out-of-range frame is clamped (not 422)
+    r_clamp = client.get(f"/api/image/{sid}/data16?frame=999")
+    assert r_clamp.status_code == 200

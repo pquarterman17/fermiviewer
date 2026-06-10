@@ -325,6 +325,8 @@ interface ViewerState {
   overlay: OverlayStyle; // persisted "fv_overlay"
   // per-image scale bar position/size overrides
   scaleBars: Record<string, ScaleBarState>;
+  // per-image stack frame index (0-based; only relevant for spectrum_image)
+  stackFrames: Record<string, number>;
   // tools
   captureMode: CaptureMode;
   panTool: boolean;
@@ -391,6 +393,7 @@ interface ViewerState {
   setProfileWidth: (w: number) => void;
   setOverlay: (patch: Partial<OverlayStyle>) => void;
   setScaleBar: (imageId: string, patch: Partial<ScaleBarState>) => void;
+  setStackFrame: (imageId: string, frame: number) => void;
   toggleTheme: () => void;
   toggleLeft: () => void;
   toggleRight: () => void;
@@ -434,6 +437,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   })(),
   overlay: loadJson<OverlayStyle>(OVERLAY_KEY, { size: "M", color: "#ffffff" }),
   scaleBars: {},
+  stackFrames: {},
   captureMode: "none",
   panTool: false,
   profileWidth: _pref("profileWidth", 1),
@@ -781,6 +785,9 @@ export const useViewer = create<ViewerState>((set, get) => ({
       };
       return { scaleBars: { ...s.scaleBars, [imageId]: { ...prev, ...patch } } };
     }),
+
+  setStackFrame: (imageId, frame) =>
+    set((s) => ({ stackFrames: { ...s.stackFrames, [imageId]: frame } })),
 
   toggleTheme: () => {
     const theme: Theme = get().theme === "dark" ? "light" : "dark";

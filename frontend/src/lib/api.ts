@@ -86,19 +86,26 @@ export interface Raster16 {
   h: number;
   vmin: number;
   vmax: number;
+  /** Total frame count for spectrum_image (3D stack) sources; null otherwise */
+  nFrames: number | null;
 }
 
-/** Raw normalized-uint16 raster for the WebGL LUT shader. */
-export async function fetchData16(id: string): Promise<Raster16> {
-  const res = await fetch(`/api/image/${id}/data16`);
+/** Raw normalized-uint16 raster for the WebGL LUT shader.
+ *  For spectrum_image (stack) sources, pass `frame` (0-based) to select a
+ *  specific channel; omit to get the energy-summed view. */
+export async function fetchData16(id: string, frame?: number): Promise<Raster16> {
+  const q = frame != null ? `?frame=${frame}` : "";
+  const res = await fetch(`/api/image/${id}/data16${q}`);
   if (!res.ok) throw new Error(`data16 failed: ${res.status}`);
   const [h, w] = (res.headers.get("X-Shape") ?? "0,0")
     .split(",")
     .map(Number);
   const vmin = Number(res.headers.get("X-Min") ?? 0);
   const vmax = Number(res.headers.get("X-Max") ?? 1);
+  const nFramesHeader = res.headers.get("X-N-Frames");
+  const nFrames = nFramesHeader ? Number(nFramesHeader) : null;
   const buf = await res.arrayBuffer();
-  return { data: new Uint16Array(buf), w, h, vmin, vmax };
+  return { data: new Uint16Array(buf), w, h, vmin, vmax, nFrames };
 }
 
 export interface ProfileResult {
