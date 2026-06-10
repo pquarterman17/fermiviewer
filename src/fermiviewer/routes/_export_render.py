@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import io
 import math
+from collections.abc import Sequence
 from xml.sax.saxutils import escape
 
 import numpy as np
@@ -60,6 +61,41 @@ def _draw_end_glyph(draw: ImageDraw.ImageDraw, cx: float, cy: float,
     # "none" → no glyph
 
 
+def _draw_glyphs(draw: ImageDraw.ImageDraw,
+                 pts: Sequence[tuple[float, float]], sym: str,
+                 color: tuple[int, int, int]) -> None:
+    for pt in pts:
+        _draw_end_glyph(draw, pt[0], pt[1], sym, color)
+
+
+def _draw_box_kind(draw: ImageDraw.ImageDraw, an: Annotation,
+                   color: tuple[int, int, int]) -> None:
+    p = an.points
+    x0 = min(p[0][0], p[1][0])
+    y0 = min(p[0][1], p[1][1])
+    x1 = max(p[0][0], p[1][0])
+    y1 = max(p[0][1], p[1][1])
+    if an.kind in ("ellipse", "circle"):
+        draw.ellipse([x0, y0, x1, y1], outline=color, width=2)
+    else:
+        draw.rectangle([x0, y0, x1, y1], outline=color, width=2)
+
+
+def _draw_arrow_kind(draw: ImageDraw.ImageDraw, an: Annotation,
+                     color: tuple[int, int, int]) -> None:
+    a, b = an.points[0], an.points[1]
+    draw.line([a, b], fill=color, width=2)
+    ang = float(np.arctan2(b[1] - a[1], b[0] - a[0]))
+    head = 9.0
+    for da in (-0.45, 0.45):
+        draw.line(
+            [b, (b[0] - head * np.cos(ang + da),
+                 b[1] - head * np.sin(ang + da))],
+            fill=color, width=2,
+        )
+    _draw_end_glyph(draw, a[0], a[1], an.end_symbol, color)
+
+
 def draw_annotations(img: Image.Image, annos: list[Annotation],
                      color: tuple[int, int, int]) -> None:
     draw = ImageDraw.Draw(img)
@@ -67,45 +103,24 @@ def draw_annotations(img: Image.Image, annos: list[Annotation],
         p = an.points
         sym = an.end_symbol
         if an.kind in ("roi", "box", "ellipse", "circle"):
-            x0 = min(p[0][0], p[1][0])
-            y0 = min(p[0][1], p[1][1])
-            x1 = max(p[0][0], p[1][0])
-            y1 = max(p[0][1], p[1][1])
-            if an.kind in ("ellipse", "circle"):
-                draw.ellipse([x0, y0, x1, y1], outline=color, width=2)
-            else:
-                draw.rectangle([x0, y0, x1, y1], outline=color, width=2)
+            _draw_box_kind(draw, an, color)
         elif an.kind == "text":
             pass  # caption only — drawn below
         elif an.kind == "arrow":
-            a, b = p[0], p[1]
-            draw.line([a, b], fill=color, width=2)
-            ang = float(np.arctan2(b[1] - a[1], b[0] - a[0]))
-            head = 9.0
-            for da in (-0.45, 0.45):
-                draw.line(
-                    [b, (b[0] - head * np.cos(ang + da),
-                         b[1] - head * np.sin(ang + da))],
-                    fill=color, width=2,
-                )
-            _draw_end_glyph(draw, p[0][0], p[0][1], sym, color)
+            _draw_arrow_kind(draw, an, color)
         elif an.kind == "angle":
             draw.line([p[0], p[1], p[2]], fill=color, width=2)
-            for pt in p:
-                _draw_end_glyph(draw, pt[0], pt[1], sym, color)
+            _draw_glyphs(draw, p, sym, color)
         elif an.kind == "polyline":
             for i in range(len(p) - 1):
                 _dashed_line(draw, p[i], p[i + 1], color, 2)
-            for pt in p:
-                _draw_end_glyph(draw, pt[0], pt[1], sym, color)
+            _draw_glyphs(draw, p, sym, color)
         elif an.dashed:
             _dashed_line(draw, p[0], p[1], color, 2)
-            for pt in p[:2]:
-                _draw_end_glyph(draw, pt[0], pt[1], sym, color)
+            _draw_glyphs(draw, p[:2], sym, color)
         else:
             draw.line([p[0], p[1]], fill=color, width=2)
-            for pt in p[:2]:
-                _draw_end_glyph(draw, pt[0], pt[1], sym, color)
+            _draw_glyphs(draw, p[:2], sym, color)
         draw.text(an.label_xy, an.label, fill=color,
                   stroke_width=2, stroke_fill=(0, 0, 0))
 
