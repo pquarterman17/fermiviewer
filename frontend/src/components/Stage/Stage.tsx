@@ -413,12 +413,13 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     const mid = addMeasure(activeId, { kind, pts, text });
     setCaptureMode("none");
     const width = useViewer.getState().profileWidth;
+    const reduce = useViewer.getState().profileReduce;
     if (kind === "profile") {
-      measureProfile(activeId, ptsImg[0], ptsImg[1], width)
+      measureProfile(activeId, ptsImg[0], ptsImg[1], width, null, reduce)
         .then((r) => setProfile({ ...r, measureId: mid }))
         .catch((e: Error) => setStatus(e.message));
     } else if (kind === "polyline") {
-      measurePolyline(activeId, ptsImg, width)
+      measurePolyline(activeId, ptsImg, width, reduce)
         .then((r) => setProfile({ ...r, measureId: mid }))
         .catch((e: Error) => setStatus(e.message));
     } else if (kind === "roi" || kind === "ellipse") {
@@ -450,7 +451,8 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     const mid = addMeasure(activeId, { kind: "profile", pts, width });
     setCaptureMode("none");
     const tilt = useViewer.getState().tilts[activeId] ?? null;
-    measureProfile(activeId, p0, p1, width, tilt)
+    const reduce = useViewer.getState().profileReduce;
+    measureProfile(activeId, p0, p1, width, tilt, reduce)
       .then((r) => {
         setProfile({ ...r, measureId: mid });
         setStatus(`profile integrated over ${width} px`);

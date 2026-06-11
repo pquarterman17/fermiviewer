@@ -180,3 +180,52 @@ def test_profile_endpoint_polyline_and_width(client, ramp_id) -> None:
     assert client.post("/api/measure/profile", json={
         "image_id": ramp_id,
     }).status_code == 422
+
+
+# ── reduce='sum' vs 'mean' (item #49) ────────────────────────────────
+
+def test_reduce_sum_equals_mean_times_width() -> None:
+    """sum profile = mean profile × n_lines (no edge clipping, mid-image)."""
+    img = np.ones((32, 64), dtype=np.float64) * 5.0
+    width = 7
+    _, mean_p = line_profile(img, 10, 16, 50, 16, width=width, reduce="mean")
+    _, sum_p = line_profile(img, 10, 16, 50, 16, width=width, reduce="sum")
+    # constant image: sum must equal mean × width
+    np.testing.assert_allclose(sum_p, mean_p * width, rtol=1e-12)
+
+
+def test_reduce_default_is_mean() -> None:
+    """Default reduce='mean' is backward compatible — bit-identical."""
+    img = np.random.default_rng(42).random((16, 32))
+    _, default = line_profile(img, 2, 8, 28, 8, width=5)
+    _, explicit = line_profile(img, 2, 8, 28, 8, width=5, reduce="mean")
+    np.testing.assert_array_equal(default, explicit)
+
+
+def test_reduce_width1_mean_sum_identical() -> None:
+    """width=1 → single sample, mean and sum are the same."""
+    img = np.random.default_rng(7).random((16, 32))
+    _, mean_p = line_profile(img, 2, 8, 28, 8, width=1, reduce="mean")
+    _, sum_p = line_profile(img, 2, 8, 28, 8, width=1, reduce="sum")
+    np.testing.assert_array_equal(mean_p, sum_p)
+
+
+def test_reduce_invalid_raises() -> None:
+    img = np.ones((8, 8))
+    with pytest.raises(ValueError, match="reduce"):
+        line_profile(img, 1, 1, 5, 5, reduce="max")
+
+
+def test_profile_endpoint_reduce_sum(client, ramp_id) -> None:
+    """API accepts reduce='sum'; response includes reduce field."""
+    r = client.post("/api/measure/profile", json={
+        "image_id": ramp_id, "a": [4, 2], "b": [4, 14], "width": 3, "reduce": "sum",
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert body["reduce"] == "sum"
+    # default omitted → mean
+    r2 = client.post("/api/measure/profile", json={
+        "image_id": ramp_id, "a": [4, 2], "b": [4, 14], "width": 3,
+    })
+    assert r2.json()["reduce"] == "mean"

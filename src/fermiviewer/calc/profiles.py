@@ -138,6 +138,7 @@ def line_profile(
     tilt_axis: str = "Y",
     geometry: str = "cross-section",
     width: float = 1.0,
+    reduce: str = "mean",
 ) -> tuple[np.ndarray, np.ndarray]:
     """Sub-pixel bilinear profile along a segment (port of lineProfile.m).
 
@@ -149,9 +150,15 @@ def line_profile(
     parallel lines spaced 1 px apart perpendicular to the segment,
     ignoring out-of-image samples — width=1 is bit-identical to the
     ported single-line path (goldens unchanged).
+
+    reduce : 'mean' (default) or 'sum'.  'sum' returns the true integral
+    over the box width — useful for quantitative intensity integration.
+    width=1 is identical for both modes (single-sample, no averaging).
     """
     if not -90 < tilt_angle_deg < 90:
         raise ValueError("tilt_angle_deg must be in (-90, 90)")
+    if reduce not in ("mean", "sum"):
+        raise ValueError("reduce must be 'mean' or 'sum'")
 
     pixel_dist = float(np.hypot(x2 - x1, y2 - y1))
     n = max(2, int(np.ceil(pixel_dist)) + 1)
@@ -173,8 +180,17 @@ def line_profile(
             )
             for o in offsets
         ]
+        stacked = np.stack(rows)
         with np.errstate(invalid="ignore"):
-            intensity = np.nanmean(np.stack(rows), axis=0)
+            if reduce == "sum":
+                # count only valid (non-NaN) samples to avoid inflating the
+                # sum near edges where some rows are clipped
+                valid = np.sum(np.isfinite(stacked), axis=0).astype(np.float64)
+                intensity = np.where(
+                    valid > 0, np.nansum(stacked, axis=0), np.nan
+                )
+            else:
+                intensity = np.nanmean(stacked, axis=0)
     else:
         # 1-based pixel-centre coords → 0-based array indices
         intensity = map_coordinates(
@@ -205,6 +221,7 @@ def polyline_profile(
     ys: np.ndarray,
     pixel_size: float = float("nan"),
     width: float = 1.0,
+    reduce: str = "mean",
 ) -> tuple[np.ndarray, np.ndarray]:
     """Concatenated sub-pixel profile along polyline vertices (1-based
     pixel-centre coords, NEW — no MATLAB counterpart). Distance
@@ -223,7 +240,7 @@ def polyline_profile(
     for i in range(xv.size - 1):
         d, v = line_profile(
             img, xv[i], yv[i], xv[i + 1], yv[i + 1],
-            pixel_size=pixel_size, width=width,
+            pixel_size=pixel_size, width=width, reduce=reduce,
         )
         if i == 0:
             ds_list.append(d + total)

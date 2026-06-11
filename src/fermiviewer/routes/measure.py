@@ -39,6 +39,7 @@ class ProfileRequest(BaseModel):
     b: tuple[float, float] | None = None
     points: list[tuple[float, float]] | None = None   # polyline (row, col)
     width: float = 1.0                        # ⊥ averaging width (px)
+    reduce: str = "mean"                      # "mean" | "sum"
     tilt_angle_deg: float = 0.0
     tilt_axis: str = "Y"
     geometry: str = "cross-section"
@@ -53,7 +54,7 @@ def measure_profile(req: ProfileRequest) -> dict:
             pts = np.asarray(req.points, dtype=np.float64)
             dist, inten = polyline_profile(
                 raster, xs=pts[:, 1], ys=pts[:, 0],
-                pixel_size=px, width=req.width,
+                pixel_size=px, width=req.width, reduce=req.reduce,
             )
         elif req.a is not None and req.b is not None:
             dist, inten = line_profile(
@@ -64,6 +65,7 @@ def measure_profile(req: ProfileRequest) -> dict:
                 tilt_axis=req.tilt_axis,
                 geometry=req.geometry,
                 width=req.width,
+                reduce=req.reduce,
             )
         else:
             raise HTTPException(422, "need either a+b or points (≥2)")
@@ -75,6 +77,7 @@ def measure_profile(req: ProfileRequest) -> dict:
         "intensity": [None if not np.isfinite(v) else v for v in inten],
         "length": float(dist[-1]),
         "unit": unit if np.isfinite(px) else "px",
+        "reduce": req.reduce,
     }
 
 

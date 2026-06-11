@@ -109,11 +109,14 @@ export async function fetchData16(id: string, frame?: number): Promise<Raster16>
   return { data: new Uint16Array(buf), w, h, vmin, vmax, nFrames };
 }
 
+export type ProfileReduce = "mean" | "sum";
+
 export interface ProfileResult {
   dist: number[];
   intensity: (number | null)[];
   length: number;
   unit: string;
+  reduce: ProfileReduce;
 }
 
 /** Line profile. a/b are 0-based image (x, y); backend wants 1-based (row, col). */
@@ -127,6 +130,7 @@ export async function measureProfile(
     axis: "X" | "Y";
     geometry: "cross-section" | "surface";
   } | null,
+  reduce: ProfileReduce = "mean",
 ): Promise<ProfileResult> {
   return json(
     await fetch("/api/measure/profile", {
@@ -137,6 +141,7 @@ export async function measureProfile(
         a: [a.y + 1, a.x + 1],
         b: [b.y + 1, b.x + 1],
         width,
+        reduce,
         // #34: line_profile applies the same tilt correction as
         // measure_distance; 0/absent → off
         ...(tilt && tilt.angle !== 0
@@ -156,6 +161,7 @@ export async function measurePolyline(
   id: string,
   pts: { x: number; y: number }[],
   width = 1,
+  reduce: ProfileReduce = "mean",
 ): Promise<ProfileResult> {
   return json(
     await fetch("/api/measure/profile", {
@@ -165,6 +171,7 @@ export async function measurePolyline(
         image_id: id,
         points: pts.map((p) => [p.y + 1, p.x + 1]),
         width,
+        reduce,
       }),
     }),
   );

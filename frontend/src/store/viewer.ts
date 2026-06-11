@@ -368,7 +368,8 @@ interface ViewerState {
   // tools
   captureMode: CaptureMode;
   panTool: boolean;
-  profileWidth: number; // ⊥ averaging width (px) for profile captures
+  profileWidth: number;  // ⊥ averaging width (px) for profile captures
+  profileReduce: "mean" | "sum"; // box/profile reduction mode (item #49)
   // chrome
   leftCol: boolean;
   rightCol: boolean;
@@ -429,6 +430,7 @@ interface ViewerState {
   setCaptureMode: (mode: CaptureMode) => void;
   setPanTool: (on: boolean) => void;
   setProfileWidth: (w: number) => void;
+  setProfileReduce: (r: "mean" | "sum") => void;
   setOverlay: (patch: Partial<OverlayStyle>) => void;
   setScaleBar: (imageId: string, patch: Partial<ScaleBarState>) => void;
   /** Set or clear (null) the per-image tilt correction (#34). */
@@ -487,6 +489,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   captureMode: "none",
   panTool: false,
   profileWidth: _pref("profileWidth", 1),
+  profileReduce: _pref<"mean" | "sum">("profileReduce", "mean"),
   leftCol: false,
   minimap: _pref("minimap", true),
   colorbar: false,
@@ -816,6 +819,13 @@ export const useViewer = create<ViewerState>((set, get) => ({
   setCaptureMode: (mode) => set({ captureMode: mode }),
   setProfileWidth: (w) =>
     set({ profileWidth: Math.max(1, Math.min(99, Math.round(w))) }),
+  setProfileReduce: (r) => {
+    try {
+      const p = JSON.parse(localStorage.getItem("fv_prefs") ?? "{}") as Record<string, unknown>;
+      localStorage.setItem("fv_prefs", JSON.stringify({ ...p, profileReduce: r }));
+    } catch { /* ignore */ }
+    set({ profileReduce: r });
+  },
   setPanTool: (on) => set({ panTool: on }),
 
   setOverlay: (patch) => {
