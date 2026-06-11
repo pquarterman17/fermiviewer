@@ -311,17 +311,20 @@ export default function MeasurePanel() {
           {capBtn("Box", "□", "box")}
           {capBtn("Circle", "◌", "circle")}
         </div>
-        <div className="fvd-slider-row">
-          <span className="k">Width (px)</span>
-          <input
-            type="number"
-            min={1}
-            max={99}
-            value={profileWidth}
-            style={{ width: 52 }}
-            title="Perpendicular averaging width for profile captures"
-            onChange={(e) => setProfileWidth(Number(e.target.value) || 1)}
-          />
+        <div className="fvd-profile-opts">
+          <span className="fvd-profile-opts-label">Profile options</span>
+          <div className="fvd-slider-row">
+            <span className="k">Width (px)</span>
+            <input
+              type="number"
+              min={1}
+              max={99}
+              value={profileWidth}
+              style={{ width: 52 }}
+              title="Perpendicular averaging width for profile captures"
+              onChange={(e) => setProfileWidth(Number(e.target.value) || 1)}
+            />
+          </div>
         </div>
       </Card>
       {measures.length > 0 && (
