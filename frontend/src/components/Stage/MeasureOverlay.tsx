@@ -160,12 +160,13 @@ export default function MeasureOverlay({
     const px = toImagePx(m);
     // box-profile measures carry their own ⊥ width (the box's short axis)
     const width = m.width ?? useViewer.getState().profileWidth;
+    const reduce = useViewer.getState().profileReduce;
     if (m.kind === "profile") {
-      measureProfile(imageId, px[0], px[1], width, tilt)
+      measureProfile(imageId, px[0], px[1], width, tilt, reduce)
         .then((r) => setProfile({ ...r, measureId: m.id }))
         .catch((e: Error) => setStatus(e.message));
     } else if (m.kind === "polyline") {
-      measurePolyline(imageId, px, width)
+      measurePolyline(imageId, px, width, reduce)
         .then((r) => setProfile({ ...r, measureId: m.id }))
         .catch((e: Error) => setStatus(e.message));
     } else if (m.kind === "roi" || m.kind === "ellipse") {

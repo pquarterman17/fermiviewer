@@ -27,7 +27,7 @@ export default function DockPlot() {
           series: [
             { label: `d (${profile.unit})` },
             {
-              label: "I",
+              label: profile.reduce === "sum" ? "I (sum)" : "I",
               stroke: styles.getPropertyValue("--accent").trim() || "#a78bfa",
               width: 1.5,
               points: { show: false },
@@ -78,7 +78,7 @@ export default function DockPlot() {
           title="Download profile as CSV (calibrated x-axis)"
           onClick={() => {
             const csv = [
-              `distance_${profile.unit},intensity`,
+              `distance_${profile.unit},${profile.reduce === "sum" ? "intensity_sum" : "intensity"}`,
               ...profile.dist.map(
                 (d, i) => `${d},${profile.intensity[i] ?? ""}`,
               ),

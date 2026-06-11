@@ -1,7 +1,7 @@
 // Measure + Overlay-style cards (handoff §4): measurement list mirroring
 // the stage labels, ROI stats, and the persisted overlay font/colour.
 
-import { measureProfile } from "../../lib/api";
+import { measureProfile, type ProfileReduce } from "../../lib/api";
 import {
   physAngle,
   physDist,
@@ -257,7 +257,7 @@ export default function MeasurePanel() {
     setSelected(m.id);
     if (m.kind === "profile") {
       const px = m.pts.map((p) => ({ x: p.x * img.w, y: p.y * img.h }));
-      measureProfile(activeId, px[0], px[1], m.width ?? 1, tilt)
+      measureProfile(activeId, px[0], px[1], m.width ?? 1, tilt, profileReduce)
         .then((r) => setProfile({ ...r, measureId: m.id }))
         .catch((e: Error) => setStatus(e.message));
     }
@@ -280,6 +280,8 @@ export default function MeasurePanel() {
   const setCaptureMode = useViewer((s) => s.setCaptureMode);
   const profileWidth = useViewer((s) => s.profileWidth);
   const setProfileWidth = useViewer((s) => s.setProfileWidth);
+  const profileReduce = useViewer((s) => s.profileReduce);
+  const setProfileReduce = useViewer((s) => s.setProfileReduce);
   const capBtn = (
     label: string,
     glyph: string,
@@ -311,17 +313,39 @@ export default function MeasurePanel() {
           {capBtn("Box", "□", "box")}
           {capBtn("Circle", "◌", "circle")}
         </div>
-        <div className="fvd-slider-row">
-          <span className="k">Width (px)</span>
-          <input
-            type="number"
-            min={1}
-            max={99}
-            value={profileWidth}
-            style={{ width: 52 }}
-            title="Perpendicular averaging width for profile captures"
-            onChange={(e) => setProfileWidth(Number(e.target.value) || 1)}
-          />
+        <div className="fvd-profile-opts">
+          <span className="fvd-profile-opts-label">Profile options</span>
+          <div className="fvd-slider-row">
+            <span className="k">Width (px)</span>
+            <input
+              type="number"
+              min={1}
+              max={99}
+              value={profileWidth}
+              style={{ width: 52 }}
+              title="Perpendicular averaging width for profile captures"
+              onChange={(e) => setProfileWidth(Number(e.target.value) || 1)}
+            />
+          </div>
+          <div className="fvd-slider-row">
+            <span className="k">Reduce</span>
+            <div className="fvd-seg">
+              {(["mean", "sum"] as ProfileReduce[]).map((r) => (
+                <button
+                  key={r}
+                  className={`fvd-seg-btn${profileReduce === r ? " active" : ""}`}
+                  title={
+                    r === "mean"
+                      ? "Average intensity across box width (default)"
+                      : "Sum counts across box width — for quantitative integration"
+                  }
+                  onClick={() => setProfileReduce(r)}
+                >
+                  {r === "mean" ? "Mean" : "Sum"}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </Card>
       {measures.length > 0 && (

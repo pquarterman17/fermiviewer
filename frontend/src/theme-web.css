@@ -1067,6 +1067,23 @@ details.fvd-card:not([open]) > summary {
   padding-top: var(--pad);
 }
 
+/* Profile-options sub-section in the Measure card */
+.fvd-profile-opts {
+  border-top: 1px solid var(--border-soft);
+  margin-top: var(--pad);
+  padding-top: var(--pad);
+}
+
+.fvd-profile-opts-label {
+  display: block;
+  font-size: var(--font-size-sm);
+  color: var(--text-faint);
+  margin-bottom: 2px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+
 .fvd-seg {
   display: flex;
   border: 1px solid var(--border);
