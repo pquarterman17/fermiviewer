@@ -634,3 +634,87 @@ def test_scale_bar_detect_endpoint(client, img_id) -> None:
                     json={"image_id": img_id})
     assert r.status_code == 200
     assert "found" in r.json()
+
+
+# ── item #48: export scale-bar font size ─────────────────────────────
+
+def test_scale_bar_font_size_changes_pixels(client, img_id) -> None:
+    """Exports at different font sizes produce different pixel output."""
+    common = {
+        "image_id": img_id,
+        "format": "png",
+        "scale": 4,
+        "include": ["scale_bar"],
+    }
+    small = np.asarray(Image.open(io.BytesIO(
+        client.post("/api/export", json={**common, "scale_bar_font_size": 12}).content
+    )))
+    large = np.asarray(Image.open(io.BytesIO(
+        client.post("/api/export", json={**common, "scale_bar_font_size": 32}).content
+    )))
+    # Different font sizes must produce visibly different images
+    assert (small != large).any(), "font_size 12 vs 32 produced identical output"
+
+
+def test_scale_bar_font_default_unchanged(client, img_id) -> None:
+    """Omitting scale_bar_font_size and sending null both produce the
+    same bytes as explicitly sending the default size 20 — backward
+    compatibility is preserved."""
+    common = {
+        "image_id": img_id,
+        "format": "png",
+        "scale": 2,
+        "include": ["scale_bar"],
+    }
+    omitted = client.post("/api/export", json=common).content
+    null_sent = client.post("/api/export", json={**common,
+                                                  "scale_bar_font_size": None}).content
+    explicit_20 = client.post("/api/export", json={**common,
+                                                    "scale_bar_font_size": 20}).content
+    assert omitted == null_sent
+    assert omitted == explicit_20
+
+
+def test_scale_bar_font_size_svg(client, img_id) -> None:
+    """SVG export carries the font-size attribute in the scale-bar label."""
+    common = {
+        "image_id": img_id,
+        "format": "svg",
+        "scale": 2,
+        "include": ["scale_bar"],
+    }
+    svg_small = client.post("/api/export", json={**common,
+                                                  "scale_bar_font_size": 12}).content.decode()
+    svg_large = client.post("/api/export", json={**common,
+                                                  "scale_bar_font_size": 32}).content.decode()
+    assert 'font-size="24"' in svg_small   # 12 × scale 2
+    assert 'font-size="64"' in svg_large   # 32 × scale 2
+
+
+def test_scale_bar_font_load_helper() -> None:
+    """_load_font returns a usable font at a given size (or None on error)."""
+    from fermiviewer.routes._export_render import _load_font
+
+    font = _load_font(20)
+    # Either we got a real font or None (both are acceptable)
+    if font is not None:
+        from PIL.ImageFont import FreeTypeFont
+        assert isinstance(font, FreeTypeFont)
+        # Text bbox should be larger for bigger fonts
+        bbox_small = _load_font(12)
+        bbox_large = _load_font(32)
+        if bbox_small is not None and bbox_large is not None:
+            w_small = bbox_small.getbbox("20 nm")[2]
+            w_large = bbox_large.getbbox("20 nm")[2]
+            assert w_large > w_small, "larger font should produce wider text"
+
+
+def test_vendored_font_path() -> None:
+    """Vendored TTF exists at the expected path (catches packaging regressions)."""
+    from fermiviewer.assets.fonts import jetbrains_mono_regular
+
+    path = jetbrains_mono_regular()
+    assert path.exists(), f"JetBrainsMono-Regular.ttf missing at {path}"
+    assert path.suffix == ".ttf"
+    ofl = path.parent / "OFL.txt"
+    assert ofl.exists(), "OFL.txt must ship alongside the TTF"

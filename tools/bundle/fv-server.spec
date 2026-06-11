@@ -14,6 +14,9 @@ a = Analysis(  # noqa: F821
         # the SPA, served by the sidecar at / (frozen-aware lookup in
         # server._frontend_dist)
         (str(ROOT / "frontend" / "dist"), "frontend/dist"),
+        # OFL-licensed JetBrains Mono TTF for baked scale-bar labels
+        # (frozen-aware lookup in fermiviewer.assets.fonts)
+        (str(ROOT / "src" / "fermiviewer" / "assets" / "fonts"), "fermiviewer/assets/fonts"),
     ],
     hiddenimports=[
         # uvicorn's dynamically-imported workers/loops

@@ -50,6 +50,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/fermiviewer"]
+# OFL-licensed font vendored for baked-text export (PIL TTF path)
+artifacts = ["src/fermiviewer/assets/fonts/*.ttf", "src/fermiviewer/assets/fonts/OFL.txt"]
 
 [tool.ruff]
 line-length = 100

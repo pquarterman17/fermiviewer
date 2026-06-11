@@ -14,20 +14,50 @@ from collections.abc import Sequence
 from xml.sax.saxutils import escape
 
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
+from PIL.ImageFont import FreeTypeFont
 
 from fermiviewer.calc.export import Annotation, ScaleBar, colorbar_strip
 
+# ── font loading (item #48) ──────────────────────────────────────────
+
+_DEFAULT_FONT_SIZE = 20  # matches ScaleBarCard default
+
+def _load_font(size: int) -> FreeTypeFont | None:
+    """Load JetBrains Mono Regular at `size` px via vendored TTF.
+
+    Returns None on any failure so the caller can fall back to PIL's
+    built-in bitmap font (no crash on missing/corrupt TTF)."""
+    try:
+        from fermiviewer.assets.fonts import jetbrains_mono_regular
+        ttf = jetbrains_mono_regular()
+        return ImageFont.truetype(str(ttf), size=size)
+    except Exception:  # noqa: BLE001 — font load failures are non-fatal
+        return None
+
+
 # ── PIL raster baking ────────────────────────────────────────────────
 
-def draw_scale_bar(img: Image.Image, bar: ScaleBar) -> None:
+def draw_scale_bar(img: Image.Image, bar: ScaleBar,
+                   font_size: int = _DEFAULT_FONT_SIZE) -> None:
+    """Bake the white scale bar + label into `img` in-place.
+
+    `font_size` is the already-scaled size (on-screen px × export scale).
+    Falls back to PIL's default bitmap font if the TTF cannot be loaded.
+    """
     draw = ImageDraw.Draw(img)
     draw.rectangle(
         [bar.x, bar.y, bar.x + bar.width, bar.y + bar.height],
         fill=(255, 255, 255),
     )
-    draw.text((bar.x, bar.y - 14), bar.label, fill=(255, 255, 255),
-              stroke_width=1, stroke_fill=(0, 0, 0))
+    font = _load_font(font_size)
+    label_y = bar.y - font_size - 2  # keep gap above the bar regardless of size
+    if font is not None:
+        draw.text((bar.x, label_y), bar.label, fill=(255, 255, 255),
+                  font=font, stroke_width=1, stroke_fill=(0, 0, 0))
+    else:
+        draw.text((bar.x, bar.y - 14), bar.label, fill=(255, 255, 255),
+                  stroke_width=1, stroke_fill=(0, 0, 0))
 
 
 def _dashed_line(draw: ImageDraw.ImageDraw, a: tuple[float, float],
@@ -204,8 +234,14 @@ def _svg_end_glyph(cx: float, cy: float, sym: str, color: str,
 def build_svg(img: Image.Image, bar: ScaleBar | None,
               annos: list[Annotation], color: str,
               cbar: tuple[bool, float, float] = (False, 0.0, 1.0),
-              cmap: str = "gray") -> str:
-    """Full-res PNG embedded as <image> + vector overlay elements."""
+              cmap: str = "gray",
+              font_size: int = _DEFAULT_FONT_SIZE) -> str:
+    """Full-res PNG embedded as <image> + vector overlay elements.
+
+    `font_size` sets the scale-bar label font size (already scaled by the
+    export scale factor). Measurement annotation labels use a fixed 12 px
+    size matching the on-screen overlay style.
+    """
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     b64 = base64.b64encode(buf.getvalue()).decode()
@@ -238,18 +274,25 @@ def build_svg(img: Image.Image, bar: ScaleBar | None,
             f'font-family="monospace" font-size="11">'
             f'{escape(fmt_tick(cbar[1]))}</text>'
         )
-    text_attrs = ('font-family="monospace" font-size="12" '
+    # measurement labels: fixed small size matching the on-screen overlay
+    text_attrs = ('font-family="\'JetBrains Mono\', monospace" font-size="12" '
                   'paint-order="stroke" stroke="rgba(0,0,0,0.75)" '
                   'stroke-width="3"')
+    # scale-bar label: user-controlled font size + same family
+    sb_font_attrs = (
+        f'font-family="\'JetBrains Mono\', monospace" font-size="{font_size}" '
+        f'paint-order="stroke" stroke="rgba(0,0,0,0.75)" stroke-width="3"'
+    )
 
     if bar is not None:
         parts.append(
             f'<rect x="{bar.x}" y="{bar.y}" width="{bar.width}" '
             f'height="{bar.height}" fill="white"/>'
         )
+        label_y = bar.y - 5  # consistent gap above the bar
         parts.append(
-            f'<text x="{bar.x}" y="{bar.y - 5}" fill="white" '
-            f'{text_attrs}>{escape(bar.label)}</text>'
+            f'<text x="{bar.x}" y="{label_y}" fill="white" '
+            f'{sb_font_attrs}>{escape(bar.label)}</text>'
         )
 
     for an in annos:

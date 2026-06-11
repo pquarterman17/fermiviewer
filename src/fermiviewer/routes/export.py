@@ -88,6 +88,9 @@ class ExportRequest(BaseModel):
     tilt_angle_deg: float = 0.0
     tilt_axis: str = "Y"                    # Y | X
     tilt_geometry: str = "cross-section"    # cross-section | surface
+    # scale-bar label font size in screen px (item #48); None → 20 (default)
+    # multiplied by export scale so labels grow with the image
+    scale_bar_font_size: int | None = None
 
 
 def _raster(ds: DataStruct) -> np.ndarray:
@@ -172,14 +175,17 @@ def export_image(req: ExportRequest) -> Response:
         )
 
     cbar = ("colorbar" in req.include, lo, hi)
+    # font size: on-screen value (default 20) × export scale so labels
+    # grow proportionally with the image (item #48)
+    font_size = (req.scale_bar_font_size or 20) * req.scale
 
     if req.format == "svg":
         svg = build_svg(img, bar, annos, req.overlay_color,
-                        cbar=cbar, cmap=req.cmap)
+                        cbar=cbar, cmap=req.cmap, font_size=font_size)
         return _file_response(svg.encode(), f"{stem}.svg", "svg")
 
     if bar is not None:
-        draw_scale_bar(img, bar)
+        draw_scale_bar(img, bar, font_size=font_size)
     if annos:
         draw_annotations(img, annos, _hex_rgb(req.overlay_color))
     if cbar[0]:

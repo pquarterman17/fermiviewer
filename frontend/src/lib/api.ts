@@ -493,6 +493,8 @@ export interface ExportOptions {
   tilt_angle_deg?: number;
   tilt_axis?: "X" | "Y";
   tilt_geometry?: "cross-section" | "surface";
+  // scale-bar label font size in screen px (#48); null → 20 (default)
+  scale_bar_font_size?: number | null;
 }
 
 /** Server-side export; returns the file blob + suggested filename. */

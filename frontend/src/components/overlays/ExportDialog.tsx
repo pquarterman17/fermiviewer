@@ -128,13 +128,15 @@ export default function ExportDialog() {
             tilt_geometry: tilt.geometry,
           }
         : {}),
-      // pass custom scale bar geometry when the bar has been repositioned/resized
+      // pass custom scale bar geometry + font size when the bar has overrides
       ...(canBar && scaleBar && sbState
         ? {
             scale_bar_norm_x: sbState.x,
             scale_bar_norm_y: sbState.y,
             scale_bar_length_phys: sbState.lengthPhys,
             scale_bar_thickness: sbState.thickness,
+            // #48: honor on-screen font size in baked exports
+            scale_bar_font_size: sbState.fontSize,
           }
         : {}),
     })
