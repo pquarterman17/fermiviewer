@@ -90,7 +90,7 @@ class ExportRequest(BaseModel):
     tilt_geometry: str = "cross-section"    # cross-section | surface
     # scale-bar label font size in screen px (item #48); None → 20 (default)
     # multiplied by export scale so labels grow with the image
-    scale_bar_font_size: int | None = None
+    scale_bar_font_size: int | None = Field(default=None, ge=1, le=200)
 
 
 def _raster(ds: DataStruct) -> np.ndarray:

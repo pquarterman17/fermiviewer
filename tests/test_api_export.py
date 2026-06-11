@@ -675,6 +675,21 @@ def test_scale_bar_font_default_unchanged(client, img_id) -> None:
     assert omitted == explicit_20
 
 
+def test_scale_bar_font_size_bounds(client, img_id) -> None:
+    """Non-positive or absurd font sizes are rejected at validation (422),
+    never reaching the PIL/SVG label placement math."""
+    common = {
+        "image_id": img_id,
+        "format": "png",
+        "scale": 1,
+        "include": ["scale_bar"],
+    }
+    for bad in (-5, 0, 201):
+        r = client.post("/api/export", json={**common,
+                                             "scale_bar_font_size": bad})
+        assert r.status_code == 422, f"font_size={bad} accepted"
+
+
 def test_scale_bar_font_size_svg(client, img_id) -> None:
     """SVG export carries the font-size attribute in the scale-bar label."""
     common = {

@@ -152,6 +152,8 @@ export default function MenuBar({
           { x: m.pts[0].x * w, y: m.pts[0].y * h },
           { x: m.pts[1].x * w, y: m.pts[1].y * h },
           store.profileWidth,
+          null,
+          useViewer.getState().profileReduce,
         );
         dist ??= r.dist;
         columns.push(meta.name);
