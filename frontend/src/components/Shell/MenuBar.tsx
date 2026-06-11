@@ -356,6 +356,7 @@ export default function MenuBar({
           intensity: r.intensity,
           length: r.radii[r.radii.length - 1] ?? 0,
           unit: r.unit,
+          reduce: "mean",
         });
         store.setStatus(
           azimuthal ? "azimuthal integration" : "radial profile",
