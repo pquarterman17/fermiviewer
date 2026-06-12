@@ -115,8 +115,10 @@ markers = [
 
 [tool.coverage.run]
 source = ["fermiviewer"]
-# realdata/oracle tests skip in CI but cover no unique paths — the
-# threshold is calibrated against the no-corpus run, so CI and local agree.
+# Note: with the real-instrument corpus present, local coverage is ~89%;
+# in CI the corpus is absent so corpus-touching tests skip and coverage
+# is ~85%. The CI gate (--cov-fail-under=82) is calibrated to the lower,
+# no-corpus number — see .github/workflows/ci.yml.
 
 [tool.coverage.report]
 # The gate (--cov-fail-under) lives in the CI step, NOT in addopts, so
