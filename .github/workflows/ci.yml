@@ -25,8 +25,9 @@ jobs:
       - name: Type check
         run: uv run mypy src
       - name: Tests
-        # realdata/oracle tests skip automatically (corpus absent in CI)
-        run: uv run pytest -v
+        # realdata/oracle tests skip automatically (corpus absent in CI);
+        # they cover no unique paths, so the 85% gate holds with/without them.
+        run: uv run pytest -v --cov=fermiviewer --cov-report=term-missing --cov-fail-under=85
 
   frontend:
     runs-on: ubuntu-latest
