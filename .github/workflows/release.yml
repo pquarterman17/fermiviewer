@@ -134,7 +134,7 @@ jobs:
         env:
           APPIMAGE_EXTRACT_AND_RUN: 1
         run: >
-          npx --yes "@tauri-apps/cli@^2" build
+          npx --yes "@tauri-apps/cli@^2" build --verbose
           --bundles ${{ matrix.bundles }}
           --config ci.resources.json
 
