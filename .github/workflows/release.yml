@@ -13,6 +13,10 @@ name: release
 on:
   push:
     tags: ["v*"]
+  # Manual dry run: builds + smoke-tests + uploads artifacts, but does NOT
+  # create or attach to a GitHub Release (no tag context). Use this to
+  # validate the pipeline without cutting a version.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -140,7 +144,17 @@ jobs:
         shell: bash
         run: tar -C dist-sidecar -czf ${{ matrix.server-archive }} fv-server
 
+      - name: Upload artifacts (workflow run — always)
+        uses: actions/upload-artifact@v4
+        with:
+          name: fv-${{ matrix.label }}
+          path: |
+            ${{ matrix.installer-glob }}
+            ${{ matrix.server-archive }}
+          if-no-files-found: error
+
       - name: Attach artifacts to the Release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
