@@ -363,7 +363,7 @@ requires-dist = [
     { name = "scikit-image", specifier = ">=0.24" },
     { name = "scipy", specifier = ">=1.14" },
     { name = "tifffile", specifier = ">=2024.8" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.49.0" },
 ]
 
 [package.metadata.requires-dev]
