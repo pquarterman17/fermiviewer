@@ -8,7 +8,9 @@ name: release
 # Per-OS installer targets:
 #   windows-latest → NSIS .exe
 #   macos-latest   → .dmg   (unsigned; Gatekeeper right-click-open on first run)
-#   ubuntu-latest  → .AppImage
+#   ubuntu-latest  → .deb   (AppImage's linuxdeploy can't resolve the
+#                            PyInstaller sidecar's vendored numpy/scipy
+#                            .so files; .deb skips linuxdeploy entirely)
 
 on:
   push:
@@ -41,13 +43,13 @@ jobs:
             server-archive: fv-server-macos.tar.gz
           - os: ubuntu-latest
             label: linux
-            bundles: appimage
-            installer-glob: src-tauri/target/release/bundle/appimage/*.AppImage
+            bundles: deb
+            installer-glob: src-tauri/target/release/bundle/deb/*.deb
             server-archive: fv-server-linux.tar.gz
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Linux build deps (Tauri + AppImage)
+      - name: Install Linux build deps (Tauri)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
