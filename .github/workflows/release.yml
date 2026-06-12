@@ -129,6 +129,10 @@ jobs:
 
       - name: Build Tauri installer (sidecar as bundled resource)
         working-directory: src-tauri
+        # AppImage's linuxdeploy needs FUSE, which GitHub's ubuntu-24.04
+        # runners no longer provide — extract-and-run instead of mounting.
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
         run: >
           npx --yes "@tauri-apps/cli@^2" build
           --bundles ${{ matrix.bundles }}
