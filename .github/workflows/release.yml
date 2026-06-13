@@ -47,7 +47,7 @@ jobs:
             installer-glob: src-tauri/target/release/bundle/deb/*.deb
             server-archive: fv-server-linux.tar.gz
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Linux build deps (Tauri)
         if: runner.os == 'Linux'
