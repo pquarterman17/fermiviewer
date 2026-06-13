@@ -157,7 +157,7 @@ jobs:
 
       - name: Attach artifacts to the Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             ${{ matrix.installer-glob }}
