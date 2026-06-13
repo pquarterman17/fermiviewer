@@ -368,7 +368,7 @@ export default function MeasurePanel() {
         </div>
       </Card>
       {measures.length > 0 && (
-        <Card title="Measurements">
+        <Card title="Measurements" count={measures.length}>
           <div className="fvd-ws-row">
             <button
               className="fvd-btn"
