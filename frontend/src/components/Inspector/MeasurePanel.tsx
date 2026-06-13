@@ -1,17 +1,20 @@
 // Measure + Overlay-style cards (handoff §4): measurement list mirroring
 // the stage labels, ROI stats, and the persisted overlay font/colour.
 
+import { Fragment, useState } from "react";
+
 import { measureProfile, type ProfileReduce } from "../../lib/api";
+import { fuzzy } from "../../lib/fuzzy";
 import {
   physAngle,
   physDist,
   tiltDist,
   type TiltSettings,
 } from "../../lib/geometry";
+import { MEASURE_GROUPS, MEASURE_TOOLS } from "../../lib/measureTools";
 import { useStageInfo } from "../../store/stage";
 import {
   useViewer,
-  type CaptureMode,
   type EndSymbol,
   type Measure,
   type OverlayStyle,
@@ -282,36 +285,52 @@ export default function MeasurePanel() {
   const setProfileWidth = useViewer((s) => s.setProfileWidth);
   const profileReduce = useViewer((s) => s.profileReduce);
   const setProfileReduce = useViewer((s) => s.setProfileReduce);
-  const capBtn = (
-    label: string,
-    glyph: string,
-    mode: CaptureMode,
-  ) => (
-    <button
-      className={`fvd-cap-btn${captureMode === mode ? " active" : ""}`}
-      onClick={() => setCaptureMode(captureMode === mode ? "none" : mode)}
-    >
-      <span className="glyph">{glyph}</span> {label}
-    </button>
-  );
+  const [toolQuery, setToolQuery] = useState("");
+  const q = toolQuery.trim();
+  const visibleTools = q
+    ? MEASURE_TOOLS.filter((t) => fuzzy(q, t.label) !== null)
+    : MEASURE_TOOLS;
 
   return (
     <>
       <Card title="Measure">
-        <div className="fvd-cap-grid">
-          {capBtn("Profile", "∿", "profile")}
-          {capBtn("Box Prof", "⧈", "box-profile")}
-          {capBtn("Distance", "↔", "distance")}
-          {capBtn("Angle", "∠", "angle")}
-          {capBtn("Polyline", "⌇", "polyline")}
-          {capBtn("ROI", "▭", "roi")}
-          {capBtn("Ellipse", "◯", "ellipse")}
+        <div className="fvd-cmd-search">
+          <span className="ico">⌕</span>
+          <input
+            value={toolQuery}
+            placeholder="Filter measure tools…"
+            onChange={(e) => setToolQuery(e.target.value)}
+          />
         </div>
-        <div className="fvd-cap-grid">
-          {capBtn("Text", "T", "text")}
-          {capBtn("Arrow", "➹", "arrow")}
-          {capBtn("Box", "□", "box")}
-          {capBtn("Circle", "◌", "circle")}
+        <div className="fvd-cmd-list">
+          {MEASURE_GROUPS.map((group) => {
+            const tools = visibleTools.filter((t) => t.group === group);
+            if (tools.length === 0) return null;
+            return (
+              <Fragment key={group}>
+                <div className="fvd-cmd-group">
+                  <span>{group}</span>
+                  <span className="count">{tools.length}</span>
+                </div>
+                {tools.map((t) => (
+                  <button
+                    key={t.kind}
+                    className={`fvd-cmd-row${captureMode === t.kind ? " active" : ""}`}
+                    onClick={() =>
+                      setCaptureMode(captureMode === t.kind ? "none" : t.kind)
+                    }
+                  >
+                    <span className="glyph">{t.glyph}</span>
+                    <span className="label">{t.label}</span>
+                    {captureMode === t.kind && <span className="dot" />}
+                  </button>
+                ))}
+              </Fragment>
+            );
+          })}
+          {visibleTools.length === 0 && (
+            <div className="fvd-cmd-empty">No tools match “{q}”.</div>
+          )}
         </div>
         <div className="fvd-profile-opts">
           <span className="fvd-profile-opts-label">Profile options</span>
