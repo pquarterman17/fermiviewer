@@ -1689,35 +1689,104 @@ details.fvd-card:not([open]) > summary {
   accent-color: var(--accent);
 }
 
-.fvd-cap-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 7px;
-}
-
-.fvd-cap-btn {
+.fvd-cmd-search {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  padding: 5px 9px;
+}
+
+.fvd-cmd-search .ico {
+  color: var(--text-faint);
+}
+
+.fvd-cmd-search input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  outline: none;
+}
+
+.fvd-cmd-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+
+.fvd-cmd-group {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-top: 4px;
+}
+
+.fvd-cmd-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   background: var(--surface-3);
   border: 1px solid var(--border-soft);
   border-radius: var(--radius);
   color: var(--text);
   font-size: var(--font-size-sm);
-  padding: 9px 12px;
+  padding: 8px 11px;
   cursor: default;
 }
 
-.fvd-cap-btn:hover {
+.fvd-cmd-row:hover {
   border-color: var(--border-strong);
 }
 
-.fvd-cap-btn.active {
+.fvd-cmd-row.active {
   border-color: var(--capture);
   background: var(--capture-soft);
   color: var(--capture);
 }
 
-.fvd-cap-btn .glyph {
+.fvd-cmd-row .glyph {
   font-size: 14px;
+  width: 16px;
+  text-align: center;
+}
+
+.fvd-cmd-row .label {
+  flex: 1;
+}
+
+.fvd-cmd-row .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--capture);
+  animation: fvd-capture-pulse 1.2s ease-in-out infinite;
+}
+
+.fvd-cmd-empty {
+  color: var(--text-faint);
+  font-size: var(--font-size-sm);
+  padding: 6px 2px;
+}
+
+/* duplicated from the capture banner (GUI v2 phase 1) — identical, so
+   harmless when both rules load after the phases merge together */
+@keyframes fvd-capture-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.7);
+  }
 }
