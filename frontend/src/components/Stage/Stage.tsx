@@ -38,6 +38,7 @@ import {
   type Measure,
   type View,
 } from "../../store/viewer";
+import CaptureBanner from "./CaptureBanner";
 import ColorbarChip from "./ColorbarChip";
 import DockPlot from "./DockPlot";
 import MeasureOverlay from "./MeasureOverlay";
@@ -645,6 +646,14 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       onContextMenu={onContextMenu}
     >
       <canvas ref={canvasRef} />
+
+      {captureMode !== "none" && captureMode !== "fixed-zoom" && (
+        <CaptureBanner
+          mode={captureMode}
+          pending={pending}
+          onCancel={() => setCaptureMode("none")}
+        />
+      )}
 
       {!activeId && (
         <div className="fvd-stage-empty">Open an image — File → Open…</div>

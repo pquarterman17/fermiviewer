@@ -902,9 +902,59 @@ details.fvd-card:not([open]) > summary {
   top: 48px;
   left: 50%;
   transform: translateX(-50%);
-  padding: 4px 12px;
-  font-size: var(--font-size-sm);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px 5px 12px;
   color: var(--capture);
+  border-color: var(--capture);
+  background: color-mix(in oklab, var(--capture-soft), var(--glass) 55%);
+  white-space: nowrap;
+  z-index: 5;
+}
+
+.fvd-capture-banner .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--capture);
+  animation: fvd-capture-pulse 1.2s ease-in-out infinite;
+}
+
+.fvd-capture-banner .label {
+  font-weight: 600;
+}
+
+.fvd-capture-banner .step {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--capture-soft);
+}
+
+.fvd-capture-banner .hint {
+  color: var(--text-dim);
+}
+
+.fvd-capture-banner kbd {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  padding: 1px 5px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+}
+
+@keyframes fvd-capture-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.7);
+  }
 }
 
 /* ── dock plot ── */
