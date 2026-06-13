@@ -1764,11 +1764,12 @@ details.fvd-card:not([open]) > summary {
 
 .fvd-cmd-list {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
   gap: 4px;
 }
 
 .fvd-cmd-group {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1822,9 +1823,20 @@ details.fvd-card:not([open]) > summary {
 }
 
 .fvd-cmd-empty {
+  grid-column: 1 / -1;
   color: var(--text-faint);
   font-size: var(--font-size-sm);
   padding: 6px 2px;
+}
+
+.fvd-card-count {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  color: var(--text-faint);
+  margin-left: 6px;
 }
 
 /* duplicated from the capture banner (GUI v2 phase 1) — identical, so

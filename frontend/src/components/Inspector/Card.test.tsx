@@ -61,6 +61,29 @@ describe("Card", () => {
     expect(getDetails(container).open).toBe(false);
   });
 
+  it("renders a count badge only when count is provided", () => {
+    const { container, rerender } = render(
+      <Card title="Measurements" count={3}>
+        <div>list</div>
+      </Card>,
+    );
+    expect(container.querySelector(".fvd-card-count")?.textContent).toBe("3");
+    // zero is a real count — must still render (count != null, not falsy)
+    rerender(
+      <Card title="Measurements" count={0}>
+        <div>list</div>
+      </Card>,
+    );
+    expect(container.querySelector(".fvd-card-count")?.textContent).toBe("0");
+    // omitting count drops the badge entirely
+    rerender(
+      <Card title="Measurements">
+        <div>list</div>
+      </Card>,
+    );
+    expect(container.querySelector(".fvd-card-count")).toBeNull();
+  });
+
   it("corrupted fv_cards falls back to default open", () => {
     localStorage.setItem("fv_cards", "[not a map]");
     const { container } = render(

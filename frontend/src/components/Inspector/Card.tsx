@@ -40,12 +40,19 @@ interface CardProps {
   children: ReactNode;
   /** Override the default-open behaviour (default: true). */
   defaultOpen?: boolean;
+  /** Optional count badge shown next to the title (e.g. item count). */
+  count?: number;
 }
 
 /** Collapsible inspector card backed by a native <details> element so
  *  keyboard accessibility (Enter/Space on the summary) comes for free.
  *  The collapsed state is persisted in localStorage["fv_cards"]. */
-export default function Card({ title, children, defaultOpen = true }: CardProps) {
+export default function Card({
+  title,
+  children,
+  defaultOpen = true,
+  count,
+}: CardProps) {
   // initialise from persisted state; fall back to defaultOpen
   const [open, setOpen] = useState<boolean>(() => {
     const map = loadMap();
@@ -97,6 +104,7 @@ export default function Card({ title, children, defaultOpen = true }: CardProps)
         }}
       >
         {title}
+        {count != null && <span className="fvd-card-count">{count}</span>}
       </summary>
       {children}
     </details>
