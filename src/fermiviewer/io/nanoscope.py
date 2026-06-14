@@ -141,6 +141,16 @@ def _is_num(tok: str) -> bool:
         return False
 
 
+_ZSCALE_LINE = re.compile(r"^@(?:\d+:)?Z scale:")
+_NUM = r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?"
+_SOFT = re.compile(r"\[([^\]]*)\]")
+# first number inside the hard-scale parenthetical (units may themselves
+# contain parens, e.g. "log(Arb)/LSB", so match the number, not the whole ())
+_HARD = re.compile(r"\(\s*(" + _NUM + r")")
+# the trailing hard value: the number after the parenthetical's close paren
+_VALUE = re.compile(r"\)\s+(" + _NUM + r")")
+
+
 def _z_scale(
     image: _Section, sens: dict[str, tuple[float, str]], bpp: int
 ) -> tuple[float, str]:
@@ -155,34 +165,25 @@ def _z_scale(
 
     * **Method A** (modern, preferred when the parenthetical hard-scale is
       present): ``z = raw · hard_scale · sensitivity`` — the hard-scale is
-      already volts-per-LSB, so no bit-depth divisor.
+      already volts-per-LSB and encodes the bit depth, so no extra divisor.
     * **Method B** (legacy v5/v6): ``z = raw · (hard_value / 2^(8·bpp)) ·
       sensitivity`` — divide the full-scale hard value by the ADC range.
     """
-    line = next((b for b in image.raw if _CIAO_V.match(b) and "Z scale" in b), None)
+    line = next((b for b in image.raw if _ZSCALE_LINE.match(b)), None)
     if line is None:
         return 1.0, ""
-    m = _CIAO_V.match(line)
-    assert m is not None
-    soft = (m["soft"] or "").strip()
+    soft_m, hard_m, val_m = _SOFT.search(line), _HARD.search(line), _VALUE.search(line)
+    soft = soft_m.group(1).strip() if soft_m else ""
     sensitivity, unit = 1.0, ""
     for key in (soft, "Sens. Zsens", "Sens. Zscale", "Sensitivity"):
         if key and key in sens:
             sensitivity, unit = sens[key]
             break
-    hard_scale = _lead_float(m["hard"]) if m["hard"] and _is_num_lead(m["hard"]) else 0.0
+    hard_scale = float(hard_m.group(1)) if hard_m else 0.0
     if hard_scale:  # Method A
         return hard_scale * sensitivity, unit
-    hard_value = _lead_float(m["value"]) if m["value"] else 0.0  # Method B
+    hard_value = float(val_m.group(1)) if val_m else 0.0  # Method B
     return hard_value / float(1 << (8 * bpp)) * sensitivity, unit
-
-
-def _is_num_lead(s: str) -> bool:
-    try:
-        _lead_float(s)
-        return True
-    except (ValueError, IndexError):
-        return False
 
 
 def _channel_name(image: _Section) -> str:
