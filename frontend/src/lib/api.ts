@@ -13,6 +13,7 @@ export interface ImageMeta {
   dtype: string;
   pixel_size: number | null;
   pixel_unit: string;
+  value_unit: string;
   n_channels: number | null;
   energy_first: number | null;
   energy_last: number | null;

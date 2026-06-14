@@ -29,6 +29,7 @@ class ImageMeta(BaseModel):
     dtype: str
     pixel_size: float | None = None
     pixel_unit: str = ""
+    value_unit: str = ""  # physical unit of the pixel values (e.g. AFM height "nm")
     n_channels: int | None = None
     energy_first: float | None = None
     energy_last: float | None = None
@@ -53,6 +54,7 @@ class ImageMeta(BaseModel):
             dtype=str(ds.data.dtype),
             pixel_size=px,
             pixel_unit=unit,
+            value_unit=str(ds.metadata.get("value_unit", "")),
             n_channels=ds.n_channels if spectral else None,
             energy_first=float(ax[0]) if ax is not None else None,
             energy_last=float(ax[-1]) if ax is not None else None,

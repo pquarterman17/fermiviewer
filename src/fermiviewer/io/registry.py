@@ -15,6 +15,7 @@ from fermiviewer.io.bcf import load_bcf
 from fermiviewer.io.dm import load_dm
 from fermiviewer.io.images import load_image, load_tiff
 from fermiviewer.io.mrc import load_mrc
+from fermiviewer.io.nanoscope import is_nanoscope, load_nanoscope
 from fermiviewer.io.ser import load_ser
 
 __all__ = ["UnsupportedFormatError", "load_auto", "supported_extensions"]
@@ -42,12 +43,26 @@ _LOADERS: dict[str, Callable[[Path], DataStruct]] = {
 
 
 def supported_extensions() -> tuple[str, ...]:
-    return tuple(sorted(_LOADERS))
+    # .spm is content-routed (Nanoscope vs Park-TIFF); list it for the picker.
+    return tuple(sorted({*_LOADERS, ".spm"}))
 
 
 def load_auto(path: str | Path) -> DataStruct:
     p = Path(path)
-    loader = _LOADERS.get(p.suffix.lower())
+    ext = p.suffix.lower()
+    # Bruker Nanoscope AFM: numeric .000–.nnn are unambiguous; .spm is shared
+    # with Park (TIFF-based), so content-sniff to route it.
+    if ext == ".spm" or (len(ext) > 1 and ext[1:].isdigit()):
+        with open(p, "rb") as fh:
+            head = fh.read(20)
+        if is_nanoscope(head):
+            return load_nanoscope(p)
+        if ext == ".spm":
+            return load_tiff(p)  # Park/JPK .spm is a TIFF variant
+        raise UnsupportedFormatError(
+            f"'{p.name}' has a numeric extension but is not a Nanoscope file"
+        )
+    loader = _LOADERS.get(ext)
     if loader is None:
         raise UnsupportedFormatError(
             f"no parser for '{p.suffix}' (supported: {', '.join(supported_extensions())})"
