@@ -1781,6 +1781,32 @@ details.fvd-card:not([open]) > summary {
   margin-top: 4px;
 }
 
+/* GUI v2 — collapsible group header (chevron + count); the header is a
+   <button> so the whole row toggles its group open/closed. */
+button.fvd-cmd-group {
+  cursor: pointer;
+  background: none;
+  border: none;
+  width: 100%;
+  padding: 3px 0;
+}
+
+button.fvd-cmd-group:hover {
+  color: var(--text-dim);
+}
+
+.fvd-cmd-group .lbl {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.fvd-cmd-group .chev {
+  font-size: 8px;
+  width: 8px;
+  text-align: center;
+}
+
 .fvd-cmd-row {
   display: flex;
   align-items: center;

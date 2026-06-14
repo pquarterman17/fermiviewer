@@ -21,6 +21,7 @@ import {
 } from "../../store/viewer";
 import { useResults } from "../overlays/ResultsWindow";
 import Card from "./Card";
+import { useCollapsedGroups } from "./useCollapsedGroups";
 
 const KIND_GLYPH: Record<Measure["kind"], string> = {
   distance: "↔",
@@ -286,6 +287,7 @@ export default function MeasurePanel() {
   const profileReduce = useViewer((s) => s.profileReduce);
   const setProfileReduce = useViewer((s) => s.setProfileReduce);
   const [toolQuery, setToolQuery] = useState("");
+  const { collapsed, toggle } = useCollapsedGroups("measure");
   const q = toolQuery.trim();
   const visibleTools = q
     ? MEASURE_TOOLS.filter((t) => fuzzy(q, t.label) !== null)
@@ -306,25 +308,35 @@ export default function MeasurePanel() {
           {MEASURE_GROUPS.map((group) => {
             const tools = visibleTools.filter((t) => t.group === group);
             if (tools.length === 0) return null;
+            // a search query forces every group open so matches aren't hidden
+            const open = q !== "" || !collapsed.has(group);
             return (
               <Fragment key={group}>
-                <div className="fvd-cmd-group">
-                  <span>{group}</span>
+                <button
+                  className="fvd-cmd-group"
+                  onClick={() => toggle(group)}
+                  title={open ? "Collapse group" : "Expand group"}
+                >
+                  <span className="lbl">
+                    <span className="chev">{open ? "▾" : "▸"}</span>
+                    {group}
+                  </span>
                   <span className="count">{tools.length}</span>
-                </div>
-                {tools.map((t) => (
-                  <button
-                    key={t.kind}
-                    className={`fvd-cmd-row${captureMode === t.kind ? " active" : ""}`}
-                    onClick={() =>
-                      setCaptureMode(captureMode === t.kind ? "none" : t.kind)
-                    }
-                  >
-                    <span className="glyph">{t.glyph}</span>
-                    <span className="label">{t.label}</span>
-                    {captureMode === t.kind && <span className="dot" />}
-                  </button>
-                ))}
+                </button>
+                {open &&
+                  tools.map((t) => (
+                    <button
+                      key={t.kind}
+                      className={`fvd-cmd-row${captureMode === t.kind ? " active" : ""}`}
+                      onClick={() =>
+                        setCaptureMode(captureMode === t.kind ? "none" : t.kind)
+                      }
+                    >
+                      <span className="glyph">{t.glyph}</span>
+                      <span className="label">{t.label}</span>
+                      {captureMode === t.kind && <span className="dot" />}
+                    </button>
+                  ))}
               </Fragment>
             );
           })}
