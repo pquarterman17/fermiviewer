@@ -5,10 +5,9 @@
 
 import { Fragment, useState } from "react";
 
-import { applyFilter } from "../../lib/api";
 import { fuzzy } from "../../lib/fuzzy";
 import { coerceParams, type ParamValues } from "../../lib/params";
-import { applyGeometry, cropToRoi, type GeometryKind } from "../../lib/stageOps";
+import { runTransform } from "../../lib/transforms";
 import {
   TRANSFORM_GROUPS,
   TRANSFORM_TOOLS,
@@ -17,36 +16,14 @@ import {
 import { useViewer } from "../../store/viewer";
 import { ParamFieldRow } from "../overlays/ParamFields";
 import Card from "./Card";
-
-/** Run a tool against the active image. Parameterless geometry/crop go
- *  straight through their stageOps helpers (undoable, status-reporting);
- *  parameterised filters POST /filter and ingest the derived image. */
-function runTransform(tool: TransformTool, params: ParamValues): void {
-  const s = useViewer.getState();
-  const id = s.activeId;
-  if (!id) return;
-  if (tool.via === "geometry") {
-    applyGeometry(tool.kind as GeometryKind);
-    return;
-  }
-  if (tool.via === "crop") {
-    cropToRoi();
-    return;
-  }
-  s.setStatus(`${tool.label}…`);
-  applyFilter(id, tool.kind, params as Record<string, unknown>)
-    .then((m) => {
-      s.ingestDerived([m]);
-      s.setStatus(`${tool.label} → ${m.name}`);
-    })
-    .catch((e: Error) => s.setStatus(`${tool.label}: ${e.message}`));
-}
+import { useCollapsedGroups } from "./useCollapsedGroups";
 
 export default function TransformPanel() {
   const activeId = useViewer((s) => s.activeId);
   const [query, setQuery] = useState("");
   const [openKind, setOpenKind] = useState<string | null>(null);
   const [values, setValues] = useState<ParamValues>({});
+  const { collapsed, toggle } = useCollapsedGroups("transform");
 
   if (!activeId) return null;
 
@@ -90,13 +67,23 @@ export default function TransformPanel() {
         {TRANSFORM_GROUPS.map((group) => {
           const tools = visible.filter((t) => t.group === group);
           if (tools.length === 0) return null;
+          // a search query forces every group open so matches aren't hidden
+          const open = q !== "" || !collapsed.has(group);
           return (
             <Fragment key={group}>
-              <div className="fvd-cmd-group">
-                <span>{group}</span>
+              <button
+                className="fvd-cmd-group"
+                onClick={() => toggle(group)}
+                title={open ? "Collapse group" : "Expand group"}
+              >
+                <span className="lbl">
+                  <span className="chev">{open ? "▾" : "▸"}</span>
+                  {group}
+                </span>
                 <span className="count">{tools.length}</span>
-              </div>
-              {tools.map((t) => {
+              </button>
+              {open &&
+                tools.map((t) => {
                 const expandable = !!t.fields && t.fields.length > 0;
                 const open = openKind === t.kind;
                 return (

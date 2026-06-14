@@ -13,6 +13,7 @@ import Card from "./Card";
 import ExportCard from "./ExportCard";
 import MeasurePanel from "./MeasurePanel";
 import ScaleBarCard from "./ScaleBarCard";
+import ToolsBrowser from "./ToolsBrowser";
 import TransformPanel from "./TransformPanel";
 
 const TABS = ["Image", "EELS", "EDS", "Diff"] as const;
@@ -83,6 +84,14 @@ export default function Inspector() {
     s.activeId ? (s.images[s.activeId] ?? null) : null,
   );
   const [tab, setTab] = useState<Tab>("Image");
+  // GUI v2 A/B: separate Measure+Tools cards vs one unified pill panel
+  const [toolsLayout, setToolsLayout] = useState<"cards" | "unified">(() =>
+    localStorage.getItem("fv_tools_layout") === "unified" ? "unified" : "cards",
+  );
+  const setLayout = (v: "cards" | "unified") => {
+    setToolsLayout(v);
+    localStorage.setItem("fv_tools_layout", v);
+  };
 
   if (!meta) {
     return (
@@ -112,6 +121,8 @@ export default function Inspector() {
   if (en) rows.push(["Energy", en]);
 
   const extra = Object.entries(meta.meta).slice(0, 12);
+  // unified browser only for raster images; spectra fall back to cards
+  const unified = toolsLayout === "unified" && meta.kind !== "spectrum";
 
   return (
     <aside className="fvd-inspector" style={{ position: "relative" }}>
@@ -145,8 +156,28 @@ export default function Inspector() {
           <DiffractionWorkshop />
         </Card>
       )}
-      {tab === "Image" && <MeasurePanel />}
-      {tab === "Image" && meta.kind !== "spectrum" && <TransformPanel />}
+      {tab === "Image" && (
+        <div className="fvd-slider-row fvd-layout-toggle">
+          <span className="k">Tools layout</span>
+          <div className="fvd-seg">
+            <button
+              className={`fvd-seg-btn${toolsLayout === "cards" ? " active" : ""}`}
+              onClick={() => setLayout("cards")}
+            >
+              Cards
+            </button>
+            <button
+              className={`fvd-seg-btn${toolsLayout === "unified" ? " active" : ""}`}
+              onClick={() => setLayout("unified")}
+            >
+              Unified
+            </button>
+          </div>
+        </div>
+      )}
+      {tab === "Image" && unified && <ToolsBrowser />}
+      {tab === "Image" && !unified && <MeasurePanel />}
+      {tab === "Image" && !unified && meta.kind !== "spectrum" && <TransformPanel />}
       {tab === "Image" && meta.kind !== "spectrum" && <AdjustPanel />}
       {tab === "Image" && <ScaleBarCard />}
       {tab === "Image" && meta.kind !== "spectrum" && <ExportCard />}
