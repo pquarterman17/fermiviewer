@@ -12,6 +12,7 @@ import AdjustPanel from "./AdjustPanel";
 import Card from "./Card";
 import MeasurePanel from "./MeasurePanel";
 import ScaleBarCard from "./ScaleBarCard";
+import TransformPanel from "./TransformPanel";
 
 const TABS = ["Image", "EELS", "EDS", "Diff"] as const;
 type Tab = (typeof TABS)[number];
@@ -144,6 +145,7 @@ export default function Inspector() {
         </Card>
       )}
       {tab === "Image" && meta.kind !== "spectrum" && <AdjustPanel />}
+      {tab === "Image" && meta.kind !== "spectrum" && <TransformPanel />}
       {tab === "Image" && <MeasurePanel />}
       {tab === "Image" && <ScaleBarCard />}
       {tab === "Image" && (

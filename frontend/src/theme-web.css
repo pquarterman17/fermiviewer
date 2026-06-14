@@ -1839,6 +1839,35 @@ details.fvd-card:not([open]) > summary {
   margin-left: 6px;
 }
 
+/* GUI v2 phase 4 — Tools panel: single-column tool list with inline
+   parameter expanders (the in-panel home for image filters/transforms). */
+.fvd-tool-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fvd-tool-list .fvd-cmd-row {
+  width: 100%;
+  cursor: pointer;
+}
+
+.fvd-tool-list .fvd-cmd-row .chev {
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.fvd-tool-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 1px 0 5px;
+  padding: 9px 11px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+}
+
 /* duplicated from the capture banner (GUI v2 phase 1) — identical, so
    harmless when both rules load after the phases merge together */
 @keyframes fvd-capture-pulse {

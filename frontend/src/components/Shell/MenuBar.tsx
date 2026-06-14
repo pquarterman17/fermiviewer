@@ -43,6 +43,7 @@ import {
   stopRecording,
 } from "../../lib/macro";
 import { applyGeometry, cropToRoi } from "../../lib/stageOps";
+import { BATCH_FILTERS } from "../../lib/transformTools";
 import { useStageInfo } from "../../store/stage";
 import { DEFAULT_DISPLAY as DD, undoLabel, useViewer } from "../../store/viewer";
 import {
@@ -74,43 +75,6 @@ interface Entry {
   disabled?: boolean;
   action?: () => void;
 }
-
-/** Filter/transform definitions shared by the Image menu and Batch
- *  Apply — one source of truth for kinds + their parameter fields. */
-const FILTER_DEFS: { label: string; kind: string; fields?: ParamField[] }[] = [
-  { label: "Gaussian Blur…", kind: "gaussian",
-    fields: [num("sigma", "Sigma (px)", 2)] },
-  { label: "Median Filter…", kind: "median",
-    fields: [{ key: "window_size", label: "Window", type: "select",
-               default: "3", options: ["3", "5", "7"] }] },
-  { label: "Unsharp Mask…", kind: "unsharp",
-    fields: [num("sigma", "Sigma (px)", 2), num("amount", "Amount", 1)] },
-  { label: "Butterworth…", kind: "butterworth",
-    fields: [num("low_cutoff", "Low cutoff (0=off)", 0.05),
-             num("high_cutoff", "High cutoff (0–1]", 0.5),
-             num("order", "Order", 2)] },
-  { label: "CLAHE…", kind: "clahe",
-    fields: [num("clip_limit", "Clip limit", 0.01),
-             num("num_bins", "Bins", 256)] },
-  { label: "Bin…", kind: "bin", fields: [num("bin_size", "Bin size", 2)] },
-  { label: "Plane Level", kind: "plane_level" },
-  { label: "Morphology…", kind: "morph",
-    fields: [
-      { key: "operation", label: "Operation", type: "select",
-        default: "open", options: ["erode", "dilate", "open", "close"] },
-      num("radius", "Radius (px)", 1),
-      { key: "shape", label: "Element", type: "select",
-        default: "square", options: ["square", "disk"] },
-    ] },
-  { label: "Multi-Otsu…", kind: "multiotsu",
-    fields: [
-      { key: "n_classes", label: "Classes", type: "select",
-        default: "3", options: ["2", "3", "4", "5"] },
-    ] },
-  { label: "Rotate 90° CW", kind: "rotate90" },
-  { label: "Flip Horizontal", kind: "fliph" },
-  { label: "Flip Vertical", kind: "flipv" },
-];
 
 export default function MenuBar({
   onFit,
@@ -297,12 +261,12 @@ export default function MenuBar({
         key: "op",
         label: "Operation",
         type: "select",
-        default: FILTER_DEFS[0].label,
-        options: FILTER_DEFS.map((d) => d.label),
+        default: BATCH_FILTERS[0].label,
+        options: BATCH_FILTERS.map((d) => d.label),
       },
     ]);
     if (!choice) return;
-    const def = FILTER_DEFS.find((d) => d.label === choice["op"]);
+    const def = BATCH_FILTERS.find((d) => d.label === choice["op"]);
     if (!def) return;
     const params = def.fields ? await askParams(def.label, def.fields) : {};
     if (params === null) return;
@@ -326,26 +290,6 @@ export default function MenuBar({
         (failed ? `, ${failed} failed` : ""),
     );
   };
-
-  const filterEntry = (
-    label: string,
-    kind: string,
-    fields?: ParamField[],
-  ): Entry => ({
-    label,
-    disabled: !store.activeId,
-    action: () => {
-      void (async () => {
-        const params = fields ? await askParams(label, fields) : {};
-        if (params === null) return; // cancelled
-        derived(label, (id) =>
-          applyFilter(id, kind, params as Record<string, unknown>).then(
-            (m) => [m],
-          ),
-        );
-      })();
-    },
-  });
 
   const radialDock = (azimuthal: boolean) => {
     const id = store.activeId;
@@ -908,9 +852,6 @@ export default function MenuBar({
           })();
         },
       },
-      ...FILTER_DEFS.slice(0, 9).map((d) =>
-        filterEntry(d.label, d.kind, d.fields),
-      ),
       {
         label: "Batch Apply…",
         disabled: store.order.length === 0,

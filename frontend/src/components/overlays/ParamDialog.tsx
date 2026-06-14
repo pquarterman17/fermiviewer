@@ -5,16 +5,13 @@
 import { useEffect, useState } from "react";
 import { create } from "zustand";
 
-export interface ParamField {
-  key: string;
-  label: string;
-  type: "number" | "select" | "boolean" | "text";
-  default: number | string | boolean;
-  options?: string[]; // for select
-  hint?: string;
-}
+import { coerceParams, type ParamField, type ParamValues } from "../../lib/params";
+import { ParamFieldRow } from "./ParamFields";
 
-export type ParamValues = Record<string, number | string | boolean>;
+// Param types now live in lib/params (framework-agnostic, so lib/ tool
+// catalogues can describe their fields). Re-exported here for existing
+// importers (e.g. MenuBar) that pull the types from this module.
+export type { ParamField, ParamValues } from "../../lib/params";
 
 interface DialogState {
   title: string | null;
@@ -82,61 +79,14 @@ export default function ParamDialog() {
         onKeyDown={onKey}
       >
         <h2>{title}</h2>
-        {fields.map((f) => (
-          <div key={f.key} className="fvd-ws-row">
-            <span className="k" title={f.hint}>
-              {f.label}
-            </span>
-            {f.type === "number" && (
-              <input
-                autoFocus={f === fields[0]}
-                value={String(values[f.key] ?? "")}
-                onChange={(e) =>
-                  setValues({ ...values, [f.key]: e.target.value })
-                }
-                onBlur={(e) => {
-                  const n = Number(e.target.value);
-                  setValues({
-                    ...values,
-                    [f.key]: Number.isFinite(n) ? n : f.default,
-                  });
-                }}
-              />
-            )}
-            {f.type === "text" && (
-              <input
-                autoFocus={f === fields[0]}
-                style={{ flex: 1 }}
-                value={String(values[f.key] ?? "")}
-                onChange={(e) =>
-                  setValues({ ...values, [f.key]: e.target.value })
-                }
-              />
-            )}
-            {f.type === "select" && (
-              <select
-                value={String(values[f.key])}
-                onChange={(e) =>
-                  setValues({ ...values, [f.key]: e.target.value })
-                }
-              >
-                {(f.options ?? []).map((o) => (
-                  <option key={o}>{o}</option>
-                ))}
-              </select>
-            )}
-            {f.type === "boolean" && (
-              <label className="fvd-check">
-                <input
-                  type="checkbox"
-                  checked={Boolean(values[f.key])}
-                  onChange={(e) =>
-                    setValues({ ...values, [f.key]: e.target.checked })
-                  }
-                />
-              </label>
-            )}
-          </div>
+        {fields.map((f, i) => (
+          <ParamFieldRow
+            key={f.key}
+            field={f}
+            value={values[f.key]}
+            autoFocus={i === 0}
+            onChange={(v) => setValues({ ...values, [f.key]: v })}
+          />
         ))}
         <div className="fvd-btn-row">
           <button className="fvd-btn" onClick={() => finish(null)}>
@@ -144,18 +94,7 @@ export default function ParamDialog() {
           </button>
           <button
             className="fvd-btn primary"
-            onClick={() => {
-              // coerce any in-progress number strings
-              const out: ParamValues = {};
-              for (const f of fields) {
-                const v = values[f.key];
-                out[f.key] =
-                  f.type === "number" && typeof v === "string"
-                    ? Number(v) || (f.default as number)
-                    : v;
-              }
-              finish(out);
-            }}
+            onClick={() => finish(coerceParams(values, fields))}
           >
             Run
           </button>
