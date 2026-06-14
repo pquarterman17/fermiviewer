@@ -21,6 +21,10 @@ export default function ColorbarChip() {
   const display = useViewer((s) =>
     s.activeId ? (s.display[s.activeId] ?? DEFAULT_DISPLAY) : DEFAULT_DISPLAY,
   );
+  // value unit (e.g. AFM height "nm") — labels the z lengthscale
+  const unit = useViewer((s) =>
+    s.activeId ? (s.images[s.activeId]?.value_unit ?? "") : "",
+  );
   const raster = useStageInfo((s) => s.raster);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -52,6 +56,7 @@ export default function ColorbarChip() {
 
   return (
     <div className="fvd-glass fvd-colorbar">
+      {unit && <span className="u">{unit}</span>}
       <span className="v">{fmt(hi)}</span>
       <canvas ref={canvasRef} width={W} height={H} />
       <span className="v">{fmt(lo)}</span>

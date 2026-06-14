@@ -517,6 +517,12 @@ details.fvd-card:not([open]) > summary {
   color: var(--text-dim);
 }
 
+.fvd-colorbar .u {
+  color: var(--text);
+  font-weight: 600;
+  margin-bottom: 1px;
+}
+
 .fvd-pixel-grid {
   border-collapse: collapse;
   font-family: var(--font-mono);
