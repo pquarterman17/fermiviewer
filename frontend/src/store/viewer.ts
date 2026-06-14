@@ -38,7 +38,11 @@ export interface Display {
   invert: boolean;
   /** intensity transform applied to the texture before window/γ/LUT */
   transform: DisplayTransform;
+  /** colorbar tick interval in real value units (nm for AFM); 0/undefined = auto */
+  tickStep?: number;
 }
+
+export type ColorbarSide = "left" | "right";
 
 export const DEFAULT_DISPLAY: Display = {
   lo: 0,
@@ -375,6 +379,7 @@ interface ViewerState {
   rightCol: boolean;
   minimap: boolean;
   colorbar: boolean;
+  colorbarSide: ColorbarSide; // persisted "colorbarSide" pref
   scaleBarVisible: boolean;
   cmdk: boolean;
   shorts: boolean;
@@ -442,6 +447,7 @@ interface ViewerState {
   toggleRight: () => void;
   toggleMinimap: () => void;
   toggleColorbar: () => void;
+  setColorbarSide: (side: ColorbarSide) => void;
   toggleScaleBar: () => void;
   setCmdk: (open: boolean) => void;
   setShorts: (open: boolean) => void;
@@ -493,6 +499,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   leftCol: false,
   minimap: _pref("minimap", true),
   colorbar: false,
+  colorbarSide: _pref<ColorbarSide>("colorbarSide", "right"),
   scaleBarVisible: true,
   rightCol: false,
   cmdk: false,
@@ -898,6 +905,13 @@ export const useViewer = create<ViewerState>((set, get) => ({
   toggleRight: () => set((s) => ({ rightCol: !s.rightCol })),
   toggleMinimap: () => set((s) => ({ minimap: !s.minimap })),
   toggleColorbar: () => set((s) => ({ colorbar: !s.colorbar })),
+  setColorbarSide: (side) => {
+    try {
+      const p = JSON.parse(localStorage.getItem("fv_prefs") ?? "{}") as Record<string, unknown>;
+      localStorage.setItem("fv_prefs", JSON.stringify({ ...p, colorbarSide: side }));
+    } catch { /* ignore */ }
+    set({ colorbarSide: side });
+  },
   toggleScaleBar: () => set((s) => ({ scaleBarVisible: !s.scaleBarVisible })),
   setCmdk: (cmdk) => set({ cmdk }),
   setShorts: (shorts) => set({ shorts }),

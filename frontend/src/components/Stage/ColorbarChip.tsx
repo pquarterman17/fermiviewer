@@ -1,14 +1,16 @@
-// Calibrated colorbar (checklist I): vertical LUT gradient on the
-// stage's right edge with the display window's real-value endpoints.
+// Calibrated colorbar (checklist I): a full-height vertical LUT gradient
+// pinned to the left or right stage edge (configurable), with labeled
+// tick marks in real value units (nm for AFM height) at a fixed step.
 
 import { useEffect, useRef } from "react";
 
 import { buildLut } from "../../lib/colormaps";
+import { colorbarTicks, niceStep } from "../../lib/display";
 import { useStageInfo } from "../../store/stage";
-import { useViewer, DEFAULT_DISPLAY } from "../../store/viewer";
+import { DEFAULT_DISPLAY, useViewer } from "../../store/viewer";
 
-const W = 14;
-const H = 160;
+const W = 14; // gradient internal width (px); CSS stretches height to full
+const LUT_H = 256;
 
 function fmt(v: number): string {
   const a = Math.abs(v);
@@ -18,6 +20,7 @@ function fmt(v: number): string {
 
 export default function ColorbarChip() {
   const show = useViewer((s) => s.colorbar);
+  const side = useViewer((s) => s.colorbarSide);
   const display = useViewer((s) =>
     s.activeId ? (s.display[s.activeId] ?? DEFAULT_DISPLAY) : DEFAULT_DISPLAY,
   );
@@ -33,11 +36,11 @@ export default function ColorbarChip() {
     if (!cv || !show) return;
     const ctx = cv.getContext("2d");
     if (!ctx) return;
-    // buildLut returns a flat RGBA Uint8Array (256 × 4)
     const lut = buildLut(display.cmap as Parameters<typeof buildLut>[0]);
-    const img = ctx.createImageData(W, H);
-    for (let y = 0; y < H; y++) {
-      const o4 = Math.round(((H - 1 - y) / (H - 1)) * 255) * 4;
+    const img = ctx.createImageData(W, LUT_H);
+    for (let y = 0; y < LUT_H; y++) {
+      // y=0 is the top → highest value → LUT max
+      const o4 = Math.round(((LUT_H - 1 - y) / (LUT_H - 1)) * 255) * 4;
       for (let x = 0; x < W; x++) {
         const o = (y * W + x) * 4;
         img.data[o] = lut[o4];
@@ -54,12 +57,33 @@ export default function ColorbarChip() {
   const lo = raster.vmin + display.lo * span;
   const hi = raster.vmin + display.hi * span;
 
+  // ticks at the user step (fallback to a nice auto step if missing or
+  // it would overflow the bar)
+  let step =
+    display.tickStep && display.tickStep > 0
+      ? display.tickStep
+      : niceStep(hi - lo);
+  let ticks = colorbarTicks(lo, hi, step);
+  if (ticks.length === 0) {
+    step = niceStep(hi - lo);
+    ticks = colorbarTicks(lo, hi, step);
+  }
+  const posPct = (v: number) => ((hi - v) / (hi - lo)) * 100;
+
   return (
-    <div className="fvd-glass fvd-colorbar">
+    <div className={`fvd-glass fvd-colorbar side-${side}`}>
       {unit && <span className="u">{unit}</span>}
-      <span className="v">{fmt(hi)}</span>
-      <canvas ref={canvasRef} width={W} height={H} />
-      <span className="v">{fmt(lo)}</span>
+      <div className="body">
+        <canvas className="bar" ref={canvasRef} width={W} height={LUT_H} />
+        <div className="ticks">
+          {ticks.map((v) => (
+            <span className="tk" key={v} style={{ top: `${posPct(v)}%` }}>
+              <i className="ln" />
+              <em className="n">{fmt(v)}</em>
+            </span>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

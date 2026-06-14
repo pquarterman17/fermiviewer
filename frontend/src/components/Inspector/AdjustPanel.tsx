@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { fetchHistogram, type Histogram } from "../../lib/api";
 import { COLORMAP_NAMES, type ColormapName } from "../../lib/colormaps";
-import { autoWindow, toReal } from "../../lib/display";
+import { autoWindow, toNorm, toReal } from "../../lib/display";
 import { loadPrefs } from "../../lib/prefs";
 import { useStageInfo } from "../../store/stage";
 import { DEFAULT_DISPLAY, useViewer } from "../../store/viewer";
@@ -13,12 +13,54 @@ import Card from "./Card";
 
 const HIST_H = 80;
 
+/** Number input that only resyncs from props when not being edited, so
+ *  typing isn't clobbered by the live store value it commits to. */
+function NumField(props: {
+  value: number | null;
+  onCommit: (v: number) => void;
+  step?: number;
+  title?: string;
+}) {
+  const { value, onCommit, step, title } = props;
+  const [text, setText] = useState("");
+  const focused = useRef(false);
+  useEffect(() => {
+    if (!focused.current) setText(value == null ? "" : String(value));
+  }, [value]);
+  return (
+    <input
+      type="number"
+      className="fvd-numfield"
+      title={title}
+      step={step}
+      value={text}
+      onFocus={() => (focused.current = true)}
+      onBlur={() => {
+        focused.current = false;
+        setText(value == null ? "" : String(value));
+      }}
+      onChange={(e) => {
+        setText(e.target.value);
+        const v = Number(e.target.value);
+        if (e.target.value !== "" && Number.isFinite(v)) onCommit(v);
+      }}
+    />
+  );
+}
+
 export default function AdjustPanel() {
   const activeId = useViewer((s) => s.activeId);
   const display = useViewer((s) =>
     s.activeId ? (s.display[s.activeId] ?? DEFAULT_DISPLAY) : DEFAULT_DISPLAY,
   );
   const setDisplay = useViewer((s) => s.setDisplay);
+  const unit = useViewer((s) =>
+    s.activeId ? (s.images[s.activeId]?.value_unit ?? "") : "",
+  );
+  const colorbar = useViewer((s) => s.colorbar);
+  const toggleColorbar = useViewer((s) => s.toggleColorbar);
+  const colorbarSide = useViewer((s) => s.colorbarSide);
+  const setColorbarSide = useViewer((s) => s.setColorbarSide);
   const raster = useStageInfo((s) => s.raster);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -278,6 +320,67 @@ export default function AdjustPanel() {
         </button>
       </div>
 
+      {raster && (
+        <div className="fvd-zscale">
+          <div className="fvd-meta-row">
+            <span className="k">Color range{unit ? ` (${unit})` : ""}</span>
+            <button
+              className={`fvd-seg-btn fvd-inline-toggle${colorbar ? " active" : ""}`}
+              title="Show the color scale bar on the stage"
+              onClick={toggleColorbar}
+            >
+              scale bar
+            </button>
+          </div>
+          <div className="fvd-zscale-row">
+            <NumField
+              title="Minimum (black point)"
+              value={Number(toReal(display.lo, raster).toPrecision(6))}
+              onCommit={(v) =>
+                setDisplay(activeId, {
+                  lo: Math.min(toNorm(v, raster), display.hi - 1 / 255),
+                })
+              }
+            />
+            <span className="dash">–</span>
+            <NumField
+              title="Maximum (white point)"
+              value={Number(toReal(display.hi, raster).toPrecision(6))}
+              onCommit={(v) =>
+                setDisplay(activeId, {
+                  hi: Math.max(toNorm(v, raster), display.lo + 1 / 255),
+                })
+              }
+            />
+            <span className="unit">{unit}</span>
+          </div>
+          <div className="fvd-zscale-row">
+            <span className="k">Tick step</span>
+            <NumField
+              title="Colorbar tick interval (0 = auto)"
+              value={
+                display.tickStep && display.tickStep > 0 ? display.tickStep : null
+              }
+              onCommit={(v) => setDisplay(activeId, { tickStep: Math.max(0, v) })}
+            />
+            <span className="unit">{unit}</span>
+            <div className="fvd-seg" title="Colorbar side">
+              <button
+                className={`fvd-seg-btn${colorbarSide === "left" ? " active" : ""}`}
+                onClick={() => setColorbarSide("left")}
+              >
+                L
+              </button>
+              <button
+                className={`fvd-seg-btn${colorbarSide === "right" ? " active" : ""}`}
+                onClick={() => setColorbarSide("right")}
+              >
+                R
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

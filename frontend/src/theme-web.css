@@ -504,23 +504,116 @@ details.fvd-card:not([open]) > summary {
 
 .fvd-colorbar {
   position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
+  top: 12px;
+  bottom: 12px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  padding: 6px;
+  gap: 4px;
+  padding: 6px 7px 8px;
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-dim);
 }
 
+.fvd-colorbar.side-right {
+  right: 10px;
+}
+.fvd-colorbar.side-left {
+  left: 10px;
+}
+
 .fvd-colorbar .u {
   color: var(--text);
   font-weight: 600;
-  margin-bottom: 1px;
+}
+
+.fvd-colorbar .body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+.fvd-colorbar.side-left .body {
+  flex-direction: row; /* bar | ticks */
+}
+.fvd-colorbar.side-right .body {
+  flex-direction: row-reverse; /* ticks | bar */
+}
+
+.fvd-colorbar .bar {
+  width: 14px;
+  height: 100%;
+  border-radius: 2px;
+  display: block;
+}
+
+.fvd-colorbar .ticks {
+  position: relative;
+  min-width: 28px;
+}
+.fvd-colorbar .tk {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  transform: translateY(-50%);
+  white-space: nowrap;
+}
+.fvd-colorbar .tk .ln {
+  width: 5px;
+  height: 1px;
+  background: var(--text-dim);
+  flex: none;
+}
+.fvd-colorbar.side-left .tk {
+  left: 0; /* line toward the bar (to the left) */
+}
+.fvd-colorbar.side-right .tk {
+  right: 0;
+  flex-direction: row-reverse; /* line toward the bar (to the right) */
+}
+
+/* Z-scale / color-range controls (Adjust panel) */
+.fvd-zscale {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fvd-zscale-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.fvd-zscale-row .k {
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.fvd-zscale-row .dash {
+  color: var(--text-faint);
+}
+.fvd-zscale-row .unit {
+  color: var(--text-faint);
+  font-size: var(--font-size-sm);
+}
+.fvd-numfield {
+  width: 56px;
+  min-width: 0;
+  flex: 1;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  padding: 2px 5px;
+}
+.fvd-zscale-row .fvd-seg {
+  margin-left: auto;
 }
 
 .fvd-pixel-grid {
