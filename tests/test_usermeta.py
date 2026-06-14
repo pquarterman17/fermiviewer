@@ -93,6 +93,24 @@ def test_load_schema_from_config(cfg) -> None:
     assert s.patterns == ("D{Design}_L{Lot}_W{Wafer}_R{Reticle}",)
 
 
+def test_load_schema_typed_fields(tmp_path, monkeypatch) -> None:
+    p = tmp_path / "metadata.yaml"
+    p.write_text(
+        "fields:\n"
+        "  - Design\n"
+        "  - {name: Wafer, type: number}\n"
+        "  - {name: Process, options: [A, B, C]}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("FV_METADATA_CONFIG", str(p))
+    s = usermeta.load_schema()
+    assert s.fields[0] == usermeta.MetaField(name="Design")
+    assert s.fields[1] == usermeta.MetaField(name="Wafer", type="number")
+    assert s.fields[2] == usermeta.MetaField(
+        name="Process", options=("A", "B", "C")
+    )
+
+
 def test_load_schema_seeds_starter(tmp_path, monkeypatch) -> None:
     p = tmp_path / "sub" / "metadata.yaml"
     monkeypatch.setenv("FV_METADATA_CONFIG", str(p))
@@ -142,3 +160,20 @@ def test_usermeta_autofill_and_save(cfg, client, tmp_path) -> None:
 
 def test_usermeta_unknown_id(cfg, client) -> None:
     assert client.get("/api/image/nope/usermeta").status_code == 404
+
+
+def test_batch_autofill(cfg, client, tmp_path) -> None:
+    match_id = _open(client, tmp_path, "D1234_L44576_W1234_R13.dm4")
+    nomatch_id = _open(client, tmp_path, "random.dm4")
+    r = client.post(
+        "/api/usermeta/batch-autofill",
+        json={"image_ids": [match_id, nomatch_id, "ghost"]},
+    ).json()
+    assert r["n_total"] == 2  # "ghost" id skipped
+    assert r["n_matched"] == 1
+    # the matching file got a sidecar written from its name
+    assert (tmp_path / "D1234_L44576_W1234_R13.dm4.fvmeta.yaml").exists()
+    # and its values are now resolvable
+    got = client.get(f"/api/image/{match_id}/usermeta").json()
+    assert got["values"]["Wafer"] == "1234"
+    assert got["has_sidecar"] is True

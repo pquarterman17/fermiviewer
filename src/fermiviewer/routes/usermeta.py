@@ -79,3 +79,56 @@ def save_usermeta(img_id: str, req: UserMetaPatch) -> dict:
         except OSError:
             wrote = False
     return {"values": clean, "wrote_sidecar": wrote}
+
+
+class BatchAutofillRequest(BaseModel):
+    image_ids: list[str]
+
+
+@router.post("/usermeta/batch-autofill")
+def batch_autofill(req: BatchAutofillRequest) -> dict:
+    """Apply the filename pattern to many images at once: fill the
+    pattern-derived fields and write each sidecar, preserving any other
+    fields already saved there. Unknown ids and non-matching names are
+    skipped (reported as matched: false)."""
+    schema = usermeta.load_schema()
+    field_names = {f.name for f in schema.fields}
+    results: list[dict[str, object]] = []
+    for img_id in req.image_ids:
+        try:
+            ds = store.get(img_id)
+        except UnknownImageError:
+            continue
+        name = store.name(img_id)
+        path = store.source_path(img_id)
+        parsed = {
+            k: v
+            for k, v in usermeta.parse_filename(name, schema.patterns).items()
+            if k in field_names
+        }
+        if not parsed:
+            results.append(
+                {"id": img_id, "name": name, "matched": False,
+                 "filled": 0, "wrote_sidecar": False}
+            )
+            continue
+        merged = usermeta.read_sidecar(path) if path else {}
+        merged.update(parsed)
+        for k, v in merged.items():
+            ds.metadata[k] = v
+        wrote = False
+        if path:
+            try:
+                usermeta.write_sidecar(path, merged)
+                wrote = True
+            except OSError:
+                wrote = False
+        results.append(
+            {"id": img_id, "name": name, "matched": True,
+             "filled": len(parsed), "wrote_sidecar": wrote}
+        )
+    return {
+        "results": results,
+        "n_matched": sum(1 for r in results if r["matched"]),
+        "n_total": len(results),
+    }

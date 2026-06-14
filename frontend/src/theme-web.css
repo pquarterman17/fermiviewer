@@ -1181,6 +1181,7 @@ details.fvd-card:not([open]) > summary {
 .fvd-slider-row input[type="text"],
 .fvd-meta-row input[type="number"],
 .fvd-meta-row input[type="text"],
+.fvd-meta-row input[type="date"],
 .fvd-prefs-ctl input[type="number"],
 .fvd-prefs-ctl input[type="text"],
 .fvd-sb-spin input {

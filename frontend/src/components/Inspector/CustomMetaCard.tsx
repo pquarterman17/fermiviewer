@@ -4,17 +4,25 @@
 
 import { useEffect, useState } from "react";
 
-import { getUserMeta, saveUserMeta, type UserMeta } from "../../lib/api";
+import {
+  batchAutofill,
+  getUserMeta,
+  saveUserMeta,
+  type MetaField,
+  type UserMeta,
+} from "../../lib/api";
 import { useViewer } from "../../store/viewer";
 import Card from "./Card";
 
 export default function CustomMetaCard() {
   const activeId = useViewer((s) => s.activeId);
+  const order = useViewer((s) => s.order);
   const setStatus = useViewer((s) => s.setStatus);
   const [info, setInfo] = useState<UserMeta | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     if (!activeId) {
@@ -35,7 +43,7 @@ export default function CustomMetaCard() {
     return () => {
       alive = false;
     };
-  }, [activeId]);
+  }, [activeId, reload]);
 
   if (!activeId || !info) return null;
 
@@ -74,6 +82,51 @@ export default function CustomMetaCard() {
       .finally(() => setBusy(false));
   };
 
+  const runBatch = () => {
+    setBusy(true);
+    batchAutofill(order)
+      .then((r) => {
+        setStatus(
+          `auto-filled ${r.n_matched}/${r.n_total} files from filename`,
+        );
+        setReload((x) => x + 1); // refresh the active image's values
+      })
+      .catch((e: Error) => setStatus(`batch auto-fill: ${e.message}`))
+      .finally(() => setBusy(false));
+  };
+
+  const renderField = (f: MetaField) => {
+    const v = values[f.name] ?? "";
+    const onChange = (val: string) => {
+      setValues((p) => ({ ...p, [f.name]: val }));
+      setDirty(true);
+    };
+    if (f.options.length > 0) {
+      // keep a non-listed current value selectable (e.g. filename-derived)
+      const opts = v && !f.options.includes(v) ? [v, ...f.options] : f.options;
+      return (
+        <select value={v} style={{ flex: 1 }} onChange={(e) => onChange(e.target.value)}>
+          <option value="" />
+          {opts.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+      );
+    }
+    const type =
+      f.type === "number" ? "number" : f.type === "date" ? "date" : "text";
+    return (
+      <input
+        type={type}
+        style={{ flex: 1 }}
+        value={v}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    );
+  };
+
   const footHint = info.can_write_sidecar
     ? info.has_sidecar
       ? "↳ saved to a .fvmeta.yaml beside the file"
@@ -87,16 +140,7 @@ export default function CustomMetaCard() {
           <span className="k" title={f.name}>
             {f.name}
           </span>
-          <input
-            type="text"
-            style={{ flex: 1 }}
-            value={values[f.name] ?? ""}
-            onChange={(e) => {
-              const v = e.target.value;
-              setValues((p) => ({ ...p, [f.name]: v }));
-              setDirty(true);
-            }}
-          />
+          {renderField(f)}
         </div>
       ))}
       <div className="fvd-btn-row">
@@ -106,6 +150,14 @@ export default function CustomMetaCard() {
           disabled={busy || !dirty}
         >
           {busy ? "Saving…" : "Save"}
+        </button>
+        <button
+          className="fvd-btn"
+          title="Apply the filename pattern to every loaded file and write their sidecars"
+          onClick={runBatch}
+          disabled={busy || order.length === 0}
+        >
+          Auto-fill all ({order.length})
         </button>
       </div>
       <div className="fvd-ws-note">{footHint}</div>

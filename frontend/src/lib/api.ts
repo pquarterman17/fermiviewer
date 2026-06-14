@@ -769,6 +769,23 @@ export function saveUserMeta(
   return post(`/api/image/${id}/usermeta`, { values });
 }
 
+export interface BatchAutofillResult {
+  results: {
+    id: string;
+    name: string;
+    matched: boolean;
+    filled: number;
+    wrote_sidecar: boolean;
+  }[];
+  n_matched: number;
+  n_total: number;
+}
+
+/** Apply the filename pattern to many images at once, writing each sidecar. */
+export function batchAutofill(imageIds: string[]): Promise<BatchAutofillResult> {
+  return post("/api/usermeta/batch-autofill", { image_ids: imageIds });
+}
+
 export function analyzeRoughness(
   id: string,
 ): Promise<Record<string, number | string>> {

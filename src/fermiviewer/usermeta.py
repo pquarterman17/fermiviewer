@@ -50,8 +50,13 @@ class MetaSchema:
 _STARTER = """\
 # fermiviewer — custom metadata configuration
 #
-# Fields you want to fill in for each image (free text), shown in the
-# "Custom Metadata" inspector card.
+# Fields you want to fill in for each image, shown in the "Custom
+# Metadata" inspector card. A bare name is a free-text field; you can also
+# give a {name, type, options} mapping:
+#   - name: Wafer
+#     type: number          # number | date | text (default)
+#   - name: Process
+#     options: [A, B, C]    # any field with options renders a dropdown
 fields:
   - Design
   - Lot
