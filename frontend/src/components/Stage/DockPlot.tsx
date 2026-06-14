@@ -33,8 +33,15 @@ export default function DockPlot() {
               points: { show: false },
             },
           ],
+          // x is calibrated distance, not time — uPlot defaults to a time
+          // axis, which renders 0–N nm as clock times (the bug this fixes)
+          scales: { x: { time: false } },
           axes: [
-            { stroke: "#888", grid: { stroke: "rgba(128,128,128,0.15)" } },
+            {
+              stroke: "#888",
+              grid: { stroke: "rgba(128,128,128,0.15)" },
+              values: (_u, vals) => vals.map((v) => `${v} ${profile.unit}`),
+            },
             { stroke: "#888", grid: { stroke: "rgba(128,128,128,0.15)" } },
           ],
           legend: { show: false },
