@@ -24,7 +24,7 @@ import ShortcutsOverlay from "./components/overlays/ShortcutsOverlay";
 import CalibrationManager from "./components/overlays/CalibrationManager";
 import MetadataDialog from "./components/overlays/MetadataDialog";
 import GalleryGrid from "./components/overlays/GalleryGrid";
-import PrefsDialog from "./components/overlays/PrefsDialog";
+import PrefsWindow from "./components/overlays/PrefsWindow";
 import ToolWindow from "./components/overlays/ToolWindow";
 import DiffractionWorkshop from "./components/workshops/DiffractionWorkshop";
 import FftMaskWorkshop from "./components/workshops/FftMaskWorkshop";
@@ -121,6 +121,20 @@ export default function App() {
       window.removeEventListener("dragover", onDragOver);
       window.removeEventListener("drop", onDrop);
     };
+  }, []);
+
+  // ── follow the OS colour scheme live while the theme choice is "System" ──
+  useEffect(() => {
+    const mq = window.matchMedia?.("(prefers-color-scheme: light)");
+    if (!mq) return;
+    const onChange = () => {
+      // an explicit dark/light choice is pinned; only "system"/absent follows
+      const choice = localStorage.getItem("fv_theme");
+      if (choice === "dark" || choice === "light") return;
+      useViewer.getState().setTheme("system");
+    };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
   }, []);
 
   // ── keyboard map (handoff §9) ──
@@ -515,7 +529,7 @@ export default function App() {
       <ExportDialog />
       <CalibrationManager />
       <MetadataDialog />
-      <PrefsDialog />
+      <PrefsWindow />
       <GalleryGrid />
       <ParamDialog />
       <ResultsWindow />

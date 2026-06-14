@@ -1483,6 +1483,112 @@ details.fvd-card:not([open]) > summary {
   color: var(--accent-text);
 }
 
+/* ── preferences window (sectioned settings) ── */
+
+.fvd-prefs {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(680px, 94vw);
+  max-height: 88vh;
+  padding: var(--pad-lg) 18px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pad);
+}
+
+.fvd-prefs h2 {
+  margin: 2px 0 0;
+  font-size: 14px;
+}
+
+.fvd-prefs-body {
+  display: flex;
+  gap: var(--pad-lg);
+  min-height: 320px;
+  max-height: 64vh;
+}
+
+.fvd-prefs-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 0 0 144px;
+  border-right: 1px solid var(--border-soft);
+  padding-right: var(--pad);
+}
+
+.fvd-prefs-navbtn {
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  cursor: default;
+}
+
+.fvd-prefs-navbtn:hover {
+  background: var(--surface-3);
+}
+
+.fvd-prefs-navbtn.active {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.fvd-prefs-pane {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 4px;
+}
+
+.fvd-prefs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-sm);
+}
+
+.fvd-prefs-row .k {
+  flex: 1 1 auto;
+  color: var(--text-dim);
+}
+
+.fvd-prefs-ctl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.fvd-prefs-dash {
+  color: var(--text-faint);
+}
+
+.fvd-prefs-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--border-soft);
+  padding-top: var(--pad);
+}
+
+.fvd-prefs-footer .fvd-btn {
+  flex: 0 0 auto;
+  padding: 4px 14px;
+}
+
+.fvd-prefs-footer-right {
+  display: flex;
+  gap: var(--pad);
+}
+
 /* ── workshop tool windows ── */
 
 .fvd-tool-window {

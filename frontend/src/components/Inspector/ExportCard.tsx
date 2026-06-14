@@ -7,6 +7,7 @@ import { useState } from "react";
 
 import { type ExportOptions } from "../../lib/api";
 import { exportActive } from "../../lib/export";
+import { loadPrefs } from "../../lib/prefs";
 import { useViewer } from "../../store/viewer";
 import Card from "./Card";
 
@@ -24,8 +25,9 @@ export default function ExportCard() {
   const activeId = useViewer((s) => s.activeId);
   const setExportOpen = useViewer((s) => s.setExportOpen);
   const setStatus = useViewer((s) => s.setStatus);
-  const [format, setFormat] = useState<Format>("png");
-  const [scale, setScale] = useState(1);
+  // seed from saved Export preferences (Preferences → Export)
+  const [format, setFormat] = useState<Format>(() => loadPrefs().exportFormat);
+  const [scale, setScale] = useState(() => loadPrefs().exportScale);
   const [busy, setBusy] = useState(false);
 
   if (!activeId) return null;

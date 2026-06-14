@@ -84,14 +84,10 @@ export default function Inspector() {
     s.activeId ? (s.images[s.activeId] ?? null) : null,
   );
   const [tab, setTab] = useState<Tab>("Image");
-  // GUI v2 A/B: separate Measure+Tools cards vs one unified pill panel
-  const [toolsLayout, setToolsLayout] = useState<"cards" | "unified">(() =>
-    localStorage.getItem("fv_tools_layout") === "unified" ? "unified" : "cards",
-  );
-  const setLayout = (v: "cards" | "unified") => {
-    setToolsLayout(v);
-    localStorage.setItem("fv_tools_layout", v);
-  };
+  // GUI v2 A/B: separate Measure+Tools cards vs one unified pill panel.
+  // The chooser now lives in Preferences → Tools & Layout; this reads the
+  // persisted store value (the inline toggle was removed).
+  const toolsLayout = useViewer((s) => s.toolsLayout);
 
   if (!meta) {
     return (
@@ -155,25 +151,6 @@ export default function Inspector() {
         <Card title="Diffraction">
           <DiffractionWorkshop />
         </Card>
-      )}
-      {tab === "Image" && (
-        <div className="fvd-slider-row fvd-layout-toggle">
-          <span className="k">Tools layout</span>
-          <div className="fvd-seg">
-            <button
-              className={`fvd-seg-btn${toolsLayout === "cards" ? " active" : ""}`}
-              onClick={() => setLayout("cards")}
-            >
-              Cards
-            </button>
-            <button
-              className={`fvd-seg-btn${toolsLayout === "unified" ? " active" : ""}`}
-              onClick={() => setLayout("unified")}
-            >
-              Unified
-            </button>
-          </div>
-        </div>
       )}
       {tab === "Image" && unified && <ToolsBrowser />}
       {tab === "Image" && !unified && <MeasurePanel />}

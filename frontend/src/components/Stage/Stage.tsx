@@ -21,6 +21,7 @@ import {
   type Raster16,
 } from "../../lib/api";
 import { buildLut } from "../../lib/colormaps";
+import { autoWindow } from "../../lib/display";
 import {
   boxProfileLine,
   fitView,
@@ -31,6 +32,7 @@ import {
   zoomAbout,
   type Size,
 } from "../../lib/geometry";
+import { loadPrefs } from "../../lib/prefs";
 import { applyGeometry, cropToRoi } from "../../lib/stageOps";
 import { rasterValue, useStageInfo } from "../../store/stage";
 import {
@@ -233,6 +235,16 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
             });
           } else if (di === true) {
             setDisplay(activeId, { invert: true });
+          } else {
+            // no embedded display window — auto-contrast on open if enabled
+            // in Preferences (otherwise leave the full 0–1 range)
+            const prefs = loadPrefs();
+            if (prefs.autoContrastOnOpen) {
+              setDisplay(
+                activeId,
+                autoWindow(r, prefs.autoLoPct, prefs.autoHiPct),
+              );
+            }
           }
         }
       })
@@ -900,8 +912,9 @@ function ScaleBarOverlay({
   const phys = sbState?.lengthPhys ?? autoPhys;
   const widthPx = (phys / pixelSize) * z;
   const thickness = sbState?.thickness ?? Math.max(2, Math.round(vp.h / 80));
-  // default 20 (user request 2026-06-09 — readable at presentation size)
-  const fontSize = sbState?.fontSize ?? 20;
+  // per-image override wins; else the Preferences default (20 by default,
+  // user request 2026-06-09 — readable at presentation size)
+  const fontSize = sbState?.fontSize ?? loadPrefs().scaleBarFontSize;
   const label = phys >= 1
     ? `${Number(phys.toPrecision(3))} ${unit}`
     : fmtSub(phys, unit);

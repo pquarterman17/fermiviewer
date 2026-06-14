@@ -168,13 +168,18 @@ const VIEWS_KEY = "fv_views";
 const OVERLAY_KEY = "fv_overlay";
 const THEME_KEY = "fv_theme";
 
-function initialTheme(): Theme {
-  // persisted preference wins; otherwise follow the OS (checklist N)
-  const stored = localStorage.getItem(THEME_KEY);
-  if (stored === "dark" || stored === "light") return stored;
+/** Resolve the OS colour-scheme to a concrete theme. */
+function systemTheme(): Theme {
   return window.matchMedia?.("(prefers-color-scheme: light)").matches
     ? "light"
     : "dark";
+}
+
+function initialTheme(): Theme {
+  // explicit persisted choice wins; "system"/absent follow the OS (checklist N)
+  const stored = localStorage.getItem(THEME_KEY);
+  if (stored === "dark" || stored === "light") return stored;
+  return systemTheme();
 }
 
 function loadJson<T>(key: string, fallback: T): T {
@@ -211,15 +216,38 @@ function _pref<T>(key: string, fallback: T): T {
   }
 }
 
+/** Merge one key into the persisted fv_prefs blob (used by the live-apply
+ *  store actions so a change made in the inspector sticks across reloads). */
+function writePref(key: string, value: unknown): void {
+  try {
+    const p = JSON.parse(localStorage.getItem("fv_prefs") ?? "{}") as Record<
+      string,
+      unknown
+    >;
+    localStorage.setItem("fv_prefs", JSON.stringify({ ...p, [key]: value }));
+  } catch {
+    /* ignore quota / serialization errors — non-persistence is non-fatal */
+  }
+}
+
 /** Merge newly opened images into the library (shared by path + upload). */
 function _ingest(set: SetState, metas: ImageMeta[]): void {
-  // preference: default colormap for images seen for the first time
+  // preferences applied to images seen for the first time
   let prefCmap = "gray";
+  let prefTransform: Display["transform"] = "linear";
+  let prefInvert = false;
+  let prefTiltGeom: "cross-section" | "surface" = "cross-section";
   try {
-    prefCmap =
-      (JSON.parse(localStorage.getItem("fv_prefs") ?? "{}") as {
-        defaultCmap?: string;
-      }).defaultCmap ?? "gray";
+    const p = JSON.parse(localStorage.getItem("fv_prefs") ?? "{}") as {
+      defaultCmap?: string;
+      defaultTransform?: Display["transform"];
+      defaultInvert?: boolean;
+      tiltGeometry?: "cross-section" | "surface";
+    };
+    prefCmap = p.defaultCmap ?? "gray";
+    prefTransform = p.defaultTransform ?? "linear";
+    prefInvert = p.defaultInvert ?? false;
+    prefTiltGeom = p.tiltGeometry ?? "cross-section";
   } catch {
     /* defaults */
   }
@@ -233,10 +261,18 @@ function _ingest(set: SetState, metas: ImageMeta[]): void {
     for (const m of metas) {
       if (!(m.id in images)) {
         order.push(m.id);
-        if (prefCmap !== "gray" && !(m.id in display)) {
+        // seed display only when a default differs from the built-ins, so
+        // the common case leaves display[id] unset and Stage's DM-window
+        // seeding still runs on first load
+        if (
+          (prefCmap !== "gray" || prefTransform !== "linear" || prefInvert) &&
+          !(m.id in display)
+        ) {
           display[m.id] = {
             ...DEFAULT_DISPLAY,
             cmap: prefCmap as Display["cmap"],
+            transform: prefTransform,
+            invert: prefInvert,
           };
         }
         // #34: seed tilt from stage metadata; angle 0 keeps it off
@@ -246,7 +282,7 @@ function _ingest(set: SetState, metas: ImageMeta[]): void {
             angle: 0,
             seedAngle: m.stage_tilt_deg,
             axis: "Y",
-            geometry: "cross-section",
+            geometry: prefTiltGeom,
           };
         }
       }
@@ -374,6 +410,7 @@ interface ViewerState {
   panTool: boolean;
   profileWidth: number;  // ⊥ averaging width (px) for profile captures
   profileReduce: "mean" | "sum"; // box/profile reduction mode (item #49)
+  toolsLayout: "cards" | "unified"; // inspector tools layout (persisted pref)
   // chrome
   leftCol: boolean;
   rightCol: boolean;
@@ -436,13 +473,16 @@ interface ViewerState {
   setPanTool: (on: boolean) => void;
   setProfileWidth: (w: number) => void;
   setProfileReduce: (r: "mean" | "sum") => void;
+  setToolsLayout: (v: "cards" | "unified") => void;
   setOverlay: (patch: Partial<OverlayStyle>) => void;
   setScaleBar: (imageId: string, patch: Partial<ScaleBarState>) => void;
   /** Set or clear (null) the per-image tilt correction (#34). */
   setTilt: (imageId: string, t: TiltSettings | null) => void;
   setStackFrame: (imageId: string, frame: number) => void;
   setFixedZoomDims: (w: number, h: number) => void;
+  setTheme: (choice: Theme | "system") => void;
   toggleTheme: () => void;
+  setScaleBarVisible: (on: boolean) => void;
   toggleLeft: () => void;
   toggleRight: () => void;
   toggleMinimap: () => void;
@@ -490,17 +530,21 @@ export const useViewer = create<ViewerState>((set, get) => ({
   scaleBars: {},
   tilts: {},
   stackFrames: {},
-  fixedZoomW: 256,
-  fixedZoomH: 256,
+  fixedZoomW: _pref("fixedZoomW", 256),
+  fixedZoomH: _pref("fixedZoomH", 256),
   captureMode: "none",
   panTool: false,
   profileWidth: _pref("profileWidth", 1),
   profileReduce: _pref<"mean" | "sum">("profileReduce", "mean"),
+  toolsLayout: _pref<"cards" | "unified">(
+    "toolsLayout",
+    localStorage.getItem("fv_tools_layout") === "unified" ? "unified" : "cards",
+  ),
   leftCol: false,
   minimap: _pref("minimap", true),
-  colorbar: false,
+  colorbar: _pref("colorbarOnByDefault", false),
   colorbarSide: _pref<ColorbarSide>("colorbarSide", "right"),
-  scaleBarVisible: true,
+  scaleBarVisible: _pref("scaleBarVisible", true),
   rightCol: false,
   cmdk: false,
   shorts: false,
@@ -856,14 +900,18 @@ export const useViewer = create<ViewerState>((set, get) => ({
     set((s) => ({ roiStats: { ...s.roiStats, [measureId]: stats } })),
 
   setCaptureMode: (mode) => set({ captureMode: mode }),
-  setProfileWidth: (w) =>
-    set({ profileWidth: Math.max(1, Math.min(99, Math.round(w))) }),
+  setProfileWidth: (w) => {
+    const profileWidth = Math.max(1, Math.min(99, Math.round(w)));
+    writePref("profileWidth", profileWidth);
+    set({ profileWidth });
+  },
   setProfileReduce: (r) => {
-    try {
-      const p = JSON.parse(localStorage.getItem("fv_prefs") ?? "{}") as Record<string, unknown>;
-      localStorage.setItem("fv_prefs", JSON.stringify({ ...p, profileReduce: r }));
-    } catch { /* ignore */ }
+    writePref("profileReduce", r);
     set({ profileReduce: r });
+  },
+  setToolsLayout: (v) => {
+    writePref("toolsLayout", v);
+    set({ toolsLayout: v });
   },
   setPanTool: (on) => set({ panTool: on }),
 
@@ -894,11 +942,17 @@ export const useViewer = create<ViewerState>((set, get) => ({
 
   setFixedZoomDims: (fixedZoomW, fixedZoomH) => set({ fixedZoomW, fixedZoomH }),
 
+  setTheme: (choice) => {
+    const eff: Theme = choice === "system" ? systemTheme() : choice;
+    document.documentElement.setAttribute("data-theme", eff);
+    localStorage.setItem(THEME_KEY, choice); // remember the CHOICE, incl. "system"
+    writePref("theme", choice);
+    set({ theme: eff });
+  },
+
   toggleTheme: () => {
-    const theme: Theme = get().theme === "dark" ? "light" : "dark";
-    document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem(THEME_KEY, theme);
-    set({ theme });
+    // quick flip → an explicit dark/light choice (overrides "system")
+    get().setTheme(get().theme === "dark" ? "light" : "dark");
   },
 
   toggleLeft: () => set((s) => ({ leftCol: !s.leftCol })),
@@ -906,13 +960,19 @@ export const useViewer = create<ViewerState>((set, get) => ({
   toggleMinimap: () => set((s) => ({ minimap: !s.minimap })),
   toggleColorbar: () => set((s) => ({ colorbar: !s.colorbar })),
   setColorbarSide: (side) => {
-    try {
-      const p = JSON.parse(localStorage.getItem("fv_prefs") ?? "{}") as Record<string, unknown>;
-      localStorage.setItem("fv_prefs", JSON.stringify({ ...p, colorbarSide: side }));
-    } catch { /* ignore */ }
+    writePref("colorbarSide", side);
     set({ colorbarSide: side });
   },
-  toggleScaleBar: () => set((s) => ({ scaleBarVisible: !s.scaleBarVisible })),
+  toggleScaleBar: () =>
+    set((s) => {
+      const scaleBarVisible = !s.scaleBarVisible;
+      writePref("scaleBarVisible", scaleBarVisible);
+      return { scaleBarVisible };
+    }),
+  setScaleBarVisible: (on) => {
+    writePref("scaleBarVisible", on);
+    set({ scaleBarVisible: on });
+  },
   setCmdk: (cmdk) => set({ cmdk }),
   setShorts: (shorts) => set({ shorts }),
   setRadial: (radial) => set({ radial }),

@@ -45,18 +45,22 @@ export default function ExportDialog() {
   const [format, setFormat] = useState<Format>("png");
   const [scale, setScale] = useState(1);
   const [scaleBar, setScaleBar] = useState(true);
-
-  // re-seed the resolution from prefs each time the dialog opens
-  // (D13 "export DPI" — our pipeline is integer-scale, not DPI)
-  useEffect(() => {
-    if (open) {
-      const s = Math.round(loadPrefs().exportScale);
-      setScale(Math.min(4, Math.max(1, s)));
-    }
-  }, [open]);
   const [bakeMeasures, setBakeMeasures] = useState(true);
   const [colorbar, setColorbar] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  // re-seed every export option from saved prefs each time the dialog opens
+  // (Preferences → Export; our pipeline is integer-scale, not DPI)
+  useEffect(() => {
+    if (open) {
+      const p = loadPrefs();
+      setFormat(p.exportFormat);
+      setScale(Math.min(4, Math.max(1, Math.round(p.exportScale))));
+      setScaleBar(p.exportScaleBar);
+      setBakeMeasures(p.exportMeasures);
+      setColorbar(p.exportColorbar);
+    }
+  }, [open]);
 
   if (!open) return null;
   if (!activeId || !meta || meta.kind === "spectrum") {
