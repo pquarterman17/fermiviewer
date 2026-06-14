@@ -63,10 +63,11 @@ def load_image(path: str | Path) -> DataStruct:
             # not colours) — normalise to RGB first; "1" bitmaps to L (0/255).
             # L/I/F and RGB(A) are already intensity/colour, leave them.
             if im.mode == "1":
-                im = im.convert("L")
+                arr = np.asarray(im.convert("L"))
             elif im.mode not in ("L", "I", "F", "RGB", "RGBA"):
-                im = im.convert("RGB")
-            arr = np.asarray(im)
+                arr = np.asarray(im.convert("RGB"))
+            else:
+                arr = np.asarray(im)
     except UnidentifiedImageError as e:
         raise ValueError(f"unreadable image file: {path}") from e
     if arr.ndim == 3 and arr.shape[2] == 4:  # drop alpha
