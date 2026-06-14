@@ -16,8 +16,10 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 
 from fermiviewer import __version__
 
@@ -27,6 +29,21 @@ if TYPE_CHECKING:
 _HOST = "127.0.0.1"
 _PORT = 8000
 _SHUTDOWN_GRACE_S = 4.0
+
+
+def _origin_allowed(origin: str) -> bool:
+    """True for the app's own origins — any localhost-family host (the
+    served SPA on :8000, the Vite dev server on :5173, a pywebview window)
+    and the Tauri desktop shell. Everything else (a real web origin like
+    https://evil.example) is a cross-origin caller and is rejected — this
+    is the localhost-CSRF / DNS-rebinding guard for the API."""
+    if origin.startswith("tauri://") or origin.endswith("tauri.localhost"):
+        return True
+    try:
+        host = urlparse(origin).hostname
+    except ValueError:
+        return False
+    return host in {"127.0.0.1", "localhost", "::1"}
 
 # lifecycle state (single-process desktop deployment)
 _auto_shutdown = False
@@ -82,6 +99,21 @@ def create_app() -> FastAPI:
     from fermiviewer.routes.structure import router as structure_router
 
     app = FastAPI(title="fermiviewer", version=__version__)
+
+    @app.middleware("http")
+    async def _csrf_guard(request: Request, call_next):
+        """Reject cross-origin calls to /api/* so a malicious web page in
+        the user's browser can't drive the localhost API (open/read/write
+        files) via the user's session. Requests with no Origin header
+        (same-origin navigations, the desktop shell, curl, tests) pass."""
+        if request.url.path.startswith("/api"):
+            origin = request.headers.get("origin")
+            if origin and not _origin_allowed(origin):
+                return JSONResponse(
+                    {"detail": "cross-origin API request blocked"}, status_code=403
+                )
+        return await call_next(request)
+
     app.include_router(images_router)
     app.include_router(analysis_router)
     app.include_router(wireups_router)
