@@ -1574,6 +1574,16 @@ details.fvd-card:not([open]) > summary {
   color: var(--text-faint);
 }
 
+.fvd-prefs-subhead {
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  border-bottom: 1px solid var(--border-soft);
+  padding-bottom: 3px;
+  margin-top: 4px;
+}
+
 .fvd-prefs-footer {
   display: flex;
   align-items: center;

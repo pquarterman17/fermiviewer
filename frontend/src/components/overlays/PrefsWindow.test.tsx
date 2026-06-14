@@ -38,13 +38,16 @@ describe("PrefsWindow", () => {
     localStorage.clear();
   });
 
-  it("renders the section nav and the Appearance pane by default", () => {
+  it("renders the 4-section nav and the Appearance pane by default", () => {
     render(<PrefsWindow />);
     expect(screen.getByText("Preferences")).toBeInTheDocument();
     expect(screen.getByText("Appearance")).toBeInTheDocument();
     expect(screen.getByText("Export")).toBeInTheDocument();
-    // Appearance content
+    // the "Advanced" junk-drawer section was dropped in the regroup
+    expect(screen.queryByText("Advanced")).toBeNull();
+    // Appearance content — incl. the colorbar settings moved out of Advanced
     expect(screen.getByText("Theme")).toBeInTheDocument();
+    expect(screen.getByText("Colorbar side")).toBeInTheDocument();
     // Export content is not mounted until that section is selected
     expect(screen.queryByText("Bake scale bar by default")).toBeNull();
   });
@@ -54,6 +57,14 @@ describe("PrefsWindow", () => {
     fireEvent.click(screen.getByText("Export"));
     expect(screen.getByText("Bake scale bar by default")).toBeInTheDocument();
     expect(screen.queryByText("Theme")).toBeNull();
+  });
+
+  it("regroup: fixed-zoom moved to Tools & Layout, tilt to Measurement", () => {
+    render(<PrefsWindow />);
+    fireEvent.click(screen.getByText("Tools & Layout"));
+    expect(screen.getByText("Fixed-zoom size (px)")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Measurement"));
+    expect(screen.getByText("Default tilt geometry")).toBeInTheDocument();
   });
 
   it("Save persists the draft and applies live fields", () => {

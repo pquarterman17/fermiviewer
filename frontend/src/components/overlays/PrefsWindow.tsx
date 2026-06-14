@@ -16,7 +16,6 @@ const SECTIONS = [
   "Tools & Layout",
   "Measurement",
   "Export",
-  "Advanced",
 ] as const;
 type Section = (typeof SECTIONS)[number];
 
@@ -215,6 +214,13 @@ export default function PrefsWindow() {
                 <Row label="Auto-contrast on open" hint="auto-window images that carry no embedded display range">
                   <Toggle checked={p.autoContrastOnOpen} onChange={(v) => set("autoContrastOnOpen", v)} />
                 </Row>
+                <SubHead>Colorbar</SubHead>
+                <Row label="Show colorbar by default">
+                  <Toggle checked={p.colorbarOnByDefault} onChange={(v) => set("colorbarOnByDefault", v)} />
+                </Row>
+                <Row label="Colorbar side">
+                  <Seg value={p.colorbarSide} options={SIDE_OPTS} onChange={(v) => set("colorbarSide", v)} />
+                </Row>
               </>
             )}
 
@@ -228,6 +234,11 @@ export default function PrefsWindow() {
                 </Row>
                 <Row label="Pixel-inspector grid" hint="odd N for the N×N value grid">
                   <Num value={p.inspectorGrid} min={3} max={15} step={2} onChange={(v) => set("inspectorGrid", v)} />
+                </Row>
+                <Row label="Fixed-zoom size (px)" hint="default W × H for the fixed-size zoom tool">
+                  <Num value={p.fixedZoomW} min={1} max={8192} step={1} onChange={(v) => set("fixedZoomW", v)} />
+                  <span className="fvd-prefs-dash">×</span>
+                  <Num value={p.fixedZoomH} min={1} max={8192} step={1} onChange={(v) => set("fixedZoomH", v)} />
                 </Row>
               </>
             )}
@@ -259,6 +270,9 @@ export default function PrefsWindow() {
                 <Row label="Scale-bar font size (px)">
                   <Num value={p.scaleBarFontSize} min={8} max={48} step={1} onChange={(v) => set("scaleBarFontSize", v)} />
                 </Row>
+                <Row label="Default tilt geometry" hint="seeded onto newly opened images">
+                  <Seg value={p.tiltGeometry} options={GEOM_OPTS} onChange={(v) => set("tiltGeometry", v)} />
+                </Row>
               </>
             )}
 
@@ -278,25 +292,6 @@ export default function PrefsWindow() {
                 </Row>
                 <Row label="Bake colorbar by default">
                   <Toggle checked={p.exportColorbar} onChange={(v) => set("exportColorbar", v)} />
-                </Row>
-              </>
-            )}
-
-            {section === "Advanced" && (
-              <>
-                <Row label="Colorbar side">
-                  <Seg value={p.colorbarSide} options={SIDE_OPTS} onChange={(v) => set("colorbarSide", v)} />
-                </Row>
-                <Row label="Show colorbar by default">
-                  <Toggle checked={p.colorbarOnByDefault} onChange={(v) => set("colorbarOnByDefault", v)} />
-                </Row>
-                <Row label="Fixed-zoom size (px)" hint="default W × H for the fixed-size zoom tool">
-                  <Num value={p.fixedZoomW} min={1} max={8192} step={1} onChange={(v) => set("fixedZoomW", v)} />
-                  <span className="fvd-prefs-dash">×</span>
-                  <Num value={p.fixedZoomH} min={1} max={8192} step={1} onChange={(v) => set("fixedZoomH", v)} />
-                </Row>
-                <Row label="Default tilt geometry" hint="seeded onto newly opened images">
-                  <Seg value={p.tiltGeometry} options={GEOM_OPTS} onChange={(v) => set("tiltGeometry", v)} />
                 </Row>
               </>
             )}
@@ -340,6 +335,11 @@ function Row({
       <div className="fvd-prefs-ctl">{children}</div>
     </div>
   );
+}
+
+/** Light sub-group caption within a section (e.g. "Colorbar" in Appearance). */
+function SubHead({ children }: { children: ReactNode }) {
+  return <div className="fvd-prefs-subhead">{children}</div>;
 }
 
 function Seg<T extends string | number>({
