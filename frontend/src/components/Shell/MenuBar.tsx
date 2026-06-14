@@ -27,13 +27,13 @@ import {
   exportBatch,
   exportFigure,
   exportGif,
-  exportImage,
   renameImage,
   imageFft,
   supportedExtensions,
   type ImageMeta,
 } from "../../lib/api";
 import { downloadBugReport } from "../../lib/errlog";
+import { copyActive } from "../../lib/export";
 import {
   isRecording,
   loadMacro,
@@ -44,7 +44,7 @@ import {
 import { applyGeometry, cropToRoi } from "../../lib/stageOps";
 import { BATCH_FILTERS } from "../../lib/transformTools";
 import { useStageInfo } from "../../store/stage";
-import { DEFAULT_DISPLAY as DD, undoLabel, useViewer } from "../../store/viewer";
+import { undoLabel, useViewer } from "../../store/viewer";
 import {
   askParams,
   type ParamField,
@@ -444,30 +444,13 @@ export default function MenuBar({
         label: "Copy to Clipboard",
         disabled: !store.activeId,
         action: () => {
-          const id = store.activeId;
-          if (!id) return;
-          const d = store.display[id] ?? DD;
-          // export mirrors the screen; invert folds into the gray LUT
-          const cmap =
-            d.invert && d.cmap === "gray" ? "invert" : d.cmap;
-          exportImage(id, {
-            format: "png",
-            scale: 1,
-            lo: d.lo,
-            hi: d.hi,
-            gamma: d.gamma,
-            cmap,
-            include: [],
-          })
-            .then(({ blob }) =>
-              navigator.clipboard.write([
-                new ClipboardItem({ "image/png": blob }),
-              ]),
+          // shared with the radial "Copy": bakes scale bar + measurements
+          // by default so both copy paths behave identically
+          copyActive()
+            .then(() =>
+              store.setStatus("copied to clipboard (scale bar + measurements)"),
             )
-            .then(() => store.setStatus("copied image to clipboard"))
-            .catch((e: Error) =>
-              store.setStatus(`clipboard: ${e.message}`),
-            );
+            .catch((e: Error) => store.setStatus(`clipboard: ${e.message}`));
         },
       },
       {

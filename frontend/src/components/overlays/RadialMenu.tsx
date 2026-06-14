@@ -1,9 +1,18 @@
 // Right-click radial tool menu (handoff §4/§9): capture tools arranged
-// in a ring at the cursor.
+// in a ring at the cursor, plus a Copy action that puts the current view
+// (scale bar + measurements baked in) on the clipboard.
 
+import { copyActive } from "../../lib/export";
 import { useViewer, type CaptureMode } from "../../store/viewer";
 
-const TOOLS: { glyph: string; label: string; mode: CaptureMode }[] = [
+type RadialItem = {
+  glyph: string;
+  label: string;
+  mode?: CaptureMode;
+  action?: "copy";
+};
+
+const TOOLS: RadialItem[] = [
   { glyph: "↔", label: "Distance", mode: "distance" },
   { glyph: "∿", label: "Profile", mode: "profile" },
   { glyph: "∠", label: "Angle", mode: "angle" },
@@ -11,6 +20,10 @@ const TOOLS: { glyph: string; label: string; mode: CaptureMode }[] = [
   { glyph: "⬚", label: "Box zoom", mode: "zoom" },
   { glyph: "✥", label: "Pan", mode: "none" }, // toggles the hand tool
 ];
+
+// Copy is an action, not a capture mode — it runs immediately and closes
+// the ring. Appended only when there's a raster image to copy.
+const COPY_TOOL: RadialItem = { glyph: "⧉", label: "Copy", action: "copy" };
 
 const RADIUS = 64;
 
@@ -20,14 +33,32 @@ export default function RadialMenu() {
   const setCaptureMode = useViewer((s) => s.setCaptureMode);
   const setPanTool = useViewer((s) => s.setPanTool);
   const panTool = useViewer((s) => s.panTool);
+  const setStatus = useViewer((s) => s.setStatus);
+  // Copy only applies to a raster image (a 1-D spectrum has nothing to
+  // rasterize). Primitive boolean → safe Zustand snapshot.
+  const canCopy = useViewer((s) => {
+    const m = s.activeId ? s.images[s.activeId] : null;
+    return !!m && m.kind !== "spectrum";
+  });
 
   if (!at) return null;
 
-  const pick = (t: (typeof TOOLS)[number]) => {
+  const tools = canCopy ? [...TOOLS, COPY_TOOL] : TOOLS;
+
+  const pick = (t: RadialItem) => {
     setRadial(null);
+    if (t.action === "copy") {
+      // bakes scale bar + measurements by default (copyActive defaults)
+      copyActive()
+        .then(() =>
+          setStatus("copied to clipboard (scale bar + measurements)"),
+        )
+        .catch((e: Error) => setStatus(`clipboard: ${e.message}`));
+      return;
+    }
     if (t.label === "Pan") {
       setPanTool(!panTool);
-    } else {
+    } else if (t.mode) {
       setCaptureMode(t.mode);
     }
   };
@@ -41,8 +72,8 @@ export default function RadialMenu() {
         setRadial(null);
       }}
     >
-      {TOOLS.map((t, i) => {
-        const ang = (i / TOOLS.length) * 2 * Math.PI - Math.PI / 2;
+      {tools.map((t, i) => {
+        const ang = (i / tools.length) * 2 * Math.PI - Math.PI / 2;
         const x = at.x + Math.cos(ang) * RADIUS;
         const y = at.y + Math.sin(ang) * RADIUS;
         return (

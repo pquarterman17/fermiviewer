@@ -18,9 +18,12 @@ export interface ExportNowOpts {
   colorbar?: boolean;
 }
 
-/** Export the active image with the current view settings and download it.
- *  Returns the filename; throws if there is no exportable active image. */
-export async function exportActive(opts: ExportNowOpts): Promise<string> {
+/** Build the /export request (id + options) from current store state.
+ *  Shared by exportActive (download) and copyActive (clipboard) so the
+ *  two can never drift on which overlays get baked into the picture. */
+function buildExportRequest(
+  opts: ExportNowOpts,
+): { id: string; options: ExportOptions } {
   const s = useViewer.getState();
   const id = s.activeId;
   if (!id) throw new Error("no active image");
@@ -44,7 +47,7 @@ export async function exportActive(opts: ExportNowOpts): Promise<string> {
   if (wantMeasures) include.push("measurements");
   if (opts.format !== "tiff16" && opts.colorbar) include.push("colorbar");
 
-  const { blob, filename } = await exportImage(id, {
+  const options: ExportOptions = {
     format: opts.format,
     scale: opts.scale,
     lo: display.lo,
@@ -81,7 +84,15 @@ export async function exportActive(opts: ExportNowOpts): Promise<string> {
           scale_bar_font_size: sb.fontSize,
         }
       : {}),
-  });
+  };
+  return { id, options };
+}
+
+/** Export the active image with the current view settings and download it.
+ *  Returns the filename; throws if there is no exportable active image. */
+export async function exportActive(opts: ExportNowOpts): Promise<string> {
+  const { id, options } = buildExportRequest(opts);
+  const { blob, filename } = await exportImage(id, options);
 
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -90,4 +101,16 @@ export async function exportActive(opts: ExportNowOpts): Promise<string> {
   a.click();
   URL.revokeObjectURL(url);
   return filename;
+}
+
+/** Copy the active image to the clipboard as a PNG. Bakes in the scale
+ *  bar + measurements by default (same overlay logic as exportActive) —
+ *  pass scaleBar/measures: false to copy a bare image. Used by the radial
+ *  right-click "Copy" item and the menu-bar "Copy to Clipboard". */
+export async function copyActive(
+  opts: ExportNowOpts = { format: "png", scale: 1 },
+): Promise<void> {
+  const { id, options } = buildExportRequest(opts);
+  const { blob } = await exportImage(id, options);
+  await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
 }

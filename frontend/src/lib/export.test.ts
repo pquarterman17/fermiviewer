@@ -38,7 +38,7 @@ vi.mock("./api", () => ({
 }));
 
 import { exportImage } from "./api";
-import { exportActive } from "./export";
+import { copyActive, exportActive } from "./export";
 
 describe("exportActive", () => {
   beforeEach(() => {
@@ -74,6 +74,39 @@ describe("exportActive", () => {
 
   it("respects explicit opt-outs", async () => {
     await exportActive({ format: "png", scale: 1, scaleBar: false, measures: false });
+    const [, opts] = (exportImage as unknown as { mock: { calls: unknown[][] } })
+      .mock.calls[0] as [string, Record<string, unknown>];
+    expect(opts.include).toEqual([]);
+  });
+});
+
+describe("copyActive", () => {
+  const write = vi.fn(() => Promise.resolve());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // jsdom ships neither clipboard.write nor ClipboardItem — stub both
+    (globalThis as unknown as { ClipboardItem: unknown }).ClipboardItem =
+      class {
+        constructor(public items: unknown) {}
+      };
+    Object.defineProperty(globalThis.navigator, "clipboard", {
+      configurable: true,
+      value: { write },
+    });
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("defaults to a PNG with scale bar + measurements baked in", async () => {
+    await copyActive();
+    const [, opts] = (exportImage as unknown as { mock: { calls: unknown[][] } })
+      .mock.calls[0] as [string, Record<string, unknown>];
+    expect(opts.format).toBe("png");
+    expect(opts.include).toEqual(["scale_bar", "measurements"]);
+    expect(write).toHaveBeenCalledTimes(1);
+  });
+
+  it("respects explicit opt-outs", async () => {
+    await copyActive({ format: "png", scale: 1, scaleBar: false, measures: false });
     const [, opts] = (exportImage as unknown as { mock: { calls: unknown[][] } })
       .mock.calls[0] as [string, Record<string, unknown>];
     expect(opts.include).toEqual([]);
