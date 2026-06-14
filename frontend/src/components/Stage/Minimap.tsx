@@ -49,8 +49,12 @@ export default function Minimap({
     <div
       className="fvd-glass fvd-minimap"
       style={{ width: MAP_W, height: mapH }}
-      onPointerDown={navigate}
+      onPointerDown={(e) => {
+        e.stopPropagation(); // don't let the Stage start a marquee/pan
+        navigate(e);
+      }}
       onPointerMove={(e) => {
+        e.stopPropagation();
         if (e.buttons === 1) navigate(e);
       }}
     >

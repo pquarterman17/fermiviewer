@@ -96,3 +96,22 @@ def test_empty_file_guards(tmp_path) -> None:
         f.write_bytes(b"")
         with pytest.raises(ValueError):
             load_auto(f)
+
+
+def test_palette_image_uses_colors_not_indices(tmp_path) -> None:
+    # A palette ("P"-mode) PNG/GIF stores LUT indices; np.asarray yields
+    # those indices, not colours, so the parser must convert to RGB first.
+    from PIL import Image
+
+    im = Image.new("P", (4, 6))
+    pal = [0] * 768
+    pal[3:6] = [255, 0, 0]  # palette index 1 -> pure red
+    im.putpalette(pal)
+    im.putdata([1] * 24)  # every pixel = index 1
+    f = tmp_path / "p.png"
+    im.save(f)
+
+    ds = load_image(f)
+    assert ds.metadata["was_rgb"] is True
+    # channel mean of (255, 0, 0) = 85 — NOT the raw palette index 1
+    np.testing.assert_allclose(ds.data, 85.0)

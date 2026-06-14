@@ -62,7 +62,6 @@ interface Pt {
 }
 
 const WHEEL_K = 0.0015;
-const MEASURE_KINDS = ["distance", "profile", "angle", "roi"] as const;
 /** Apply a display intensity transform to a normalized-u16 raster
  *  (log: log1p rescale; equalize: 4096-bin CDF mapping). */
 function transformU16(
@@ -160,9 +159,6 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
 
   const rasterless = meta?.kind === "spectrum";
   const view: View | null = imgSize && (storedView ?? fitView(imgSize, vp));
-  const isMeasureMode = (MEASURE_KINDS as readonly string[]).includes(
-    captureMode,
-  );
 
   // ── renderer lifecycle ──
   useEffect(() => {
@@ -315,10 +311,15 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     return () => window.removeEventListener("keydown", onKey);
   }, [activeId, nFrames, stackFrame, setStackFrame]);
 
-  // ── cancel pending capture when mode changes / esc ──
+  // ── cancel any in-progress capture when the mode changes (incl. Esc) ──
+  // Clearing BOTH pending click-points and the marquee on every captureMode
+  // change prevents (a) stale points from one click-tool corrupting the
+  // next measure, and (b) an Esc mid-marquee leaving a marquee that fires a
+  // spurious selection on the eventual pointer-up.
   useEffect(() => {
-    if (!isMeasureMode) setPending(null);
-  }, [isMeasureMode, captureMode]);
+    setPending(null);
+    setMarquee(null);
+  }, [captureMode]);
 
   const apply = useCallback(
     (v: View) => {
@@ -771,7 +772,10 @@ function FloatTools() {
   ];
 
   return (
-    <div className="fvd-glass fvd-float-tools">
+    <div
+      className="fvd-glass fvd-float-tools"
+      onPointerDown={(e) => e.stopPropagation()}
+    >
       {transforms.map(([glyph, title, onClick]) => (
         <button
           key={title}

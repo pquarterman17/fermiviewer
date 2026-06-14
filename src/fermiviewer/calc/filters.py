@@ -104,6 +104,11 @@ def butterworth_filter(
     if low_cutoff > 0:
         with np.errstate(divide="ignore"):
             h_hp = 1.0 / (1.0 + (low_cutoff / dist) ** n)
+        # Force DC through so the image mean survives. NB: linspace(-1,1,N)
+        # only hits exactly 0 for ODD N, so for even-sized images this is a
+        # no-op and DC is attenuated — this faithfully mirrors the MATLAB
+        # original (same linspace), so do NOT "fix" it without re-pinning
+        # the goldens.
         h_hp[dist == 0] = 1.0
     else:
         h_hp = np.ones_like(dist)
