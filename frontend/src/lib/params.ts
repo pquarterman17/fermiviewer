@@ -25,10 +25,15 @@ export function coerceParams(
   const out: ParamValues = {};
   for (const f of fields) {
     const v = values[f.key];
-    out[f.key] =
-      f.type === "number" && typeof v === "string"
-        ? Number(v) || (f.default as number)
-        : v;
+    // NB: must not use `Number(v) || default` — that maps a valid typed
+    // 0 (e.g. Butterworth low-cutoff = 0 to disable) to the default,
+    // since 0 is falsy. Mirror ParamFields' on-blur Number.isFinite check.
+    if (f.type === "number" && typeof v === "string") {
+      const n = Number(v);
+      out[f.key] = Number.isFinite(n) ? n : (f.default as number);
+    } else {
+      out[f.key] = v;
+    }
   }
   return out;
 }
