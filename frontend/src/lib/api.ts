@@ -721,6 +721,22 @@ export function analyzeGrains(
   return post("/api/analyze/grains", { image_id: id, ...params });
 }
 
+/** Interactive edit of a grain-label map: merge ≥2 clicked grains, or split
+ *  the grain under the (first) click. Returns a fresh, still-editable map. */
+export function grainsEdit(
+  labelsId: string,
+  op: "merge" | "split",
+  points: [number, number][],
+  granularity = 0.03,
+): Promise<GrainResult> {
+  return post("/api/grains/edit", {
+    labels_id: labelsId,
+    op,
+    points,
+    granularity,
+  });
+}
+
 export function analyzeRoughness(
   id: string,
 ): Promise<Record<string, number | string>> {

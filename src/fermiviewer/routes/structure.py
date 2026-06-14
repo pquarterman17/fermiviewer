@@ -24,6 +24,7 @@ from fermiviewer.calc.grains import (
     grain_stats,
     segment_auto,
     segment_watershed,
+    split_grain,
 )
 from fermiviewer.calc.particles import particle_analysis
 from fermiviewer.calc.stack import align_stack, image_math, mip
@@ -52,18 +53,21 @@ def _raster(img_id: str) -> tuple[DataStruct, np.ndarray]:
 
 def _register(
     arr: np.ndarray, name: str, parent: DataStruct, parent_id: str,
-    keep_axes: bool = True,
+    keep_axes: bool = True, extra_meta: dict | None = None,
 ) -> dict:
     axes = (
         (parent.axes[0], parent.axes[1])
         if keep_axes
         else (AxisCal(), AxisCal())
     )
+    metadata: dict = {"source": name, "parser": "derived"}
+    if extra_meta:
+        metadata.update(extra_meta)
     derived = DataStruct(
         data=np.ascontiguousarray(arr),
         kind=DataKind.IMAGE,
         axes=axes,
-        metadata={"source": name, "parser": "derived"},
+        metadata=metadata,
     )
     new_id = store.add_derived(derived, name, parent_id)
     return ImageMeta.from_datastruct(new_id, name, derived).model_dump()
@@ -149,36 +153,29 @@ class GrainRequest(BaseModel):
     run_async: bool = False
 
 
-def _run_grains(
-    req: GrainRequest,
-    progress: Callable[[float, str], None] | None = None,
+def _grains_payload(
+    labels: np.ndarray, method: str, ds: DataStruct, raster: np.ndarray,
+    source_id: str,
 ) -> dict:
-    ds, raster = _raster(req.image_id)
+    """Build the grain-analysis response (shared by initial segmentation and
+    interactive merge/split). Registers the renumbered label map tagged so
+    the stage can recognize and further edit it."""
     px = ds.pixel_size if np.isfinite(ds.pixel_size) else float("nan")
-    seg: GrainSegmentation | WatershedSegmentation
-    if req.method == "kmeans":
-        seg = segment_auto(
-            raster, k=req.k, min_area=req.min_area,
-            seed=req.seed, replicates=req.replicates, progress=progress,
-        )
-    else:
-        seg = segment_watershed(
-            raster, method=req.method, granularity=req.granularity,
-            compactness=req.compactness, min_area=req.min_area,
-            n_superpixels=req.n_superpixels, merge_threshold=req.merge_threshold,
-            orientation_sigma=req.orientation_sigma, progress=progress,
-        )
-    stats = grain_stats(seg.labels, raster, pixel_size=px)
-    name = store.name(req.image_id)
+    stats = grain_stats(labels, raster, pixel_size=px)
+    name = store.name(source_id)
     unit = ds.pixel_unit or "px"
     diam_cal = stats.diameter_calibrated
     mean_diam_cal = float(np.nanmean(diam_cal)) if diam_cal.size else float("nan")
     return {
-        "n_grains": seg.n_grains,
-        "method": req.method,
+        "n_grains": stats.n_grains,
+        "method": method,
         "labels": _register(
-            seg.labels.astype(np.float64),
-            f"grains({name})", ds, req.image_id,
+            stats.labels.astype(np.float64), f"grains({name})", ds, source_id,
+            extra_meta={
+                "grain_labels": True,
+                "grain_source": source_id,
+                "grain_method": method,
+            },
         ),
         # legacy pixel-count length kept; crofton is the true Euclidean length
         "boundary_length_px": stats.boundary_length_px,
@@ -199,6 +196,76 @@ def _run_grains(
         "eccentricity": stats.eccentricity.tolist(),
         "unit": unit,
     }
+
+
+def _run_grains(
+    req: GrainRequest,
+    progress: Callable[[float, str], None] | None = None,
+) -> dict:
+    ds, raster = _raster(req.image_id)
+    seg: GrainSegmentation | WatershedSegmentation
+    if req.method == "kmeans":
+        seg = segment_auto(
+            raster, k=req.k, min_area=req.min_area,
+            seed=req.seed, replicates=req.replicates, progress=progress,
+        )
+    else:
+        seg = segment_watershed(
+            raster, method=req.method, granularity=req.granularity,
+            compactness=req.compactness, min_area=req.min_area,
+            n_superpixels=req.n_superpixels, merge_threshold=req.merge_threshold,
+            orientation_sigma=req.orientation_sigma, progress=progress,
+        )
+    return _grains_payload(seg.labels, req.method, ds, raster, req.image_id)
+
+
+class GrainEditRequest(BaseModel):
+    labels_id: str  # a grain-label map produced by /analyze/grains
+    op: Literal["merge", "split"]
+    # image-pixel clicks (x, y), 0-based; merge needs ≥2 on distinct grains,
+    # split takes the first point's grain
+    points: list[tuple[float, float]]
+    granularity: float = Field(default=0.03, ge=0.0, le=1.0)
+
+
+@router.post("/grains/edit")
+def grains_edit(req: GrainEditRequest) -> dict:
+    try:
+        labels_ds = store.get(req.labels_id)
+    except UnknownImageError:
+        raise HTTPException(404, f"unknown image id: {req.labels_id}") from None
+    source_id = labels_ds.metadata.get("grain_source")
+    if not isinstance(source_id, str):
+        raise HTTPException(422, "not an editable grain-label map")
+    source_ds, raster = _raster(source_id)
+    labels = np.asarray(labels_ds.data, dtype=np.int64).copy()
+    h, w = labels.shape
+
+    pts = [
+        (int(round(y)), int(round(x)))
+        for x, y in req.points
+        if 0 <= int(round(y)) < h and 0 <= int(round(x)) < w
+    ]
+    if not pts:
+        raise HTTPException(422, "no points inside the image")
+
+    base = str(labels_ds.metadata.get("grain_method", "edited"))
+    if req.op == "merge":
+        ids = {int(labels[r, c]) for r, c in pts if labels[r, c] > 0}
+        if len(ids) < 2:
+            raise HTTPException(422, "merge needs ≥2 distinct grains")
+        keep = min(ids)
+        for i in ids:
+            labels[labels == i] = keep
+        method = f"{base}+merge"
+    else:  # split
+        gid = int(labels[pts[0]])
+        if gid <= 0:
+            raise HTTPException(422, "click is not on a grain")
+        labels = split_grain(labels, raster, gid, granularity=req.granularity)
+        method = f"{base}+split"
+
+    return _grains_payload(labels, method, source_ds, raster, source_id)
 
 
 @router.post("/analyze/grains")

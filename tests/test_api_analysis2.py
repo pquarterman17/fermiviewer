@@ -258,3 +258,44 @@ def test_grains_gradient_method(client, tmp_path) -> None:
     assert body["method"] == "gradient"
     assert body["n_grains"] == 3
     assert body["boundary_length_crofton_px"] > 0
+
+
+def test_grains_edit_merge(client, tmp_path) -> None:
+    # three bands → 3 grains; merge the left two by clicking one point in each
+    img = np.zeros((60, 90), dtype=np.float64)
+    img[:, :30] = 20.0
+    img[:, 30:60] = 60.0
+    img[:, 60:] = 100.0
+    img_id = _open(client, tmp_path, img)
+    seg = client.post(
+        "/api/analyze/grains",
+        json={"image_id": img_id, "granularity": 0.05, "min_area": 50},
+    ).json()
+    assert seg["n_grains"] == 3
+    labels_id = seg["labels"]["id"]
+    # click band 1 (x=15) and band 2 (x=45), same row
+    merged = client.post(
+        "/api/grains/edit",
+        json={"labels_id": labels_id, "op": "merge",
+              "points": [[15, 30], [45, 30]]},
+    ).json()
+    assert merged["n_grains"] == 2
+    assert "+merge" in merged["method"]
+    # the merged map is itself editable (tagged) + renderable
+    assert client.get(
+        f"/api/image/{merged['labels']['id']}/render"
+    ).status_code == 200
+
+
+def test_grains_edit_errors(client, tmp_path) -> None:
+    img_id = _open(client, tmp_path, np.zeros((20, 20)) + 5.0)
+    # editing a non-grain image id is a 422
+    assert client.post(
+        "/api/grains/edit",
+        json={"labels_id": img_id, "op": "merge", "points": [[1, 1], [2, 2]]},
+    ).status_code == 422
+    # unknown id → 404
+    assert client.post(
+        "/api/grains/edit",
+        json={"labels_id": "nope", "op": "split", "points": [[1, 1]]},
+    ).status_code == 404

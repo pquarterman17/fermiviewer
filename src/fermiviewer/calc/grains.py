@@ -30,6 +30,7 @@ __all__ = [
     "grain_stats",
     "segment_auto",
     "segment_watershed",
+    "split_grain",
 ]
 
 # physical-length → millimetres (for the ASTM E112 grain-size number)
@@ -263,6 +264,42 @@ def segment_watershed(
     return WatershedSegmentation(
         labels=labels, n_grains=n, method=method, granularity=float(knob),
     )
+
+
+def split_grain(
+    labels: np.ndarray,
+    img: np.ndarray,
+    grain_id: int,
+    granularity: float = 0.03,
+    min_sub_area: int = 10,
+) -> np.ndarray:
+    """Split one grain into sub-grains by re-running the gradient watershed
+    restricted to that grain's mask (interactive over-segment-fix). Returns
+    a new label image; the first piece keeps `grain_id`, the rest get fresh
+    ids. A no-op (returns a copy) if the grain has < 2 internal basins."""
+    lab = np.asarray(labels, dtype=np.int64).copy()
+    mask = lab == grain_id
+    if not mask.any():
+        return lab
+    boundary = _normalize01(scharr(_normalize01(img)))
+    markers_mask = (morphology.h_minima(boundary, max(granularity, 1e-6)) > 0) & mask
+    markers = measure.label(markers_mask)
+    if int(markers.max()) < 2:
+        return lab  # only one basin → nothing to split
+    sub = np.asarray(segmentation.watershed(boundary, markers, mask=mask))
+    next_id = int(lab.max()) + 1
+    first = True
+    for s in range(1, int(sub.max()) + 1):
+        comp = sub == s
+        if comp.sum() < min_sub_area:
+            continue
+        if first:
+            lab[comp] = grain_id
+            first = False
+        else:
+            lab[comp] = next_id
+            next_id += 1
+    return lab
 
 
 def astm_grain_size_number(mean_diameter: float, unit: str) -> float:

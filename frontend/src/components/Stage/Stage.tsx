@@ -15,6 +15,7 @@ import {
 import { GLRenderer } from "../../gl/render";
 import {
   fetchData16,
+  grainsEdit,
   measurePolyline,
   measureProfile,
   measureRoi,
@@ -150,6 +151,8 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   const [panning, setPanning] = useState(false);
   const [marquee, setMarquee] = useState<{ a: Pt; b: Pt } | null>(null);
   const [stageCtx, setStageCtx] = useState<CtxTarget | null>(null);
+  const [grainMode, setGrainMode] = useState<"off" | "merge" | "split">("off");
+  const [grainPending, setGrainPending] = useState<Pt | null>(null);
   const [nFrames, setNFrames] = useState<number | null>(null);
   // in-progress click-capture (image-space pts; last pt tracks cursor)
   const [pending, setPending] = useState<{
@@ -160,6 +163,9 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   const rasterRef = useRef<Raster16 | null>(null);
 
   const rasterless = meta?.kind === "spectrum";
+  // a grain-label map (tagged by the grain analysis) is interactively
+  // editable on the stage — click grains to merge/split
+  const isGrainMap = Boolean(meta?.meta?.["grain_labels"]);
   const view: View | null = imgSize && (storedView ?? fitView(imgSize, vp));
 
   // ── renderer lifecycle ──
@@ -343,6 +349,15 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     setMarquee(null);
   }, [captureMode]);
 
+  // grain editor applies only to a grain-label map; leave it when the
+  // active image isn't one, and drop a half-finished merge on any change
+  useEffect(() => {
+    if (!isGrainMap) setGrainMode("off");
+  }, [isGrainMap]);
+  useEffect(() => {
+    setGrainPending(null);
+  }, [activeId, grainMode]);
+
   const apply = useCallback(
     (v: View) => {
       if (activeId) setView(activeId, v);
@@ -483,6 +498,38 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       .catch((e: Error) => setStatus(e.message));
   };
 
+  const runGrainEdit = (op: "merge" | "split", points: [number, number][]) => {
+    if (!activeId) return;
+    setStatus(op === "merge" ? "merging grains…" : "splitting grain…");
+    grainsEdit(activeId, op, points)
+      .then((r) => {
+        const s = useViewer.getState();
+        s.ingestDerived([r.labels]);
+        s.setActive(r.labels.id);
+        setStatus(
+          `${r.n_grains} grains` +
+            (r.astm_grain_size != null
+              ? ` · ASTM G ${r.astm_grain_size.toFixed(1)}`
+              : ""),
+        );
+      })
+      .catch((e: Error) => setStatus(`grain edit: ${e.message}`));
+  };
+
+  const handleGrainClick = (ip: Pt) => {
+    if (grainMode === "split") {
+      runGrainEdit("split", [[ip.x, ip.y]]);
+    } else if (grainPending) {
+      runGrainEdit("merge", [
+        [grainPending.x, grainPending.y],
+        [ip.x, ip.y],
+      ]);
+      setGrainPending(null);
+    } else {
+      setGrainPending(ip);
+    }
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
     if (!view || !imgSize) return;
     const p = local(e);
@@ -496,6 +543,12 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       return;
     }
     if (e.button !== 0) return;
+
+    // grain editor intercepts plain clicks on a grain-label map
+    if (grainMode !== "off" && isGrainMap) {
+      handleGrainClick(toImage(p));
+      return;
+    }
 
     if (captureMode === "fixed-zoom" && imgSize) {
       // A2: click places a fixed W×H box centred at the cursor, then zooms
@@ -654,6 +707,12 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     .filter(Boolean)
     .join(" ");
 
+  // screen-space marker for the first grain picked in a pending merge
+  const grainMarkPos =
+    isGrainMap && grainMode === "merge" && grainPending && view && imgSize
+      ? imageToScreen(grainPending.x, grainPending.y, view, imgSize, vp)
+      : null;
+
   return (
     <div
       ref={wrapRef}
@@ -708,6 +767,19 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
             pending={pending}
           />
           <FloatTools />
+          {isGrainMap && (
+            <GrainEditBar
+              mode={grainMode}
+              setMode={setGrainMode}
+              pending={grainPending}
+            />
+          )}
+          {grainMarkPos && (
+            <div
+              className="fvd-grain-mark"
+              style={{ left: grainMarkPos.x, top: grainMarkPos.y }}
+            />
+          )}
           <Minimap
             imageId={activeId}
             view={view}
@@ -827,6 +899,50 @@ function FloatTools() {
       >
         ✂
       </button>
+    </div>
+  );
+}
+
+function GrainEditBar({
+  mode,
+  setMode,
+  pending,
+}: {
+  mode: "off" | "merge" | "split";
+  setMode: (m: "off" | "merge" | "split") => void;
+  pending: Pt | null;
+}) {
+  const hint =
+    mode === "merge"
+      ? pending
+        ? "click the 2nd grain"
+        : "click the 1st grain"
+      : mode === "split"
+        ? "click a grain to split"
+        : "";
+  return (
+    <div
+      className="fvd-glass fvd-grain-edit"
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <span className="lbl">Grains</span>
+      <div className="fvd-seg">
+        <button
+          className={`fvd-seg-btn${mode === "merge" ? " active" : ""}`}
+          title="Merge — click two grains"
+          onClick={() => setMode(mode === "merge" ? "off" : "merge")}
+        >
+          Merge
+        </button>
+        <button
+          className={`fvd-seg-btn${mode === "split" ? " active" : ""}`}
+          title="Split — click a grain"
+          onClick={() => setMode(mode === "split" ? "off" : "split")}
+        >
+          Split
+        </button>
+      </div>
+      {hint && <span className="hint">{hint}</span>}
     </div>
   );
 }
