@@ -8,8 +8,10 @@ Ground-up port of [fermi-viewer](https://github.com/pquarterman17/fermi-viewer)
 (MATLAB), verified against frozen MATLAB reference outputs in
 `tests/golden/` and cross-validated against rosettasciio.
 
+![FermiViewer — multi-format image viewer with EELS/EDS/diffraction analysis and a measurement suite](docs/images/overview.png)
+
 **Formats:** DM3 / DM4 (Gatan), BCF (Bruker), SER (TIA), MRC, TIFF,
-PNG/JPEG, headerless RAW.
+PNG/JPEG, headerless RAW, plus Bruker Nanoscope AFM (`.spm` / `.000`).
 **Analysis:** EELS (background, maps, quantification, thickness,
 Kramers–Kronig, Fourier-log, SVD), EDS (Cliff–Lorimer / ZAF, composition
 maps, composite overlays), diffraction (spot detection, phase indexing,
@@ -88,6 +90,24 @@ Open files via **File → Open…** (native picker), drag-and-drop, or
 **File → Open by Path…** for large files already on the server's disk.
 Press **?** in the app for the full keyboard map, **⌘K** for the command
 palette.
+
+---
+
+## Documentation
+
+Feature walkthroughs, screenshots, and how-tos live in the
+**[project wiki](https://github.com/pquarterman17/fermiviewer/wiki)**:
+
+- **[Getting Started](https://github.com/pquarterman17/fermiviewer/wiki/Getting-Started)** — install and your first image
+- **[Viewing &amp; Display](https://github.com/pquarterman17/fermiviewer/wiki/Viewing-and-Display)** — colormaps, the calibrated color scale, scale bar
+- **[Measurements](https://github.com/pquarterman17/fermiviewer/wiki/Measurements)** — line/box profiles, distances, ROIs, annotations
+- **[Analysis Workshops](https://github.com/pquarterman17/fermiviewer/wiki/Analysis-Workshops)** — EELS, EDS, diffraction
+- **[AFM Support](https://github.com/pquarterman17/fermiviewer/wiki/AFM-Support)** — Bruker Nanoscope height maps + Z-scale color bar
+- **[Supported Formats](https://github.com/pquarterman17/fermiviewer/wiki/Supported-Formats)**
+
+| Calibrated color scale (AFM height) | EELS analysis |
+|---|---|
+| [![AFM height map with calibrated color scale](docs/images/afm-colorscale.png)](https://github.com/pquarterman17/fermiviewer/wiki/AFM-Support) | [![EELS analysis workshop](docs/images/eels-workshop.png)](https://github.com/pquarterman17/fermiviewer/wiki/Analysis-Workshops) |
 
 ---
 
