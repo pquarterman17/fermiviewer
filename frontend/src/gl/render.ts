@@ -24,7 +24,15 @@ void main() {
 }`;
 
 const FRAG = `
+// highp is mandatory in vertex shaders but OPTIONAL in fragment shaders
+// (GLSL ES 1.00 §4.5.3). Declare it only where supported so the shader
+// still compiles on mediump-only GPUs; the 16-bit unpack below wants the
+// extra mantissa, so prefer highp whenever the driver advertises it.
+#ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
+#else
+precision mediump float;
+#endif
 uniform sampler2D u_tex;       // packed 16-bit: R=hi byte, G=lo byte
 uniform sampler2D u_lut;       // 256×1 colormap
 uniform vec4 u_window;         // lo, hi, gamma, invert — normalized units
@@ -80,7 +88,12 @@ export class GLRenderer {
       gl.shaderSource(sh, src);
       gl.compileShader(sh);
       if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
-        throw new Error(gl.getShaderInfoLog(sh) ?? "shader compile failed");
+        const which = type === gl.VERTEX_SHADER ? "vertex" : "fragment";
+        // An empty log usually means the context is lost (e.g. a prior
+        // loseContext) — surface both so the cause is never a mystery.
+        const log = gl.getShaderInfoLog(sh) || "(empty log — context lost?)";
+        console.error(`[GLRenderer] ${which} shader failed to compile:\n${log}`);
+        throw new Error(`${which} shader compile failed: ${log}`);
       }
       return sh;
     };
@@ -203,8 +216,15 @@ export class GLRenderer {
   }
 
   dispose(): void {
-    if (this.tex) this.gl.deleteTexture(this.tex);
-    if (this.lut) this.gl.deleteTexture(this.lut);
-    this.gl.getExtension("WEBGL_lose_context")?.loseContext();
+    const { gl } = this;
+    if (this.tex) gl.deleteTexture(this.tex);
+    if (this.lut) gl.deleteTexture(this.lut);
+    gl.deleteProgram(this.prog);
+    // NOTE: do NOT call WEBGL_lose_context.loseContext() here. getContext()
+    // returns the SAME context object for a canvas, so force-losing it
+    // poisons any renderer re-created on that canvas — which is exactly
+    // what React StrictMode's mount→cleanup→mount does in dev, producing
+    // a spurious "shader compile failed". Deleting the GL resources is
+    // enough; the context is reclaimed when the canvas is GC'd.
   }
 }
