@@ -1049,7 +1049,11 @@ export default function MenuBar({
             store.setStatus("segmenting grains…");
             type GrainResult = Awaited<ReturnType<typeof analyzeGrains>>;
             runJob<GrainResult>(
-              () => analyzeGrainsAsync(id, v["k"] as number),
+              () =>
+                analyzeGrainsAsync(id, {
+                  method: "kmeans",
+                  k: v["k"] as number,
+                }),
               (frac, msg) =>
                 store.setStatus(
                   `grains: ${msg || "working"} ${(frac * 100).toFixed(0)}%`,

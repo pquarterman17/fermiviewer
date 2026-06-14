@@ -671,25 +671,54 @@ export async function runJob<T>(
   }
 }
 
+export type GrainMethod = "kmeans" | "gradient" | "rag" | "orientation";
+
+export interface GrainParams {
+  method: GrainMethod;
+  k?: number;
+  granularity?: number;
+  compactness?: number;
+  orientation_sigma?: number;
+  n_superpixels?: number;
+  merge_threshold?: number;
+  min_area?: number;
+}
+
+export interface GrainResult {
+  n_grains: number;
+  method: GrainMethod;
+  labels: ImageMeta;
+  mean_diameter_px: number;
+  boundary_length_px: number;
+  /** true Euclidean boundary length (Crofton), not the legacy pixel count */
+  boundary_length_crofton_px: number;
+  boundary_length_calibrated: number | null;
+  n_boundary_segments: number;
+  n_triple_junctions: number;
+  /** ASTM E112 grain-size number; null when uncalibrated */
+  astm_grain_size: number | null;
+  areas_px: number[];
+  perimeters_px: number[];
+  eccentricity: number[];
+  unit: string;
+}
+
 export function analyzeGrainsAsync(
   id: string,
-  k: number,
+  params: GrainParams,
 ): Promise<{ job_id: string }> {
-  return post("/api/analyze/grains", { image_id: id, k, run_async: true });
+  return post("/api/analyze/grains", {
+    image_id: id,
+    run_async: true,
+    ...params,
+  });
 }
 
 export function analyzeGrains(
   id: string,
-  k: number,
-): Promise<{
-  n_grains: number;
-  labels: ImageMeta;
-  mean_diameter_px: number;
-  areas_px: number[];
-  boundary_length_px: number;
-  unit: string;
-}> {
-  return post("/api/analyze/grains", { image_id: id, k });
+  params: GrainParams,
+): Promise<GrainResult> {
+  return post("/api/analyze/grains", { image_id: id, ...params });
 }
 
 export function analyzeRoughness(

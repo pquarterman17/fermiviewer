@@ -228,11 +228,33 @@ def test_grains_endpoint(client, tmp_path) -> None:
     img_id = _open(client, tmp_path, img * 100)
     rg = client.post(
         "/api/analyze/grains",
-        json={"image_id": img_id, "k": 2, "min_area": 25},
+        json={"image_id": img_id, "method": "kmeans", "k": 2, "min_area": 25},
     )
     body = rg.json()
+    assert body["method"] == "kmeans"
     assert body["n_grains"] >= 2
     assert body["boundary_length_px"] > 0
+    # modern metrics are present on every method's response
+    assert body["boundary_length_crofton_px"] > 0
+    assert "n_triple_junctions" in body
+    assert len(body["eccentricity"]) == body["n_grains"]
     assert client.get(
         f"/api/image/{body['labels']['id']}/render"
     ).status_code == 200
+
+
+def test_grains_gradient_method(client, tmp_path) -> None:
+    # three intensity bands tiling the field → gradient watershed default
+    img = np.zeros((60, 90), dtype=np.float64)
+    img[:, :30] = 20.0
+    img[:, 30:60] = 60.0
+    img[:, 60:] = 100.0
+    img_id = _open(client, tmp_path, img)
+    rg = client.post(
+        "/api/analyze/grains",  # no method → server default ("gradient")
+        json={"image_id": img_id, "granularity": 0.05, "min_area": 50},
+    )
+    body = rg.json()
+    assert body["method"] == "gradient"
+    assert body["n_grains"] == 3
+    assert body["boundary_length_crofton_px"] > 0

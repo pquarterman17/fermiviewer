@@ -22,7 +22,9 @@ import {
   runJob,
   type AtomsResult,
   type CtfResult,
-  type ImageMeta,
+  type GrainMethod,
+  type GrainParams,
+  type GrainResult,
   type Raster16,
 } from "../../lib/api";
 import { useViewer, type Measure } from "../../store/viewer";
@@ -364,10 +366,22 @@ function ParticlesMode({ id }: { id: string }) {
 
 // ── Grains (interactive identification window) ───────────────────────
 
+// method → the one tuning knob it exposes; higher coarseness / merge / K
+// is fewer, larger grains. Classic k-means is the ported MATLAB path.
+const GRAIN_METHODS: { value: GrainMethod; label: string; knob: string }[] = [
+  { value: "gradient", label: "Gradient — visible boundaries", knob: "coarseness" },
+  { value: "rag", label: "Superpixel — diffraction contrast", knob: "merge thr" },
+  { value: "orientation", label: "Orientation — atomic-res", knob: "coarseness" },
+  { value: "kmeans", label: "Classic k-means", knob: "classes" },
+];
+
 function GrainsMode({ id }: { id: string }) {
   const setStatus = useViewer((s) => s.setStatus);
   const ingestDerived = useViewer((s) => s.ingestDerived);
+  const [method, setMethod] = useState<GrainMethod>("gradient");
   const [k, setK] = useState("3");
+  const [coarseness, setCoarseness] = useState("0.05");
+  const [mergeThr, setMergeThr] = useState("0.08");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
   const [labelsId, setLabelsId] = useState<string | null>(null);
@@ -378,30 +392,44 @@ function GrainsMode({ id }: { id: string }) {
     setNote("");
   }, [id]);
 
+  const knob = GRAIN_METHODS.find((m) => m.value === method)!.knob;
+  const knobValue = method === "kmeans" ? k : method === "rag" ? mergeThr : coarseness;
+  const setKnob =
+    method === "kmeans" ? setK : method === "rag" ? setMergeThr : setCoarseness;
+
   const run = () => {
     setBusy(true);
     setProgress("starting…");
-    runJob<{
-      n_grains: number;
-      labels: ImageMeta;
-      mean_diameter_px: number;
-      unit: string;
-      areas_px: number[];
-    }>(
-      () => analyzeGrainsAsync(id, Number(k) || 3),
+    const params: GrainParams =
+      method === "kmeans"
+        ? { method, k: Number(k) || 3 }
+        : method === "rag"
+          ? { method, merge_threshold: Number(mergeThr) || 0.08 }
+          : { method, granularity: Number(coarseness) || 0.05 };
+    runJob<GrainResult>(
+      () => analyzeGrainsAsync(id, params),
       (f, msg) => setProgress(`${Math.round(f * 100)}% ${msg}`),
     )
       .then((r) => {
         ingestDerived([r.labels]);
         setLabelsId(r.labels.id);
-        setNote(
-          `${r.n_grains} grains · mean ⌀ ` +
-            `${r.mean_diameter_px.toFixed(1)} px`,
-        );
+        const bits = [
+          `${r.n_grains} grains`,
+          `mean ⌀ ${r.mean_diameter_px.toFixed(1)} px`,
+        ];
+        if (r.astm_grain_size != null)
+          bits.push(`ASTM G ${r.astm_grain_size.toFixed(1)}`);
+        bits.push(`${r.n_triple_junctions} junctions`);
+        setNote(bits.join(" · "));
         useResults.getState().show({
-          title: `Grains (${r.n_grains})`,
-          columns: ["#", "area (px)"],
-          rows: r.areas_px.map((a, i) => [i + 1, a]),
+          title: `Grains (${r.n_grains}) · ${r.method}`,
+          columns: ["#", "area (px)", "perim (px)", "ecc."],
+          rows: r.areas_px.map((a, i) => [
+            i + 1,
+            Math.round(a),
+            Math.round(r.perimeters_px[i] ?? 0),
+            (r.eccentricity[i] ?? 0).toFixed(2),
+          ]),
         });
       })
       .catch((e: Error) => setStatus(`grains: ${e.message}`))
@@ -419,9 +447,26 @@ function GrainsMode({ id }: { id: string }) {
         <Preview id={id} markers={[]} color="var(--capture)" />
       )}
       <div className="fvd-ws-row">
-        <span className="k">classes</span>
-        <input value={k} style={{ width: 36 }}
-               onChange={(e) => setK(e.target.value)} />
+        <span className="k">method</span>
+        <select
+          value={method}
+          style={{ flex: 1 }}
+          onChange={(e) => setMethod(e.target.value as GrainMethod)}
+        >
+          {GRAIN_METHODS.map((m) => (
+            <option key={m.value} value={m.value}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="fvd-ws-row">
+        <span className="k">{knob}</span>
+        <input
+          value={knobValue}
+          style={{ width: 44 }}
+          onChange={(e) => setKnob(e.target.value)}
+        />
         <button className="fvd-btn primary" onClick={run} disabled={busy}>
           {busy ? progress || "Segmenting…" : "Identify grains"}
         </button>

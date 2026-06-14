@@ -12,6 +12,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
+from skimage import graph, measure, morphology, segmentation
+from skimage.filters import scharr
 
 from fermiviewer.calc.filters import apply_gaussian
 from fermiviewer.calc.ml import kmeans_lite, standardize_features
@@ -22,10 +24,19 @@ from fermiviewer.calc.texture import structure_tensor
 __all__ = [
     "GrainSegmentation",
     "GrainStats",
+    "WatershedSegmentation",
+    "astm_grain_size_number",
     "extract_grain_features",
     "grain_stats",
     "segment_auto",
+    "segment_watershed",
 ]
+
+# physical-length → millimetres (for the ASTM E112 grain-size number)
+_MM_PER_UNIT: dict[str, float] = {
+    "m": 1e3, "cm": 10.0, "mm": 1.0, "um": 1e-3, "µm": 1e-3,
+    "nm": 1e-6, "a": 1e-7, "å": 1e-7, "angstrom": 1e-7, "pm": 1e-9,
+}
 
 
 def extract_grain_features(
@@ -130,12 +141,168 @@ def segment_auto(
     )
 
 
+def _normalize01(a: np.ndarray) -> np.ndarray:
+    a = np.asarray(a, dtype=np.float64)
+    lo, hi = float(a.min()), float(a.max())
+    return (a - lo) / (hi - lo) if hi > lo else np.zeros_like(a)
+
+
+def _relabel_connected(
+    labels: np.ndarray, min_area: int, connectivity: int = 8
+) -> tuple[np.ndarray, int]:
+    """Split each label into its connected components, drop those below
+    min_area, and renumber 1..N (raster order)."""
+    out = np.zeros(labels.shape, dtype=np.int64)
+    g = 0
+    for lab in np.unique(labels):
+        if lab == 0:
+            continue
+        cc, ncc = label_components(labels == lab, connectivity)
+        for j in range(1, ncc + 1):
+            comp = cc == j
+            if comp.sum() >= min_area:
+                g += 1
+                out[comp] = g
+    return out, g
+
+
+@dataclass(frozen=True)
+class WatershedSegmentation:
+    labels: np.ndarray
+    n_grains: int
+    method: str
+    granularity: float
+
+
+def _boundary_watershed(
+    boundary: np.ndarray, granularity: float, compactness: float
+) -> np.ndarray:
+    """Marker-controlled watershed on a [0,1] boundary/gradient map.
+
+    Interior markers are the h-minima (smooth low-gradient basins = grain
+    interiors); basins grow until they meet at ridges (boundaries).
+    `granularity` is h — the minimum basin depth, so higher → fewer grains.
+    """
+    markers_mask = morphology.h_minima(boundary, max(granularity, 1e-6)) > 0
+    markers = measure.label(markers_mask)
+    if markers.max() == 0:
+        # granularity too aggressive → one basin at the global minimum
+        markers = np.zeros(boundary.shape, dtype=np.int64)
+        markers[np.unravel_index(int(np.argmin(boundary)), boundary.shape)] = 1
+    return np.asarray(
+        segmentation.watershed(boundary, markers, compactness=compactness),
+        dtype=np.int64,
+    )
+
+
+def segment_watershed(
+    img: np.ndarray,
+    method: str = "gradient",
+    granularity: float = 0.05,
+    compactness: float = 0.001,
+    min_area: int = 25,
+    n_superpixels: int = 400,
+    merge_threshold: float = 0.08,
+    orientation_sigma: float = 2.0,
+    progress: Callable[[float, str], None] | None = None,
+) -> WatershedSegmentation:
+    """Modern grain segmentation (scikit-image; no MATLAB-parity target).
+
+    method:
+      "gradient"    — marker-controlled watershed on the Scharr gradient.
+                      Use when grain boundaries are visible as contrast
+                      lines (BF/DF-TEM, etched SEM).
+      "rag"         — SLIC superpixels merged by a region-adjacency graph
+                      on mean intensity. Use for diffraction-contrast
+                      grains (uniform patches at different brightness).
+      "orientation" — watershed on a structure-tensor misorientation map.
+                      Use for atomic-resolution lattices where grains
+                      differ by lattice orientation, not brightness.
+
+    The coarseness knob is `granularity` for gradient/orientation (h-minima
+    depth) and `merge_threshold` for rag (max mean-intensity gap that still
+    merges two superpixels) — both higher → fewer, larger grains.
+    """
+    d = _normalize01(img)
+    if progress:
+        progress(0.1, f"segmenting ({method})")
+
+    if method == "gradient":
+        boundary = _normalize01(scharr(d))
+        raw = _boundary_watershed(boundary, granularity, compactness)
+        knob = granularity
+    elif method == "orientation":
+        st = structure_tensor(d, sigma=orientation_sigma)
+        c2 = apply_gaussian(st.coherence * np.cos(2 * st.orientation), orientation_sigma)
+        s2 = apply_gaussian(st.coherence * np.sin(2 * st.orientation), orientation_sigma)
+        gy1, gx1 = np.gradient(c2)
+        gy2, gx2 = np.gradient(s2)
+        boundary = _normalize01(np.hypot(gx1, gy1) + np.hypot(gx2, gy2))
+        raw = _boundary_watershed(boundary, granularity, compactness)
+        knob = granularity
+    elif method == "rag":
+        if progress:
+            progress(0.3, "superpixels")
+        seg = segmentation.slic(
+            d, n_segments=max(2, n_superpixels), compactness=0.1,
+            channel_axis=None, start_label=1,
+        )
+        rag = graph.rag_mean_color(d, seg)
+        raw = graph.cut_threshold(seg, rag, merge_threshold)
+        knob = merge_threshold
+    else:
+        raise ValueError("method must be 'gradient', 'rag' or 'orientation'")
+
+    if progress:
+        progress(0.85, "labelling grains")
+    # these methods tile the whole field (no background); shift to 1-based
+    # so a 0-origin label (e.g. from cut_threshold) isn't dropped as bg
+    raw = np.asarray(raw, dtype=np.int64)
+    raw = raw - int(raw.min()) + 1
+    labels, n = _relabel_connected(raw, min_area)
+    return WatershedSegmentation(
+        labels=labels, n_grains=n, method=method, granularity=float(knob),
+    )
+
+
+def astm_grain_size_number(mean_diameter: float, unit: str) -> float:
+    """ASTM E112-13 grain-size number G from the mean equivalent grain
+    diameter (in the image's calibrated `unit`). G = -6.6439·log2(D_mm)
+    − 3.298. Returns NaN if the unit is unknown or the diameter ≤ 0."""
+    factor = _MM_PER_UNIT.get((unit or "").strip().lower())
+    if factor is None or not np.isfinite(mean_diameter) or mean_diameter <= 0:
+        return float("nan")
+    d_mm = mean_diameter * factor
+    return float(-6.6439 * np.log2(d_mm) - 3.298)
+
+
+def _count_triple_junctions(labels: np.ndarray) -> int:
+    """Number of triple (or higher) junctions — points where ≥3 grains
+    meet. Found as 2×2 windows spanning ≥3 distinct grain labels."""
+    lab = np.asarray(labels, dtype=np.int64)
+    tl, tr = lab[:-1, :-1], lab[:-1, 1:]
+    bl, br = lab[1:, :-1], lab[1:, 1:]
+    # count distinct positive labels in each 2×2 window
+    corners = np.stack([tl, tr, bl, br], axis=0)
+    distinct = np.zeros(tl.shape, dtype=np.int64)
+    for i in range(4):
+        seen_before = np.zeros(tl.shape, dtype=bool)
+        for j in range(i):
+            seen_before |= corners[i] == corners[j]
+        distinct += (corners[i] > 0) & ~seen_before
+    junction = distinct >= 3
+    _, n = label_components(junction, connectivity=8)
+    return int(n)
+
+
 @dataclass(frozen=True)
 class GrainStats:
     n_grains: int
     grains: list[RegionStats]
     labels: np.ndarray
     boundary: np.ndarray
+    # legacy boundary length = boundary-pixel COUNT (kept for the MATLAB
+    # golden); prefer the Crofton fields below for a true Euclidean length
     boundary_length_px: int
     boundary_length_calibrated: float
     n_boundary_segments: int
@@ -143,6 +310,14 @@ class GrainStats:
     equiv_diameter_px: np.ndarray
     area_calibrated: np.ndarray
     diameter_calibrated: np.ndarray
+    # ── modern metrics (additive) ──
+    boundary_length_crofton_px: float
+    boundary_length_crofton_calibrated: float
+    perimeter_crofton_px: np.ndarray
+    eccentricity: np.ndarray
+    orientation_rad: np.ndarray
+    solidity: np.ndarray
+    n_triple_junctions: int
 
 
 def grain_stats(
@@ -169,6 +344,27 @@ def grain_stats(
     length_px = int(boundary.sum())
     has_cal = np.isfinite(pixel_size) and pixel_size > 0
 
+    # ── modern per-grain metrics (additive; legacy fields above are kept
+    #    pixel-count-based so the MATLAB golden stays stable) ──
+    if n > 0:
+        rpt = measure.regionprops_table(
+            lab,
+            properties=[
+                "label", "perimeter_crofton", "eccentricity",
+                "orientation", "solidity",
+            ],
+        )
+        perim = np.asarray(rpt["perimeter_crofton"], dtype=np.float64)
+        ecc = np.asarray(rpt["eccentricity"], dtype=np.float64)
+        orient = np.asarray(rpt["orientation"], dtype=np.float64)
+        solidity = np.asarray(rpt["solidity"], dtype=np.float64)
+    else:
+        perim = ecc = orient = solidity = np.array([], dtype=np.float64)
+
+    # grain-boundary network length: each interior edge is shared by two
+    # grains, so the network length is half the summed grain perimeters
+    crofton_total = float(perim.sum() / 2.0)
+
     return GrainStats(
         n_grains=n,
         grains=grains,
@@ -189,4 +385,13 @@ def grain_stats(
         diameter_calibrated=np.array(
             [g.diameter_calibrated for g in grains], dtype=np.float64
         ),
+        boundary_length_crofton_px=crofton_total,
+        boundary_length_crofton_calibrated=(
+            crofton_total * pixel_size if has_cal else float("nan")
+        ),
+        perimeter_crofton_px=perim,
+        eccentricity=ecc,
+        orientation_rad=orient,
+        solidity=solidity,
+        n_triple_junctions=_count_triple_junctions(lab),
     )

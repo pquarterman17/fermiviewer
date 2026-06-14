@@ -4,6 +4,7 @@ template matching, stitching (plan item 28 — adapters over W3/W4 calc)."""
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Literal
 
 import numpy as np
 from fastapi import APIRouter, HTTPException
@@ -16,7 +17,14 @@ from fermiviewer.calc.atoms import (
     fit_gaussian_2d,
     peak_pair_strain,
 )
-from fermiviewer.calc.grains import grain_stats, segment_auto
+from fermiviewer.calc.grains import (
+    GrainSegmentation,
+    WatershedSegmentation,
+    astm_grain_size_number,
+    grain_stats,
+    segment_auto,
+    segment_watershed,
+)
 from fermiviewer.calc.particles import particle_analysis
 from fermiviewer.calc.stack import align_stack, image_math, mip
 from fermiviewer.calc.stitch import stitch_images
@@ -122,10 +130,22 @@ def _nan_none(v: float) -> float | None:
 
 class GrainRequest(BaseModel):
     image_id: str
+    # "kmeans" is the ported MATLAB texture-clustering path (kept for parity);
+    # the others are scikit-image methods chosen per EM image type
+    method: Literal["kmeans", "gradient", "rag", "orientation"] = "gradient"
+    # k-means params
     k: int = Field(default=4, ge=2, le=10)
-    min_area: int = 25
     seed: int = 0
     replicates: int = 3
+    # gradient / orientation watershed params
+    granularity: float = Field(default=0.05, ge=0.0, le=1.0)
+    compactness: float = Field(default=0.001, ge=0.0, le=1.0)
+    orientation_sigma: float = Field(default=2.0, ge=0.5, le=8.0)
+    # superpixel-RAG params
+    n_superpixels: int = Field(default=400, ge=50, le=4000)
+    merge_threshold: float = Field(default=0.08, ge=0.0, le=1.0)
+    # shared
+    min_area: int = 25
     run_async: bool = False
 
 
@@ -135,27 +155,49 @@ def _run_grains(
 ) -> dict:
     ds, raster = _raster(req.image_id)
     px = ds.pixel_size if np.isfinite(ds.pixel_size) else float("nan")
-    seg = segment_auto(
-        raster, k=req.k, min_area=req.min_area,
-        seed=req.seed, replicates=req.replicates, progress=progress,
-    )
+    seg: GrainSegmentation | WatershedSegmentation
+    if req.method == "kmeans":
+        seg = segment_auto(
+            raster, k=req.k, min_area=req.min_area,
+            seed=req.seed, replicates=req.replicates, progress=progress,
+        )
+    else:
+        seg = segment_watershed(
+            raster, method=req.method, granularity=req.granularity,
+            compactness=req.compactness, min_area=req.min_area,
+            n_superpixels=req.n_superpixels, merge_threshold=req.merge_threshold,
+            orientation_sigma=req.orientation_sigma, progress=progress,
+        )
     stats = grain_stats(seg.labels, raster, pixel_size=px)
     name = store.name(req.image_id)
+    unit = ds.pixel_unit or "px"
+    diam_cal = stats.diameter_calibrated
+    mean_diam_cal = float(np.nanmean(diam_cal)) if diam_cal.size else float("nan")
     return {
         "n_grains": seg.n_grains,
+        "method": req.method,
         "labels": _register(
             seg.labels.astype(np.float64),
             f"grains({name})", ds, req.image_id,
         ),
+        # legacy pixel-count length kept; crofton is the true Euclidean length
         "boundary_length_px": stats.boundary_length_px,
+        "boundary_length_crofton_px": stats.boundary_length_crofton_px,
+        "boundary_length_calibrated": _nan_none(
+            stats.boundary_length_crofton_calibrated
+        ),
         "n_boundary_segments": stats.n_boundary_segments,
+        "n_triple_junctions": stats.n_triple_junctions,
         "mean_diameter_px": (
             float(stats.equiv_diameter_px.mean())
             if stats.equiv_diameter_px.size
             else 0.0
         ),
+        "astm_grain_size": _nan_none(astm_grain_size_number(mean_diam_cal, unit)),
         "areas_px": stats.area_px.tolist(),
-        "unit": ds.pixel_unit or "px",
+        "perimeters_px": stats.perimeter_crofton_px.tolist(),
+        "eccentricity": stats.eccentricity.tolist(),
+        "unit": unit,
     }
 
 
