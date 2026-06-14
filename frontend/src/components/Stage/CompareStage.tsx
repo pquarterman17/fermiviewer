@@ -121,12 +121,19 @@ function ComparePanel({
 
   useEffect(() => {
     if (!canvasRef.current) return;
-    const gl = new GLRenderer(canvasRef.current);
+    let gl: GLRenderer;
+    try {
+      gl = new GLRenderer(canvasRef.current);
+    } catch (err) {
+      setStatus(`GPU image rendering unavailable: ${(err as Error).message}`);
+      return;
+    }
     glRef.current = gl;
     return () => {
       gl.dispose();
       glRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
