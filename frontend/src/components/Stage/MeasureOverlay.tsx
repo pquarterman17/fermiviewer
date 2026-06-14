@@ -291,6 +291,10 @@ export default function MeasureOverlay({
           },
       pointerEvents: (isPending ? "none" : "stroke") as "none" | "stroke",
     };
+    // Fat, transparent hit layer so thin line measures (distance, profile,
+    // angle…) are easy to click/right-click — the visible stroke is ~1.5px,
+    // which made every non-selected line measure effectively undeletable.
+    const hit = { ...common, stroke: "transparent", strokeWidth: 12 };
 
     let shape: React.ReactNode = null;
     let labelAt = pts[0];
@@ -416,8 +420,43 @@ export default function MeasureOverlay({
       };
     }
 
+    // transparent fat-stroke twin of the shape, carrying the same select /
+    // context-menu handlers, so the whole measure is an easy click target
+    let hitShape: React.ReactNode = null;
+    if (!isPending && pts.length >= 2) {
+      if (m.kind === "box" || m.kind === "roi") {
+        hitShape = (
+          <rect
+            x={Math.min(pts[0].x, pts[1].x)}
+            y={Math.min(pts[0].y, pts[1].y)}
+            width={Math.abs(pts[1].x - pts[0].x)}
+            height={Math.abs(pts[1].y - pts[0].y)}
+            {...hit}
+          />
+        );
+      } else if (m.kind === "ellipse" || m.kind === "circle") {
+        hitShape = (
+          <ellipse
+            cx={(pts[0].x + pts[1].x) / 2}
+            cy={(pts[0].y + pts[1].y) / 2}
+            rx={Math.abs(pts[1].x - pts[0].x) / 2}
+            ry={Math.abs(pts[1].y - pts[0].y) / 2}
+            {...hit}
+          />
+        );
+      } else {
+        hitShape = (
+          <polyline
+            points={pts.map((p) => `${p.x},${p.y}`).join(" ")}
+            {...hit}
+          />
+        );
+      }
+    }
+
     return (
       <g key={m.id}>
+        {hitShape}
         {shape}
         {(m.pts.length >= 2 || m.kind === "text") && (
           <text

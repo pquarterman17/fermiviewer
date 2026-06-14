@@ -147,7 +147,7 @@ export default function AdjustPanel() {
     raster ? Number(toReal(norm, raster).toPrecision(5)).toString() : "—";
 
   return (
-    <Card title="Adjust">
+    <Card title="Adjust" defaultOpen={false}>
       <div className="fvd-adjust-top">
         <button
           className="fvd-btn"

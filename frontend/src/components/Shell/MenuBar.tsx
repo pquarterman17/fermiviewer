@@ -28,7 +28,6 @@ import {
   exportFigure,
   exportGif,
   exportImage,
-  openRaw,
   renameImage,
   imageFft,
   supportedExtensions,
@@ -43,6 +42,7 @@ import {
   stopRecording,
 } from "../../lib/macro";
 import { applyGeometry, cropToRoi } from "../../lib/stageOps";
+import { BATCH_FILTERS } from "../../lib/transformTools";
 import { useStageInfo } from "../../store/stage";
 import { DEFAULT_DISPLAY as DD, undoLabel, useViewer } from "../../store/viewer";
 import {
@@ -74,43 +74,6 @@ interface Entry {
   disabled?: boolean;
   action?: () => void;
 }
-
-/** Filter/transform definitions shared by the Image menu and Batch
- *  Apply — one source of truth for kinds + their parameter fields. */
-const FILTER_DEFS: { label: string; kind: string; fields?: ParamField[] }[] = [
-  { label: "Gaussian Blur…", kind: "gaussian",
-    fields: [num("sigma", "Sigma (px)", 2)] },
-  { label: "Median Filter…", kind: "median",
-    fields: [{ key: "window_size", label: "Window", type: "select",
-               default: "3", options: ["3", "5", "7"] }] },
-  { label: "Unsharp Mask…", kind: "unsharp",
-    fields: [num("sigma", "Sigma (px)", 2), num("amount", "Amount", 1)] },
-  { label: "Butterworth…", kind: "butterworth",
-    fields: [num("low_cutoff", "Low cutoff (0=off)", 0.05),
-             num("high_cutoff", "High cutoff (0–1]", 0.5),
-             num("order", "Order", 2)] },
-  { label: "CLAHE…", kind: "clahe",
-    fields: [num("clip_limit", "Clip limit", 0.01),
-             num("num_bins", "Bins", 256)] },
-  { label: "Bin…", kind: "bin", fields: [num("bin_size", "Bin size", 2)] },
-  { label: "Plane Level", kind: "plane_level" },
-  { label: "Morphology…", kind: "morph",
-    fields: [
-      { key: "operation", label: "Operation", type: "select",
-        default: "open", options: ["erode", "dilate", "open", "close"] },
-      num("radius", "Radius (px)", 1),
-      { key: "shape", label: "Element", type: "select",
-        default: "square", options: ["square", "disk"] },
-    ] },
-  { label: "Multi-Otsu…", kind: "multiotsu",
-    fields: [
-      { key: "n_classes", label: "Classes", type: "select",
-        default: "3", options: ["2", "3", "4", "5"] },
-    ] },
-  { label: "Rotate 90° CW", kind: "rotate90" },
-  { label: "Flip Horizontal", kind: "fliph" },
-  { label: "Flip Vertical", kind: "flipv" },
-];
 
 export default function MenuBar({
   onFit,
@@ -220,19 +183,6 @@ export default function MenuBar({
     e.target.value = ""; // allow re-picking the same file
   };
 
-  // secondary: server-side path entry (large files, no upload copy)
-  const openByPath = () => {
-    const raw = window.prompt("Open server-side path(s) — separate with ;");
-    if (!raw) return;
-    const paths = raw
-      .split(";")
-      .map((p) => p.trim())
-      .filter(Boolean);
-    if (paths.length) {
-      store.openPaths(paths).catch((e: Error) => store.setStatus(e.message));
-    }
-  };
-
   // run an analysis returning derived image(s); ingest (undoable) + report
   const derived = (
     label: string,
@@ -297,12 +247,12 @@ export default function MenuBar({
         key: "op",
         label: "Operation",
         type: "select",
-        default: FILTER_DEFS[0].label,
-        options: FILTER_DEFS.map((d) => d.label),
+        default: BATCH_FILTERS[0].label,
+        options: BATCH_FILTERS.map((d) => d.label),
       },
     ]);
     if (!choice) return;
-    const def = FILTER_DEFS.find((d) => d.label === choice["op"]);
+    const def = BATCH_FILTERS.find((d) => d.label === choice["op"]);
     if (!def) return;
     const params = def.fields ? await askParams(def.label, def.fields) : {};
     if (params === null) return;
@@ -327,26 +277,6 @@ export default function MenuBar({
     );
   };
 
-  const filterEntry = (
-    label: string,
-    kind: string,
-    fields?: ParamField[],
-  ): Entry => ({
-    label,
-    disabled: !store.activeId,
-    action: () => {
-      void (async () => {
-        const params = fields ? await askParams(label, fields) : {};
-        if (params === null) return; // cancelled
-        derived(label, (id) =>
-          applyFilter(id, kind, params as Record<string, unknown>).then(
-            (m) => [m],
-          ),
-        );
-      })();
-    },
-  });
-
   const radialDock = (azimuthal: boolean) => {
     const id = store.activeId;
     if (!id) return;
@@ -370,50 +300,11 @@ export default function MenuBar({
   const menus: Record<string, Entry[]> = {
     File: [
       { label: "Open…", shortcut: "⌘O", action: openFiles },
-      { label: "Open by Path…", action: openByPath },
       ...recentPaths().map((p) => ({
         label: `↻ ${p.split(/[\\/]/).pop()}`,
         action: () =>
           store.openPaths([p]).catch((e: Error) => store.setStatus(e.message)),
       })),
-      {
-        label: "Open RAW…",
-        action: () => {
-          void (async () => {
-            const v = await askParams("Open RAW (headerless binary)", [
-              { key: "path", label: "File path", type: "text", default: "" },
-              num("width", "Width (px)", 1024),
-              num("height", "Height (px)", 1024),
-              {
-                key: "bits",
-                label: "Bit depth",
-                type: "select",
-                default: "16",
-                options: ["8", "16", "32"],
-              },
-              {
-                key: "order",
-                label: "Byte order",
-                type: "select",
-                default: "little",
-                options: ["little", "big"],
-              },
-              num("header", "Header bytes to skip", 0),
-            ]);
-            if (!v || !v["path"]) return;
-            openRaw({
-              path: v["path"] as string,
-              width: v["width"] as number,
-              height: v["height"] as number,
-              bitDepth: Number(v["bits"]),
-              byteOrder: v["order"] as "little" | "big",
-              headerBytes: v["header"] as number,
-            })
-              .then((m) => store.ingest([m]))
-              .catch((e: Error) => store.setStatus(`raw: ${e.message}`));
-          })();
-        },
-      },
       {
         label: `Batch Export… (${store.selected.length})`,
         disabled: store.selected.length < 2,
@@ -908,9 +799,6 @@ export default function MenuBar({
           })();
         },
       },
-      ...FILTER_DEFS.slice(0, 9).map((d) =>
-        filterEntry(d.label, d.kind, d.fields),
-      ),
       {
         label: "Batch Apply…",
         disabled: store.order.length === 0,

@@ -265,8 +265,8 @@ body {
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  gap: 2px;
-  padding: 3px;
+  gap: 3px;
+  padding: 5px;
 }
 
 .fvd-inspector-tabs {
@@ -561,20 +561,20 @@ details.fvd-card:not([open]) > summary {
 .fvd-tool-sep {
   width: 1px;
   align-self: stretch;
-  margin: 3px 2px;
+  margin: 5px 3px;
   background: var(--border);
 }
 
 .fvd-tool-btn {
-  width: 26px;
-  height: 26px;
+  width: 39px;
+  height: 39px;
   display: grid;
   place-items: center;
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: 20px;
   cursor: default;
   font-family: var(--font-ui);
 }
@@ -1837,6 +1837,35 @@ details.fvd-card:not([open]) > summary {
   background: var(--surface-3);
   color: var(--text-faint);
   margin-left: 6px;
+}
+
+/* GUI v2 phase 4 — Tools panel: single-column tool list with inline
+   parameter expanders (the in-panel home for image filters/transforms). */
+.fvd-tool-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 4px;
+}
+
+.fvd-tool-list .fvd-cmd-row {
+  cursor: pointer;
+}
+
+.fvd-tool-list .fvd-cmd-row .chev {
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.fvd-tool-form {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 1px 0 5px;
+  padding: 9px 11px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
 }
 
 /* duplicated from the capture banner (GUI v2 phase 1) — identical, so

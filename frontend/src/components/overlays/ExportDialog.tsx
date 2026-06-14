@@ -3,9 +3,10 @@
 
 import { useEffect, useState } from "react";
 
-import { exportImage, type ExportOptions } from "../../lib/api";
+import { type ExportOptions } from "../../lib/api";
+import { exportActive } from "../../lib/export";
 import { loadPrefs } from "../../lib/prefs";
-import { DEFAULT_DISPLAY, useViewer, type Measure } from "../../store/viewer";
+import { useViewer, type Measure } from "../../store/viewer";
 
 type Format = ExportOptions["format"];
 
@@ -36,20 +37,9 @@ export default function ExportDialog() {
   const meta = useViewer((s) =>
     s.activeId ? (s.images[s.activeId] ?? null) : null,
   );
-  const display = useViewer((s) =>
-    s.activeId ? (s.display[s.activeId] ?? DEFAULT_DISPLAY) : DEFAULT_DISPLAY,
-  );
   const setStatus = useViewer((s) => s.setStatus);
   const measures = useViewer((s) =>
     s.activeId ? (s.measures[s.activeId] ?? NO_MEASURES) : NO_MEASURES,
-  );
-  const overlayColor = useViewer((s) => s.overlay.color);
-  const overlayEndSymbol = useViewer((s) => s.overlay.endSymbol);
-  const tilt = useViewer((s) =>
-    s.activeId ? (s.tilts[s.activeId] ?? null) : null,
-  );
-  const sbState = useViewer((s) =>
-    s.activeId ? s.scaleBars[s.activeId] : undefined,
   );
 
   const [format, setFormat] = useState<Format>("png");
@@ -92,61 +82,10 @@ export default function ExportDialog() {
 
   const run = () => {
     setBusy(true);
-    const include: string[] = [];
-    if (canBar && scaleBar) include.push("scale_bar");
-    if (canMeasure && bakeMeasures) include.push("measurements");
-    if (format !== "tiff16" && colorbar) include.push("colorbar");
-    exportImage(activeId, {
-      format,
-      scale,
-      lo: display.lo,
-      hi: display.hi,
-      gamma: display.gamma,
-      // custom is client-local (localStorage stops) — export falls
-      // back to gray rather than guessing server-side
-      cmap: display.cmap === "custom" ? "gray" : display.cmap,
-      include,
-      measures:
-        canMeasure && bakeMeasures
-          ? measures.map((m) => ({
-              kind: m.kind,
-              pts: m.pts,
-              text: m.text,
-              // resolve per-item override against the style default so
-              // baked glyphs match the on-screen overlay (A9)
-              endSymbol: m.endSymbol ?? overlayEndSymbol ?? "bar",
-              // box profiles bake their averaging-box outline too
-              width: m.width,
-            }))
-          : undefined,
-      overlay_color: overlayColor,
-      // #34: baked distance labels match the on-screen corrected values
-      ...(tilt && tilt.angle !== 0
-        ? {
-            tilt_angle_deg: tilt.angle,
-            tilt_axis: tilt.axis,
-            tilt_geometry: tilt.geometry,
-          }
-        : {}),
-      // pass custom scale bar geometry + font size when the bar has overrides
-      ...(canBar && scaleBar && sbState
-        ? {
-            scale_bar_norm_x: sbState.x,
-            scale_bar_norm_y: sbState.y,
-            scale_bar_length_phys: sbState.lengthPhys,
-            scale_bar_thickness: sbState.thickness,
-            // #48: honor on-screen font size in baked exports
-            scale_bar_font_size: sbState.fontSize,
-          }
-        : {}),
-    })
-      .then(({ blob, filename }) => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(url);
+    // shared with the Export inspector card (lib/export) so the quick and
+    // full export paths stay identical
+    exportActive({ format, scale, scaleBar, measures: bakeMeasures, colorbar })
+      .then((filename) => {
         setStatus(`exported ${filename}`);
         setOpen(false);
       })
