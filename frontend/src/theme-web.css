@@ -215,8 +215,17 @@ body {
 
 /* ── Stage ── */
 
+/* middle grid cell: the image stage + an optional colorbar gutter beside it */
+.fvd-stage-cell {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  min-height: 0;
+}
+
 .fvd-stage {
   position: relative;
+  flex: 1;
   background: var(--axes-bg);
   min-width: 0;
   min-height: 0;
@@ -502,25 +511,26 @@ details.fvd-card:not([open]) > summary {
   cursor: pointer;
 }
 
+/* colorbar gutter: a real column beside the stage (not an overlay), so it
+   never covers the image. align-items:stretch on .fvd-stage-cell gives it
+   the full stage height. */
 .fvd-colorbar {
-  position: absolute;
-  top: 12px;
-  bottom: 12px;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  padding: 6px 7px 8px;
+  padding: 8px 7px;
+  background: var(--surface-1);
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-dim);
 }
-
 .fvd-colorbar.side-right {
-  right: 10px;
+  border-left: 1px solid var(--border-soft);
 }
 .fvd-colorbar.side-left {
-  left: 10px;
+  border-right: 1px solid var(--border-soft);
 }
 
 .fvd-colorbar .u {
@@ -535,10 +545,11 @@ details.fvd-card:not([open]) > summary {
   align-items: stretch;
   gap: 4px;
 }
-.fvd-colorbar.side-left .body {
+/* bar sits against the image (inner edge), labels on the outer edge */
+.fvd-colorbar.side-right .body {
   flex-direction: row; /* bar | ticks */
 }
-.fvd-colorbar.side-right .body {
+.fvd-colorbar.side-left .body {
   flex-direction: row-reverse; /* ticks | bar */
 }
 
@@ -567,12 +578,12 @@ details.fvd-card:not([open]) > summary {
   background: var(--text-dim);
   flex: none;
 }
-.fvd-colorbar.side-left .tk {
-  left: 0; /* line toward the bar (to the left) */
-}
 .fvd-colorbar.side-right .tk {
+  left: 0; /* ticks right of the bar; line points left toward it */
+}
+.fvd-colorbar.side-left .tk {
   right: 0;
-  flex-direction: row-reverse; /* line toward the bar (to the right) */
+  flex-direction: row-reverse; /* ticks left of the bar; line points right */
 }
 
 /* Z-scale / color-range controls (Adjust panel) */
