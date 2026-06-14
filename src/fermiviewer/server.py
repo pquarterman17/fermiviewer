@@ -70,6 +70,7 @@ def create_app() -> FastAPI:
     from fermiviewer.routes.analysis import router as analysis_router
     from fermiviewer.routes.analysis_wireups import router as wireups_router
     from fermiviewer.routes.calibration import router as calibration_router
+    from fermiviewer.routes.dev import router as dev_router
     from fermiviewer.routes.export import router as export_router
     from fermiviewer.routes.export_batch import router as export_batch_router
     from fermiviewer.routes.filter import router as filter_router
@@ -93,6 +94,7 @@ def create_app() -> FastAPI:
     app.include_router(structure_router)
     app.include_router(jobs_router)
     app.include_router(calibration_router)
+    app.include_router(dev_router)
 
     @app.get("/api/health")
     def health() -> dict[str, str]:
