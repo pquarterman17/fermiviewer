@@ -53,6 +53,12 @@ export async function listImages(): Promise<ImageMeta[]> {
   return json(await fetch("/api/session/images"));
 }
 
+/** Dev-only: server-resolved sample file paths (jpeg/dm3/dm4/tif) from
+ *  the sibling fermi-viewer corpus. Empty when the corpus is absent. */
+export async function devSampleFiles(): Promise<string[]> {
+  return json(await fetch("/api/dev/sample-files"));
+}
+
 /** Open files picked with the browser's native dialog (multipart). */
 export async function uploadFiles(files: FileList | File[]): Promise<ImageMeta[]> {
   const form = new FormData();
