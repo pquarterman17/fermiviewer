@@ -163,7 +163,17 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   // ── renderer lifecycle ──
   useEffect(() => {
     if (!canvasRef.current) return;
-    const gl = new GLRenderer(canvasRef.current);
+    let gl: GLRenderer;
+    try {
+      gl = new GLRenderer(canvasRef.current);
+    } catch (err) {
+      // A dead/unsupported GPU context must not take the whole app down —
+      // degrade to a status message; the rest of the UI stays usable.
+      useViewer
+        .getState()
+        .setStatus(`GPU image rendering unavailable: ${(err as Error).message}`);
+      return;
+    }
     glRef.current = gl;
     return () => {
       gl.dispose();

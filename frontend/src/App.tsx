@@ -33,7 +33,7 @@ import StructureWorkshop from "./components/workshops/StructureWorkshop";
 import SurfaceView from "./components/workshops/SurfaceView";
 import EdsWorkshop from "./components/workshops/EdsWorkshop";
 import EelsWorkshop from "./components/workshops/EelsWorkshop";
-import { listImages } from "./lib/api";
+import { devSampleFiles, listImages } from "./lib/api";
 import { COLORMAP_NAMES } from "./lib/colormaps";
 import { autoWindow } from "./lib/display";
 import { loadPrefs } from "./lib/prefs";
@@ -66,16 +66,35 @@ export default function App() {
   useEffect(() => {
     listImages()
       .then((metas) => {
-        if (metas.length === 0) return;
-        useViewer.setState((s) => {
-          const images = { ...s.images };
-          const order = [...s.order];
-          for (const m of metas) {
-            if (!(m.id in images)) order.push(m.id);
-            images[m.id] = m;
-          }
-          return { images, order, activeId: s.activeId ?? order[0] ?? null };
-        });
+        if (metas.length > 0) {
+          useViewer.setState((s) => {
+            const images = { ...s.images };
+            const order = [...s.order];
+            for (const m of metas) {
+              if (!(m.id in images)) order.push(m.id);
+              images[m.id] = m;
+            }
+            return { images, order, activeId: s.activeId ?? order[0] ?? null };
+          });
+          return;
+        }
+        // Dev testing mode: with an empty session under Vite dev, auto-open
+        // a few sample files (jpeg/dm3/dm4/tif) so the load→inspect loop
+        // isn't repeated by hand on every restart. The backend keeps the
+        // images open across reloads, so this only fires on a fresh server.
+        // Opt out with localStorage.fv_dev_autoload="off".
+        if (
+          import.meta.env.DEV &&
+          localStorage.getItem("fv_dev_autoload") !== "off"
+        ) {
+          devSampleFiles()
+            .then((paths) => {
+              if (paths.length === 0) return;
+              const s = useViewer.getState();
+              s.openPaths(paths).catch((e: Error) => s.setStatus(e.message));
+            })
+            .catch(() => undefined);
+        }
       })
       .catch(() => undefined);
   }, []);
