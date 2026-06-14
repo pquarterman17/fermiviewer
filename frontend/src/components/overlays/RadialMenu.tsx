@@ -23,7 +23,7 @@ const TOOLS: RadialItem[] = [
 
 // Copy is an action, not a capture mode — it runs immediately and closes
 // the ring. Appended only when there's a raster image to copy.
-const COPY_TOOL: RadialItem = { glyph: "⧉", label: "Copy", action: "copy" };
+const COPY_TOOL: RadialItem = { glyph: "❐", label: "Copy", action: "copy" };
 
 const RADIUS = 64;
 

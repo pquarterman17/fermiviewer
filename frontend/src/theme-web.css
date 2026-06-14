@@ -1146,6 +1146,8 @@ details.fvd-card:not([open]) > summary {
 .fvd-slider-row input[type="text"],
 .fvd-meta-row input[type="number"],
 .fvd-meta-row input[type="text"],
+.fvd-prefs-ctl input[type="number"],
+.fvd-prefs-ctl input[type="text"],
 .fvd-sb-spin input {
   background: var(--surface-3);
   border: 1px solid var(--border);
@@ -1158,6 +1160,7 @@ details.fvd-card:not([open]) > summary {
 }
 
 .fvd-meta-row select,
+.fvd-prefs-ctl select,
 .fvd-sb-spin select {
   background: var(--surface-3);
   border: 1px solid var(--border);
@@ -1587,6 +1590,28 @@ details.fvd-card:not([open]) > summary {
 .fvd-prefs-footer-right {
   display: flex;
   gap: var(--pad);
+}
+
+/* compact, token-bordered colour well (matches the swatch language, not
+   the chunky ~44px UA default) */
+.fvd-prefs-ctl input[type="color"] {
+  width: 28px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  cursor: pointer;
+}
+
+/* keyboard focus ring (the app otherwise had none) — accent-keyed, shared
+   across the interactive atoms the Preferences window tabs through */
+.fvd-prefs-navbtn:focus-visible,
+.fvd-seg-btn:focus-visible,
+.fvd-btn:focus-visible,
+.fvd-radial-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 /* ── workshop tool windows ── */

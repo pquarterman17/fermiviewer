@@ -194,6 +194,7 @@ export default function PrefsWindow() {
                 </Row>
                 <Row label="Custom colormap" hint="2+ comma-separated hex stops for the 'custom' colormap">
                   <input
+                    type="text"
                     style={{ flex: 1, minWidth: 0 }}
                     placeholder="#000, #a070f0, #fff"
                     value={customCmap}
