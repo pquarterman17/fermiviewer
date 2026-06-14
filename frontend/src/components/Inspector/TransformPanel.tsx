@@ -5,10 +5,9 @@
 
 import { Fragment, useState } from "react";
 
-import { applyFilter } from "../../lib/api";
 import { fuzzy } from "../../lib/fuzzy";
 import { coerceParams, type ParamValues } from "../../lib/params";
-import { applyGeometry, cropToRoi, type GeometryKind } from "../../lib/stageOps";
+import { runTransform } from "../../lib/transforms";
 import {
   TRANSFORM_GROUPS,
   TRANSFORM_TOOLS,
@@ -18,30 +17,6 @@ import { useViewer } from "../../store/viewer";
 import { ParamFieldRow } from "../overlays/ParamFields";
 import Card from "./Card";
 import { useCollapsedGroups } from "./useCollapsedGroups";
-
-/** Run a tool against the active image. Parameterless geometry/crop go
- *  straight through their stageOps helpers (undoable, status-reporting);
- *  parameterised filters POST /filter and ingest the derived image. */
-function runTransform(tool: TransformTool, params: ParamValues): void {
-  const s = useViewer.getState();
-  const id = s.activeId;
-  if (!id) return;
-  if (tool.via === "geometry") {
-    applyGeometry(tool.kind as GeometryKind);
-    return;
-  }
-  if (tool.via === "crop") {
-    cropToRoi();
-    return;
-  }
-  s.setStatus(`${tool.label}…`);
-  applyFilter(id, tool.kind, params as Record<string, unknown>)
-    .then((m) => {
-      s.ingestDerived([m]);
-      s.setStatus(`${tool.label} → ${m.name}`);
-    })
-    .catch((e: Error) => s.setStatus(`${tool.label}: ${e.message}`));
-}
 
 export default function TransformPanel() {
   const activeId = useViewer((s) => s.activeId);

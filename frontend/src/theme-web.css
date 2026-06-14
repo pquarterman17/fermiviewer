@@ -1807,6 +1807,38 @@ button.fvd-cmd-group:hover {
   text-align: center;
 }
 
+/* GUI v2 — unified tools browser: category pills + the Cards/Unified toggle */
+.fvd-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 2px 0;
+}
+
+.fvd-pill {
+  font-size: var(--font-size-sm);
+  padding: 3px 11px;
+  border-radius: 99px;
+  border: 1px solid var(--border-soft);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.fvd-pill:hover {
+  border-color: var(--border-strong);
+}
+
+.fvd-pill.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--surface-3);
+}
+
+.fvd-layout-toggle {
+  margin-bottom: 2px;
+}
+
 .fvd-cmd-row {
   display: flex;
   align-items: center;
