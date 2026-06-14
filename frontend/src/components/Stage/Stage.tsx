@@ -45,7 +45,6 @@ import MeasureOverlay from "./MeasureOverlay";
 import Minimap from "./Minimap";
 import {
   ScaleBarCtxMenu,
-  EmptyAreaCtxMenu,
   buildCtxTarget,
   type CtxTarget,
 } from "./StageCtxMenu";
@@ -613,16 +612,14 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       view,
       vp,
     );
-    if (target.kind === "measure" && target.measureId) {
-      // delegate to MeasureOverlay's own ctx menu by selecting the measure
-      // and synthesising a contextmenu event — instead, just open the
-      // radial which is harmless, OR re-use our empty handler.
-      // The measure's own onContextMenu handler (inside MeasureOverlay)
-      // fires first because it stopPropagates — so this branch only runs
-      // when the click missed all measure handles/labels. Treat as empty.
-      setStageCtx({ kind: "empty", x: target.x, y: target.y });
-    } else {
+    if (target.kind === "scalebar") {
+      // the scale bar keeps its dedicated quick menu (hide / length / reset)
       setStageCtx(target);
+    } else {
+      // empty area — or a missed measure handle, since MeasureOverlay's own
+      // onContextMenu stopPropagates on real hits — opens the radial capture
+      // ring directly, restoring the original right-click behaviour.
+      useViewer.getState().setRadial({ x: target.x, y: target.y });
     }
   };
 
@@ -734,13 +731,6 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       )}
       {stageCtx?.kind === "scalebar" && (
         <ScaleBarCtxMenu
-          x={stageCtx.x}
-          y={stageCtx.y}
-          onClose={() => setStageCtx(null)}
-        />
-      )}
-      {stageCtx?.kind === "empty" && (
-        <EmptyAreaCtxMenu
           x={stageCtx.x}
           y={stageCtx.y}
           onClose={() => setStageCtx(null)}
@@ -859,7 +849,10 @@ function ScaleBarOverlay({
   vp: Size;
   barRef: RefObject<HTMLDivElement>;
 }) {
-  const color = useViewer((s) => s.overlay.color);
+  // Scale bar is white by default, independent of the measurement
+  // overlay colour (they used to share s.overlay.color, so picking a
+  // measurement colour tinted the bar — decoupled per user request).
+  const color = "#ffffff";
   const visible = useViewer((s) => s.scaleBarVisible);
   const sbState = useViewer((s) => s.scaleBars[imageId]);
   const setScaleBar = useViewer((s) => s.setScaleBar);

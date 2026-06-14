@@ -293,7 +293,7 @@ export default function MeasurePanel() {
 
   return (
     <>
-      <Card title="Measure">
+      <Card title="Measure" defaultOpen={false}>
         <div className="fvd-cmd-search">
           <span className="ico">⌕</span>
           <input
@@ -368,7 +368,7 @@ export default function MeasurePanel() {
         </div>
       </Card>
       {measures.length > 0 && (
-        <Card title="Measurements" count={measures.length}>
+        <Card title="Measurements" count={measures.length} defaultOpen={false}>
           <div className="fvd-ws-row">
             <button
               className="fvd-btn"
@@ -486,7 +486,7 @@ export default function MeasurePanel() {
         </Card>
       )}
 
-      <Card title="Overlay style">
+      <Card title="Overlay style" defaultOpen={false}>
         <div className="fvd-slider-row">
           <span className="k">Size</span>
           <div className="fvd-seg">
@@ -531,7 +531,7 @@ export default function MeasurePanel() {
         </div>
       </Card>
 
-      <Card title="Tilt correction">
+      <Card title="Tilt correction" defaultOpen={false}>
         <div className="fvd-ws-note">
           Corrects distance/profile/polyline lengths for stage tilt
           (#34). 0° = off; labels gain a θ marker when active.

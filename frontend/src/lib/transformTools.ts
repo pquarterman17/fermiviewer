@@ -5,7 +5,7 @@
 
 import type { ParamField } from "./params";
 
-export type TransformGroup = "Enhance" | "Geometry" | "Segment";
+export type TransformGroup = "Enhance" | "Transform Image" | "Segment";
 
 /** How a tool runs: a POST /filter kind, a parameterless geometry op
  *  (via stageOps.applyGeometry), or crop-to-ROI (via stageOps.cropToRoi). */
@@ -26,7 +26,7 @@ export interface TransformTool {
 
 export const TRANSFORM_GROUPS: TransformGroup[] = [
   "Enhance",
-  "Geometry",
+  "Transform Image",
   "Segment",
 ];
 
@@ -80,29 +80,29 @@ export const TRANSFORM_TOOLS: TransformTool[] = [
     label: "Plane Level", glyph: "▱", group: "Enhance",
     kind: "plane_level", via: "filter", batch: true,
   },
-  // — Geometry —
+  // — Transform Image —
   {
-    label: "Rotate 90° CW", glyph: "↻", group: "Geometry",
+    label: "Rotate 90° CW", glyph: "↻", group: "Transform Image",
     kind: "rotate90", via: "geometry", batch: true,
   },
   {
-    label: "Rotate 90° CCW", glyph: "↺", group: "Geometry",
+    label: "Rotate 90° CCW", glyph: "↺", group: "Transform Image",
     kind: "rotate270", via: "geometry",
   },
   {
-    label: "Rotate 180°", glyph: "⟳", group: "Geometry",
+    label: "Rotate 180°", glyph: "⟳", group: "Transform Image",
     kind: "rotate180", via: "geometry",
   },
   {
-    label: "Flip Horizontal", glyph: "⇄", group: "Geometry",
+    label: "Flip Horizontal", glyph: "⇄", group: "Transform Image",
     kind: "fliph", via: "geometry", batch: true,
   },
   {
-    label: "Flip Vertical", glyph: "⇅", group: "Geometry",
+    label: "Flip Vertical", glyph: "⇅", group: "Transform Image",
     kind: "flipv", via: "geometry", batch: true,
   },
   {
-    label: "Crop to ROI", glyph: "◳", group: "Geometry",
+    label: "Crop to ROI", glyph: "◳", group: "Transform Image",
     kind: "crop", via: "crop",
   },
   // — Segment —

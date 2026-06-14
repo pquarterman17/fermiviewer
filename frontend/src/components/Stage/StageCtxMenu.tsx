@@ -1,12 +1,11 @@
-// Stage-level right-click context menu (item #38).
-// Hit-test order: scale bar → measure/annotation → empty image area.
-// The empty-area branch delegates to the radial capture ring AND adds
-// a "Copy Image" shortcut entry. Scale-bar hits open a dedicated menu
-// wired to hide/show + length/position controls (item #33).
+// Stage-level right-click hit-testing + the scale-bar context menu.
+// buildCtxTarget classifies a right-click as scale bar / measure / empty;
+// Stage opens the radial capture ring for empty (and missed-measure)
+// clicks, while scale-bar hits open this dedicated menu wired to
+// hide/show + length/position controls (item #33).
 
 import { niceScaleLength } from "../../lib/geometry";
-import { useViewer, type Measure, DEFAULT_DISPLAY } from "../../store/viewer";
-import { exportImage } from "../../lib/api";
+import { useViewer, type Measure } from "../../store/viewer";
 
 export interface CtxTarget {
   kind: "scalebar" | "measure" | "empty";
@@ -110,82 +109,6 @@ export function ScaleBarCtxMenu({ x, y, onClose }: ScaleBarCtxProps) {
             </button>
           </>
         )}
-      </div>
-    </>
-  );
-}
-
-// ── Empty-area context menu (radial ring trigger + Copy Image) ────────
-
-interface EmptyCtxProps {
-  x: number;
-  y: number;
-  onClose: () => void;
-}
-
-export function EmptyAreaCtxMenu({ x, y, onClose }: EmptyCtxProps) {
-  const setRadial = useViewer((s) => s.setRadial);
-  const activeId = useViewer((s) => s.activeId);
-  const setStatus = useViewer((s) => s.setStatus);
-  const display = useViewer((s) =>
-    activeId ? (s.display[activeId] ?? DEFAULT_DISPLAY) : DEFAULT_DISPLAY,
-  );
-
-  const copyImage = () => {
-    if (!activeId) return;
-    const d = display;
-    const cmap = d.invert && d.cmap === "gray" ? "invert" : d.cmap;
-    exportImage(activeId, {
-      format: "png",
-      scale: 1,
-      lo: d.lo,
-      hi: d.hi,
-      gamma: d.gamma,
-      cmap,
-      include: [],
-    })
-      .then(({ blob }) =>
-        navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]),
-      )
-      .then(() => setStatus("copied image to clipboard"))
-      .catch((e: Error) => setStatus(`clipboard: ${e.message}`));
-  };
-
-  return (
-    <>
-      <div
-        className="fvd-ctx-backdrop"
-        onPointerDown={onClose}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          onClose();
-        }}
-      />
-      <div
-        className="fvd-ctx-menu fvd-glass"
-        style={{ left: x, top: y }}
-        onPointerDown={(e) => e.stopPropagation()}
-      >
-        <button
-          className="fvd-ctx-item"
-          onClick={() => {
-            onClose();
-            setRadial({ x, y });
-          }}
-        >
-          Capture tools…
-        </button>
-        <div className="fvd-ctx-sep" />
-        <button
-          className="fvd-ctx-item"
-          disabled={!activeId}
-          onClick={() => {
-            copyImage();
-            onClose();
-          }}
-        >
-          Copy Image
-        </button>
       </div>
     </>
   );

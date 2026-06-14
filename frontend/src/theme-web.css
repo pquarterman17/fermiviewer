@@ -1842,13 +1842,12 @@ details.fvd-card:not([open]) > summary {
 /* GUI v2 phase 4 — Tools panel: single-column tool list with inline
    parameter expanders (the in-panel home for image filters/transforms). */
 .fvd-tool-list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
   gap: 4px;
 }
 
 .fvd-tool-list .fvd-cmd-row {
-  width: 100%;
   cursor: pointer;
 }
 
@@ -1858,6 +1857,7 @@ details.fvd-card:not([open]) > summary {
 }
 
 .fvd-tool-form {
+  grid-column: 1 / -1;
   display: flex;
   flex-direction: column;
   gap: 6px;

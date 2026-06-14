@@ -77,7 +77,7 @@ export default function TransformPanel() {
   };
 
   return (
-    <Card title="Tools">
+    <Card title="Tools" defaultOpen={false}>
       <div className="fvd-cmd-search">
         <span className="ico">⌕</span>
         <input

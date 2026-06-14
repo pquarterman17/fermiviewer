@@ -78,7 +78,7 @@ export default function ScaleBarCard() {
   };
 
   return (
-    <Card title="Scale Bar">
+    <Card title="Scale Bar" defaultOpen={false}>
       <div className="fvd-meta-row">
         <span className="k">Visible</span>
         <label className="fvd-toggle-label">

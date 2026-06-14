@@ -10,6 +10,7 @@ import EdsWorkshop from "../workshops/EdsWorkshop";
 import EelsWorkshop from "../workshops/EelsWorkshop";
 import AdjustPanel from "./AdjustPanel";
 import Card from "./Card";
+import ExportCard from "./ExportCard";
 import MeasurePanel from "./MeasurePanel";
 import ScaleBarCard from "./ScaleBarCard";
 import TransformPanel from "./TransformPanel";
@@ -144,12 +145,13 @@ export default function Inspector() {
           <DiffractionWorkshop />
         </Card>
       )}
-      {tab === "Image" && meta.kind !== "spectrum" && <AdjustPanel />}
-      {tab === "Image" && meta.kind !== "spectrum" && <TransformPanel />}
       {tab === "Image" && <MeasurePanel />}
+      {tab === "Image" && meta.kind !== "spectrum" && <TransformPanel />}
+      {tab === "Image" && meta.kind !== "spectrum" && <AdjustPanel />}
       {tab === "Image" && <ScaleBarCard />}
+      {tab === "Image" && meta.kind !== "spectrum" && <ExportCard />}
       {tab === "Image" && (
-        <Card title="Image">
+        <Card title="Image" defaultOpen={false}>
           {rows.map(([k, v]) => (
             <div key={k} className="fvd-meta-row">
               <span className="k">{k}</span>
@@ -161,7 +163,7 @@ export default function Inspector() {
         </Card>
       )}
       {tab === "Image" && extra.length > 0 && (
-        <Card title="Metadata">
+        <Card title="Metadata" defaultOpen={false}>
           {extra.map(([k, v]) => (
             <div key={k} className="fvd-meta-row">
               <span className="k">{k}</span>

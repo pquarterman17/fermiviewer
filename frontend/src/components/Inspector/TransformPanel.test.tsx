@@ -39,7 +39,7 @@ describe("TransformPanel", () => {
   it("renders the three tool groups", () => {
     render(<TransformPanel />);
     expect(screen.getByText("Enhance")).toBeInTheDocument();
-    expect(screen.getByText("Geometry")).toBeInTheDocument();
+    expect(screen.getByText("Transform Image")).toBeInTheDocument();
     expect(screen.getByText("Segment")).toBeInTheDocument();
   });
 
