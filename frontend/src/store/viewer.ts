@@ -607,10 +607,19 @@ export const useViewer = create<ViewerState>((set, get) => ({
       selected: activeId ? [activeId] : [],
       compareSet: null,
       selectedMeasure: null,
+      selectedMulti: [],
       views: (cs.views as Record<string, View>) ?? {},
       display: (cs.display as Record<string, Display>) ?? {},
       measures: (cs.measures as Record<string, Measure[]>) ?? {},
       overlay: (cs.overlay as OverlayStyle) ?? get().overlay,
+      // a load is a fresh session: drop undo history + per-image state that
+      // isn't part of the saved payload so it doesn't bleed across loads
+      undoStack: [],
+      redoStack: [],
+      scaleBars: {},
+      tilts: {},
+      stackFrames: {},
+      roiStats: {},
       status: `loaded ${r.images.length} images`,
     });
   },
@@ -676,11 +685,28 @@ export const useViewer = create<ViewerState>((set, get) => ({
       const images = { ...s.images };
       delete images[id];
       const measures = { ...s.measures };
+      const closed = measures[id] ?? [];
       delete measures[id];
       const order = s.order.filter((o) => o !== id);
       const activeId =
         s.activeId === id ? (order[order.length - 1] ?? null) : s.activeId;
       const compareSet = s.compareSet?.filter((c) => c !== id) ?? null;
+      // drop the closed image's per-image state so these maps don't grow
+      // unbounded across an open/close-heavy session (and evict its
+      // persisted view from localStorage)
+      const views = { ...s.views };
+      delete views[id];
+      const display = { ...s.display };
+      delete display[id];
+      const scaleBars = { ...s.scaleBars };
+      delete scaleBars[id];
+      const tilts = { ...s.tilts };
+      delete tilts[id];
+      const stackFrames = { ...s.stackFrames };
+      delete stackFrames[id];
+      const roiStats = { ...s.roiStats };
+      for (const m of closed) delete roiStats[m.id];
+      localStorage.setItem(VIEWS_KEY, JSON.stringify(views));
       return {
         images,
         order,
@@ -688,6 +714,12 @@ export const useViewer = create<ViewerState>((set, get) => ({
         activeId,
         selected: s.selected.filter((x) => x !== id),
         compareSet: compareSet && compareSet.length >= 2 ? compareSet : null,
+        views,
+        display,
+        scaleBars,
+        tilts,
+        stackFrames,
+        roiStats,
       };
     });
   },

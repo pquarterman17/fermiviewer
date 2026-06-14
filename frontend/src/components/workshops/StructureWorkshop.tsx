@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import uPlot from "uplot";
+import { useShallow } from "zustand/react/shallow";
 
 import {
   analyzeAtoms,
@@ -435,8 +436,13 @@ function GrainsMode({ id }: { id: string }) {
 function TemplateMode({ id }: { id: string }) {
   const setStatus = useViewer((s) => s.setStatus);
   const meta = useViewer((s) => s.images[id] ?? null);
-  const rois = useViewer((s) =>
-    (s.measures[id] ?? NO_MEASURES).filter((m) => m.kind === "roi"),
+  // useShallow: the .filter() returns a fresh array each call; without a
+  // shallow compare this selector re-renders every store tick (the
+  // documented zustand black-screen class).
+  const rois = useViewer(
+    useShallow((s) =>
+      (s.measures[id] ?? NO_MEASURES).filter((m) => m.kind === "roi"),
+    ),
   );
   const [thresh, setThresh] = useState("0.7");
   const [matches, setMatches] = useState<[number, number][]>([]);

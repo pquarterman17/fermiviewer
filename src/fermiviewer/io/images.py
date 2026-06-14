@@ -58,7 +58,16 @@ def load_image(path: str | Path) -> DataStruct:
     path = Path(path)
     try:
         with Image.open(path) as im:
-            arr = np.asarray(im)
+            # palette ("P"), CMYK, YCbCr, LA/PA etc. don't map to meaningful
+            # pixel values via np.asarray (a "P" GIF yields palette indices,
+            # not colours) — normalise to RGB first; "1" bitmaps to L (0/255).
+            # L/I/F and RGB(A) are already intensity/colour, leave them.
+            if im.mode == "1":
+                arr = np.asarray(im.convert("L"))
+            elif im.mode not in ("L", "I", "F", "RGB", "RGBA"):
+                arr = np.asarray(im.convert("RGB"))
+            else:
+                arr = np.asarray(im)
     except UnidentifiedImageError as e:
         raise ValueError(f"unreadable image file: {path}") from e
     if arr.ndim == 3 and arr.shape[2] == 4:  # drop alpha

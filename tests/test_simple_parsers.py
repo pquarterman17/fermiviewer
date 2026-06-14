@@ -96,3 +96,50 @@ def test_empty_file_guards(tmp_path) -> None:
         f.write_bytes(b"")
         with pytest.raises(ValueError):
             load_auto(f)
+
+
+def test_bcf_instructive_corrupt_size_does_not_crash() -> None:
+    # A corrupt/desynced instructive stream can carry a gain width other
+    # than the BCF-defined 1/2/4/8. The decoder must skip it, not crash on
+    # an invalid numpy dtype like "<u3" (esz = size_p // 2 = 3 for size_p=6).
+    # Verified against rsciio on 4 real BCF files that valid data only ever
+    # uses size_p in {1,2,4,8}; this exercises the corrupt-input guard.
+    from fermiviewer.io.bcf_cube import decode_cube
+
+    buf = bytearray(0x1A0)
+    buf[0:4] = (1).to_bytes(4, "little")  # height
+    buf[4:8] = (1).to_bytes(4, "little")  # width
+    buf += (1).to_bytes(4, "little")  # line 0: one pixel
+    ph = bytearray(22)  # pixel header
+    ph[4:6] = (4).to_bytes(2, "little")  # chan1
+    ph[12:14] = (2).to_bytes(2, "little")  # flag = 2 -> instructive
+    ph[18:22] = (12).to_bytes(4, "little")  # data_size2
+    buf += ph
+    instr = bytearray(12)
+    instr[0] = 6  # size_p NOT in {1,2,4,8} -> pre-fix crashed on view("<u3")
+    instr[1] = 4  # channels
+    buf += instr
+
+    cube = decode_cube(bytes(buf), max_chan=8)
+    assert cube is not None
+    assert cube.shape == (1, 1, 8)
+    assert int(cube.sum()) == 0  # corrupt block skipped, no crash/hang
+
+
+def test_palette_image_uses_colors_not_indices(tmp_path) -> None:
+    # A palette ("P"-mode) PNG/GIF stores LUT indices; np.asarray yields
+    # those indices, not colours, so the parser must convert to RGB first.
+    from PIL import Image
+
+    im = Image.new("P", (4, 6))
+    pal = [0] * 768
+    pal[3:6] = [255, 0, 0]  # palette index 1 -> pure red
+    im.putpalette(pal)
+    im.putdata([1] * 24)  # every pixel = index 1
+    f = tmp_path / "p.png"
+    im.save(f)
+
+    ds = load_image(f)
+    assert ds.metadata["was_rgb"] is True
+    # channel mean of (255, 0, 0) = 85 — NOT the raw palette index 1
+    np.testing.assert_allclose(ds.data, 85.0)

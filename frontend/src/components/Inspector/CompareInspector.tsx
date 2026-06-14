@@ -3,6 +3,10 @@
 
 import { useViewer, type CompareMode } from "../../store/viewer";
 
+// stable empty fallback — a fresh [] in the selector breaks referential
+// equality and re-renders every store tick (zustand snapshot rule)
+const EMPTY_IDS: string[] = [];
+
 const MODES: { key: CompareMode; label: string }[] = [
   { key: "split", label: "Split" },
   { key: "flicker", label: "Flicker" },
@@ -10,7 +14,7 @@ const MODES: { key: CompareMode; label: string }[] = [
 ];
 
 export default function CompareInspector() {
-  const compareSet = useViewer((s) => s.compareSet) ?? [];
+  const compareSet = useViewer((s) => s.compareSet ?? EMPTY_IDS);
   const compareMode = useViewer((s) => s.compareMode);
   const setCompareMode = useViewer((s) => s.setCompareMode);
   const exitCompare = useViewer((s) => s.exitCompare);

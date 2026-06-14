@@ -281,7 +281,9 @@ def _read_pixels(buf: bytes, rec: Any, n_px: int, dtype: str, le: bool) -> np.nd
     bo = "<" if le else ">"
     if isinstance(rec, _OffsetRec):
         avail = (len(buf) - rec.offset) // np.dtype(dtype).itemsize
-        n_read = min(n_px, rec.n, avail)
+        # guard against a desynced/truncated tag putting offset past EOF
+        # (negative avail → confusing np.frombuffer error); mirrors mrc/ser
+        n_read = min(n_px, rec.n, max(avail, 0))
         px = np.frombuffer(buf, dtype=f"{bo}{dtype}", count=n_read, offset=rec.offset)
     elif isinstance(rec, np.ndarray):
         px = rec.astype(dtype)

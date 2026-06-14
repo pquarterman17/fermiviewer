@@ -1,10 +1,17 @@
 // viewer store — ingest seeding (#34 tilt), measures + undo wiring,
 // per-image slices. Pure state tests: no network actions are called.
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ImageMeta } from "../lib/api";
 import { useViewer } from "./viewer";
+
+// closeImage awaits a network DELETE — stub it so the cleanup logic runs
+// without a server (every other store action exercised here is pure state).
+vi.mock("../lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/api")>();
+  return { ...actual, closeImage: vi.fn(() => Promise.resolve()) };
+});
 
 // snapshot at import time = pristine state incl. actions; setState
 // with replace=true restores it between tests
@@ -158,5 +165,38 @@ describe("stack frames (#40)", () => {
   it("tracks the per-image frame index", () => {
     useViewer.getState().setStackFrame("cube", 7);
     expect(useViewer.getState().stackFrames["cube"]).toBe(7);
+  });
+});
+
+describe("closeImage cleanup", () => {
+  it("drops every per-image slice for the closed image (no leaks)", async () => {
+    const s = useViewer.getState();
+    s.ingest([meta("a"), meta("b")]);
+    s.setTilt("a", { angle: 30, axis: "Y", geometry: "cross-section" });
+    s.setScaleBar("a", { lengthPhys: 10 });
+    s.setStackFrame("a", 3);
+    s.setDisplay("a", { gamma: 2 });
+    s.setView("a", { z: 2, px: 0.5, py: 0.5 });
+    const rid = s.addMeasure("a", {
+      kind: "roi",
+      pts: [
+        { x: 0, y: 0 },
+        { x: 1, y: 1 },
+      ],
+    });
+    s.setRoiStats(rid, { mean: 1, std: 1, min: 0, max: 2, area: 4, unit: "nm" });
+
+    await useViewer.getState().closeImage("a");
+
+    const t = useViewer.getState();
+    expect(t.images["a"]).toBeUndefined();
+    expect(t.measures["a"]).toBeUndefined();
+    expect(t.tilts["a"]).toBeUndefined();
+    expect(t.scaleBars["a"]).toBeUndefined();
+    expect(t.stackFrames["a"]).toBeUndefined();
+    expect(t.display["a"]).toBeUndefined();
+    expect(t.views["a"]).toBeUndefined();
+    expect(t.roiStats[rid]).toBeUndefined();
+    expect(t.images["b"]).toBeDefined(); // sibling untouched
   });
 });
