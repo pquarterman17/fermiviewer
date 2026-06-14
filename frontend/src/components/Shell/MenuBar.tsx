@@ -184,19 +184,6 @@ export default function MenuBar({
     e.target.value = ""; // allow re-picking the same file
   };
 
-  // secondary: server-side path entry (large files, no upload copy)
-  const openByPath = () => {
-    const raw = window.prompt("Open server-side path(s) — separate with ;");
-    if (!raw) return;
-    const paths = raw
-      .split(";")
-      .map((p) => p.trim())
-      .filter(Boolean);
-    if (paths.length) {
-      store.openPaths(paths).catch((e: Error) => store.setStatus(e.message));
-    }
-  };
-
   // run an analysis returning derived image(s); ingest (undoable) + report
   const derived = (
     label: string,
@@ -314,7 +301,6 @@ export default function MenuBar({
   const menus: Record<string, Entry[]> = {
     File: [
       { label: "Open…", shortcut: "⌘O", action: openFiles },
-      { label: "Open by Path…", action: openByPath },
       ...recentPaths().map((p) => ({
         label: `↻ ${p.split(/[\\/]/).pop()}`,
         action: () =>
