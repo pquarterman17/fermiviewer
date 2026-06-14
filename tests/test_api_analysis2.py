@@ -235,7 +235,7 @@ def test_grains_endpoint(client, tmp_path) -> None:
     assert body["n_grains"] >= 2
     assert body["boundary_length_px"] > 0
     # modern metrics are present on every method's response
-    assert body["boundary_length_crofton_px"] > 0
+    assert body["boundary_network_px"] > 0
     assert "n_triple_junctions" in body
     assert len(body["eccentricity"]) == body["n_grains"]
     assert client.get(
@@ -257,7 +257,7 @@ def test_grains_gradient_method(client, tmp_path) -> None:
     body = rg.json()
     assert body["method"] == "gradient"
     assert body["n_grains"] == 3
-    assert body["boundary_length_crofton_px"] > 0
+    assert body["boundary_network_px"] > 0
 
 
 def test_grains_edit_merge(client, tmp_path) -> None:

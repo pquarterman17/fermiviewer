@@ -2,7 +2,7 @@
 // pre-filled per image from the filename pattern / saved sidecar, editable
 // here, and persisted to a <name>.fvmeta.yaml sidecar beside the file.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   batchAutofill,
@@ -23,19 +23,27 @@ export default function CustomMetaCard() {
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [reload, setReload] = useState(0);
+  const prevActive = useRef<string | null>(null);
 
   useEffect(() => {
     if (!activeId) {
       setInfo(null);
       return;
     }
+    const imageChanged = prevActive.current !== activeId;
+    prevActive.current = activeId;
     let alive = true;
     getUserMeta(activeId)
       .then((u) => {
         if (!alive) return;
         setInfo(u);
-        setValues(u.values);
-        setDirty(false);
+        // refresh field list / sidecar status always, but don't clobber
+        // unsaved edits on the SAME image (e.g. a batch refresh fired while
+        // the user was typing). On an image switch, always load fresh.
+        if (imageChanged || !dirty) {
+          setValues(u.values);
+          setDirty(false);
+        }
       })
       .catch(() => {
         if (alive) setInfo(null);

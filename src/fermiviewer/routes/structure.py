@@ -21,6 +21,7 @@ from fermiviewer.calc.grains import (
     GrainSegmentation,
     WatershedSegmentation,
     astm_grain_size_number,
+    enforce_connected_grains,
     grain_stats,
     segment_auto,
     segment_watershed,
@@ -177,12 +178,11 @@ def _grains_payload(
                 "grain_method": method,
             },
         ),
-        # legacy pixel-count length kept; crofton is the true Euclidean length
+        # legacy pixel-count kept; boundary_network is the true (border-
+        # excluding) inter-grain network length
         "boundary_length_px": stats.boundary_length_px,
-        "boundary_length_crofton_px": stats.boundary_length_crofton_px,
-        "boundary_length_calibrated": _nan_none(
-            stats.boundary_length_crofton_calibrated
-        ),
+        "boundary_network_px": stats.boundary_network_px,
+        "boundary_length_calibrated": _nan_none(stats.boundary_network_calibrated),
         "n_boundary_segments": stats.n_boundary_segments,
         "n_triple_junctions": stats.n_triple_junctions,
         "mean_diameter_px": (
@@ -265,6 +265,9 @@ def grains_edit(req: GrainEditRequest) -> dict:
         labels = split_grain(labels, raster, gid, granularity=req.granularity)
         method = f"{base}+split"
 
+    # guarantee every grain is one connected region (a merge of non-adjacent
+    # grains, or a split, must not leave a label spanning disconnected pieces)
+    labels = enforce_connected_grains(labels)
     return _grains_payload(labels, method, source_ds, raster, source_id)
 
 
@@ -274,7 +277,10 @@ def analyze_grains(req: GrainRequest) -> dict:
         # validate the image id up front so the 404 is synchronous
         _raster(req.image_id)
         return {"job_id": jobs.submit(lambda p: _run_grains(req, p))}
-    return _run_grains(req)
+    try:
+        return _run_grains(req)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
 
 
 # ── atom columns ─────────────────────────────────────────────────────

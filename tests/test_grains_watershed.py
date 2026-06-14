@@ -14,9 +14,12 @@ from skimage.filters import gaussian
 
 from fermiviewer.calc.grains import (
     astm_grain_size_number,
+    enforce_connected_grains,
     grain_stats,
     segment_watershed,
+    split_grain,
 )
+from fermiviewer.calc.segment import label_components
 
 pytestmark = pytest.mark.imaging
 
@@ -88,6 +91,56 @@ def test_triple_junction_count() -> None:
     gs = grain_stats(labels, labels.astype(np.float64))
     assert gs.n_triple_junctions == 1
     assert gs.n_grains == 4
+
+
+def test_boundary_network_length() -> None:
+    # three equal strips tiling a 10×30 field → 2 internal boundaries × 10
+    labels = np.zeros((10, 30), dtype=np.int64)
+    labels[:, :10] = 1
+    labels[:, 10:20] = 2
+    labels[:, 20:] = 3
+    gs = grain_stats(labels, np.zeros((10, 30)))
+    assert gs.boundary_network_px == 20.0  # not the inflated perim-sum/2 (~55)
+    # a single grain has no shared boundaries
+    one = np.ones((10, 10), dtype=np.int64)
+    assert grain_stats(one, np.zeros((10, 10))).boundary_network_px == 0.0
+
+
+def test_split_grain_labels_stay_connected() -> None:
+    # a field with an isolated tiny basin the old code would orphan into a
+    # second, disconnected piece sharing grain_id
+    img = np.ones((50, 50)) * 0.5
+    img[5:20, 5:20] = 0.01
+    img[25, 25] = 0.005
+    img[5:20, 30:45] = 0.01
+    img[30:45, 5:45] = 0.01
+    img[21:24, :] = 1.0
+    labels = np.zeros((50, 50), dtype=np.int64)
+    labels[1:49, 1:49] = 1
+    out = split_grain(labels, img, grain_id=1, granularity=1e-7)
+    for v in np.unique(out):
+        if v > 0:
+            _, ncc = label_components(out == v, 8)
+            assert ncc == 1, f"label {v} disconnected ({ncc} components)"
+
+
+def test_enforce_connected_splits_disconnected_label() -> None:
+    # mimics merging two non-adjacent grains into one label
+    labels = np.zeros((10, 30), dtype=np.int64)
+    labels[:, :10] = 1
+    labels[:, 20:] = 1  # same id, spatially separate
+    labels[:, 10:20] = 2
+    out = enforce_connected_grains(labels)
+    assert out[0, 0] != out[0, 25]  # the two pieces become distinct grains
+    for v in np.unique(out):
+        if v > 0:
+            _, ncc = label_components(out == v, 8)
+            assert ncc == 1
+
+
+def test_segment_watershed_rejects_tiny_image() -> None:
+    with pytest.raises(ValueError):
+        segment_watershed(np.array([[0.5, 0.6, 0.7]]), method="orientation")
 
 
 def test_astm_grain_size_number() -> None:

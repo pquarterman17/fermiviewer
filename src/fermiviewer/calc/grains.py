@@ -26,6 +26,7 @@ __all__ = [
     "GrainStats",
     "WatershedSegmentation",
     "astm_grain_size_number",
+    "enforce_connected_grains",
     "extract_grain_features",
     "grain_stats",
     "segment_auto",
@@ -225,6 +226,8 @@ def segment_watershed(
     merges two superpixels) — both higher → fewer, larger grains.
     """
     d = _normalize01(img)
+    if d.shape[0] < 2 or d.shape[1] < 2:
+        raise ValueError("image too small to segment (need at least 2×2)")
     if progress:
         progress(0.1, f"segmenting ({method})")
 
@@ -271,12 +274,13 @@ def split_grain(
     img: np.ndarray,
     grain_id: int,
     granularity: float = 0.03,
-    min_sub_area: int = 10,
 ) -> np.ndarray:
     """Split one grain into sub-grains by re-running the gradient watershed
-    restricted to that grain's mask (interactive over-segment-fix). Returns
-    a new label image; the first piece keeps `grain_id`, the rest get fresh
-    ids. A no-op (returns a copy) if the grain has < 2 internal basins."""
+    restricted to that grain's mask (interactive over-segment fix). The
+    first basin keeps `grain_id`, the rest get fresh ids. EVERY mask pixel
+    is reassigned (watershed fills the whole mask), so no pixel is left at
+    the old id — the result never has a disconnected label. A no-op
+    (returns a copy) if the grain has < 2 internal basins."""
     lab = np.asarray(labels, dtype=np.int64).copy()
     mask = lab == grain_id
     if not mask.any():
@@ -288,18 +292,26 @@ def split_grain(
         return lab  # only one basin → nothing to split
     sub = np.asarray(segmentation.watershed(boundary, markers, mask=mask))
     next_id = int(lab.max()) + 1
-    first = True
     for s in range(1, int(sub.max()) + 1):
         comp = sub == s
-        if comp.sum() < min_sub_area:
+        if not comp.any():
             continue
-        if first:
-            lab[comp] = grain_id
-            first = False
-        else:
-            lab[comp] = next_id
+        lab[comp] = grain_id if s == 1 else next_id
+        if s != 1:
             next_id += 1
     return lab
+
+
+def enforce_connected_grains(
+    labels: np.ndarray, min_area: int = 1
+) -> np.ndarray:
+    """Split each label into its connected components and renumber 1..N, so
+    every grain is a single connected region — the invariant region_stats /
+    grain_stats assume. Used after an interactive merge/split, where merging
+    two non-adjacent grains or a split's leftover pixels could otherwise
+    leave one label spanning disconnected pieces (→ phantom stats)."""
+    out, _ = _relabel_connected(labels, min_area)
+    return out
 
 
 def astm_grain_size_number(mean_diameter: float, unit: str) -> float:
@@ -348,8 +360,11 @@ class GrainStats:
     area_calibrated: np.ndarray
     diameter_calibrated: np.ndarray
     # ── modern metrics (additive) ──
-    boundary_length_crofton_px: float
-    boundary_length_crofton_calibrated: float
+    # true grain-boundary NETWORK length = count of unit edges between
+    # adjacent grains (border-excluding); the legacy boundary_length_px
+    # above counts boundary PIXELS (both sides), so it is ~2× this.
+    boundary_network_px: float
+    boundary_network_calibrated: float
     perimeter_crofton_px: np.ndarray
     eccentricity: np.ndarray
     orientation_rad: np.ndarray
@@ -379,6 +394,10 @@ def grain_stats(
 
     _, n_segments = label_components(boundary, connectivity)
     length_px = int(boundary.sum())
+    # grain-boundary NETWORK length: one unit per inter-grain edge (each
+    # boundary counted once, image border excluded) — the correct length,
+    # unlike summing per-grain perimeters which double-counts + adds borders
+    network_px = float(int(dh.sum()) + int(dv.sum()))
     has_cal = np.isfinite(pixel_size) and pixel_size > 0
 
     # ── modern per-grain metrics (additive; legacy fields above are kept
@@ -397,10 +416,6 @@ def grain_stats(
         solidity = np.asarray(rpt["solidity"], dtype=np.float64)
     else:
         perim = ecc = orient = solidity = np.array([], dtype=np.float64)
-
-    # grain-boundary network length: each interior edge is shared by two
-    # grains, so the network length is half the summed grain perimeters
-    crofton_total = float(perim.sum() / 2.0)
 
     return GrainStats(
         n_grains=n,
@@ -422,9 +437,9 @@ def grain_stats(
         diameter_calibrated=np.array(
             [g.diameter_calibrated for g in grains], dtype=np.float64
         ),
-        boundary_length_crofton_px=crofton_total,
-        boundary_length_crofton_calibrated=(
-            crofton_total * pixel_size if has_cal else float("nan")
+        boundary_network_px=network_px,
+        boundary_network_calibrated=(
+            network_px * pixel_size if has_cal else float("nan")
         ),
         perimeter_crofton_px=perim,
         eccentricity=ecc,

@@ -87,10 +87,12 @@ class BatchAutofillRequest(BaseModel):
 
 @router.post("/usermeta/batch-autofill")
 def batch_autofill(req: BatchAutofillRequest) -> dict:
-    """Apply the filename pattern to many images at once: fill the
-    pattern-derived fields and write each sidecar, preserving any other
-    fields already saved there. Unknown ids and non-matching names are
-    skipped (reported as matched: false)."""
+    """Apply the filename pattern to many images at once. For each file whose
+    name matches, resolve its fields with the canonical precedence
+    (filename → sidecar → session, so a manually-corrected sidecar value is
+    preserved, not clobbered) and persist the non-empty result to the image
+    + its sidecar. Only schema fields are written (no ghost fields). Unknown
+    ids are skipped (absent from results)."""
     schema = usermeta.load_schema()
     field_names = {f.name for f in schema.fields}
     results: list[dict[str, object]] = []
@@ -101,31 +103,30 @@ def batch_autofill(req: BatchAutofillRequest) -> dict:
             continue
         name = store.name(img_id)
         path = store.source_path(img_id)
-        parsed = {
-            k: v
-            for k, v in usermeta.parse_filename(name, schema.patterns).items()
-            if k in field_names
-        }
-        if not parsed:
+        matched = any(
+            k in field_names
+            for k in usermeta.parse_filename(name, schema.patterns)
+        )
+        if not matched:
             results.append(
                 {"id": img_id, "name": name, "matched": False,
                  "filled": 0, "wrote_sidecar": False}
             )
             continue
-        merged = usermeta.read_sidecar(path) if path else {}
-        merged.update(parsed)
-        for k, v in merged.items():
+        resolved = usermeta.resolve_values(schema, name, path, ds.metadata)
+        filled = {k: v for k, v in resolved.items() if v != ""}
+        for k, v in filled.items():
             ds.metadata[k] = v
         wrote = False
         if path:
             try:
-                usermeta.write_sidecar(path, merged)
+                usermeta.write_sidecar(path, filled)
                 wrote = True
             except OSError:
                 wrote = False
         results.append(
             {"id": img_id, "name": name, "matched": True,
-             "filled": len(parsed), "wrote_sidecar": wrote}
+             "filled": len(filled), "wrote_sidecar": wrote}
         )
     return {
         "results": results,

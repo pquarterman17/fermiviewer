@@ -132,12 +132,23 @@ def load_schema() -> MetaSchema:
                 )
             )
 
+    # drop duplicate field names (first wins) so the UI never doubles a row
+    seen: set[str] = set()
+    deduped: list[MetaField] = []
+    for f in fields:
+        if f.name not in seen:
+            seen.add(f.name)
+            deduped.append(f)
+    fields = deduped
+
     patterns: list[str] = []
     if isinstance(raw.get("pattern"), str):
         patterns.append(raw["pattern"])
-    for p in raw.get("patterns") or []:
-        if isinstance(p, str):
-            patterns.append(p)
+    raw_patterns = raw.get("patterns")
+    if isinstance(raw_patterns, str):
+        patterns.append(raw_patterns)  # a bare string, not a list (easy slip)
+    else:
+        patterns.extend(p for p in raw_patterns or [] if isinstance(p, str))
 
     return MetaSchema(fields=tuple(fields), patterns=tuple(patterns), path=str(path))
 
@@ -204,9 +215,10 @@ def read_sidecar(image_path: str) -> dict[str, str]:
         d = yaml.safe_load(sp.read_text(encoding="utf-8")) or {}
     except (OSError, yaml.YAMLError):
         return {}
-    return (
-        {str(k): str(v) for k, v in d.items()} if isinstance(d, dict) else {}
-    )
+    if not isinstance(d, dict):
+        return {}
+    # a YAML `null` value means "cleared" → empty string, not the text "None"
+    return {str(k): ("" if v is None else str(v)) for k, v in d.items()}
 
 
 def write_sidecar(image_path: str, values: dict[str, str]) -> None:
@@ -233,7 +245,9 @@ def resolve_values(
     if source_path:
         vals.update(read_sidecar(source_path))
     for f in schema.fields:
-        cur = ds_metadata.get(f.name)
-        if cur not in (None, ""):
-            vals[f.name] = str(cur)
+        # a present key (even "" / None) is an explicit session edit and wins
+        # over filename/sidecar — so a user can clear a field; absent = unset
+        if f.name in ds_metadata:
+            cur = ds_metadata[f.name]
+            vals[f.name] = "" if cur is None else str(cur)
     return {f.name: vals.get(f.name, "") for f in schema.fields}

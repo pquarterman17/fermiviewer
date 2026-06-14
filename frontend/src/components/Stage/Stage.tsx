@@ -500,12 +500,15 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
 
   const runGrainEdit = (op: "merge" | "split", points: [number, number][]) => {
     if (!activeId) return;
+    const startId = activeId;
     setStatus(op === "merge" ? "merging grains…" : "splitting grain…");
-    grainsEdit(activeId, op, points)
+    grainsEdit(startId, op, points)
       .then((r) => {
         const s = useViewer.getState();
         s.ingestDerived([r.labels]);
-        s.setActive(r.labels.id);
+        // only swap the view if the user is still on the map they edited —
+        // a slow edit must not yank them back after they navigate away
+        if (s.activeId === startId) s.setActive(r.labels.id);
         setStatus(
           `${r.n_grains} grains` +
             (r.astm_grain_size != null
@@ -517,16 +520,23 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   };
 
   const handleGrainClick = (ip: Pt) => {
+    if (!imgSize) return;
+    // snap to a valid 0-based pixel index; a click at the exact w/h edge
+    // would otherwise be out of bounds server-side (→ 422 on a real click)
+    const cp = {
+      x: Math.min(imgSize.w - 1, Math.max(0, Math.floor(ip.x))),
+      y: Math.min(imgSize.h - 1, Math.max(0, Math.floor(ip.y))),
+    };
     if (grainMode === "split") {
-      runGrainEdit("split", [[ip.x, ip.y]]);
+      runGrainEdit("split", [[cp.x, cp.y]]);
     } else if (grainPending) {
       runGrainEdit("merge", [
         [grainPending.x, grainPending.y],
-        [ip.x, ip.y],
+        [cp.x, cp.y],
       ]);
       setGrainPending(null);
     } else {
-      setGrainPending(ip);
+      setGrainPending(cp);
     }
   };
 
@@ -1018,10 +1028,22 @@ function ScaleBarOverlay({
   const visR = Math.min(vp.w, Math.max(tl.x, br.x));
   const visT = Math.max(0, Math.min(tl.y, br.y));
   const visB = Math.min(vp.h, Math.max(tl.y, br.y));
+  // when the image is panned fully off-screen the visible rect collapses
+  // (visR ≤ visL); fall back to the viewport corner instead of (0,0)
+  const visW = Math.max(0, visR - visL);
+  const visH = Math.max(0, visB - visT);
   const leftPx =
-    sbState?.x != null ? sbState.x * vp.w : visL + 0.02 * (visR - visL);
+    sbState?.x != null
+      ? sbState.x * vp.w
+      : visW > 0
+        ? visL + 0.02 * visW
+        : 0.02 * vp.w;
   const topPx =
-    sbState?.y != null ? sbState.y * vp.h : visT + 0.92 * (visB - visT);
+    sbState?.y != null
+      ? sbState.y * vp.h
+      : visH > 0
+        ? visT + 0.92 * visH
+        : 0.92 * vp.h;
 
   // size
   const autoPhys = niceScaleLength((120 * pixelSize) / z);

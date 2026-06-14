@@ -162,6 +162,61 @@ def test_usermeta_unknown_id(cfg, client) -> None:
     assert client.get("/api/image/nope/usermeta").status_code == 404
 
 
+def test_patterns_as_bare_string(tmp_path, monkeypatch) -> None:
+    # `patterns:` given a string (not a list) must not iterate char-by-char
+    p = tmp_path / "metadata.yaml"
+    p.write_text(
+        'fields: [Design, Lot]\npatterns: "D{Design}_L{Lot}"\n', encoding="utf-8"
+    )
+    monkeypatch.setenv("FV_METADATA_CONFIG", str(p))
+    s = usermeta.load_schema()
+    assert s.patterns == ("D{Design}_L{Lot}",)
+    assert usermeta.parse_filename("D1_L2.dm4", s.patterns) == {
+        "Design": "1", "Lot": "2",
+    }
+
+
+def test_duplicate_fields_deduped(tmp_path, monkeypatch) -> None:
+    p = tmp_path / "metadata.yaml"
+    p.write_text("fields: [Design, Design, Lot]\n", encoding="utf-8")
+    monkeypatch.setenv("FV_METADATA_CONFIG", str(p))
+    assert [f.name for f in usermeta.load_schema().fields] == ["Design", "Lot"]
+
+
+def test_sidecar_null_is_empty(tmp_path) -> None:
+    img = tmp_path / "x.dm4"
+    img.write_bytes(b"")
+    (tmp_path / "x.dm4.fvmeta.yaml").write_text("Lot: null\n", encoding="utf-8")
+    assert usermeta.read_sidecar(str(img)) == {"Lot": ""}
+
+
+def test_resolve_session_can_clear(cfg) -> None:
+    # no source_path (upload/derived); an explicit empty session value clears
+    schema = usermeta.load_schema()
+    vals = usermeta.resolve_values(schema, "D1_L2_W3_R4.dm4", None, {"Lot": ""})
+    assert vals["Lot"] == ""   # explicit clear wins over filename "2"
+    assert vals["Design"] == "1"
+
+
+def test_resolve_session_keeps_zero(cfg) -> None:
+    # 0 / False must not be treated as "unset"
+    schema = usermeta.load_schema()
+    vals = usermeta.resolve_values(schema, "D1_L2_W3_R4.dm4", None, {"Wafer": 0})
+    assert vals["Wafer"] == "0"
+
+
+def test_batch_preserves_sidecar_correction(cfg, client, tmp_path) -> None:
+    img_id = _open(client, tmp_path, "D1234_L44576_W1234_R13.dm4")
+    # user fixed a typo in the sidecar
+    usermeta.write_sidecar(
+        str(tmp_path / "D1234_L44576_W1234_R13.dm4"), {"Lot": "44577"}
+    )
+    client.post("/api/usermeta/batch-autofill", json={"image_ids": [img_id]})
+    got = client.get(f"/api/image/{img_id}/usermeta").json()
+    assert got["values"]["Lot"] == "44577"   # NOT clobbered by filename 44576
+    assert got["values"]["Design"] == "1234"  # filename still fills the rest
+
+
 def test_batch_autofill(cfg, client, tmp_path) -> None:
     match_id = _open(client, tmp_path, "D1234_L44576_W1234_R13.dm4")
     nomatch_id = _open(client, tmp_path, "random.dm4")

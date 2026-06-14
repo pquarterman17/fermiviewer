@@ -690,8 +690,8 @@ export interface GrainResult {
   labels: ImageMeta;
   mean_diameter_px: number;
   boundary_length_px: number;
-  /** true Euclidean boundary length (Crofton), not the legacy pixel count */
-  boundary_length_crofton_px: number;
+  /** true grain-boundary network length (border-excluding inter-grain edges) */
+  boundary_network_px: number;
   boundary_length_calibrated: number | null;
   n_boundary_segments: number;
   n_triple_junctions: number;
