@@ -71,7 +71,7 @@ export default function ColorbarChip() {
   const posPct = (v: number) => ((hi - v) / (hi - lo)) * 100;
 
   return (
-    <div className={`fvd-glass fvd-colorbar side-${side}`}>
+    <div className={`fvd-colorbar side-${side}`}>
       {unit && <span className="u">{unit}</span>}
       <div className="body">
         <canvas className="bar" ref={canvasRef} width={W} height={LUT_H} />

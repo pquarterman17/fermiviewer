@@ -10,6 +10,7 @@ import Filmstrip from "./components/Library/Filmstrip";
 import MenuBar from "./components/Shell/MenuBar";
 import StatusBar from "./components/Shell/StatusBar";
 import TitleBar from "./components/Shell/TitleBar";
+import ColorbarChip from "./components/Stage/ColorbarChip";
 import CompareStage from "./components/Stage/CompareStage";
 import Stage, { type StageHandle } from "./components/Stage/Stage";
 import CommandPalette, {
@@ -59,6 +60,8 @@ export default function App() {
   const stageRef = useRef<StageHandle>(null);
   const leftCol = useViewer((s) => s.leftCol);
   const rightCol = useViewer((s) => s.rightCol);
+  const colorbar = useViewer((s) => s.colorbar);
+  const colorbarSide = useViewer((s) => s.colorbarSide);
   const comparing = useViewer((s) => s.compareSet !== null);
   const tools = useViewer((s) => s.tools);
 
@@ -498,7 +501,11 @@ export default function App() {
       />
       <div className={mainCls}>
         <Filmstrip />
-        {comparing ? <CompareStage /> : <Stage ref={stageRef} />}
+        <div className="fvd-stage-cell">
+          {colorbar && colorbarSide === "left" && <ColorbarChip />}
+          {comparing ? <CompareStage /> : <Stage ref={stageRef} />}
+          {colorbar && colorbarSide === "right" && <ColorbarChip />}
+        </div>
         {comparing ? <CompareInspector /> : <Inspector />}
       </div>
       <StatusBar />
