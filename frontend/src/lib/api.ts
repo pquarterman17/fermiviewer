@@ -737,6 +737,38 @@ export function grainsEdit(
   });
 }
 
+// ── user-configurable metadata (custom fields + filename auto-fill) ──────
+
+export interface MetaField {
+  name: string;
+  type: string;
+  options: string[];
+}
+
+export interface UserMeta {
+  fields: MetaField[];
+  patterns: string[];
+  config_path: string;
+  values: Record<string, string>;
+  source_path: string | null;
+  can_write_sidecar: boolean;
+  has_sidecar: boolean;
+}
+
+/** Resolved custom-metadata fields + values for one image (filename →
+ *  sidecar → session), plus where they can be persisted. */
+export async function getUserMeta(id: string): Promise<UserMeta> {
+  return json(await fetch(`/api/image/${id}/usermeta`));
+}
+
+/** Persist custom-metadata values to the image + its sidecar (if on disk). */
+export function saveUserMeta(
+  id: string,
+  values: Record<string, string>,
+): Promise<{ values: Record<string, string>; wrote_sidecar: boolean }> {
+  return post(`/api/image/${id}/usermeta`, { values });
+}
+
 export function analyzeRoughness(
   id: string,
 ): Promise<Record<string, number | string>> {

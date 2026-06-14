@@ -10,6 +10,7 @@ import EdsWorkshop from "../workshops/EdsWorkshop";
 import EelsWorkshop from "../workshops/EelsWorkshop";
 import AdjustPanel from "./AdjustPanel";
 import Card from "./Card";
+import CustomMetaCard from "./CustomMetaCard";
 import ExportCard from "./ExportCard";
 import MeasurePanel from "./MeasurePanel";
 import ScaleBarCard from "./ScaleBarCard";
@@ -158,6 +159,7 @@ export default function Inspector() {
       {tab === "Image" && meta.kind !== "spectrum" && <AdjustPanel />}
       {tab === "Image" && <ScaleBarCard />}
       {tab === "Image" && meta.kind !== "spectrum" && <ExportCard />}
+      {tab === "Image" && <CustomMetaCard />}
       {tab === "Image" && (
         <Card title="Image" defaultOpen={false}>
           {rows.map(([k, v]) => (

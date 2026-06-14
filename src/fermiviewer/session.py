@@ -28,6 +28,9 @@ class SessionStore:
     def __init__(self) -> None:
         self._images: dict[str, DataStruct] = {}
         self._names: dict[str, str] = {}
+        # full on-disk source path, for images opened from disk (used by the
+        # user-metadata sidecar); absent for uploads / derived images
+        self._paths: dict[str, str] = {}
         self._lock = threading.Lock()
 
     def open_paths(self, paths: list[str]) -> list[tuple[str, DataStruct]]:
@@ -44,6 +47,7 @@ class SessionStore:
                 img_id = uuid.uuid4().hex[:12]
                 self._images[img_id] = ds
                 self._names[img_id] = path.name
+                self._paths[img_id] = str(path)
                 out.append((img_id, ds))
         return out
 
@@ -91,6 +95,10 @@ class SessionStore:
     def name(self, img_id: str) -> str:
         return self._names.get(img_id, img_id)
 
+    def source_path(self, img_id: str) -> str | None:
+        """On-disk path for a disk-opened image, else None (uploads/derived)."""
+        return self._paths.get(img_id)
+
     def rename(self, img_id: str, name: str) -> None:
         with self._lock:
             if img_id not in self._images:
@@ -104,11 +112,13 @@ class SessionStore:
         with self._lock:
             self._images.pop(img_id, None)
             self._names.pop(img_id, None)
+            self._paths.pop(img_id, None)
 
     def clear(self) -> None:
         with self._lock:
             self._images.clear()
             self._names.clear()
+            self._paths.clear()
 
 
 store = SessionStore()

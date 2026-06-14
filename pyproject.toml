@@ -18,6 +18,7 @@ dependencies = [
     "orjson>=3.10",
     "python-multipart>=0.0.12",
     "pywebview>=6.2.1",
+    "pyyaml>=6.0",
 ]
 # LICENSE GUARDRAIL: no GPL packages (rosettasciio, hyperspy, exspy) may
 # ever appear in [project.dependencies] — this project is Apache-2.0.
@@ -97,6 +98,12 @@ follow_imports = "skip"
 # scipy ships no inline types; treat as opaque (scipy-stubs is heavy and
 # the uv add kept hitting OneDrive file locks).
 module = "scipy.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# yaml (PyYAML) ships no inline types; types-PyYAML's uv add hits the same
+# OneDrive file locks, so treat as opaque.
+module = "yaml"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

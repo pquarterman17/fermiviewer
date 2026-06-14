@@ -1,0 +1,114 @@
+// Custom Metadata card: user-configured fields (config: metadata.yaml),
+// pre-filled per image from the filename pattern / saved sidecar, editable
+// here, and persisted to a <name>.fvmeta.yaml sidecar beside the file.
+
+import { useEffect, useState } from "react";
+
+import { getUserMeta, saveUserMeta, type UserMeta } from "../../lib/api";
+import { useViewer } from "../../store/viewer";
+import Card from "./Card";
+
+export default function CustomMetaCard() {
+  const activeId = useViewer((s) => s.activeId);
+  const setStatus = useViewer((s) => s.setStatus);
+  const [info, setInfo] = useState<UserMeta | null>(null);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!activeId) {
+      setInfo(null);
+      return;
+    }
+    let alive = true;
+    getUserMeta(activeId)
+      .then((u) => {
+        if (!alive) return;
+        setInfo(u);
+        setValues(u.values);
+        setDirty(false);
+      })
+      .catch(() => {
+        if (alive) setInfo(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [activeId]);
+
+  if (!activeId || !info) return null;
+
+  // no fields configured yet — point the user at their config file
+  if (info.fields.length === 0) {
+    return (
+      <Card title="Custom Metadata" defaultOpen={false}>
+        <div className="fvd-meta-row">
+          <span className="k">No fields configured</span>
+        </div>
+        <div className="fvd-ws-note">
+          Add a <code>fields:</code> list to your config:
+          <br />
+          <code style={{ wordBreak: "break-all" }}>{info.config_path}</code>
+        </div>
+      </Card>
+    );
+  }
+
+  const save = () => {
+    if (!activeId) return;
+    setBusy(true);
+    saveUserMeta(activeId, values)
+      .then((r) => {
+        setStatus(
+          r.wrote_sidecar
+            ? "metadata saved (sidecar written)"
+            : "metadata saved (session)",
+        );
+        setDirty(false);
+        setInfo((p) =>
+          p ? { ...p, values, has_sidecar: r.wrote_sidecar || p.has_sidecar } : p,
+        );
+      })
+      .catch((e: Error) => setStatus(`metadata: ${e.message}`))
+      .finally(() => setBusy(false));
+  };
+
+  const footHint = info.can_write_sidecar
+    ? info.has_sidecar
+      ? "↳ saved to a .fvmeta.yaml beside the file"
+      : "↳ Save writes a .fvmeta.yaml beside the file"
+    : "↳ session only — no file path for a sidecar";
+
+  return (
+    <Card title="Custom Metadata" defaultOpen>
+      {info.fields.map((f) => (
+        <div className="fvd-meta-row" key={f.name}>
+          <span className="k" title={f.name}>
+            {f.name}
+          </span>
+          <input
+            type="text"
+            style={{ flex: 1 }}
+            value={values[f.name] ?? ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              setValues((p) => ({ ...p, [f.name]: v }));
+              setDirty(true);
+            }}
+          />
+        </div>
+      ))}
+      <div className="fvd-btn-row">
+        <button
+          className="fvd-btn primary"
+          onClick={save}
+          disabled={busy || !dirty}
+        >
+          {busy ? "Saving…" : "Save"}
+        </button>
+      </div>
+      <div className="fvd-ws-note">{footHint}</div>
+    </Card>
+  );
+}
