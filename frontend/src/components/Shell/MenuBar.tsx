@@ -28,7 +28,6 @@ import {
   exportFigure,
   exportGif,
   exportImage,
-  openRaw,
   renameImage,
   imageFft,
   supportedExtensions,
@@ -306,44 +305,6 @@ export default function MenuBar({
         action: () =>
           store.openPaths([p]).catch((e: Error) => store.setStatus(e.message)),
       })),
-      {
-        label: "Open RAW…",
-        action: () => {
-          void (async () => {
-            const v = await askParams("Open RAW (headerless binary)", [
-              { key: "path", label: "File path", type: "text", default: "" },
-              num("width", "Width (px)", 1024),
-              num("height", "Height (px)", 1024),
-              {
-                key: "bits",
-                label: "Bit depth",
-                type: "select",
-                default: "16",
-                options: ["8", "16", "32"],
-              },
-              {
-                key: "order",
-                label: "Byte order",
-                type: "select",
-                default: "little",
-                options: ["little", "big"],
-              },
-              num("header", "Header bytes to skip", 0),
-            ]);
-            if (!v || !v["path"]) return;
-            openRaw({
-              path: v["path"] as string,
-              width: v["width"] as number,
-              height: v["height"] as number,
-              bitDepth: Number(v["bits"]),
-              byteOrder: v["order"] as "little" | "big",
-              headerBytes: v["header"] as number,
-            })
-              .then((m) => store.ingest([m]))
-              .catch((e: Error) => store.setStatus(`raw: ${e.message}`));
-          })();
-        },
-      },
       {
         label: `Batch Export… (${store.selected.length})`,
         disabled: store.selected.length < 2,

@@ -5,7 +5,7 @@
 
 import type { ParamField } from "./params";
 
-export type TransformGroup = "Enhance" | "Transform Image" | "Segment";
+export type TransformGroup = "Filters" | "Transform Image" | "Segment";
 
 /** How a tool runs: a POST /filter kind, a parameterless geometry op
  *  (via stageOps.applyGeometry), or crop-to-ROI (via stageOps.cropToRoi). */
@@ -25,7 +25,7 @@ export interface TransformTool {
 }
 
 export const TRANSFORM_GROUPS: TransformGroup[] = [
-  "Enhance",
+  "Filters",
   "Transform Image",
   "Segment",
 ];
@@ -38,14 +38,14 @@ const num = (
 ): ParamField => ({ key, label, type: "number", default: dflt, hint });
 
 export const TRANSFORM_TOOLS: TransformTool[] = [
-  // — Enhance —
+  // — Filters —
   {
-    label: "Gaussian Blur", glyph: "◍", group: "Enhance",
+    label: "Gaussian Blur", glyph: "◍", group: "Filters",
     kind: "gaussian", via: "filter", batch: true,
     fields: [num("sigma", "Sigma (px)", 2)],
   },
   {
-    label: "Median Filter", glyph: "▦", group: "Enhance",
+    label: "Median Filter", glyph: "▦", group: "Filters",
     kind: "median", via: "filter", batch: true,
     fields: [
       { key: "window_size", label: "Window", type: "select",
@@ -53,12 +53,12 @@ export const TRANSFORM_TOOLS: TransformTool[] = [
     ],
   },
   {
-    label: "Unsharp Mask", glyph: "◆", group: "Enhance",
+    label: "Unsharp Mask", glyph: "◆", group: "Filters",
     kind: "unsharp", via: "filter", batch: true,
     fields: [num("sigma", "Sigma (px)", 2), num("amount", "Amount", 1)],
   },
   {
-    label: "Butterworth", glyph: "≈", group: "Enhance",
+    label: "Butterworth", glyph: "≈", group: "Filters",
     kind: "butterworth", via: "filter", batch: true,
     fields: [
       num("low_cutoff", "Low cutoff (0=off)", 0.05),
@@ -67,17 +67,17 @@ export const TRANSFORM_TOOLS: TransformTool[] = [
     ],
   },
   {
-    label: "CLAHE", glyph: "◑", group: "Enhance",
+    label: "CLAHE", glyph: "◑", group: "Filters",
     kind: "clahe", via: "filter", batch: true,
     fields: [num("clip_limit", "Clip limit", 0.01), num("num_bins", "Bins", 256)],
   },
   {
-    label: "Bin", glyph: "⊞", group: "Enhance",
+    label: "Bin", glyph: "⊞", group: "Filters",
     kind: "bin", via: "filter", batch: true,
     fields: [num("bin_size", "Bin size", 2)],
   },
   {
-    label: "Plane Level", glyph: "▱", group: "Enhance",
+    label: "Plane Level", glyph: "▱", group: "Filters",
     kind: "plane_level", via: "filter", batch: true,
   },
   // — Transform Image —

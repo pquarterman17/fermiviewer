@@ -1,12 +1,12 @@
 // Shared collapsible card — visually identical to the native
 // <details class="fvd-card"> pattern already used in MeasurePanel.
-// Collapsed state is persisted in localStorage under "fv_cards"
+// Collapsed state is persisted in localStorage under "fv_cards_v2"
 // (a keyed map from card title → boolean, true = open).
 // Default: open (matching today's behaviour before this component).
 
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
-const STORAGE_KEY = "fv_cards";
+const STORAGE_KEY = "fv_cards_v2";
 
 /** Load the persisted map once; never return a fresh object literal
  *  from inside a render path (Zustand black-screen rule applies here
@@ -46,7 +46,7 @@ interface CardProps {
 
 /** Collapsible inspector card backed by a native <details> element so
  *  keyboard accessibility (Enter/Space on the summary) comes for free.
- *  The collapsed state is persisted in localStorage["fv_cards"]. */
+ *  The collapsed state is persisted in localStorage["fv_cards_v2"]. */
 export default function Card({
   title,
   children,

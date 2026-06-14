@@ -28,8 +28,8 @@ describe("TRANSFORM_TOOLS", () => {
     }
   });
 
-  it("partitions tools into Enhance / Transform Image / Segment (7 / 6 / 2)", () => {
-    expect(TRANSFORM_GROUPS).toEqual(["Enhance", "Transform Image", "Segment"]);
+  it("partitions tools into Filters / Transform Image / Segment (7 / 6 / 2)", () => {
+    expect(TRANSFORM_GROUPS).toEqual(["Filters", "Transform Image", "Segment"]);
     const counts = TRANSFORM_GROUPS.map(
       (g) => TRANSFORM_TOOLS.filter((t) => t.group === g).length,
     );

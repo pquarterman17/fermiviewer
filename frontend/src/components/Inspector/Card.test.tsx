@@ -1,5 +1,5 @@
 // Card (#37) — shared collapsible inspector card. Persistence contract:
-// localStorage["fv_cards"] keyed by title; default open.
+// localStorage["fv_cards_v2"] keyed by title; default open.
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -24,7 +24,7 @@ describe("Card", () => {
     expect(getDetails(container).open).toBe(true);
   });
 
-  it("clicking the summary collapses and persists to fv_cards", () => {
+  it("clicking the summary collapses and persists to fv_cards_v2", () => {
     const { container } = render(
       <Card title="Metadata">
         <div>rows</div>
@@ -33,7 +33,7 @@ describe("Card", () => {
     fireEvent.click(screen.getByText("Metadata"));
     expect(getDetails(container).open).toBe(false);
     expect(
-      (JSON.parse(localStorage.getItem("fv_cards") ?? "{}") as Record<string, boolean>)[
+      (JSON.parse(localStorage.getItem("fv_cards_v2") ?? "{}") as Record<string, boolean>)[
         "Metadata"
       ],
     ).toBe(false);
@@ -42,8 +42,8 @@ describe("Card", () => {
     expect(getDetails(container).open).toBe(true);
   });
 
-  it("mounts collapsed when fv_cards says so (persisted across sessions)", () => {
-    localStorage.setItem("fv_cards", JSON.stringify({ EELS: false }));
+  it("mounts collapsed when fv_cards_v2 says so (persisted across sessions)", () => {
+    localStorage.setItem("fv_cards_v2", JSON.stringify({ EELS: false }));
     const { container } = render(
       <Card title="EELS">
         <div>workshop</div>
@@ -84,8 +84,8 @@ describe("Card", () => {
     expect(container.querySelector(".fvd-card-count")).toBeNull();
   });
 
-  it("corrupted fv_cards falls back to default open", () => {
-    localStorage.setItem("fv_cards", "[not a map]");
+  it("corrupted fv_cards_v2 falls back to default open", () => {
+    localStorage.setItem("fv_cards_v2", "[not a map]");
     const { container } = render(
       <Card title="Image">
         <div>y</div>

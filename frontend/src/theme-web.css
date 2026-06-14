@@ -265,8 +265,8 @@ body {
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  gap: 2px;
-  padding: 3px;
+  gap: 3px;
+  padding: 5px;
 }
 
 .fvd-inspector-tabs {
@@ -561,20 +561,20 @@ details.fvd-card:not([open]) > summary {
 .fvd-tool-sep {
   width: 1px;
   align-self: stretch;
-  margin: 3px 2px;
+  margin: 5px 3px;
   background: var(--border);
 }
 
 .fvd-tool-btn {
-  width: 26px;
-  height: 26px;
+  width: 39px;
+  height: 39px;
   display: grid;
   place-items: center;
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: 20px;
   cursor: default;
   font-family: var(--font-ui);
 }
