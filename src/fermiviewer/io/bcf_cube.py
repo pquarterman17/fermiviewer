@@ -145,6 +145,15 @@ def _decode_instructive(
         if size_p == 0:
             pp += channels
             continue
+        if size_p not in (1, 2, 4, 8):
+            # BCF only defines gain widths of 1/2/4/8 bytes (→ nibble or
+            # 1/2/4-byte deltas); any other value means the instructive
+            # stream is corrupt or desynced. Skip to this pixel's boundary
+            # to stay aligned rather than crashing on an invalid numpy
+            # dtype like "<u3". (rsciio's decoder likewise only handles
+            # sizes 1/2/4/8 — verified against unbcf_fast.pyx.)
+            offset = the_end
+            break
         gain = int.from_bytes(buf[offset : offset + size_p], "little")
         offset += size_p
         if size_p == 1:
