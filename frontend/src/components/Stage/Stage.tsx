@@ -24,6 +24,7 @@ import { buildLut } from "../../lib/colormaps";
 import {
   boxProfileLine,
   fitView,
+  imageToScreen,
   niceScaleLength,
   screenToImage,
   viewForRect,
@@ -715,7 +716,8 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
               imageId={activeId}
               pixelSize={meta.pixel_size}
               unit={meta.pixel_unit}
-              z={view.z}
+              view={view}
+              img={imgSize}
               vp={vp}
               barRef={scaleBarRef}
             />
@@ -850,14 +852,16 @@ function ScaleBarOverlay({
   imageId,
   pixelSize,
   unit,
-  z,
+  view,
+  img,
   vp,
   barRef,
 }: {
   imageId: string;
   pixelSize: number;
   unit: string;
-  z: number;
+  view: View;
+  img: Size;
   vp: Size;
   barRef: RefObject<HTMLDivElement>;
 }) {
@@ -872,11 +876,24 @@ function ScaleBarOverlay({
 
   if (!visible) return null;
 
-  // position defaults: bottom-left (2% / 92% of viewport)
-  const normX = sbState?.x ?? 0.02;
-  const normY = sbState?.y ?? 0.92;
-  const leftPx = normX * vp.w;
-  const topPx = normY * vp.h;
+  const z = view.z;
+
+  // Default position: bottom-left of the VISIBLE image rectangle, so the
+  // bar always lands on real pixels — never in the black letterbox region
+  // beside a DM3/DM4 image that doesn't fill the viewport. A user-dragged
+  // position (sbState.x/.y, viewport-normalized) overrides this. When the
+  // image fills the viewport the visible rect == viewport, so this reduces
+  // to the original 2% / 92% corner.
+  const tl = imageToScreen(0, 0, view, img, vp);
+  const br = imageToScreen(img.w, img.h, view, img, vp);
+  const visL = Math.max(0, Math.min(tl.x, br.x));
+  const visR = Math.min(vp.w, Math.max(tl.x, br.x));
+  const visT = Math.max(0, Math.min(tl.y, br.y));
+  const visB = Math.min(vp.h, Math.max(tl.y, br.y));
+  const leftPx =
+    sbState?.x != null ? sbState.x * vp.w : visL + 0.02 * (visR - visL);
+  const topPx =
+    sbState?.y != null ? sbState.y * vp.h : visT + 0.92 * (visB - visT);
 
   // size
   const autoPhys = niceScaleLength((120 * pixelSize) / z);
@@ -891,7 +908,14 @@ function ScaleBarOverlay({
 
   const onPointerDown = (e: React.PointerEvent) => {
     e.stopPropagation();
-    dragRef.current = { startX: e.clientX, startY: e.clientY, x0: normX, y0: normY };
+    // start the drag from wherever the bar currently sits (the smart
+    // default until the user has dragged it), as viewport-normalized
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      x0: leftPx / vp.w,
+      y0: topPx / vp.h,
+    };
     (e.target as Element).setPointerCapture(e.pointerId);
   };
   const onPointerMove = (e: React.PointerEvent) => {
