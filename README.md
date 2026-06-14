@@ -5,8 +5,7 @@ diffraction analysis, measurements, and image processing. Python (FastAPI)
 backend + React frontend + Tauri desktop shell.
 
 Ground-up port of [fermi-viewer](https://github.com/pquarterman17/fermi-viewer)
-(MATLAB), verified against frozen MATLAB reference outputs in
-`tests/golden/` and cross-validated against rosettasciio.
+(MATLAB), and this is hte long term future of this style project. 
 
 ![FermiViewer — multi-format image viewer with EELS/EDS/diffraction analysis and a measurement suite](docs/images/overview.png)
 
