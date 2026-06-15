@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from fermiviewer.calc.fourier import compute_fft
-from fermiviewer.calc.profiles import line_profile, roi_stats
+from fermiviewer.calc.profiles import box_integrate, line_profile, roi_stats
 from fermiviewer.server import create_app
 from fermiviewer.session import store
 from fixtures.minidm4 import write_mini_dm4
@@ -52,6 +52,32 @@ def test_roi_stats_against_numpy() -> None:
     assert s2["area"] == sel.size * 4.0
     with pytest.raises(ValueError, match="empty"):
         roi_stats(rng_free, 99, 99, 120, 120)
+
+
+def test_box_integrate_both_axes() -> None:
+    img = np.arange(1, 13, dtype=np.float64).reshape(3, 4)   # rows of an x-ramp
+    x_pos, x_int, y_pos, y_int, rect = box_integrate(img, 1, 1, 3, 4)
+    np.testing.assert_array_equal(x_pos, [0, 1, 2, 3])
+    np.testing.assert_array_equal(y_pos, [0, 1, 2])
+    np.testing.assert_allclose(x_int, img.sum(axis=0))      # column sums
+    np.testing.assert_allclose(y_int, img.sum(axis=1))      # row sums
+    assert rect == (1, 1, 3, 4)
+    # mean reduce = sum / extent along each axis
+    _, x_mean, _, y_mean, _ = box_integrate(img, 1, 1, 3, 4, reduce="mean")
+    np.testing.assert_allclose(x_mean, x_int / 3)           # 3 rows
+    np.testing.assert_allclose(y_mean, y_int / 4)           # 4 cols
+
+
+def test_box_integrate_clamps_and_validates() -> None:
+    img = np.ones((6, 8), dtype=np.float64)
+    # swapped + out-of-bounds corners clamp to the full image
+    _, x_int, _, y_int, rect = box_integrate(img, 99, -5, -5, 99)
+    assert rect == (1, 1, 6, 8)
+    assert x_int.size == 8 and y_int.size == 6
+    with pytest.raises(ValueError, match="empty"):
+        box_integrate(img, 99, 99, 120, 120)
+    with pytest.raises(ValueError, match="reduce"):
+        box_integrate(img, 1, 1, 4, 4, reduce="max")
 
 
 def test_fft_sinusoid_peaks() -> None:
@@ -113,6 +139,34 @@ def test_roi_endpoint(client, ramp_id) -> None:
     assert body["mean"] == pytest.approx(np.arange(4, 10).mean())
     assert body["area"] == pytest.approx(5 * 6 * 0.25)  # px² × (0.5 nm)²
     assert body["unit"] == "nm"
+
+
+def test_box_profile_endpoint(client, ramp_id) -> None:
+    # ramp fixture: img(y, x) = x, 32×8, 0.5 nm/px
+    r = client.post("/api/measure/box-profile", json={
+        "image_id": ramp_id, "rect": [2, 3, 6, 10],
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert body["reduce"] == "sum"            # default is integration
+    assert body["unit"] == "nm"
+    assert body["pixel_size"] == pytest.approx(0.5)
+    assert body["rect"] == [2, 3, 6, 10]
+    # 5 rows × 8 cols selected; x profile has 8 cols, y profile 5 rows
+    assert len(body["x_intensity"]) == 8
+    assert len(body["y_intensity"]) == 5
+    # x column sums of an x-ramp over 5 rows: col c (1-based) → 5*(c-1)
+    assert body["x_intensity"][0] == pytest.approx(5 * 2)   # col 3 → x=2
+    # mean reduce is offered too
+    r2 = client.post("/api/measure/box-profile", json={
+        "image_id": ramp_id, "rect": [2, 3, 6, 10], "reduce": "mean",
+    })
+    assert r2.json()["reduce"] == "mean"
+    assert r2.json()["x_intensity"][0] == pytest.approx(2.0)
+    # empty box → 422
+    assert client.post("/api/measure/box-profile", json={
+        "image_id": ramp_id, "rect": [99, 99, 120, 120],
+    }).status_code == 422
 
 
 def test_fft_endpoint_creates_derived(client, ramp_id) -> None:

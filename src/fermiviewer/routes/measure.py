@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from fermiviewer.calc.fourier import compute_fft
 from fermiviewer.calc.profiles import (
+    box_integrate,
     line_profile,
     measure_distance,
     polyline_profile,
@@ -96,6 +97,46 @@ def measure_roi(req: RoiRequest) -> dict:
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
     return {**stats, "unit": ds.pixel_unit or "px"}
+
+
+class BoxProfileRequest(BaseModel):
+    image_id: str
+    rect: tuple[float, float, float, float]   # (row1, col1, row2, col2), 1-based
+    reduce: str = "sum"                         # "sum" (integration) | "mean"
+
+
+@router.post("/measure/box-profile")
+def measure_box_profile(req: BoxProfileRequest) -> dict:
+    """Integrate an axis-aligned box along both axes → two 1-D profiles.
+
+    Returns the horizontal (x, over columns) and vertical (y, over rows)
+    profiles in one payload so a single CSV can carry both. Positions are
+    in pixels (0-based from the box edge); the client applies pixel-size
+    calibration. reduce='sum' is the true box integral (counts/EELS).
+    """
+    ds, raster = _raster(req.image_id)
+    try:
+        x_pos, x_int, y_pos, y_int, rect = box_integrate(
+            raster, *req.rect, reduce=req.reduce
+        )
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    px = ds.pixel_size if ds.kind is not DataKind.SPECTRUM else float("nan")
+    cal = bool(np.isfinite(px))
+
+    def _clean(arr: np.ndarray) -> list[float | None]:
+        return [None if not np.isfinite(v) else float(v) for v in arr]
+
+    return {
+        "x_pos": x_pos.tolist(),
+        "x_intensity": _clean(x_int),
+        "y_pos": y_pos.tolist(),
+        "y_intensity": _clean(y_int),
+        "pixel_size": float(px) if cal else None,
+        "unit": (ds.pixel_unit or "px") if cal else "px",
+        "reduce": req.reduce,
+        "rect": list(rect),
+    }
 
 
 class TiltedDistanceRequest(BaseModel):
