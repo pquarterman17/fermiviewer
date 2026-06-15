@@ -10,11 +10,23 @@ Pure-library module: numpy only (layering guard applies).
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass, field
-from enum import StrEnum
 from typing import Any
 
 import numpy as np
+
+if sys.version_info >= (3, 11):
+    from enum import StrEnum
+else:  # py<3.11 shim — delete when 3.10 support is dropped
+    from enum import Enum
+
+    class StrEnum(str, Enum):
+        """Minimal backport of 3.11's enum.StrEnum: str-valued members whose
+        str()/format() yield the value (e.g. "image", not "DataKind.IMAGE")."""
+
+        __str__ = str.__str__
+        __format__ = str.__format__
 
 __all__ = ["AxisCal", "DataKind", "DataStruct"]
 
