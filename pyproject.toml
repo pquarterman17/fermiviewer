@@ -8,7 +8,9 @@ requires-python = ">=3.10"
 authors = [{ name = "Paige Quarterman" }]
 dependencies = [
     "fastapi>=0.115",
-    "uvicorn[standard]>=0.49.0",
+    # we only use the long-stable uvicorn.Server/Config/run API; a recent
+    # floor that still leaves room for users not on the very latest
+    "uvicorn[standard]>=0.32",
     "pydantic>=2.9",
     "numpy>=2.1",
     "scipy>=1.14",
@@ -16,8 +18,10 @@ dependencies = [
     "pillow>=11",
     "tifffile>=2024.8",
     "orjson>=3.10",
-    "python-multipart>=0.0.12",
-    "pywebview>=6.2.1",
+    # SECURITY floor: < 0.0.18 carries the multipart ReDoS (CVE-2024-53981)
+    "python-multipart>=0.0.18",
+    # stable create_window/start API; keep 6.x WebView2 quality, add room
+    "pywebview>=6.0",
     "pyyaml>=6.0",
 ]
 # LICENSE GUARDRAIL: no GPL packages (rosettasciio, hyperspy, exspy) may
