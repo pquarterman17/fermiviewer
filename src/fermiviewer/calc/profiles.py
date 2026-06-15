@@ -14,12 +14,11 @@ from scipy.ndimage import map_coordinates
 __all__ = [
     "DistanceResult",
     "InterfaceFit",
-    "azimuthal_integrate",
+    "box_integrate",
     "fit_interface_width",
     "line_profile",
     "measure_distance",
     "polyline_profile",
-    "radial_profile",
     "roi_stats",
 ]
 
@@ -293,109 +292,58 @@ def roi_stats(
     }
 
 
-def radial_profile(
+def box_integrate(
     img: np.ndarray,
-    center: tuple[float, float] | None = None,
-    n_bins: int = 0,
-    normalize: bool = False,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Radial average + max profiles about a centre — ported verbatim.
+    row1: float, col1: float, row2: float, col2: float,
+    reduce: str = "sum",
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, tuple[int, int, int, int]]:
+    """Integrate an axis-aligned box along BOTH axes → two 1-D profiles.
 
-    Default centre is the pixel-centre convention ((W+1)/2, (H+1)/2) in
-    1-based coords; bins span [0, max radius] (the full corner reach,
-    unlike azimuthal_integrate's inscribed rMax). n_bins=0 resolves to
-    floor(min(H, W)/2) — the documented MATLAB default, whose literal
-    default value (0) trips its own validator (latent upstream bug).
+    For a rectangle clamped to the image, collapse it onto each axis:
 
-    Returns (radii, avg_profile, max_profile); empty bins are NaN.
+    * the **x** profile reduces over rows (one value per column) — the
+      horizontal profile you read left-to-right across the box;
+    * the **y** profile reduces over columns (one value per row) — the
+      vertical profile you read top-to-bottom.
+
+    ``reduce='sum'`` (default) gives the true line integral across the
+    perpendicular extent — what "box integration" usually means for
+    counts/EELS; ``'mean'`` averages instead, giving a magnitude that is
+    independent of the box's perpendicular size.
+
+    Bounds are 1-based inclusive (matching :func:`roi_stats`) and clamped
+    to the image. Positions are returned in PIXELS, 0-based from the box
+    edge (0, 1, 2, …); the caller applies any pixel-size calibration.
+
+    Returns ``(x_pos, x_intensity, y_pos, y_intensity, clamped_rect)``
+    where ``clamped_rect`` is ``(r1, c1, r2, c2)`` in 1-based pixels.
+
+    Examples
+    --------
+    >>> img = np.arange(1, 13, dtype=float).reshape(3, 4)  # rows of x-ramp
+    >>> x_pos, x_int, y_pos, y_int, rect = box_integrate(img, 1, 1, 3, 4)
+    >>> x_int            # column sums: 1+5+9, 2+6+10, ...
+    array([15., 18., 21., 24.])
+    >>> y_int            # row sums: 1+2+3+4, 5+6+7+8, 9+10+11+12
+    array([10., 26., 42.])
     """
-    d = np.asarray(img, dtype=np.float64)
-    h, w = d.shape
-    cx, cy = center if center is not None else (w / 2 + 0.5, h / 2 + 0.5)
-    if n_bins <= 0:
-        n_bins = min(h, w) // 2
-
-    cols = np.arange(1, w + 1, dtype=np.float64)[None, :]
-    rows = np.arange(1, h + 1, dtype=np.float64)[:, None]
-    dist_map = np.hypot(cols - cx, rows - cy)
-
-    max_radius = dist_map.max()
-    bin_width = max_radius / n_bins
-    radii = (np.arange(n_bins) + 0.5) * bin_width
-
-    idx = np.minimum((dist_map / bin_width).astype(np.int64), n_bins - 1)
-    flat_idx = idx.ravel()
-    flat_val = d.ravel()
-    counts = np.bincount(flat_idx, minlength=n_bins).astype(np.float64)
-    sums = np.bincount(flat_idx, weights=flat_val, minlength=n_bins)
-    with np.errstate(invalid="ignore"):
-        avg = sums / counts
-    avg[counts == 0] = np.nan
-    mx = np.full(n_bins, -np.inf)
-    np.maximum.at(mx, flat_idx, flat_val)
-    mx[counts == 0] = np.nan
-
-    if normalize:
-        for arr in (avg, mx):
-            lo, hi = np.nanmin(arr), np.nanmax(arr)
-            if hi > lo:
-                arr -= lo
-                arr /= hi - lo
-            else:
-                arr[:] = 0.0
-    return radii, avg, mx
-
-
-def azimuthal_integrate(
-    img: np.ndarray,
-    center: tuple[float, float] | None = None,
-    n_bins: int = 0,
-    sector_min: float = 0.0,
-    sector_max: float = 360.0,
-    pixel_size: float = 1.0,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Sector-masked azimuthal average — ported verbatim.
-
-    Angles measured from +x clockwise (image-row convention), wrapped to
-    [0, 360); sector_min >= sector_max selects the wrap-around wedge.
-    rMax is the inscribed distance to the nearest edge (NOT the corner
-    reach used by radial_profile). NaN pixels are excluded; empty bins
-    are NaN. Returns (radii_calibrated, intensity).
-    """
-    d = np.asarray(img, dtype=np.float64)
-    h, w = d.shape
-    cx, cy = center if center is not None else ((w + 1) / 2, (h + 1) / 2)
-    if n_bins <= 0:
-        n_bins = min(h, w) // 2
-
-    dx = np.arange(1, w + 1, dtype=np.float64)[None, :] - cx
-    dy = np.arange(1, h + 1, dtype=np.float64)[:, None] - cy
-    radius = np.hypot(dx, dy)
-    phi = np.degrees(np.arctan2(dy, dx))
-    phi = np.where(phi < 0, phi + 360, phi)
-
-    if sector_min == 0 and sector_max == 360:
-        sector = np.ones((h, w), dtype=bool)
-    elif sector_min < sector_max:
-        sector = (phi >= sector_min) & (phi < sector_max)
-    else:  # wrapping wedge, e.g. 300 -> 60
-        sector = (phi >= sector_min) | (phi < sector_max)
-
-    r_max = max(min(cx, cy, w - cx, h - cy), 1.0)
-    bin_width = r_max / n_bins
-    centres = (np.arange(n_bins) + 0.5) * bin_width
-
-    keep = sector & ~np.isnan(d) & (radius >= 0) & (radius < r_max)
-    idx = np.minimum(
-        (radius[keep] / bin_width).astype(np.int64), n_bins - 1
-    )
-    sums = np.bincount(idx, weights=d[keep], minlength=n_bins)
-    counts = np.bincount(idx, minlength=n_bins).astype(np.float64)
-    with np.errstate(invalid="ignore"):
-        intensity = sums / counts
-    intensity[counts == 0] = np.nan
-
-    return centres * pixel_size, intensity
+    if reduce not in ("mean", "sum"):
+        raise ValueError("reduce must be 'mean' or 'sum'")
+    arr = np.asarray(img, dtype=np.float64)
+    h, w = arr.shape
+    r1, r2 = sorted((int(round(row1)), int(round(row2))))
+    c1, c2 = sorted((int(round(col1)), int(round(col2))))
+    r1, r2 = max(r1, 1), min(r2, h)
+    c1, c2 = max(c1, 1), min(c2, w)
+    if r1 > r2 or c1 > c2:
+        raise ValueError("box is empty after clamping to the image")
+    sel = arr[r1 - 1 : r2, c1 - 1 : c2]
+    fn = np.sum if reduce == "sum" else np.mean
+    x_intensity = fn(sel, axis=0)               # one value per column
+    y_intensity = fn(sel, axis=1)               # one value per row
+    x_pos = np.arange(sel.shape[1], dtype=np.float64)
+    y_pos = np.arange(sel.shape[0], dtype=np.float64)
+    return x_pos, x_intensity, y_pos, y_intensity, (r1, c1, r2, c2)
 
 
 @dataclass(frozen=True)

@@ -13,11 +13,8 @@ from fermiviewer.calc.eds_maps import virtual_dark_field
 from fermiviewer.calc.fourier import fft_mask_inverse
 from fermiviewer.calc.gpa import geometric_phase_analysis
 from fermiviewer.calc.lattice import lattice_measure
-from fermiviewer.calc.profiles import (
-    azimuthal_integrate,
-    fit_interface_width,
-    radial_profile,
-)
+from fermiviewer.calc.profiles import fit_interface_width
+from fermiviewer.calc.radial import azimuthal_integrate, radial_profile
 from fermiviewer.calc.roughness import surface_roughness
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.models import ImageMeta
