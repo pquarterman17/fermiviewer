@@ -5,7 +5,13 @@ import { useEffect, useRef } from "react";
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 
+import {
+  csvBaseName,
+  downloadCsv,
+  profileToCsv,
+} from "../../lib/profileCsv";
 import { useStageInfo } from "../../store/stage";
+import { useViewer } from "../../store/viewer";
 
 export default function DockPlot() {
   const profile = useStageInfo((s) => s.profile);
@@ -82,22 +88,25 @@ export default function DockPlot() {
         </span>
         <button
           className="fvd-icon-btn"
-          title="Download profile as CSV (calibrated x-axis)"
+          title="Download profile as CSV (provenance header + calibrated x-axis)"
           onClick={() => {
-            const csv = [
-              `distance_${profile.unit},${profile.reduce === "sum" ? "intensity_sum" : "intensity"}`,
-              ...profile.dist.map(
-                (d, i) => `${d},${profile.intensity[i] ?? ""}`,
-              ),
-            ].join("\n");
-            const url = URL.createObjectURL(
-              new Blob([csv], { type: "text/csv" }),
-            );
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = "profile.csv";
-            a.click();
-            URL.revokeObjectURL(url);
+            const s = useViewer.getState();
+            const id = s.activeId;
+            const meta = id ? s.images[id] : undefined;
+            const m = id
+              ? (s.measures[id] ?? []).find((x) => x.id === profile.measureId)
+              : undefined;
+            const imgW = meta?.shape[1] ?? 1;
+            const imgH = meta?.shape[0] ?? 1;
+            const csv = profileToCsv(profile, {
+              imageName: meta?.name ?? "image",
+              pixelSize: meta?.pixel_size ?? null,
+              pixelUnit: meta?.pixel_unit ?? "px",
+              kind: m?.kind ?? "profile",
+              width: m?.width,
+              endpointsPx: m?.pts.map((p) => ({ x: p.x * imgW, y: p.y * imgH })),
+            });
+            downloadCsv(`${csvBaseName(meta?.name)}_profile.csv`, csv);
           }}
         >
           ⤓

@@ -3,7 +3,11 @@
 
 import { Fragment, useState } from "react";
 
-import { measureProfile, type ProfileReduce } from "../../lib/api";
+import {
+  measureBoxProfile,
+  measureProfile,
+  type ProfileReduce,
+} from "../../lib/api";
 import { fuzzy } from "../../lib/fuzzy";
 import {
   physAngle,
@@ -12,6 +16,11 @@ import {
   type TiltSettings,
 } from "../../lib/geometry";
 import { MEASURE_GROUPS, MEASURE_TOOLS } from "../../lib/measureTools";
+import {
+  boxProfileToCsv,
+  csvBaseName,
+  downloadCsv,
+} from "../../lib/profileCsv";
 import { useStageInfo } from "../../store/stage";
 import {
   useViewer,
@@ -267,6 +276,24 @@ export default function MeasurePanel() {
     }
   };
 
+  /** Integrate a rectangle ROI along both axes and download one CSV. */
+  const onExportBoxCsv = (m: Measure) => {
+    if (!activeId || m.pts.length < 2) return;
+    const reduce = useViewer.getState().profileReduce;
+    const px = m.pts.map((p) => ({ x: p.x * img.w, y: p.y * img.h }));
+    measureBoxProfile(activeId, px[0], px[1], reduce)
+      .then((b) => {
+        const csv = boxProfileToCsv(b, {
+          imageName: meta.name,
+          pixelUnit: meta.pixel_unit,
+          kind: m.kind,
+        });
+        downloadCsv(`${csvBaseName(meta.name)}_box-profile.csv`, csv);
+        setStatus(`box profile exported (${reduce})`);
+      })
+      .catch((e: Error) => setStatus(e.message));
+  };
+
   const sel = measures.find((m) => m.id === selected);
   const selStats =
     sel?.kind === "roi" || sel?.kind === "ellipse"
@@ -473,6 +500,15 @@ export default function MeasurePanel() {
               >
                 ROI histogram
               </button>
+              {sel.kind === "roi" && (
+                <button
+                  className="fvd-btn"
+                  title={`Integrate this box along both axes → CSV (uses the Reduce mode: ${profileReduce})`}
+                  onClick={() => onExportBoxCsv(sel)}
+                >
+                  Box profile CSV
+                </button>
+              )}
             </div>
           )}
           {selStats && (

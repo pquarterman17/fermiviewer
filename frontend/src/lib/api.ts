@@ -218,6 +218,44 @@ export async function measureRoi(
   );
 }
 
+export interface BoxProfileResult {
+  x_pos: number[]; // pixels, 0-based from the box edge (columns axis)
+  x_intensity: (number | null)[];
+  y_pos: number[]; // pixels, 0-based from the box edge (rows axis)
+  y_intensity: (number | null)[];
+  pixel_size: number | null; // unit per px; null = uncalibrated
+  unit: string;
+  reduce: ProfileReduce;
+  rect: [number, number, number, number]; // clamped (row1, col1, row2, col2), 1-based px
+}
+
+/** Integrate an axis-aligned box along BOTH axes (item: box-profile CSV).
+ *  Corners are 0-based (x, y); backend wants 1-based rows/cols. reduce
+ *  defaults to 'sum' — the true integral over the perpendicular extent. */
+export async function measureBoxProfile(
+  id: string,
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  reduce: ProfileReduce = "sum",
+): Promise<BoxProfileResult> {
+  return json(
+    await fetch("/api/measure/box-profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        image_id: id,
+        rect: [
+          Math.min(a.y, b.y) + 1,
+          Math.min(a.x, b.x) + 1,
+          Math.max(a.y, b.y) + 1,
+          Math.max(a.x, b.x) + 1,
+        ],
+        reduce,
+      }),
+    }),
+  );
+}
+
 // ── analysis (handoff §8, workshops) ────────────────────────────────
 
 export interface Spectrum {
