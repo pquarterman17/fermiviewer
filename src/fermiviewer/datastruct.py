@@ -32,6 +32,9 @@ __all__ = ["AxisCal", "DataKind", "DataStruct"]
 
 
 class DataKind(StrEnum):
+    # Membership: use DataKind(x) or `is` checks, never `x in DataKind` —
+    # value membership (`"image" in DataKind`) only works on CPython 3.12+;
+    # on the supported 3.10/3.11 floor it raises TypeError.
     IMAGE = "image"                    # 2D [H, W]
     SPECTRUM = "spectrum"              # 1D [n_channels]
     SPECTRUM_IMAGE = "spectrum_image"  # 3D [Ny, Nx, n_channels]
@@ -116,9 +119,16 @@ class DataStruct:
         return int(self.data.shape[-1])
 
     def sum_spectrum(self) -> np.ndarray:
-        """Spatially-summed spectrum (identity for 1D spectra)."""
+        """Spatially-summed spectrum (identity for 1D spectra).
+
+        Always a fresh, writeable copy. The frozen buffer is read-only, and
+        np.asarray would return a read-only *view* for an already-float64 1D
+        spectrum — so in-place callers (e.g. background subtraction) couldn't
+        mutate it. np.array copies unconditionally, matching the
+        SPECTRUM_IMAGE path's fresh .sum() allocation.
+        """
         if self.kind is DataKind.SPECTRUM:
-            return np.asarray(self.data, dtype=np.float64)
+            return np.array(self.data, dtype=np.float64)
         if self.kind is DataKind.SPECTRUM_IMAGE:
             summed: np.ndarray = np.asarray(self.data, dtype=np.float64).sum(axis=(0, 1))
             return summed

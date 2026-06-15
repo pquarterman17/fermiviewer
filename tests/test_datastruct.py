@@ -45,3 +45,33 @@ def test_sum_spectrum_si_cube() -> None:
     assert ds.sum_spectrum().shape == (4,)
     assert ds.sum_spectrum()[0] == cube[:, :, 0].sum()
     assert ds.energy_axis[1] == pytest.approx(0.1)
+
+
+@pytest.mark.parametrize(
+    "kind, data",
+    [
+        (DataKind.SPECTRUM, np.ones(8, dtype=np.float64)),   # was a read-only view
+        (DataKind.SPECTRUM, np.ones(8, dtype=np.float32)),   # copy via dtype cast
+        (DataKind.SPECTRUM_IMAGE, np.ones((2, 2, 8), dtype=np.float64)),  # fresh .sum()
+    ],
+)
+def test_sum_spectrum_is_writeable_copy(kind, data) -> None:
+    # sum_spectrum() must return a mutable copy regardless of source dtype/kind:
+    # the frozen DataStruct buffer is read-only and np.asarray on an already-
+    # float64 1D spectrum used to leak that read-only flag through a view.
+    axes = (AxisCal(scale=0.1, units="eV"),) if kind is DataKind.SPECTRUM \
+        else (AxisCal(), AxisCal(), AxisCal(scale=0.1, units="eV"))
+    ds = DataStruct(data, kind, axes)
+    spec = ds.sum_spectrum()
+    assert spec.flags.writeable
+    spec[0] = 999.0  # must not raise, and must not touch the frozen source
+    assert not ds.data.flags.writeable
+
+
+def test_datakind_membership_uses_call_not_in() -> None:
+    # `"image" in DataKind` raises TypeError on CPython < 3.12 (the supported
+    # floor), so the canonical lookup is the constructor / identity check.
+    assert DataKind("image") is DataKind.IMAGE
+    assert DataKind.IMAGE == "image"
+    with pytest.raises(ValueError):
+        DataKind("not_a_kind")
