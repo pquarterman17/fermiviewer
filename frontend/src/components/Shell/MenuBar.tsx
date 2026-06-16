@@ -831,7 +831,12 @@ export default function MenuBar({
       },
       { kind: "section", label: "Batch & macro" },
       {
-        label: "Batch Apply…",
+        label: "Batch Recipe…",
+        disabled: store.order.length === 0,
+        action: () => store.setBatchOpen(true),
+      },
+      {
+        label: "Batch Apply (single op)…",
         disabled: store.order.length === 0,
         action: () => void runBatch(),
       },

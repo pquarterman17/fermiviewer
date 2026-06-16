@@ -25,6 +25,7 @@ export default function Filmstrip() {
   const reorder = useViewer((s) => s.reorder);
   const startCompare = useViewer((s) => s.startCompare);
   const closeImage = useViewer((s) => s.closeImage);
+  const setBatchOpen = useViewer((s) => s.setBatchOpen);
 
   const [ctx, setCtx] = useState<CtxMenu | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
@@ -74,6 +75,16 @@ export default function Filmstrip() {
           onClick={() => startCompare(compareIds)}
         >
           Compare {compareIds.length}
+        </button>
+      )}
+
+      {compareIds && (
+        <button
+          className="fvd-compare-btn"
+          data-tip="Build a recipe and apply it to the selected images"
+          onClick={() => setBatchOpen(true)}
+        >
+          ⚙ Batch {compareIds.length}
         </button>
       )}
 

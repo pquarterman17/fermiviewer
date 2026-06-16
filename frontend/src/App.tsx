@@ -24,6 +24,7 @@ import ShortcutsOverlay from "./components/overlays/ShortcutsOverlay";
 import CalibrationManager from "./components/overlays/CalibrationManager";
 import MetadataDialog from "./components/overlays/MetadataDialog";
 import GalleryGrid from "./components/overlays/GalleryGrid";
+import BatchDialog from "./components/overlays/BatchDialog";
 import PrefsWindow from "./components/overlays/PrefsWindow";
 import TooltipLayer from "./components/overlays/TooltipLayer";
 import ToolWindow from "./components/overlays/ToolWindow";
@@ -532,6 +533,7 @@ export default function App() {
       <CalibrationManager />
       <MetadataDialog />
       <PrefsWindow />
+      <BatchDialog />
       <GalleryGrid />
       <ParamDialog />
       <ResultsWindow />

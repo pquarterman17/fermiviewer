@@ -2267,3 +2267,148 @@ button.fvd-cmd-group:hover {
     transform: scale(0.7);
   }
 }
+
+/* Batch recipe dialog (GUI-enhancements handoff §4a) */
+.fvd-batch {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(560px, 94vw);
+  max-height: 88vh;
+  padding: var(--pad-lg) 18px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pad);
+  overflow: auto;
+}
+
+.fvd-batch h2 {
+  margin: 2px 0 0;
+  font-size: 14px;
+}
+
+.fvd-batch-sub {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+}
+
+.fvd-batch-pal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.fvd-batch-recipe {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 56px;
+  padding: 6px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+
+.fvd-batch-empty {
+  color: var(--text-faint);
+  font-size: var(--font-size-sm);
+  padding: 10px 6px;
+  text-align: center;
+}
+
+.fvd-batch-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.fvd-batch-step .n {
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+  width: 16px;
+  text-align: right;
+}
+
+.fvd-batch-step .lbl {
+  font-weight: 600;
+}
+
+.fvd-batch-step .prm {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fvd-batch-step .mv,
+.fvd-batch-step .rm {
+  border: 1px solid var(--border);
+  background: var(--surface-3);
+  color: var(--text-dim);
+  border-radius: var(--radius-sm);
+  width: 22px;
+  height: 22px;
+  cursor: default;
+}
+
+.fvd-batch-step .mv:disabled,
+.fvd-batch-step .rm:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.fvd-batch-step .rm:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.fvd-batch-prog {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 180px;
+  overflow: auto;
+  font-size: var(--font-size-sm);
+}
+
+.fvd-batch-prog .row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fvd-batch-prog .nm {
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fvd-batch-prog .st {
+  width: 14px;
+  text-align: center;
+  font-family: var(--font-mono);
+}
+
+.fvd-batch-prog .st.done {
+  color: var(--ok);
+}
+
+.fvd-batch-prog .st.fail {
+  color: var(--danger);
+}
+
+.fvd-batch-prog .st.running {
+  color: var(--accent-text);
+}

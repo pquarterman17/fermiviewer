@@ -430,6 +430,7 @@ interface ViewerState {
   radial: { x: number; y: number } | null;
   tools: ToolWindowState[]; // open workshop windows (handoff §6)
   exportOpen: boolean;
+  batchOpen: boolean;
   calibOpen: boolean;
   metaOpen: boolean;
   prefsOpen: boolean;
@@ -506,6 +507,7 @@ interface ViewerState {
   focusTool: (kind: ToolKind) => void;
   moveTool: (kind: ToolKind, x: number, y: number) => void;
   setExportOpen: (open: boolean) => void;
+  setBatchOpen: (open: boolean) => void;
   setCalibOpen: (open: boolean) => void;
   setMetaOpen: (open: boolean) => void;
   setPrefsOpen: (open: boolean) => void;
@@ -570,6 +572,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   radial: null,
   tools: [],
   exportOpen: false,
+  batchOpen: false,
   calibOpen: false,
   metaOpen: false,
   prefsOpen: false,
@@ -1046,6 +1049,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
     })),
 
   setExportOpen: (exportOpen) => set({ exportOpen }),
+  setBatchOpen: (batchOpen) => set({ batchOpen }),
   setCalibOpen: (calibOpen) => set({ calibOpen }),
   setMetaOpen: (metaOpen) => set({ metaOpen }),
   setPrefsOpen: (prefsOpen) => set({ prefsOpen }),
