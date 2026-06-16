@@ -144,6 +144,11 @@ export type CaptureMode =
   | "box-profile"
   | MeasureKind;
 export type Theme = "dark" | "light";
+/** Swappable accent scheme (kept in sync with lib/prefs Accent; no import
+ *  to avoid an init-time cycle, same as Theme vs ThemeChoice). */
+export type Accent = "violet" | "teal" | "ocean" | "amber" | "rose";
+/** UI density — drives the spacing/row-height/font-size token block. */
+export type Density = "compact" | "regular" | "comfy";
 export type ListView = "thumbs" | "names";
 export type CompareMode = "split" | "flicker" | "subtract";
 export type SelectGesture = "single" | "toggle" | "range";
@@ -395,6 +400,8 @@ interface ViewerState {
   redoStack: UndoEntry[];
   // display chrome
   theme: Theme;
+  accent: Accent;
+  density: Density;
   overlay: OverlayStyle; // persisted "fv_overlay"
   // per-image scale bar position/size overrides
   scaleBars: Record<string, ScaleBarState>;
@@ -482,6 +489,8 @@ interface ViewerState {
   setFixedZoomDims: (w: number, h: number) => void;
   setTheme: (choice: Theme | "system") => void;
   toggleTheme: () => void;
+  setAccent: (accent: Accent) => void;
+  setDensity: (density: Density) => void;
   setScaleBarVisible: (on: boolean) => void;
   toggleLeft: () => void;
   toggleRight: () => void;
@@ -523,6 +532,16 @@ export const useViewer = create<ViewerState>((set, get) => ({
     const t = initialTheme();
     document.documentElement.setAttribute("data-theme", t);
     return t;
+  })(),
+  accent: (() => {
+    const a = _pref<Accent>("accent", "violet");
+    document.documentElement.setAttribute("data-accent", a);
+    return a;
+  })(),
+  density: (() => {
+    const d = _pref<Density>("density", "regular");
+    document.documentElement.setAttribute("data-density", d);
+    return d;
   })(),
   // default endSymbol "bar" (user request 2026-06-09): dimension-style
   // perpendicular ticks at measurement line ends
@@ -953,6 +972,19 @@ export const useViewer = create<ViewerState>((set, get) => ({
   toggleTheme: () => {
     // quick flip → an explicit dark/light choice (overrides "system")
     get().setTheme(get().theme === "dark" ? "light" : "dark");
+  },
+
+  setAccent: (accent) => {
+    // accent is a tint: only --accent* (+ capture under amber) change, live
+    document.documentElement.setAttribute("data-accent", accent);
+    writePref("accent", accent);
+    set({ accent });
+  },
+
+  setDensity: (density) => {
+    document.documentElement.setAttribute("data-density", density);
+    writePref("density", density);
+    set({ density });
   },
 
   toggleLeft: () => set((s) => ({ leftCol: !s.leftCol })),

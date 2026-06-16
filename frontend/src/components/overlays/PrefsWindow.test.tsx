@@ -12,6 +12,8 @@ const state = {
   setStatus: vi.fn(),
   // apply-live action setters invoked by save()
   setTheme: vi.fn(),
+  setAccent: vi.fn(),
+  setDensity: vi.fn(),
   setToolsLayout: vi.fn(),
   setProfileWidth: vi.fn(),
   setProfileReduce: vi.fn(),
@@ -76,6 +78,18 @@ describe("PrefsWindow", () => {
     expect(state.setTheme).toHaveBeenCalledWith("light"); // applied live
     expect(state.setToolsLayout).toHaveBeenCalled();
     expect(state.setPrefsOpen).toHaveBeenCalledWith(false); // closes
+  });
+
+  it("Save applies the chosen accent scheme + density live and persists", () => {
+    render(<PrefsWindow />);
+    fireEvent.click(screen.getByLabelText("Teal")); // accent draft → teal
+    fireEvent.click(screen.getByText("Compact")); // density draft → compact
+    fireEvent.click(screen.getByText("Save"));
+
+    expect(loadPrefs().accent).toBe("teal");
+    expect(loadPrefs().density).toBe("compact");
+    expect(state.setAccent).toHaveBeenCalledWith("teal");
+    expect(state.setDensity).toHaveBeenCalledWith("compact");
   });
 
   it("renders nothing when closed", () => {

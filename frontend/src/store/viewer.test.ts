@@ -161,6 +161,35 @@ describe("overlay style", () => {
   });
 });
 
+describe("theming — accent scheme + density", () => {
+  it("defaults to the violet scheme at regular density", () => {
+    expect(useViewer.getState().accent).toBe("violet");
+    expect(useViewer.getState().density).toBe("regular");
+  });
+
+  it("setAccent applies data-accent, persists to fv_prefs, updates state", () => {
+    useViewer.getState().setAccent("teal");
+    expect(useViewer.getState().accent).toBe("teal");
+    expect(document.documentElement.getAttribute("data-accent")).toBe("teal");
+    const p = JSON.parse(localStorage.getItem("fv_prefs") ?? "{}") as {
+      accent?: string;
+    };
+    expect(p.accent).toBe("teal");
+  });
+
+  it("setDensity applies data-density, persists, updates state", () => {
+    useViewer.getState().setDensity("compact");
+    expect(useViewer.getState().density).toBe("compact");
+    expect(document.documentElement.getAttribute("data-density")).toBe(
+      "compact",
+    );
+    const p = JSON.parse(localStorage.getItem("fv_prefs") ?? "{}") as {
+      density?: string;
+    };
+    expect(p.density).toBe("compact");
+  });
+});
+
 describe("stack frames (#40)", () => {
   it("tracks the per-image frame index", () => {
     useViewer.getState().setStackFrame("cube", 7);

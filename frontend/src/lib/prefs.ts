@@ -5,10 +5,18 @@
 // fv_tools_layout, fv_overlay) so existing users keep their settings.
 
 export type ThemeChoice = "dark" | "light" | "system";
+/** Swappable accent scheme (Preferences → Appearance → Color scheme). */
+export type Accent = "violet" | "teal" | "ocean" | "amber" | "rose";
+/** UI density — drives the spacing/row-height/font-size token block. */
+export type Density = "compact" | "regular" | "comfy";
 
 export interface Prefs {
   // ── Appearance ──
   theme: ThemeChoice;
+  /** Accent ramp; tints selection/active chrome, surfaces stay neutral. */
+  accent: Accent;
+  /** Chrome density (compact | regular | comfy). */
+  density: Density;
   defaultCmap: string;
   /** Default intensity transform for newly opened images. */
   defaultTransform: "linear" | "log" | "equalize";
@@ -59,6 +67,8 @@ const KEY = "fv_prefs";
 
 export const DEFAULTS: Prefs = {
   theme: "system",
+  accent: "violet",
+  density: "regular",
   defaultCmap: "gray",
   defaultTransform: "linear",
   defaultInvert: false,
