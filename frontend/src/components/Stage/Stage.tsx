@@ -875,36 +875,51 @@ function FloatTools() {
     ["▭", "ROI stats  R", captureMode === "roi", mode("roi")],
   ];
 
+  // split a "Label  KEY" toolbar title into [label, shortcut] for the hover
+  // tooltip (titles without a trailing 2-space + token return [title, null])
+  const splitTip = (s: string): [string, string | null] => {
+    const m = /^(.*?)\s{2,}(\S.*)$/.exec(s);
+    return m ? [m[1], m[2]] : [s, null];
+  };
+
   return (
     <div
       className="fvd-glass fvd-float-tools"
       onPointerDown={(e) => e.stopPropagation()}
     >
-      {transforms.map(([glyph, title, onClick]) => (
-        <button
-          key={title}
-          className="fvd-tool-btn"
-          title={title}
-          onClick={onClick}
-        >
-          {glyph}
-        </button>
-      ))}
+      {transforms.map(([glyph, title, onClick]) => {
+        const [label, hint] = splitTip(title);
+        return (
+          <button
+            key={title}
+            className="fvd-tool-btn"
+            data-tip={label}
+            data-tip-key={hint ?? undefined}
+            onClick={onClick}
+          >
+            {glyph}
+          </button>
+        );
+      })}
       <span className="fvd-tool-sep" />
-      {tools.map(([glyph, title, active, onClick]) => (
-        <button
-          key={title}
-          className={`fvd-tool-btn${active ? " active" : ""}`}
-          title={title}
-          onClick={onClick}
-        >
-          {glyph}
-        </button>
-      ))}
+      {tools.map(([glyph, title, active, onClick]) => {
+        const [label, hint] = splitTip(title);
+        return (
+          <button
+            key={title}
+            className={`fvd-tool-btn${active ? " active" : ""}`}
+            data-tip={label}
+            data-tip-key={hint ?? undefined}
+            onClick={onClick}
+          >
+            {glyph}
+          </button>
+        );
+      })}
       <span className="fvd-tool-sep" />
       <button
         className="fvd-tool-btn"
-        title="Crop to ROI"
+        data-tip="Crop to ROI"
         onClick={() => cropToRoi()}
       >
         ✂

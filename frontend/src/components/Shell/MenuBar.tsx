@@ -69,10 +69,13 @@ function recentPaths(): string[] {
 }
 
 interface Entry {
-  label: string;
+  label?: string;
   shortcut?: string;
   disabled?: boolean;
   action?: () => void;
+  /** "section" = an uppercase group heading; "sep" = a hairline divider.
+   *  Omitted = a normal action row. */
+  kind?: "section" | "sep";
 }
 
 export default function MenuBar({
@@ -139,6 +142,46 @@ export default function MenuBar({
       ]),
     });
     store.setStatus(`batch profile: ${series.length} images`);
+  };
+  // calibrate the active image's pixel size from its last distance measure —
+  // shared by the Image ▸ Calibration and Measure ▸ Calibration entries
+  const calibrateFromMeasurement = () => {
+    void (async () => {
+      const id = store.activeId;
+      if (!id) return;
+      const meta = store.images[id];
+      const d = (store.measures[id] ?? [])
+        .filter((m) => m.kind === "distance")
+        .at(-1);
+      if (!meta || !d) return;
+      const [h, w] = meta.shape;
+      const lenPx = Math.hypot(
+        (d.pts[1].x - d.pts[0].x) * w,
+        (d.pts[1].y - d.pts[0].y) * h,
+      );
+      const v = await askParams(`Calibrate (measured ${lenPx.toFixed(1)} px)`, [
+        num("len", "Known physical length", 1),
+        {
+          key: "unit",
+          label: "Unit",
+          type: "select",
+          default: "nm",
+          options: ["nm", "µm", "Å", "pm", "mm"],
+        },
+      ]);
+      if (!v || lenPx <= 0) return;
+      applyCalibration(id, (v["len"] as number) / lenPx, v["unit"] as string)
+        .then((r) => {
+          useViewer.setState((s) => ({
+            images: { ...s.images, [r.image.id]: r.image },
+          }));
+          store.setStatus(
+            `calibrated: ${r.image.pixel_size?.toPrecision(4)} ` +
+              `${r.image.pixel_unit}/px`,
+          );
+        })
+        .catch((e: Error) => store.setStatus(e.message));
+    })();
   };
   const barRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -631,6 +674,7 @@ export default function MenuBar({
       },
     ],
     Image: [
+      { kind: "section", label: "Transform" },
       {
         label: "Rotate 90° CW",
         disabled: !store.activeId,
@@ -661,6 +705,7 @@ export default function MenuBar({
         disabled: !store.activeId,
         action: () => cropToRoi(),
       },
+      { kind: "section", label: "Combine" },
       {
         label: "Image Math…",
         disabled: !store.activeId || store.order.length < 2,
@@ -700,6 +745,7 @@ export default function MenuBar({
           })();
         },
       },
+      { kind: "section", label: "Stack" },
       {
         label: "Stack → Frames",
         disabled:
@@ -751,6 +797,7 @@ export default function MenuBar({
         disabled: !store.activeId || store.selected.length < 2,
         action: () => void runBatchCrop(),
       },
+      { kind: "section", label: "Fourier" },
       {
         label: "FFT",
         disabled: !store.activeId,
@@ -782,6 +829,7 @@ export default function MenuBar({
           })();
         },
       },
+      { kind: "section", label: "Batch & macro" },
       {
         label: "Batch Apply…",
         disabled: store.order.length === 0,
@@ -815,6 +863,7 @@ export default function MenuBar({
             .catch((e: Error) => store.setStatus(`macro: ${e.message}`));
         },
       },
+      { kind: "section", label: "Calibration" },
       {
         label: "Calibrate Pixel Size…",
         disabled: !store.activeId,
@@ -924,57 +973,14 @@ export default function MenuBar({
           !(store.measures[store.activeId ?? ""] ?? []).some(
             (m) => m.kind === "distance",
           ),
-        action: () => {
-          void (async () => {
-            const id = store.activeId;
-            if (!id) return;
-            const meta = store.images[id];
-            const d = (store.measures[id] ?? [])
-              .filter((m) => m.kind === "distance")
-              .at(-1);
-            if (!meta || !d) return;
-            const [h, w] = meta.shape;
-            const lenPx = Math.hypot(
-              (d.pts[1].x - d.pts[0].x) * w,
-              (d.pts[1].y - d.pts[0].y) * h,
-            );
-            const v = await askParams(
-              `Calibrate (measured ${lenPx.toFixed(1)} px)`,
-              [
-                num("len", "Known physical length", 1),
-                {
-                  key: "unit",
-                  label: "Unit",
-                  type: "select",
-                  default: "nm",
-                  options: ["nm", "µm", "Å", "pm", "mm"],
-                },
-              ],
-            );
-            if (!v || lenPx <= 0) return;
-            applyCalibration(
-              id,
-              (v["len"] as number) / lenPx,
-              v["unit"] as string,
-            )
-              .then((r) => {
-                useViewer.setState((s) => ({
-                  images: { ...s.images, [r.image.id]: r.image },
-                }));
-                store.setStatus(
-                  `calibrated: ${r.image.pixel_size?.toPrecision(4)} ` +
-                    `${r.image.pixel_unit}/px`,
-                );
-              })
-              .catch((e: Error) => store.setStatus(e.message));
-          })();
-        },
+        action: () => calibrateFromMeasurement(),
       },
       {
         label: "Edit Metadata…",
         disabled: !store.activeId,
         action: () => store.setMetaOpen(true),
       },
+      { kind: "section", label: "Profiles" },
       {
         label: "Radial Profile",
         disabled: !store.activeId,
@@ -984,6 +990,64 @@ export default function MenuBar({
         label: "Azimuthal Integration",
         disabled: !store.activeId,
         action: () => radialDock(true),
+      },
+    ],
+    Measure: [
+      { kind: "section", label: "Tools" },
+      {
+        label: "Distance",
+        shortcut: "D",
+        disabled: !store.activeId,
+        action: () => store.setCaptureMode("distance"),
+      },
+      {
+        label: "Angle",
+        shortcut: "G",
+        disabled: !store.activeId,
+        action: () => store.setCaptureMode("angle"),
+      },
+      {
+        label: "Line Profile",
+        shortcut: "L",
+        disabled: !store.activeId,
+        action: () => store.setCaptureMode("profile"),
+      },
+      {
+        label: "Box Profile",
+        shortcut: "B",
+        disabled: !store.activeId,
+        action: () => store.setCaptureMode("box-profile"),
+      },
+      {
+        label: "ROI Statistics",
+        shortcut: "R",
+        disabled: !store.activeId,
+        action: () => store.setCaptureMode("roi"),
+      },
+      {
+        label: "Polyline",
+        shortcut: "P",
+        disabled: !store.activeId,
+        action: () => store.setCaptureMode("polyline"),
+      },
+      { kind: "section", label: "Calibration" },
+      {
+        label: "Calibrate from Measurement…",
+        disabled:
+          !store.activeId ||
+          !(store.measures[store.activeId ?? ""] ?? []).some(
+            (m) => m.kind === "distance",
+          ),
+        action: () => calibrateFromMeasurement(),
+      },
+      { kind: "sep" },
+      {
+        label: "Clear Measurements",
+        disabled: !store.activeId,
+        action: () => {
+          const id = store.activeId;
+          if (id) store.clearMeasures(id, null);
+        },
       },
     ],
     Analysis: [
@@ -1295,22 +1359,32 @@ export default function MenuBar({
           </div>
           {open === name && (
             <div className="fvd-menu-dropdown">
-              {entries.map((e) => (
-                <div
-                  key={e.label}
-                  className={`fvd-menu-entry${e.disabled ? " disabled" : ""}`}
-                  onMouseDown={(ev) => {
-                    ev.stopPropagation();
-                    setOpen(null);
-                    e.action?.();
-                  }}
-                >
-                  <span>{e.label}</span>
-                  {e.shortcut && (
-                    <span className="fvd-shortcut">{e.shortcut}</span>
-                  )}
-                </div>
-              ))}
+              {entries.map((e, i) => {
+                if (e.kind === "sep")
+                  return <div key={i} className="fvd-menu-sep" />;
+                if (e.kind === "section")
+                  return (
+                    <div key={i} className="fvd-menu-section">
+                      {e.label}
+                    </div>
+                  );
+                return (
+                  <div
+                    key={i}
+                    className={`fvd-menu-entry${e.disabled ? " disabled" : ""}`}
+                    onMouseDown={(ev) => {
+                      ev.stopPropagation();
+                      setOpen(null);
+                      e.action?.();
+                    }}
+                  >
+                    <span>{e.label}</span>
+                    {e.shortcut && (
+                      <span className="fvd-shortcut">{e.shortcut}</span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

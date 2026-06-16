@@ -25,6 +25,7 @@ import CalibrationManager from "./components/overlays/CalibrationManager";
 import MetadataDialog from "./components/overlays/MetadataDialog";
 import GalleryGrid from "./components/overlays/GalleryGrid";
 import PrefsWindow from "./components/overlays/PrefsWindow";
+import TooltipLayer from "./components/overlays/TooltipLayer";
 import ToolWindow from "./components/overlays/ToolWindow";
 import DiffractionWorkshop from "./components/workshops/DiffractionWorkshop";
 import FftMaskWorkshop from "./components/workshops/FftMaskWorkshop";
@@ -523,6 +524,7 @@ export default function App() {
         {comparing ? <CompareInspector /> : <Inspector />}
       </div>
       <StatusBar />
+      <TooltipLayer />
       <CommandPalette actions={actions} />
       <ShortcutsOverlay />
       <RadialMenu />

@@ -59,7 +59,7 @@ export default function Filmstrip() {
         <span className="count">DOCS · {order.length}</span>
         <button
           className="fvd-icon-btn"
-          title={listView === "thumbs" ? "Names view" : "Thumbnail view"}
+          data-tip={listView === "thumbs" ? "Names view" : "Thumbnail view"}
           onClick={() =>
             setListView(listView === "thumbs" ? "names" : "thumbs")
           }

@@ -148,6 +148,47 @@ body {
   color: var(--text-faint);
 }
 
+/* UPPERCASE tracked group heading inside a dropdown (menu IA) */
+.fvd-menu-section {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  padding: 6px 9px 2px;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Hover tooltip — glass chip with the action name + its shortcut. Mounted
+   once at the document body and positioned from the hovered [data-tip]. */
+.fvd-tip {
+  position: fixed;
+  z-index: 2000;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: var(--glass);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.fvd-tip-key {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--text-faint);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
 /* ── Filmstrip (library) ── */
 
 .fvd-filmstrip {

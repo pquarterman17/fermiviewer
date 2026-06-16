@@ -38,28 +38,32 @@ export default function TitleBar() {
       <div className="fvd-panel-toggles">
         <button
           className="fvd-icon-btn"
-          title="Keyboard shortcuts  ?"
+          data-tip="Keyboard shortcuts"
+          data-tip-key="?"
           onClick={() => setShorts(true)}
         >
           ⌨
         </button>
         <button
           className="fvd-icon-btn"
-          title="Toggle theme  ⌘⇧L"
+          data-tip="Toggle theme"
+          data-tip-key="⌘⇧L"
           onClick={toggleTheme}
         >
           {theme === "dark" ? "☾" : "☀"}
         </button>
         <button
           className="fvd-icon-btn"
-          title="Toggle library  ⌘["
+          data-tip="Toggle library"
+          data-tip-key="⌘["
           onClick={toggleLeft}
         >
           ◧
         </button>
         <button
           className="fvd-icon-btn"
-          title="Toggle inspector  ⌘]"
+          data-tip="Toggle inspector"
+          data-tip-key="⌘]"
           onClick={toggleRight}
         >
           ◨
