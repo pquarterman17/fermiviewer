@@ -16,6 +16,9 @@ export interface ExportNowOpts {
   measures?: boolean;
   /** include a colorbar (default false) */
   colorbar?: boolean;
+  /** report caption burned into a band below the figure (WS4c). Already
+   *  composed (user text + optional metadata line); empty/undefined → none */
+  caption?: string;
 }
 
 /** Build the /export request (id + options) from current store state.
@@ -42,10 +45,14 @@ function buildExportRequest(
   const wantBar = (opts.scaleBar ?? true) && canBar;
   const wantMeasures = (opts.measures ?? true) && canMeasure;
 
+  const caption = opts.caption?.trim();
+  const wantCaption = opts.format !== "tiff16" && !!caption;
+
   const include: string[] = [];
   if (wantBar) include.push("scale_bar");
   if (wantMeasures) include.push("measurements");
   if (opts.format !== "tiff16" && opts.colorbar) include.push("colorbar");
+  if (wantCaption) include.push("caption");
 
   const options: ExportOptions = {
     format: opts.format,
@@ -56,6 +63,7 @@ function buildExportRequest(
     // custom colormap is client-local — fall back to gray server-side
     cmap: display.cmap === "custom" ? "gray" : display.cmap,
     include,
+    caption: wantCaption ? caption : undefined,
     measures: wantMeasures
       ? measures.map((m) => ({
           kind: m.kind,
@@ -101,6 +109,17 @@ export async function exportActive(opts: ExportNowOpts): Promise<string> {
   a.click();
   URL.revokeObjectURL(url);
   return filename;
+}
+
+/** Render the active image with the given options and return the PNG blob
+ *  WITHOUT downloading — drives the Export dialog's live preview. Gating
+ *  (which overlays are allowed) still uses the chosen format, so a tiff16
+ *  selection previews bare like its real export; the request is then forced
+ *  to png at scale 1 so any format previews fast in an <img>. */
+export async function previewActive(opts: ExportNowOpts): Promise<Blob> {
+  const { id, options } = buildExportRequest({ ...opts, scale: 1 });
+  const { blob } = await exportImage(id, { ...options, format: "png" });
+  return blob;
 }
 
 /** Copy the active image to the clipboard as a PNG. Bakes in the scale

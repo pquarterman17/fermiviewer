@@ -460,6 +460,82 @@ def test_colorbar_baking(client, img_id) -> None:
     assert svg.count("base64,") == 2        # image + strip
 
 
+# ── item WS4c: report caption band ───────────────────────────────────
+
+def test_caption_band_png(client, img_id) -> None:
+    base = Image.open(io.BytesIO(client.post("/api/export", json={
+        "image_id": img_id, "format": "png", "scale": 2,
+    }).content))
+    capped = Image.open(io.BytesIO(client.post("/api/export", json={
+        "image_id": img_id, "format": "png", "scale": 2,
+        "include": ["caption"], "caption": "Fig 1 · HAADF",
+    }).content))
+    # band is appended below: same width, greater height
+    assert capped.width == base.width
+    assert capped.height > base.height
+    # the original image sits unchanged at the top
+    np.testing.assert_array_equal(
+        np.asarray(capped)[: base.height], np.asarray(base)
+    )
+    # caption needs the include flag — text alone bakes nothing
+    plain = client.post("/api/export", json={
+        "image_id": img_id, "format": "png", "scale": 2, "caption": "x",
+    }).content
+    bare = client.post("/api/export", json={
+        "image_id": img_id, "format": "png", "scale": 2,
+    }).content
+    assert plain == bare
+    # whitespace-only caption with the flag → no band
+    empty = Image.open(io.BytesIO(client.post("/api/export", json={
+        "image_id": img_id, "format": "png", "scale": 2,
+        "include": ["caption"], "caption": "   ",
+    }).content))
+    assert empty.height == base.height
+
+
+def test_caption_multiline_taller(client, img_id) -> None:
+    one = Image.open(io.BytesIO(client.post("/api/export", json={
+        "image_id": img_id, "format": "png", "scale": 2,
+        "include": ["caption"], "caption": "line one",
+    }).content))
+    two = Image.open(io.BytesIO(client.post("/api/export", json={
+        "image_id": img_id, "format": "png", "scale": 2,
+        "include": ["caption"], "caption": "line one\nline two",
+    }).content))
+    assert two.height > one.height  # extra line → taller band
+
+
+def test_caption_band_svg(client, img_id) -> None:
+    import re
+
+    svg = client.post("/api/export", json={
+        "image_id": img_id, "format": "svg", "scale": 2,
+        "include": ["caption"], "caption": "Fig 1 · HAADF",
+    }).content.decode()
+    assert ">Fig 1 · HAADF</text>" in svg
+    assert 'fill="#141414"' in svg  # caption band rect
+    plain = client.post("/api/export", json={
+        "image_id": img_id, "format": "svg", "scale": 2,
+    }).content.decode()
+    h_cap = int(re.search(r'<svg[^>]*height="(\d+)"', svg).group(1))
+    h_plain = int(re.search(r'<svg[^>]*height="(\d+)"', plain).group(1))
+    assert h_cap > h_plain
+
+
+def test_caption_with_colorbar_spans_full_width(client, img_id) -> None:
+    """Caption is added after the colorbar gutter, so the band spans the
+    full widened image (not just the picture)."""
+    capped = Image.open(io.BytesIO(client.post("/api/export", json={
+        "image_id": img_id, "format": "png", "scale": 2, "cmap": "viridis",
+        "include": ["colorbar", "caption"], "caption": "spanning",
+    }).content))
+    base = Image.open(io.BytesIO(client.post("/api/export", json={
+        "image_id": img_id, "format": "png", "scale": 2,
+    }).content))
+    assert capped.width == base.width + 81  # picture + colorbar gutter
+    assert capped.height > base.height       # plus the caption band
+
+
 def test_end_symbol_baking_png(client, img_id) -> None:
     """Endpoint glyphs differ from no-glyph for each symbol kind (PIL path)."""
     base_body = {

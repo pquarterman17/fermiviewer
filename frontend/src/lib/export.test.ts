@@ -38,7 +38,11 @@ vi.mock("./api", () => ({
 }));
 
 import { exportImage } from "./api";
-import { copyActive, exportActive } from "./export";
+import { copyActive, exportActive, previewActive } from "./export";
+
+type Calls = { mock: { calls: unknown[][] } };
+const lastOpts = () =>
+  (exportImage as unknown as Calls).mock.calls[0][1] as Record<string, unknown>;
 
 describe("exportActive", () => {
   beforeEach(() => {
@@ -76,6 +80,58 @@ describe("exportActive", () => {
     await exportActive({ format: "png", scale: 1, scaleBar: false, measures: false });
     const [, opts] = (exportImage as unknown as { mock: { calls: unknown[][] } })
       .mock.calls[0] as [string, Record<string, unknown>];
+    expect(opts.include).toEqual([]);
+  });
+});
+
+describe("caption (WS4c)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    globalThis.URL.createObjectURL = vi.fn(() => "blob:x");
+    globalThis.URL.revokeObjectURL = vi.fn();
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("adds 'caption' to include and sends the text", async () => {
+    await exportActive({ format: "png", scale: 1, caption: "Fig 1 · HAADF" });
+    const opts = lastOpts();
+    expect(opts.include).toContain("caption");
+    expect(opts.caption).toBe("Fig 1 · HAADF");
+  });
+
+  it("omits caption for tiff16 (no overlays) and when blank", async () => {
+    await exportActive({ format: "tiff16", scale: 1, caption: "Fig 1" });
+    expect(lastOpts().include).not.toContain("caption");
+    expect(lastOpts().caption).toBeUndefined();
+
+    vi.clearAllMocks();
+    await exportActive({ format: "png", scale: 1, caption: "   " });
+    expect(lastOpts().include).not.toContain("caption");
+  });
+});
+
+describe("previewActive", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    globalThis.URL.createObjectURL = vi.fn(() => "blob:x");
+    globalThis.URL.revokeObjectURL = vi.fn();
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("forces png + scale 1, keeping the chosen format's gating", async () => {
+    const blob = await previewActive({ format: "svg", scale: 4, caption: "C" });
+    expect(blob).toBeInstanceOf(Blob);
+    const opts = lastOpts();
+    expect(opts.format).toBe("png"); // displayable in an <img>
+    expect(opts.scale).toBe(1); // fast preview regardless of export scale
+    expect(opts.include).toContain("caption"); // svg allows overlays
+  });
+
+  it("previews tiff16 bare, matching its real (overlay-free) export", async () => {
+    await previewActive({ format: "tiff16", scale: 1, caption: "C" });
+    const opts = lastOpts();
+    expect(opts.format).toBe("png");
     expect(opts.include).toEqual([]);
   });
 });

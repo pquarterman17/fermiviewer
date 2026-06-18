@@ -184,6 +184,67 @@ def fmt_tick(v: float) -> str:
     return f"{v:.4g}"
 
 
+def _wrap_text(draw: ImageDraw.ImageDraw, line: str,
+               font: FreeTypeFont | None, max_w: float) -> list[str]:
+    """Greedy word-wrap a single line to `max_w` px. Without a TTF (bitmap
+    fallback) we can't measure reliably, so the line is returned as-is."""
+    if font is None or not line:
+        return [line]
+    out: list[str] = []
+    cur = ""
+    for word in line.split(" "):
+        trial = f"{cur} {word}".strip()
+        if not cur or draw.textlength(trial, font=font) <= max_w:
+            cur = trial
+        else:
+            out.append(cur)
+            cur = word
+    if cur:
+        out.append(cur)
+    return out
+
+
+def caption_band_lines(img: Image.Image, text: str, scale: int) -> list[str]:
+    """The wrapped caption lines for `text` at the image width (shared by
+    raster + SVG so both bands have identical wrapping)."""
+    probe = ImageDraw.Draw(img)
+    font = _load_font(max(11, 13 * scale))
+    pad = max(6, 5 * scale)
+    wrapped: list[str] = []
+    for raw in text.splitlines():
+        if raw.strip():
+            wrapped.extend(_wrap_text(probe, raw, font, img.width - 2 * pad))
+    return wrapped
+
+
+def draw_caption_band(img: Image.Image, text: str,
+                      scale: int = 1) -> Image.Image:
+    """Return a new image with a caption strip appended below `img`.
+
+    `text` may be multi-line; each line is word-wrapped to the image width.
+    The strip is a dark band with light text so it reads cleanly beneath the
+    typically-dark EM image edge. Empty/whitespace text → `img` unchanged."""
+    lines = caption_band_lines(img, text, scale)
+    if not lines:
+        return img
+    font_size = max(11, 13 * scale)
+    font = _load_font(font_size)
+    pad = max(6, 5 * scale)
+    line_h = font_size + max(2, 2 * scale)
+    band_h = pad * 2 + line_h * len(lines)
+    out = Image.new("RGB", (img.width, img.height + band_h), (20, 20, 20))
+    out.paste(img, (0, 0))
+    draw = ImageDraw.Draw(out)
+    y = img.height + pad
+    for ln in lines:
+        if font is not None:
+            draw.text((pad, y), ln, fill=(235, 235, 235), font=font)
+        else:
+            draw.text((pad, y), ln, fill=(235, 235, 235))
+        y += line_h
+    return out
+
+
 def composite_colorbar(img: Image.Image, cmap: str, lo: float,
                        hi: float) -> Image.Image:
     """Paste a right-edge colorbar strip with min/max labels."""
@@ -231,49 +292,157 @@ def _svg_end_glyph(cx: float, cy: float, sym: str, color: str,
     return []  # "none"
 
 
+def _svg_colorbar_parts(img: Image.Image,
+                        cbar: tuple[bool, float, float], cmap: str) -> list[str]:
+    """SVG <image>/<text> elements for the right-edge colorbar gutter."""
+    strip = colorbar_strip(cmap, img.height, 20)
+    sb = io.BytesIO()
+    Image.fromarray(strip, mode="RGB").save(sb, format="PNG")
+    s64 = base64.b64encode(sb.getvalue()).decode()
+    cb_x = img.width + 5
+    tx = cb_x + 24
+    return [
+        f'<image x="{cb_x}" width="20" height="{img.height}" '
+        f'href="data:image/png;base64,{s64}"/>',
+        f'<text x="{tx}" y="12" fill="white" font-family="monospace" '
+        f'font-size="11">{escape(fmt_tick(cbar[2]))}</text>',
+        f'<text x="{tx}" y="{img.height - 3}" fill="white" '
+        f'font-family="monospace" font-size="11">'
+        f'{escape(fmt_tick(cbar[1]))}</text>',
+    ]
+
+
+def _svg_caption_parts(img: Image.Image, total_w: int, band_h: int,
+                       lines: list[str], font: int, pad: int,
+                       line_h: int) -> list[str]:
+    """SVG band rect + <text> lines for the report caption."""
+    out = [
+        f'<rect x="0" y="{img.height}" width="{total_w}" '
+        f'height="{band_h}" fill="#141414"/>'
+    ]
+    ty = img.height + pad + font
+    for ln in lines:
+        out.append(
+            f'<text x="{pad}" y="{ty}" fill="#ebebeb" '
+            f'font-family="\'JetBrains Mono\', monospace" '
+            f'font-size="{font}">{escape(ln)}</text>'
+        )
+        ty += line_h
+    return out
+
+
+def _svg_annotation_parts(an: Annotation, color: str,
+                          text_attrs: str) -> list[str]:
+    """SVG vector elements (+ label) for one measurement annotation.
+    Mirrors draw_annotations() on the raster side."""
+    p = an.points
+    sym = an.end_symbol
+    if an.kind == "outline":
+        # box-profile averaging box: closed polygon, no label/glyphs
+        pts_str = " ".join(f"{x:.1f},{y:.1f}" for x, y in p)
+        return [f'<polygon points="{pts_str}" fill="none" '
+                f'stroke="{color}" stroke-width="2"/>']
+    out: list[str] = []
+    if an.kind in ("ellipse", "circle"):
+        cx = (p[0][0] + p[1][0]) / 2
+        cy = (p[0][1] + p[1][1]) / 2
+        out.append(
+            f'<ellipse cx="{cx:.1f}" cy="{cy:.1f}" '
+            f'rx="{abs(p[1][0] - p[0][0]) / 2:.1f}" '
+            f'ry="{abs(p[1][1] - p[0][1]) / 2:.1f}" fill="none" '
+            f'stroke="{color}" stroke-width="2"/>'
+        )
+    elif an.kind in ("roi", "box"):
+        x0 = min(p[0][0], p[1][0])
+        y0 = min(p[0][1], p[1][1])
+        out.append(
+            f'<rect x="{x0:.1f}" y="{y0:.1f}" '
+            f'width="{abs(p[1][0] - p[0][0]):.1f}" '
+            f'height="{abs(p[1][1] - p[0][1]):.1f}" fill="none" '
+            f'stroke="{color}" stroke-width="2"/>'
+        )
+    elif an.kind == "text":
+        pass  # caption only — <text> emitted below
+    elif an.kind == "arrow":
+        a, b = p[0], p[1]
+        ang = math.atan2(b[1] - a[1], b[0] - a[0])
+        head = 9.0
+        wings = " ".join(
+            f"{b[0] - head * math.cos(ang + da):.1f},"
+            f"{b[1] - head * math.sin(ang + da):.1f}"
+            for da in (-0.45, 0.45)
+        ).split(" ")
+        out.append(
+            f'<line x1="{a[0]:.1f}" y1="{a[1]:.1f}" '
+            f'x2="{b[0]:.1f}" y2="{b[1]:.1f}" '
+            f'stroke="{color}" stroke-width="2"/>'
+        )
+        out.append(
+            f'<polyline points="{wings[0]} {b[0]:.1f},{b[1]:.1f} '
+            f'{wings[1]}" fill="none" stroke="{color}" stroke-width="2"/>'
+        )
+        out.extend(_svg_end_glyph(p[0][0], p[0][1], sym, color,
+                                  ang=_seg_angle(p, 0)))
+    elif an.kind in ("angle", "polyline"):
+        pts_str = " ".join(f"{x:.1f},{y:.1f}" for x, y in p)
+        dash = ' stroke-dasharray="6 4"' if an.dashed else ""
+        out.append(
+            f'<polyline points="{pts_str}" fill="none" '
+            f'stroke="{color}" stroke-width="2"{dash}/>'
+        )
+        for i, pt in enumerate(p):
+            out.extend(_svg_end_glyph(pt[0], pt[1], sym, color,
+                                      ang=_seg_angle(p, i)))
+    else:
+        dash = ' stroke-dasharray="6 4"' if an.dashed else ""
+        out.append(
+            f'<line x1="{p[0][0]:.1f}" y1="{p[0][1]:.1f}" '
+            f'x2="{p[1][0]:.1f}" y2="{p[1][1]:.1f}" '
+            f'stroke="{color}" stroke-width="2"{dash}/>'
+        )
+        for i, pt in enumerate(p[:2]):
+            out.extend(_svg_end_glyph(pt[0], pt[1], sym, color,
+                                      ang=_seg_angle(p, i)))
+    out.append(
+        f'<text x="{an.label_xy[0]:.1f}" y="{an.label_xy[1]:.1f}" '
+        f'fill="{color}" {text_attrs}>{escape(an.label)}</text>'
+    )
+    return out
+
+
 def build_svg(img: Image.Image, bar: ScaleBar | None,
               annos: list[Annotation], color: str,
               cbar: tuple[bool, float, float] = (False, 0.0, 1.0),
               cmap: str = "gray",
-              font_size: int = _DEFAULT_FONT_SIZE) -> str:
+              font_size: int = _DEFAULT_FONT_SIZE,
+              caption: str | None = None) -> str:
     """Full-res PNG embedded as <image> + vector overlay elements.
 
     `font_size` sets the scale-bar label font size (already scaled by the
     export scale factor). Measurement annotation labels use a fixed 12 px
-    size matching the on-screen overlay style.
+    size matching the on-screen overlay style. `caption`, if given, is
+    rendered as a dark band of <text> lines below the figure.
     """
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     b64 = base64.b64encode(buf.getvalue()).decode()
 
     total_w = img.width + (81 if cbar[0] else 0)  # pad+strip+labels
+    cap_lines = (
+        [ln for ln in caption.splitlines() if ln.strip()] if caption else []
+    )
+    cap_font, cap_pad, cap_line_h = 13, 6, 17
+    band_h = (cap_pad * 2 + cap_line_h * len(cap_lines)) if cap_lines else 0
+    total_h = img.height + band_h
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" '
-        f'width="{total_w}" height="{img.height}" '
-        f'viewBox="0 0 {total_w} {img.height}">',
+        f'width="{total_w}" height="{total_h}" '
+        f'viewBox="0 0 {total_w} {total_h}">',
         f'<image width="{img.width}" height="{img.height}" '
         f'href="data:image/png;base64,{b64}"/>',
     ]
     if cbar[0]:
-        strip = colorbar_strip(cmap, img.height, 20)
-        sb = io.BytesIO()
-        Image.fromarray(strip, mode="RGB").save(sb, format="PNG")
-        s64 = base64.b64encode(sb.getvalue()).decode()
-        cb_x = img.width + 5
-        parts.append(
-            f'<image x="{cb_x}" width="20" height="{img.height}" '
-            f'href="data:image/png;base64,{s64}"/>'
-        )
-        tx = cb_x + 24
-        parts.append(
-            f'<text x="{tx}" y="12" fill="white" font-family="monospace" '
-            f'font-size="11">{escape(fmt_tick(cbar[2]))}</text>'
-        )
-        parts.append(
-            f'<text x="{tx}" y="{img.height - 3}" fill="white" '
-            f'font-family="monospace" font-size="11">'
-            f'{escape(fmt_tick(cbar[1]))}</text>'
-        )
+        parts.extend(_svg_colorbar_parts(img, cbar, cmap))
     # measurement labels: fixed small size matching the on-screen overlay
     text_attrs = ('font-family="\'JetBrains Mono\', monospace" font-size="12" '
                   'paint-order="stroke" stroke="rgba(0,0,0,0.75)" '
@@ -296,82 +465,11 @@ def build_svg(img: Image.Image, bar: ScaleBar | None,
         )
 
     for an in annos:
-        p = an.points
-        sym = an.end_symbol
-        if an.kind == "outline":
-            # box-profile averaging box: closed polygon, no label/glyphs
-            pts_str = " ".join(f"{x:.1f},{y:.1f}" for x, y in p)
-            parts.append(
-                f'<polygon points="{pts_str}" fill="none" '
-                f'stroke="{color}" stroke-width="2"/>'
-            )
-            continue
-        if an.kind in ("ellipse", "circle"):
-            cx = (p[0][0] + p[1][0]) / 2
-            cy = (p[0][1] + p[1][1]) / 2
-            parts.append(
-                f'<ellipse cx="{cx:.1f}" cy="{cy:.1f}" '
-                f'rx="{abs(p[1][0] - p[0][0]) / 2:.1f}" '
-                f'ry="{abs(p[1][1] - p[0][1]) / 2:.1f}" fill="none" '
-                f'stroke="{color}" stroke-width="2"/>'
-            )
-        elif an.kind in ("roi", "box"):
-            x0 = min(p[0][0], p[1][0])
-            y0 = min(p[0][1], p[1][1])
-            w = abs(p[1][0] - p[0][0])
-            h = abs(p[1][1] - p[0][1])
-            parts.append(
-                f'<rect x="{x0:.1f}" y="{y0:.1f}" width="{w:.1f}" '
-                f'height="{h:.1f}" fill="none" stroke="{color}" '
-                f'stroke-width="2"/>'
-            )
-        elif an.kind == "text":
-            pass  # caption only — <text> emitted below
-        elif an.kind == "arrow":
-            a, b = p[0], p[1]
-            ang = math.atan2(b[1] - a[1], b[0] - a[0])
-            head = 9.0
-            wings = " ".join(
-                f"{b[0] - head * math.cos(ang + da):.1f},"
-                f"{b[1] - head * math.sin(ang + da):.1f}"
-                for da in (-0.45, 0.45)
-            ).split(" ")
-            parts.append(
-                f'<line x1="{a[0]:.1f}" y1="{a[1]:.1f}" '
-                f'x2="{b[0]:.1f}" y2="{b[1]:.1f}" '
-                f'stroke="{color}" stroke-width="2"/>'
-            )
-            parts.append(
-                f'<polyline points="{wings[0]} {b[0]:.1f},{b[1]:.1f} '
-                f'{wings[1]}" fill="none" stroke="{color}" '
-                f'stroke-width="2"/>'
-            )
-            parts.extend(_svg_end_glyph(p[0][0], p[0][1], sym, color,
-                                        ang=_seg_angle(p, 0)))
-        elif an.kind in ("angle", "polyline"):
-            pts_str = " ".join(f"{x:.1f},{y:.1f}" for x, y in p)
-            dash = ' stroke-dasharray="6 4"' if an.dashed else ""
-            parts.append(
-                f'<polyline points="{pts_str}" fill="none" '
-                f'stroke="{color}" stroke-width="2"{dash}/>'
-            )
-            for i, pt in enumerate(p):
-                parts.extend(_svg_end_glyph(pt[0], pt[1], sym, color,
-                                            ang=_seg_angle(p, i)))
-        else:
-            dash = ' stroke-dasharray="6 4"' if an.dashed else ""
-            parts.append(
-                f'<line x1="{p[0][0]:.1f}" y1="{p[0][1]:.1f}" '
-                f'x2="{p[1][0]:.1f}" y2="{p[1][1]:.1f}" '
-                f'stroke="{color}" stroke-width="2"{dash}/>'
-            )
-            for i, pt in enumerate(p[:2]):
-                parts.extend(_svg_end_glyph(pt[0], pt[1], sym, color,
-                                            ang=_seg_angle(p, i)))
-        parts.append(
-            f'<text x="{an.label_xy[0]:.1f}" y="{an.label_xy[1]:.1f}" '
-            f'fill="{color}" {text_attrs}>{escape(an.label)}</text>'
-        )
+        parts.extend(_svg_annotation_parts(an, color, text_attrs))
+
+    if cap_lines:
+        parts.extend(_svg_caption_parts(img, total_w, band_h, cap_lines,
+                                        cap_font, cap_pad, cap_line_h))
 
     parts.append("</svg>")
     return "\n".join(parts)

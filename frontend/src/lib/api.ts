@@ -527,7 +527,10 @@ export interface ExportOptions {
   hi: number;
   gamma: number;
   cmap: string;
-  include: string[]; // "scale_bar" | "measurements"
+  include: string[]; // "scale_bar" | "measurements" | "colorbar" | "caption"
+  // report caption burned below the figure (WS4c); frontend composes the
+  // text (user caption + optional metadata line)
+  caption?: string | null;
   measures?: {
     kind: string;
     pts: { x: number; y: number }[];

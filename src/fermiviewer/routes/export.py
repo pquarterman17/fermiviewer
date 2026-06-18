@@ -32,6 +32,7 @@ from fermiviewer.routes._export_render import (
     build_svg,
     composite_colorbar,
     draw_annotations,
+    draw_caption_band,
     draw_scale_bar,
 )
 from fermiviewer.session import UnknownImageError, store
@@ -75,9 +76,13 @@ class ExportRequest(BaseModel):
     hi: float = 1.0
     gamma: float = 1.0
     cmap: str = "gray"
-    include: list[str] = []  # ["scale_bar", "measurements"]
+    include: list[str] = []  # ["scale_bar", "measurements", "colorbar", "caption"]
     measures: list[WireMeasure] = []
     overlay_color: str = "#35e0c2"
+    # report caption burned into a band below the figure (item WS4c); the
+    # frontend composes the text (user caption + optional metadata line).
+    # Rendered only when "caption" is in `include` and this is non-empty.
+    caption: str | None = None
     # custom scale-bar geometry (item #33); None → auto (backward-compatible)
     scale_bar_norm_x: float | None = None
     scale_bar_norm_y: float | None = None
@@ -179,19 +184,40 @@ def export_image(req: ExportRequest) -> Response:
     # grow proportionally with the image (item #48)
     font_size = (req.scale_bar_font_size or 20) * req.scale
 
+    want_caption = "caption" in req.include and bool(req.caption)
+
     if req.format == "svg":
         svg = build_svg(img, bar, annos, req.overlay_color,
-                        cbar=cbar, cmap=req.cmap, font_size=font_size)
+                        cbar=cbar, cmap=req.cmap, font_size=font_size,
+                        caption=req.caption if want_caption else None)
         return _file_response(svg.encode(), f"{stem}.svg", "svg")
 
+    img = _bake_raster_overlays(img, bar, annos, cbar, req, font_size,
+                                want_caption)
+    return _encode_raster(img, req.format, stem)
+
+
+def _bake_raster_overlays(
+    img: Image.Image,
+    bar: ScaleBar | None,
+    annos: list[Annotation],
+    cbar: tuple[bool, float, float],
+    req: ExportRequest,
+    font_size: int,
+    want_caption: bool,
+) -> Image.Image:
+    """Bake scale bar, annotations, colorbar gutter, then caption band (in
+    that order) onto the rendered RGB image; returns the final image."""
     if bar is not None:
         draw_scale_bar(img, bar, font_size=font_size)
     if annos:
         draw_annotations(img, annos, _hex_rgb(req.overlay_color))
     if cbar[0]:
-        img = composite_colorbar(img, req.cmap, lo, hi)
-
-    return _encode_raster(img, req.format, stem)
+        img = composite_colorbar(img, req.cmap, cbar[1], cbar[2])
+    if want_caption:
+        # caption spans the full width incl. the colorbar gutter (added last)
+        img = draw_caption_band(img, req.caption or "", req.scale)
+    return img
 
 
 def _encode_raster(img: Image.Image, fmt: str, stem: str) -> Response:
