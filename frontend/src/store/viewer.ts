@@ -56,6 +56,41 @@ export const DEFAULT_DISPLAY: Display = {
   transform: "linear",
 };
 
+/** One entry in an image's non-destructive edit history (design WS4d).
+ *  Each step snapshots the FULL display state after the change, so a
+ *  revert is just restoring that snapshot. `field` groups consecutive
+ *  edits of the same control (a gamma drag coalesces into one step). */
+export interface HistoryStep {
+  id: number;
+  label: string;
+  field: string;
+  display: Display;
+}
+
+let historySeq = 0;
+
+/** Human label + coalescing field for a display change. Single-field
+ *  patches get a specific label; the auto-window {lo,hi} pair and the
+ *  reset patch are recognised so the card reads like the design example
+ *  (Opened → Colormap → Auto contrast → Gamma). */
+function describePatch(patch: Partial<Display>): { field: string; label: string } {
+  const keys = Object.keys(patch);
+  const has = (k: keyof Display) => k in patch;
+  if (keys.length === 2 && has("lo") && has("hi"))
+    return { field: "window", label: "Auto contrast" };
+  if (keys.length > 1) return { field: "reset", label: "Reset display" };
+  if (has("cmap")) return { field: "cmap", label: `Colormap → ${patch.cmap}` };
+  if (has("gamma"))
+    return { field: "gamma", label: `Gamma ${(patch.gamma ?? 1).toFixed(2)}` };
+  if (has("invert"))
+    return { field: "invert", label: `Invert ${patch.invert ? "on" : "off"}` };
+  if (has("transform"))
+    return { field: "transform", label: `Transform → ${patch.transform}` };
+  if (has("tickStep")) return { field: "tickStep", label: "Tick step" };
+  if (has("lo") || has("hi")) return { field: "window", label: "Contrast" };
+  return { field: "adjust", label: "Adjust" };
+}
+
 export type MeasureKind =
   | "distance"
   | "profile"
@@ -207,6 +242,9 @@ type SetState = (
     order: string[];
     activeId: string | null;
     tilts: Record<string, TiltSettings>;
+    display: Record<string, Display>;
+    history: Record<string, HistoryStep[]>;
+    historyAt: Record<string, number>;
   }) => object,
 ) => void;
 
@@ -263,9 +301,9 @@ function _ingest(set: SetState, metas: ImageMeta[]): void {
     const images = { ...s.images };
     const order = [...s.order];
     const tilts = { ...s.tilts };
-    const display = {
-      ...(s as unknown as { display: Record<string, Display> }).display,
-    };
+    const display = { ...s.display };
+    const history = { ...s.history };
+    const historyAt = { ...s.historyAt };
     for (const m of metas) {
       if (!(m.id in images)) {
         order.push(m.id);
@@ -282,6 +320,19 @@ function _ingest(set: SetState, metas: ImageMeta[]): void {
             transform: prefTransform,
             invert: prefInvert,
           };
+        }
+        // WS4d: seed the origin history step (the image's birth). Derived
+        // images (filters/FFT) carry derived_from; everything else is Opened.
+        if (!(m.id in history)) {
+          history[m.id] = [
+            {
+              id: ++historySeq,
+              field: "open",
+              label: m.meta["derived_from"] ? "Derived" : "Opened",
+              display: display[m.id] ?? DEFAULT_DISPLAY,
+            },
+          ];
+          historyAt[m.id] = 0;
         }
         // #34: seed tilt from stage metadata; angle 0 keeps it off
         // until the user enables it in the Tilt card
@@ -302,6 +353,8 @@ function _ingest(set: SetState, metas: ImageMeta[]): void {
       order,
       tilts,
       display,
+      history,
+      historyAt,
       activeId: last ? last.id : s.activeId,
       status: `opened ${metas.length} file${metas.length === 1 ? "" : "s"}`,
     };
@@ -401,6 +454,9 @@ interface ViewerState {
   views: Record<string, View>;
   // per-image display pipeline (window/gamma/colormap)
   display: Record<string, Display>;
+  // WS4d: per-image non-destructive edit history + the current-step cursor
+  history: Record<string, HistoryStep[]>;
+  historyAt: Record<string, number>;
   // measurements, per image; selection is a measure id
   measures: Record<string, Measure[]>;
   selectedMeasure: string | null;
@@ -465,8 +521,15 @@ interface ViewerState {
   cycleImage: (dir: 1 | -1) => void;
   closeImage: (id: string) => Promise<void>;
   setView: (id: string, view: View) => void;
-  setDisplay: (id: string, patch: Partial<Display>) => void;
+  setDisplay: (
+    id: string,
+    patch: Partial<Display>,
+    opts?: { silent?: boolean },
+  ) => void;
   ingestDerived: (metas: ImageMeta[]) => void;
+  /** WS4d: jump the active image's display to a history step (revert or
+   *  step forward); moves the cursor without dropping steps. */
+  revertHistory: (id: string, index: number) => void;
   pushUndo: (e: UndoEntry) => void;
   undo: () => UndoEntry | null;
   redo: () => UndoEntry | null;
@@ -578,6 +641,8 @@ function sessionSlice(
     // isn't part of the saved payload so it doesn't bleed across loads
     undoStack: [],
     redoStack: [],
+    history: {},
+    historyAt: {},
     scaleBars: {},
     tilts: {},
     stackFrames: {},
@@ -595,6 +660,8 @@ export const useViewer = create<ViewerState>((set, get) => ({
   compareMode: "split",
   views: loadJson<Record<string, View>>(VIEWS_KEY, {}),
   display: {},
+  history: {},
+  historyAt: {},
   measures: {},
   selectedMeasure: null,
   roiStats: {},
@@ -824,6 +891,10 @@ export const useViewer = create<ViewerState>((set, get) => ({
       delete views[id];
       const display = { ...s.display };
       delete display[id];
+      const history = { ...s.history };
+      delete history[id];
+      const historyAt = { ...s.historyAt };
+      delete historyAt[id];
       const scaleBars = { ...s.scaleBars };
       delete scaleBars[id];
       const tilts = { ...s.tilts };
@@ -842,6 +913,8 @@ export const useViewer = create<ViewerState>((set, get) => ({
         compareSet: compareSet && compareSet.length >= 2 ? compareSet : null,
         views,
         display,
+        history,
+        historyAt,
         scaleBars,
         tilts,
         stackFrames,
@@ -856,13 +929,47 @@ export const useViewer = create<ViewerState>((set, get) => ({
     set({ views });
   },
 
-  setDisplay: (id, patch) =>
-    set((s) => ({
-      display: {
-        ...s.display,
-        [id]: { ...(s.display[id] ?? DEFAULT_DISPLAY), ...patch },
-      },
-    })),
+  setDisplay: (id, patch, opts) =>
+    set((s) => {
+      const next = { ...(s.display[id] ?? DEFAULT_DISPLAY), ...patch };
+      const display = { ...s.display, [id]: next };
+      const steps = s.history[id];
+      // silent seeds (Stage's one-time DM-window load) fold into the
+      // current step's snapshot instead of logging a spurious "Contrast"
+      if (opts?.silent) {
+        if (!steps?.length) return { display };
+        const at = s.historyAt[id] ?? steps.length - 1;
+        const folded = steps.map((st, i) =>
+          i === at ? { ...st, display: next } : st,
+        );
+        return { display, history: { ...s.history, [id]: folded } };
+      }
+      const { field, label } = describePatch(patch);
+      const at = s.historyAt[id] ?? (steps ? steps.length - 1 : -1);
+      // truncate any steps "ahead" of the cursor (edit after a revert)
+      const base = (steps ?? []).slice(0, at + 1);
+      const last = base[base.length - 1];
+      const log =
+        last && last.field === field && field !== "open"
+          ? // coalesce consecutive edits of the same control into one step
+            [...base.slice(0, -1), { ...last, label, display: next }]
+          : [...base, { id: ++historySeq, field, label, display: next }];
+      return {
+        display,
+        history: { ...s.history, [id]: log },
+        historyAt: { ...s.historyAt, [id]: log.length - 1 },
+      };
+    }),
+
+  revertHistory: (id, index) =>
+    set((s) => {
+      const steps = s.history[id];
+      if (!steps || index < 0 || index >= steps.length) return {};
+      return {
+        display: { ...s.display, [id]: steps[index].display },
+        historyAt: { ...s.historyAt, [id]: index },
+      };
+    }),
 
   addMeasure: (imageId, m) => {
     const id = `m${++measureSeq}`;

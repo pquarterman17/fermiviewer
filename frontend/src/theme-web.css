@@ -2126,6 +2126,69 @@ details.fvd-card:not([open]) > summary {
   color: var(--capture);
 }
 
+/* WS4d non-destructive edit-history card */
+.fvd-history {
+  list-style: none;
+  margin: 0;
+  padding: 2px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.fvd-history-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.fvd-history-step:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.fvd-history-step .dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--text-faint);
+}
+
+.fvd-history-step.current {
+  color: var(--text);
+  cursor: default;
+}
+
+.fvd-history-step.current .dot {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* steps "ahead" of the cursor (after a revert) read as not-yet-applied */
+.fvd-history-step.ahead {
+  color: var(--text-faint);
+}
+
+.fvd-history-step .lbl {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fvd-history-step .now {
+  font-size: var(--font-size-sm);
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+}
+
 .fvd-zoom-chip {
   left: 10px;
   right: auto;

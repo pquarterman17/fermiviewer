@@ -12,6 +12,7 @@ import AdjustPanel from "./AdjustPanel";
 import Card from "./Card";
 import CustomMetaCard from "./CustomMetaCard";
 import ExportCard from "./ExportCard";
+import HistoryCard from "./HistoryCard";
 import MeasurePanel from "./MeasurePanel";
 import ScaleBarCard from "./ScaleBarCard";
 import ToolsBrowser from "./ToolsBrowser";
@@ -157,6 +158,7 @@ export default function Inspector() {
       {tab === "Image" && !unified && <MeasurePanel />}
       {tab === "Image" && !unified && meta.kind !== "spectrum" && <TransformPanel />}
       {tab === "Image" && meta.kind !== "spectrum" && <AdjustPanel />}
+      {tab === "Image" && meta.kind !== "spectrum" && <HistoryCard />}
       {tab === "Image" && <ScaleBarCard />}
       {tab === "Image" && meta.kind !== "spectrum" && <ExportCard />}
       {tab === "Image" && <CustomMetaCard />}

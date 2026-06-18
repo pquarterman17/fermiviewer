@@ -231,16 +231,23 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
           const dh = m["display_high"];
           const dg = m["display_gamma"];
           const di = m["display_inverted"];
+          // these are one-time seeds on first display, not user actions —
+          // mark them silent so they fold into the "Opened" history step
+          // (WS4d) instead of logging a spurious "Contrast"/"Invert"
           if (typeof dl === "number" && typeof dh === "number" && dh > dl) {
             const span = r.vmax - r.vmin || 1;
-            setDisplay(activeId, {
-              lo: Math.max(0, (dl - r.vmin) / span),
-              hi: Math.min(1, (dh - r.vmin) / span),
-              gamma: typeof dg === "number" && dg > 0 ? dg : 1,
-              invert: di === true,
-            });
+            setDisplay(
+              activeId,
+              {
+                lo: Math.max(0, (dl - r.vmin) / span),
+                hi: Math.min(1, (dh - r.vmin) / span),
+                gamma: typeof dg === "number" && dg > 0 ? dg : 1,
+                invert: di === true,
+              },
+              { silent: true },
+            );
           } else if (di === true) {
-            setDisplay(activeId, { invert: true });
+            setDisplay(activeId, { invert: true }, { silent: true });
           } else {
             // no embedded display window — auto-contrast on open if enabled
             // in Preferences (otherwise leave the full 0–1 range)
@@ -249,6 +256,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
               setDisplay(
                 activeId,
                 autoWindow(r, prefs.autoLoPct, prefs.autoHiPct),
+                { silent: true },
               );
             }
           }

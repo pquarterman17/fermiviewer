@@ -251,6 +251,90 @@ describe("named workspaces (WS4b)", () => {
   });
 });
 
+describe("edit history (WS4d)", () => {
+  it("ingest seeds an Opened origin step at cursor 0", () => {
+    useViewer.getState().ingest([meta("a")]);
+    const s = useViewer.getState();
+    expect(s.history["a"]).toHaveLength(1);
+    expect(s.history["a"][0].label).toBe("Opened");
+    expect(s.history["a"][0].field).toBe("open");
+    expect(s.historyAt["a"]).toBe(0);
+  });
+
+  it("a derived image's origin step is labelled Derived", () => {
+    useViewer
+      .getState()
+      .ingestDerived([meta("d", { meta: { derived_from: "a" } })]);
+    expect(useViewer.getState().history["d"][0].label).toBe("Derived");
+  });
+
+  it("setDisplay logs a labelled step and advances the cursor", () => {
+    const s = useViewer.getState();
+    s.ingest([meta("a")]);
+    s.setDisplay("a", { cmap: "viridis" });
+    const h = useViewer.getState().history["a"];
+    expect(h).toHaveLength(2);
+    expect(h[1].label).toBe("Colormap → viridis");
+    expect(h[1].display.cmap).toBe("viridis");
+    expect(useViewer.getState().historyAt["a"]).toBe(1);
+  });
+
+  it("coalesces consecutive same-control edits into one step", () => {
+    const s = useViewer.getState();
+    s.ingest([meta("a")]);
+    s.setDisplay("a", { gamma: 0.9 });
+    s.setDisplay("a", { gamma: 0.8 });
+    s.setDisplay("a", { gamma: 0.7 });
+    const h = useViewer.getState().history["a"];
+    expect(h).toHaveLength(2); // origin + one coalesced gamma step
+    expect(h[1].label).toBe("Gamma 0.70");
+    expect(h[1].display.gamma).toBe(0.7);
+  });
+
+  it("different controls append distinct steps (matches the design example)", () => {
+    const s = useViewer.getState();
+    s.ingest([meta("a")]);
+    s.setDisplay("a", { cmap: "viridis" });
+    s.setDisplay("a", { lo: 0.02, hi: 0.98 }); // auto-window pair
+    s.setDisplay("a", { gamma: 0.8 });
+    expect(useViewer.getState().history["a"].map((x) => x.label)).toEqual([
+      "Opened",
+      "Colormap → viridis",
+      "Auto contrast",
+      "Gamma 0.80",
+    ]);
+  });
+
+  it("a silent setDisplay folds into the current step (no new entry)", () => {
+    const s = useViewer.getState();
+    s.ingest([meta("a")]);
+    s.setDisplay("a", { lo: 0.1, hi: 0.9 }, { silent: true });
+    const h = useViewer.getState().history["a"];
+    expect(h).toHaveLength(1); // still just Opened
+    expect(h[0].display.lo).toBe(0.1); // but its snapshot updated
+    expect(useViewer.getState().display["a"].hi).toBe(0.9);
+  });
+
+  it("revertHistory scrubs display + cursor; a new edit truncates ahead", () => {
+    const s = useViewer.getState();
+    s.ingest([meta("a")]);
+    s.setDisplay("a", { cmap: "viridis" }); // step 1
+    s.setDisplay("a", { gamma: 0.5 }); // step 2
+    s.revertHistory("a", 1); // back to the colormap step
+    expect(useViewer.getState().historyAt["a"]).toBe(1);
+    expect(useViewer.getState().display["a"].gamma).toBe(1); // gamma undone
+    expect(useViewer.getState().display["a"].cmap).toBe("viridis");
+    // editing from here drops the now-ahead gamma step
+    s.setDisplay("a", { invert: true });
+    expect(useViewer.getState().history["a"].map((x) => x.label)).toEqual([
+      "Opened",
+      "Colormap → viridis",
+      "Invert on",
+    ]);
+    expect(useViewer.getState().historyAt["a"]).toBe(2);
+  });
+});
+
 describe("stack frames (#40)", () => {
   it("tracks the per-image frame index", () => {
     useViewer.getState().setStackFrame("cube", 7);
@@ -285,8 +369,11 @@ describe("closeImage cleanup", () => {
     expect(t.scaleBars["a"]).toBeUndefined();
     expect(t.stackFrames["a"]).toBeUndefined();
     expect(t.display["a"]).toBeUndefined();
+    expect(t.history["a"]).toBeUndefined();
+    expect(t.historyAt["a"]).toBeUndefined();
     expect(t.views["a"]).toBeUndefined();
     expect(t.roiStats[rid]).toBeUndefined();
     expect(t.images["b"]).toBeDefined(); // sibling untouched
+    expect(t.history["b"]).toBeDefined(); // sibling history kept
   });
 });
