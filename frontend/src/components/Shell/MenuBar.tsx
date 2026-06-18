@@ -50,6 +50,7 @@ import {
   type ParamField,
 } from "../overlays/ParamDialog";
 import { useResults } from "../overlays/ResultsWindow";
+import WorkspaceSwitcher from "./WorkspaceSwitcher";
 
 const num = (
   key: string,
@@ -1395,6 +1396,7 @@ export default function MenuBar({
         </div>
       ))}
       <span style={{ flex: 1 }} />
+      <WorkspaceSwitcher />
       <button
         className="fvd-search-box"
         onClick={() => store.setCmdk(true)}

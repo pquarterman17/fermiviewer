@@ -20,6 +20,7 @@ import yaml
 __all__ = [
     "MetaField",
     "MetaSchema",
+    "config_dir",
     "config_path",
     "load_schema",
     "parse_filename",
@@ -86,6 +87,13 @@ def _config_dir() -> Path:
     else:
         base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
     return Path(base) / "fermiviewer"
+
+
+def config_dir() -> Path:
+    """Public accessor for the OS-appropriate per-user config dir
+    (honours FV_CONFIG_DIR). Shared by usermeta + the workspace store so
+    both keep their state under the same root."""
+    return _config_dir()
 
 
 def config_path() -> Path:

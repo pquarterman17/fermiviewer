@@ -7,11 +7,14 @@ import { create } from "zustand";
 import {
   closeImage as apiClose,
   loadSession,
+  loadWorkspaceNamed as apiLoadWorkspaceNamed,
   openSession,
   saveSession,
+  saveWorkspaceNamed as apiSaveWorkspaceNamed,
   uploadFiles,
   type ImageMeta,
   type RoiStats,
+  type SessionClientState,
 } from "../lib/api";
 import type { ColormapName } from "../lib/colormaps";
 import { logStatus } from "../lib/errlog";
@@ -378,6 +381,13 @@ function applyUndoEntry(set: SetFull, e: UndoEntry, dir: "undo" | "redo"): void 
   }
 }
 
+/** The named workspace currently loaded (null = an unsaved "Default"
+ *  session). Drives the menu-bar workspace switcher (design WS4b). */
+export interface WorkspaceRef {
+  slug: string;
+  name: string;
+}
+
 interface ViewerState {
   // library
   order: string[];
@@ -436,12 +446,15 @@ interface ViewerState {
   prefsOpen: boolean;
   galleryOpen: boolean;
   status: string;
+  currentWorkspace: WorkspaceRef | null;
 
   openPaths: (paths: string[]) => Promise<void>;
   openFiles: (files: FileList | File[]) => Promise<void>;
   ingest: (metas: ImageMeta[]) => void;
   saveWorkspace: (path: string) => Promise<void>;
   loadWorkspace: (path: string) => Promise<void>;
+  saveWorkspaceNamed: (name: string) => Promise<void>;
+  loadWorkspaceNamed: (slug: string) => Promise<void>;
   setActive: (id: string) => void;
   select: (id: string, gesture: SelectGesture) => void;
   setListView: (v: ListView) => void;
@@ -515,6 +528,63 @@ interface ViewerState {
   setStatus: (msg: string) => void;
 }
 
+/** The serializable slice of store state a saved session captures —
+ *  shared by every save path (file + named workspace). */
+function _clientState(s: ViewerState): SessionClientState {
+  return {
+    order: s.order,
+    activeId: s.activeId,
+    views: s.views,
+    display: s.display,
+    measures: s.measures,
+    overlay: s.overlay,
+  };
+}
+
+/** Build the store slice that a loaded session replaces — shared by
+ *  loadWorkspace (arbitrary path) and loadWorkspaceNamed (config-dir
+ *  workspace) so both restore identical state (status + currentWorkspace
+ *  are added by each caller). */
+function sessionSlice(
+  r: { images: ImageMeta[]; client_state: SessionClientState | null },
+  fallbackOverlay: OverlayStyle,
+): Partial<ViewerState> {
+  const images: Record<string, ImageMeta> = {};
+  for (const m of r.images) images[m.id] = m;
+  const cs = r.client_state ?? {};
+  const savedOrder = cs.order as string[] | undefined;
+  const loadedIds = r.images.map((m) => m.id);
+  // saved order filtered to what actually loaded; append any newcomers
+  const order = (savedOrder?.filter((id) => id in images) ?? loadedIds).concat(
+    loadedIds.filter((id) => !savedOrder?.includes(id)),
+  );
+  const activeId =
+    typeof cs.activeId === "string" && cs.activeId in images
+      ? cs.activeId
+      : (order[0] ?? null);
+  return {
+    images,
+    order,
+    activeId,
+    selected: activeId ? [activeId] : [],
+    compareSet: null,
+    selectedMeasure: null,
+    selectedMulti: [],
+    views: (cs.views as Record<string, View>) ?? {},
+    display: (cs.display as Record<string, Display>) ?? {},
+    measures: (cs.measures as Record<string, Measure[]>) ?? {},
+    overlay: (cs.overlay as OverlayStyle) ?? fallbackOverlay,
+    // a load is a fresh session: drop undo history + per-image state that
+    // isn't part of the saved payload so it doesn't bleed across loads
+    undoStack: [],
+    redoStack: [],
+    scaleBars: {},
+    tilts: {},
+    stackFrames: {},
+    roiStats: {},
+  };
+}
+
 export const useViewer = create<ViewerState>((set, get) => ({
   order: [],
   activeId: null,
@@ -578,6 +648,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   prefsOpen: false,
   galleryOpen: false,
   status: "ready",
+  currentWorkspace: null,
 
   openPaths: async (paths) => {
     _ingest(set, await openSession(paths));
@@ -645,55 +716,37 @@ export const useViewer = create<ViewerState>((set, get) => ({
     return e;
   },
 
+  // current client state as the serializable session payload
   saveWorkspace: async (path) => {
     const s = get();
-    const r = await saveSession(path, {
-      order: s.order,
-      activeId: s.activeId,
-      views: s.views,
-      display: s.display,
-      measures: s.measures,
-      overlay: s.overlay,
-    });
+    const r = await saveSession(path, _clientState(s));
     set({ status: `saved ${r.n_images} images → ${r.json_path}` });
   },
 
   loadWorkspace: async (path) => {
     const r = await loadSession(path);
-    const images: Record<string, ImageMeta> = {};
-    for (const m of r.images) images[m.id] = m;
-    const cs = r.client_state ?? {};
-    // saved order filtered to what actually loaded; fall back to manifest order
-    const loadedIds = r.images.map((m) => m.id);
-    const order = (
-      (cs.order as string[] | undefined)?.filter((id) => id in images) ??
-      loadedIds
-    ).concat(loadedIds.filter((id) => !(cs.order as string[])?.includes(id)));
-    const activeId =
-      typeof cs.activeId === "string" && cs.activeId in images
-        ? cs.activeId
-        : (order[0] ?? null);
     set({
-      images,
-      order,
-      activeId,
-      selected: activeId ? [activeId] : [],
-      compareSet: null,
-      selectedMeasure: null,
-      selectedMulti: [],
-      views: (cs.views as Record<string, View>) ?? {},
-      display: (cs.display as Record<string, Display>) ?? {},
-      measures: (cs.measures as Record<string, Measure[]>) ?? {},
-      overlay: (cs.overlay as OverlayStyle) ?? get().overlay,
-      // a load is a fresh session: drop undo history + per-image state that
-      // isn't part of the saved payload so it doesn't bleed across loads
-      undoStack: [],
-      redoStack: [],
-      scaleBars: {},
-      tilts: {},
-      stackFrames: {},
-      roiStats: {},
+      ...sessionSlice(r, get().overlay),
+      // an ad-hoc file load isn't a named workspace
+      currentWorkspace: null,
       status: `loaded ${r.images.length} images`,
+    });
+  },
+
+  saveWorkspaceNamed: async (name) => {
+    const r = await apiSaveWorkspaceNamed(name, _clientState(get()));
+    set({
+      currentWorkspace: { slug: r.slug, name: r.name },
+      status: `saved workspace “${r.name}” · ${r.n_images} images`,
+    });
+  },
+
+  loadWorkspaceNamed: async (slug) => {
+    const r = await apiLoadWorkspaceNamed(slug);
+    set({
+      ...sessionSlice(r, get().overlay),
+      currentWorkspace: { slug, name: r.name },
+      status: `opened workspace “${r.name}” · ${r.images.length} images`,
     });
   },
 

@@ -1972,6 +1972,69 @@ details.fvd-card:not([open]) > summary {
   color: var(--text-dim);
 }
 
+/* workspace switcher (design WS4b) — chip + dropdown in the menu bar */
+.fvd-workspace {
+  position: relative;
+}
+
+.fvd-workspace-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 200px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+  padding: 3px 9px;
+  margin: 2px;
+  cursor: default;
+}
+
+.fvd-workspace-chip:hover,
+.fvd-workspace-chip.open {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.fvd-workspace-chip .icon {
+  color: var(--accent);
+}
+
+.fvd-workspace-chip .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fvd-workspace-chip .caret {
+  color: var(--text-faint);
+  font-size: 0.8em;
+}
+
+/* right-align so a chip near the menu-bar edge doesn't overflow */
+.fvd-workspace-menu {
+  right: 0;
+  left: auto;
+}
+
+.fvd-workspace-del {
+  visibility: hidden;
+  padding: 0 3px;
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+}
+
+.fvd-menu-entry:hover .fvd-workspace-del {
+  visibility: visible;
+}
+
+.fvd-workspace-del:hover {
+  color: var(--danger);
+  background: var(--surface-3);
+}
+
 .fvd-capture-hint {
   color: var(--capture);
 }

@@ -1365,6 +1365,45 @@ export async function loadSession(
   return post("/api/session/load", { path });
 }
 
+// ── named workspaces (design WS4b) ──────────────────────────────────
+// A workspace is the same session payload, addressed by display name and
+// kept under the OS config dir instead of a user-typed path.
+
+export interface WorkspaceInfo {
+  slug: string;
+  name: string;
+  saved_at: string | null;
+  n_images: number;
+}
+
+export async function listWorkspaces(): Promise<WorkspaceInfo[]> {
+  const r = await json<{ workspaces: WorkspaceInfo[] }>(
+    await fetch("/api/workspaces"),
+  );
+  return r.workspaces;
+}
+
+export async function saveWorkspaceNamed(
+  name: string,
+  clientState: SessionClientState,
+): Promise<{ slug: string; name: string; n_images: number }> {
+  return post("/api/workspaces/save", { name, client_state: clientState });
+}
+
+export async function loadWorkspaceNamed(slug: string): Promise<{
+  images: ImageMeta[];
+  client_state: SessionClientState | null;
+  name: string;
+}> {
+  return post("/api/workspaces/load", { slug });
+}
+
+export async function deleteWorkspace(
+  slug: string,
+): Promise<{ deleted: boolean }> {
+  return json(await fetch(`/api/workspaces/${slug}`, { method: "DELETE" }));
+}
+
 /** URL for the windowed 8-bit PNG render (Stage texture + thumbnails). */
 export function renderUrl(
   id: string,

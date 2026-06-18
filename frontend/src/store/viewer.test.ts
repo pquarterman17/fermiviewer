@@ -7,10 +7,44 @@ import type { ImageMeta } from "../lib/api";
 import { useViewer } from "./viewer";
 
 // closeImage awaits a network DELETE — stub it so the cleanup logic runs
-// without a server (every other store action exercised here is pure state).
+// without a server. The named-workspace actions also hit the network, so
+// stub them too (every other store action exercised here is pure state).
 vi.mock("../lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/api")>();
-  return { ...actual, closeImage: vi.fn(() => Promise.resolve()) };
+  return {
+    ...actual,
+    closeImage: vi.fn(() => Promise.resolve()),
+    saveWorkspaceNamed: vi.fn((name: string) =>
+      Promise.resolve({
+        slug: name.toLowerCase().replace(/\s+/g, "-"),
+        name,
+        n_images: 1,
+      }),
+    ),
+    loadWorkspaceNamed: vi.fn((slug: string) =>
+      Promise.resolve({
+        images: [
+          {
+            id: "x",
+            name: "x.dm4",
+            kind: "image",
+            shape: [4, 4],
+            dtype: "float64",
+            pixel_size: 0.5,
+            pixel_unit: "nm",
+            n_channels: null,
+            energy_first: null,
+            energy_last: null,
+            energy_units: "",
+            stage_tilt_deg: null,
+            meta: {},
+          },
+        ],
+        client_state: { order: ["x"], activeId: "x" },
+        name: slug === "study" ? "Study" : slug,
+      }),
+    ),
+  };
 });
 
 // snapshot at import time = pristine state incl. actions; setState
@@ -187,6 +221,33 @@ describe("theming — accent scheme + density", () => {
       density?: string;
     };
     expect(p.density).toBe("compact");
+  });
+});
+
+describe("named workspaces (WS4b)", () => {
+  it("currentWorkspace defaults to null (an unsaved session)", () => {
+    expect(useViewer.getState().currentWorkspace).toBeNull();
+  });
+
+  it("saveWorkspaceNamed records the named workspace + status", async () => {
+    useViewer.getState().ingest([meta("a")]);
+    await useViewer.getState().saveWorkspaceNamed("My Study");
+    const s = useViewer.getState();
+    expect(s.currentWorkspace).toEqual({ slug: "my-study", name: "My Study" });
+    expect(s.status).toContain("My Study");
+  });
+
+  it("loadWorkspaceNamed replaces the session and tags it", async () => {
+    const s0 = useViewer.getState();
+    s0.ingest([meta("old1"), meta("old2")]);
+    s0.setView("old1", { z: 2, px: 0.5, py: 0.5 }); // pre-load per-image state
+    await useViewer.getState().loadWorkspaceNamed("study");
+    const s = useViewer.getState();
+    expect(s.order).toEqual(["x"]); // old session replaced
+    expect(s.activeId).toBe("x");
+    expect(s.currentWorkspace).toEqual({ slug: "study", name: "Study" });
+    expect(s.undoStack).toEqual([]); // a load is a fresh session
+    expect(s.views["old1"]).toBeUndefined(); // stale per-image state cleared
   });
 });
 
