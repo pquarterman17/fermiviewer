@@ -72,15 +72,10 @@ export default function App() {
     listImages()
       .then((metas) => {
         if (metas.length > 0) {
-          useViewer.setState((s) => {
-            const images = { ...s.images };
-            const order = [...s.order];
-            for (const m of metas) {
-              if (!(m.id in images)) order.push(m.id);
-              images[m.id] = m;
-            }
-            return { images, order, activeId: s.activeId ?? order[0] ?? null };
-          });
+          // route through ingest so a browser refresh seeds the same
+          // per-image state a fresh open does — origin history step (WS4d),
+          // tilt + display-pref seeding — instead of hand-rolling a subset
+          useViewer.getState().ingest(metas);
           return;
         }
         // Dev testing mode: with an empty session under Vite dev, auto-open
