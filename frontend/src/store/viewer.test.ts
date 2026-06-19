@@ -402,15 +402,9 @@ describe("setScaleBar color + unitOverride (audit #10)", () => {
 describe("setMeasureFontSize (audit #12)", () => {
   beforeEach(() => useViewer.setState(useViewer.getInitialState()));
 
-  const meta: ImageMeta = {
-    id: "a", name: "a.dm4", kind: "image", shape: [16, 16],
-    pixel_size: null, pixel_unit: "px", value_unit: "",
-    meta: {}, image_tags: [],
-  };
-
   it("sets per-annotation font size clamped to [6, 120]", () => {
     const s = useViewer.getState();
-    s.ingest([meta]);
+    s.ingest([meta("a")]);
     const mid = s.addMeasure("a", {
       kind: "box", pts: [{ x: 0.1, y: 0.1 }, { x: 0.9, y: 0.9 }], text: "hi",
     });
@@ -428,14 +422,8 @@ describe("setMeasureFontSize (audit #12)", () => {
 describe("tickCount + tickFontSize in Display (audit #9)", () => {
   beforeEach(() => useViewer.setState(useViewer.getInitialState()));
 
-  const meta: ImageMeta = {
-    id: "a", name: "a.dm4", kind: "image", shape: [16, 16],
-    pixel_size: null, pixel_unit: "px", value_unit: "",
-    meta: {}, image_tags: [],
-  };
-
   it("stores tickCount and tickFontSize in per-image display", () => {
-    useViewer.getState().ingest([meta]);
+    useViewer.getState().ingest([meta("a")]);
     useViewer.getState().setDisplay("a", { tickCount: 8, tickFontSize: 14 });
     const d = useViewer.getState().display["a"];
     expect(d?.tickCount).toBe(8);
