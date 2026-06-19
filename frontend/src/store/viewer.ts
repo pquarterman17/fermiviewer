@@ -91,6 +91,18 @@ function describePatch(patch: Partial<Display>): { field: string; label: string 
   return { field: "adjust", label: "Adjust" };
 }
 
+/** One entry in the named-ROI list (ROI Manager, audit Tier-2 #5).
+ *  Geometry is stored as normalized pts (same as Measure.pts) + the
+ *  original MeasureKind so recall can re-create either roi or ellipse. */
+export interface SavedRoi {
+  id: string;
+  name: string;
+  kind: "roi" | "ellipse";
+  pts: { x: number; y: number }[];
+  /** ISO timestamp — shown in the manager list for provenance */
+  createdAt: string;
+}
+
 export type MeasureKind =
   | "distance"
   | "profile"
@@ -475,6 +487,9 @@ interface ViewerState {
   tilts: Record<string, TiltSettings>;
   // per-image stack frame index (0-based; only relevant for spectrum_image)
   stackFrames: Record<string, number>;
+  /** Named saved ROIs per image — keyed by image id.  Persisted in session
+   *  client_state["savedRois"] so save/load round-trips them (Tier-2 #5). */
+  savedRois: Record<string, SavedRoi[]>;
   /** fixed-zoom dimensions in image pixels (A2 capture mode) */
   fixedZoomW: number;
   fixedZoomH: number;
@@ -589,6 +604,17 @@ interface ViewerState {
   setPrefsOpen: (open: boolean) => void;
   setGalleryOpen: (open: boolean) => void;
   setStatus: (msg: string) => void;
+
+  // ── ROI Manager (Tier-2 #5) ─────────────────────────────────────────
+  /** Save the given measure (must be roi/ellipse kind) under `name` for
+   *  the specified image.  Replaces an existing entry with the same name. */
+  saveRoi: (imageId: string, name: string, roi: Pick<SavedRoi, "kind" | "pts">) => void;
+  /** Re-create a saved ROI as the active measure+selection for an image. */
+  recallRoi: (imageId: string, roiId: string) => void;
+  /** Remove one named ROI from the list. */
+  deleteRoi: (imageId: string, roiId: string) => void;
+  /** Bulk-replace the saved-ROI list — used on session load. */
+  seedSavedRois: (map: Record<string, SavedRoi[]>) => void;
 }
 
 /** The serializable slice of store state a saved session captures —
@@ -601,6 +627,7 @@ function _clientState(s: ViewerState): SessionClientState {
     display: s.display,
     measures: s.measures,
     overlay: s.overlay,
+    savedRois: s.savedRois,
   };
 }
 
@@ -637,6 +664,7 @@ function sessionSlice(
     display: (cs.display as Record<string, Display>) ?? {},
     measures: (cs.measures as Record<string, Measure[]>) ?? {},
     overlay: (cs.overlay as OverlayStyle) ?? fallbackOverlay,
+    savedRois: (cs.savedRois as Record<string, SavedRoi[]>) ?? {},
     // a load is a fresh session: drop undo history + per-image state that
     // isn't part of the saved payload so it doesn't bleed across loads
     undoStack: [],
@@ -688,6 +716,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   scaleBars: {},
   tilts: {},
   stackFrames: {},
+  savedRois: {},
   fixedZoomW: _pref("fixedZoomW", 256),
   fixedZoomH: _pref("fixedZoomH", 256),
   captureMode: "none",
@@ -903,6 +932,8 @@ export const useViewer = create<ViewerState>((set, get) => ({
       delete stackFrames[id];
       const roiStats = { ...s.roiStats };
       for (const m of closed) delete roiStats[m.id];
+      const savedRois = { ...s.savedRois };
+      delete savedRois[id];
       localStorage.setItem(VIEWS_KEY, JSON.stringify(views));
       return {
         images,
@@ -919,6 +950,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
         tilts,
         stackFrames,
         roiStats,
+        savedRois,
       };
     });
   },
@@ -1218,4 +1250,47 @@ export const useViewer = create<ViewerState>((set, get) => ({
     logStatus(msg); // breadcrumb trail for the bug report
     set({ status: msg });
   },
+
+  // ── ROI Manager (Tier-2 #5) ─────────────────────────────────────────
+
+  saveRoi: (imageId, name, roi) => {
+    const id = `sr${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const entry: SavedRoi = {
+      id,
+      name: name.trim() || "ROI",
+      kind: roi.kind,
+      pts: roi.pts,
+      createdAt: new Date().toISOString(),
+    };
+    set((s) => {
+      const existing = s.savedRois[imageId] ?? [];
+      // replace if same name exists so re-saving a tweaked geometry is clean
+      const filtered = existing.filter((r) => r.name !== entry.name);
+      return {
+        savedRois: {
+          ...s.savedRois,
+          [imageId]: [...filtered, entry],
+        },
+      };
+    });
+  },
+
+  recallRoi: (imageId, roiId) => {
+    const s = get();
+    const list = s.savedRois[imageId] ?? [];
+    const saved = list.find((r) => r.id === roiId);
+    if (!saved) return;
+    // re-create as the active measure (addMeasure handles id/undo)
+    get().addMeasure(imageId, { kind: saved.kind, pts: saved.pts });
+  },
+
+  deleteRoi: (imageId, roiId) =>
+    set((s) => ({
+      savedRois: {
+        ...s.savedRois,
+        [imageId]: (s.savedRois[imageId] ?? []).filter((r) => r.id !== roiId),
+      },
+    })),
+
+  seedSavedRois: (map) => set({ savedRois: map }),
 }));

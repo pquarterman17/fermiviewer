@@ -1499,6 +1499,8 @@ export interface SessionClientState {
   display?: Record<string, unknown>;
   measures?: Record<string, unknown>;
   overlay?: unknown;
+  /** Named saved ROIs per image (Tier-2 #5 ROI Manager); keyed by image id. */
+  savedRois?: Record<string, unknown>;
 }
 
 export async function saveSession(
