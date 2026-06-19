@@ -31,6 +31,12 @@
   --capture: oklch(0.78 0.14 75);
   --capture-soft: oklch(0.78 0.14 75 / 0.16);
 
+  /* status — used sparingly (single dots / one word): green ok (connected),
+     red danger (offline / destructive), warn aliases capture amber */
+  --ok: oklch(0.74 0.16 150);
+  --danger: oklch(0.66 0.2 18);
+  --warn: oklch(0.78 0.14 75);
+
   /* floating tool-bar, banners, windows */
   --glass: oklch(0.2 0.008 280 / 0.78);
   --glass-border: oklch(0.6 0.01 280 / 0.25);
@@ -65,6 +71,10 @@
 
   --capture: oklch(0.66 0.15 75);
   --capture-soft: oklch(0.66 0.15 75 / 0.16);
+
+  --ok: oklch(0.6 0.15 150);
+  --danger: oklch(0.58 0.2 18);
+  --warn: oklch(0.66 0.15 75);
 
   --glass: oklch(0.96 0.004 280 / 0.82);
   --glass-border: oklch(0.4 0.01 280 / 0.2);

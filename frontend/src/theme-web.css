@@ -379,11 +379,11 @@ body {
 
 .fvd-conn {
   font-size: 10px;
-  color: #f43f5e;
+  color: var(--danger);
 }
 
 .fvd-conn.on {
-  color: #22c55e;
+  color: var(--ok);
 }
 
 .fvd-gallery {
@@ -514,8 +514,8 @@ details.fvd-card:not([open]) > summary {
 }
 
 .fvd-ctx-item.danger:hover {
-  background: rgba(244, 63, 94, 0.2);
-  color: #f43f5e;
+  background: color-mix(in srgb, var(--danger) 20%, transparent);
+  color: var(--danger);
 }
 
 .fvd-ctx-item:disabled {
@@ -1918,8 +1918,8 @@ details.fvd-card:not([open]) > summary {
 }
 
 .fvd-tool-close:hover {
-  background: #e0443e;
-  border-color: #e0443e;
+  background: var(--danger);
+  border-color: var(--danger);
 }
 
 .fvd-tool-body {
