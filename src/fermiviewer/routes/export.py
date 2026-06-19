@@ -96,6 +96,12 @@ class ExportRequest(BaseModel):
     # scale-bar label font size in screen px (item #48); None → 20 (default)
     # multiplied by export scale so labels grow with the image
     scale_bar_font_size: int | None = Field(default=None, ge=1, le=200)
+    # scale-bar bar + label colour (audit #10); None → "#ffffff" (white,
+    # byte-identical to all existing exports that omit this field)
+    scale_bar_color: str | None = None
+    # force a unit for the scale-bar label regardless of calibration units
+    # (audit #10); None → auto-derived by _bar_label (EM sub-unit step-down)
+    scale_bar_unit_override: str | None = None
 
 
 def _raster(ds: DataStruct) -> np.ndarray:
@@ -165,6 +171,8 @@ def export_image(req: ExportRequest) -> Response:
             norm_y=req.scale_bar_norm_y,
             length_phys=req.scale_bar_length_phys,
             thickness=req.scale_bar_thickness,
+            color=req.scale_bar_color or "#ffffff",
+            unit_override=req.scale_bar_unit_override,
         )
 
     annos: list[Annotation] = []

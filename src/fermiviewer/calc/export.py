@@ -84,13 +84,19 @@ def render_u16(
 
 @dataclass(frozen=True)
 class ScaleBar:
-    """Bar geometry in OUTPUT pixels + its label text."""
+    """Bar geometry in OUTPUT pixels + its label text.
+
+    color: hex string (default "#ffffff" → white, matches legacy behaviour).
+    label_override: if set, replaces the auto-derived unit label text.
+    """
 
     x: int
     y: int
     width: int
     height: int
     label: str
+    color: str = "#ffffff"           # bar + label colour (audit #10)
+    label_override: str | None = None  # unit-override text (audit #10)
 
 
 def _nice_length(max_phys: float) -> float:
@@ -289,6 +295,27 @@ def _bar_label(phys: float, unit: str) -> str:
     return f"{float(f'{phys:.3g}'):g} {unit}"
 
 
+# Conversion factors to nm (same basis as lib/geometry.ts unitToNm)
+_TO_NM: dict[str, float] = {
+    "pm": 1e-3, "Å": 0.1, "nm": 1.0, "µm": 1e3, "um": 1e3,
+    "mm": 1e6, "m": 1e9,
+}
+
+
+def _bar_label_with_unit(phys: float, src_unit: str, tgt_unit: str) -> str:
+    """Express `phys` (in src_unit) using `tgt_unit` for the label.
+
+    Falls back to the auto label when the conversion is unknown.
+    Mirrors the frontend unitToNm table (lib/geometry.ts).
+    """
+    f_src = _TO_NM.get(src_unit)
+    f_tgt = _TO_NM.get(tgt_unit)
+    if f_src is None or f_tgt is None:
+        return _bar_label(phys, src_unit)
+    converted = phys * f_src / f_tgt
+    return f"{float(f'{converted:.3g}'):g} {tgt_unit}"
+
+
 def scale_bar_geometry(
     out_w: int,
     out_h: int,
@@ -300,6 +327,8 @@ def scale_bar_geometry(
     norm_y: float | None = None,
     length_phys: float | None = None,
     thickness: int | None = None,
+    color: str = "#ffffff",
+    unit_override: str | None = None,
 ) -> ScaleBar:
     """Scale bar sized to ≤ ~25 % of the output width.
 
@@ -309,6 +338,9 @@ def scale_bar_geometry(
     - norm_x / norm_y: normalised position (0–1) in the output image.
     - length_phys: physical bar length in pixel_unit; None → auto.
     - thickness: bar height in output px; None → auto.
+    - color: hex bar/label colour (audit #10); default "#ffffff" (white).
+    - unit_override: force a specific unit string in the label (audit #10);
+      None → auto-derived via _bar_label (EM sub-unit step-down).
     """
     eff_px = pixel_size / scale  # physical size per output pixel
     phys = length_phys if length_phys is not None else _nice_length(0.25 * out_w * eff_px)
@@ -323,11 +355,21 @@ def scale_bar_geometry(
         x = margin
         y = out_h - margin - height
 
-    label = _bar_label(phys, pixel_unit)
+    if unit_override is not None:
+        # Apply unit step-down relative to the override unit so that
+        # e.g. "force Å" still auto-picks a nice round number in Å.
+        label = _bar_label(phys, pixel_unit)
+        # Replace the auto-unit suffix with the requested one, keeping
+        # the numeric prefix (the same phys value expressed in the new
+        # unit via _bar_label-style rounding).
+        label = _bar_label_with_unit(phys, pixel_unit, unit_override)
+    else:
+        label = _bar_label(phys, pixel_unit)
     return ScaleBar(
         x=x,
         y=y,
         width=width,
         height=height,
         label=label,
+        color=color,
     )

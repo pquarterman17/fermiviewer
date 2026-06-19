@@ -641,6 +641,10 @@ export interface ExportOptions {
   tilt_geometry?: "cross-section" | "surface";
   // scale-bar label font size in screen px (#48); null → 20 (default)
   scale_bar_font_size?: number | null;
+  // scale-bar bar + label colour (audit #10); null → "#ffffff" (white)
+  scale_bar_color?: string | null;
+  // force a label unit regardless of calibration (audit #10); null → auto
+  scale_bar_unit_override?: string | null;
 }
 
 /** Server-side export; returns the file blob + suggested filename. */

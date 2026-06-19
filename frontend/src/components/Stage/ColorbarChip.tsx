@@ -1,6 +1,10 @@
 // Calibrated colorbar (checklist I): a full-height vertical LUT gradient
-// pinned to the left or right stage edge (configurable), with labeled
-// tick marks in real value units (nm for AFM height) at a fixed step.
+// pinned to the left, right, or bottom stage edge (audit #9), with labeled
+// tick marks in real value units (nm for AFM height).
+//
+// Tick mode: if tickCount > 0 it drives the interval (count-based, audit #9);
+// otherwise tickStep is used (step-based, original behaviour).
+// Tick-label font size is user-configurable (audit #9, tickFontSize in Display).
 
 import { useEffect, useRef } from "react";
 
@@ -11,6 +15,7 @@ import { DEFAULT_DISPLAY, useViewer } from "../../store/viewer";
 
 const W = 14; // gradient internal width (px); CSS stretches height to full
 const LUT_H = 256;
+const DEFAULT_TICK_FONT = 11; // px — matches the original SVG export font-size
 
 function fmt(v: number): string {
   const a = Math.abs(v);
@@ -57,17 +62,51 @@ export default function ColorbarChip() {
   const lo = raster.vmin + display.lo * span;
   const hi = raster.vmin + display.hi * span;
 
-  // ticks at the user step (fallback to a nice auto step if missing or
-  // it would overflow the bar)
-  let step =
-    display.tickStep && display.tickStep > 0
-      ? display.tickStep
-      : niceStep(hi - lo);
+  // tick step: count-based (audit #9) takes priority over step-based
+  const tickCount = display.tickCount;
+  const tickFontSize = display.tickFontSize ?? DEFAULT_TICK_FONT;
+
+  let step: number;
+  if (tickCount && tickCount > 0) {
+    // derive step from requested count so ticks land on round numbers
+    step = niceStep(hi - lo, tickCount);
+  } else {
+    step =
+      display.tickStep && display.tickStep > 0
+        ? display.tickStep
+        : niceStep(hi - lo);
+  }
   let ticks = colorbarTicks(lo, hi, step);
   if (ticks.length === 0) {
     step = niceStep(hi - lo);
     ticks = colorbarTicks(lo, hi, step);
   }
+
+  // bottom placement: horizontal gradient strip at the bottom of the viewport
+  if (side === "bottom") {
+    const posPct = (v: number) => ((v - lo) / (hi - lo)) * 100; // left=lo, right=hi
+    return (
+      <div className="fvd-colorbar side-bottom">
+        {unit && <span className="u">{unit}</span>}
+        <div className="body body-h">
+          <canvas className="bar bar-h" ref={canvasRef} width={LUT_H} height={W} />
+          <div className="ticks ticks-h">
+            {ticks.map((v) => (
+              <span
+                className="tk tk-h"
+                key={v}
+                style={{ left: `${posPct(v)}%`, fontSize: tickFontSize }}
+              >
+                <i className="ln ln-v" />
+                <em className="n">{fmt(v)}</em>
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const posPct = (v: number) => ((hi - v) / (hi - lo)) * 100;
 
   return (
@@ -77,7 +116,7 @@ export default function ColorbarChip() {
         <canvas className="bar" ref={canvasRef} width={W} height={LUT_H} />
         <div className="ticks">
           {ticks.map((v) => (
-            <span className="tk" key={v} style={{ top: `${posPct(v)}%` }}>
+            <span className="tk" key={v} style={{ top: `${posPct(v)}%`, fontSize: tickFontSize }}>
               <i className="ln" />
               <em className="n">{fmt(v)}</em>
             </span>

@@ -662,6 +662,44 @@ details.fvd-card:not([open]) > summary {
   flex-direction: row-reverse; /* ticks left of the bar; line points right */
 }
 
+/* bottom placement (audit #9): horizontal strip */
+.fvd-colorbar.side-bottom {
+  flex-direction: row;
+  border-top: 1px solid var(--border-soft);
+  padding: 4px 8px;
+  align-items: center;
+}
+.fvd-colorbar.side-bottom .body,
+.fvd-colorbar.side-bottom .body-h {
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+.fvd-colorbar.side-bottom .bar-h {
+  width: 100%;
+  height: 14px;
+  border-radius: 2px;
+  display: block;
+}
+.fvd-colorbar.side-bottom .ticks-h {
+  position: relative;
+  height: 16px;
+  width: 100%;
+}
+.fvd-colorbar.side-bottom .tk-h {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.fvd-colorbar.side-bottom .ln-v {
+  width: 1px;
+  height: 5px;
+  background: var(--text-dim);
+}
+
 /* Z-scale / color-range controls (Adjust panel) */
 .fvd-zscale {
   margin-top: 8px;

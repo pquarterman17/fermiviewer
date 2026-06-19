@@ -43,9 +43,13 @@ export interface Display {
   transform: DisplayTransform;
   /** colorbar tick interval in real value units (nm for AFM); 0/undefined = auto */
   tickStep?: number;
+  /** colorbar tick count (overrides tickStep when set and > 0) */
+  tickCount?: number;
+  /** colorbar tick-label font size in screen px; undefined = 11 (default) */
+  tickFontSize?: number;
 }
 
-export type ColorbarSide = "left" | "right";
+export type ColorbarSide = "left" | "right" | "bottom";
 
 export const DEFAULT_DISPLAY: Display = {
   lo: 0,
@@ -87,6 +91,8 @@ function describePatch(patch: Partial<Display>): { field: string; label: string 
   if (has("transform"))
     return { field: "transform", label: `Transform → ${patch.transform}` };
   if (has("tickStep")) return { field: "tickStep", label: "Tick step" };
+  if (has("tickCount")) return { field: "tickCount", label: "Tick count" };
+  if (has("tickFontSize")) return { field: "tickFontSize", label: "Tick font" };
   if (has("lo") || has("hi")) return { field: "window", label: "Contrast" };
   return { field: "adjust", label: "Adjust" };
 }
@@ -137,6 +143,9 @@ export interface Measure {
   /** ⊥ averaging width in image px (box-profile captures); falls back
    *  to the global profileWidth when absent */
   width?: number;
+  /** per-annotation font size override in screen px; undefined → global
+   *  overlay size (audit #12).  Values outside [6, 120] are clamped. */
+  fontSize?: number;
 }
 
 /** Undoable mutations (Edit menu / ⌘Z). Derived-image entries remove
@@ -185,6 +194,8 @@ export interface ScaleBarState {
   lengthPhys: number | null;  // physical length override (in pixel_unit)
   thickness: number | null;   // bar thickness in screen px (null = auto)
   fontSize: number | null;    // label font size in px (null = auto)
+  color: string | null;       // bar + label colour; null = "#ffffff" (audit #10)
+  unitOverride: string | null; // force a display unit; null = auto (audit #10)
 }
 
 export type CaptureMode =
@@ -561,6 +572,8 @@ interface ViewerState {
     measureId: string,
     patch: Partial<Pick<Measure, "color" | "labelDx" | "labelDy" | "endSymbol">>,
   ) => void;
+  /** Set per-annotation font size override (audit #12); null clears it. */
+  setMeasureFontSize: (imageId: string, measureId: string, size: number | null) => void;
   /** marquee multi-selection (shift-drag on the stage) */
   selectedMulti: string[];
   setSelectedMulti: (ids: string[]) => void;
@@ -1078,6 +1091,18 @@ export const useViewer = create<ViewerState>((set, get) => ({
       },
     })),
 
+  setMeasureFontSize: (imageId, measureId, size) =>
+    set((s) => ({
+      measures: {
+        ...s.measures,
+        [imageId]: (s.measures[imageId] ?? []).map((m) =>
+          m.id === measureId
+            ? { ...m, fontSize: size == null ? undefined : Math.min(120, Math.max(6, size)) }
+            : m,
+        ),
+      },
+    })),
+
   selectedMulti: [],
   setSelectedMulti: (selectedMulti) => set({ selectedMulti }),
 
@@ -1139,6 +1164,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
     set((s) => {
       const prev = s.scaleBars[imageId] ?? {
         x: 0.02, y: 0.92, lengthPhys: null, thickness: null, fontSize: null,
+        color: null, unitOverride: null,
       };
       return { scaleBars: { ...s.scaleBars, [imageId]: { ...prev, ...patch } } };
     }),

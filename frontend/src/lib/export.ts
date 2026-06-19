@@ -82,7 +82,7 @@ function buildExportRequest(
           tilt_geometry: tilt.geometry,
         }
       : {}),
-    // honor on-screen scale-bar geometry + font size when overridden
+    // honor on-screen scale-bar geometry, font, colour + unit override
     ...(wantBar && sb
       ? {
           scale_bar_norm_x: sb.x,
@@ -90,6 +90,8 @@ function buildExportRequest(
           scale_bar_length_phys: sb.lengthPhys,
           scale_bar_thickness: sb.thickness,
           scale_bar_font_size: sb.fontSize,
+          scale_bar_color: sb.color ?? null,          // audit #10
+          scale_bar_unit_override: sb.unitOverride ?? null, // audit #10
         }
       : {}),
   };

@@ -364,7 +364,7 @@ export default function AdjustPanel() {
               onCommit={(v) => setDisplay(activeId, { tickStep: Math.max(0, v) })}
             />
             <span className="unit">{unit}</span>
-            <div className="fvd-seg" title="Colorbar side">
+            <div className="fvd-seg" title="Colorbar side (L / R / bottom)">
               <button
                 className={`fvd-seg-btn${colorbarSide === "left" ? " active" : ""}`}
                 onClick={() => setColorbarSide("left")}
@@ -377,7 +377,54 @@ export default function AdjustPanel() {
               >
                 R
               </button>
+              <button
+                className={`fvd-seg-btn${colorbarSide === "bottom" ? " active" : ""}`}
+                onClick={() => setColorbarSide("bottom")}
+              >
+                B
+              </button>
             </div>
+          </div>
+          {/* Tick count (audit #9): count-based mode — overrides tick step */}
+          <div className="fvd-zscale-row">
+            <span className="k">Tick count</span>
+            <NumField
+              title="Number of colorbar ticks (overrides step when > 0; 0 = use step)"
+              value={
+                display.tickCount && display.tickCount > 0 ? display.tickCount : null
+              }
+              onCommit={(v) => setDisplay(activeId, { tickCount: Math.max(0, Math.round(v)) })}
+            />
+            <button
+              className="fvd-icon-btn"
+              title="Clear tick count (revert to step mode)"
+              onClick={() => setDisplay(activeId, { tickCount: 0 })}
+            >
+              ↺
+            </button>
+          </div>
+          {/* Tick font size (audit #9) */}
+          <div className="fvd-zscale-row">
+            <span className="k">Tick font</span>
+            <NumField
+              title="Colorbar tick-label font size (px; default 11)"
+              value={display.tickFontSize && display.tickFontSize > 0 ? display.tickFontSize : null}
+              onCommit={(v) =>
+                setDisplay(activeId, {
+                  tickFontSize: Math.min(48, Math.max(6, Math.round(v))),
+                })
+              }
+            />
+            <span className="unit">px</span>
+            {display.tickFontSize && (
+              <button
+                className="fvd-icon-btn"
+                title="Reset to default"
+                onClick={() => setDisplay(activeId, { tickFontSize: undefined })}
+              >
+                ↺
+              </button>
+            )}
           </div>
         </div>
       )}

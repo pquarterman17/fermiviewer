@@ -125,8 +125,11 @@ export default function MeasureOverlay({
 
   const dragRef = useRef<{
     mid: string;
-    pt: number;
+    pt: number;            // -1 = whole-body translate (audit #12)
     before: Measure["pts"];
+    startX?: number;       // client px at drag start (body drag)
+    startY?: number;
+    pts0?: Measure["pts"]; // snapshot of all pts at drag start (body drag)
   } | null>(null);
   const labelDragRef = useRef<{
     mid: string;
@@ -151,8 +154,9 @@ export default function MeasureOverlay({
   const toImagePx = (m: Measure) =>
     m.pts.map((p) => ({ x: p.x * img.w, y: p.y * img.h }));
 
-  const font = FONT_PX[overlay.size];
+  const globalFont = FONT_PX[overlay.size];
   const color = overlay.color;
+  const setMeasureFontSize = useViewer((s) => s.setMeasureFontSize);
   const defaultEndSymbol = overlay.endSymbol ?? "bar";
 
   // ── post-edit analysis refresh (on handle release) ──
@@ -187,6 +191,24 @@ export default function MeasureOverlay({
 
   const onHandleMove = (e: React.PointerEvent) => {
     if (!dragRef.current || !svgRef.current) return;
+    const { mid, pt } = dragRef.current;
+    const m = measures.find((x) => x.id === mid);
+    if (!m) return;
+
+    if (pt === -1) {
+      // whole-body translate (audit #12)
+      const { startX, startY, pts0 } = dragRef.current;
+      if (startX == null || startY == null || !pts0) return;
+      const dx = (e.clientX - startX) / (view.z * img.w);
+      const dy = (e.clientY - startY) / (view.z * img.h);
+      const pts = pts0.map((p) => ({
+        x: Math.min(1, Math.max(0, p.x + dx)),
+        y: Math.min(1, Math.max(0, p.y + dy)),
+      }));
+      updateMeasure(imageId, mid, pts);
+      return;
+    }
+
     const r = svgRef.current.getBoundingClientRect();
     const ip = screenToImage(
       e.clientX - r.left,
@@ -197,9 +219,6 @@ export default function MeasureOverlay({
     );
     const nx = Math.min(1, Math.max(0, ip.x / img.w));
     const ny = Math.min(1, Math.max(0, ip.y / img.h));
-    const { mid, pt } = dragRef.current;
-    const m = measures.find((x) => x.id === mid);
-    if (!m) return;
     const pts = m.pts.map((p, i) => (i === pt ? { x: nx, y: ny } : p));
     updateMeasure(imageId, mid, pts);
   };
@@ -270,6 +289,25 @@ export default function MeasureOverlay({
         ? "var(--accent)"
         : (m.color ?? color);
     const sw = sel ? 2 : 1.5;
+    // per-annotation font size (audit #12) overrides global overlay size
+    const font = m.fontSize ?? globalFont;
+    // body-drag starter for box/circle (audit #12): mousedown on the shape
+    // interior translates all points together instead of dragging a corner.
+    const onBodyDown = isPending
+      ? undefined
+      : (e: React.PointerEvent) => {
+          e.stopPropagation();
+          setSelected(m.id);
+          dragRef.current = {
+            mid: m.id,
+            pt: -1,
+            before: m.pts,
+            startX: e.clientX,
+            startY: e.clientY,
+            pts0: m.pts,
+          };
+          (e.target as Element).setPointerCapture(e.pointerId);
+        };
     const common = {
       stroke,
       strokeWidth: sw,
@@ -320,6 +358,8 @@ export default function MeasureOverlay({
     } else if (m.kind === "box" && pts.length === 2) {
       const x = Math.min(pts[0].x, pts[1].x);
       const y = Math.min(pts[0].y, pts[1].y);
+      // transparent fill enables body-drag (audit #12): clicking the interior
+      // translates all points; corners still move individual handles below.
       shape = (
         <rect
           x={x}
@@ -327,6 +367,12 @@ export default function MeasureOverlay({
           width={Math.abs(pts[1].x - pts[0].x)}
           height={Math.abs(pts[1].y - pts[0].y)}
           {...common}
+          fill="transparent"
+          pointerEvents={isPending ? "none" : "all"}
+          style={{ cursor: isPending ? "default" : "move" }}
+          onPointerDown={onBodyDown}
+          onPointerMove={onHandleMove}
+          onPointerUp={onHandleUp}
         />
       );
       labelAt = { x, y: y - 6 };
@@ -343,6 +389,12 @@ export default function MeasureOverlay({
           rx={Math.abs(pts[1].x - pts[0].x) / 2}
           ry={Math.abs(pts[1].y - pts[0].y) / 2}
           {...common}
+          fill="transparent"
+          pointerEvents={isPending ? "none" : "all"}
+          style={{ cursor: isPending ? "default" : "move" }}
+          onPointerDown={onBodyDown}
+          onPointerMove={onHandleMove}
+          onPointerUp={onHandleUp}
         />
       );
       labelAt = {
@@ -599,6 +651,26 @@ export default function MeasureOverlay({
             );
           })}
         </div>
+        <div className="fvd-ctx-sep" />
+        <button
+          className="fvd-ctx-item"
+          onClick={() => {
+            const m = measures.find((x) => x.id === ctxMenu.mid);
+            const cur = m?.fontSize ?? globalFont;
+            const t = window.prompt(`Font size (px, current: ${cur}):`, String(cur));
+            if (t !== null) {
+              const n = Number(t);
+              if (Number.isFinite(n) && n > 0) {
+                setMeasureFontSize(imageId, ctxMenu.mid, n);
+              } else if (t.trim() === "" || t === "0") {
+                setMeasureFontSize(imageId, ctxMenu.mid, null);
+              }
+            }
+            setCtxMenu(null);
+          }}
+        >
+          Font size…
+        </button>
         <div className="fvd-ctx-sep" />
         <button
           className="fvd-ctx-item"

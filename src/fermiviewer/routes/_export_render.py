@@ -38,25 +38,39 @@ def _load_font(size: int) -> FreeTypeFont | None:
 
 # ── PIL raster baking ────────────────────────────────────────────────
 
+def _hex_to_rgb(color: str) -> tuple[int, int, int]:
+    """Parse a #rrggbb hex string → (r, g, b).  Falls back to white on error."""
+    c = color.lstrip("#")
+    if len(c) == 6:
+        try:
+            return (int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16))
+        except ValueError:
+            pass
+    return (255, 255, 255)
+
+
 def draw_scale_bar(img: Image.Image, bar: ScaleBar,
                    font_size: int = _DEFAULT_FONT_SIZE) -> None:
-    """Bake the white scale bar + label into `img` in-place.
+    """Bake the scale bar + label into `img` in-place.
 
+    Bar and label colour come from bar.color (hex, default "#ffffff" — white,
+    preserving byte-identical output when color is absent/default).
     `font_size` is the already-scaled size (on-screen px × export scale).
     Falls back to PIL's default bitmap font if the TTF cannot be loaded.
     """
+    rgb = _hex_to_rgb(bar.color)
     draw = ImageDraw.Draw(img)
     draw.rectangle(
         [bar.x, bar.y, bar.x + bar.width, bar.y + bar.height],
-        fill=(255, 255, 255),
+        fill=rgb,
     )
     font = _load_font(font_size)
     label_y = bar.y - font_size - 2  # keep gap above the bar regardless of size
     if font is not None:
-        draw.text((bar.x, label_y), bar.label, fill=(255, 255, 255),
+        draw.text((bar.x, label_y), bar.label, fill=rgb,
                   font=font, stroke_width=1, stroke_fill=(0, 0, 0))
     else:
-        draw.text((bar.x, bar.y - 14), bar.label, fill=(255, 255, 255),
+        draw.text((bar.x, bar.y - 14), bar.label, fill=rgb,
                   stroke_width=1, stroke_fill=(0, 0, 0))
 
 
@@ -454,13 +468,14 @@ def build_svg(img: Image.Image, bar: ScaleBar | None,
     )
 
     if bar is not None:
+        bar_fill = bar.color  # honours the color override (audit #10)
         parts.append(
             f'<rect x="{bar.x}" y="{bar.y}" width="{bar.width}" '
-            f'height="{bar.height}" fill="white"/>'
+            f'height="{bar.height}" fill="{bar_fill}"/>'
         )
         label_y = bar.y - 5  # consistent gap above the bar
         parts.append(
-            f'<text x="{bar.x}" y="{label_y}" fill="white" '
+            f'<text x="{bar.x}" y="{label_y}" fill="{bar_fill}" '
             f'{sb_font_attrs}>{escape(bar.label)}</text>'
         )
 

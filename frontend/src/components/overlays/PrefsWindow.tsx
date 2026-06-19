@@ -89,6 +89,7 @@ const RES_OPTS: [number, string][] = [
 const SIDE_OPTS: [Prefs["colorbarSide"], string][] = [
   ["left", "Left"],
   ["right", "Right"],
+  ["bottom", "Bottom"],
 ];
 const GEOM_OPTS: [Prefs["tiltGeometry"], string][] = [
   ["cross-section", "Cross-section"],

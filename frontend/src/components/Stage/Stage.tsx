@@ -1026,10 +1026,10 @@ function ScaleBarOverlay({
   vp: Size;
   barRef: RefObject<HTMLDivElement>;
 }) {
-  // Scale bar is white by default, independent of the measurement
-  // overlay colour (they used to share s.overlay.color, so picking a
-  // measurement colour tinted the bar — decoupled per user request).
-  const color = "#ffffff";
+  // Scale bar colour: per-image override (audit #10) or white default.
+  // Decoupled from measurement overlay colour per user request.
+  const sbColor = useViewer((s) => s.scaleBars[imageId]?.color ?? "#ffffff");
+  const color = sbColor;
   const visible = useViewer((s) => s.scaleBarVisible);
   const sbState = useViewer((s) => s.scaleBars[imageId]);
   const setScaleBar = useViewer((s) => s.setScaleBar);
@@ -1076,9 +1076,25 @@ function ScaleBarOverlay({
   // per-image override wins; else the Preferences default (20 by default,
   // user request 2026-06-09 — readable at presentation size)
   const fontSize = sbState?.fontSize ?? loadPrefs().scaleBarFontSize;
-  const label = phys >= 1
-    ? `${Number(phys.toPrecision(3))} ${unit}`
-    : fmtSub(phys, unit);
+  // unit override: convert phys (in pixel_unit) to the forced unit
+  const unitOverride = sbState?.unitOverride ?? null;
+  const label = (() => {
+    if (unitOverride) {
+      // convert via nm as common base — mirrors _bar_label_with_unit in Python
+      const nmPer: Record<string, number> = {
+        pm: 1e-3, Å: 0.1, nm: 1, µm: 1e3, um: 1e3, mm: 1e6, m: 1e9,
+      };
+      const fSrc = nmPer[unit];
+      const fTgt = nmPer[unitOverride];
+      if (fSrc != null && fTgt != null) {
+        const converted = (phys * fSrc) / fTgt;
+        return `${Number(converted.toPrecision(3))} ${unitOverride}`;
+      }
+    }
+    return phys >= 1
+      ? `${Number(phys.toPrecision(3))} ${unit}`
+      : fmtSub(phys, unit);
+  })();
 
   const onPointerDown = (e: React.PointerEvent) => {
     e.stopPropagation();

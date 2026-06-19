@@ -55,7 +55,7 @@ export interface Prefs {
   exportColorbar: boolean;
 
   // ── Advanced ──
-  colorbarSide: "left" | "right";
+  colorbarSide: "left" | "right" | "bottom";
   colorbarOnByDefault: boolean;
   fixedZoomW: number;
   fixedZoomH: number;

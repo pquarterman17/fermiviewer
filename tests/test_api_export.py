@@ -684,6 +684,83 @@ def test_scale_bar_label_subunit() -> None:
     assert _bar_label(3, "px") == "3 px"           # unknown unit unchanged
 
 
+# ── audit #10: scale-bar color + unit override ───────────────────────
+
+def test_scale_bar_color_default_white(client, img_id) -> None:
+    """Omitting scale_bar_color → white bar (byte-identical to historical
+    export — the default ScaleBar.color="#ffffff" preserves behaviour)."""
+    common = {
+        "image_id": img_id, "format": "png", "scale": 4,
+        "include": ["scale_bar"],
+    }
+    no_color = client.post("/api/export", json=common).content
+    explicit_white = client.post(
+        "/api/export", json={**common, "scale_bar_color": "#ffffff"}
+    ).content
+    null_color = client.post(
+        "/api/export", json={**common, "scale_bar_color": None}
+    ).content
+    # All three must be byte-identical (backward-compatible default)
+    assert no_color == explicit_white
+    assert no_color == null_color
+
+
+def test_scale_bar_color_changes_pixels(client, img_id) -> None:
+    """A non-white colour produces a visibly different export."""
+    common = {
+        "image_id": img_id, "format": "png", "scale": 4,
+        "include": ["scale_bar"],
+    }
+    white = np.asarray(Image.open(io.BytesIO(
+        client.post("/api/export", json={**common, "scale_bar_color": "#ffffff"}).content
+    )))
+    yellow = np.asarray(Image.open(io.BytesIO(
+        client.post("/api/export", json={**common, "scale_bar_color": "#fbbf24"}).content
+    )))
+    assert (white != yellow).any(), "colour change produced identical pixels"
+    # SVG variant: fill attribute carries the hex colour
+    svg = client.post("/api/export", json={
+        **common, "format": "svg", "scale_bar_color": "#22d3ee"
+    }).content.decode()
+    assert 'fill="#22d3ee"' in svg
+
+
+def test_scale_bar_unit_override(client, img_id) -> None:
+    """Unit override forces a different unit suffix in the label.
+    The image is calibrated in nm; forcing 'Å' should give an Å label."""
+    common = {
+        "image_id": img_id, "format": "svg", "scale": 2,
+        "include": ["scale_bar"],
+    }
+    auto_svg = client.post("/api/export", json=common).content.decode()
+    override_svg = client.post(
+        "/api/export", json={**common, "scale_bar_unit_override": "Å"}
+    ).content.decode()
+    # auto label is in nm; override should produce Å
+    assert "nm</text>" in auto_svg
+    assert "Å</text>" in override_svg
+    # null/absent override → same as auto
+    null_svg = client.post(
+        "/api/export", json={**common, "scale_bar_unit_override": None}
+    ).content.decode()
+    assert null_svg == auto_svg
+
+
+def test_scale_bar_unit_override_label_helper() -> None:
+    """_bar_label_with_unit: converts physical value from src to tgt unit."""
+    from fermiviewer.calc.export import _bar_label_with_unit
+
+    # 5 nm expressed as Å = 50 Å
+    assert _bar_label_with_unit(5.0, "nm", "Å") == "50 Å"
+    # 0.5 nm expressed as Å = 5 Å
+    assert _bar_label_with_unit(0.5, "nm", "Å") == "5 Å"
+    # 2 nm expressed as µm = 0.002 µm
+    assert _bar_label_with_unit(2.0, "nm", "µm") == "0.002 µm"
+    # unknown unit → graceful fallback (auto label)
+    result = _bar_label_with_unit(5.0, "px", "Å")
+    assert "px" in result  # falls back to auto
+
+
 def test_scale_bar_detection() -> None:
     from fermiviewer.calc.scalebar_detect import detect_scale_bar
 

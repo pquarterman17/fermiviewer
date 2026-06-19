@@ -377,3 +377,68 @@ describe("closeImage cleanup", () => {
     expect(t.history["b"]).toBeDefined(); // sibling history kept
   });
 });
+
+// ── audit #9/#10/#12 additions ────────────────────────────────────────
+
+describe("setScaleBar color + unitOverride (audit #10)", () => {
+  beforeEach(() => useViewer.setState(useViewer.getInitialState()));
+
+  it("stores color and unitOverride in per-image scalebar slice", () => {
+    useViewer.getState().setScaleBar("img1", { color: "#22d3ee", unitOverride: "Å" });
+    const sb = useViewer.getState().scaleBars["img1"];
+    expect(sb.color).toBe("#22d3ee");
+    expect(sb.unitOverride).toBe("Å");
+  });
+
+  it("null color and unitOverride clear the overrides", () => {
+    useViewer.getState().setScaleBar("img1", { color: "#ff0000", unitOverride: "µm" });
+    useViewer.getState().setScaleBar("img1", { color: null, unitOverride: null });
+    const sb = useViewer.getState().scaleBars["img1"];
+    expect(sb.color).toBeNull();
+    expect(sb.unitOverride).toBeNull();
+  });
+});
+
+describe("setMeasureFontSize (audit #12)", () => {
+  beforeEach(() => useViewer.setState(useViewer.getInitialState()));
+
+  const meta: ImageMeta = {
+    id: "a", name: "a.dm4", kind: "image", shape: [16, 16],
+    pixel_size: null, pixel_unit: "px", value_unit: "",
+    meta: {}, image_tags: [],
+  };
+
+  it("sets per-annotation font size clamped to [6, 120]", () => {
+    const s = useViewer.getState();
+    s.ingest([meta]);
+    const mid = s.addMeasure("a", {
+      kind: "box", pts: [{ x: 0.1, y: 0.1 }, { x: 0.9, y: 0.9 }], text: "hi",
+    });
+    useViewer.getState().setMeasureFontSize("a", mid, 48);
+    expect(useViewer.getState().measures["a"]?.find((m) => m.id === mid)?.fontSize).toBe(48);
+    // above ceiling clamps to 120
+    useViewer.getState().setMeasureFontSize("a", mid, 999);
+    expect(useViewer.getState().measures["a"]?.find((m) => m.id === mid)?.fontSize).toBe(120);
+    // null clears the override
+    useViewer.getState().setMeasureFontSize("a", mid, null);
+    expect(useViewer.getState().measures["a"]?.find((m) => m.id === mid)?.fontSize).toBeUndefined();
+  });
+});
+
+describe("tickCount + tickFontSize in Display (audit #9)", () => {
+  beforeEach(() => useViewer.setState(useViewer.getInitialState()));
+
+  const meta: ImageMeta = {
+    id: "a", name: "a.dm4", kind: "image", shape: [16, 16],
+    pixel_size: null, pixel_unit: "px", value_unit: "",
+    meta: {}, image_tags: [],
+  };
+
+  it("stores tickCount and tickFontSize in per-image display", () => {
+    useViewer.getState().ingest([meta]);
+    useViewer.getState().setDisplay("a", { tickCount: 8, tickFontSize: 14 });
+    const d = useViewer.getState().display["a"];
+    expect(d?.tickCount).toBe(8);
+    expect(d?.tickFontSize).toBe(14);
+  });
+});

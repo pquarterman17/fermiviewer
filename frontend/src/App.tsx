@@ -512,10 +512,11 @@ export default function App() {
       />
       <div className={mainCls}>
         <Filmstrip />
-        <div className="fvd-stage-cell">
+        <div className="fvd-stage-cell" style={{ flexDirection: (colorbar && colorbarSide === "bottom") ? "column" : undefined }}>
           {colorbar && colorbarSide === "left" && <ColorbarChip />}
           {comparing ? <CompareStage /> : <Stage ref={stageRef} />}
           {colorbar && colorbarSide === "right" && <ColorbarChip />}
+          {colorbar && colorbarSide === "bottom" && <ColorbarChip />}
         </div>
         {comparing ? <CompareInspector /> : <Inspector />}
       </div>
