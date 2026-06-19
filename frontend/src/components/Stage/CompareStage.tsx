@@ -17,11 +17,12 @@ import {
 } from "../../store/viewer";
 
 const WHEEL_K = 0.0015;
-const FLICKER_MS = 600;
 
 export default function CompareStage() {
   const compareSet = useViewer((s) => s.compareSet) ?? [];
   const compareMode = useViewer((s) => s.compareMode);
+  const compareFlickerMs = useViewer((s) => s.compareFlickerMs);
+  const compareAB = useViewer((s) => s.compareAB);
   const images = useViewer((s) => s.images);
   const exitCompare = useViewer((s) => s.exitCompare);
 
@@ -37,26 +38,50 @@ export default function CompareStage() {
 
   const effView = view ?? fitView(img, vp);
 
-  // flicker cycle
+  // flicker cycle — restarts when mode or interval changes
   useEffect(() => {
     if (compareMode !== "flicker") return;
-    const t = window.setInterval(() => setTick((x) => x + 1), FLICKER_MS);
+    const t = window.setInterval(() => setTick((x) => x + 1), compareFlickerMs);
     return () => window.clearInterval(t);
-  }, [compareMode]);
+  }, [compareMode, compareFlickerMs]);
+
+  // Determine which images are visible.  When an explicit A/B pair is set,
+  // flicker alternates between exactly those two; otherwise cycle the full set.
+  const activeSet =
+    compareAB !== null
+      ? [
+          compareSet[compareAB[0]] ?? compareSet[0],
+          compareSet[compareAB[1]] ?? compareSet[1],
+        ].filter(Boolean)
+      : compareSet;
 
   const stacked = compareMode !== "split";
-  const visibleIdx = tick % Math.max(1, compareSet.length);
+  const visibleIdx = tick % Math.max(1, activeSet.length);
+
+  // When Tab key is pressed in flicker mode, advance the visible slot
+  // (audit #15 active-panel focus + Tab-switch).
+  useEffect(() => {
+    if (compareMode !== "flicker") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Tab") {
+        e.preventDefault();
+        setTick((x) => x + 1);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [compareMode]);
 
   return (
     <div
       className={`fvd-stage fvd-compare ${compareMode}`}
       style={
         compareMode === "split"
-          ? { gridTemplateColumns: `repeat(${compareSet.length}, 1fr)` }
+          ? { gridTemplateColumns: `repeat(${activeSet.length}, 1fr)` }
           : undefined
       }
     >
-      {compareSet.map((id, i) => (
+      {activeSet.map((id, i) => (
         <ComparePanel
           key={id}
           id={id}
@@ -72,10 +97,10 @@ export default function CompareStage() {
       ))}
       <div className="fvd-glass fvd-compare-chip">
         {compareMode === "flicker"
-          ? `Flicker — ${images[compareSet[visibleIdx]]?.name ?? ""}`
+          ? `Flicker — ${images[activeSet[visibleIdx]]?.name ?? ""}`
           : compareMode === "subtract"
             ? "Subtract (difference)"
-            : `Compare ${compareSet.length}`}
+            : `Compare ${activeSet.length}`}
         <button
           className="fvd-icon-btn"
           title="Exit compare  Esc"

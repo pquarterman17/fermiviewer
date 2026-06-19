@@ -74,7 +74,14 @@ export const TRANSFORM_TOOLS: TransformTool[] = [
   {
     label: "Bin", glyph: "⊞", group: "Filters",
     kind: "bin", via: "filter", batch: true,
-    fields: [num("bin_size", "Bin size", 2)],
+    fields: [
+      num("bin_size", "Bin size", 2),
+      // audit #13: sum vs average mode (MATLAB +imaging/binImage.m).
+      // "average" = existing default — output is byte-identical when mode
+      // is absent or "average"; "sum" accumulates counts per super-pixel.
+      { key: "mode", label: "Reduce", type: "select",
+        default: "average", options: ["average", "sum"] },
+    ],
   },
   {
     label: "Plane Level", glyph: "▱", group: "Filters",

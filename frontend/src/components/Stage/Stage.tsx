@@ -34,6 +34,7 @@ import {
   type Size,
 } from "../../lib/geometry";
 import { loadPrefs } from "../../lib/prefs";
+import { applyFilter } from "../../lib/api";
 import { applyGeometry, cropToRoi } from "../../lib/stageOps";
 import { rasterValue, useStageInfo } from "../../store/stage";
 import {
@@ -584,6 +585,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       captureMode === "roi" ||
       captureMode === "ellipse" ||
       captureMode === "box-profile" ||
+      captureMode === "crop-save" ||
       (captureMode === "none" && e.shiftKey) // marquee measure-select
     ) {
       setMarquee({ a: p, b: p });
@@ -653,6 +655,30 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
         }
       } else if (captureMode === "box-profile") {
         finalizeBoxProfile(toImage(marquee.a), toImage(marquee.b));
+      } else if (captureMode === "crop-save") {
+        // Save Cropped Region (audit #16): drag a box → register the cropped
+        // area as a new derived image (same as Crop to ROI but marquee-driven
+        // and does NOT navigate away — the original stays active).
+        const ia = toImage(marquee.a);
+        const ib = toImage(marquee.b);
+        const w2 = Math.abs(ib.x - ia.x);
+        const h2 = Math.abs(ib.y - ia.y);
+        if (w2 >= 2 && h2 >= 2 && activeId && imgSize) {
+          const px = (v: number, n: number) =>
+            Math.min(n, Math.max(1, Math.round(v + 0.5)));
+          applyFilter(activeId, "crop", {
+            row0: px(Math.min(ia.y, ib.y), imgSize.h),
+            col0: px(Math.min(ia.x, ib.x), imgSize.w),
+            row1: px(Math.max(ia.y, ib.y), imgSize.h),
+            col1: px(Math.max(ia.x, ib.x), imgSize.w),
+          })
+            .then((m) => {
+              useViewer.getState().ingestDerived([m]);
+              setStatus(`cropped region saved → ${m.name}`);
+            })
+            .catch((e: Error) => setStatus(`crop-save: ${e.message}`));
+        }
+        setCaptureMode("none");
       } else if (captureMode === "none") {
         // shift-drag marquee: select every measure with a point inside
         const s = useViewer.getState();
@@ -856,10 +882,23 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
 export default Stage;
 
 function FloatTools() {
+  const activeId = useViewer((s) => s.activeId);
   const captureMode = useViewer((s) => s.captureMode);
   const setCaptureMode = useViewer((s) => s.setCaptureMode);
   const panTool = useViewer((s) => s.panTool);
   const setPanTool = useViewer((s) => s.setPanTool);
+  const deleteLastAnnotation = useViewer((s) => s.deleteLastAnnotation);
+  const resetToOriginal = useViewer((s) => s.resetToOriginal);
+  // show delete-last only when there are annotations/measures to delete
+  const hasMeasures = useViewer((s) =>
+    activeId ? (s.measures[activeId] ?? []).length > 0 : false,
+  );
+  // show reset-to-original only when the active image is derived
+  const isDerived = useViewer((s) =>
+    activeId
+      ? typeof s.images[activeId]?.meta["derived_from"] === "string"
+      : false,
+  );
 
   const mode = (m: typeof captureMode) => () =>
     setCaptureMode(captureMode === m ? "none" : m);
@@ -932,6 +971,32 @@ function FloatTools() {
       >
         ✂
       </button>
+      <button
+        className={`fvd-tool-btn${captureMode === "crop-save" ? " active" : ""}`}
+        data-tip="Save Cropped Region"
+        onClick={mode("crop-save")}
+      >
+        ⊡
+      </button>
+      <span className="fvd-tool-sep" />
+      {hasMeasures && (
+        <button
+          className="fvd-tool-btn"
+          data-tip="Delete last annotation"
+          onClick={() => { if (activeId) deleteLastAnnotation(activeId); }}
+        >
+          ⌫
+        </button>
+      )}
+      {isDerived && (
+        <button
+          className="fvd-tool-btn"
+          data-tip="Reset to original pixels"
+          onClick={() => { if (activeId) resetToOriginal(activeId); }}
+        >
+          ⟳₀
+        </button>
+      )}
     </div>
   );
 }

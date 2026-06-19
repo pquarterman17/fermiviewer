@@ -203,6 +203,7 @@ export type CaptureMode =
   | "zoom"
   | "fixed-zoom"
   | "box-profile"
+  | "crop-save"
   | MeasureKind;
 export type Theme = "dark" | "light";
 /** Swappable accent scheme (kept in sync with lib/prefs Accent; no import
@@ -473,6 +474,12 @@ interface ViewerState {
   listView: ListView;
   compareSet: string[] | null;
   compareMode: CompareMode;
+  /** Flicker interval in ms (default 600 = ~1.7 Hz, matches MATLAB).
+   *  Exposed as a user control (audit #15). */
+  compareFlickerMs: number;
+  /** Explicit A/B slot override: [indexA, indexB] into compareSet
+   *  (null = cycle the full set, original behaviour).  Audit #15. */
+  compareAB: [number, number] | null;
   // per-image view, persisted (localStorage "fv_views")
   views: Record<string, View>;
   // per-image display pipeline (window/gamma/colormap)
@@ -544,6 +551,8 @@ interface ViewerState {
   startCompare: (ids: string[]) => void;
   exitCompare: () => void;
   setCompareMode: (m: CompareMode) => void;
+  setCompareFlickerMs: (ms: number) => void;
+  setCompareAB: (ab: [number, number] | null) => void;
   cycleImage: (dir: 1 | -1) => void;
   closeImage: (id: string) => Promise<void>;
   setView: (id: string, view: View) => void;
@@ -566,6 +575,13 @@ interface ViewerState {
     pts: Measure["pts"],
   ) => void;
   removeMeasure: (imageId: string, measureId: string) => void;
+  /** Remove the most recently added annotation/measure (audit #11). */
+  deleteLastAnnotation: (imageId: string) => void;
+  /** Switch the active image to the root ancestor of a derived chain,
+   *  restoring the original un-filtered pixels (audit #11).  The server
+   *  already holds every ancestor DataStruct for the session; this only
+   *  updates the client's activeId pointer. */
+  resetToOriginal: (imageId: string) => void;
   setMeasureText: (imageId: string, measureId: string, text: string) => void;
   setMeasureStyle: (
     imageId: string,
@@ -699,6 +715,8 @@ export const useViewer = create<ViewerState>((set, get) => ({
   listView: "thumbs",
   compareSet: null,
   compareMode: "split",
+  compareFlickerMs: 600,
+  compareAB: null,
   views: loadJson<Record<string, View>>(VIEWS_KEY, {}),
   display: {},
   history: {},
@@ -900,11 +918,14 @@ export const useViewer = create<ViewerState>((set, get) => ({
 
   startCompare: (ids) => {
     if (ids.length < 2) return;
-    set({ compareSet: ids, captureMode: "none", selectedMeasure: null });
+    set({ compareSet: ids, captureMode: "none", selectedMeasure: null, compareAB: null });
   },
 
-  exitCompare: () => set({ compareSet: null }),
+  exitCompare: () => set({ compareSet: null, compareAB: null }),
   setCompareMode: (compareMode) => set({ compareMode }),
+  setCompareFlickerMs: (ms) =>
+    set({ compareFlickerMs: Math.max(100, Math.round(ms)) }),
+  setCompareAB: (ab) => set({ compareAB: ab }),
 
   cycleImage: (dir) => {
     const { order, activeId } = get();
@@ -1070,6 +1091,29 @@ export const useViewer = create<ViewerState>((set, get) => ({
         }),
       };
     }),
+
+  deleteLastAnnotation: (imageId) => {
+    const s = get();
+    const list = s.measures[imageId] ?? [];
+    if (list.length === 0) return;
+    const last = list[list.length - 1];
+    s.removeMeasure(imageId, last.id);
+  },
+
+  resetToOriginal: (imageId) => {
+    // Walk the derived_from chain to find the root ancestor, then activate it.
+    // Every ancestor DataStruct is server-resident for the life of the session;
+    // switching activeId is all that is needed — no network reload.
+    const s = get();
+    let current = imageId;
+    // Guard: at most as many hops as images in the library (cycle-proof)
+    for (let i = 0; i < Object.keys(s.images).length; i++) {
+      const parent = s.images[current]?.meta["derived_from"];
+      if (!parent || typeof parent !== "string" || !(parent in s.images)) break;
+      current = parent;
+    }
+    if (current !== imageId) s.setActive(current);
+  },
 
   setMeasureText: (imageId, measureId, text) =>
     set((s) => ({

@@ -430,3 +430,91 @@ describe("tickCount + tickFontSize in Display (audit #9)", () => {
     expect(d?.tickFontSize).toBe(14);
   });
 });
+
+// ── audit #11/#13/#15/#16 additions ────────────────────────────────────
+
+describe("deleteLastAnnotation (audit #11)", () => {
+  beforeEach(() => useViewer.setState(useViewer.getInitialState()));
+
+  it("removes the last measure when several exist", () => {
+    const s = useViewer.getState();
+    s.ingest([meta("a")]);
+    s.addMeasure("a", { kind: "distance", pts: [{ x: 0, y: 0 }, { x: 1, y: 0 }] });
+    const last = s.addMeasure("a", {
+      kind: "text", pts: [{ x: 0.5, y: 0.5 }], text: "label",
+    });
+    expect(useViewer.getState().measures["a"]).toHaveLength(2);
+    useViewer.getState().deleteLastAnnotation("a");
+    const remaining = useViewer.getState().measures["a"];
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].id).not.toBe(last);
+  });
+
+  it("is a no-op when there are no measures", () => {
+    useViewer.getState().ingest([meta("a")]);
+    // must not throw
+    useViewer.getState().deleteLastAnnotation("a");
+    expect(useViewer.getState().measures["a"] ?? []).toHaveLength(0);
+  });
+});
+
+describe("resetToOriginal (audit #11)", () => {
+  beforeEach(() => useViewer.setState(useViewer.getInitialState()));
+
+  it("walks derived_from chain and activates the root ancestor", () => {
+    const s = useViewer.getState();
+    // a → b → c (c is derived from b, b from a)
+    s.ingest([meta("a")]);
+    s.ingestDerived([meta("b", { meta: { derived_from: "a" } })]);
+    s.ingestDerived([meta("c", { meta: { derived_from: "b" } })]);
+    s.setActive("c");
+    expect(useViewer.getState().activeId).toBe("c");
+    useViewer.getState().resetToOriginal("c");
+    expect(useViewer.getState().activeId).toBe("a");
+  });
+
+  it("is a no-op on a non-derived image", () => {
+    useViewer.getState().ingest([meta("a")]);
+    useViewer.getState().setActive("a");
+    useViewer.getState().resetToOriginal("a");
+    expect(useViewer.getState().activeId).toBe("a");
+  });
+});
+
+describe("compare flicker rate + A/B pair (audit #15)", () => {
+  beforeEach(() => useViewer.setState(useViewer.getInitialState()));
+
+  it("compareFlickerMs defaults to 600 ms and is clamped >= 100", () => {
+    expect(useViewer.getState().compareFlickerMs).toBe(600);
+    useViewer.getState().setCompareFlickerMs(250);
+    expect(useViewer.getState().compareFlickerMs).toBe(250);
+    useViewer.getState().setCompareFlickerMs(50); // below floor
+    expect(useViewer.getState().compareFlickerMs).toBe(100);
+  });
+
+  it("compareAB defaults to null; can be set and cleared", () => {
+    expect(useViewer.getState().compareAB).toBeNull();
+    useViewer.getState().setCompareAB([0, 2]);
+    expect(useViewer.getState().compareAB).toEqual([0, 2]);
+    useViewer.getState().setCompareAB(null);
+    expect(useViewer.getState().compareAB).toBeNull();
+  });
+
+  it("startCompare resets compareAB to null", () => {
+    const s = useViewer.getState();
+    s.ingest([meta("a"), meta("b"), meta("c")]);
+    s.setCompareAB([0, 2]);
+    s.startCompare(["a", "b", "c"]);
+    expect(useViewer.getState().compareAB).toBeNull();
+  });
+
+  it("exitCompare clears both compareSet and compareAB", () => {
+    const s = useViewer.getState();
+    s.ingest([meta("a"), meta("b")]);
+    s.startCompare(["a", "b"]);
+    s.setCompareAB([0, 1]);
+    s.exitCompare();
+    expect(useViewer.getState().compareSet).toBeNull();
+    expect(useViewer.getState().compareAB).toBeNull();
+  });
+});

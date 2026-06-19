@@ -29,5 +29,6 @@ export const CAPTURE_STEPS: Partial<Record<CaptureMode, CaptureStep>> = {
   roi: { label: "ROI", steps: ["Drag a box"] },
   ellipse: { label: "Ellipse", steps: ["Drag a box"] },
   "box-profile": { label: "Box profile", steps: ["Drag a box along the feature"] },
+  "crop-save": { label: "Save Cropped Region", steps: ["Drag a box to crop and save as a new image"] },
   zoom: { label: "Box zoom", steps: ["Drag a box to zoom"] },
 };
