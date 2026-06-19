@@ -151,8 +151,8 @@ body {
 /* UPPERCASE tracked group heading inside a dropdown (menu IA) */
 .fvd-menu-section {
   font-size: var(--font-size-sm);
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--text-faint);
   padding: 6px 9px 2px;
@@ -333,7 +333,7 @@ body {
 
 .fvd-grain-edit .lbl {
   color: var(--text-dim);
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   font-size: 10px;
 }
@@ -363,14 +363,14 @@ body {
 
 .fvd-inspector-tabs .title {
   font-size: 10px;
-  letter-spacing: 0.1em;
+  letter-spacing: var(--tracking-wide);
   color: var(--text-dim);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .fvd-seg-label {
   font-size: 9px;
-  letter-spacing: 0.1em;
+  letter-spacing: var(--tracking-wide);
   color: var(--text-dim);
   border: 1px solid var(--border);
   border-radius: 3px;
@@ -440,9 +440,9 @@ body {
 details.fvd-card > summary {
   cursor: default;
   list-style: none;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  font-size: var(--type-label);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--text-dim);
   margin-bottom: 8px;
@@ -599,7 +599,7 @@ details.fvd-card:not([open]) > summary {
   padding: 8px 7px;
   background: var(--surface-1);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--type-micro);
   color: var(--text-dim);
 }
 .fvd-colorbar.side-right {
@@ -611,7 +611,7 @@ details.fvd-card:not([open]) > summary {
 
 .fvd-colorbar .u {
   color: var(--text);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .fvd-colorbar .body {
@@ -758,7 +758,7 @@ details.fvd-card:not([open]) > summary {
 .fvd-pixel-grid td.centre {
   background: var(--capture-soft);
   color: var(--capture);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .fvd-minimap {
@@ -940,9 +940,9 @@ details.fvd-card:not([open]) > summary {
 .fvd-card h3 {
   margin: 0 0 var(--pad);
   font-size: var(--font-size-sm);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-label);
   color: var(--text-faint);
 }
 
@@ -1146,12 +1146,12 @@ details.fvd-card:not([open]) > summary {
 }
 
 .fvd-capture-banner .label {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .fvd-capture-banner .step {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--type-nano);
   padding: 1px 5px;
   border-radius: var(--radius-sm);
   background: var(--capture-soft);
@@ -1163,7 +1163,7 @@ details.fvd-card:not([open]) > summary {
 
 .fvd-capture-banner kbd {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--type-nano);
   padding: 1px 5px;
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
@@ -1373,7 +1373,7 @@ details.fvd-card:not([open]) > summary {
   justify-content: space-between;
   align-items: center;
   font-size: var(--font-size-sm);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--text-dim);
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -1381,7 +1381,7 @@ details.fvd-card:not([open]) > summary {
 }
 
 .fvd-mstats-n {
-  font-weight: 400;
+  font-weight: var(--weight-regular);
   font-family: var(--font-mono);
   color: var(--text-faint);
 }
@@ -1488,7 +1488,7 @@ details.fvd-card:not([open]) > summary {
   background: transparent;
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: 15px;
+  font-size: var(--type-display);
   padding: 12px 14px;
   outline: none;
 }
@@ -1501,7 +1501,7 @@ details.fvd-card:not([open]) > summary {
 .fvd-cmdk-group {
   font-size: var(--font-size-sm);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-label);
   color: var(--text-faint);
   padding: 8px 8px 3px;
 }
@@ -1524,7 +1524,7 @@ details.fvd-card:not([open]) > summary {
 .fvd-cmdk-hit {
   background: none;
   color: var(--accent-text);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .fvd-cmdk-empty {
@@ -1544,13 +1544,13 @@ details.fvd-card:not([open]) > summary {
 
 .fvd-shorts h2 {
   margin: 6px 0 12px;
-  font-size: 15px;
+  font-size: var(--type-display);
 }
 
 .fvd-shorts h3 {
   font-size: var(--font-size-sm);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-label);
   color: var(--text-faint);
   margin: 0 0 6px;
 }
@@ -1706,7 +1706,7 @@ details.fvd-card:not([open]) > summary {
 
 .fvd-export h2 {
   margin: 2px 0 0;
-  font-size: 14px;
+  font-size: var(--type-title);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1763,7 +1763,7 @@ details.fvd-card:not([open]) > summary {
 
 .fvd-prefs h2 {
   margin: 2px 0 0;
-  font-size: 14px;
+  font-size: var(--type-title);
 }
 
 .fvd-prefs-body {
@@ -1900,7 +1900,7 @@ details.fvd-card:not([open]) > summary {
   padding: 7px 10px;
   border-bottom: 1px solid var(--border-soft);
   font-size: var(--font-size-sm);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--text-dim);
   cursor: default;
   user-select: none;
@@ -1994,7 +1994,7 @@ details.fvd-card:not([open]) > summary {
   font-size: var(--font-size-sm);
   color: var(--text-faint);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-label);
 }
 
 .fvd-ws-section .fvd-btn {
@@ -2026,7 +2026,7 @@ details.fvd-card:not([open]) > summary {
 .fvd-ws-table th {
   text-align: left;
   color: var(--text-faint);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   border-bottom: 1px solid var(--border-soft);
   padding: 3px 6px;
 }
@@ -2124,7 +2124,7 @@ details.fvd-card:not([open]) > summary {
 }
 
 .fvd-app-name {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   font-size: var(--font-size);
 }
 
@@ -2412,7 +2412,7 @@ details.fvd-card:not([open]) > summary {
   justify-content: space-between;
   font-family: var(--font-mono);
   font-size: 9px;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--text-faint);
   margin-top: 4px;
@@ -2455,7 +2455,7 @@ button.fvd-cmd-group:hover {
 .fvd-pill {
   font-size: var(--font-size-sm);
   padding: 3px 11px;
-  border-radius: 99px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--border-soft);
   background: var(--surface-2);
   color: var(--text-dim);
@@ -2526,7 +2526,7 @@ button.fvd-cmd-group:hover {
 
 .fvd-card-count {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--type-nano);
   padding: 1px 6px;
   border-radius: var(--radius-sm);
   background: var(--surface-3);
@@ -2594,7 +2594,7 @@ button.fvd-cmd-group:hover {
 
 .fvd-batch h2 {
   margin: 2px 0 0;
-  font-size: 14px;
+  font-size: var(--type-title);
 }
 
 .fvd-batch-sub {
@@ -2645,7 +2645,7 @@ button.fvd-cmd-group:hover {
 }
 
 .fvd-batch-step .lbl {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .fvd-batch-step .prm {

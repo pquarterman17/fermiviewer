@@ -210,3 +210,38 @@
   --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas,
     monospace;
 }
+
+/* Fixed scale tokens — the design-system vocabulary (tokens/spacing.css +
+   typography.css). Density-independent: live UI sizing comes from --pad /
+   --font-size / --font-size-sm above; these name the values that DON'T scale
+   with density (uppercase labels, dialog titles, badges, tracking). */
+:root {
+  /* spacing scale — fixed gaps between atoms */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 12px;
+  --space-6: 16px;
+  --space-7: 24px;
+
+  /* full-round pills (cards/controls use --radius / --radius-sm above) */
+  --radius-pill: 99px;
+
+  /* type weights */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* fixed type-role sizes */
+  --type-label: 11px; /* uppercase card titles, section labels */
+  --type-micro: 10px; /* tiny tick labels, captions */
+  --type-nano: 9px; /* step badges, key caps, count chips */
+  --type-title: 14px; /* dialog / window titles */
+  --type-display: 15px; /* command palette input, shortcuts heading */
+
+  /* uppercase-label tracking */
+  --tracking-label: 0.06em;
+  --tracking-wide: 0.1em;
+}
