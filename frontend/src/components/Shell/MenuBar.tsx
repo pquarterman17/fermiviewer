@@ -44,6 +44,7 @@ import {
 } from "../../lib/macro";
 import { applyGeometry, cropToRoi } from "../../lib/stageOps";
 import { BATCH_FILTERS } from "../../lib/transformTools";
+import { useCommands, type Action } from "../../store/commands";
 import { useStageInfo } from "../../store/stage";
 import { undoLabel, useViewer } from "../../store/viewer";
 import {
@@ -1378,6 +1379,32 @@ export default function MenuBar({
       },
     ],
   };
+
+  // Publish every menu action to the ⌘K palette (single source of truth).
+  // Runs every render with NO deps on purpose: `menus` closures capture the
+  // current `store` snapshot, so they must be re-published fresh each render
+  // rather than cached (a stale closure would read an old store state). No one
+  // subscribes to useCommands reactively, so this never triggers re-renders.
+  useEffect(() => {
+    const flat: Action[] = [];
+    for (const [group, entries] of Object.entries(menus)) {
+      for (const e of entries) {
+        if (e.kind || !e.action || !e.label) continue; // skip sections/seps
+        if (e.label === "Command Palette") continue; // self-referential
+        // sentinel tags like "WINDOW" are not real key hints
+        const sc =
+          e.shortcut && !/^[A-Z]{3,}$/.test(e.shortcut) ? e.shortcut : undefined;
+        flat.push({
+          id: `menu:${group}:${e.label}`,
+          group,
+          label: e.label,
+          shortcut: sc,
+          run: e.action,
+        });
+      }
+    }
+    useCommands.getState().setMenuCommands(flat);
+  });
 
   return (
     <nav className="fvd-menubar" ref={barRef}>

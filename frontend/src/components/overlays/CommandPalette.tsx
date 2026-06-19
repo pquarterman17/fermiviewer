@@ -4,39 +4,44 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { fuzzy } from "../../lib/fuzzy";
+import { mergeCommands, useCommands, type Action } from "../../store/commands";
 import { useViewer } from "../../store/viewer";
 
-export interface Action {
-  id: string;
-  group: string;
-  label: string;
-  shortcut?: string;
-  run: () => void;
-}
+export type { Action };
 
 export default function CommandPalette({ actions }: { actions: Action[] }) {
   const open = useViewer((s) => s.cmdk);
   const setCmdk = useViewer((s) => s.setCmdk);
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
+  // menu commands published by the MenuBar — snapshot them when the palette
+  // opens (non-reactive: subscribing here would re-render on every MenuBar
+  // render). The closures are fresh because the MenuBar republishes each render.
+  const [menuCmds, setMenuCmds] = useState<Action[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
       setQuery("");
       setCursor(0);
+      setMenuCmds(useCommands.getState().menuCommands);
       // focus after mount
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [open]);
 
+  const allActions = useMemo(
+    () => mergeCommands(actions, menuCmds),
+    [actions, menuCmds],
+  );
+
   const matches = useMemo(() => {
-    const scored = actions
+    const scored = allActions
       .map((a) => ({ a, m: fuzzy(query, a.label) }))
       .filter((x): x is { a: Action; m: NonNullable<typeof x.m> } => !!x.m)
       .sort((x, y) => y.m.score - x.m.score);
     return scored;
-  }, [actions, query]);
+  }, [allActions, query]);
 
   useEffect(() => {
     setCursor(0);
