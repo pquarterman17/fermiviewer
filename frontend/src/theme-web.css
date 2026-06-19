@@ -1307,6 +1307,64 @@ details.fvd-card:not([open]) > summary {
   padding-top: var(--pad);
 }
 
+/* Aggregate measurement statistics summary (displayMeasurementStats port) */
+.fvd-mstats-summary {
+  border-top: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-soft);
+  margin: var(--pad) 0;
+  padding: var(--pad) 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fvd-mstats-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.fvd-mstats-group + .fvd-mstats-group {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px dashed var(--border-soft);
+}
+
+.fvd-mstats-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding-bottom: 2px;
+}
+
+.fvd-mstats-n {
+  font-weight: 400;
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+}
+
+.fvd-mstats-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 1px 0;
+  font-size: var(--font-size-sm);
+}
+
+.fvd-mstats-row .k {
+  color: var(--text-faint);
+}
+
+.fvd-mstats-row .v {
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+}
+
 /* Profile-options sub-section in the Measure card */
 .fvd-profile-opts {
   border-top: 1px solid var(--border-soft);

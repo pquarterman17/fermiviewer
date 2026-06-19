@@ -1,13 +1,14 @@
 // Measure + Overlay-style cards (handoff §4): measurement list mirroring
 // the stage labels, ROI stats, and the persisted overlay font/colour.
 
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 
 import {
   measureBoxProfile,
   measureProfile,
   type ProfileReduce,
 } from "../../lib/api";
+import { computeMeasureStats } from "../../lib/measureStats";
 import { fuzzy } from "../../lib/fuzzy";
 import {
   physAngle,
@@ -236,6 +237,25 @@ export default function MeasurePanel() {
   );
   const setTilt = useViewer((s) => s.setTilt);
 
+  /** Aggregate statistics across all measures — pure, recomputed when
+   *  measures / roiStats / tilt change.  Stable empty reference when there
+   *  are no measures (no ?! inside the selector body per Zustand rule). */
+  const aggStats = useMemo(
+    () =>
+      meta && measures.length > 0
+        ? computeMeasureStats({
+            measures,
+            img: { w: meta.shape[1] ?? 1, h: meta.shape[0] ?? 1 },
+            pixelSize: meta.pixel_size ?? null,
+            pixelUnit: meta.pixel_unit ?? "px",
+            tilt,
+            roiStats,
+          })
+        : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [measures, roiStats, tilt, meta?.shape, meta?.pixel_size, meta?.pixel_unit],
+  );
+
   if (!activeId || !meta) return null;
   const img = { w: meta.shape[1] ?? 1, h: meta.shape[0] ?? 1 };
 
@@ -424,6 +444,42 @@ export default function MeasurePanel() {
               Stats
             </button>
           </div>
+          {aggStats && aggStats.groups.length > 0 && (
+            <div className="fvd-mstats-summary">
+              {aggStats.groups.map((g) => (
+                <div key={g.label} className="fvd-mstats-group">
+                  <div className="fvd-mstats-header">
+                    {g.label}
+                    <span className="fvd-mstats-n">N={g.count}</span>
+                  </div>
+                  <div className="fvd-mstats-row">
+                    <span className="k">mean</span>
+                    <span className="v">
+                      {Number(g.mean.toPrecision(5))} {g.unit}
+                    </span>
+                  </div>
+                  <div className="fvd-mstats-row">
+                    <span className="k">± std</span>
+                    <span className="v">
+                      {Number(g.std.toPrecision(5))} {g.unit}
+                    </span>
+                  </div>
+                  <div className="fvd-mstats-row">
+                    <span className="k">min</span>
+                    <span className="v">
+                      {Number(g.min.toPrecision(5))} {g.unit}
+                    </span>
+                  </div>
+                  <div className="fvd-mstats-row">
+                    <span className="k">max</span>
+                    <span className="v">
+                      {Number(g.max.toPrecision(5))} {g.unit}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
           {measures.map((m, i) => (
             <div
               key={m.id}
