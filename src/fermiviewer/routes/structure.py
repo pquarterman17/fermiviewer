@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from fermiviewer.calc.atoms import (
+    PairStrain,
     assign_sublattice,
     detect_columns,
     find_lattice_vectors,
@@ -302,24 +303,16 @@ class AtomsRequest(BaseModel):
 def analyze_atoms(req: AtomsRequest) -> dict:
     _, raster = _raster(req.image_id)
     try:
-        det = detect_columns(
-            raster, sigma=req.sigma, threshold=req.threshold,
-            min_separation=req.min_separation, polarity=req.polarity,
-        )
+        det = detect_columns(raster, sigma=req.sigma, threshold=req.threshold,
+                             min_separation=req.min_separation, polarity=req.polarity)
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
 
-    positions = det.positions
-    amplitude = det.intensities
-    converged = None
+    positions, amplitude, converged = det.positions, det.intensities, None
     if req.refine and positions.shape[0] > 0:
-        fit = fit_gaussian_2d(
-            raster, positions, win_radius=req.win_radius,
-            polarity=req.polarity,
-        )
-        positions = fit.positions
-        amplitude = fit.amplitude
-        converged = fit.converged.tolist()
+        fit = fit_gaussian_2d(raster, positions, win_radius=req.win_radius,
+                              polarity=req.polarity)
+        positions, amplitude, converged = fit.positions, fit.amplitude, fit.converged.tolist()
 
     out: dict = {
         "n_columns": int(positions.shape[0]),
@@ -327,31 +320,47 @@ def analyze_atoms(req: AtomsRequest) -> dict:
         "amplitude": np.asarray(amplitude).tolist(),
         "converged": converged,
     }
-
     lv = find_lattice_vectors(positions)
-    out["lattice"] = {
-        "valid": bool(lv.valid),
-        "a1": None if not lv.valid else lv.a1.tolist(),
-        "a2": None if not lv.valid else lv.a2.tolist(),
-        "spacing": _nan_none(lv.spacing),
+    out["lattice"] = {"valid": bool(lv.valid), "spacing": _nan_none(lv.spacing),
+                      "a1": None if not lv.valid else lv.a1.tolist(),
+                      "a2": None if not lv.valid else lv.a2.tolist()}
+    if req.sublattices > 1 and positions.shape[0] > 0:
+        out["sublattice"] = assign_sublattice(np.asarray(amplitude),
+                                              req.sublattices).tolist()
+    if req.strain:
+        out["strain"] = _ppa_payload(peak_pair_strain(positions))
+    return out
+
+
+def _ppa_payload(st: PairStrain) -> dict:
+    """Serialise a PairStrain to JSON (reused by /atoms/strain)."""
+    _s = lambda a: [_nan_none(v) for v in a]  # noqa: E731
+    return {
+        "valid": bool(st.valid),
+        "exx_mean": _nan_none(float(np.nanmean(st.exx))),
+        "eyy_mean": _nan_none(float(np.nanmean(st.eyy))),
+        "exy_mean": _nan_none(float(np.nanmean(st.exy))),
+        "exx": _s(st.exx), "eyy": _s(st.eyy),
+        "exy": _s(st.exy), "rotation": _s(st.rotation),
+        "displacement": st.displacement.tolist() if st.valid else [],
     }
 
-    if req.sublattices > 1 and positions.shape[0] > 0:
-        out["sublattice"] = assign_sublattice(
-            np.asarray(amplitude), req.sublattices
-        ).tolist()
 
-    if req.strain:
-        st = peak_pair_strain(positions)
-        out["strain"] = {
-            "valid": bool(st.valid),
-            "exx_mean": _nan_none(float(np.nanmean(st.exx))),
-            "eyy_mean": _nan_none(float(np.nanmean(st.eyy))),
-            "exy_mean": _nan_none(float(np.nanmean(st.exy))),
-            "exx": [_nan_none(v) for v in st.exx],
-            "eyy": [_nan_none(v) for v in st.eyy],
-        }
-    return out
+class AtomsStrainRequest(BaseModel):
+    positions: list[list[float]]         # [[x,y], …] 1-based
+    ref_vectors: list[list[float]] | None = None  # [[a1x,a1y],[a2x,a2y]]
+    origin: list[float] | None = None    # [x0, y0]
+    neighbors: int = Field(default=8, ge=3, le=32)
+
+
+@router.post("/atoms/strain")
+def atoms_strain(req: AtomsStrainRequest) -> dict:
+    """PPA strain from already-fitted positions (no re-detection needed)."""
+    pos = np.asarray(req.positions, dtype=np.float64)
+    rv = np.asarray(req.ref_vectors, dtype=np.float64) if req.ref_vectors else None
+    org = np.asarray(req.origin, dtype=np.float64) if req.origin else None
+    return _ppa_payload(peak_pair_strain(pos, ref_vectors=rv, origin=org,
+                                         neighbors=req.neighbors))
 
 
 # ── template match ───────────────────────────────────────────────────

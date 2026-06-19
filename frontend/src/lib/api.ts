@@ -1060,6 +1060,18 @@ export function applyCalibrationKey(
 
 // ── structure analysis (atoms / template / CTF / lattice / stitch) ──
 
+export interface PpaStrain {
+  valid: boolean;
+  exx_mean: number | null;
+  eyy_mean: number | null;
+  exy_mean: number | null;
+  exx: (number | null)[];
+  eyy: (number | null)[];
+  exy: (number | null)[];
+  rotation: (number | null)[];
+  displacement: [number, number][];
+}
+
 export interface AtomsResult {
   n_columns: number;
   positions: [number, number][]; // (x, y), 1-based
@@ -1072,7 +1084,9 @@ export interface AtomsResult {
     spacing: number | null;
   };
   sublattice?: number[];
-  strain?: Record<string, unknown>;
+  strain?: PpaStrain;
+  /** median R² across converged fits (set by UI from fit.rsquared) */
+  mean_rsq?: number;
 }
 
 export function analyzeAtoms(
@@ -1081,8 +1095,11 @@ export function analyzeAtoms(
     sigma?: number;
     threshold?: number;
     minSeparation?: number;
+    winRadius?: number;
     polarity?: "bright" | "dark";
     refine?: boolean;
+    sublattices?: number;
+    strain?: boolean;
   } = {},
 ): Promise<AtomsResult> {
   return post("/api/analyze/atoms", {
@@ -1090,9 +1107,47 @@ export function analyzeAtoms(
     sigma: opts.sigma ?? 2,
     threshold: opts.threshold ?? 0.2,
     min_separation: opts.minSeparation ?? 8,
+    win_radius: opts.winRadius ?? 6,
     polarity: opts.polarity ?? "bright",
     refine: opts.refine ?? true,
+    sublattices: opts.sublattices ?? 1,
+    strain: opts.strain ?? false,
   });
+}
+
+export function analyzeAtomsStrain(
+  positions: [number, number][],
+  opts: {
+    refVectors?: [[number, number], [number, number]];
+    origin?: [number, number];
+    neighbors?: number;
+  } = {},
+): Promise<PpaStrain> {
+  return post("/api/atoms/strain", {
+    positions,
+    ref_vectors: opts.refVectors ?? null,
+    origin: opts.origin ?? null,
+    neighbors: opts.neighbors ?? 8,
+  });
+}
+
+export function atomsExportCsv(
+  positions: [number, number][],
+  amplitude: number[],
+  sublattice: number[] | undefined,
+  strain: PpaStrain | undefined,
+): string {
+  const header = "x_px,y_px,amplitude,sublattice,exx,eyy,exy,rotation_rad";
+  const rows = positions.map(([x, y], i) => {
+    const amp = amplitude[i] ?? "";
+    const sub = sublattice ? (sublattice[i] ?? "") : "";
+    const exx = strain?.exx[i] ?? "";
+    const eyy = strain?.eyy[i] ?? "";
+    const exy = strain?.exy[i] ?? "";
+    const rot = strain?.rotation[i] ?? "";
+    return `${x.toFixed(4)},${y.toFixed(4)},${amp},${sub},${exx},${eyy},${exy},${rot}`;
+  });
+  return [header, ...rows].join("\n");
 }
 
 export function analyzeTemplate(

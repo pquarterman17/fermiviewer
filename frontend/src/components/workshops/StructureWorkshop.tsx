@@ -8,7 +8,6 @@ import uPlot from "uplot";
 import { useShallow } from "zustand/react/shallow";
 
 import {
-  analyzeAtoms,
   analyzeCtf,
   analyzeGpa,
   analyzeGrainsAsync,
@@ -20,13 +19,13 @@ import {
   imageFft,
   renderUrl,
   runJob,
-  type AtomsResult,
   type CtfResult,
   type GrainMethod,
   type GrainParams,
   type GrainResult,
   type Raster16,
 } from "../../lib/api";
+import AtomColumnPanel from "./AtomColumnPanel";
 import { useViewer, type Measure } from "../../store/viewer";
 import { useResults } from "../overlays/ResultsWindow";
 
@@ -153,78 +152,10 @@ function Preview({
   );
 }
 
-// ── Atoms ────────────────────────────────────────────────────────────
+// ── Atoms — delegated to AtomColumnPanel ────────────────────────────
 
 function AtomsMode({ id }: { id: string }) {
-  const setStatus = useViewer((s) => s.setStatus);
-  const [sigma, setSigma] = useState("2");
-  const [thresh, setThresh] = useState("0.2");
-  const [minSep, setMinSep] = useState("8");
-  const [polarity, setPolarity] = useState<"bright" | "dark">("bright");
-  const [res, setRes] = useState<AtomsResult | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => setRes(null), [id]);
-
-  const run = () => {
-    setBusy(true);
-    analyzeAtoms(id, {
-      sigma: Number(sigma) || 2,
-      threshold: Number(thresh) || 0.2,
-      minSeparation: Number(minSep) || 8,
-      polarity,
-    })
-      .then(setRes)
-      .catch((e: Error) => setStatus(`atoms: ${e.message}`))
-      .finally(() => setBusy(false));
-  };
-
-  return (
-    <>
-      <Preview
-        id={id}
-        markers={(res?.positions ?? []).map(([x, y]) => ({ x, y }))}
-        color="var(--capture)"
-      />
-      <div className="fvd-ws-row">
-        <span className="k">σ</span>
-        <input value={sigma} style={{ width: 36 }}
-               onChange={(e) => setSigma(e.target.value)} />
-        <span className="k">thr</span>
-        <input value={thresh} style={{ width: 44 }}
-               onChange={(e) => setThresh(e.target.value)} />
-        <span className="k">sep</span>
-        <input value={minSep} style={{ width: 36 }}
-               onChange={(e) => setMinSep(e.target.value)} />
-      </div>
-      <div className="fvd-ws-row">
-        <div className="fvd-seg">
-          {(["bright", "dark"] as const).map((p) => (
-            <button
-              key={p}
-              className={`fvd-seg-btn${polarity === p ? " active" : ""}`}
-              onClick={() => setPolarity(p)}
-            >
-              {p}
-            </button>
-          ))}
-        </div>
-        <button className="fvd-btn primary" onClick={run} disabled={busy}>
-          {busy ? "Fitting…" : "Detect + fit"}
-        </button>
-      </div>
-      {res && (
-        <div className="fvd-ws-note">
-          {res.n_columns} columns
-          {res.lattice.valid &&
-            res.lattice.spacing !== null &&
-            ` · spacing ${res.lattice.spacing.toFixed(2)} px`}
-          {res.converged &&
-            ` · ${res.converged.filter(Boolean).length} converged`}
-        </div>
-      )}
-    </>
-  );
+  return <AtomColumnPanel id={id} />;
 }
 
 // ── Particles (live threshold preview) ──────────────────────────────
