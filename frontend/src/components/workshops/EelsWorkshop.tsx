@@ -19,6 +19,11 @@ import {
   type Spectrum,
 } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
+import {
+  csvBaseName,
+  downloadCsv,
+  eelsQuantToCsv,
+} from "../../lib/eelsQuantCsv";
 import EelsAdvanced from "./EelsAdvanced";
 import RegionPicker, { type Rect1 } from "./RegionPicker";
 
@@ -382,24 +387,41 @@ export default function EelsWorkshop() {
         />
       ))}
       {quant && (
-        <table className="fvd-ws-table">
-          <thead>
-            <tr>
-              <th>Element</th>
-              <th>at%</th>
-              <th>I</th>
-            </tr>
-          </thead>
-          <tbody>
-            {quant.elements.map((el, i) => (
-              <tr key={el}>
-                <td>{el}</td>
-                <td>{quant.atomic_percent[i].toFixed(2)}</td>
-                <td>{quant.intensity[i].toExponential(2)}</td>
+        <>
+          <table className="fvd-ws-table">
+            <thead>
+              <tr>
+                <th>Element</th>
+                <th>at%</th>
+                <th>I</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {quant.elements.map((el, i) => (
+                <tr key={el}>
+                  <td>{el}</td>
+                  <td>{quant.atomic_percent[i].toFixed(2)}</td>
+                  <td>{quant.intensity[i].toExponential(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="fvd-ws-row">
+            <button
+              className="fvd-btn"
+              onClick={() => {
+                const base = csvBaseName(meta?.name);
+                downloadCsv(
+                  `${base}_eels_quant.csv`,
+                  eelsQuantToCsv(quant, { imageName: meta?.name ?? (activeId ?? "") }),
+                );
+                setStatus(`EELS: exported ${quant.elements.length} elements`);
+              }}
+            >
+              Export CSV
+            </button>
+          </div>
+        </>
       )}
 
       <EelsAdvanced

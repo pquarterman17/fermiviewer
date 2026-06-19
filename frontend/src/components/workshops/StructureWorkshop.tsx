@@ -25,6 +25,12 @@ import {
   type GrainResult,
   type Raster16,
 } from "../../lib/api";
+import {
+  csvBaseName,
+  downloadCsv,
+  downloadGrainsOverlayPng,
+  grainsToCsv,
+} from "../../lib/grainsCsv";
 import AtomColumnPanel from "./AtomColumnPanel";
 import { useViewer, type Measure } from "../../store/viewer";
 import { useResults } from "../overlays/ResultsWindow";
@@ -309,6 +315,7 @@ const GRAIN_METHODS: { value: GrainMethod; label: string; knob: string }[] = [
 function GrainsMode({ id }: { id: string }) {
   const setStatus = useViewer((s) => s.setStatus);
   const ingestDerived = useViewer((s) => s.ingestDerived);
+  const meta = useViewer((s) => s.images[id] ?? null);
   const [method, setMethod] = useState<GrainMethod>("gradient");
   const [k, setK] = useState("3");
   const [coarseness, setCoarseness] = useState("0.05");
@@ -316,10 +323,12 @@ function GrainsMode({ id }: { id: string }) {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
   const [labelsId, setLabelsId] = useState<string | null>(null);
+  const [grainResult, setGrainResult] = useState<GrainResult | null>(null);
   const [note, setNote] = useState("");
 
   useEffect(() => {
     setLabelsId(null);
+    setGrainResult(null);
     setNote("");
   }, [id]);
 
@@ -344,6 +353,7 @@ function GrainsMode({ id }: { id: string }) {
       .then((r) => {
         ingestDerived([r.labels]);
         setLabelsId(r.labels.id);
+        setGrainResult(r);
         const bits = [
           `${r.n_grains} grains`,
           `mean ⌀ ${r.mean_diameter_px.toFixed(1)} px`,
@@ -403,6 +413,41 @@ function GrainsMode({ id }: { id: string }) {
         </button>
       </div>
       {note && <div className="fvd-ws-note">{note}</div>}
+      {grainResult && labelsId && (
+        <div className="fvd-ws-row">
+          <button
+            className="fvd-btn"
+            onClick={() => {
+              const base = csvBaseName(meta?.name);
+              downloadCsv(
+                `${base}_grains.csv`,
+                grainsToCsv(grainResult, {
+                  imageName: meta?.name ?? id,
+                  method: grainResult.method,
+                }),
+              );
+              setStatus(`grains: exported ${grainResult.n_grains} rows`);
+            }}
+          >
+            CSV
+          </button>
+          <button
+            className="fvd-btn"
+            onClick={() => {
+              const base = csvBaseName(meta?.name);
+              downloadGrainsOverlayPng(
+                id,
+                labelsId,
+                `${base}_grains_overlay.png`,
+                0.6,
+                (msg) => setStatus(`grains PNG: ${msg}`),
+              );
+            }}
+          >
+            Overlay PNG
+          </button>
+        </div>
+      )}
     </>
   );
 }
