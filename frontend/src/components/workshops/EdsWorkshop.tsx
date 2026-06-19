@@ -1,5 +1,7 @@
 // EDS workshop (handoff §4 Inspector · EDS): element list, Cliff-Lorimer
 // or ZAF quantification; derived at% maps register into the library.
+// For SI cubes, the EDS Spectrum-Image explorer (EdsSpectrumImage) is
+// shown as a collapsible section above the quantification controls.
 
 import { useEffect, useRef, useState } from "react";
 import uPlot from "uplot";
@@ -13,6 +15,7 @@ import {
 } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
 import EdsComposite, { EDS_PALETTE, type Channel } from "./EdsComposite";
+import EdsSpectrumImage from "./EdsSpectrumImage";
 
 /** Per-element at% line plot for the composition profile (#46/A4). */
 function CompProfilePlot({ r }: { r: CompositionProfileResult }) {
@@ -176,6 +179,15 @@ export default function EdsWorkshop() {
 
   return (
     <div className="fvd-ws">
+      {/* SI explorer — always shown first for spectrum_image cubes */}
+      <details open>
+        <summary style={{ cursor: "pointer", padding: "4px 0", fontWeight: 500 }}>
+          Spectrum-Image Explorer
+        </summary>
+        <EdsSpectrumImage />
+      </details>
+      <hr style={{ margin: "6px 0", border: "none", borderTop: "1px solid var(--border)" }} />
+
       <div className="fvd-ws-row">
         <span className="k">Elements</span>
         <input

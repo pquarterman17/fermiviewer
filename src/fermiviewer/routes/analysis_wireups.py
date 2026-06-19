@@ -1,5 +1,5 @@
 """Analysis wire-up endpoints: A3 Back Project, A4 Composition Profile,
-A5 ELNES, A8 Simulate + phase list.
+A5 ELNES, A8 Simulate + phase list, EDS SI explorer helpers.
 
 These were split out of routes/analysis.py to stay under the 500-line
 god-module ceiling. All helpers (_get, _spectral, _register_map) are
@@ -14,13 +14,13 @@ from pydantic import BaseModel
 
 from fermiviewer.calc import diffraction as diff
 from fermiviewer.calc.crystal import PHASES
-from fermiviewer.calc.eds import assign_elements, detect_peaks
-from fermiviewer.calc.eds_maps import composition_profile
+from fermiviewer.calc.eds import assign_elements, detect_peaks, line_energy
+from fermiviewer.calc.eds_maps import composition_profile, element_map
 from fermiviewer.calc.eels_quant import elnes
 from fermiviewer.calc.tomo import back_project
 from fermiviewer.datastruct import DataKind
 from fermiviewer.models import ImageMeta
-from fermiviewer.routes.analysis import _get, _register_map, _spectral
+from fermiviewer.routes.analysis import _cube, _get, _register_map, _spectral
 
 router = APIRouter(prefix="/api")
 
@@ -240,6 +240,109 @@ def analyze_simulate(req: SimulateRequest) -> dict:
             for s in result.spots
         ],
         "image": img_meta,
+    }
+
+
+# ── EDS SI explorer helpers ───────────────────────────────────────────
+
+@router.get("/eds/line-energy/{symbol}")
+def eds_line_energy(symbol: str, beam_kv: float = float("inf")) -> dict:
+    """Return the principal X-ray line energy (keV) for an element symbol.
+
+    Port of imaging.eds.lineEnergy / calc.eds.line_energy. Used by the
+    EDS SI explorer to snap the energy window when the user picks an element.
+
+    Query params
+    ------------
+    beam_kv : beam accelerating voltage in kV; float('inf') (default) →
+              selects the K line unconditionally (highest-excitation case).
+
+    Returns
+    -------
+    {"symbol": str, "line": "K"|"L"|"M", "energy_kev": float}
+    404 when the element is unknown to all three line tables.
+    """
+    e, used_line = line_energy(symbol.strip(), beam_kv=beam_kv)
+    if not np.isfinite(e):
+        raise HTTPException(404, f"no known X-ray line for '{symbol}'")
+    return {"symbol": symbol.strip(), "line": used_line, "energy_kev": round(e, 6)}
+
+
+class EdsElementMapRequest(BaseModel):
+    image_id: str
+    e_lo: float                      # keV
+    e_hi: float                      # keV
+    bg: str = "linear"               # "linear" | "none"
+    bg_width: float = float("nan")   # background window width (keV); NaN → peak width
+    bg_gap: float = 0.0              # gap between peak and bg windows (keV)
+    save_derived: bool = False       # True → save as derived image; False → inline only
+
+
+@router.post("/eds/element-map")
+def eds_element_map(req: EdsElementMapRequest) -> dict:
+    """Energy-window integration map for the EDS SI explorer.
+
+    Computes sum(cube[:,:,lo:hi], axis=2) with optional two-sided linear
+    background subtraction (port of imaging.eds.elementMap / element_map).
+
+    When register=True the map is stored as a derived image and the response
+    includes its ImageMeta under "map_meta". The "map" key always carries the
+    flat row-major counts array for inline rendering without a round-trip.
+
+    Request
+    -------
+    image_id  : str   — SI cube id
+    e_lo, e_hi: float — energy window in keV
+    bg        : str   — "linear" (default) or "none"
+    bg_width  : float — background window width (NaN → same as peak window)
+    bg_gap    : float — gap between peak and bg windows (keV), default 0
+    save_derived: bool — also register as a derived image (default False)
+
+    Response
+    --------
+    {
+      "map": [[float, ...], ...],   # H×W float array (row-major)
+      "shape": [H, W],
+      "e_lo": float, "e_hi": float, "bg": str,
+      "total_counts": float,
+      "map_meta": ImageMeta | null  # null unless save_derived=True
+    }
+    """
+    ds = _cube(req.image_id)
+    energy = ds.energy_axis
+    e_min, e_max = float(energy.min()), float(energy.max())
+    lo, hi = sorted((req.e_lo, req.e_hi))
+    if lo > e_max or hi < e_min:
+        raise HTTPException(
+            422,
+            f"energy window [{lo:.3f}, {hi:.3f}] keV is outside the axis "
+            f"[{e_min:.3f}, {e_max:.3f}] keV",
+        )
+    try:
+        m = element_map(
+            ds.data, energy, lo, hi,
+            bg=req.bg,
+            bg_width=req.bg_width,
+            bg_gap=req.bg_gap,
+        )
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+
+    h, w = m.shape
+    map_meta: dict | None = None
+    if req.save_derived:
+        name = f"map {lo:.3f}-{hi:.3f} keV"
+        meta = _register_map(m, name, ds, req.image_id)
+        map_meta = meta.model_dump()
+
+    return {
+        "map": m.tolist(),
+        "shape": [h, w],
+        "e_lo": lo,
+        "e_hi": hi,
+        "bg": req.bg,
+        "total_counts": float(m.sum()),
+        "map_meta": map_meta,
     }
 
 

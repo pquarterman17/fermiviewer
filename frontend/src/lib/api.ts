@@ -480,6 +480,58 @@ export function edsQuantify(
   });
 }
 
+// ── EDS SI explorer ─────────────────────────────────────────────────
+
+export interface EdsLineEnergyResult {
+  symbol: string;
+  line: "K" | "L" | "M";
+  energy_kev: number;
+}
+
+/** Snap the energy window to an element's principal X-ray line. */
+export async function edsLineEnergy(
+  symbol: string,
+  beamKv?: number,
+): Promise<EdsLineEnergyResult> {
+  const q = beamKv != null ? `?beam_kv=${beamKv}` : "";
+  return json(await fetch(`/api/eds/line-energy/${encodeURIComponent(symbol)}${q}`));
+}
+
+export interface EdsElementMapResult {
+  map: number[][];        // H×W float, row-major
+  shape: [number, number];
+  e_lo: number;
+  e_hi: number;
+  bg: string;
+  total_counts: number;
+  map_meta: ImageMeta | null;
+}
+
+/** Energy-window integration map for live SI exploration.
+ *  bg="linear" subtracts a two-sided background (MATLAB elementMap.m).
+ *  saveDerived=true also registers the map as a derived library image. */
+export function edsElementMap(
+  id: string,
+  eLo: number,
+  eHi: number,
+  opts: {
+    bg?: "linear" | "none";
+    bgWidth?: number;
+    bgGap?: number;
+    saveDerived?: boolean;
+  } = {},
+): Promise<EdsElementMapResult> {
+  return post("/api/eds/element-map", {
+    image_id: id,
+    e_lo: eLo,
+    e_hi: eHi,
+    bg: opts.bg ?? "linear",
+    bg_width: opts.bgWidth ?? NaN,
+    bg_gap: opts.bgGap ?? 0,
+    save_derived: opts.saveDerived ?? false,
+  });
+}
+
 export interface DetectResult {
   spots: [number, number][]; // 1-based (row, col)
   n: number;
