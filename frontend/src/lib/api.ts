@@ -549,26 +549,65 @@ export function diffractionDetect(
   });
 }
 
+/** Analysis region-of-interest — two shapes mirroring the backend _Roi model. */
+export type AnalysisRoi =
+  | { kind: "rect"; r0: number; c0: number; r1: number; c1: number }
+  | { kind: "circle"; cr: number; cc: number; radius: number };
+
 export interface PhaseCandidate {
   phase: string;
   formula: string;
   score: number;
   n_matched: number;
   matched_hkl: number[][];
+  matched_d: number[];   // measured d-spacings for each matched spot (Å)
+  ref_d: number[];       // reference d-spacings for each matched spot (Å)
   zone_axis: number[];
+}
+
+export interface IndexResult {
+  center: [number, number];   // [row, col] 1-based pattern centre
+  measured_r: number[];       // px radius per spot (same order as input spots)
+  candidates: PhaseCandidate[];
 }
 
 export function diffractionIndex(
   id: string,
   spots: [number, number][],
-  opts: { pixelSizeMm?: number; cameraLengthMm?: number; accKv?: number } = {},
-): Promise<{ candidates: PhaseCandidate[] }> {
+  opts: {
+    pixelSizeMm?: number;
+    cameraLengthMm?: number;
+    accKv?: number;
+    roi?: AnalysisRoi;
+  } = {},
+): Promise<IndexResult> {
   return post("/api/diffraction/index", {
     image_id: id,
     spots,
     pixel_size_mm: opts.pixelSizeMm ?? 1.0,
     camera_length_mm: opts.cameraLengthMm ?? null,
     acc_voltage_kv: opts.accKv ?? 200,
+    roi: opts.roi ?? null,
+  });
+}
+
+export function diffractionDetectWithRoi(
+  id: string,
+  opts: {
+    minRadius?: number;
+    threshold?: number;
+    minSeparation?: number;
+    maxSpots?: number;
+    roi?: AnalysisRoi;
+  } = {},
+): Promise<DetectResult> {
+  return post("/api/diffraction/detect", {
+    image_id: id,
+    min_radius: opts.minRadius ?? 10,
+    threshold: opts.threshold ?? 0.05,
+    min_separation: opts.minSeparation ?? 8,
+    max_spots: opts.maxSpots ?? 50,
+    roi: opts.roi ?? null,
   });
 }
 

@@ -378,12 +378,30 @@ def eds_quantify(req: EdsQuantifyRequest) -> dict:
 
 # ── Diffraction ──────────────────────────────────────────────────────
 
+class _Roi(BaseModel):
+    """Analysis region-of-interest.  Two shapes are supported:
+      rect:   {kind:"rect",   r0, c0, r1, c1}  — 0-based inclusive corners
+      circle: {kind:"circle", cr, cc, radius}  — center row/col + radius (px)
+    Passed from the frontend's ROI drawing tools; applied in calc before
+    spot detection / indexing so both analyses see only the ROI pixels.
+    """
+    kind: str                 # "rect" | "circle"
+    r0: int = 0               # rect
+    c0: int = 0
+    r1: int = 0
+    c1: int = 0
+    cr: int = 0               # circle center row
+    cc: int = 0               # circle center col
+    radius: int = 0
+
+
 class DetectRequest(BaseModel):
     image_id: str
     min_radius: float = 10
     threshold: float = 0.05
     min_separation: float = 8
     max_spots: int = 50
+    roi: _Roi | None = None   # optional analysis ROI
 
 
 @router.post("/diffraction/detect")
@@ -391,9 +409,14 @@ def diffraction_detect(req: DetectRequest) -> dict:
     ds = _get(req.image_id)
     if ds.kind is not DataKind.IMAGE:
         raise HTTPException(400, "spot detection needs a 2D image")
-    spots = diff.find_spots(ds.data, req.min_radius, req.threshold,
-                            req.min_separation, req.max_spots)
-    return {"spots": spots.tolist(), "n": int(spots.shape[0])}
+    roi_dict = req.roi.model_dump() if req.roi else None
+    cropped, (row_off, col_off) = diff.apply_roi(ds.data, roi_dict)
+    spots_crop = diff.find_spots(cropped, req.min_radius, req.threshold,
+                                 req.min_separation, req.max_spots)
+    # shift 1-based (row, col) spots back into full-image coordinates
+    if spots_crop.shape[0] > 0 and (row_off or col_off):
+        spots_crop = spots_crop + np.array([[row_off, col_off]], dtype=np.float64)
+    return {"spots": spots_crop.tolist(), "n": int(spots_crop.shape[0])}
 
 
 class IndexRequest(BaseModel):
@@ -404,22 +427,54 @@ class IndexRequest(BaseModel):
     acc_voltage_kv: float = 200
     tolerance: float = 0.05
     top_n: int = 5
+    roi: _Roi | None = None   # optional analysis ROI (scopes the image size)
 
 
 @router.post("/diffraction/index")
 def diffraction_index(req: IndexRequest) -> dict:
     ds = _get(req.image_id)
+    img_h, img_w = int(ds.data.shape[0]), int(ds.data.shape[1])
+    cam = req.camera_length_mm if req.camera_length_mm is not None else float("nan")
+
+    # When an ROI is active we re-centre the index to the ROI sub-image so
+    # that the measured d-spacings use the correct image dimensions and
+    # centre.  Spots are already in full-image 1-based coords; shift them
+    # into the ROI frame before indexing, then shift the centre back.
+    roi_dict = req.roi.model_dump() if req.roi else None
+    spots = np.asarray(req.spots, dtype=np.float64)
+    if roi_dict is not None and spots.shape[0] > 0:
+        _, (row_off, col_off) = diff.apply_roi(ds.data, roi_dict)
+        spots = spots - np.array([[row_off, col_off]], dtype=np.float64)
+        # effective image size is the ROI bounding box
+        if roi_dict["kind"] == "rect":
+            img_h = max(1, roi_dict["r1"] - roi_dict["r0"])
+            img_w = max(1, roi_dict["c1"] - roi_dict["c0"])
+        elif roi_dict["kind"] == "circle":
+            rad = roi_dict["radius"]
+            img_h = img_w = 2 * rad + 1
+
     cands = diff.index_spots(
-        np.asarray(req.spots, dtype=np.float64),
-        (int(ds.data.shape[0]), int(ds.data.shape[1])),
+        spots, (img_h, img_w),
         pixel_size=req.pixel_size_mm,
-        camera_length=req.camera_length_mm
-        if req.camera_length_mm is not None else float("nan"),
+        camera_length=cam,
         acc_voltage=req.acc_voltage_kv,
         tolerance=req.tolerance,
         top_n=req.top_n,
     )
+
+    # Re-derive centre and measured radii so the frontend can draw matched
+    # rings at the correct positions (port of indexDiffraction.m output
+    # fields .center and .measuredR, used by drawMatchedRings.m).
+    full_spots = np.asarray(req.spots, dtype=np.float64)
+    full_center = (ds.data.shape[0] // 2 + 1, ds.data.shape[1] // 2 + 1)
+    measured_r = np.hypot(
+        full_spots[:, 0] - full_center[0],
+        full_spots[:, 1] - full_center[1],
+    ).tolist() if full_spots.shape[0] > 0 else []
+
     return {
+        "center": list(full_center),       # [row, col] 1-based
+        "measured_r": measured_r,          # px, one per spot (same order as req.spots)
         "candidates": [
             {
                 "phase": c.phase_name,
@@ -427,8 +482,11 @@ def diffraction_index(req: IndexRequest) -> dict:
                 "score": c.score,
                 "n_matched": c.n_matched,
                 "matched_hkl": c.matched_hkl.tolist(),
+                # measured / reference d-spacings per matched spot (Å)
+                "matched_d": c.matched_d.tolist(),
+                "ref_d": c.ref_d.tolist(),
                 "zone_axis": list(c.zone_axis),
             }
             for c in cands
-        ]
+        ],
     }

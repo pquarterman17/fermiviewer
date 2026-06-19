@@ -17,7 +17,114 @@ from scipy.signal import fftconvolve
 from fermiviewer.calc.crystal import PHASES, Phase, electron_wavelength, find_phase, plane_spacings
 from fermiviewer.calc.elements import atomic_number
 
-__all__ = ["IndexCandidate", "SimResult", "Spot", "find_spots", "index_spots", "simulate"]
+__all__ = [
+    "IndexCandidate", "SimResult", "Spot",
+    "apply_roi", "d_spacing_to_radius",
+    "find_spots", "index_spots", "simulate",
+]
+
+
+# ════════════════════════════════════════════════════════════════════
+# ROI helpers
+# ════════════════════════════════════════════════════════════════════
+
+def apply_roi(
+    img: np.ndarray,
+    roi: dict | None,
+) -> tuple[np.ndarray, tuple[int, int]]:
+    """Crop *img* to an analysis ROI and return (cropped, (row0, col0)).
+
+    roi format (from the frontend):
+      {"kind": "rect",   "r0": int, "c0": int, "r1": int, "c1": int}
+      {"kind": "circle", "cr": int, "cc": int, "radius": int}
+
+    If roi is None or malformed the full image is returned with offset (0, 0).
+
+    The origin offset is in 0-based pixel coords so callers can map spot
+    positions in the cropped image back to the full-image frame.
+    """
+    if roi is None:
+        return img, (0, 0)
+    kind = roi.get("kind")
+    h, w = img.shape[:2]
+    if kind == "rect":
+        r0 = max(0, int(roi["r0"]))
+        c0 = max(0, int(roi["c0"]))
+        r1 = min(h, int(roi["r1"]))
+        c1 = min(w, int(roi["c1"]))
+        if r1 <= r0 or c1 <= c0:
+            return img, (0, 0)
+        return img[r0:r1, c0:c1], (r0, c0)
+    if kind == "circle":
+        cr = int(roi["cr"])
+        cc = int(roi["cc"])
+        rad = int(roi["radius"])
+        r0 = max(0, cr - rad)
+        c0 = max(0, cc - rad)
+        r1 = min(h, cr + rad + 1)
+        c1 = min(w, cc + rad + 1)
+        patch = img[r0:r1, c0:c1].copy()
+        # zero pixels outside the circle
+        rr, cc_ = np.ogrid[r0:r1, c0:c1]
+        mask = (rr - cr) ** 2 + (cc_ - cc) ** 2 > rad ** 2
+        patch[mask] = 0.0
+        return patch, (r0, c0)
+    return img, (0, 0)
+
+
+def d_spacing_to_radius(
+    d_ang: float,
+    img_size: tuple[int, int],
+    pixel_size: float = 1.0,
+    camera_length: float = float("nan"),
+    acc_voltage: float = 200,
+) -> float:
+    """Convert a d-spacing (Å) to a ring radius in pixels.
+
+    Two geometry modes (verbatim from drawRingOverlay.m):
+
+    **FFT mode** (``camera_length`` is NaN):
+        Each pixel step in the centred FFT = 1 / (W * pixel_size) in
+        reciprocal space, so d = W * pixel_size / R  →  R = W * pixel_size / d.
+        Units: pixel_size in the same real-space unit as d (Å here).
+
+    **TEM camera mode** (``camera_length`` in mm, ``pixel_size`` in mm/px):
+        Bragg's law in the small-angle limit:
+            sin θ = λ / (2 d)
+            R [px] = L [mm] * tan(2θ) / pixel_size [mm/px]
+        where λ is the relativistic electron wavelength at *acc_voltage* kV.
+
+    Returns NaN when sinθ > 1 (d too small for the beam energy) or d ≤ 0.
+
+    Args:
+        d_ang:        d-spacing in Ångströms (> 0).
+        img_size:     (rows, cols) of the full image in pixels.
+        pixel_size:   calibrated pixel size.  FFT mode: Å/px.
+                      TEM mode: mm/px.
+        camera_length: effective camera length in mm (NaN → FFT mode).
+        acc_voltage:  TEM accelerating voltage in kV (TEM mode only).
+
+    Returns:
+        Ring radius in pixels (float), or NaN if physically invalid.
+
+    Example:
+        >>> # FFT mode: 512×512, pixel 0.195 nm/px (0.0195 nm = 0.195 Å/step)
+        >>> d_spacing_to_radius(2.338, (512, 512), pixel_size=0.0195)
+        # ~5.4 px
+    """
+    if d_ang <= 0:
+        return float("nan")
+    if np.isnan(camera_length):
+        # FFT mode: R = W * pixel_size / d
+        return float(img_size[1] * pixel_size / d_ang)
+    # TEM camera mode (drawRingOverlay.m verbatim):
+    #   sin θ = λ / (2 d);  R = L * tan(2 arcsin(sin θ)) / pixel_size
+    lam = float(electron_wavelength(acc_voltage))  # Å
+    sin_theta = lam / (2.0 * d_ang)
+    if sin_theta > 1.0:
+        return float("nan")
+    r_mm = camera_length * np.tan(2.0 * np.arcsin(sin_theta))  # mm
+    return float(r_mm / pixel_size)  # px
 
 
 # ════════════════════════════════════════════════════════════════════
