@@ -63,9 +63,10 @@ themes, in rough priority order:
    analysis-ROI scoping, colorbar tick-count/font, scale-bar color/unit-override,
    compare flicker-rate, a few stage/toolbar buttons.
 
-Plus two **behavioral divergences** (not gaps, but worth a decision): the
-**D-key conflict** (zoom-to-dims vs distance) and the **split command registry**
-(⌘K palette is a strict subset of the MenuBar actions).
+Plus two **behavioral divergences** (not gaps, but worth a decision) — both
+~~RESOLVED 2026-06-19~~: the **D-key conflict** (kept `d` = distance, added
+`x` = zoom-to-dims) and the **split command registry** (⌘K palette now unified
+with the MenuBar via a shared command store). **The audit is now fully closed.**
 
 ---
 
@@ -161,14 +162,16 @@ Plus two **behavioral divergences** (not gaps, but worth a decision): the
 
 ## Behavioral divergences (decide, don't necessarily "fix")
 
-- **D-key conflict.** MATLAB `d` = zoom-to-dimensions; port `d` = distance
-  measure. The *capability* exists both sides (port's zoom-to-dims is the
-  Fixed-Size Zoom "⊞" tool), but the binding diverges — a user switching tools
-  will be surprised.
-- **Split command registry.** The ⌘K palette (`App.tsx` `actions`, ~30 entries)
-  is a strict subset of the MenuBar dropdown actions. Roughness, Reset Contrast,
-  Defect Count, Back Project, etc. are reachable only from the menu, not ⌘K. No
-  single source of truth → discoverability + drift risk.
+- ~~**D-key conflict.**~~ ✅ RESOLVED 2026-06-19 (`aaf7aeb`). Decision: keep
+  `d` = distance measure (no muscle-memory break for current port users) and
+  give zoom-to-dimensions its own binding — `x` now toggles the Fixed-Size
+  Zoom "⊞" mode, with a ⌘K action + a `?` shortcuts-overlay entry.
+- ~~**Split command registry.**~~ ✅ RESOLVED 2026-06-19 (`de2ce99`). The
+  MenuBar now flattens its full menu tree into a `store/commands.ts` registry
+  every render (fresh closures), and the ⌘K palette merges + dedupes it with
+  App's curated actions on open. Every menu command (Roughness, Defect Count,
+  Back Project, Transform/Combine/Stack/Fourier, …) is now searchable — single
+  source of truth, no drift, no risky MenuBar rewrite.
 - **N/A by design:** "Export Profile to DP" (`runExportProfileToDP.m`) is a
   BosonPlotter/DiraCulator handoff with no target app in the port — the new
   profile-CSV export is the equivalent. F5 "Refresh State" is moot in a reactive
