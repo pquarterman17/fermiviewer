@@ -27,12 +27,17 @@ as a separate window (its controls overlap the audited AdjustPanel).
 
 ---
 
-> **Update 2026-06-18 — Tier 1 SHIPPED.** All three Tier-1 capability gaps are
-> now ported and merged to main: EDS spectrum-image explorer (`4dff1b4`),
-> atom-column workshop depth (`1d39b7d`), matched-phase diffraction rings +
-> analysis-ROI (`7da914a`). Full gate green (395 pytest / 154 vitest / ruff /
-> mypy / build). The remaining backlog below is Tier 2 (workflow/export) and
-> Tier 3 (smaller controls).
+> **Update 2026-06-18 — Tier 1 + Tier 2 SHIPPED.** All three Tier-1 capability
+> gaps and four of five Tier-2 gaps are ported and merged to main.
+> Tier 1: EDS spectrum-image explorer (`4dff1b4`), atom-column depth (`1d39b7d`),
+> matched-phase rings + analysis-ROI (`7da914a`).
+> Tier 2: per-workshop CSV/PNG export (`602c771` + the Tier-1 commits), ROI
+> Manager (`506fd62`), Measurement Stats (`c8b3b32`), Montage (`3e9bb00`).
+> Full gate green (410 pytest / 196 vitest / ruff / mypy / build).
+> **NOT built: #8 Grain "Trained" mode** — a deliberate design divergence (the
+> port replaced the scribble-classifier with 3 scikit-image auto-methods +
+> interactive merge/split); building it needs a user decision. The remaining
+> backlog is Tier 3 (smaller controls) + the behavioral divergences.
 
 ## Verdict
 
@@ -85,25 +90,25 @@ Plus two **behavioral divergences** (not gaps, but worth a decision): the
 
 ### Tier 2 — Workflow / export gaps
 
-4. **Per-workshop CSV / PNG export** — MATLAB workshops are export-heavy; the
+4. ~~**Per-workshop CSV / PNG export**~~ ✅ SHIPPED 2026-06-18 (`4dff1b4` EDS, `1d39b7d` atoms, `602c771` grains+EELS) — MATLAB workshops are export-heavy; the
    port leans on derived-image registration + the global Export dialog instead.
    Missing buttons: atom-columns CSV + overlay PNG; grain CSV + overlay PNG;
    EELS composition-table CSV; EDS map CSV + spectrum CSV. (Note: line/box-profile
    CSV export *was* added 2026-06-15 — this theme is the analysis-table analog.)
 
-5. **ROI Manager** (`+measurement/buildROIManager.m`) — name/save/recall multiple
+5. ~~**ROI Manager**~~ ✅ SHIPPED 2026-06-18 (`506fd62`) (`+measurement/buildROIManager.m`) — name/save/recall multiple
    named ROIs. Port draws ROIs ad-hoc (R key / radial), one live set per image,
    with no manager to persist/recall them.
 
-6. **Measurement Stats** (`+analysis/displayMeasurementStats.m`) — aggregate
+6. ~~**Measurement Stats**~~ ✅ SHIPPED 2026-06-18 (`c8b3b32`) (`+analysis/displayMeasurementStats.m`) — aggregate
    stats summary across *all* measurements on an image. Port reports each measure
    inline only.
 
-7. **Montage** (`+visualization/executeMontage.m`) — labeled-tile montage as a
+7. ~~**Montage**~~ ✅ SHIPPED 2026-06-18 (`3e9bb00`) (`+visualization/executeMontage.m`) — labeled-tile montage as a
    derived image. Distinct from Stitch (mosaic registration) and Export Figure
    Panel (export-time grid). No port equivalent.
 
-8. **Grain "Trained" mode** (`+grains/openGrainWorkshop.m`) — scribble-painting
+8. **Grain "Trained" mode** (`+grains/openGrainWorkshop.m`) — ⚠️ NOT BUILT (deliberate design divergence — needs a user decision, see below) — scribble-painting
    classifier (paint class, brush radius, clear scribbles, Softmax/Forest
    dropdown), multiscale "scales" input, min-area filter. Port replaced this with
    3 scikit-image auto-methods + interactive stage merge/split — arguably a better
