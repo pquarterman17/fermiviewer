@@ -37,10 +37,14 @@ as a separate window (its controls overlap the audited AdjustPanel).
 > toolbar + bin + compare + crop-save (`e7bdf9c`), interactive 3D surface
 > (`aa228e6`), EELS params + GPA/lattice readouts (`7a8d11e`).
 > Full gate green (414 pytest / 218 vitest / ruff / mypy / build).
-> **NOT built: #8 Grain "Trained" mode** — a deliberate design divergence (the
-> port replaced the scribble-classifier with 3 scikit-image auto-methods +
-> interactive merge/split); building it needs a user decision. The only
-> remaining audit items are the **behavioral divergences** (decisions, below).
+> **#8 Grain "Trained" mode SHIPPED 2026-06-19** (`e4e8bd3`) — the scribble
+> classifier is now ported alongside the auto-methods: softmax pixel
+> classifier (`calc/ml.py`), `calc/grains_trained.py`, `/api/grains/train-
+> segment`, and a paint-on-stage UI (scribble store + `ScribbleOverlay` + a
+> Trained panel in the Structure workshop). The result is an editable grain
+> map, so merge/split still applies. The ONLY remaining audit items are the
+> **behavioral divergences** (decisions, below) — every capability gap is now
+> closed.
 
 ## Verdict
 
@@ -53,8 +57,8 @@ themes, in rough priority order:
    overlays, readouts (~5 controls).
 3. **Per-workshop CSV / PNG export** — pervasive in MATLAB, broadly absent in
    the port (atoms, grains, EELS-quant, EDS maps/spectrum).
-4. **Grain "Trained" (scribble-classifier) mode** — absent; port chose 3 modern
-   auto-methods + interactive merge/split instead.
+4. ~~**Grain "Trained" (scribble-classifier) mode**~~ ✅ SHIPPED 2026-06-19 — now
+   ported alongside the 3 auto-methods (softmax pixel classifier + paint-on-stage).
 5. **A scatter of smaller controls** — matched-phase diffraction rings,
    analysis-ROI scoping, colorbar tick-count/font, scale-bar color/unit-override,
    compare flicker-rate, a few stage/toolbar buttons.
@@ -111,11 +115,12 @@ Plus two **behavioral divergences** (not gaps, but worth a decision): the
    derived image. Distinct from Stitch (mosaic registration) and Export Figure
    Panel (export-time grid). No port equivalent.
 
-8. **Grain "Trained" mode** (`+grains/openGrainWorkshop.m`) — ⚠️ NOT BUILT (deliberate design divergence — needs a user decision, see below) — scribble-painting
-   classifier (paint class, brush radius, clear scribbles, Softmax/Forest
-   dropdown), multiscale "scales" input, min-area filter. Port replaced this with
-   3 scikit-image auto-methods + interactive stage merge/split — arguably a better
-   direction, but the trained workflow is gone. **Decision, not an obvious gap.**
+8. ~~**Grain "Trained" mode**~~ ✅ SHIPPED 2026-06-19 (`e4e8bd3`) (`+grains/openGrainWorkshop.m`) — scribble-painting
+   classifier (paint class, brush radius, clear scribbles, min-area filter)
+   now ported alongside the auto-methods: paint class strokes on the stage →
+   softmax pixel classifier → editable grain map. Boundary/background classes
+   (∅) are excluded from grains. Softmax only (random-forest is a possible
+   follow-up); the result feeds the existing merge/split editor.
 
 ### Tier 3 — Smaller controls
 
