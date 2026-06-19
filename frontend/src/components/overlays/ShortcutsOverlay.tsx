@@ -10,6 +10,7 @@ const GROUPS: [string, [string, string][]][] = [
       ["F · 0", "Fit image"],
       ["1", "Actual size (100%)"],
       ["Z", "Box-zoom marquee"],
+      ["X", "Zoom to dimensions (fixed size)"],
       ["H", "Hand / pan tool"],
       ["Space (hold)", "Pan"],
       ["← → ↑ ↓", "Nudge pan"],

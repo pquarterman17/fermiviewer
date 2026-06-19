@@ -214,6 +214,11 @@ export default function App() {
         case "Z":
           capture("zoom");
           break;
+        case "x":
+        case "X":
+          // zoom-to-dimensions (MATLAB's `d`): place a fixed W×H box and zoom
+          capture("fixed-zoom");
+          break;
         case "h":
         case "H":
           s.setPanTool(!s.panTool);
@@ -327,6 +332,13 @@ export default function App() {
         label: "Zoom out",
         shortcut: "−",
         run: () => stageRef.current?.zoomBy(0.8),
+      },
+      {
+        id: "zoom-to-dims",
+        group: "View",
+        label: "Zoom to dimensions (fixed size)",
+        shortcut: "X",
+        run: () => s().setCaptureMode("fixed-zoom"),
       },
       {
         id: "theme",
