@@ -27,17 +27,20 @@ as a separate window (its controls overlap the audited AdjustPanel).
 
 ---
 
-> **Update 2026-06-18 — Tier 1 + Tier 2 SHIPPED.** All three Tier-1 capability
-> gaps and four of five Tier-2 gaps are ported and merged to main.
+> **Update 2026-06-18 — Tier 1 + Tier 2 + Tier 3 SHIPPED.** Every audit gap is
+> ported and merged to main EXCEPT #8 (a deliberate divergence, below).
 > Tier 1: EDS spectrum-image explorer (`4dff1b4`), atom-column depth (`1d39b7d`),
 > matched-phase rings + analysis-ROI (`7da914a`).
 > Tier 2: per-workshop CSV/PNG export (`602c771` + the Tier-1 commits), ROI
 > Manager (`506fd62`), Measurement Stats (`c8b3b32`), Montage (`3e9bb00`).
-> Full gate green (410 pytest / 196 vitest / ruff / mypy / build).
+> Tier 3 (#9-18): colorbar/scale-bar/annotation controls (`500dff1`), stage-
+> toolbar + bin + compare + crop-save (`e7bdf9c`), interactive 3D surface
+> (`aa228e6`), EELS params + GPA/lattice readouts (`7a8d11e`).
+> Full gate green (414 pytest / 218 vitest / ruff / mypy / build).
 > **NOT built: #8 Grain "Trained" mode** — a deliberate design divergence (the
 > port replaced the scribble-classifier with 3 scikit-image auto-methods +
-> interactive merge/split); building it needs a user decision. The remaining
-> backlog is Tier 3 (smaller controls) + the behavioral divergences.
+> interactive merge/split); building it needs a user decision. The only
+> remaining audit items are the **behavioral divergences** (decisions, below).
 
 ## Verdict
 
@@ -115,6 +118,14 @@ Plus two **behavioral divergences** (not gaps, but worth a decision): the
    direction, but the trained workflow is gone. **Decision, not an obvious gap.**
 
 ### Tier 3 — Smaller controls
+
+> ✅ **ALL SHIPPED 2026-06-18 (#9–18).** Commits: `500dff1` (#9 colorbar tick-count/
+> font/bottom, #10 scale-bar color/unit-override/corner-picker, #12 annotation
+> per-item font + body-drag), `e7bdf9c` (#11 reset-all-transforms + delete-last-
+> annotation, #13 bin sum/avg, #15 compare flicker-rate + A/B + Tab, #16 save-
+> cropped-region + batch-crop marquee), `aa228e6` (#14 interactive 3D surface +
+> colormap + colorbar), `7a8d11e` (#17 EELS E0/β/bg-model/edge-filter, #18 GPA
+> rotation + lattice unit-cell-area readouts).
 
 9.  **Colorbar:** tick-*count* control (port has tick-*step* interval only),
     tick-label font-size, and `bottom` placement (port has left/right only).
