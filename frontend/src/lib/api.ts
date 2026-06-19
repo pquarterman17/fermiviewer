@@ -1292,6 +1292,30 @@ export function analyzeMip(ids: string[]): Promise<{ image: ImageMeta }> {
   return post("/api/analyze/mip", { image_ids: ids });
 }
 
+export interface MontageOptions {
+  cols?: number | null;
+  labels?: boolean;
+  gap?: number;
+  bg?: number;
+  overlap?: number;
+  font_size?: number;
+}
+
+export function analyzeMontage(
+  ids: string[],
+  opts: MontageOptions = {},
+): Promise<{ image: ImageMeta }> {
+  return post("/api/analyze/montage", {
+    image_ids: ids,
+    cols: opts.cols ?? null,
+    labels: opts.labels ?? true,
+    gap: opts.gap ?? 4,
+    bg: opts.bg ?? 0,
+    overlap: opts.overlap ?? 0,
+    font_size: opts.font_size ?? 14,
+  });
+}
+
 export function analyzeLattice(
   id: string,
   spot1: [number, number], // (row, col) 1-based on the FFT image

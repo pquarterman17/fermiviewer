@@ -1,6 +1,7 @@
 """Imaging-analysis endpoints: GPA, VDF, radial/azimuthal profiles,
-roughness, interface width, lattice measure, CTF (plan item 28 — thin
-adapters over W3/W4 calc; derived maps register in the session)."""
+roughness, interface width, lattice measure, CTF, montage (plan item 28 +
+Tier-2 #7 — thin adapters over W3/W4 calc; derived maps register in the
+session)."""
 
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ from fermiviewer.calc.eds_maps import virtual_dark_field
 from fermiviewer.calc.fourier import fft_mask_inverse
 from fermiviewer.calc.gpa import geometric_phase_analysis
 from fermiviewer.calc.lattice import lattice_measure
+from fermiviewer.calc.montage import montage as calc_montage
 from fermiviewer.calc.profiles import fit_interface_width
 from fermiviewer.calc.radial import azimuthal_integrate, radial_profile
 from fermiviewer.calc.roughness import surface_roughness
@@ -355,3 +357,80 @@ def analyze_defects(req: DefectsRequest) -> dict:
             res.enhanced, f"defects({name})", ds, req.image_id,
         ),
     }
+
+
+# ── montage (Tier-2 #7) ───────────────────────────────────────────────
+
+
+class MontageRequest(BaseModel):
+    image_ids: list[str]
+    cols: int | None = None          # None → ceil(sqrt(n)); mirrors auto mode
+    labels: bool = True              # bake per-tile labels (frame name)
+    gap: int = Field(default=4, ge=0, le=64)   # px gap between tiles
+    bg: float = 0.0                  # background fill value
+    overlap: float = Field(default=0.0, ge=0.0, lt=1.0)  # fractional overlap
+    font_size: int = Field(default=14, ge=6, le=48)
+
+
+@router.post("/analyze/montage")
+def analyze_montage(req: MontageRequest) -> dict:
+    """Arrange selected images into a labeled-tile montage grid.
+
+    Mirrors executeMontage.m layout arithmetic (tile step, weight-averaged
+    overlap regions, ceil(n/cols) rows).  The composite is registered as a
+    derived library image so it appears in the filmstrip immediately.
+
+    Request
+    -------
+    image_ids : list[str]   — at least 2 image IDs (1 is allowed for testing)
+    cols      : int | null  — grid columns; null → ceil(sqrt(n))
+    labels    : bool        — bake the source image name into each tile
+    gap       : int         — inter-tile gap in pixels (ignored when overlap>0)
+    bg        : float       — background fill (default 0.0)
+    overlap   : float       — fractional overlap [0,1); 0 = no overlap
+    font_size : int         — label font size in pixels
+
+    Response
+    --------
+    {"image": <ImageMeta>}  — the registered derived montage image
+    """
+    if len(req.image_ids) < 1:
+        raise HTTPException(422, "montage: provide at least 1 image id")
+
+    pairs: list[tuple] = []
+    for img_id in req.image_ids:
+        try:
+            ds = store.get(img_id)
+        except UnknownImageError:
+            raise HTTPException(404, f"unknown image id: {img_id}") from None
+        if ds.kind is DataKind.IMAGE:
+            raster = np.asarray(ds.data, dtype=np.float64)
+        elif ds.kind is DataKind.SPECTRUM_IMAGE:
+            raster = np.asarray(ds.data, dtype=np.float64).sum(axis=2)
+        else:
+            raise HTTPException(400, f"image {img_id} has no 2-D raster")
+        pairs.append((ds, raster))
+
+    frames = [r for _, r in pairs]
+    tile_labels: list[str] | None = None
+    if req.labels:
+        tile_labels = [store.name(img_id) for img_id in req.image_ids]
+
+    try:
+        out = calc_montage(
+            frames,
+            cols=req.cols,
+            labels=tile_labels,
+            gap=req.gap,
+            bg=req.bg,
+            overlap=req.overlap,
+            font_size=req.font_size,
+        )
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+
+    n = len(req.image_ids)
+    name = f"montage({n})"
+    parent_ds, _ = pairs[0]
+    result = _register(out, name, parent_ds, req.image_ids[0])
+    return {"image": result}

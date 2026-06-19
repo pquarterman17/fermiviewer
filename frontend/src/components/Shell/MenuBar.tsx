@@ -11,6 +11,7 @@ import {
   analyzeGrainsAsync,
   analyzeImageMath,
   analyzeMip,
+  analyzeMontage,
   analyzeParticles,
   runJob,
   analyzeDefects,
@@ -791,6 +792,40 @@ export default function MenuBar({
           analyzeMip(store.selected)
             .then((r) => store.ingestDerived([r.image]))
             .catch((e: Error) => store.setStatus(`mip: ${e.message}`));
+        },
+      },
+      {
+        label: `Montage (${store.selected.length} selected)…`,
+        disabled: store.selected.length < 1,
+        action: () => {
+          void (async () => {
+            const n = store.selected.length;
+            const v = await askParams("Montage", [
+              num("cols", "Columns (0 = auto)", 0,
+                  "0 → ceil(√n); frames go left-to-right, top-to-bottom"),
+              num("gap", "Gap (px)", 4, "Inter-tile gap in pixels"),
+              num("font_size", "Label font (px)", 14,
+                  "0 to disable labels"),
+            ]);
+            if (!v) return;
+            const cols = Math.round(v.cols as number);
+            const gap = Math.max(0, Math.round(v.gap as number));
+            const font_size = Math.max(0, Math.round(v.font_size as number));
+            store.setStatus("building montage…");
+            analyzeMontage(store.selected, {
+              cols: cols > 0 ? cols : null,
+              labels: font_size > 0,
+              gap,
+              font_size: font_size > 0 ? font_size : 14,
+            })
+              .then((r) => {
+                store.ingestDerived([r.image]);
+                store.setStatus(
+                  `montage: ${n} tiles → ${r.image.shape[1]}×${r.image.shape[0]} px`,
+                );
+              })
+              .catch((e: Error) => store.setStatus(`montage: ${e.message}`));
+          })();
         },
       },
       {
