@@ -578,7 +578,7 @@ function GpaMode({ id }: { id: string }) {
         .then((r) => {
           ingestDerived(r.maps);
           setMean(r.mean);
-          setStatus(`GPA: ${r.maps.length} strain maps registered`);
+          setStatus(`GPA: εxx, εyy, εxy, ω maps registered`);
         })
         .catch((e: Error) => setStatus(`gpa: ${e.message}`))
         .finally(() => setBusy(false));
@@ -607,7 +607,7 @@ function GpaMode({ id }: { id: string }) {
       {mean && (
         <div className="fvd-ws-note">
           ε̄xx {fmtMean(mean["exx"])} · ε̄yy {fmtMean(mean["eyy"])} · ε̄xy{" "}
-          {fmtMean(mean["exy"])}
+          {fmtMean(mean["exy"])} · ω̄ {fmtMean(mean["rotation"])} rad
         </div>
       )}
     </>
@@ -730,6 +730,7 @@ function LatticeMode({ id }: { id: string }) {
             "γ": `${r.gamma_deg.toFixed(2)}°`,
             "d₁": `${r.d_spacing1.toFixed(3)} ${r.unit}`,
             "d₂": `${r.d_spacing2.toFixed(3)} ${r.unit}`,
+            "A_cell": `${r.unit_cell_area.toFixed(4)} ${r.unit}²`,
           }),
         )
         .catch((e: Error) => setStatus(`lattice: ${e.message}`));

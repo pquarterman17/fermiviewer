@@ -425,12 +425,14 @@ export function eelsQuantify(
   edges: EelsEdge[],
   e0Kv = 200,
   betaMrad = 10,
+  method = "powerlaw",
 ): Promise<EelsQuantResult> {
   return post("/api/eels/quantify", {
     image_id: id,
     edges,
     e0_kv: e0Kv,
     beta_mrad: betaMrad,
+    method,
   });
 }
 
@@ -440,6 +442,7 @@ export function eelsQuantifyMap(
   edges: EelsEdge[],
   e0Kv = 200,
   betaMrad = 10,
+  method = "powerlaw",
 ): Promise<{
   elements: string[];
   mean_atomic_percent: number[];
@@ -450,6 +453,7 @@ export function eelsQuantifyMap(
     edges,
     e0_kv: e0Kv,
     beta_mrad: betaMrad,
+    method,
   });
 }
 

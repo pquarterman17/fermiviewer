@@ -61,6 +61,10 @@ export default function EelsWorkshop() {
   const [quant, setQuant] = useState<EelsQuantResult | null>(null);
   const [elnes, setElnes] = useState<ElnesResult | null>(null);
   const [showEdges, setShowEdges] = useState(false);
+  const [elementFilter, setElementFilter] = useState("");
+  const [e0Kv, setE0Kv] = useState(200);
+  const [betaMrad, setBetaMrad] = useState(10);
+  const [quantMethod, setQuantMethod] = useState("powerlaw");
   const [explore, setExplore] = useState(false);
   const [region, setRegion] = useState<Rect1 | null>(null);
   const plotHost = useRef<HTMLDivElement>(null);
@@ -142,7 +146,9 @@ export default function EelsWorkshop() {
               ctx.strokeStyle = "rgba(244, 63, 94, 0.55)";
               ctx.fillStyle = "rgba(244, 63, 94, 0.9)";
               ctx.font = "10px monospace";
+              const efLower = elementFilter.toLowerCase();
               for (const [name, ev] of KNOWN_EDGES) {
+                if (efLower && !name.toLowerCase().startsWith(efLower)) continue;
                 if (ev < lo || ev > hi) continue;
                 const x = u.valToPos(ev, "x", true);
                 ctx.beginPath();
@@ -163,7 +169,7 @@ export default function EelsWorkshop() {
       plotRef.current?.destroy();
       plotRef.current = null;
     };
-  }, [spectrum, fit, showEdges]);
+  }, [spectrum, fit, showEdges, elementFilter]);
 
   const runFit = () => {
     if (!activeId) return;
@@ -214,6 +220,9 @@ export default function EelsWorkshop() {
     eelsQuantify(
       activeId,
       clean.map(({ key: _key, ...e }) => e),
+      e0Kv,
+      betaMrad,
+      quantMethod,
     )
       .then(setQuant)
       .catch((e: Error) => setStatus(`EELS quantify: ${e.message}`));
@@ -229,6 +238,9 @@ export default function EelsWorkshop() {
     eelsQuantifyMap(
       activeId,
       clean.map(({ key: _key, ...e }) => e),
+      e0Kv,
+      betaMrad,
+      quantMethod,
     )
       .then((r) => {
         useViewer.getState().ingestDerived(r.maps);
@@ -290,6 +302,13 @@ export default function EelsWorkshop() {
           />
           Edge IDs
         </label>
+        <span className="k">element</span>
+        <input
+          placeholder="all"
+          value={elementFilter}
+          style={{ width: 44 }}
+          onChange={(e) => setElementFilter(e.target.value.trim())}
+        />
         {isCube && (
           <label className="fvd-check">
             <input
@@ -338,6 +357,35 @@ export default function EelsWorkshop() {
         </button>
       </div>
 
+      <div className="fvd-ws-row">
+        <span className="k">E₀ kV</span>
+        <input
+          type="number"
+          value={e0Kv}
+          min={60}
+          max={1000}
+          step={10}
+          style={{ width: 52 }}
+          onChange={(e) => setE0Kv(Number(e.target.value) || 200)}
+        />
+        <span className="k">β mrad</span>
+        <input
+          type="number"
+          value={betaMrad}
+          min={1}
+          max={100}
+          step={1}
+          style={{ width: 44 }}
+          onChange={(e) => setBetaMrad(Number(e.target.value) || 10)}
+        />
+        <select
+          value={quantMethod}
+          onChange={(e) => setQuantMethod(e.target.value)}
+        >
+          <option value="powerlaw">power-law</option>
+          <option value="exponential">exponential</option>
+        </select>
+      </div>
       <div className="fvd-ws-section">
         <span>Edges</span>
         <button className="fvd-btn" onClick={addEdge}>
