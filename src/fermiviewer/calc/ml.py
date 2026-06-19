@@ -13,7 +13,14 @@ from dataclasses import dataclass
 
 import numpy as np
 
-__all__ = ["KmeansInfo", "kmeans_lite", "standardize_features"]
+__all__ = [
+    "KmeansInfo",
+    "SoftmaxModel",
+    "kmeans_lite",
+    "softmax_predict",
+    "softmax_train",
+    "standardize_features",
+]
 
 
 def standardize_features(
@@ -117,3 +124,114 @@ def kmeans_lite(
         best_centers,
         KmeansInfo(inertia=best_inertia, iters=best_iters, k=k),
     )
+
+
+@dataclass(frozen=True)
+class SoftmaxModel:
+    """Multinomial logistic-regression classifier (ported from
+    imaging.ml.softmaxTrain). Standardization stats are baked in so
+    softmax_predict reproduces the exact training feature space."""
+
+    w: np.ndarray  # (F+1, C) weights, row 0 = bias
+    classes: np.ndarray  # (C,) original label values, in model-output order
+    mu: np.ndarray | None  # (F,) standardization means (None if not used)
+    sigma: np.ndarray | None  # (F,) standardization std devs
+    standardize: bool
+    iters: int
+    loss: float
+
+    @property
+    def num_classes(self) -> int:
+        return int(self.classes.size)
+
+
+def softmax_train(
+    x: np.ndarray,
+    y: np.ndarray,
+    learn_rate: float = 0.5,
+    max_iter: int = 800,
+    lambda_: float = 1e-3,
+    tol: float = 1e-7,
+    standardize: bool = True,
+) -> SoftmaxModel:
+    """Softmax (multinomial logistic) classifier by batch gradient descent
+    with L2 regularization — ported from imaging.ml.softmaxTrain.
+
+    Zero weight initialization makes training deterministic (no RNG). The
+    bias row is never regularized. Standardization is fitted here and baked
+    into the model so predictions on new data use the identical transform.
+    """
+    feats = np.asarray(x, dtype=np.float64)
+    n = feats.shape[0]
+    labels = np.asarray(y).ravel()
+    if labels.size != n:
+        raise ValueError(f"x has {n} rows but y has {labels.size}.")
+
+    # map labels to 0..C-1 (np.unique is sorted, so searchsorted is exact)
+    classes = np.unique(labels)
+    n_classes = classes.size
+    y_idx = np.searchsorted(classes, labels)
+
+    if standardize:
+        feats_s, mu, sigma = standardize_features(feats)
+    else:
+        feats_s, mu, sigma = feats, None, None
+
+    xb = np.hstack([np.ones((n, 1)), feats_s])  # bias column
+    f1 = xb.shape[1]
+
+    onehot = np.zeros((n, n_classes))
+    onehot[np.arange(n), y_idx] = 1.0
+
+    reg_mask = np.ones((f1, n_classes))
+    reg_mask[0, :] = 0.0  # never regularize the bias
+
+    w = np.zeros((f1, n_classes))
+    prev_loss = np.inf
+    it = 0
+    loss = 0.0
+    for it in range(1, max_iter + 1):  # noqa: B007 — it reported in model.iters
+        scores = xb @ w
+        scores = scores - scores.max(axis=1, keepdims=True)  # stability
+        exp_s = np.exp(scores)
+        probs = exp_s / exp_s.sum(axis=1, keepdims=True)
+
+        log_lik = float(np.log(probs[np.arange(n), y_idx]).sum())
+        loss = -log_lik / n + lambda_ / 2 * float(np.sum((reg_mask * w) ** 2))
+
+        grad = xb.T @ (probs - onehot) / n + lambda_ * (reg_mask * w)
+        w = w - learn_rate * grad
+
+        if abs(prev_loss - loss) < tol:
+            break
+        prev_loss = loss
+
+    return SoftmaxModel(
+        w=w,
+        classes=classes,
+        mu=mu,
+        sigma=sigma,
+        standardize=standardize,
+        iters=it,
+        loss=float(loss),
+    )
+
+
+def softmax_predict(
+    model: SoftmaxModel, x: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Predict with a softmax_train model — ported from
+    imaging.ml.softmaxPredict. Returns (labels in model.classes values,
+    [M, C] class posteriors aligned to model.classes order)."""
+    feats = np.asarray(x, dtype=np.float64)
+    if model.standardize:
+        feats_s, _, _ = standardize_features(feats, mu=model.mu, sigma=model.sigma)
+    else:
+        feats_s = feats
+    xb = np.hstack([np.ones((feats_s.shape[0], 1)), feats_s])
+    scores = xb @ model.w
+    scores = scores - scores.max(axis=1, keepdims=True)
+    exp_s = np.exp(scores)
+    probs: np.ndarray = exp_s / exp_s.sum(axis=1, keepdims=True)
+    labels: np.ndarray = model.classes[np.argmax(probs, axis=1)]
+    return labels, probs

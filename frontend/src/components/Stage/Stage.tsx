@@ -36,6 +36,7 @@ import {
 import { loadPrefs } from "../../lib/prefs";
 import { applyFilter } from "../../lib/api";
 import { applyGeometry, cropToRoi } from "../../lib/stageOps";
+import { useScribble } from "../../store/scribble";
 import { rasterValue, useStageInfo } from "../../store/stage";
 import {
   DEFAULT_DISPLAY,
@@ -47,6 +48,7 @@ import CaptureBanner from "./CaptureBanner";
 import DockPlot from "./DockPlot";
 import MeasureOverlay from "./MeasureOverlay";
 import Minimap from "./Minimap";
+import ScribbleOverlay from "./ScribbleOverlay";
 import {
   ScaleBarCtxMenu,
   buildCtxTarget,
@@ -154,6 +156,12 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   const [stageCtx, setStageCtx] = useState<CtxTarget | null>(null);
   const [grainMode, setGrainMode] = useState<"off" | "merge" | "split">("off");
   const [grainPending, setGrainPending] = useState<Pt | null>(null);
+  // trained grain mode: paint class scribbles directly on this image
+  const scribbleActive = useScribble((s) => s.active);
+  const scribbleImageId = useScribble((s) => s.imageId);
+  const startStroke = useScribble((s) => s.startStroke);
+  const addPoint = useScribble((s) => s.addPoint);
+  const paintingRef = useRef(false);
   const [nFrames, setNFrames] = useState<number | null>(null);
   // in-progress click-capture (image-space pts; last pt tracks cursor)
   const [pending, setPending] = useState<{
@@ -167,6 +175,8 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   // a grain-label map (tagged by the grain analysis) is interactively
   // editable on the stage — click grains to merge/split
   const isGrainMap = Boolean(meta?.meta?.["grain_labels"]);
+  // true while the trained-mode paint panel is open on THIS image
+  const paintActive = scribbleActive && scribbleImageId === activeId;
   const view: View | null = imgSize && (storedView ?? fitView(imgSize, vp));
 
   // ── renderer lifecycle ──
@@ -563,6 +573,15 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     }
     if (e.button !== 0) return;
 
+    // trained mode: drag paints a class scribble onto the source image
+    if (paintActive) {
+      const ip = toImage(p);
+      startStroke([Math.floor(ip.x), Math.floor(ip.y)]);
+      paintingRef.current = true;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      return;
+    }
+
     // grain editor intercepts plain clicks on a grain-label map
     if (grainMode !== "off" && isGrainMap) {
       handleGrainClick(toImage(p));
@@ -616,6 +635,11 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
         ip.x >= 0 && ip.y >= 0 && ip.x < imgSize.w && ip.y < imgSize.h;
       setCursor(inside ? ip : null);
     }
+    if (paintingRef.current && view && imgSize) {
+      const ip = toImage(p);
+      addPoint([Math.floor(ip.x), Math.floor(ip.y)]);
+      return;
+    }
     if (dragRef.current && view && imgSize) {
       const { last } = dragRef.current;
       apply({
@@ -636,6 +660,15 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   };
 
   const onPointerUp = (e: React.PointerEvent) => {
+    if (paintingRef.current) {
+      paintingRef.current = false;
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        // capture may already be gone; ignore
+      }
+      return;
+    }
     if (dragRef.current) {
       dragRef.current = null;
       setPanning(false);
@@ -811,6 +844,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
             pending={pending}
           />
           <FloatTools />
+          {paintActive && <ScribbleOverlay view={view} img={imgSize} vp={vp} />}
           {isGrainMap && (
             <GrainEditBar
               mode={grainMode}

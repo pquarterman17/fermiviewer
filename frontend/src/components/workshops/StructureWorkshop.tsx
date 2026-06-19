@@ -16,6 +16,7 @@ import {
   analyzeStitch,
   analyzeTemplate,
   fetchData16,
+  grainsTrainSegment,
   imageFft,
   renderUrl,
   runJob,
@@ -24,6 +25,7 @@ import {
   type GrainParams,
   type GrainResult,
   type Raster16,
+  type TrainStroke,
 } from "../../lib/api";
 import {
   csvBaseName,
@@ -32,6 +34,7 @@ import {
   grainsToCsv,
 } from "../../lib/grainsCsv";
 import AtomColumnPanel from "./AtomColumnPanel";
+import { SCRIBBLE_COLORS, useScribble } from "../../store/scribble";
 import { useViewer, type Measure } from "../../store/viewer";
 import { useResults } from "../overlays/ResultsWindow";
 
@@ -310,7 +313,131 @@ const GRAIN_METHODS: { value: GrainMethod; label: string; knob: string }[] = [
   { value: "rag", label: "Superpixel — diffraction contrast", knob: "merge thr" },
   { value: "orientation", label: "Orientation — atomic-res", knob: "coarseness" },
   { value: "kmeans", label: "Classic k-means", knob: "classes" },
+  { value: "trained", label: "Trained — paint examples", knob: "" },
 ];
+
+// Trained-mode controls: pick a class, set the brush, paint examples on the
+// stage, then train+segment. A class can be flagged as boundary/background
+// (∅) so its pixels are excluded from grains.
+function TrainedGrainControls({
+  numClasses,
+  classId,
+  brush,
+  boundary,
+  nStrokes,
+  minArea,
+  setMinArea,
+  busy,
+  progress,
+  onRun,
+}: {
+  numClasses: number;
+  classId: number;
+  brush: number;
+  boundary: number[];
+  nStrokes: number;
+  minArea: string;
+  setMinArea: (v: string) => void;
+  busy: boolean;
+  progress: string;
+  onRun: () => void;
+}) {
+  const setClass = useScribble((s) => s.setClass);
+  const setNumClasses = useScribble((s) => s.setNumClasses);
+  const setBrush = useScribble((s) => s.setBrush);
+  const toggleBoundary = useScribble((s) => s.toggleBoundary);
+  const clear = useScribble((s) => s.clear);
+
+  return (
+    <>
+      <div className="fvd-ws-row">
+        <span className="k">classes</span>
+        <div style={{ display: "flex", gap: 4, flex: 1, flexWrap: "wrap" }}>
+          {Array.from({ length: numClasses }, (_, i) => i + 1).map((c) => {
+            const col = SCRIBBLE_COLORS[(c - 1) % SCRIBBLE_COLORS.length];
+            const isBnd = boundary.includes(c);
+            return (
+              <button
+                key={c}
+                className="fvd-btn"
+                title={isBnd ? "boundary/background class" : `class ${c}`}
+                onClick={() => setClass(c)}
+                style={{
+                  minWidth: 26,
+                  padding: "2px 6px",
+                  background: col,
+                  color: "#111",
+                  outline: classId === c ? "2px solid #fff" : "none",
+                  opacity: isBnd ? 0.5 : 1,
+                }}
+              >
+                {isBnd ? "∅" : c}
+              </button>
+            );
+          })}
+        </div>
+        <button
+          className="fvd-btn"
+          title="fewer classes"
+          onClick={() => setNumClasses(numClasses - 1)}
+        >
+          −
+        </button>
+        <button
+          className="fvd-btn"
+          title="more classes"
+          onClick={() => setNumClasses(numClasses + 1)}
+        >
+          +
+        </button>
+      </div>
+      <div className="fvd-ws-row">
+        <span className="k">brush</span>
+        <input
+          type="range"
+          min={1}
+          max={40}
+          value={brush}
+          style={{ flex: 1 }}
+          onChange={(e) => setBrush(Number(e.target.value))}
+        />
+        <span style={{ width: 28, textAlign: "right" }}>{brush}px</span>
+        <button
+          className="fvd-btn"
+          title="mark the current class as boundary/background"
+          onClick={() => toggleBoundary(classId)}
+          style={{
+            outline: boundary.includes(classId) ? "2px solid #fff" : "none",
+          }}
+        >
+          ∅
+        </button>
+      </div>
+      <div className="fvd-ws-row">
+        <span className="k">min area</span>
+        <input
+          value={minArea}
+          style={{ width: 44 }}
+          onChange={(e) => setMinArea(e.target.value)}
+        />
+        <button className="fvd-btn" onClick={clear} disabled={nStrokes === 0}>
+          Clear
+        </button>
+        <button
+          className="fvd-btn primary"
+          onClick={onRun}
+          disabled={busy || nStrokes === 0}
+        >
+          {busy ? progress || "Training…" : "Train & segment"}
+        </button>
+      </div>
+      <div className="fvd-ws-note">
+        Paint a few strokes of each class on the image, then train. ∅ marks a
+        class as boundary/background (excluded from grains).
+      </div>
+    </>
+  );
+}
 
 function GrainsMode({ id }: { id: string }) {
   const setStatus = useViewer((s) => s.setStatus);
@@ -320,11 +447,21 @@ function GrainsMode({ id }: { id: string }) {
   const [k, setK] = useState("3");
   const [coarseness, setCoarseness] = useState("0.05");
   const [mergeThr, setMergeThr] = useState("0.08");
+  const [minArea, setMinArea] = useState("25");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
   const [labelsId, setLabelsId] = useState<string | null>(null);
   const [grainResult, setGrainResult] = useState<GrainResult | null>(null);
   const [note, setNote] = useState("");
+
+  // trained-mode scribble state (paint examples directly on the stage)
+  const numClasses = useScribble((s) => s.numClasses);
+  const classId = useScribble((s) => s.classId);
+  const brush = useScribble((s) => s.brush);
+  const boundary = useScribble((s) => s.boundary);
+  const nStrokes = useScribble((s) => s.strokes.length);
+  const scribbleBegin = useScribble((s) => s.begin);
+  const scribbleEnd = useScribble((s) => s.end);
 
   useEffect(() => {
     setLabelsId(null);
@@ -332,10 +469,62 @@ function GrainsMode({ id }: { id: string }) {
     setNote("");
   }, [id]);
 
+  // open/close the stage paint overlay as the Trained method is selected.
+  // Never arm paint on a grain-label map (e.g. right after training swaps to
+  // the result) — that map drives the merge/split editor instead.
+  const sourceIsGrainMap = Boolean(meta?.meta?.["grain_labels"]);
+  useEffect(() => {
+    if (method !== "trained" || sourceIsGrainMap) return;
+    scribbleBegin(id);
+    return () => scribbleEnd();
+  }, [method, id, sourceIsGrainMap, scribbleBegin, scribbleEnd]);
+
   const knob = GRAIN_METHODS.find((m) => m.value === method)!.knob;
   const knobValue = method === "kmeans" ? k : method === "rag" ? mergeThr : coarseness;
   const setKnob =
     method === "kmeans" ? setK : method === "rag" ? setMergeThr : setCoarseness;
+
+  const trainRun = () => {
+    const { strokes, boundary: bnd } = useScribble.getState();
+    if (new Set(strokes.map((s) => s.classId)).size < 2) {
+      setStatus("trained grains: paint at least 2 different classes");
+      return;
+    }
+    setBusy(true);
+    setProgress("training…");
+    const payload: TrainStroke[] = strokes.map((s) => ({
+      class_id: s.classId,
+      radius: s.radius,
+      points: s.points,
+    }));
+    grainsTrainSegment(id, payload, {
+      minArea: Number(minArea) || 25,
+      boundaryClass: bnd,
+    })
+      .then((r) => {
+        const s = useViewer.getState();
+        s.ingestDerived([r.labels]);
+        s.setActive(r.labels.id);
+        setLabelsId(r.labels.id);
+        setGrainResult(r);
+        setNote(`${r.n_grains} grains · click to merge/split on the stage`);
+        useResults.getState().show({
+          title: `Grains (${r.n_grains}) · trained`,
+          columns: ["#", "area (px)", "perim (px)", "ecc."],
+          rows: r.areas_px.map((a, i) => [
+            i + 1,
+            Math.round(a),
+            Math.round(r.perimeters_px[i] ?? 0),
+            (r.eccentricity[i] ?? 0).toFixed(2),
+          ]),
+        });
+      })
+      .catch((e: Error) => setStatus(`trained grains: ${e.message}`))
+      .finally(() => {
+        setBusy(false);
+        setProgress("");
+      });
+  };
 
   const run = () => {
     setBusy(true);
@@ -401,17 +590,32 @@ function GrainsMode({ id }: { id: string }) {
           ))}
         </select>
       </div>
-      <div className="fvd-ws-row">
-        <span className="k">{knob}</span>
-        <input
-          value={knobValue}
-          style={{ width: 44 }}
-          onChange={(e) => setKnob(e.target.value)}
+      {method === "trained" ? (
+        <TrainedGrainControls
+          numClasses={numClasses}
+          classId={classId}
+          brush={brush}
+          boundary={boundary}
+          nStrokes={nStrokes}
+          minArea={minArea}
+          setMinArea={setMinArea}
+          busy={busy}
+          progress={progress}
+          onRun={trainRun}
         />
-        <button className="fvd-btn primary" onClick={run} disabled={busy}>
-          {busy ? progress || "Segmenting…" : "Identify grains"}
-        </button>
-      </div>
+      ) : (
+        <div className="fvd-ws-row">
+          <span className="k">{knob}</span>
+          <input
+            value={knobValue}
+            style={{ width: 44 }}
+            onChange={(e) => setKnob(e.target.value)}
+          />
+          <button className="fvd-btn primary" onClick={run} disabled={busy}>
+            {busy ? progress || "Segmenting…" : "Identify grains"}
+          </button>
+        </div>
+      )}
       {note && <div className="fvd-ws-note">{note}</div>}
       {grainResult && labelsId && (
         <div className="fvd-ws-row">

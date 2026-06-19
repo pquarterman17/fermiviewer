@@ -811,7 +811,12 @@ export async function runJob<T>(
   }
 }
 
-export type GrainMethod = "kmeans" | "gradient" | "rag" | "orientation";
+export type GrainMethod =
+  | "kmeans"
+  | "gradient"
+  | "rag"
+  | "orientation"
+  | "trained";
 
 export interface GrainParams {
   method: GrainMethod;
@@ -874,6 +879,39 @@ export function grainsEdit(
     op,
     points,
     granularity,
+  });
+}
+
+/** One painted scribble: a polyline (image coords) of a given brush radius
+ *  labelling pixels as `class_id`. */
+export interface TrainStroke {
+  class_id: number;
+  radius: number;
+  points: [number, number][];
+}
+
+export interface TrainSegmentOpts {
+  scales?: number[];
+  gradientSigma?: number;
+  minArea?: number;
+  boundaryClass?: number[];
+}
+
+/** Scribble-trained grain segmentation (parity #8): fit a pixel classifier
+ *  on the painted strokes, apply it to the whole image, and return an
+ *  editable grain-label map (same shape as analyzeGrains). */
+export function grainsTrainSegment(
+  id: string,
+  strokes: TrainStroke[],
+  opts: TrainSegmentOpts = {},
+): Promise<GrainResult> {
+  return post("/api/grains/train-segment", {
+    image_id: id,
+    strokes,
+    scales: opts.scales ?? [2, 4],
+    gradient_sigma: opts.gradientSigma ?? 0,
+    min_area: opts.minArea ?? 25,
+    boundary_class: opts.boundaryClass ?? [],
   });
 }
 

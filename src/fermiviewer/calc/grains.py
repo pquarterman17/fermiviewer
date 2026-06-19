@@ -2,8 +2,9 @@
 
 Texture features (multi-scale local stats + structure-tensor
 orientation encodings) → k-means clustering → per-cluster connected
-components → grain measurements + boundary network. Scribble-trained
-segmentation and rendering/CSV helpers stay MATLAB-side for now.
+components → grain measurements + boundary network. The scribble-trained
+classifier variant lives in grains_trained.py (shares extract_grain_features);
+rendering/CSV helpers stay MATLAB-side for now.
 """
 
 from __future__ import annotations
