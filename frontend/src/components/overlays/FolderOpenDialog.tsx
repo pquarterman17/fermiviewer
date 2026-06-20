@@ -6,6 +6,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { supportedExtensions } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
 
 export default function FolderOpenDialog() {
@@ -18,13 +19,21 @@ export default function FolderOpenDialog() {
 
   const files = ctx?.files ?? [];
   const [sel, setSel] = useState<Set<string>>(new Set());
+  const [accept, setAccept] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // default every file selected each time the dialog opens
+  // default every file selected whenever the dialog opens or the launch
+  // folder changes (ctx is a stable store ref, so this won't loop)
   useEffect(() => {
-    if (open) setSel(new Set(files.map((f) => f.path)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+    if (open) setSel(new Set((ctx?.files ?? []).map((f) => f.path)));
+  }, [open, ctx]);
+
+  // accept filter for the Browse fallback (same source as the menu picker)
+  useEffect(() => {
+    supportedExtensions()
+      .then((exts) => setAccept(exts.join(",")))
+      .catch(() => undefined);
+  }, []);
 
   // Esc closes
   useEffect(() => {
@@ -68,6 +77,7 @@ export default function FolderOpenDialog() {
         className="fvd-glass fvd-folder"
         onMouseDown={(e) => e.stopPropagation()}
         role="dialog"
+        aria-modal="true"
         aria-label="Open from folder"
       >
         <h2>Open from folder</h2>
@@ -98,12 +108,13 @@ export default function FolderOpenDialog() {
           ref={fileRef}
           type="file"
           multiple
+          accept={accept || undefined}
           style={{ display: "none" }}
           onChange={onBrowse}
         />
         <div className="fvd-btn-row">
           <button className="fvd-btn" onClick={() => fileRef.current?.click()}>
-            Browse…
+            Browse elsewhere…
           </button>
           <button className="fvd-btn" onClick={() => setOpen(false)}>
             Cancel
@@ -112,6 +123,7 @@ export default function FolderOpenDialog() {
             className="fvd-btn primary"
             disabled={sel.size === 0}
             onClick={openSelected}
+            autoFocus
           >
             Open {sel.size > 0 ? `(${sel.size})` : ""}
           </button>

@@ -4,6 +4,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../../lib/api", () => ({
+  supportedExtensions: () => Promise.resolve([".tif", ".dm4"]),
+}));
+
 const openPaths = vi.fn((..._a: unknown[]) => Promise.resolve());
 const openFiles = vi.fn((..._a: unknown[]) => Promise.resolve());
 

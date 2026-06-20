@@ -13,6 +13,7 @@ The client_state blob (views, display, measures, overlay) round-trips opaquely.
 from __future__ import annotations
 
 import datetime
+import re
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -144,4 +145,8 @@ def workspace_load(req: LoadNamedRequest) -> dict[str, Any]:
 
 @router.delete("/workspaces/{slug}")
 def workspace_delete(slug: str) -> dict[str, bool]:
+    # slugs are produced by slugify ([a-z0-9-]); reject anything else so a
+    # crafted slug like "../../foo" can't escape the workspaces directory
+    if not re.fullmatch(r"[a-z0-9-]+", slug):
+        raise HTTPException(422, "invalid workspace slug")
     return {"deleted": workspaces.delete_workspace(slug)}

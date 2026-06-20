@@ -217,12 +217,19 @@ def session_launch_dir() -> dict[str, object]:
     exts = set(supported_extensions())
     files: list[dict[str, str]] = []
     try:
-        for p in sorted(d.iterdir(), key=lambda q: q.name.lower()):
-            if p.is_file() and p.suffix.lower() in exts:
-                files.append({"name": p.name, "path": str(p)})
-    except OSError:  # unreadable dir — treat as empty
-        return {"dir": str(d), "files": []}
-    return {"dir": str(d), "files": files[:500]}
+        entries = sorted(d.iterdir(), key=lambda q: q.name.lower())
+    except OSError:  # unreadable directory — treat as empty
+        return {"dir": str(d), "files": [], "truncated": False}
+    for p in entries:
+        if p.suffix.lower() not in exts:
+            continue
+        try:
+            is_file = p.is_file()  # can raise on OneDrive cloud-only files
+        except OSError:
+            continue  # skip the unreadable entry, keep the rest
+        if is_file:
+            files.append({"name": p.name, "path": str(p)})
+    return {"dir": str(d), "files": files[:500], "truncated": len(files) > 500}
 
 
 @router.get("/session/images")

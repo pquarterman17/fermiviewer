@@ -37,7 +37,12 @@ def _origin_allowed(origin: str) -> bool:
     and the Tauri desktop shell. Everything else (a real web origin like
     https://evil.example) is a cross-origin caller and is rejected — this
     is the localhost-CSRF / DNS-rebinding guard for the API."""
-    if origin.startswith("tauri://") or origin.endswith("tauri.localhost"):
+    # exact Tauri origins only — `endswith` would also pass a crafted
+    # `evil.tauri.localhost` from another local app
+    if origin.startswith("tauri://") or origin in {
+        "https://tauri.localhost",
+        "http://tauri.localhost",
+    }:
         return True
     try:
         host = urlparse(origin).hostname
@@ -149,24 +154,7 @@ def create_app() -> FastAPI:
             "server_log": logbuf.entries(),
         }
 
-    @app.websocket("/api/ws")
-    async def lifecycle_ws(ws: WebSocket) -> None:
-        """Client-presence socket: the SPA connects on load; when the
-        last connection drops and stays gone for the grace period, the
-        server shuts down (if armed by main())."""
-        global _clients, _ever_connected
-        await ws.accept()
-        _clients += 1
-        _ever_connected = True
-        try:
-            while True:
-                await ws.receive_text()  # idles until disconnect
-        except WebSocketDisconnect:
-            pass
-        finally:
-            _clients -= 1
-            if _auto_shutdown and _clients == 0:
-                asyncio.get_running_loop().create_task(_grace_check())
+    app.websocket("/api/ws")(_lifecycle_ws)
 
     # serve the built SPA at / — routes are matched before mounts, so
     # /api/* keeps working; html=True gives index.html fallback
@@ -177,6 +165,33 @@ def create_app() -> FastAPI:
         app.mount("/", StaticFiles(directory=dist, html=True), name="spa")
 
     return app
+
+
+async def _lifecycle_ws(ws: WebSocket) -> None:
+    """Client-presence socket: the SPA connects on load; when the last
+    connection drops and stays gone for the grace period, the server shuts
+    down (if armed by main()). Module-level so its branches don't inflate
+    create_app's complexity."""
+    global _clients, _ever_connected
+    # the HTTP CSRF middleware doesn't run on the WS upgrade, so a
+    # cross-origin page could otherwise drive the lifecycle counter
+    # (delay/force shutdown). Enforce the same origin allowlist here.
+    origin = ws.headers.get("origin")
+    if origin and not _origin_allowed(origin):
+        await ws.close(code=1008)  # policy violation
+        return
+    await ws.accept()
+    _clients += 1
+    _ever_connected = True
+    try:
+        while True:
+            await ws.receive_text()  # idles until disconnect
+    except WebSocketDisconnect:
+        pass
+    finally:
+        _clients -= 1
+        if _auto_shutdown and _clients == 0:
+            asyncio.get_running_loop().create_task(_grace_check())
 
 
 async def _grace_check() -> None:
@@ -197,7 +212,9 @@ def _open_browser_later(url: str, delay: float = 0.8) -> None:
     import threading
     import webbrowser
 
-    threading.Timer(delay, webbrowser.open, [url]).start()
+    timer = threading.Timer(delay, webbrowser.open, [url])
+    timer.daemon = True  # don't keep the process alive on Ctrl+C in --dev
+    timer.start()
 
 
 def _health_ok(host: str, port: int, timeout: float = 0.4) -> bool:
@@ -270,6 +287,13 @@ def _run_desktop() -> None:
             "frontend/dist not found — build it once with:\n"
             "    cd frontend && npm run build"
         )
+        return
+
+    # if the port is already taken, reuse our own instance rather than
+    # binding a dead server thread and waiting 30 s for a window that can
+    # never connect; refuse outright on a foreign app instead of hanging
+    if _port_listening(_HOST, _PORT) and not _health_ok(_HOST, _PORT):
+        print(f"port {_PORT} is in use by another app — close it and retry")
         return
 
     global _server
@@ -377,17 +401,19 @@ def main() -> None:
         _run_desktop()
         return
 
-    # reuse a FermiViewer already on the port (just open a new tab); step
-    # to a free port if a *foreign* app holds it — never hang on a failed
-    # bind or load a stranger's page
+    # Port handling differs by mode. The browser CLI may float to a free
+    # port and reuse a running instance. The headless sidecar (--no-browser,
+    # spawned by the Tauri shell) must stay on the FIXED port the shell
+    # navigates to — stepping to another port would leave the window
+    # pointing at nothing. So it binds _PORT or fails loudly (the shell then
+    # shows its error splash) and never orphans a server on a surprise port.
     host, port = _HOST, _PORT
-    if _port_listening(host, port):
+    if not args.no_browser and _port_listening(host, port):
         if _health_ok(host, port):
             print(f"FermiViewer already running — opening http://{host}:{port}")
-            if not args.no_browser:
-                import webbrowser
+            import webbrowser
 
-                webbrowser.open(f"http://{host}:{port}")
+            webbrowser.open(f"http://{host}:{port}")
             return
         port = _find_free_port(host, _PORT + 1)
         print(f"port {_PORT} is in use by another app — using {port}")

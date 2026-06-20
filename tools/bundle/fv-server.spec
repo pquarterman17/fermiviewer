@@ -25,6 +25,14 @@ a = Analysis(  # noqa: F821
         "uvicorn.protocols.http.auto",
         "uvicorn.protocols.websockets.auto",
         "uvicorn.lifespan.on",
+        # the *.auto dispatchers above import these concrete protocol impls
+        # in a try/except; pin them so the frozen build can't end up without
+        # an HTTP/WebSocket transport (the /api/ws lifecycle socket would
+        # silently fail). wsproto_impl is omitted — wsproto isn't installed.
+        "uvicorn.protocols.http.h11_impl",
+        "uvicorn.protocols.http.httptools_impl",
+        "uvicorn.protocols.websockets.websockets_impl",
+        "uvicorn.protocols.websockets.websockets_sansio_impl",
     ],
     excludes=[
         # dev/test-only heavyweights that must never ride along

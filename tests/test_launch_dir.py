@@ -8,6 +8,7 @@ free port when 8000 is taken.
 
 from __future__ import annotations
 
+import pathlib
 from pathlib import Path
 
 import pytest
@@ -65,6 +66,65 @@ def test_launch_dir_missing_dir_reports_null(tmp_path: Path) -> None:
     client = TestClient(create_app())
     body = client.get("/api/session/launch-dir").json()
     assert body == {"dir": None, "files": []}
+
+
+def test_launch_dir_skips_unreadable_entry_keeps_rest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A single is_file() failure (e.g. a OneDrive cloud-only file) must
+    skip that entry, not discard the whole already-collected list."""
+    ext = next(iter(supported_extensions()))
+    (tmp_path / f"good{ext}").write_bytes(b"x")
+    (tmp_path / f"bad{ext}").write_bytes(b"x")
+
+    real_is_file = pathlib.Path.is_file
+
+    def flaky(self: pathlib.Path) -> bool:
+        if self.name == f"bad{ext}":
+            raise OSError("cloud-only placeholder")
+        return real_is_file(self)
+
+    monkeypatch.setattr(pathlib.Path, "is_file", flaky)
+    launch.set_launch_dir(tmp_path)
+    body = TestClient(create_app()).get("/api/session/launch-dir").json()
+    assert [f["name"] for f in body["files"]] == [f"good{ext}"]
+
+
+def test_launch_dir_reports_truncation(tmp_path: Path) -> None:
+    ext = next(iter(supported_extensions()))
+    for i in range(501):
+        (tmp_path / f"f{i:04d}{ext}").write_bytes(b"x")
+    launch.set_launch_dir(tmp_path)
+    body = TestClient(create_app()).get("/api/session/launch-dir").json()
+    assert len(body["files"]) == 500
+    assert body["truncated"] is True
+
+
+def test_ws_rejects_cross_origin() -> None:
+    """The CSRF guard is HTTP-only; /api/ws must enforce origin itself."""
+    client = TestClient(create_app())
+    with pytest.raises(Exception):  # noqa: B017 — Starlette WS reject
+        with client.websocket_connect(
+            "/api/ws", headers={"origin": "https://evil.example"}
+        ):
+            pass
+
+
+def test_ws_allows_localhost_origin() -> None:
+    client = TestClient(create_app())
+    with client.websocket_connect(
+        "/api/ws", headers={"origin": "http://127.0.0.1:8000"}
+    ) as ws:
+        ws.close()
+
+
+def test_workspace_delete_rejects_bad_slug() -> None:
+    client = TestClient(create_app())
+    assert client.delete("/api/workspaces/Bad_Slug!").status_code == 422
+    # a clean slug passes validation (no such workspace → deleted False)
+    r = client.delete("/api/workspaces/no-such-workspace")
+    assert r.status_code == 200
+    assert r.json() == {"deleted": False}
 
 
 def test_health_ok_false_when_nothing_listening() -> None:
