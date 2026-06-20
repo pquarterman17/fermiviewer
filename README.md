@@ -74,21 +74,39 @@ below.
 > (`[tool.uv] link-mode = "copy"` is already set in `pyproject.toml`;
 > the junction prevents sync-lock races during installs.)
 
+### Option 4 — `fermiviewer` terminal command
+
+Install once as a tool, then launch from any terminal — including from a
+folder of images:
+
+```powershell
+uv tool install --from . fermiviewer    # exposes `fermiviewer` on PATH
+fermiviewer                              # launch from anywhere
+fermiviewer C:\data\session-42           # …or point it at a folder
+```
+
+`fermiviewer` opens a browser tab once the server is confirmed up (no
+more racing a cold start), and the in-app **Open** dialog defaults to the
+folder you launched from. If a copy is already running it just opens a
+new tab; if port 8000 is taken by another app it steps to the next free
+port. `fv` remains as a short alias for the same entry point.
+
 ---
 
 ## Usage
 
 | Command | What it does |
 |---|---|
-| `uv run fv` | API + SPA on `:8000`, opens the browser, exits when the last tab closes |
-| `uv run fv --desktop` | Native window (pywebview), exits on close |
-| `uv run fv --dev` | Vite HMR (`:5173`) + auto-reloading backend, one terminal |
-| `uv run fv --no-browser --no-auto-shutdown` | Plain server, stays up |
+| `fermiviewer` / `fv` | API + SPA on `:8000`, opens the browser once healthy, exits when the last tab closes |
+| `fermiviewer <dir>` | …and defaults the in-app Open dialog to `<dir>` |
+| `fermiviewer --desktop` | Native window (pywebview), exits on close |
+| `fermiviewer --dev` | Vite HMR (`:5173`) + auto-reloading backend, one terminal |
+| `fermiviewer --no-browser --no-auto-shutdown` | Plain server, stays up |
 
-Open files via **File → Open…** (native picker), drag-and-drop, or
-**File → Open by Path…** for large files already on the server's disk.
-Press **?** in the app for the full keyboard map, **⌘K** for the command
-palette.
+Open files via **File → Open…** (the launch-folder list when started from
+one, otherwise the native picker), drag-and-drop, or **File → Open by
+Path…** for large files already on the server's disk. Press **?** in the
+app for the full keyboard map, **⌘K** for the command palette.
 
 ---
 
@@ -157,6 +175,12 @@ cd src-tauri
 npx @tauri-apps/cli@^2 build --config \
   '{"bundle":{"resources":{"../dist-sidecar/fv-server":"fv-server"}}}'
 ```
+
+> The desktop shell shows a loading splash and only navigates to the app
+> once `/api/health` answers, so a slow first start no longer lands on a
+> "can't reach this page" error. This lives in the Rust shell — installed
+> copies must be **rebuilt and reinstalled** to pick it up (rebuild the
+> SPA first so `frontend/dist/loading.html` is bundled).
 
 ---
 

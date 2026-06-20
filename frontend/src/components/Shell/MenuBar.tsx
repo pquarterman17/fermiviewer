@@ -206,19 +206,26 @@ export default function MenuBar({
       .catch(() => undefined);
   }, []);
 
-  // native OS picker → multipart upload
-  const openFiles = () => fileRef.current?.click();
+  // Open: when launched from a folder of images, show that folder's
+  // files (pre-pointed); otherwise the OS-native picker → multipart
+  // upload. getState() so the ⌘O handler reads the live launch context.
+  const openFiles = () => {
+    const s = useViewer.getState();
+    if ((s.launchContext?.files.length ?? 0) > 0) s.setFolderOpen(true);
+    else fileRef.current?.click();
+  };
 
   // ⌘O / Ctrl+O opens the picker (a keydown counts as a user gesture)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "o") {
         e.preventDefault();
-        fileRef.current?.click();
+        openFiles();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const onFilesPicked = (e: React.ChangeEvent<HTMLInputElement>) => {

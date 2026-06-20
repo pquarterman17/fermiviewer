@@ -200,6 +200,31 @@ def session_supported_extensions() -> dict[str, list[str]]:
     return {"extensions": list(supported_extensions())}
 
 
+@router.get("/session/launch-dir")
+def session_launch_dir() -> dict[str, object]:
+    """The folder the app was launched from plus its supported images, so
+    the SPA can default the Open dialog there (CLI `fermiviewer <dir>`).
+
+    Returns ``{"dir": null, "files": []}`` when no launch dir is set
+    (installed app / server started without one) or it holds no supported
+    files — the frontend then falls back to the OS-native picker.
+    """
+    from fermiviewer import launch
+
+    d = launch.launch_dir()
+    if d is None or not d.is_dir():
+        return {"dir": None, "files": []}
+    exts = set(supported_extensions())
+    files: list[dict[str, str]] = []
+    try:
+        for p in sorted(d.iterdir(), key=lambda q: q.name.lower()):
+            if p.is_file() and p.suffix.lower() in exts:
+                files.append({"name": p.name, "path": str(p)})
+    except OSError:  # unreadable dir — treat as empty
+        return {"dir": str(d), "files": []}
+    return {"dir": str(d), "files": files[:500]}
+
+
 @router.get("/session/images")
 def session_images() -> list[ImageMeta]:
     return [

@@ -534,6 +534,11 @@ interface ViewerState {
   metaOpen: boolean;
   prefsOpen: boolean;
   galleryOpen: boolean;
+  /** Whether the launch-folder Open dialog is showing. */
+  folderOpen: boolean;
+  /** The folder the app was launched from + its supported images, so the
+   *  Open dialog can default there. null until fetched / when none set. */
+  launchContext: { dir: string | null; files: { name: string; path: string }[] } | null;
   status: string;
   currentWorkspace: WorkspaceRef | null;
 
@@ -632,6 +637,10 @@ interface ViewerState {
   setMetaOpen: (open: boolean) => void;
   setPrefsOpen: (open: boolean) => void;
   setGalleryOpen: (open: boolean) => void;
+  setFolderOpen: (open: boolean) => void;
+  setLaunchContext: (
+    ctx: { dir: string | null; files: { name: string; path: string }[] } | null,
+  ) => void;
   setStatus: (msg: string) => void;
 
   // ── ROI Manager (Tier-2 #5) ─────────────────────────────────────────
@@ -774,6 +783,8 @@ export const useViewer = create<ViewerState>((set, get) => ({
   metaOpen: false,
   prefsOpen: false,
   galleryOpen: false,
+  folderOpen: false,
+  launchContext: null,
   status: "ready",
   currentWorkspace: null,
 
@@ -1316,6 +1327,8 @@ export const useViewer = create<ViewerState>((set, get) => ({
   setMetaOpen: (metaOpen) => set({ metaOpen }),
   setPrefsOpen: (prefsOpen) => set({ prefsOpen }),
   setGalleryOpen: (galleryOpen) => set({ galleryOpen }),
+  setFolderOpen: (folderOpen) => set({ folderOpen }),
+  setLaunchContext: (launchContext) => set({ launchContext }),
   setStatus: (msg) => {
     logStatus(msg); // breadcrumb trail for the bug report
     set({ status: msg });

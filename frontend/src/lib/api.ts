@@ -69,6 +69,20 @@ export async function uploadFiles(files: FileList | File[]): Promise<ImageMeta[]
   );
 }
 
+export interface LaunchDir {
+  /** Absolute path the app was launched from, or null when none was set. */
+  dir: string | null;
+  /** Supported image files directly inside that folder. */
+  files: { name: string; path: string }[];
+}
+
+/** The folder `fermiviewer <dir>` (or the launch cwd) was started in, with
+ *  its supported images — lets the in-app Open dialog default there since
+ *  the OS-native picker can't be pre-pointed at a directory. */
+export async function launchDir(): Promise<LaunchDir> {
+  return json(await fetch("/api/session/launch-dir"));
+}
+
 /** Supported extensions for the picker's accept filter. */
 export async function supportedExtensions(): Promise<string[]> {
   const r = await json<{ extensions: string[] }>(

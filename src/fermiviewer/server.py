@@ -192,10 +192,68 @@ app = create_app()
 
 
 def _open_browser_later(url: str, delay: float = 0.8) -> None:
+    """Fixed-delay browser open — used only for the dev path, where the
+    target is the Vite server (no /api/health to poll)."""
     import threading
     import webbrowser
 
     threading.Timer(delay, webbrowser.open, [url]).start()
+
+
+def _health_ok(host: str, port: int, timeout: float = 0.4) -> bool:
+    """True iff a *FermiViewer* server answers /api/health with 200 — used
+    to tell our own running instance apart from a foreign app on the port
+    and to gate the browser/window open on the server actually being up."""
+    import json
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(
+            f"http://{host}:{port}/api/health", timeout=timeout
+        ) as r:
+            if r.status != 200:
+                return False
+            data = json.loads(r.read())
+            return bool(isinstance(data, dict) and data.get("status") == "ok")
+    except Exception:
+        return False
+
+
+def _port_listening(host: str, port: int) -> bool:
+    """True iff something is accepting TCP connections on host:port."""
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.4)
+        return s.connect_ex((host, port)) == 0
+
+
+def _find_free_port(host: str, start: int) -> int:
+    """First free port at or above ``start`` (small bounded scan)."""
+    for port in range(start, start + 50):
+        if not _port_listening(host, port):
+            return port
+    return start  # give up gracefully; uvicorn will report the bind error
+
+
+def _open_when_healthy(url: str, host: str, port: int, timeout: float = 30.0) -> None:
+    """Open the browser only once the server answers — replaces the old
+    fixed-delay timer, which raced a cold numpy/scipy import and showed
+    'can't reach this page'. Polls /api/health in a daemon thread."""
+    import threading
+    import time
+    import webbrowser
+
+    def _wait_then_open() -> None:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if _health_ok(host, port):
+                webbrowser.open(url)
+                return
+            time.sleep(0.25)
+        webbrowser.open(url)  # last resort: open anyway after the timeout
+
+    threading.Thread(target=_wait_then_open, daemon=True).start()
 
 
 def _run_desktop() -> None:
@@ -221,6 +279,14 @@ def _run_desktop() -> None:
     _server = server
     t = threading.Thread(target=server.run, daemon=True)
     t.start()
+
+    # wait for the server to bind before pointing the window at it, else
+    # the webview shows a connection-refused page and never retries
+    import time
+
+    deadline = time.monotonic() + 30.0
+    while time.monotonic() < deadline and not _health_ok(_HOST, _PORT):
+        time.sleep(0.25)
 
     webview.create_window(
         "FermiViewer",
@@ -258,10 +324,22 @@ def _run_dev() -> None:
 
 def main() -> None:
     import argparse
+    import os
 
     import uvicorn
 
-    parser = argparse.ArgumentParser(prog="fv", description="FermiViewer")
+    from fermiviewer import launch
+
+    parser = argparse.ArgumentParser(
+        prog="fermiviewer", description="FermiViewer — EM image analysis"
+    )
+    parser.add_argument(
+        "dir",
+        nargs="?",
+        default=None,
+        help="folder to default the in-app Open dialog to "
+        "(default: the directory you launched from)",
+    )
     parser.add_argument(
         "--dev",
         action="store_true",
@@ -284,6 +362,14 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    # the Open dialog defaults here; an explicit dir always wins, otherwise
+    # the launch cwd (but not for the headless sidecar, which runs
+    # --no-browser from an install dir that holds no images)
+    if args.dir:
+        launch.set_launch_dir(args.dir)
+    elif not args.no_browser:
+        launch.set_launch_dir(os.getcwd())
+
     if args.dev:
         _run_dev()
         return
@@ -291,21 +377,36 @@ def main() -> None:
         _run_desktop()
         return
 
+    # reuse a FermiViewer already on the port (just open a new tab); step
+    # to a free port if a *foreign* app holds it — never hang on a failed
+    # bind or load a stranger's page
+    host, port = _HOST, _PORT
+    if _port_listening(host, port):
+        if _health_ok(host, port):
+            print(f"FermiViewer already running — opening http://{host}:{port}")
+            if not args.no_browser:
+                import webbrowser
+
+                webbrowser.open(f"http://{host}:{port}")
+            return
+        port = _find_free_port(host, _PORT + 1)
+        print(f"port {_PORT} is in use by another app — using {port}")
+
     dist = _frontend_dist()
     if dist is None:
         print(
             "frontend/dist not found — API only on "
-            f"http://{_HOST}:{_PORT}. Build the UI once with:\n"
+            f"http://{host}:{port}. Build the UI once with:\n"
             "    cd frontend && npm run build\n"
-            "or run `fv --dev` for the hot-reloading dev setup."
+            "or run `fermiviewer --dev` for the hot-reloading dev setup."
         )
     elif not args.no_browser:
-        _open_browser_later(f"http://{_HOST}:{_PORT}")
+        _open_when_healthy(f"http://{host}:{port}", host, port)
 
     # hold the Server object so the lifecycle watchdog can stop it
     global _auto_shutdown, _server
     _auto_shutdown = dist is not None and not args.no_auto_shutdown
-    server = uvicorn.Server(uvicorn.Config(app, host=_HOST, port=_PORT))
+    server = uvicorn.Server(uvicorn.Config(app, host=host, port=port))
     _server = server
     server.run()
 

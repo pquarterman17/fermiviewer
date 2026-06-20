@@ -52,6 +52,9 @@ oracle = [
 
 [project.scripts]
 fv = "fermiviewer.server:main"
+# long-form alias so `fermiviewer` works from a terminal after install
+# (e.g. `uv tool install --from . fermiviewer`); both share one entry point
+fermiviewer = "fermiviewer.server:main"
 
 [build-system]
 requires = ["hatchling"]

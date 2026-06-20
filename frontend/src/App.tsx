@@ -24,6 +24,7 @@ import ShortcutsOverlay from "./components/overlays/ShortcutsOverlay";
 import CalibrationManager from "./components/overlays/CalibrationManager";
 import MetadataDialog from "./components/overlays/MetadataDialog";
 import GalleryGrid from "./components/overlays/GalleryGrid";
+import FolderOpenDialog from "./components/overlays/FolderOpenDialog";
 import BatchDialog from "./components/overlays/BatchDialog";
 import PrefsWindow from "./components/overlays/PrefsWindow";
 import TooltipLayer from "./components/overlays/TooltipLayer";
@@ -36,7 +37,7 @@ import StructureWorkshop from "./components/workshops/StructureWorkshop";
 import SurfaceView from "./components/workshops/SurfaceView";
 import EdsWorkshop from "./components/workshops/EdsWorkshop";
 import EelsWorkshop from "./components/workshops/EelsWorkshop";
-import { devSampleFiles, listImages } from "./lib/api";
+import { devSampleFiles, launchDir, listImages } from "./lib/api";
 import { COLORMAP_NAMES } from "./lib/colormaps";
 import { autoWindow } from "./lib/display";
 import { loadPrefs } from "./lib/prefs";
@@ -95,6 +96,17 @@ export default function App() {
             })
             .catch(() => undefined);
         }
+      })
+      .catch(() => undefined);
+  }, []);
+
+  // launch-folder context: when started from a folder of images
+  // (`fermiviewer <dir>` / the launch cwd), the Open dialog defaults
+  // there. Empty/absent on the installed app — Open stays the OS picker.
+  useEffect(() => {
+    launchDir()
+      .then((ctx) => {
+        if (ctx.files.length > 0) useViewer.getState().setLaunchContext(ctx);
       })
       .catch(() => undefined);
   }, []);
@@ -543,6 +555,7 @@ export default function App() {
       <PrefsWindow />
       <BatchDialog />
       <GalleryGrid />
+      <FolderOpenDialog />
       <ParamDialog />
       <ResultsWindow />
       {tools.map((t) => (
