@@ -12,6 +12,7 @@ import StatusBar from "./components/Shell/StatusBar";
 import TitleBar from "./components/Shell/TitleBar";
 import ColorbarChip from "./components/Stage/ColorbarChip";
 import CompareStage from "./components/Stage/CompareStage";
+import SideBySideStage from "./components/Stage/SideBySideStage";
 import Stage, { type StageHandle } from "./components/Stage/Stage";
 import CommandPalette, {
   type Action,
@@ -66,6 +67,7 @@ export default function App() {
   const colorbar = useViewer((s) => s.colorbar);
   const colorbarSide = useViewer((s) => s.colorbarSide);
   const comparing = useViewer((s) => s.compareSet !== null);
+  const compareMode = useViewer((s) => s.compareMode);
   const tools = useViewer((s) => s.tools);
 
   // restore any prior session (backend keeps images open across reloads)
@@ -190,6 +192,27 @@ export default function App() {
       }
       if (mod) return; // leave other ⌘/Ctrl chords to the browser
       if (s.cmdk) return; // palette owns the keyboard while open
+
+      // Side-by-side compare: ←/→ scroll the FOCUSED pane through the loaded
+      // images (the other pane stays frozen); Tab swaps which pane is focused.
+      // SELECT is excluded so the per-pane dropdown keeps native arrow nav.
+      if (s.compareSet && s.compareMode === "sidebyside" && t.tagName !== "SELECT") {
+        if (e.key === "ArrowRight") {
+          e.preventDefault();
+          s.stepSbs(s.sbsActive, 1);
+          return;
+        }
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          s.stepSbs(s.sbsActive, -1);
+          return;
+        }
+        if (e.key === "Tab") {
+          e.preventDefault();
+          s.setSbsActive(s.sbsActive === "L" ? "R" : "L");
+          return;
+        }
+      }
 
       const capture = (m: CaptureMode) =>
         s.setCaptureMode(s.captureMode === m ? "none" : m);
@@ -452,6 +475,12 @@ export default function App() {
         },
       },
       {
+        id: "side-by-side",
+        group: "Library",
+        label: "Side-by-side compare",
+        run: () => s().startSideBySide(),
+      },
+      {
         id: "exit-compare",
         group: "Library",
         label: "Exit compare",
@@ -549,7 +578,15 @@ export default function App() {
         <Filmstrip />
         <div className="fvd-stage-cell" style={{ flexDirection: (colorbar && colorbarSide === "bottom") ? "column" : undefined }}>
           {colorbar && colorbarSide === "left" && <ColorbarChip />}
-          {comparing ? <CompareStage /> : <Stage ref={stageRef} />}
+          {comparing ? (
+            compareMode === "sidebyside" ? (
+              <SideBySideStage />
+            ) : (
+              <CompareStage />
+            )
+          ) : (
+            <Stage ref={stageRef} />
+          )}
           {colorbar && colorbarSide === "right" && <ColorbarChip />}
           {colorbar && colorbarSide === "bottom" && <ColorbarChip />}
         </div>

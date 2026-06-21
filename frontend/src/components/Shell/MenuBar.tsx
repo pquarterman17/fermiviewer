@@ -660,6 +660,11 @@ export default function MenuBar({
         action: () => store.setGalleryOpen(true),
       },
       {
+        label: "Side-by-side Compare",
+        disabled: store.order.length === 0,
+        action: store.startSideBySide,
+      },
+      {
         label: store.colorbar ? "Hide Colorbar" : "Show Colorbar",
         action: store.toggleColorbar,
       },

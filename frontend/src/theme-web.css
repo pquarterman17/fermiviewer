@@ -1117,6 +1117,49 @@ details.fvd-card:not([open]) > summary {
   gap: 2px;
 }
 
+/* ── side-by-side compare (MATLAB parity: two independently-scrollable
+   panes, focus the one you want to scroll, freeze the other) ── */
+
+.fvd-compare.sidebyside {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+}
+
+.fvd-compare-panel.sbs {
+  display: flex;
+  flex-direction: column;
+}
+
+/* cyan focus border on the active pane — inset so it never shifts layout */
+.fvd-compare-panel.sbs.active {
+  box-shadow: inset 0 0 0 2px #22d3ee;
+}
+
+.fvd-sbs-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: var(--glass);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--glass-border);
+  z-index: 2;
+}
+
+.fvd-sbs-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.fvd-sbs-canvas-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  cursor: grab;
+}
+
 /* ── measurement overlay ── */
 
 .fvd-measure-layer {

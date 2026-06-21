@@ -12,6 +12,7 @@ const MODES: { key: CompareMode; label: string }[] = [
   { key: "split", label: "Split" },
   { key: "flicker", label: "Flicker" },
   { key: "subtract", label: "Subtract" },
+  { key: "sidebyside", label: "Side-by-side" },
 ];
 
 export default function CompareInspector() {
@@ -25,6 +26,11 @@ export default function CompareInspector() {
   const exitCompare = useViewer((s) => s.exitCompare);
   const images = useViewer((s) => s.images);
   const startCompare = useViewer((s) => s.startCompare);
+  const sbsActive = useViewer((s) => s.sbsActive);
+  const setSbsActive = useViewer((s) => s.setSbsActive);
+  const sbsLinked = useViewer((s) => s.sbsLinked);
+  const setSbsLinked = useViewer((s) => s.setSbsLinked);
+  const sideBySide = compareMode === "sidebyside";
 
   const removeSlot = (id: string) => {
     const rest = compareSet.filter((c) => c !== id);
@@ -51,6 +57,40 @@ export default function CompareInspector() {
           ))}
         </div>
 
+        {/* Side-by-side controls: link toggle + focused-side picker + hint */}
+        {sideBySide && (
+          <>
+            <div className="fvd-meta-row" style={{ marginTop: 6 }}>
+              <span className="k">Zoom/pan</span>
+              <button
+                className={`fvd-seg-btn${sbsLinked ? " active" : ""}`}
+                title="Link zoom/pan across both panes"
+                onClick={() => setSbsLinked(!sbsLinked)}
+              >
+                {sbsLinked ? "🔗 Linked" : "Independent"}
+              </button>
+            </div>
+            <div className="fvd-meta-row" style={{ marginTop: 6 }}>
+              <span className="k">Scroll side</span>
+              <div className="fvd-seg">
+                {(["L", "R"] as const).map((p) => (
+                  <button
+                    key={p}
+                    className={`fvd-seg-btn${sbsActive === p ? " active" : ""}`}
+                    onClick={() => setSbsActive(p)}
+                  >
+                    {p === "L" ? "Left" : "Right"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="fvd-text-faint" style={{ fontSize: 11, marginTop: 6 }}>
+              Click a side to focus it (cyan border); ◀ ▶ or ←/→ scroll it,
+              Tab switches sides. The other side stays frozen.
+            </div>
+          </>
+        )}
+
         {/* Flicker controls (audit #15) — visible in flicker mode only */}
         {compareMode === "flicker" && (
           <div className="fvd-meta-row" style={{ marginTop: 6 }}>
@@ -73,23 +113,25 @@ export default function CompareInspector() {
           </div>
         )}
 
-        <div className="fvd-compare-slots">
-          {compareSet.map((id, i) => (
-            <div key={id} className="fvd-measure-row">
-              <span className="glyph">{String.fromCharCode(65 + i)}</span>
-              <span className="name" title={images[id]?.name}>
-                {images[id]?.name ?? id}
-              </span>
-              <button
-                className="fvd-icon-btn"
-                title="Remove from compare"
-                onClick={() => removeSlot(id)}
-              >
-                ✕
-              </button>
-            </div>
-          ))}
-        </div>
+        {!sideBySide && (
+          <div className="fvd-compare-slots">
+            {compareSet.map((id, i) => (
+              <div key={id} className="fvd-measure-row">
+                <span className="glyph">{String.fromCharCode(65 + i)}</span>
+                <span className="name" title={images[id]?.name}>
+                  {images[id]?.name ?? id}
+                </span>
+                <button
+                  className="fvd-icon-btn"
+                  title="Remove from compare"
+                  onClick={() => removeSlot(id)}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* A/B pair picker (audit #15): explicit two-slot flicker pair.
             Only shown when ≥3 images are being compared; otherwise the

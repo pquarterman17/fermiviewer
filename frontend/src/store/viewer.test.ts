@@ -518,3 +518,73 @@ describe("compare flicker rate + A/B pair (audit #15)", () => {
     expect(useViewer.getState().compareAB).toBeNull();
   });
 });
+
+describe("side-by-side compare", () => {
+  beforeEach(() => {
+    useViewer.getState().ingest([meta("a"), meta("b"), meta("c")]);
+  });
+
+  it("startSideBySide seeds left=active, right=next-in-order, enters mode", () => {
+    useViewer.getState().setActive("a");
+    useViewer.getState().startSideBySide();
+    const s = useViewer.getState();
+    expect(s.compareMode).toBe("sidebyside");
+    expect(s.compareSet).toEqual(["a", "b"]);
+    expect(s.sbsLeft).toBe("a");
+    expect(s.sbsRight).toBe("b");
+    expect(s.sbsActive).toBe("L");
+  });
+
+  it("startSideBySide wraps right to the first image when active is last", () => {
+    useViewer.getState().setActive("c");
+    useViewer.getState().startSideBySide();
+    const s = useViewer.getState();
+    expect(s.sbsLeft).toBe("c");
+    expect(s.sbsRight).toBe("a");
+  });
+
+  it("stepSbs scrolls only the targeted pane (wrapping); the other is frozen", () => {
+    useViewer.getState().setActive("a");
+    useViewer.getState().startSideBySide(); // L=a, R=b
+    useViewer.getState().stepSbs("L", 1); // a → b
+    expect(useViewer.getState().sbsLeft).toBe("b");
+    expect(useViewer.getState().sbsRight).toBe("b"); // frozen
+    expect(useViewer.getState().sbsActive).toBe("L");
+    useViewer.getState().stepSbs("L", -1); // b → a
+    useViewer.getState().stepSbs("L", -1); // a → c (wrap back)
+    expect(useViewer.getState().sbsLeft).toBe("c");
+  });
+
+  it("setSbsPane sets a pane directly, focuses it, and syncs compareSet", () => {
+    useViewer.getState().setActive("a");
+    useViewer.getState().startSideBySide();
+    useViewer.getState().setSbsPane("R", "c");
+    const s = useViewer.getState();
+    expect(s.sbsRight).toBe("c");
+    expect(s.sbsActive).toBe("R");
+    expect(s.compareSet).toEqual(["a", "c"]);
+  });
+
+  it("setSbsPane ignores unknown image ids", () => {
+    useViewer.getState().setActive("a");
+    useViewer.getState().startSideBySide();
+    useViewer.getState().setSbsPane("R", "nope");
+    expect(useViewer.getState().sbsRight).toBe("b");
+  });
+
+  it("setCompareMode('sidebyside') seeds panes from the current compareSet", () => {
+    useViewer.getState().startCompare(["b", "c"]);
+    useViewer.getState().setCompareMode("sidebyside");
+    const s = useViewer.getState();
+    expect(s.sbsLeft).toBe("b");
+    expect(s.sbsRight).toBe("c");
+    expect(s.compareSet).toEqual(["b", "c"]);
+  });
+
+  it("setSbsLinked / setSbsActive toggle their flags", () => {
+    useViewer.getState().setSbsLinked(false);
+    expect(useViewer.getState().sbsLinked).toBe(false);
+    useViewer.getState().setSbsActive("R");
+    expect(useViewer.getState().sbsActive).toBe("R");
+  });
+});

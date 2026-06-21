@@ -226,7 +226,10 @@ export type Accent = "violet" | "teal" | "ocean" | "amber" | "rose";
 /** UI density — drives the spacing/row-height/font-size token block. */
 export type Density = "compact" | "regular" | "comfy";
 export type ListView = "thumbs" | "names";
-export type CompareMode = "split" | "flicker" | "subtract";
+export type CompareMode = "split" | "flicker" | "subtract" | "sidebyside";
+
+/** Which side-by-side pane the keyboard / arrows currently drive. */
+export type SbsPane = "L" | "R";
 export type SelectGesture = "single" | "toggle" | "range";
 export type ToolKind =
   | "eels"
@@ -494,6 +497,14 @@ interface ViewerState {
   /** Explicit A/B slot override: [indexA, indexB] into compareSet
    *  (null = cycle the full set, original behaviour).  Audit #15. */
   compareAB: [number, number] | null;
+  // ── side-by-side compare (MATLAB-style independent panes) ──
+  /** Image id shown in the left / right pane (compareMode "sidebyside"). */
+  sbsLeft: string | null;
+  sbsRight: string | null;
+  /** Which pane the ←/→ keys + ◀▶ buttons drive; the other stays frozen. */
+  sbsActive: SbsPane;
+  /** Link zoom/pan across the two panes (default true; toggle to unlink). */
+  sbsLinked: boolean;
   // per-image view, persisted (localStorage "fv_views")
   views: Record<string, View>;
   // per-image display pipeline (window/gamma/colormap)
@@ -572,6 +583,15 @@ interface ViewerState {
   setCompareMode: (m: CompareMode) => void;
   setCompareFlickerMs: (ms: number) => void;
   setCompareAB: (ab: [number, number] | null) => void;
+  /** Enter side-by-side compare seeded from the current image (left =
+   *  active, right = next in order). No pre-selection needed. */
+  startSideBySide: () => void;
+  /** Set a pane's image directly (e.g. dropdown pick) and focus it. */
+  setSbsPane: (pane: SbsPane, id: string) => void;
+  /** Step a pane through `order` by delta (wrapping) and focus it. */
+  stepSbs: (pane: SbsPane, delta: 1 | -1) => void;
+  setSbsActive: (pane: SbsPane) => void;
+  setSbsLinked: (linked: boolean) => void;
   cycleImage: (dir: 1 | -1) => void;
   closeImage: (id: string) => Promise<void>;
   setView: (id: string, view: View) => void;
@@ -740,6 +760,10 @@ export const useViewer = create<ViewerState>((set, get) => ({
   compareMode: "split",
   compareFlickerMs: 600,
   compareAB: null,
+  sbsLeft: null,
+  sbsRight: null,
+  sbsActive: "L",
+  sbsLinked: true,
   views: loadJson<Record<string, View>>(VIEWS_KEY, {}),
   display: {},
   history: {},
@@ -955,10 +979,81 @@ export const useViewer = create<ViewerState>((set, get) => ({
   },
 
   exitCompare: () => set({ compareSet: null, compareAB: null }),
-  setCompareMode: (compareMode) => set({ compareMode }),
+  setCompareMode: (compareMode) => {
+    if (compareMode !== "sidebyside") {
+      set({ compareMode });
+      return;
+    }
+    // entering side-by-side: seed panes from existing sbs ids if still
+    // valid, else the compareSet's first two, else active + next-in-order.
+    // The `ok` guard also self-heals dangling ids left by a prior close.
+    const s = get();
+    const ok = (id: string | null): id is string => !!id && !!s.images[id];
+    const cs = s.compareSet ?? [];
+    const nextOf = (id: string | null): string | null => {
+      if (s.order.length === 0) return id;
+      const i = id ? s.order.indexOf(id) : -1;
+      return s.order[(i + 1 + s.order.length) % s.order.length] ?? id;
+    };
+    const L = ok(s.sbsLeft) ? s.sbsLeft : (cs[0] ?? s.activeId ?? s.order[0] ?? null);
+    const R =
+      ok(s.sbsRight) && s.sbsRight !== L ? s.sbsRight : (cs[1] ?? nextOf(L) ?? L);
+    set({
+      compareMode,
+      sbsLeft: L,
+      sbsRight: R,
+      compareSet: L && R ? [L, R] : s.compareSet,
+    });
+  },
   setCompareFlickerMs: (ms) =>
     set({ compareFlickerMs: Math.max(100, Math.round(ms)) }),
   setCompareAB: (ab) => set({ compareAB: ab }),
+
+  startSideBySide: () => {
+    const s = get();
+    const L = s.activeId ?? s.order[0] ?? null;
+    if (!L) {
+      s.setStatus("open an image first to compare");
+      return;
+    }
+    const i = s.order.indexOf(L);
+    const R = s.order[(i + 1) % s.order.length] ?? L;
+    set({
+      compareMode: "sidebyside",
+      compareSet: [L, R],
+      sbsLeft: L,
+      sbsRight: R,
+      sbsActive: "L",
+      captureMode: "none",
+      selectedMeasure: null,
+      compareAB: null,
+    });
+  },
+
+  setSbsPane: (pane, id) => {
+    const s = get();
+    if (!s.images[id]) return;
+    const L = pane === "L" ? id : s.sbsLeft;
+    const R = pane === "R" ? id : s.sbsRight;
+    set({
+      sbsLeft: L,
+      sbsRight: R,
+      sbsActive: pane,
+      compareSet: L && R ? [L, R] : s.compareSet,
+    });
+  },
+
+  stepSbs: (pane, delta) => {
+    const s = get();
+    const cur = pane === "L" ? s.sbsLeft : s.sbsRight;
+    if (!cur || s.order.length === 0) return;
+    const i = s.order.indexOf(cur);
+    const n = s.order.length;
+    get().setSbsPane(pane, s.order[((i + delta) % n + n) % n]);
+  },
+
+  setSbsActive: (pane) => set({ sbsActive: pane }),
+  setSbsLinked: (sbsLinked) => set({ sbsLinked }),
 
   cycleImage: (dir) => {
     const { order, activeId } = get();
