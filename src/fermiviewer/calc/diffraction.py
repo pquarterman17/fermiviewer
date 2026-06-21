@@ -282,6 +282,7 @@ def simulate(
     spot_sigma: float = 3,
     scattering_model: str = "fe",
     debye_waller_B: float | None = None,  # noqa: N803 — B is the physics symbol
+    phase: Phase | None = None,
 ) -> SimResult:
     """Kinematic zone-axis pattern (port of simulateDiffraction.m).
 
@@ -315,7 +316,9 @@ def simulate(
         debye_waller_B: isotropic B in A^2, or ``-1.0`` for per-element
             defaults, or ``None`` (default) to disable thermal damping.
     """
-    phase = find_phase(phase_name)
+    # an explicit Phase (e.g. a custom/CIF phase from the registry) wins;
+    # otherwise resolve the name against the built-in database
+    phase = phase if phase is not None else find_phase(phase_name)
     lam = float(electron_wavelength(acc_voltage))
     a_star, b_star, c_star = _lattice_vectors(phase)
 
@@ -423,6 +426,7 @@ def index_spots(
     max_hkl: int = 5,
     phases: list[str] | None = None,
     top_n: int = 5,
+    extra_phases: list[Phase] | None = None,
 ) -> list[IndexCandidate]:
     """Match measured spots to database phases (port of indexDiffraction.m).
 
@@ -444,7 +448,7 @@ def index_spots(
             d_meas = (lam * camera_length * 1e7) / (r * pixel_size * 1e7)
     valid = np.isfinite(d_meas) & (r > 0)
 
-    db = list(PHASES)
+    db = list(PHASES) + list(extra_phases or [])  # custom/CIF phases participate
     if phases:
         sel = [p for p in db if p.name in phases]
         db = sel or db

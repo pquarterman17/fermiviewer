@@ -17,6 +17,7 @@ from fermiviewer.calc.crystal import PHASES
 from fermiviewer.calc.eds import assign_elements, detect_peaks, line_energy
 from fermiviewer.calc.eds_maps import composition_profile, element_map
 from fermiviewer.calc.eels_quant import elnes
+from fermiviewer.calc.phase_registry import registry
 from fermiviewer.calc.tomo import back_project
 from fermiviewer.datastruct import DataKind
 from fermiviewer.models import ImageMeta
@@ -179,15 +180,26 @@ class SimulateRequest(BaseModel):
     min_intensity: float = 0.01
     spot_sigma: float = 3.0
     parent_image_id: str | None = None        # register as derived of this DP
+    # "fe" (Doyle–Turner, default) or "z" (atomic-number proxy)
+    scattering_model: str = "fe"
+    # isotropic Debye–Waller B (Å²); -1 → per-element defaults; None → off
+    debye_waller_B: float | None = None  # noqa: N815 — B is the physics symbol
 
 
 @router.get("/diffraction/phases")
 def diffraction_phases() -> dict:
-    """Return the list of phases in the built-in database (A8 UI)."""
+    """Phases for the A8 UI: built-in database + imported/custom phases, each
+    flagged so the UI can badge custom ones."""
+    builtin = {p.name for p in PHASES}
     return {
         "phases": [
-            {"name": p.name, "formula": p.formula, "category": p.category}
-            for p in PHASES
+            {
+                "name": p.name,
+                "formula": p.formula,
+                "category": p.category,
+                "custom": p.name not in builtin,
+            }
+            for p in registry.all()
         ]
     }
 
@@ -199,6 +211,8 @@ def analyze_simulate(req: SimulateRequest) -> dict:
     Returns the rendered image (registered as a derived image when
     parent_image_id is given) plus the spot list for overlay rendering.
     """
+    # resolve against the registry so imported/custom phases simulate too
+    phase = registry.find(req.phase_name)
     try:
         result = diff.simulate(
             req.phase_name,
@@ -210,6 +224,9 @@ def analyze_simulate(req: SimulateRequest) -> dict:
             max_hkl=req.max_hkl,
             min_intensity=req.min_intensity,
             spot_sigma=req.spot_sigma,
+            scattering_model=req.scattering_model,
+            debye_waller_B=req.debye_waller_B,
+            phase=phase,
         )
     except (KeyError, ValueError) as e:
         raise HTTPException(422, str(e)) from None

@@ -24,6 +24,7 @@ from fermiviewer.calc.eels_advanced import (
     svd,
 )
 from fermiviewer.calc.eels_quant import ElementEdge, quantify, quantify_map
+from fermiviewer.calc.phase_registry import registry as _phase_registry
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.models import ImageMeta
 from fermiviewer.session import UnknownImageError, store
@@ -460,6 +461,7 @@ def diffraction_index(req: IndexRequest) -> dict:
         acc_voltage=req.acc_voltage_kv,
         tolerance=req.tolerance,
         top_n=req.top_n,
+        extra_phases=list(_phase_registry.custom),  # imported/CIF phases
     )
 
     # Re-derive centre and measured radii so the frontend can draw matched
