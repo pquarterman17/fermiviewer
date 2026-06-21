@@ -25,6 +25,15 @@ class ParamError(ValueError):
     """Raised when supplied params don't satisfy an op's schema."""
 
 
+def _to_bool(value: Any) -> bool:
+    """Coerce a value to bool, treating the common JSON/string falsy spellings
+    ("false"/"no"/"0"/"off"/"") as False — plain ``bool("false")`` is True,
+    a footgun for params arriving as strings over the wire."""
+    if isinstance(value, str):
+        return value.strip().lower() not in ("", "false", "no", "0", "off")
+    return bool(value)
+
+
 @dataclass(frozen=True)
 class OpParam:
     """One operation parameter's schema: type + default + bounds/choices.
@@ -43,7 +52,7 @@ class OpParam:
     def coerce(self, name: str, value: Any) -> Any:
         """Validate + coerce a supplied value to this param's type/bounds."""
         try:
-            out = bool(value) if self.ptype is bool else self.ptype(value)
+            out = _to_bool(value) if self.ptype is bool else self.ptype(value)
         except (TypeError, ValueError):
             raise ParamError(
                 f"param '{name}': cannot coerce {value!r} to {self.ptype.__name__}"

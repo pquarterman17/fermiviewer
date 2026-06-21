@@ -87,6 +87,19 @@ def test_unknown_op_and_bad_params_raise() -> None:
         ops.run("bin", ds, {"mode": "median"})  # not an allowed choice
 
 
+def test_bool_param_coercion_handles_string_falsy() -> None:
+    from fermiviewer.ops.base import OpParam
+
+    p = OpParam(bool, default=False)
+    # the footgun: plain bool("false") is True — these must read as False
+    for falsy in ("false", "False", "no", "0", "off", "", " FALSE "):
+        assert p.coerce("flag", falsy) is False, falsy
+    for truthy in ("true", "yes", "1", "on", 1, True):
+        assert p.coerce("flag", truthy) is True, truthy
+    assert p.coerce("flag", 0) is False
+    assert p.coerce("flag", False) is False
+
+
 def test_spectrum_input_is_rejected_by_raster_ops() -> None:
     spec = DataStruct(
         data=np.arange(6, dtype=np.float64),
