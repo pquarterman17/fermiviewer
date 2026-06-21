@@ -13,6 +13,7 @@ from pathlib import Path
 from fermiviewer.datastruct import DataStruct
 from fermiviewer.io.bcf import load_bcf
 from fermiviewer.io.dm import load_dm
+from fermiviewer.io.emd import load_emd
 from fermiviewer.io.images import load_image, load_tiff
 from fermiviewer.io.mrc import load_mrc
 from fermiviewer.io.nanoscope import is_nanoscope, load_nanoscope
@@ -28,6 +29,7 @@ class UnsupportedFormatError(ValueError):
 _LOADERS: dict[str, Callable[[Path], DataStruct]] = {
     ".dm3": load_dm,
     ".dm4": load_dm,
+    ".emd": load_emd,  # Velox + NCEM EMD (HDF5)
     ".bcf": load_bcf,
     ".ser": load_ser,
     ".mrc": load_mrc,
