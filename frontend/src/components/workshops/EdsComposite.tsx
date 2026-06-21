@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { fetchData16, type Raster16 } from "../../lib/api";
+import { compositeChannels } from "../../lib/composite";
 
 export interface Channel {
   id: string; // derived at%-map image id
@@ -12,7 +13,12 @@ export interface Channel {
   color: string;
   intensity: number; // 0–2
   visible: boolean;
+  /** per-channel colour ramp (#6): undefined/"solid" → flat colour tint */
+  cmap?: string;
 }
+
+// per-channel ramp options: flat colour, or a named LUT (tint like Velox/GMS)
+const CHANNEL_CMAPS = ["solid", "gray", "viridis", "inferno", "fire", "ice"];
 
 /** Classic EDS overlay palette, assigned in element order. */
 export const EDS_PALETTE = [
@@ -27,15 +33,6 @@ export const EDS_PALETTE = [
 ];
 
 const VIEW_W = 300;
-
-function hexToRgb(hex: string): [number, number, number] {
-  const c = hex.replace("#", "");
-  return [
-    parseInt(c.slice(0, 2), 16) || 0,
-    parseInt(c.slice(2, 4), 16) || 0,
-    parseInt(c.slice(4, 6), 16) || 0,
-  ];
-}
 
 export default function EdsComposite({
   channels,
@@ -65,31 +62,13 @@ export default function EdsComposite({
           }),
         );
         if (stale) return;
-        const { w, h } = rasters[0];
-        const acc = new Float32Array(w * h * 3);
-        channels.forEach((c, k) => {
-          if (!c.visible) return;
-          const { data } = rasters[k];
-          const [r, g, b] = hexToRgb(c.color);
-          const gain = c.intensity / 65535;
-          for (let i = 0; i < w * h; i++) {
-            const v = data[i] * gain;
-            acc[i * 3] += v * r;
-            acc[i * 3 + 1] += v * g;
-            acc[i * 3 + 2] += v * b;
-          }
-        });
-        const img = new ImageData(w, h);
-        for (let i = 0; i < w * h; i++) {
-          img.data[i * 4] = Math.min(255, acc[i * 3]);
-          img.data[i * 4 + 1] = Math.min(255, acc[i * 3 + 1]);
-          img.data[i * 4 + 2] = Math.min(255, acc[i * 3 + 2]);
-          img.data[i * 4 + 3] = 255;
-        }
+        const { w, h, rgba } = compositeChannels(rasters, channels);
         const cv = canvasRef.current;
         if (!cv) return;
         cv.width = w;
         cv.height = h;
+        const img = new ImageData(w, h);
+        img.data.set(rgba);
         cv.getContext("2d")!.putImageData(img, 0, 0);
         setDims({ w, h });
         setErr(null);
@@ -157,10 +136,23 @@ export default function EdsComposite({
           <input
             type="color"
             value={c.color}
-            title="channel colour"
+            title="channel colour (solid ramp)"
+            disabled={!!c.cmap && c.cmap !== "solid"}
             style={{ width: 28, height: 20, padding: 0, border: "none" }}
             onChange={(e) => set(i, { color: e.target.value })}
           />
+          <select
+            value={c.cmap ?? "solid"}
+            title="channel colour ramp"
+            style={{ width: 64 }}
+            onChange={(e) => set(i, { cmap: e.target.value })}
+          >
+            {CHANNEL_CMAPS.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
           <span className="k" style={{ width: 24 }}>
             {c.el}
           </span>
