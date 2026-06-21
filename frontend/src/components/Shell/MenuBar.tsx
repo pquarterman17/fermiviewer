@@ -164,6 +164,12 @@ export default function MenuBar({
         (d.pts[1].x - d.pts[0].x) * w,
         (d.pts[1].y - d.pts[0].y) * h,
       );
+      // guard BEFORE the dialog so a zero-length line doesn't waste the
+      // user's input and then silently no-op
+      if (lenPx <= 0) {
+        store.setStatus("calibration line has zero length — redraw it");
+        return;
+      }
       const v = await askParams(`Calibrate (measured ${lenPx.toFixed(1)} px)`, [
         num("len", "Known physical length", 1),
         {
@@ -174,7 +180,7 @@ export default function MenuBar({
           options: ["nm", "µm", "Å", "pm", "mm"],
         },
       ]);
-      if (!v || lenPx <= 0) return;
+      if (!v) return;
       applyCalibration(id, (v["len"] as number) / lenPx, v["unit"] as string)
         .then((r) => {
           useViewer.setState((s) => ({

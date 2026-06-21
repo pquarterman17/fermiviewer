@@ -587,4 +587,34 @@ describe("side-by-side compare", () => {
     useViewer.getState().setSbsActive("R");
     expect(useViewer.getState().sbsActive).toBe("R");
   });
+
+  it("startSideBySide needs >=2 images (no-op with 1)", () => {
+    useViewer.setState(initialState, true);
+    useViewer.getState().ingest([meta("only")]);
+    useViewer.getState().startSideBySide();
+    const s = useViewer.getState();
+    expect(s.compareSet).toBeNull();
+    expect(s.compareMode).not.toBe("sidebyside");
+  });
+
+  it("startCompare and exitCompare reset compareMode to split", () => {
+    useViewer.getState().setActive("a");
+    useViewer.getState().startSideBySide();
+    expect(useViewer.getState().compareMode).toBe("sidebyside");
+    // a fresh multi-image compare must not inherit the stale sidebyside mode
+    useViewer.getState().startCompare(["a", "b", "c"]);
+    expect(useViewer.getState().compareMode).toBe("split");
+    useViewer.getState().setCompareMode("sidebyside");
+    useViewer.getState().exitCompare();
+    expect(useViewer.getState().compareMode).toBe("split");
+    expect(useViewer.getState().compareSet).toBeNull();
+  });
+
+  it("closeImage drops a side-by-side pane ref that held the closed image", async () => {
+    useViewer.getState().setActive("a");
+    useViewer.getState().startSideBySide(); // L=a, R=b
+    await useViewer.getState().closeImage("a");
+    expect(useViewer.getState().sbsLeft).toBeNull();
+    expect(useViewer.getState().sbsRight).toBe("b");
+  });
 });

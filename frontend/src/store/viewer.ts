@@ -976,10 +976,19 @@ export const useViewer = create<ViewerState>((set, get) => ({
 
   startCompare: (ids) => {
     if (ids.length < 2) return;
-    set({ compareSet: ids, captureMode: "none", selectedMeasure: null, compareAB: null });
+    // reset to the linked "split" mode so a fresh multi-image compare never
+    // lands in a stale "sidebyside" left over from a prior session
+    set({
+      compareSet: ids,
+      compareMode: "split",
+      captureMode: "none",
+      selectedMeasure: null,
+      compareAB: null,
+    });
   },
 
-  exitCompare: () => set({ compareSet: null, compareAB: null }),
+  exitCompare: () =>
+    set({ compareSet: null, compareAB: null, compareMode: "split" }),
   setCompareMode: (compareMode) => {
     if (compareMode !== "sidebyside") {
       set({ compareMode });
@@ -998,7 +1007,9 @@ export const useViewer = create<ViewerState>((set, get) => ({
     };
     const L = ok(s.sbsLeft) ? s.sbsLeft : (cs[0] ?? s.activeId ?? s.order[0] ?? null);
     const R =
-      ok(s.sbsRight) && s.sbsRight !== L ? s.sbsRight : (cs[1] ?? nextOf(L) ?? L);
+      ok(s.sbsRight) && s.sbsRight !== L
+        ? s.sbsRight
+        : ((ok(cs[1]) ? cs[1] : null) ?? nextOf(L) ?? L);
     set({
       compareMode,
       sbsLeft: L,
@@ -1012,11 +1023,11 @@ export const useViewer = create<ViewerState>((set, get) => ({
 
   startSideBySide: () => {
     const s = get();
-    const L = s.activeId ?? s.order[0] ?? null;
-    if (!L) {
-      s.setStatus("open an image first to compare");
+    if (s.order.length < 2) {
+      s.setStatus("open at least 2 images to compare side-by-side");
       return;
     }
+    const L = s.activeId ?? s.order[0];
     const i = s.order.indexOf(L);
     const R = s.order[(i + 1) % s.order.length] ?? L;
     set({
@@ -1048,8 +1059,13 @@ export const useViewer = create<ViewerState>((set, get) => ({
     const s = get();
     const cur = pane === "L" ? s.sbsLeft : s.sbsRight;
     if (!cur || s.order.length === 0) return;
-    const i = s.order.indexOf(cur);
     const n = s.order.length;
+    const i = s.order.indexOf(cur);
+    // pane's image no longer in order (e.g. closed) → reset to the first
+    if (i === -1) {
+      get().setSbsPane(pane, s.order[0]);
+      return;
+    }
     get().setSbsPane(pane, s.order[((i + delta) % n + n) % n]);
   },
 
@@ -1076,6 +1092,10 @@ export const useViewer = create<ViewerState>((set, get) => ({
       const activeId =
         s.activeId === id ? (order[order.length - 1] ?? null) : s.activeId;
       const compareSet = s.compareSet?.filter((c) => c !== id) ?? null;
+      // if the closed image sat in a side-by-side pane, drop the dangling ref
+      // (the pane reseeds from `order` when compare is re-entered)
+      const sbsLeft = s.sbsLeft === id ? null : s.sbsLeft;
+      const sbsRight = s.sbsRight === id ? null : s.sbsRight;
       // drop the closed image's per-image state so these maps don't grow
       // unbounded across an open/close-heavy session (and evict its
       // persisted view from localStorage)
@@ -1105,6 +1125,8 @@ export const useViewer = create<ViewerState>((set, get) => ({
         activeId,
         selected: s.selected.filter((x) => x !== id),
         compareSet: compareSet && compareSet.length >= 2 ? compareSet : null,
+        sbsLeft,
+        sbsRight,
         views,
         display,
         history,

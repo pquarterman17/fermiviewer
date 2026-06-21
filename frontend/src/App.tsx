@@ -164,7 +164,15 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return;
+      // never hijack keys (Del closing files, sbs ←/→/Tab, capture shortcuts)
+      // while a form control or rich-text editor has focus
+      if (
+        t.tagName === "INPUT" ||
+        t.tagName === "TEXTAREA" ||
+        t.tagName === "SELECT" ||
+        t.isContentEditable
+      )
+        return;
       const s = useViewer.getState();
       const mod = e.metaKey || e.ctrlKey;
 
@@ -309,8 +317,13 @@ export default function App() {
           // library panel. closeImage is session-only — the file on disk
           // stays — so this just unloads, matching the right-click "Close".
           if (s.activeId && s.selectedMulti.length > 0) {
+            const prof = useStageInfo.getState().profile;
             for (const mid of s.selectedMulti) {
               s.removeMeasure(s.activeId, mid);
+              // clear the dock chart if its profile measure was deleted
+              if (prof?.measureId === mid) {
+                useStageInfo.getState().setProfile(null);
+              }
             }
             s.setSelectedMulti([]);
           } else if (s.activeId && s.selectedMeasure) {
@@ -326,7 +339,11 @@ export default function App() {
               : s.activeId
                 ? [s.activeId]
                 : [];
-            for (const id of ids) void s.closeImage(id);
+            // serialize: closeImage is async; closing sequentially avoids the
+            // activeId flicker / double-close races of parallel dispatch
+            void (async () => {
+              for (const id of ids) await s.closeImage(id);
+            })().catch((err: Error) => s.setStatus(err.message));
           }
           break;
         case "Escape":

@@ -506,6 +506,13 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       setCaptureMode("none");
       return;
     }
+    // reject a zero/near-zero line (same-pixel clicks, or H/V snap collapse)
+    // so we never leave an invisible, un-calibratable phantom measure
+    if (Math.hypot(ptsImg[1].x - ptsImg[0].x, ptsImg[1].y - ptsImg[0].y) < 1) {
+      setStatus("calibration line too short — click two distinct points");
+      setCaptureMode("none");
+      return;
+    }
     const pts = ptsImg.map((p) => ({ x: p.x / imgSize.w, y: p.y / imgSize.h }));
     const mid = addMeasure(activeId, { kind: "distance", pts });
     setCaptureMode("none");
