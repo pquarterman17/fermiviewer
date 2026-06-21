@@ -35,9 +35,10 @@ jobs:
             label: windows
             bundles: nsis
             installer-glob: src-tauri/target/release/bundle/nsis/*.exe
-            # updater bundle (+ .sig) for auto-update; signed via the
-            # TAURI_SIGNING_* secrets on the build step
-            updater-glob: src-tauri/target/release/bundle/nsis/*.nsis.zip*
+            # Tauri v2 NSIS signs the installer .exe itself (no .nsis.zip);
+            # the .exe is attached via installer-glob, so the updater only
+            # needs its sibling .sig. Signed via the TAURI_SIGNING_* secrets.
+            updater-glob: src-tauri/target/release/bundle/nsis/*-setup.exe.sig
             server-archive: fv-server-win64.zip
           - os: macos-latest
             label: macos
@@ -199,26 +200,16 @@ jobs:
           version="${TAG#v}"
           base="https://github.com/$REPO/releases/download/$TAG"
           assets=$(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name')
-          nsis=$(printf '%s\n' "$assets" | grep -E '\.nsis\.zip$' | head -1 || true)
-          appmac=$(printf '%s\n' "$assets" | grep -E '\.app\.tar\.gz$' | head -1 || true)
-          mkdir -p sigs
-          platforms='{}'
-          if [ -n "$nsis" ]; then
-            gh release download "$TAG" --repo "$REPO" --pattern "${nsis}.sig" --dir sigs
-            sig=$(cat "sigs/${nsis}.sig")
-            platforms=$(printf '%s' "$platforms" | jq --arg s "$sig" --arg u "$base/$nsis" \
-              '. + {"windows-x86_64":{signature:$s,url:$u}}')
+          # Tauri v2 NSIS: the updater artifact IS the installer .exe, signed
+          # with a sibling .sig (no .nsis.zip). Auto-update is Windows-only.
+          nsis=$(printf '%s\n' "$assets" | grep -E '\-setup\.exe$' | head -1 || true)
+          if [ -z "$nsis" ]; then
+            echo "::error::no -setup.exe found on $TAG"; exit 1
           fi
-          if [ -n "$appmac" ]; then
-            gh release download "$TAG" --repo "$REPO" --pattern "${appmac}.sig" --dir sigs
-            sig=$(cat "sigs/${appmac}.sig")
-            platforms=$(printf '%s' "$platforms" | jq --arg s "$sig" --arg u "$base/$appmac" \
-              '. + {"darwin-aarch64":{signature:$s,url:$u}}')
-          fi
-          if [ "$platforms" = '{}' ]; then
-            echo "::error::no signed updater artifacts found on $TAG"; exit 1
-          fi
-          jq -n --arg v "$version" --argjson p "$platforms" \
-            '{version:$v, pub_date:(now|todate), platforms:$p}' > latest.json
+          gh release download "$TAG" --repo "$REPO" --pattern "${nsis}.sig" --dir sigs
+          sig=$(cat "sigs/${nsis}.sig")
+          jq -n --arg v "$version" --arg s "$sig" --arg u "$base/$nsis" \
+            '{version:$v, pub_date:(now|todate),
+              platforms:{"windows-x86_64":{signature:$s,url:$u}}}' > latest.json
           echo "--- latest.json ---"; cat latest.json
           gh release upload "$TAG" latest.json --repo "$REPO" --clobber
