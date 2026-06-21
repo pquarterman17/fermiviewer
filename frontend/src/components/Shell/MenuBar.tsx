@@ -1388,6 +1388,21 @@ export default function MenuBar({
         },
       },
       {
+        // Manual fallback for the desktop auto-updater: opens the latest
+        // GitHub Release (the runnable installer lives there). target=_blank
+        // → new tab in the browser app, system browser in the Tauri shell;
+        // the app window never navigates away.
+        label: "Check for Updates…",
+        action: () => {
+          window.open(
+            "https://github.com/pquarterman17/fermiviewer/releases/latest",
+            "_blank",
+            "noopener",
+          );
+          store.setStatus("opened the latest release page in your browser");
+        },
+      },
+      {
         label: "Command Palette",
         shortcut: "⌘K",
         action: () => store.setCmdk(true),
