@@ -21,7 +21,7 @@ import {
   measureRoi,
   type Raster16,
 } from "../../lib/api";
-import { buildLut } from "../../lib/colormaps";
+import { buildLabelLut, buildLut } from "../../lib/colormaps";
 import { autoWindow } from "../../lib/display";
 import {
   boxProfileLine,
@@ -294,8 +294,27 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
 
   // ── colormap LUT upload ──
   useEffect(() => {
-    glRef.current?.setLut(buildLut(display.cmap));
+    const gl = glRef.current;
+    if (!gl) return;
+    if (display.cmap === "label") {
+      // discrete per-grain palette sized to this map's max label id
+      const vmax = rasterRef.current?.vmax ?? 1;
+      gl.setLut(buildLabelLut(Math.round(vmax) + 1));
+    } else {
+      gl.setLut(buildLut(display.cmap));
+    }
   }, [display.cmap, imgSize]);
+
+  // grain/label maps display with a discrete per-grain palette by default
+  // (a continuous LUT makes 50+ grains look like one colour family). Only
+  // auto-applies on a fresh/default cmap — never overrides a manual pick.
+  useEffect(() => {
+    if (!isGrainMap || !activeId) return;
+    const cur = useViewer.getState().display[activeId]?.cmap;
+    if (cur === undefined || cur === "gray") {
+      setDisplay(activeId, { cmap: "label" }, { silent: true });
+    }
+  }, [isGrainMap, activeId, setDisplay]);
 
   // ── intensity transform (checklist I): re-upload a transformed
   //    texture; the raw raster stays untouched for readouts ──

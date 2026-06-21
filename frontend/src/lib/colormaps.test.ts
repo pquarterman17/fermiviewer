@@ -4,7 +4,12 @@
 
 import { describe, expect, it } from "vitest";
 
-import { buildLut, setCustomColormap } from "./colormaps";
+import {
+  buildLabelLut,
+  buildLut,
+  labelColor,
+  setCustomColormap,
+} from "./colormaps";
 
 describe("buildLut", () => {
   it("gray is an identity ramp with opaque alpha", () => {
@@ -53,5 +58,31 @@ describe("setCustomColormap", () => {
 
   it("skips unparseable entries but keeps valid ones", () => {
     expect(setCustomColormap("#000, nope, #ffffff")).toBe(true);
+  });
+});
+
+describe("buildLabelLut / labelColor (discrete grain palette)", () => {
+  it("label 0 is black; adjacent labels are coloured and distinct", () => {
+    expect(labelColor(0)).toEqual([0, 0, 0]);
+    expect(labelColor(1)).not.toEqual([0, 0, 0]);
+    expect(labelColor(1)).not.toEqual(labelColor(2));
+    expect(labelColor(2)).not.toEqual(labelColor(3));
+  });
+
+  it("each label id maps to its own flat band in the LUT", () => {
+    const maxLabel = 4; // labels 0..4
+    const lut = buildLabelLut(maxLabel + 1);
+    expect(lut.length).toBe(256 * 4);
+    for (let k = 0; k <= maxLabel; k++) {
+      const i = Math.round((k / maxLabel) * 255) * 4;
+      expect([lut[i], lut[i + 1], lut[i + 2]]).toEqual(labelColor(k));
+    }
+    expect([lut[0], lut[1], lut[2]]).toEqual([0, 0, 0]); // id 0 = black
+  });
+
+  it('buildLut("label") returns a discrete default cycle', () => {
+    const lut = buildLut("label");
+    expect(lut.length).toBe(256 * 4);
+    expect([lut[0], lut[1], lut[2]]).toEqual([0, 0, 0]); // background black
   });
 });

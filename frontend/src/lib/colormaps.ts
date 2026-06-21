@@ -10,8 +10,11 @@ export type ColormapName =
   | "fire"
   | "ice"
   | "redblue"
+  | "label"
   | "custom";
 
+// "label" is intentionally NOT offered as a manual pick — it is auto-applied
+// to grain/label maps (it needs the per-image label count) via buildLabelLut.
 export const COLORMAP_NAMES: ColormapName[] = [
   "gray",
   "invert",
@@ -87,6 +90,10 @@ const STOPS: Record<ColormapName, Stop[]> = {
     [0, 0, 0],
     [255, 255, 255],
   ], // placeholder — resolved from localStorage at build time
+  label: [
+    [0, 0, 0],
+    [255, 255, 255],
+  ], // placeholder — buildLut short-circuits "label" to buildLabelLut
 };
 
 function hexToStop(h: string): Stop | null {
@@ -125,8 +132,60 @@ function customStops(): Stop[] {
   }
 }
 
+/** HSV (h 0–360, s/v 0–1) → rgb 0–255. */
+function hsvToRgb(h: number, s: number, v: number): Stop {
+  const c = v * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = v - c;
+  const [r, g, b] =
+    h < 60
+      ? [c, x, 0]
+      : h < 120
+        ? [x, c, 0]
+        : h < 180
+          ? [0, c, x]
+          : h < 240
+            ? [0, x, c]
+            : h < 300
+              ? [x, 0, c]
+              : [c, 0, x];
+  return [
+    Math.round((r + m) * 255),
+    Math.round((g + m) * 255),
+    Math.round((b + m) * 255),
+  ];
+}
+
+/** Distinct flat colour for an integer label id (0 = black background/grain
+ *  boundary; ≥1 = golden-angle-spaced hue so adjacent ids differ maximally). */
+export function labelColor(k: number): Stop {
+  if (k <= 0) return [0, 0, 0];
+  const hue = ((k - 1) * 137.508) % 360; // golden angle → max separation
+  const val = 0.78 + 0.2 * (((k - 1) % 3) / 2); // nudge value so cycles differ
+  return hsvToRgb(hue, 0.7, val);
+}
+
+/** 256×RGBA8 LUT of FLAT colour bands, one per integer label id, for grain/
+ *  label maps (raster values are integer ids in 0..nLabels-1). LUT index i
+ *  maps back to label k = round(t·maxLabel), so each id lands on its band. */
+export function buildLabelLut(nLabels: number): Uint8Array {
+  const maxLabel = Math.max(1, Math.floor(nLabels) - 1);
+  const out = new Uint8Array(256 * 4);
+  for (let i = 0; i < 256; i++) {
+    const [r, g, b] = labelColor(Math.round((i / 255) * maxLabel));
+    out[i * 4] = r;
+    out[i * 4 + 1] = g;
+    out[i * 4 + 2] = b;
+    out[i * 4 + 3] = 255;
+  }
+  return out;
+}
+
 /** 256×1 RGBA8 LUT for upload as a texture. */
 export function buildLut(name: ColormapName): Uint8Array {
+  // "label" needs the per-image count; this generic path uses a default cycle
+  // (used by code that calls buildLut(display.cmap) without the label count)
+  if (name === "label") return buildLabelLut(24);
   const stops = name === "custom" ? customStops() : STOPS[name];
   const out = new Uint8Array(256 * 4);
   const n = stops.length - 1;

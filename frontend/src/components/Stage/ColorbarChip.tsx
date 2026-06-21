@@ -58,6 +58,8 @@ export default function ColorbarChip() {
   }, [show, display.cmap]);
 
   if (!show || !raster) return null;
+  // a discrete grain/label map has no continuous value scale → no colorbar
+  if (display.cmap === "label") return null;
   const span = raster.vmax - raster.vmin || 1;
   const lo = raster.vmin + display.lo * span;
   const hi = raster.vmin + display.hi * span;
