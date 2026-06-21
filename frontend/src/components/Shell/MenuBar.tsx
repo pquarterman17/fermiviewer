@@ -516,6 +516,17 @@ export default function MenuBar({
         },
       },
       {
+        label: "Copy as Vector (SVG)",
+        disabled: !store.activeId,
+        action: () => {
+          // true-vector SVG where the paste target supports it (crisp text at
+          // any scale); transparently falls back to PNG (e.g. in Firefox)
+          copyActive({ format: "png", scale: 1, vector: true })
+            .then(() => store.setStatus("copied to clipboard (vector SVG)"))
+            .catch((e: Error) => store.setStatus(`clipboard: ${e.message}`));
+        },
+      },
+      {
         label: `Export GIF… (${store.selected.length} frames)`,
         disabled: store.selected.length < 2,
         action: () => {

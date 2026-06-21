@@ -174,4 +174,29 @@ describe("copyActive", () => {
       .mock.calls[0] as [string, Record<string, unknown>];
     expect(opts.include).toEqual([]);
   });
+
+  it("vector mode requests SVG and writes an image/svg+xml ClipboardItem", async () => {
+    await copyActive({ format: "png", scale: 1, vector: true });
+    const [, opts] = (exportImage as unknown as { mock: { calls: unknown[][] } })
+      .mock.calls[0] as [string, Record<string, unknown>];
+    expect(opts.format).toBe("svg");
+    const item = ((write.mock.calls as unknown[][])[0][0] as {
+      items: Record<string, unknown>;
+    }[])[0];
+    expect(Object.keys(item.items)).toContain("image/svg+xml");
+  });
+
+  it("falls back to PNG when the SVG clipboard write is rejected", async () => {
+    write.mockRejectedValueOnce(new Error("svg unsupported")); // first (svg) write
+    await copyActive({ format: "png", scale: 1, vector: true });
+    const calls = (exportImage as unknown as { mock: { calls: unknown[][] } }).mock
+      .calls as [string, Record<string, unknown>][];
+    expect(calls.length).toBe(2);
+    expect(calls[0][1].format).toBe("svg");
+    expect(calls[1][1].format).toBe("png");
+    const last = ((write.mock.calls as unknown[][])[1][0] as {
+      items: Record<string, unknown>;
+    }[])[0];
+    expect(Object.keys(last.items)).toContain("image/png");
+  });
 });

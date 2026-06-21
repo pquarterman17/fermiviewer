@@ -19,6 +19,9 @@ export interface ExportNowOpts {
   /** report caption burned into a band below the figure (WS4c). Already
    *  composed (user text + optional metadata line); empty/undefined → none */
   caption?: string;
+  /** copy a true-vector SVG to the clipboard (falls back to PNG when the
+   *  browser rejects image/svg+xml, e.g. Firefox). Only used by copyActive. */
+  vector?: boolean;
 }
 
 /** Build the /export request (id + options) from current store state.
@@ -138,7 +141,21 @@ export async function previewActive(opts: ExportNowOpts): Promise<Blob> {
 export async function copyActive(
   opts: ExportNowOpts = { format: "png", scale: 1 },
 ): Promise<void> {
-  const { id, options } = buildExportRequest(opts);
+  // vector path: copy a true SVG (the SVG export embeds the pixels as a base64
+  // PNG, so it pastes as an image everywhere AND stays vector where supported)
+  if (opts.vector) {
+    try {
+      const { id, options } = buildExportRequest({ ...opts, format: "svg" });
+      const { blob } = await exportImage(id, options);
+      await navigator.clipboard.write([
+        new ClipboardItem({ "image/svg+xml": blob }),
+      ]);
+      return;
+    } catch {
+      // browser rejected SVG on the clipboard (Firefox) → fall back to PNG
+    }
+  }
+  const { id, options } = buildExportRequest({ ...opts, format: "png" });
   const { blob } = await exportImage(id, options);
   await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
 }
