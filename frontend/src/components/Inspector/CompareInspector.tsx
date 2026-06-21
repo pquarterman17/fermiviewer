@@ -61,10 +61,10 @@ export default function CompareInspector() {
         {sideBySide && (
           <>
             <div className="fvd-meta-row" style={{ marginTop: 6 }}>
-              <span className="k">Zoom/pan</span>
+              <span className="k">Zoom</span>
               <button
                 className={`fvd-seg-btn${sbsLinked ? " active" : ""}`}
-                title="Link zoom/pan across both panes"
+                title="Link the zoom level across both panes (each pane still pans on its own)"
                 onClick={() => setSbsLinked(!sbsLinked)}
               >
                 {sbsLinked ? "🔗 Linked" : "Independent"}
@@ -86,7 +86,8 @@ export default function CompareInspector() {
             </div>
             <div className="fvd-text-faint" style={{ fontSize: 11, marginTop: 6 }}>
               Click a side to focus it (cyan border); ◀ ▶ or ←/→ scroll it,
-              Tab switches sides. The other side stays frozen.
+              Tab switches sides. The other side stays frozen. With zoom
+              linked, zooming one pane matches the other's magnification.
             </div>
           </>
         )}

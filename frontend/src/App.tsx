@@ -148,6 +148,18 @@ export default function App() {
     return () => mq.removeEventListener("change", onChange);
   }, []);
 
+  // ── trap browser back/forward (mouse back button, ⌫ in old browsers) ──
+  // The app is a single-page view with no in-app navigation, so a "back"
+  // gesture unloads / "reloads" it (losing transient UI state). Push a
+  // sentinel history entry and re-push on every popstate so back/forward
+  // can't leave the app. Harmless in the desktop (pywebview/Tauri) shell.
+  useEffect(() => {
+    history.pushState(null, "", location.href);
+    const onPop = () => history.pushState(null, "", location.href);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
   // ── keyboard map (handoff §9) ──
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

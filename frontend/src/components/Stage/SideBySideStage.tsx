@@ -1,8 +1,12 @@
 // Side-by-side compare (MATLAB parity): two panes, each independently
 // scrollable through the loaded images. Click a pane to focus it (cyan
 // border) — the focused pane is what the ←/→ keys and ◀ ▶ buttons drive,
-// so the other pane stays frozen. Each pane has its own image dropdown,
-// scale bar, contrast/colormap, and (optionally linked) pan/zoom.
+// so the other pane stays frozen; Tab swaps focus. Each pane has its own
+// image dropdown, measurement overlay, scale bar, and contrast/colormap.
+//
+// Zoom is LINKED by default — wheel-zoom one pane and the other matches its
+// magnification (each keeps its own pan, so you can compare the same zoom at
+// different regions). The 🔗 toggle unlocks it. Pan + fit are always per-pane.
 
 import { useEffect, useRef, useState } from "react";
 
@@ -10,12 +14,14 @@ import { GLRenderer } from "../../gl/render";
 import { fetchData16 } from "../../lib/api";
 import { buildLut } from "../../lib/colormaps";
 import { fitView, zoomAbout, type Size } from "../../lib/geometry";
+import { nextSbsViews, type ViewChange } from "../../lib/sbsView";
 import {
   DEFAULT_DISPLAY,
   useViewer,
   type SbsPane as Pane,
   type View,
 } from "../../store/viewer";
+import MeasureOverlay from "./MeasureOverlay";
 import ScaleBarOverlay from "./ScaleBarOverlay";
 
 const WHEEL_K = 0.0015;
@@ -28,20 +34,26 @@ export default function SideBySideStage() {
   const setSbsLinked = useViewer((s) => s.setSbsLinked);
   const exitCompare = useViewer((s) => s.exitCompare);
 
-  // Per-pane view. When linked, an update to one pane writes BOTH so the
-  // two stay in lock-step; when unlinked each keeps its own transform.
+  // Per-pane view. Refs mirror the state so the coupling math always reads
+  // the latest values regardless of React render timing.
   const [viewL, setViewL] = useState<View | null>(null);
   const [viewR, setViewR] = useState<View | null>(null);
+  const viewLRef = useRef<View | null>(null);
+  const viewRRef = useRef<View | null>(null);
 
-  const applyView = (pane: Pane, v: View) => {
-    if (sbsLinked) {
-      setViewL(v);
-      setViewR(v);
-    } else if (pane === "L") {
-      setViewL(v);
-    } else {
-      setViewR(v);
-    }
+  const applyView = (pane: Pane, v: View, kind: ViewChange) => {
+    const next = nextSbsViews(
+      pane,
+      v,
+      kind,
+      viewLRef.current,
+      viewRRef.current,
+      sbsLinked,
+    );
+    viewLRef.current = next.viewL;
+    viewRRef.current = next.viewR;
+    setViewL(next.viewL);
+    setViewR(next.viewR);
   };
 
   if (!sbsLeft || !sbsRight) {
@@ -59,20 +71,24 @@ export default function SideBySideStage() {
         pane="L"
         active={sbsActive === "L"}
         view={viewL}
-        onView={(v) => applyView("L", v)}
+        onView={(v, kind) => applyView("L", v, kind)}
       />
       <SbsPaneView
         id={sbsRight}
         pane="R"
         active={sbsActive === "R"}
         view={viewR}
-        onView={(v) => applyView("R", v)}
+        onView={(v, kind) => applyView("R", v, kind)}
       />
       <div className="fvd-glass fvd-compare-chip">
         Side-by-side
         <button
           className={`fvd-icon-btn${sbsLinked ? " active" : ""}`}
-          title={sbsLinked ? "Zoom/pan linked — click to unlink" : "Zoom/pan independent — click to link"}
+          title={
+            sbsLinked
+              ? "Zoom linked — click to unlock"
+              : "Zoom independent — click to link"
+          }
           onClick={() => setSbsLinked(!sbsLinked)}
         >
           {sbsLinked ? "🔗" : "⛓️‍💥"}
@@ -96,7 +112,7 @@ function SbsPaneView({
   pane: Pane;
   active: boolean;
   view: View | null;
-  onView: (v: View) => void;
+  onView: (v: View, kind: ViewChange) => void;
 }) {
   const images = useViewer((s) => s.images);
   const meta = images[id];
@@ -195,6 +211,7 @@ function SbsPaneView({
           img,
           vp,
         ),
+        "zoom",
       );
     };
     el.addEventListener("wheel", onWheel, { passive: false });
@@ -212,11 +229,14 @@ function SbsPaneView({
     const dx = e.clientX - dragRef.current.x;
     const dy = e.clientY - dragRef.current.y;
     dragRef.current = { x: e.clientX, y: e.clientY };
-    onView({
-      ...effView,
-      px: effView.px - dx / (effView.z * img.w),
-      py: effView.py - dy / (effView.z * img.h),
-    });
+    onView(
+      {
+        ...effView,
+        px: effView.px - dx / (effView.z * img.w),
+        py: effView.py - dy / (effView.z * img.h),
+      },
+      "pan",
+    );
   };
   const onPointerUp = (e: React.PointerEvent) => {
     dragRef.current = null;
@@ -263,9 +283,20 @@ function SbsPaneView({
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onDoubleClick={() => onView(fitView(img, vp))}
+        onDoubleClick={() => onView(fitView(img, vp), "fit")}
       >
         <canvas ref={canvasRef} />
+        {vp.w > 0 && (
+          <MeasureOverlay
+            imageId={id}
+            pixelSize={meta?.pixel_size ?? null}
+            pixelUnit={meta?.pixel_unit ?? "px"}
+            view={effView}
+            img={img}
+            vp={vp}
+            pending={null}
+          />
+        )}
         {meta?.pixel_size != null && vp.w > 0 && (
           <ScaleBarOverlay
             imageId={id}
