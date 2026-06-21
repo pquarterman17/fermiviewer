@@ -57,10 +57,20 @@ const LAYOUT_OPTS: [Prefs["toolsLayout"], string][] = [
   ["unified", "Unified"],
 ];
 const SIZE_OPTS: [Prefs["overlaySize"], string][] = [
+  ["XS", "XS"],
   ["S", "S"],
   ["M", "M"],
   ["L", "L"],
   ["XL", "XL"],
+  ["XXL", "XXL"],
+];
+const LINE_WIDTH_OPTS: [number, string][] = [
+  [1, "1"],
+  [1.5, "1.5"],
+  [2, "2"],
+  [2.5, "2.5"],
+  [3, "3"],
+  [4, "4"],
 ];
 const END_OPTS: [Prefs["overlayEndSymbol"], string][] = [
   ["bar", "Bar"],
@@ -163,6 +173,7 @@ export default function PrefsWindow() {
     st.setOverlay({
       color: clean.overlayColor,
       size: clean.overlaySize,
+      lineWidth: clean.overlayLineWidth,
       endSymbol: clean.overlayEndSymbol,
     });
 
@@ -283,6 +294,9 @@ export default function PrefsWindow() {
                 </Row>
                 <Row label="Overlay size">
                   <Seg value={p.overlaySize} options={SIZE_OPTS} onChange={(v) => set("overlaySize", v)} />
+                </Row>
+                <Row label="Line width (px)" hint="measurement & annotation line thickness">
+                  <Seg value={p.overlayLineWidth} options={LINE_WIDTH_OPTS} onChange={(v) => set("overlayLineWidth", v)} />
                 </Row>
                 <Row label="End symbol">
                   <Seg value={p.overlayEndSymbol} options={END_OPTS} onChange={(v) => set("overlayEndSymbol", v)} />

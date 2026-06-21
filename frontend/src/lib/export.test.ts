@@ -23,7 +23,7 @@ const state = {
   },
   scaleBars: { img1: { x: 0.02, y: 0.92, lengthPhys: null, thickness: null, fontSize: null } },
   tilts: {},
-  overlay: { size: "M", color: "#ffffff", endSymbol: "bar" },
+  overlay: { size: "M", color: "#ffffff", lineWidth: 2.5, endSymbol: "bar" },
 };
 
 vi.mock("../store/viewer", () => ({

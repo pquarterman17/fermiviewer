@@ -46,7 +46,8 @@ const KIND_GLYPH: Record<Measure["kind"], string> = {
   circle: "◌",
 };
 
-const SIZES: OverlayStyle["size"][] = ["S", "M", "L", "XL"];
+const SIZES: OverlayStyle["size"][] = ["XS", "S", "M", "L", "XL", "XXL"];
+const LINE_WIDTHS = [1, 1.5, 2, 2.5, 3, 4];
 const SWATCHES = ["#ffffff", "#22d3ee", "#fbbf24", "#f472b6", "#a3e635"];
 const END_SYMBOLS: { sym: EndSymbol; label: string }[] = [
   { sym: "bar", label: "|" },
@@ -601,6 +602,20 @@ export default function MeasurePanel() {
                 onClick={() => setOverlay({ size: sz })}
               >
                 {sz}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="fvd-slider-row">
+          <span className="k">Line width</span>
+          <div className="fvd-seg">
+            {LINE_WIDTHS.map((w) => (
+              <button
+                key={w}
+                className={`fvd-seg-btn${(overlay.lineWidth ?? 2.5) === w ? " active" : ""}`}
+                onClick={() => setOverlay({ lineWidth: w })}
+              >
+                {w}
               </button>
             ))}
           </div>

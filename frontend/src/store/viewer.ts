@@ -179,8 +179,10 @@ export function undoLabel(e: UndoEntry): string {
 const UNDO_CAP = 99;
 
 export interface OverlayStyle {
-  size: "S" | "M" | "L" | "XL";
+  size: "XS" | "S" | "M" | "L" | "XL" | "XXL";
   color: string;
+  /** Measurement/annotation line thickness in screen px (non-selected). */
+  lineWidth: number;
   endSymbol: EndSymbol;
 }
 
@@ -752,7 +754,15 @@ export const useViewer = create<ViewerState>((set, get) => ({
   })(),
   // default endSymbol "bar" (user request 2026-06-09): dimension-style
   // perpendicular ticks at measurement line ends
-  overlay: loadJson<OverlayStyle>(OVERLAY_KEY, { size: "M", color: "#ffffff", endSymbol: "bar" }),
+  // merge defaults UNDER the persisted value so fields added later
+  // (lineWidth) are present even on overlays saved before they existed
+  overlay: {
+    size: "L" as const,
+    color: "#ffffff",
+    lineWidth: 2.5,
+    endSymbol: "bar" as const,
+    ...loadJson<Partial<OverlayStyle>>(OVERLAY_KEY, {}),
+  },
   scaleBars: {},
   tilts: {},
   stackFrames: {},

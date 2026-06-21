@@ -269,6 +269,10 @@ export default function App() {
           break;
         case "Delete":
         case "Backspace":
+          // Precedence: a selected annotation/measure wins (active-editing
+          // context); otherwise Del removes the selected file(s) from the
+          // library panel. closeImage is session-only — the file on disk
+          // stays — so this just unloads, matching the right-click "Close".
           if (s.activeId && s.selectedMulti.length > 0) {
             for (const mid of s.selectedMulti) {
               s.removeMeasure(s.activeId, mid);
@@ -281,6 +285,13 @@ export default function App() {
             if (prof?.measureId === sel) {
               useStageInfo.getState().setProfile(null);
             }
+          } else {
+            const ids = s.selected.length
+              ? [...s.selected]
+              : s.activeId
+                ? [s.activeId]
+                : [];
+            for (const id of ids) void s.closeImage(id);
           }
           break;
         case "Escape":

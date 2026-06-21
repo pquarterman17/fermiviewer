@@ -37,7 +37,9 @@ export interface Prefs {
 
   // ── Measurement & Overlays ──
   overlayColor: string;
-  overlaySize: "S" | "M" | "L" | "XL";
+  overlaySize: "XS" | "S" | "M" | "L" | "XL" | "XXL";
+  /** Measurement/annotation line thickness in screen px. */
+  overlayLineWidth: number;
   overlayEndSymbol: "bar" | "none" | "circle" | "square" | "cross";
   /** ⊥ averaging width (px) for profile captures. */
   profileWidth: number;
@@ -79,7 +81,8 @@ export const DEFAULTS: Prefs = {
   minimap: true,
   inspectorGrid: 7,
   overlayColor: "#ffffff",
-  overlaySize: "M",
+  overlaySize: "L",
+  overlayLineWidth: 2.5,
   overlayEndSymbol: "bar",
   profileWidth: 1,
   profileReduce: "mean",
@@ -109,12 +112,15 @@ function legacyBackfill(): Partial<Prefs> {
     const ov = JSON.parse(localStorage.getItem("fv_overlay") ?? "null") as {
       color?: string;
       size?: Prefs["overlaySize"];
+      lineWidth?: number;
       endSymbol?: Prefs["overlayEndSymbol"];
     } | null;
     if (ov && typeof ov === "object") {
       if (typeof ov.color === "string") out.overlayColor = ov.color;
-      if (ov.size && ["S", "M", "L", "XL"].includes(ov.size))
+      if (ov.size && ["XS", "S", "M", "L", "XL", "XXL"].includes(ov.size))
         out.overlaySize = ov.size;
+      if (typeof ov.lineWidth === "number" && ov.lineWidth > 0)
+        out.overlayLineWidth = ov.lineWidth;
       if (ov.endSymbol) out.overlayEndSymbol = ov.endSymbol;
     }
   } catch {

@@ -289,7 +289,11 @@ body {
 }
 
 .fvd-stage.box-zoom {
-  cursor: crosshair;
+  /* High-visibility measurement reticle: a bright-yellow crosshair with a
+     black halo and a centre gap. The native `crosshair` is a thin grey/black
+     cross that vanishes on grey EM backgrounds; the halo keeps this readable
+     on dark, grey AND light images. Hotspot is the centre (12,12). */
+  cursor: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%3E%3Cpath%20d='M12%203V10M12%2014V21M3%2012H10M14%2012H21'%20stroke='%23000'%20stroke-width='4'%20fill='none'%20stroke-linecap='round'/%3E%3Cpath%20d='M12%203V10M12%2014V21M3%2012H10M14%2012H21'%20stroke='%23ffd400'%20stroke-width='2'%20fill='none'%20stroke-linecap='round'/%3E%3Ccircle%20cx='12'%20cy='12'%20r='1.6'%20fill='%23ffd400'%20stroke='%23000'%20stroke-width='1'/%3E%3C/svg%3E") 12 12, crosshair;
 }
 
 .fvd-marquee {

@@ -20,7 +20,7 @@ import {
   type View,
 } from "../../store/viewer";
 
-const FONT_PX = { S: 10, M: 12, L: 15, XL: 19 } as const;
+const FONT_PX = { XS: 10, S: 13, M: 16, L: 20, XL: 26, XXL: 34 } as const;
 const HANDLE_R = 5;
 
 /** SVG glyph for an endpoint handle. The hit-circle (transparent, R=8)
@@ -156,6 +156,9 @@ export default function MeasureOverlay({
 
   const globalFont = FONT_PX[overlay.size];
   const color = overlay.color;
+  // configurable line thickness (falls back for overlays persisted before
+  // lineWidth existed); selected measures render one step thicker.
+  const baseSw = overlay.lineWidth ?? 2.5;
   const setMeasureFontSize = useViewer((s) => s.setMeasureFontSize);
   const defaultEndSymbol = overlay.endSymbol ?? "bar";
 
@@ -288,7 +291,7 @@ export default function MeasureOverlay({
       : sel
         ? "var(--accent)"
         : (m.color ?? color);
-    const sw = sel ? 2 : 1.5;
+    const sw = sel ? baseSw + 1 : baseSw;
     // per-annotation font size (audit #12) overrides global overlay size
     const font = m.fontSize ?? globalFont;
     // body-drag starter for box/circle (audit #12): mousedown on the shape
