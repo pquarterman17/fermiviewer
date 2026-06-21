@@ -112,7 +112,18 @@ const CLICKS: Record<string, number> = {
   arrow: 2,
   box: 2,
   circle: 2,
+  calibrate: 2, // two-click line (snaps H/V) used to set the pixel size
 };
+
+/** Snap point b to a horizontal/vertical line through a (whichever axis the
+ *  drag favours); `free` (Shift held) returns b unchanged. Used by the
+ *  calibration line so a flat baked scale bar is easy to trace precisely. */
+function snapHV(a: Pt, b: Pt, free: boolean): Pt {
+  if (free) return b;
+  return Math.abs(b.x - a.x) >= Math.abs(b.y - a.y)
+    ? { x: b.x, y: a.y }
+    : { x: a.x, y: b.y };
+}
 
 const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   const activeId = useViewer((s) => s.activeId);
@@ -487,6 +498,21 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     }
   };
 
+  /** Calibration line: a plain distance measure, drawn with H/V snap and
+   *  left SELECTED so the inspector's Calibration card can turn it into a
+   *  pixel size. It vanishes once the user sets its real length there. */
+  const finalizeCalibration = (ptsImg: Pt[]) => {
+    if (!activeId || !imgSize) {
+      setCaptureMode("none");
+      return;
+    }
+    const pts = ptsImg.map((p) => ({ x: p.x / imgSize.w, y: p.y / imgSize.h }));
+    const mid = addMeasure(activeId, { kind: "distance", pts });
+    setCaptureMode("none");
+    useViewer.getState().setSelectedMeasure(mid);
+    setStatus("calibration line drawn — set its real length in the Calibration card");
+  };
+
   /** Box profile (user request 2026-06-09): drag a box → profile runs
    *  along its LONG axis, ⊥-averaged across the short axis for more
    *  signal. Stored as a profile measure with a per-measure width. */
@@ -610,17 +636,25 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       setMarquee({ a: p, b: p });
       e.currentTarget.setPointerCapture(e.pointerId);
     } else if (captureMode in CLICKS) {
-      const ip = toImage(p);
+      let ip = toImage(p);
       const need = CLICKS[captureMode];
       const cur = pending?.pts ?? [];
+      // calibration line snaps H/V (Shift = free) so a flat bar traces cleanly
+      if (captureMode === "calibrate" && cur.length >= 1) {
+        ip = snapHV(cur[0], ip, e.shiftKey);
+      }
       // replace the live cursor point with the committed click
       const committed = pending ? [...cur.slice(0, -1), ip] : [ip];
       if (committed.length >= need) {
-        finalizeMeasure(captureMode as Measure["kind"], committed);
+        if (captureMode === "calibrate") finalizeCalibration(committed);
+        else finalizeMeasure(captureMode as Measure["kind"], committed);
         setPending(null);
       } else {
         setPending({
-          kind: captureMode as Measure["kind"],
+          // preview the calibration line as a plain distance line
+          kind: captureMode === "calibrate"
+            ? "distance"
+            : (captureMode as Measure["kind"]),
           pts: [...committed, ip],
         });
       }
@@ -651,7 +685,10 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     } else if (marquee) {
       setMarquee({ a: marquee.a, b: p });
     } else if (pending && view && imgSize) {
-      const ip = toImage(p);
+      let ip = toImage(p);
+      if (captureMode === "calibrate" && pending.pts.length >= 1) {
+        ip = snapHV(pending.pts[0], ip, e.shiftKey);
+      }
       setPending({
         kind: pending.kind,
         pts: [...pending.pts.slice(0, -1), ip],
@@ -954,6 +991,7 @@ function FloatTools() {
     ["⌇", "Polyline  P", captureMode === "polyline", mode("polyline")],
     ["∠", "Angle  G", captureMode === "angle", mode("angle")],
     ["▭", "ROI stats  R", captureMode === "roi", mode("roi")],
+    ["📏", "Calibrate scale", captureMode === "calibrate", mode("calibrate")],
   ];
 
   // split a "Label  KEY" toolbar title into [label, shortcut] for the hover

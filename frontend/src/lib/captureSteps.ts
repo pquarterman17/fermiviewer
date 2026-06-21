@@ -31,4 +31,11 @@ export const CAPTURE_STEPS: Partial<Record<CaptureMode, CaptureStep>> = {
   "box-profile": { label: "Box profile", steps: ["Drag a box along the feature"] },
   "crop-save": { label: "Save Cropped Region", steps: ["Drag a box to crop and save as a new image"] },
   zoom: { label: "Box zoom", steps: ["Drag a box to zoom"] },
+  calibrate: {
+    label: "Calibrate scale",
+    steps: [
+      "Click one end of a known length (snaps H/V — Shift = free)",
+      "Click the other end, then set its length in the Calibration card",
+    ],
+  },
 };

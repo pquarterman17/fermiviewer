@@ -218,6 +218,7 @@ export type CaptureMode =
   | "fixed-zoom"
   | "box-profile"
   | "crop-save"
+  | "calibrate"
   | MeasureKind;
 export type Theme = "dark" | "light";
 /** Swappable accent scheme (kept in sync with lib/prefs Accent; no import

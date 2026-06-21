@@ -71,6 +71,32 @@ def test_crud_and_manual_apply(client, tmp_path) -> None:
     assert client.delete("/api/calibration/zzz").status_code == 404
 
 
+def test_clear_calibration(client, tmp_path) -> None:
+    img_id = _open_uncal(client, tmp_path)
+    applied = client.post(
+        "/api/calibration/apply",
+        json={"image_id": img_id, "pixel_size": 0.5, "unit": "nm"},
+    )
+    assert applied.json()["image"]["pixel_size"] == pytest.approx(0.5)
+
+    cleared = client.post("/api/calibration/clear", json={"image_id": img_id})
+    assert cleared.status_code == 200
+    assert cleared.json()["image"]["pixel_size"] is None
+    # the stored DataStruct is now uncalibrated end to end
+    meta = client.get(f"/api/image/{img_id}/meta").json()
+    assert meta["pixel_size"] is None
+    prof = client.post(
+        "/api/measure/profile",
+        json={"image_id": img_id, "a": [1, 1], "b": [1, 6]},
+    ).json()
+    assert prof["unit"] == "px"
+    # unknown id → 404
+    assert (
+        client.post("/api/calibration/clear", json={"image_id": "nope"}).status_code
+        == 404
+    )
+
+
 def test_key_extraction_and_auto_apply_unit() -> None:
     meta = {
         "image_tags": {

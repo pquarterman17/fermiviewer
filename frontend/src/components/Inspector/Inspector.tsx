@@ -9,6 +9,7 @@ import DiffractionWorkshop from "../workshops/DiffractionWorkshop";
 import EdsWorkshop from "../workshops/EdsWorkshop";
 import EelsWorkshop from "../workshops/EelsWorkshop";
 import AdjustPanel from "./AdjustPanel";
+import CalibrationCard from "./CalibrationCard";
 import Card from "./Card";
 import CustomMetaCard from "./CustomMetaCard";
 import ExportCard from "./ExportCard";
@@ -161,6 +162,7 @@ export default function Inspector() {
       {tab === "Image" && !unified && meta.kind !== "spectrum" && <TransformPanel />}
       {tab === "Image" && meta.kind !== "spectrum" && <AdjustPanel />}
       {tab === "Image" && meta.kind !== "spectrum" && <HistoryCard />}
+      {tab === "Image" && meta.kind !== "spectrum" && <CalibrationCard />}
       {tab === "Image" && <ScaleBarCard />}
       {tab === "Image" && meta.kind !== "spectrum" && <ExportCard />}
       {tab === "Image" && <CustomMetaCard />}

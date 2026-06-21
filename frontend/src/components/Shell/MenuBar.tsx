@@ -153,9 +153,11 @@ export default function MenuBar({
       const id = store.activeId;
       if (!id) return;
       const meta = store.images[id];
-      const d = (store.measures[id] ?? [])
-        .filter((m) => m.kind === "distance")
-        .at(-1);
+      // prefer the SELECTED distance line; fall back to the last one drawn
+      const dists = (store.measures[id] ?? []).filter(
+        (m) => m.kind === "distance",
+      );
+      const d = dists.find((m) => m.id === store.selectedMeasure) ?? dists.at(-1);
       if (!meta || !d) return;
       const [h, w] = meta.shape;
       const lenPx = Math.hypot(
@@ -178,6 +180,7 @@ export default function MenuBar({
           useViewer.setState((s) => ({
             images: { ...s.images, [r.image.id]: r.image },
           }));
+          store.removeMeasure(id, d.id); // the calibration line disappears
           store.setStatus(
             `calibrated: ${r.image.pixel_size?.toPrecision(4)} ` +
               `${r.image.pixel_unit}/px`,

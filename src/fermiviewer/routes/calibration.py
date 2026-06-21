@@ -131,6 +131,27 @@ def calibration_detect_bar(req: CalibrationApplyRequest) -> dict[str, Any]:
     }
 
 
+class ClearRequest(BaseModel):
+    image_id: str
+
+
+@router.post("/calibration/clear")
+def calibration_clear(req: ClearRequest) -> dict[str, Any]:
+    """Drop a manual/auto calibration back to uncalibrated (pixels). Used by
+    the Calibration card's Clear button when a calibration was wrong."""
+    ds = _get(req.image_id)
+    if ds.kind is DataKind.SPECTRUM:
+        raise HTTPException(400, "1D spectra have no spatial calibration")
+    # scale 0 + empty units → AxisCal.calibrated is False (datastruct.py)
+    new_ds = recalibrate(ds, 0.0, "")
+    store.replace(req.image_id, new_ds)
+    return {
+        "image": ImageMeta.from_datastruct(
+            req.image_id, store.name(req.image_id), new_ds
+        ).model_dump()
+    }
+
+
 @router.post("/calibration/apply")
 def calibration_apply(req: CalibrationApplyRequest) -> dict[str, Any]:
     ds = _get(req.image_id)

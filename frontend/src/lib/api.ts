@@ -1002,6 +1002,11 @@ export function applyCalibration(
   });
 }
 
+/** Drop a calibration back to uncalibrated pixels (Calibration card Clear). */
+export function clearCalibration(id: string): Promise<{ image: ImageMeta }> {
+  return post("/api/calibration/clear", { image_id: id });
+}
+
 /** Headerless RAW import with explicit geometry (checklist L). */
 export function openRaw(opts: {
   path: string;
