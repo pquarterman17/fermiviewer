@@ -118,6 +118,11 @@ fn kill_server(app: &tauri::AppHandle) {
 /// SIGNED build; if one exists, ask the user, then download + install +
 /// restart. Any failure (offline, no update, bad/absent manifest) is silent
 /// — it must never block or disrupt a normal launch.
+///
+/// WINDOWS ONLY: macOS/Linux builds are unsigned (a self-replaced .app would
+/// trip Gatekeeper) and .deb isn't an updater target, so those platforms use
+/// the manual path (Help ▸ Check for Updates → the .dmg/.deb) instead.
+#[cfg(target_os = "windows")]
 async fn check_for_update(app: tauri::AppHandle) {
     use tauri_plugin_updater::UpdaterExt;
     let Ok(updater) = app.updater() else {
@@ -193,10 +198,13 @@ fn main() {
                 }
             });
 
-            // background auto-update check (prompts via a native dialog when
-            // a newer signed release exists); never blocks startup
-            let update_handle = app.handle().clone();
-            tauri::async_runtime::spawn(check_for_update(update_handle));
+            // background auto-update check — Windows only (macOS/Linux use
+            // the manual path; see check_for_update)
+            #[cfg(target_os = "windows")]
+            {
+                let update_handle = app.handle().clone();
+                tauri::async_runtime::spawn(check_for_update(update_handle));
+            }
 
             Ok(())
         })

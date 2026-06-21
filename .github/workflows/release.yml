@@ -43,7 +43,10 @@ jobs:
             label: macos
             bundles: dmg
             installer-glob: src-tauri/target/release/bundle/dmg/*.dmg
-            updater-glob: src-tauri/target/release/bundle/macos/*.app.tar.gz*
+            # auto-update is Windows-only for now (unsigned macOS would trip
+            # Gatekeeper on relaunch); don't publish a darwin updater entry.
+            # Re-add this glob when macOS gets Developer-ID signing/notarizing.
+            updater-glob: ""
             server-archive: fv-server-macos.tar.gz
           - os: ubuntu-latest
             label: linux
