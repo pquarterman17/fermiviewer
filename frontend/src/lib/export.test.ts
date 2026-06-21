@@ -89,6 +89,28 @@ describe("exportActive", () => {
     expect(opts.overlay_font_size).toBeUndefined();
     expect(opts.overlay_line_width).toBeUndefined();
   });
+
+  it("sends width_mm + dpi only when both are set (physical sizing)", async () => {
+    await exportActive({ format: "png", scale: 1, widthMm: 89, dpi: 300 });
+    let opts = lastOpts();
+    expect(opts.width_mm).toBe(89);
+    expect(opts.dpi).toBe(300);
+
+    // width alone (no dpi) → no physical fields (integer-scale path)
+    vi.clearAllMocks();
+    await exportActive({ format: "png", scale: 2, widthMm: 89 });
+    opts = lastOpts();
+    expect(opts.width_mm).toBeUndefined();
+    expect(opts.dpi).toBeUndefined();
+    expect(opts.scale).toBe(2);
+  });
+
+  it("never sends physical sizing for tiff16 (data export)", async () => {
+    await exportActive({ format: "tiff16", scale: 1, widthMm: 89, dpi: 300 });
+    const opts = lastOpts();
+    expect(opts.width_mm).toBeUndefined();
+    expect(opts.dpi).toBeUndefined();
+  });
 });
 
 describe("caption (WS4c)", () => {
