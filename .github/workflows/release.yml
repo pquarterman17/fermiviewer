@@ -147,7 +147,7 @@ jobs:
         run: tar -C dist-sidecar -czf ${{ matrix.server-archive }} fv-server
 
       - name: Upload artifacts (workflow run — always)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fv-${{ matrix.label }}
           path: |
