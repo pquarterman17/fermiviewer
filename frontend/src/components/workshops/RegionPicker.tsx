@@ -9,12 +9,36 @@ const VIEW_W = 300;
 
 export type Rect1 = [number, number, number, number];
 
+/** View-space coordinate (px in the scaled preview) → 1-based image pixel,
+ *  clamped to [1, n]. Mirrors the rounding used for drag rects. */
+export function viewToImagePx(v: number, scale: number, n: number): number {
+  return Math.min(n, Math.max(1, Math.round(v / scale + 0.5)));
+}
+
+/** A click in pixel-navigate mode → a 1×1 inclusive rect at that pixel
+ *  (Quick-Wins #2 EELS specnav). A 1×1 rect is the single-pixel spectrum the
+ *  /spectrum endpoint already returns. */
+export function clickPixelRect(
+  x: number,
+  y: number,
+  scale: number,
+  natW: number,
+  natH: number,
+): Rect1 {
+  const col = viewToImagePx(x, scale, natW);
+  const row = viewToImagePx(y, scale, natH);
+  return [row, col, row, col];
+}
+
 export default function RegionPicker({
   id,
   onRegion,
+  pixelMode = false,
 }: {
   id: string;
   onRegion: (rect: Rect1 | null) => void; // null = cleared (full image)
+  /** when true a click selects a single pixel (1×1 rect) instead of clearing */
+  pixelMode?: boolean;
 }) {
   const [nat, setNat] = useState<{ w: number; h: number } | null>(null);
   const [drag, setDrag] = useState<{ a: [number, number]; b: [number, number] } | null>(null);
@@ -29,16 +53,12 @@ export default function RegionPicker({
     return [e.clientX - r.left, e.clientY - r.top];
   };
 
-  const toRect = (a: [number, number], b: [number, number]): Rect1 => {
-    const px = (v: number, n: number) =>
-      Math.min(n, Math.max(1, Math.round(v / scale + 0.5)));
-    return [
-      px(Math.min(a[1], b[1]), nat!.h),
-      px(Math.min(a[0], b[0]), nat!.w),
-      px(Math.max(a[1], b[1]), nat!.h),
-      px(Math.max(a[0], b[0]), nat!.w),
-    ];
-  };
+  const toRect = (a: [number, number], b: [number, number]): Rect1 => [
+    viewToImagePx(Math.min(a[1], b[1]), scale, nat!.h),
+    viewToImagePx(Math.min(a[0], b[0]), scale, nat!.w),
+    viewToImagePx(Math.max(a[1], b[1]), scale, nat!.h),
+    viewToImagePx(Math.max(a[0], b[0]), scale, nat!.w),
+  ];
 
   return (
     <div
@@ -60,8 +80,15 @@ export default function RegionPicker({
         const w = Math.abs(drag.b[0] - drag.a[0]);
         const h = Math.abs(drag.b[1] - drag.a[1]);
         if (w < 3 || h < 3) {
-          setRect(null);
-          onRegion(null); // click = clear back to full image
+          if (pixelMode) {
+            // click selects a single pixel (1×1 rect) for specnav
+            const r = clickPixelRect(drag.a[0], drag.a[1], scale, nat.w, nat.h);
+            setRect(r);
+            onRegion(r);
+          } else {
+            setRect(null);
+            onRegion(null); // click = clear back to full image
+          }
         } else {
           const r = toRect(drag.a, drag.b);
           setRect(r);

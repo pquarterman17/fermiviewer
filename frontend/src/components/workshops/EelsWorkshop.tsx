@@ -66,6 +66,7 @@ export default function EelsWorkshop() {
   const [betaMrad, setBetaMrad] = useState(10);
   const [quantMethod, setQuantMethod] = useState("powerlaw");
   const [explore, setExplore] = useState(false);
+  const [pickMode, setPickMode] = useState<"region" | "pixel">("region");
   const [region, setRegion] = useState<Rect1 | null>(null);
   const plotHost = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
@@ -103,6 +104,7 @@ export default function EelsWorkshop() {
   useEffect(() => {
     setRegion(null);
     setExplore(false);
+    setPickMode("region");
   }, [activeId]);
 
   // (re)build the plot when spectrum or fit changes
@@ -324,12 +326,42 @@ export default function EelsWorkshop() {
         )}
         {region && (
           <span className="k">
-            [{region[0]},{region[1]}]–[{region[2]},{region[3]}]
+            {region[0] === region[2] && region[1] === region[3]
+              ? `px [${region[0]},${region[1]}]`
+              : `[${region[0]},${region[1]}]–[${region[2]},${region[3]}]`}
           </span>
         )}
       </div>
+      {explore && isCube && (
+        <div className="fvd-ws-row">
+          <span className="k">pick</span>
+          <div className="fvd-seg">
+            {(["region", "pixel"] as const).map((m) => (
+              <button
+                key={m}
+                className={`fvd-seg-btn${pickMode === m ? " active" : ""}`}
+                title={
+                  m === "pixel"
+                    ? "click a single pixel to read its spectrum"
+                    : "drag a box to average a region"
+                }
+                onClick={() => {
+                  setPickMode(m);
+                  setRegion(null); // switching mode starts fresh (full image)
+                }}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {explore && activeId && (
-        <RegionPicker id={activeId} onRegion={setRegion} />
+        <RegionPicker
+          id={activeId}
+          onRegion={setRegion}
+          pixelMode={pickMode === "pixel"}
+        />
       )}
       <div className="fvd-ws-row">
         <span className="k">Background</span>
