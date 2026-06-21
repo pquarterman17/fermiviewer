@@ -35,16 +35,22 @@ jobs:
             label: windows
             bundles: nsis
             installer-glob: src-tauri/target/release/bundle/nsis/*.exe
+            # updater bundle (+ .sig) for auto-update; signed via the
+            # TAURI_SIGNING_* secrets on the build step
+            updater-glob: src-tauri/target/release/bundle/nsis/*.nsis.zip*
             server-archive: fv-server-win64.zip
           - os: macos-latest
             label: macos
             bundles: dmg
             installer-glob: src-tauri/target/release/bundle/dmg/*.dmg
+            updater-glob: src-tauri/target/release/bundle/macos/*.app.tar.gz*
             server-archive: fv-server-macos.tar.gz
           - os: ubuntu-latest
             label: linux
             bundles: deb
             installer-glob: src-tauri/target/release/bundle/deb/*.deb
+            # .deb is not an updater target — Linux stays manual install
+            updater-glob: ""
             server-archive: fv-server-linux.tar.gz
     steps:
       - uses: actions/checkout@v6
@@ -131,6 +137,11 @@ jobs:
 
       - name: Build Tauri installer (sidecar as bundled resource)
         working-directory: src-tauri
+        env:
+          # sign the updater artifacts so installed apps accept the update
+          # (createUpdaterArtifacts is on in tauri.conf.json)
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: >
           npx --yes "@tauri-apps/cli@^2" build
           --bundles ${{ matrix.bundles }}
@@ -161,5 +172,50 @@ jobs:
         with:
           files: |
             ${{ matrix.installer-glob }}
+            ${{ matrix.updater-glob }}
             ${{ matrix.server-archive }}
           generate_release_notes: true
+
+  # Build the updater manifest (latest.json) AFTER all installers have
+  # attached their signed updater bundles + .sig files to the Release. The
+  # installed app's endpoint (releases/latest/download/latest.json) reads
+  # this to discover + verify the newest build. Tag releases only.
+  updater-manifest:
+    name: updater manifest
+    needs: installers
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate and upload latest.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          base="https://github.com/$REPO/releases/download/$TAG"
+          assets=$(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name')
+          nsis=$(printf '%s\n' "$assets" | grep -E '\.nsis\.zip$' | head -1 || true)
+          appmac=$(printf '%s\n' "$assets" | grep -E '\.app\.tar\.gz$' | head -1 || true)
+          mkdir -p sigs
+          platforms='{}'
+          if [ -n "$nsis" ]; then
+            gh release download "$TAG" --repo "$REPO" --pattern "${nsis}.sig" --dir sigs
+            sig=$(cat "sigs/${nsis}.sig")
+            platforms=$(printf '%s' "$platforms" | jq --arg s "$sig" --arg u "$base/$nsis" \
+              '. + {"windows-x86_64":{signature:$s,url:$u}}')
+          fi
+          if [ -n "$appmac" ]; then
+            gh release download "$TAG" --repo "$REPO" --pattern "${appmac}.sig" --dir sigs
+            sig=$(cat "sigs/${appmac}.sig")
+            platforms=$(printf '%s' "$platforms" | jq --arg s "$sig" --arg u "$base/$appmac" \
+              '. + {"darwin-aarch64":{signature:$s,url:$u}}')
+          fi
+          if [ "$platforms" = '{}' ]; then
+            echo "::error::no signed updater artifacts found on $TAG"; exit 1
+          fi
+          jq -n --arg v "$version" --argjson p "$platforms" \
+            '{version:$v, pub_date:(now|todate), platforms:$p}' > latest.json
+          echo "--- latest.json ---"; cat latest.json
+          gh release upload "$TAG" latest.json --repo "$REPO" --clobber

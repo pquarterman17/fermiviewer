@@ -114,8 +114,51 @@ fn kill_server(app: &tauri::AppHandle) {
     }
 }
 
+/// Background auto-update (Rust-driven): check GitHub Releases for a newer
+/// SIGNED build; if one exists, ask the user, then download + install +
+/// restart. Any failure (offline, no update, bad/absent manifest) is silent
+/// — it must never block or disrupt a normal launch.
+async fn check_for_update(app: tauri::AppHandle) {
+    use tauri_plugin_updater::UpdaterExt;
+    let Ok(updater) = app.updater() else {
+        return;
+    };
+    let update = match updater.check().await {
+        Ok(Some(u)) => u,
+        _ => return, // up to date, offline, or manifest unreachable → quiet
+    };
+
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+    let msg = format!(
+        "FermiViewer {} is available (you have {}).\n\n\
+         Download and restart to update now?",
+        update.version, update.current_version
+    );
+    let proceed = app
+        .dialog()
+        .message(msg)
+        .title("Update available")
+        .kind(MessageDialogKind::Info)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Update & Restart".to_string(),
+            "Later".to_string(),
+        ))
+        .blocking_show();
+    if !proceed {
+        return;
+    }
+
+    // download_and_install runs the NSIS/.app updater bundle and verifies it
+    // against the pubkey baked into tauri.conf.json; restart on success.
+    if update.download_and_install(|_, _| {}, || {}).await.is_ok() {
+        app.restart();
+    }
+}
+
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let repo = repo_root();
             // a dev/leftover server may already own the port — reuse it
@@ -149,6 +192,12 @@ fn main() {
                     }
                 }
             });
+
+            // background auto-update check (prompts via a native dialog when
+            // a newer signed release exists); never blocks startup
+            let update_handle = app.handle().clone();
+            tauri::async_runtime::spawn(check_for_update(update_handle));
+
             Ok(())
         })
         .on_window_event(|window, event| {
