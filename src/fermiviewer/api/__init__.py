@@ -170,6 +170,19 @@ class Image:
         )
         return result
 
+    def pipeline(self, steps: list[dict[str, Any]]) -> list[Result]:
+        """Run an ordered recipe (``[{"op": name, "params": {...}}, ...]``),
+        chaining derived images. Each step is recorded in provenance; returns
+        a Result per step. The final image is ``[r.image for r ...][-1]``."""
+        results: list[Result] = []
+        current: Image = self
+        for step in steps:
+            r = current.run(step["op"], **(step.get("params") or {}))
+            results.append(r)
+            if r.image is not None:
+                current = r.image
+        return results
+
     def methods(self) -> str:
         """A reproducible methods paragraph for this image's pipeline."""
         return self._session.provenance.to_markdown(self.id)
