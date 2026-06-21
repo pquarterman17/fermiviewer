@@ -4,10 +4,21 @@
 import { useRef, useState } from "react";
 import { create } from "zustand";
 
+import {
+  downloadCsv,
+  downloadJson,
+  exportBaseName,
+  tableToCsv,
+  tableToJson,
+  type ResultMeta,
+} from "../../lib/resultsExport";
+
 export interface ResultsTable {
   title: string;
   columns: string[];
   rows: (string | number | null)[][];
+  /** optional provenance (image name, analysis params) for the export */
+  meta?: ResultMeta;
 }
 
 interface ResultsState {
@@ -22,17 +33,6 @@ export const useResults = create<ResultsState>((set) => ({
   close: () => set({ table: null }),
 }));
 
-function toCsv(t: ResultsTable): string {
-  const esc = (v: string | number | null) => {
-    const s = v === null ? "" : String(v);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  return [
-    t.columns.map(esc).join(","),
-    ...t.rows.map((r) => r.map(esc).join(",")),
-  ].join("\n");
-}
-
 export default function ResultsWindow() {
   const table = useResults((s) => s.table);
   const close = useResults((s) => s.close);
@@ -41,14 +41,15 @@ export default function ResultsWindow() {
 
   if (!table) return null;
 
-  const download = () => {
-    const blob = new Blob([toCsv(table)], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${table.title.replace(/\W+/g, "_").toLowerCase()}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const download = (format: "csv" | "json") => {
+    const meta: ResultMeta = { analysis: table.title, ...table.meta };
+    const slug = table.title.replace(/\W+/g, "_").toLowerCase();
+    const base = `${exportBaseName(table.meta?.imageName)}_${slug}`;
+    if (format === "json") {
+      downloadJson(`${base}.json`, tableToJson(table.columns, table.rows, meta));
+    } else {
+      downloadCsv(`${base}.csv`, tableToCsv(table.columns, table.rows, meta));
+    }
   };
 
   return (
@@ -85,10 +86,19 @@ export default function ResultsWindow() {
         <span style={{ flex: 1 }} />
         <button
           className="fvd-btn fvd-inline-toggle"
+          title="Download as CSV"
           onPointerDown={(e) => e.stopPropagation()}
-          onClick={download}
+          onClick={() => download("csv")}
         >
           CSV
+        </button>
+        <button
+          className="fvd-btn fvd-inline-toggle"
+          title="Download as JSON (with provenance)"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => download("json")}
+        >
+          JSON
         </button>
       </div>
       <div className="fvd-tool-body fvd-results-body">
