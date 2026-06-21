@@ -7,12 +7,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   analyzeDiffractionSimulate,
+  deleteDiffractionPhase,
+  diffractionCalibrate,
   diffractionDetect,
   diffractionDetectWithRoi,
   diffractionIndex,
+  importDiffractionPhase,
   listDiffractionPhases,
   renderUrl,
   type AnalysisRoi,
+  type CalibrationResult,
   type IndexResult,
   type PhaseCandidate,
   type PhaseInfo,
@@ -199,6 +203,11 @@ export default function DiffractionWorkshop() {
   const [simPhase, setSimPhase] = useState("");
   const [simZa, setSimZa] = useState("0 0 1");
   const [simResult, setSimResult] = useState<SimulateResult | null>(null);
+  const [scatModel, setScatModel] = useState<"fe" | "z">("fe");
+  const cifInputRef = useRef<HTMLInputElement>(null);
+  // calibration sub-panel
+  const [calKnownD, setCalKnownD] = useState("");
+  const [calib, setCalib] = useState<CalibrationResult | null>(null);
   // A7 manual click-spots
   const [clickMode, setClickMode] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -362,6 +371,7 @@ export default function DiffractionWorkshop() {
     setBusy(true);
     analyzeDiffractionSimulate(simPhase, parts as [number, number, number], {
       parentImageId: activeId ?? undefined,
+      scatteringModel: scatModel,
     })
       .then((r) => {
         setSimResult(r);
@@ -375,7 +385,67 @@ export default function DiffractionWorkshop() {
       })
       .catch((e: Error) => setStatus(`simulate: ${e.message}`))
       .finally(() => setBusy(false));
-  }, [simPhase, simZa, activeId, setStatus]);
+  }, [simPhase, simZa, activeId, scatModel, setStatus]);
+
+  // ── custom-phase import / delete (Diffraction #2) ─────────────────
+  const onCifFile = useCallback(
+    (file: File) => {
+      file
+        .text()
+        .then((text) => importDiffractionPhase(text, ""))
+        .then((p) => {
+          setStatus(`phase imported: ${p.name} (${p.centering}, ${p.n_sites} sites)`);
+          return listDiffractionPhases();
+        })
+        .then((list) => {
+          setPhases(list);
+          const last = list.find((p) => p.custom);
+          if (last) setSimPhase(last.name);
+        })
+        .catch((e: Error) => setStatus(`CIF import: ${e.message}`));
+    },
+    [setStatus],
+  );
+
+  const deletePhase = useCallback(() => {
+    const p = phases.find((x) => x.name === simPhase);
+    if (!p?.custom) return;
+    deleteDiffractionPhase(p.name)
+      .then(() => listDiffractionPhases())
+      .then((list) => {
+        setPhases(list);
+        setSimPhase(list[0]?.name ?? "");
+        setStatus(`phase deleted: ${p.name}`);
+      })
+      .catch((e: Error) => setStatus(`delete: ${e.message}`));
+  }, [phases, simPhase, setStatus]);
+
+  // ── elliptical-distortion calibration (Diffraction #1) ────────────
+  const calibrate = useCallback(() => {
+    if (!activeId) return;
+    const dKnown = Number(calKnownD);
+    setBusy(true);
+    diffractionCalibrate(activeId, {
+      dKnownAng: dKnown > 0 ? dKnown : undefined,
+      standardPhase: dKnown > 0 ? undefined : simPhase || undefined,
+      hkl: dKnown > 0 ? undefined : [1, 1, 1],
+      rMin: Number(minRadius) || 5,
+    })
+      .then((r) => {
+        setCalib(r);
+        const e = r.ellipse;
+        setStatus(
+          `calibrate: ecc ${e.eccentricity.toFixed(3)} · ` +
+            `a/b ${e.a.toFixed(1)}/${e.b.toFixed(1)} px · ` +
+            `RMS ${r.rms_residual_px.toFixed(2)} px` +
+            (r.camera_constant_px_ang
+              ? ` · C ${r.camera_constant_px_ang.toFixed(1)} px·Å`
+              : ""),
+        );
+      })
+      .catch((e: Error) => setStatus(`calibrate: ${e.message}`))
+      .finally(() => setBusy(false));
+  }, [activeId, calKnownD, simPhase, minRadius, setStatus]);
 
   if (!isImage) {
     return (
@@ -728,6 +798,35 @@ export default function DiffractionWorkshop() {
         </div>
       )}
 
+      {/* Calibration — ellipse fit + camera constant (Diffraction #1) */}
+      <div className="fvd-ws-section">
+        <span>Calibrate rings</span>
+      </div>
+      <div className="fvd-ws-row">
+        <span className="k">known d (Å)</span>
+        <input
+          value={calKnownD}
+          style={{ width: 60 }}
+          placeholder="auto"
+          title="known standard ring d-spacing; blank → use the selected phase's 111"
+          onChange={(e) => setCalKnownD(e.target.value)}
+        />
+        <button className="fvd-btn" onClick={calibrate} disabled={busy || !activeId}>
+          Fit ellipse
+        </button>
+      </div>
+      {calib && (
+        <div className="fvd-ws-note">
+          ecc {calib.ellipse.eccentricity.toFixed(3)} · a/b{" "}
+          {calib.ellipse.a.toFixed(1)}/{calib.ellipse.b.toFixed(1)} px · θ{" "}
+          {calib.ellipse.theta_deg.toFixed(1)}° · RMS{" "}
+          {calib.rms_residual_px.toFixed(2)} px
+          {calib.camera_constant_px_ang != null && (
+            <> · C {calib.camera_constant_px_ang.toFixed(1)} px·Å</>
+          )}
+        </div>
+      )}
+
       {/* A8 — Kinematic zone-axis simulation */}
       <div className="fvd-ws-section">
         <span>Simulate (A8)</span>
@@ -741,9 +840,45 @@ export default function DiffractionWorkshop() {
         >
           {phases.map((p) => (
             <option key={p.name} value={p.name} title={p.formula}>
+              {p.custom ? "★ " : ""}
               {p.name}
             </option>
           ))}
+        </select>
+        <button
+          className="fvd-btn"
+          title="Import a phase from a .cif file"
+          onClick={() => cifInputRef.current?.click()}
+        >
+          + CIF
+        </button>
+        {phases.find((x) => x.name === simPhase)?.custom && (
+          <button className="fvd-btn" title="delete this custom phase" onClick={deletePhase}>
+            ✕
+          </button>
+        )}
+        <input
+          ref={cifInputRef}
+          type="file"
+          accept=".cif"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) onCifFile(f);
+            e.target.value = "";
+          }}
+        />
+      </div>
+      <div className="fvd-ws-row">
+        <span className="k">intensities</span>
+        <select
+          value={scatModel}
+          style={{ flex: 1 }}
+          title="electron scattering factors (Doyle–Turner) vs the atomic-number proxy"
+          onChange={(e) => setScatModel(e.target.value as "fe" | "z")}
+        >
+          <option value="fe">Scattering factors (Doyle–Turner)</option>
+          <option value="z">Z proxy (legacy)</option>
         </select>
       </div>
       <div className="fvd-ws-row">

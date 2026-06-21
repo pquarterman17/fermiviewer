@@ -1492,6 +1492,7 @@ export interface PhaseInfo {
   name: string;
   formula: string;
   category: string;
+  custom?: boolean; // imported/CIF phase (vs built-in database)
 }
 
 export async function listDiffractionPhases(): Promise<PhaseInfo[]> {
@@ -1499,6 +1500,61 @@ export async function listDiffractionPhases(): Promise<PhaseInfo[]> {
     await fetch("/api/diffraction/phases"),
   );
   return r.phases;
+}
+
+/** Import a custom phase from CIF text (Diffraction #2). */
+export function importDiffractionPhase(
+  cifText: string,
+  name = "",
+): Promise<{ name: string; formula: string; centering: string; system: string; n_sites: number }> {
+  return post("/api/diffraction/phases/import", { cif_text: cifText, name });
+}
+
+/** Delete a custom phase by name (built-ins are protected server-side). */
+export async function deleteDiffractionPhase(name: string): Promise<void> {
+  await json(
+    await fetch(`/api/diffraction/phases/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+    }),
+  );
+}
+
+export interface CalibrationResult {
+  ellipse: {
+    center_row: number;
+    center_col: number;
+    a: number;
+    b: number;
+    theta_deg: number;
+    eccentricity: number;
+    mean_radius: number;
+  };
+  n_points: number;
+  rms_residual_px: number;
+  d_known_ang: number | null;
+  camera_constant_px_ang: number | null;
+}
+
+/** Fit an ellipse to the dominant ring + anchor the camera constant
+ *  (Diffraction #1). Supply either a known d-spacing or a standard phase+hkl. */
+export function diffractionCalibrate(
+  imageId: string,
+  opts: {
+    dKnownAng?: number;
+    standardPhase?: string;
+    hkl?: [number, number, number];
+    rMin?: number;
+    rMax?: number;
+  } = {},
+): Promise<CalibrationResult> {
+  return post("/api/diffraction/calibrate", {
+    image_id: imageId,
+    d_known_ang: opts.dKnownAng ?? null,
+    standard_phase: opts.standardPhase ?? null,
+    hkl: opts.hkl ?? null,
+    r_min: opts.rMin ?? 5,
+    r_max: opts.rMax ?? null,
+  });
 }
 
 export interface SimSpot {
@@ -1527,6 +1583,8 @@ export function analyzeDiffractionSimulate(
     pixelSize?: number;
     imageSize?: [number, number];
     parentImageId?: string;
+    scatteringModel?: "fe" | "z";
+    debyeWallerB?: number | null;
   } = {},
 ): Promise<SimulateResult> {
   return post("/api/analyze/simulate", {
@@ -1537,6 +1595,8 @@ export function analyzeDiffractionSimulate(
     pixel_size: opts.pixelSize ?? 0.05,
     image_size: opts.imageSize ?? [512, 512],
     parent_image_id: opts.parentImageId ?? null,
+    scattering_model: opts.scatteringModel ?? "fe",
+    debye_waller_B: opts.debyeWallerB ?? null,
   });
 }
 
