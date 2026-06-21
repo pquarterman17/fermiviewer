@@ -30,6 +30,7 @@ import numpy as np
 from fermiviewer import ops as _ops
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.io.registry import load_auto
+from fermiviewer.ops.provenance import ProvenanceLog, ProvenanceStep
 
 __all__ = ["Image", "Result", "Session", "open", "ops"]
 
@@ -153,8 +154,29 @@ class Image:
 
     # ── operations ────────────────────────────────────────────────────
     def run(self, op: str, **params: Any) -> Result:
-        """Run a registered operation by name, returning a ``Result``."""
-        return Result(_ops.run(op, self._ds, params), self._session)
+        """Run a registered operation by name, returning a ``Result``. The
+        session records a provenance step (params + lineage) for it."""
+        op_result = _ops.run(op, self._ds, params)
+        result = Result(op_result, self._session)
+        out_id = result.image.id if result.image is not None else None
+        self._session._record(
+            op=op_result.op,
+            params=op_result.params,
+            label=op_result.label,
+            inputs=(self.id,),
+            input_names=(self._name,),
+            output=out_id,
+            value=op_result.value if out_id is None else None,
+        )
+        return result
+
+    def methods(self) -> str:
+        """A reproducible methods paragraph for this image's pipeline."""
+        return self._session.provenance.to_markdown(self.id)
+
+    def provenance_json(self) -> str:
+        """JSON of this image's full ancestry chain."""
+        return self._session.provenance.to_json(self.id)
 
     def __getattr__(self, name: str) -> Any:
         # expose every registered op as a method: img.<op>(**params)
@@ -220,6 +242,7 @@ class Session:
 
     def __init__(self) -> None:
         self.images: dict[str, Image] = {}
+        self.provenance = ProvenanceLog()
 
     def open(self, path: str | Path) -> Image:
         """Load a file (any registered format) into this session."""
@@ -231,6 +254,9 @@ class Session:
         img = Image(ds, name, self, image_id)
         self.images[image_id] = img
         return img
+
+    def _record(self, **kw: Any) -> None:
+        self.provenance.record(ProvenanceStep(**kw))
 
 
 _default = Session()
