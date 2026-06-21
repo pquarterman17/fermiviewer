@@ -921,3 +921,72 @@ def test_vendored_font_path() -> None:
     assert path.suffix == ".ttf"
     ofl = path.parent / "OFL.txt"
     assert ofl.exists(), "OFL.txt must ship alongside the TTF"
+
+
+# ── physical (journal) sizing: width_mm + dpi (Quick-Wins #3) ──────────
+
+
+def test_physical_width_sets_pixel_size_and_dpi(client, img_id) -> None:
+    # Nature single-column 89 mm at 300 dpi → 89/25.4*300 ≈ 1051 px wide,
+    # regardless of the 16 px source raster; height scales isotropically.
+    r = client.post(
+        "/api/export",
+        json={
+            "image_id": img_id,
+            "format": "png",
+            "width_mm": 89,
+            "dpi": 300,
+        },
+    )
+    assert r.status_code == 200
+    png = Image.open(io.BytesIO(r.content))
+    target_w = round(89 / 25.4 * 300)
+    assert png.size[0] == target_w
+    # isotropic: height = round(src_h * target_w/src_w) = round(12*1051/16)
+    assert png.size[1] == round(12 * target_w / 16)
+    # dpi is embedded so the figure imports at the intended physical size
+    assert png.info.get("dpi", (0, 0))[0] == pytest.approx(300, abs=1)
+
+
+def test_physical_mode_needs_both_fields(client, img_id) -> None:
+    # width_mm alone (no dpi) must NOT trigger the float path — falls back to
+    # the integer scale (byte-identical to a plain scale=1 export)
+    r = client.post(
+        "/api/export",
+        json={"image_id": img_id, "format": "png", "width_mm": 89},
+    )
+    assert r.status_code == 200
+    png = Image.open(io.BytesIO(r.content))
+    assert png.size == (16, 12)  # native, integer-scale path
+
+
+def test_physical_downscale_uses_smooth_resample(client, img_id) -> None:
+    # a tiny physical width forces eff_scale < 1 (downscale path); just assert
+    # it produces a valid, smaller-than-native image without error
+    r = client.post(
+        "/api/export",
+        json={"image_id": img_id, "format": "png", "width_mm": 0.5, "dpi": 300},
+    )
+    assert r.status_code == 200
+    png = Image.open(io.BytesIO(r.content))
+    assert png.size[0] == round(0.5 / 25.4 * 300)  # ≈ 6 px wide
+    assert png.size[0] < 16
+
+
+def test_tiff16_ignores_physical_sizing(client, img_id) -> None:
+    # quantitative data export stays integer-scale even with width_mm/dpi set
+    r = client.post(
+        "/api/export",
+        json={
+            "image_id": img_id,
+            "format": "tiff16",
+            "scale": 2,
+            "width_mm": 89,
+            "dpi": 300,
+        },
+    )
+    assert r.status_code == 200
+    import tifffile
+
+    arr = tifffile.imread(io.BytesIO(r.content))
+    assert arr.shape == (24, 32)  # 2× integer scale, NOT the 1051 px figure

@@ -22,6 +22,10 @@ export interface ExportNowOpts {
   /** copy a true-vector SVG to the clipboard (falls back to PNG when the
    *  browser rejects image/svg+xml, e.g. Firefox). Only used by copyActive. */
   vector?: boolean;
+  /** publication sizing (Quick-Wins #3): when BOTH are set, size the output to
+   *  a physical width and embed dpi, instead of the integer `scale`. */
+  widthMm?: number | null;
+  dpi?: number | null;
 }
 
 /** Build the /export request (id + options) from current store state.
@@ -57,9 +61,19 @@ function buildExportRequest(
   if (opts.format !== "tiff16" && opts.colorbar) include.push("colorbar");
   if (wantCaption) include.push("caption");
 
+  // physical sizing only fires when both fields are present and the format
+  // isn't the quantitative tiff16 (which the backend keeps integer-scale)
+  const physical =
+    opts.format !== "tiff16" &&
+    opts.widthMm != null &&
+    opts.widthMm > 0 &&
+    opts.dpi != null &&
+    opts.dpi > 0;
+
   const options: ExportOptions = {
     format: opts.format,
     scale: opts.scale,
+    ...(physical ? { width_mm: opts.widthMm, dpi: opts.dpi } : {}),
     lo: display.lo,
     hi: display.hi,
     gamma: display.gamma,

@@ -70,6 +70,14 @@ class ExportRequest(BaseModel):
     image_id: str
     format: str = "png"  # png | jpeg | tiff16 | svg | pdf
     scale: int = Field(default=1, ge=1, le=4)
+    # publication sizing (Quick-Wins #3): when BOTH are set, the output is
+    # sized to a physical width instead of an integer multiple — target pixel
+    # width = width_mm/25.4 * dpi, giving a float upscale factor. dpi is also
+    # embedded in the PNG/JPEG/PDF. Ignored for tiff16 (quantitative data
+    # export stays integer-scale). When either is None, the integer `scale`
+    # path runs unchanged (byte-identical to existing exports).
+    width_mm: float | None = Field(default=None, gt=0, le=2000)
+    dpi: int | None = Field(default=None, ge=72, le=1200)
     # normalized [0,1] window against the raster min/max (the client's
     # display state); gamma as on the stage
     lo: float = 0.0
@@ -159,19 +167,42 @@ def export_image(req: ExportRequest) -> Response:
     if req.format == "tiff16":
         return _export_tiff16(raster, lo, hi, req, stem)
 
+    # physical sizing (Quick-Wins #3): width_mm + dpi → float upscale factor;
+    # otherwise the integer `scale` path (byte-identical to before).
+    phys_mode = req.width_mm is not None and req.dpi is not None
+    src_h, src_w = raster.shape
+
     try:
-        rgb = render_rgb(raster, lo, hi, req.gamma, req.cmap, req.scale)
+        rgb = render_rgb(
+            raster, lo, hi, req.gamma, req.cmap, 1 if phys_mode else req.scale
+        )
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
 
     img = Image.fromarray(rgb, mode="RGB")
+
+    if phys_mode:
+        target_w = max(1, round(req.width_mm / 25.4 * req.dpi))  # type: ignore[operator]
+        eff_scale = target_w / src_w
+        out_h = max(1, round(src_h * eff_scale))
+        # nearest keeps EM pixels crisp when enlarging (matches the stage);
+        # lanczos avoids aliasing when the figure is smaller than the raster
+        resample = (
+            Image.Resampling.NEAREST
+            if eff_scale >= 1
+            else Image.Resampling.LANCZOS
+        )
+        img = img.resize((target_w, out_h), resample)
+    else:
+        eff_scale = float(req.scale)
+    save_dpi = req.dpi if phys_mode else None
 
     bar: ScaleBar | None = None
     if "scale_bar" in req.include and ds.pixel_cal.calibrated:
         bar = scale_bar_geometry(
             img.width, img.height,
             ds.pixel_cal.scale, ds.pixel_cal.units,
-            req.scale,
+            eff_scale,
             norm_x=req.scale_bar_norm_x,
             norm_y=req.scale_bar_norm_y,
             length_phys=req.scale_bar_length_phys,
@@ -186,22 +217,22 @@ def export_image(req: ExportRequest) -> Response:
             [m.model_dump() for m in req.measures],
             raster.shape[0], raster.shape[1],
             ds.pixel_cal.scale if ds.pixel_cal.calibrated else None,
-            ds.pixel_cal.units, req.scale, raster,
+            ds.pixel_cal.units, eff_scale, raster,
             tilt_angle_deg=req.tilt_angle_deg,
             tilt_axis=req.tilt_axis,
             tilt_geometry=req.tilt_geometry,
         )
 
     cbar = ("colorbar" in req.include, lo, hi)
-    # font size: on-screen value (default 20) × export scale so labels
-    # grow proportionally with the image (item #48)
-    font_size = (req.scale_bar_font_size or 20) * req.scale
+    # font size: on-screen value (default 20) × effective scale so labels
+    # grow proportionally with the image (item #48; float in physical mode)
+    font_size = round((req.scale_bar_font_size or 20) * eff_scale)
 
-    # measurement overlay styling × export scale (mirrors on-screen size +
+    # measurement overlay styling × effective scale (mirrors on-screen size +
     # line width); None → backend legacy default (2 px line, 12 px label)
-    m_lw = (max(1, round(req.overlay_line_width * req.scale))
+    m_lw = (max(1, round(req.overlay_line_width * eff_scale))
             if req.overlay_line_width else 2)
-    m_font = (req.overlay_font_size * req.scale
+    m_font = (round(req.overlay_font_size * eff_scale)
               if req.overlay_font_size else None)
 
     want_caption = "caption" in req.include and bool(req.caption)
@@ -214,8 +245,9 @@ def export_image(req: ExportRequest) -> Response:
         return _file_response(svg.encode(), f"{stem}.svg", "svg")
 
     img = _bake_raster_overlays(img, bar, annos, cbar, req, font_size,
-                                want_caption, m_lw, m_font)
-    return _encode_raster(img, req.format, stem)
+                                want_caption, m_lw, m_font,
+                                caption_scale=max(1, round(eff_scale)))
+    return _encode_raster(img, req.format, stem, save_dpi)
 
 
 def _bake_raster_overlays(
@@ -228,6 +260,7 @@ def _bake_raster_overlays(
     want_caption: bool,
     anno_line_width: int = 2,
     anno_font_size: int | None = None,
+    caption_scale: int = 1,
 ) -> Image.Image:
     """Bake scale bar, annotations, colorbar gutter, then caption band (in
     that order) onto the rendered RGB image; returns the final image."""
@@ -241,19 +274,26 @@ def _bake_raster_overlays(
         img = composite_colorbar(img, req.cmap, cbar[1], cbar[2])
     if want_caption:
         # caption spans the full width incl. the colorbar gutter (added last)
-        img = draw_caption_band(img, req.caption or "", req.scale)
+        img = draw_caption_band(img, req.caption or "", caption_scale)
     return img
 
 
-def _encode_raster(img: Image.Image, fmt: str, stem: str) -> Response:
+def _encode_raster(
+    img: Image.Image, fmt: str, stem: str, dpi: int | None = None
+) -> Response:
+    """Encode the baked image. When `dpi` is set (physical sizing, #3) it is
+    embedded — PNG/JPEG pHYs/JFIF density and the PDF render resolution — so
+    the figure imports at the intended physical size in Illustrator/Word."""
     buf = io.BytesIO()
     if fmt == "pdf":
-        img.save(buf, format="PDF", resolution=150.0)
+        img.save(buf, format="PDF", resolution=float(dpi) if dpi else 150.0)
         return _file_response(buf.getvalue(), f"{stem}.pdf", "pdf")
     if fmt == "jpeg":
-        img.save(buf, format="JPEG", quality=92)
+        kw = {"dpi": (dpi, dpi)} if dpi else {}
+        img.save(buf, format="JPEG", quality=92, **kw)
         return _file_response(buf.getvalue(), f"{stem}.jpg", "jpeg")
-    img.save(buf, format="PNG")
+    kw = {"dpi": (dpi, dpi)} if dpi else {}
+    img.save(buf, format="PNG", **kw)
     return _file_response(buf.getvalue(), f"{stem}.png", "png")
 
 

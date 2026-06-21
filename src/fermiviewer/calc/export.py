@@ -163,7 +163,7 @@ def _box_outline(
     kind: str,
     ipts: list[tuple[float, float]],
     opts: tuple[tuple[float, float], ...],
-    scale: int,
+    scale: float,
 ) -> list[Annotation]:
     """Box profiles (width set) bake the averaging-box outline around
     the dashed centerline — mirrors MeasureOverlay. Empty list for
@@ -188,7 +188,7 @@ def measure_annotations(
     img_w: int,
     pixel_size: float | None,
     pixel_unit: str,
-    scale: int,
+    scale: float,
     raster: np.ndarray | None = None,
     tilt_angle_deg: float = 0.0,
     tilt_axis: str = "Y",
@@ -321,7 +321,7 @@ def scale_bar_geometry(
     out_h: int,
     pixel_size: float,
     pixel_unit: str,
-    scale: int,
+    scale: float,
     *,
     norm_x: float | None = None,
     norm_y: float | None = None,

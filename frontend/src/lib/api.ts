@@ -632,6 +632,11 @@ export function diffractionDetectWithRoi(
 export interface ExportOptions {
   format: "png" | "tiff16" | "jpeg" | "svg" | "pdf";
   scale: number;
+  // publication sizing (Quick-Wins #3): set BOTH to size the output to a
+  // physical width (target px = width_mm/25.4 * dpi) and embed dpi, instead
+  // of the integer scale. Omitted/either-null → the integer scale path.
+  width_mm?: number | null;
+  dpi?: number | null;
   lo: number; // normalized [0,1] window (display state)
   hi: number;
   gamma: number;

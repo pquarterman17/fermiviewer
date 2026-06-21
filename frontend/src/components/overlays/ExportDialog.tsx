@@ -19,6 +19,14 @@ const FORMATS: { key: Format; label: string }[] = [
   { key: "pdf", label: "PDF" },
 ];
 
+// journal single/double-column widths (mm) — the publication sizing presets
+const JOURNAL_WIDTHS: { label: string; mm: number }[] = [
+  { label: "Nature", mm: 89 },
+  { label: "Nature 2-col", mm: 183 },
+  { label: "Science", mm: 85 },
+  { label: "ACS", mm: 84 },
+];
+
 // rough compressed-size factors vs raw bytes (estimate only)
 const SIZE_FACTOR: Record<Format, number> = {
   png: 0.5,
@@ -50,6 +58,10 @@ export default function ExportDialog() {
 
   const [format, setFormat] = useState<Format>("png");
   const [scale, setScale] = useState(1);
+  // publication sizing (Quick-Wins #3): integer-scale vs physical mm-width@dpi
+  const [sizeMode, setSizeMode] = useState<"scale" | "physical">("scale");
+  const [widthMm, setWidthMm] = useState(89); // Nature single-column default
+  const [dpi, setDpi] = useState(300);
   const [scaleBar, setScaleBar] = useState(true);
   const [bakeMeasures, setBakeMeasures] = useState(true);
   const [colorbar, setColorbar] = useState(false);
@@ -71,6 +83,7 @@ export default function ExportDialog() {
       const p = loadPrefs();
       setFormat(p.exportFormat);
       setScale(Math.min(4, Math.max(1, Math.round(p.exportScale))));
+      setSizeMode("scale");
       setScaleBar(p.exportScaleBar);
       setBakeMeasures(p.exportMeasures);
       setColorbar(p.exportColorbar);
@@ -163,8 +176,20 @@ export default function ExportDialog() {
     );
   }
 
-  const h = meta.shape[0] * scale;
-  const w = meta.shape[1] * scale;
+  // physical sizing is meaningless for the quantitative tiff16 export
+  const physicalAllowed = format !== "tiff16";
+  const effPhysical = sizeMode === "physical" && physicalAllowed;
+
+  // output dimensions: integer multiple, or derived from physical width@dpi
+  let w: number;
+  let h: number;
+  if (effPhysical) {
+    w = Math.max(1, Math.round((widthMm / 25.4) * dpi));
+    h = Math.max(1, Math.round(meta.shape[0] * (w / meta.shape[1])));
+  } else {
+    w = meta.shape[1] * scale;
+    h = meta.shape[0] * scale;
+  }
   const bytesPerPx = format === "tiff16" ? 2 : 3;
   const estBytes = w * h * bytesPerPx * SIZE_FACTOR[format];
   const canBar = format !== "tiff16" && meta.pixel_size !== null;
@@ -181,7 +206,15 @@ export default function ExportDialog() {
 
   const run = () => {
     setBusy(true);
-    exportActive({ format, scale, scaleBar, measures: bakeMeasures, colorbar, caption })
+    exportActive({
+      format,
+      scale,
+      scaleBar,
+      measures: bakeMeasures,
+      colorbar,
+      caption,
+      ...(effPhysical ? { widthMm, dpi } : {}),
+    })
       .then((filename) => {
         setStatus(`exported ${filename}`);
         setOpen(false);
@@ -280,19 +313,88 @@ export default function ExportDialog() {
             </div>
 
             <div className="fvd-ws-row">
-              <span className="k">Resolution</span>
+              <span className="k">Sizing</span>
               <div className="fvd-seg">
-                {[1, 2, 3, 4].map((s) => (
-                  <button
-                    key={s}
-                    className={`fvd-seg-btn${scale === s ? " active" : ""}`}
-                    onClick={() => setScale(s)}
-                  >
-                    {s}×
-                  </button>
-                ))}
+                <button
+                  className={`fvd-seg-btn${!effPhysical ? " active" : ""}`}
+                  onClick={() => setSizeMode("scale")}
+                >
+                  Scale
+                </button>
+                <button
+                  className={`fvd-seg-btn${effPhysical ? " active" : ""}`}
+                  disabled={!physicalAllowed}
+                  title={
+                    physicalAllowed
+                      ? "size to a physical width at a target DPI (journals)"
+                      : "TIFF-16 is a data export — integer scale only"
+                  }
+                  onClick={() => setSizeMode("physical")}
+                >
+                  Physical
+                </button>
               </div>
             </div>
+
+            {effPhysical ? (
+              <>
+                <div className="fvd-ws-row">
+                  <span className="k">Width</span>
+                  <div className="fvd-seg">
+                    {JOURNAL_WIDTHS.map((j) => (
+                      <button
+                        key={j.label}
+                        className={`fvd-seg-btn${widthMm === j.mm ? " active" : ""}`}
+                        title={`${j.label} — ${j.mm} mm`}
+                        onClick={() => setWidthMm(j.mm)}
+                      >
+                        {j.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="fvd-ws-row">
+                  <span className="k">mm · DPI</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={2000}
+                    step={1}
+                    value={widthMm}
+                    style={{ width: 64 }}
+                    onChange={(e) =>
+                      setWidthMm(Math.max(1, Number(e.target.value) || 1))
+                    }
+                  />
+                  <div className="fvd-seg">
+                    {[150, 300, 600].map((d) => (
+                      <button
+                        key={d}
+                        className={`fvd-seg-btn${dpi === d ? " active" : ""}`}
+                        onClick={() => setDpi(d)}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="fvd-ws-row">
+                <span className="k">Resolution</span>
+                <div className="fvd-seg">
+                  {[1, 2, 3, 4].map((s) => (
+                    <button
+                      key={s}
+                      className={`fvd-seg-btn${scale === s ? " active" : ""}`}
+                      onClick={() => setScale(s)}
+                    >
+                      {s}×
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="fvd-ws-row">
               <span className="k">Include</span>
@@ -328,7 +430,9 @@ export default function ExportDialog() {
         </div>
 
         <div className="fvd-export-info">
-          {w} × {h} px · ~{fmtBytes(estBytes)} · includes: {summary}
+          {w} × {h} px
+          {effPhysical && ` · ${fmtNum(widthMm)} mm @ ${dpi} dpi`} · ~
+          {fmtBytes(estBytes)} · includes: {summary}
           {format === "tiff16" && " · 16-bit grayscale (no overlays)"}
           {format === "svg" && " · vector overlays + embedded PNG"}
           {format === "pdf" && " · single-page raster PDF"}
