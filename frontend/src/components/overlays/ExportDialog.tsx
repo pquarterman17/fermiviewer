@@ -241,8 +241,8 @@ export default function ExportDialog() {
               <div className="fvd-seg">
                 {(
                   [
-                    ["Draft", "png", 1, true, false, false],
-                    ["Slides", "png", 2, true, false, true],
+                    ["Draft", "png", 1, true, true, false],
+                    ["Slides", "png", 2, true, true, true],
                     ["Journal", "png", 4, true, true, false],
                     ["Data", "tiff16", 1, false, false, false],
                   ] as [string, Format, number, boolean, boolean, boolean][]
