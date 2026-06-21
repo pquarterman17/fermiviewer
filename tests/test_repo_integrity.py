@@ -28,7 +28,7 @@ SRC = ROOT / "src" / "fermiviewer"
 
 GPL_PACKAGES = {"rosettasciio", "rsciio", "hyperspy", "exspy", "holospy"}
 MAX_MODULE_LINES = 500
-PURE_LAYERS = ("io", "calc")
+PURE_LAYERS = ("io", "calc", "ops")
 FORBIDDEN_IN_PURE = ("fastapi", "pydantic", "fermiviewer.routes", "starlette")
 
 
