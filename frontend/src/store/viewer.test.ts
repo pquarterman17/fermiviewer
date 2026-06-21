@@ -118,6 +118,22 @@ describe("ingest", () => {
   });
 });
 
+describe("derivedTick lineage signal (#7 Live FFT)", () => {
+  it("starts at 0 and bumps once per ingestDerived, not on plain ingest", () => {
+    expect(useViewer.getState().derivedTick).toBe(0);
+    useViewer.getState().ingest([meta("a")]); // plain open → no bump
+    expect(useViewer.getState().derivedTick).toBe(0);
+    useViewer
+      .getState()
+      .ingestDerived([meta("d1", { meta: { derived_from: "a" } })]);
+    expect(useViewer.getState().derivedTick).toBe(1);
+    useViewer
+      .getState()
+      .ingestDerived([meta("d2", { meta: { derived_from: "a" } })]);
+    expect(useViewer.getState().derivedTick).toBe(2);
+  });
+});
+
 describe("setTilt", () => {
   it("sets and clears the per-image entry", () => {
     const { setTilt } = useViewer.getState();

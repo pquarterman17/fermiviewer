@@ -506,6 +506,10 @@ interface ViewerState {
   sbsActive: SbsPane;
   /** Link zoom/pan across the two panes (default true; toggle to unlink). */
   sbsLinked: boolean;
+  // monotonic counter bumped on every ingestDerived — a lineage signal that
+  // lets views like Live FFT re-fetch when a new derived image is produced
+  // without subscribing to the whole image map (Quick-Wins #7)
+  derivedTick: number;
   // per-image view, persisted (localStorage "fv_views")
   views: Record<string, View>;
   // per-image display pipeline (window/gamma/colormap)
@@ -765,6 +769,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   sbsRight: null,
   sbsActive: "L",
   sbsLinked: true,
+  derivedTick: 0,
   views: loadJson<Record<string, View>>(VIEWS_KEY, {}),
   display: {},
   history: {},
@@ -861,6 +866,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   ingestDerived: (metas) => {
     _ingest(set, metas);
     set((s) => ({
+      derivedTick: s.derivedTick + 1, // lineage signal (Live FFT, #7)
       undoStack: [
         ...s.undoStack.slice(-UNDO_CAP),
         ...metas.map((m) => ({

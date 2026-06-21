@@ -23,6 +23,8 @@ export default function FftMaskWorkshop() {
   );
   const ingest = useViewer((s) => s.ingestDerived);
   const setStatus = useViewer((s) => s.setStatus);
+  // lineage signal: bumps whenever any derived image is produced (#7)
+  const derivedTick = useViewer((s) => s.derivedTick);
 
   const measures = useViewer((s) =>
     s.activeId ? (s.measures[s.activeId] ?? null) : null,
@@ -36,6 +38,7 @@ export default function FftMaskWorkshop() {
   const [radius, setRadius] = useState("6");
   const [mode, setMode] = useState<"pass" | "reject">("pass");
   const [local, setLocal] = useState(false); // live/local FFT of the ROI
+  const [liveFft, setLiveFft] = useState(false); // auto-refresh on new derived (#7)
   const [busy, setBusy] = useState(false);
 
   // a derived FFT view of the active image powers the editor; the
@@ -74,6 +77,29 @@ export default function FftMaskWorkshop() {
     // rectKey stands in for roiRect (fresh array per render)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId, isImage, sourceLooksFft, local, rectKey, setStatus]);
+
+  // Live FFT (#7): when on, re-fetch the FFT (debounced) whenever a new derived
+  // image is produced — e.g. a filter elsewhere updates the lineage. Unlike the
+  // primary effect this does NOT clear fftId first, so the old FFT stays visible
+  // until the new one arrives (no flicker). Masks survive the refresh.
+  useEffect(() => {
+    if (!liveFft || !activeId || !isImage || sourceLooksFft) return;
+    let stale = false;
+    const rect = local && roiRect ? roiRect : undefined;
+    const timer = setTimeout(() => {
+      imageFft(activeId, rect)
+        .then((m) => {
+          if (!stale) setFftId(m.id);
+        })
+        .catch((e: Error) => setStatus(`fft: ${e.message}`));
+    }, 150);
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+    };
+    // re-runs on lineage bumps; closes over the current active id / ROI rect
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveFft, derivedTick]);
 
   if (!isImage || sourceLooksFft) {
     return (
@@ -161,6 +187,17 @@ export default function FftMaskWorkshop() {
             onChange={(e) => setLocal(e.target.checked)}
           />
           Live FFT of ROI
+        </label>
+        <label
+          className="fvd-check"
+          title="auto-refresh the FFT whenever a filter produces a new image"
+        >
+          <input
+            type="checkbox"
+            checked={liveFft}
+            onChange={(e) => setLiveFft(e.target.checked)}
+          />
+          Live update
         </label>
       </div>
       <div className="fvd-ws-row">
