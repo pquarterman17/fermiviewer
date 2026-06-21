@@ -327,6 +327,8 @@ function TrainedGrainControls({
   nStrokes,
   minArea,
   setMinArea,
+  classifier,
+  setClassifier,
   busy,
   progress,
   onRun,
@@ -338,6 +340,8 @@ function TrainedGrainControls({
   nStrokes: number;
   minArea: string;
   setMinArea: (v: string) => void;
+  classifier: "softmax" | "forest";
+  setClassifier: (v: "softmax" | "forest") => void;
   busy: boolean;
   progress: string;
   onRun: () => void;
@@ -414,6 +418,20 @@ function TrainedGrainControls({
         </button>
       </div>
       <div className="fvd-ws-row">
+        <span className="k">model</span>
+        <select
+          value={classifier}
+          style={{ flex: 1 }}
+          title="Forest learns nonlinear texture boundaries; softmax is a faster linear model"
+          onChange={(e) =>
+            setClassifier(e.target.value as "softmax" | "forest")
+          }
+        >
+          <option value="forest">Random forest — nonlinear</option>
+          <option value="softmax">Softmax — linear, fast</option>
+        </select>
+      </div>
+      <div className="fvd-ws-row">
         <span className="k">min area</span>
         <input
           value={minArea}
@@ -448,6 +466,8 @@ function GrainsMode({ id }: { id: string }) {
   const [coarseness, setCoarseness] = useState("0.05");
   const [mergeThr, setMergeThr] = useState("0.08");
   const [minArea, setMinArea] = useState("25");
+  // trained-mode pixel classifier: forest (nonlinear, #8) is the default
+  const [classifier, setClassifier] = useState<"softmax" | "forest">("forest");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
   const [labelsId, setLabelsId] = useState<string | null>(null);
@@ -500,6 +520,7 @@ function GrainsMode({ id }: { id: string }) {
     grainsTrainSegment(id, payload, {
       minArea: Number(minArea) || 25,
       boundaryClass: bnd,
+      classifier,
     })
       .then((r) => {
         const s = useViewer.getState();
@@ -599,6 +620,8 @@ function GrainsMode({ id }: { id: string }) {
           nStrokes={nStrokes}
           minArea={minArea}
           setMinArea={setMinArea}
+          classifier={classifier}
+          setClassifier={setClassifier}
           busy={busy}
           progress={progress}
           onRun={trainRun}

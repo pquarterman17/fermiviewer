@@ -20,6 +20,11 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from fermiviewer.calc.forest import (
+    RandomForestModel,
+    forest_predict,
+    forest_train,
+)
 from fermiviewer.calc.grains import extract_grain_features
 from fermiviewer.calc.ml import SoftmaxModel, softmax_predict, softmax_train
 from fermiviewer.calc.segment import label_components
@@ -37,9 +42,10 @@ __all__ = [
 class TrainedGrainModel:
     """A fitted classifier plus the feature configuration it was trained on,
     so `segment_trained` rebuilds the identical feature space (the image it
-    is applied to may differ from the one it was trained on)."""
+    is applied to may differ from the one it was trained on). ``classifier``
+    selects which predict path `segment_trained` dispatches to."""
 
-    model: SoftmaxModel
+    model: SoftmaxModel | RandomForestModel
     scales: tuple[float, ...]
     gradient_sigma: float
     classifier: str = "softmax"
@@ -59,14 +65,22 @@ def train_from_scribbles(
     label_mask: np.ndarray,
     scales: tuple[float, ...] = (2.0, 4.0),
     gradient_sigma: float = 0.0,
+    classifier: str = "softmax",
     learn_rate: float = 0.5,
     max_iter: int = 800,
     lambda_: float = 1e-3,
+    n_trees: int = 64,
+    max_depth: int = 14,
+    seed: int = 0,
 ) -> TrainedGrainModel:
     """Fit a pixel classifier from sparse class labels — ported.
 
     label_mask: (H, W) integer image, 0 = unlabelled, positive ints = class
     id. Only nonzero pixels are training samples; needs ≥2 distinct classes.
+
+    classifier: ``"softmax"`` (linear, ported) or ``"forest"`` (nonlinear
+    random forest, Quick-Wins #8). The forest captures texture classes that
+    are not linearly separable in the multi-scale feature stack.
     """
     img = np.asarray(img, dtype=np.float64)
     label_mask = np.asarray(label_mask)
@@ -74,6 +88,8 @@ def train_from_scribbles(
         raise ValueError(
             f"img is {img.shape} but label_mask is {label_mask.shape}."
         )
+    if classifier not in ("softmax", "forest"):
+        raise ValueError(f"unknown classifier {classifier!r}.")
     labeled = label_mask > 0
     if not labeled.any():
         raise ValueError("label_mask has no labelled (nonzero) pixels.")
@@ -86,15 +102,26 @@ def train_from_scribbles(
     h, w, f = feats.shape
     x = feats.reshape(h * w, f)
     idx = labeled.reshape(-1)
-    model = softmax_train(
-        x[idx],
-        label_mask.reshape(-1)[idx],
-        learn_rate=learn_rate,
-        max_iter=max_iter,
-        lambda_=lambda_,
-    )
+    x_train = x[idx]
+    y_train = label_mask.reshape(-1)[idx]
+    model: SoftmaxModel | RandomForestModel
+    if classifier == "forest":
+        model = forest_train(
+            x_train, y_train, n_trees=n_trees, max_depth=max_depth, seed=seed
+        )
+    else:
+        model = softmax_train(
+            x_train,
+            y_train,
+            learn_rate=learn_rate,
+            max_iter=max_iter,
+            lambda_=lambda_,
+        )
     return TrainedGrainModel(
-        model=model, scales=scales, gradient_sigma=gradient_sigma
+        model=model,
+        scales=scales,
+        gradient_sigma=gradient_sigma,
+        classifier=classifier,
     )
 
 
@@ -118,7 +145,10 @@ def segment_trained(
     h, w, f = feats.shape
     x = feats.reshape(h * w, f)
 
-    cls, probs = softmax_predict(model.model, x)
+    if model.classifier == "forest":
+        cls, probs = forest_predict(model.model, x)  # type: ignore[arg-type]
+    else:
+        cls, probs = softmax_predict(model.model, x)  # type: ignore[arg-type]
     class_map = cls.reshape(h, w)
     max_prob = probs.max(axis=1).reshape(h, w)
 

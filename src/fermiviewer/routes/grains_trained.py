@@ -9,6 +9,8 @@ result). Lives in its own module because routes/structure.py is at the
 
 from __future__ import annotations
 
+from typing import Literal
+
 import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -39,6 +41,8 @@ class TrainSegmentRequest(BaseModel):
     # class id(s) painted on grain boundaries / background, excluded from
     # grain labelling (each predicted as that class drops out)
     boundary_class: list[int] = Field(default=[])
+    # "softmax" (linear, default) or "forest" (nonlinear random forest, #8)
+    classifier: Literal["softmax", "forest"] = "softmax"
 
 
 @router.post("/grains/train-segment")
@@ -52,7 +56,11 @@ def grains_train_segment(req: TrainSegmentRequest) -> dict:
     scales = tuple(float(s) for s in req.scales) or (2.0, 4.0)
     try:
         model = train_from_scribbles(
-            raster, label_mask, scales=scales, gradient_sigma=req.gradient_sigma
+            raster,
+            label_mask,
+            scales=scales,
+            gradient_sigma=req.gradient_sigma,
+            classifier=req.classifier,
         )
         seg = segment_trained(
             raster,

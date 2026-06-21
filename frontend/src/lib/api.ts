@@ -913,6 +913,8 @@ export interface TrainSegmentOpts {
   gradientSigma?: number;
   minArea?: number;
   boundaryClass?: number[];
+  /** "softmax" (linear, default) or "forest" (nonlinear random forest, #8) */
+  classifier?: "softmax" | "forest";
 }
 
 /** Scribble-trained grain segmentation (parity #8): fit a pixel classifier
@@ -930,6 +932,7 @@ export function grainsTrainSegment(
     gradient_sigma: opts.gradientSigma ?? 0,
     min_area: opts.minArea ?? 25,
     boundary_class: opts.boundaryClass ?? [],
+    classifier: opts.classifier ?? "softmax",
   });
 }
 

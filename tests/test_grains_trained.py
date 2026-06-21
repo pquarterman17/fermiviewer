@@ -102,6 +102,35 @@ def test_train_and_segment_recovers_two_regions() -> None:
     assert seg.max_prob.shape == img.shape
 
 
+def test_forest_classifier_recovers_two_regions() -> None:
+    img = _two_region_image()
+    mask = rasterize_strokes(
+        (60, 90),
+        [
+            {"class_id": 1, "radius": 3.0, "points": [[10, 20], [30, 40]]},
+            {"class_id": 2, "radius": 3.0, "points": [[65, 20], [80, 40]]},
+        ],
+    )
+    model = train_from_scribbles(img, mask, classifier="forest")
+    assert model.classifier == "forest"
+    seg = segment_trained(img, model, min_area=50)
+    assert seg.n_grains == 2
+    assert len({int(seg.labels[30, 10]), int(seg.labels[30, 80])}) == 2
+
+
+def test_unknown_classifier_raises() -> None:
+    img = _two_region_image()
+    mask = rasterize_strokes(
+        (60, 90),
+        [
+            {"class_id": 1, "radius": 3.0, "points": [[10, 20]]},
+            {"class_id": 2, "radius": 3.0, "points": [[80, 20]]},
+        ],
+    )
+    with pytest.raises(ValueError, match="unknown classifier"):
+        train_from_scribbles(img, mask, classifier="svm")
+
+
 def test_train_requires_two_classes() -> None:
     img = _two_region_image()
     mask = rasterize_strokes(
@@ -184,6 +213,24 @@ def test_train_segment_endpoint(client, tmp_path) -> None:
     assert client.get(
         f"/api/image/{body['labels']['id']}/render"
     ).status_code == 200
+
+
+def test_train_segment_forest_endpoint(client, tmp_path) -> None:
+    img_id = _open(client, tmp_path, _two_region_image())
+    r = client.post(
+        "/api/grains/train-segment",
+        json={
+            "image_id": img_id,
+            "strokes": [
+                {"class_id": 1, "radius": 3, "points": [[10, 20], [30, 40]]},
+                {"class_id": 2, "radius": 3, "points": [[65, 20], [80, 40]]},
+            ],
+            "min_area": 50,
+            "classifier": "forest",
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["n_grains"] == 2
 
 
 def test_train_segment_one_class_is_422(client, tmp_path) -> None:
