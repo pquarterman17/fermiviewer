@@ -23,6 +23,8 @@ dependencies = [
     # stable create_window/start API; keep 6.x WebView2 quality, add room
     "pywebview>=6.0",
     "pyyaml>=6.0",
+    # HDF5 interchange import (EMD/DM5/NeXus/.hspy) — BSD, Apache-compatible
+    "h5py>=3.11",
 ]
 # LICENSE GUARDRAIL: no GPL packages (rosettasciio, hyperspy, exspy) may
 # ever appear in [project.dependencies] — this project is Apache-2.0.
@@ -121,6 +123,11 @@ ignore_missing_imports = true
 # yaml (PyYAML) ships no inline types; types-PyYAML's uv add hits the same
 # OneDrive file locks, so treat as opaque.
 module = "yaml"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# h5py ships no py.typed marker / inline stubs; treat as opaque.
+module = "h5py"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
