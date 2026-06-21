@@ -28,6 +28,7 @@ const state = {
 
 vi.mock("../store/viewer", () => ({
   DEFAULT_DISPLAY: { lo: 0, hi: 1, gamma: 1, cmap: "gray" },
+  OVERLAY_FONT_PX: { XS: 10, S: 13, M: 16, L: 20, XL: 26, XXL: 34 },
   useViewer: { getState: () => state },
 }));
 
@@ -66,6 +67,9 @@ describe("exportActive", () => {
     expect(opts.overlay_color).toBe("#ffffff");
     expect(opts.scale_bar_norm_x).toBe(0.02);
     expect((opts.measures as unknown[]).length).toBe(1);
+    // burned measurements carry the on-screen overlay size + line width
+    expect(opts.overlay_font_size).toBe(16); // mock overlay size "M" → 16px
+    expect(opts.overlay_line_width).toBe(2.5);
   });
 
   it("omits scale bar + measurements for tiff16 (data export)", async () => {
@@ -81,6 +85,9 @@ describe("exportActive", () => {
     const [, opts] = (exportImage as unknown as { mock: { calls: unknown[][] } })
       .mock.calls[0] as [string, Record<string, unknown>];
     expect(opts.include).toEqual([]);
+    // styling fields ride along only when measurements are baked
+    expect(opts.overlay_font_size).toBeUndefined();
+    expect(opts.overlay_line_width).toBeUndefined();
   });
 });
 

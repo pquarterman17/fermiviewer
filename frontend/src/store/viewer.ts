@@ -186,6 +186,18 @@ export interface OverlayStyle {
   endSymbol: EndSymbol;
 }
 
+/** On-screen label px for each overlay size bucket. Shared by the
+ *  MeasureOverlay renderer AND the export pipeline so burned-in labels
+ *  match what's on the stage. */
+export const OVERLAY_FONT_PX: Record<OverlayStyle["size"], number> = {
+  XS: 10,
+  S: 13,
+  M: 16,
+  L: 20,
+  XL: 26,
+  XXL: 34,
+};
+
 /** Per-image scale bar display overrides.
  *  x/y are fractional positions 0–1 relative to the stage viewport
  *  (default bottom-left ≈ 0.02, 0.92).

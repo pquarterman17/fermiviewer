@@ -255,6 +255,41 @@ def test_measurement_baking_png(client, img_id) -> None:
     assert plain == base
 
 
+def test_measurement_styling_honored_png(client, img_id) -> None:
+    """overlay_line_width / overlay_font_size thicken lines + enlarge labels;
+    omitting them is byte-identical to the legacy default."""
+    common = {
+        "image_id": img_id, "format": "png", "scale": 1,
+        "include": ["measurements"], "measures": MEASURES,
+        "overlay_color": "#ff0000",
+    }
+    default = client.post("/api/export", json=common).content
+    styled = client.post("/api/export", json={
+        **common, "overlay_line_width": 8, "overlay_font_size": 40,
+    }).content
+    assert default != styled
+    a = np.asarray(Image.open(io.BytesIO(styled)))
+    b = np.asarray(Image.open(io.BytesIO(default)))
+    red = lambda im: int(  # noqa: E731
+        ((im[..., 0] == 255) & (im[..., 1] == 0) & (im[..., 2] == 0)).sum()
+    )
+    assert red(a) > red(b)  # thicker strokes paint more pure-red pixels
+    # omitting the styling fields → byte-identical to the legacy 2 px default
+    again = client.post("/api/export", json=common).content
+    assert again == default
+
+
+def test_measurement_styling_svg(client, img_id) -> None:
+    """SVG main strokes + label font honour the requested overlay styling."""
+    svg = client.post("/api/export", json={
+        "image_id": img_id, "format": "svg", "scale": 1,
+        "include": ["measurements"], "measures": MEASURES,
+        "overlay_line_width": 5, "overlay_font_size": 28,
+    }).content.decode()
+    assert 'stroke-width="5"' in svg   # measure strokes (lines/box/angle)
+    assert 'font-size="28"' in svg     # measure label size
+
+
 def test_annotation_labels() -> None:
     """calc-level: labels mirror MeasureOverlay (fmt, vertex, μ/σ)."""
     from fermiviewer.calc.export import measure_annotations

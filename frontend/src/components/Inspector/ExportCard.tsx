@@ -34,7 +34,16 @@ export default function ExportCard() {
 
   const run = () => {
     setBusy(true);
-    exportActive({ format, scale })
+    // honor the Preferences → Export include defaults (scale bar /
+    // measurements / colorbar) so the quick path matches the full dialog
+    const p = loadPrefs();
+    exportActive({
+      format,
+      scale,
+      scaleBar: p.exportScaleBar,
+      measures: p.exportMeasures,
+      colorbar: p.exportColorbar,
+    })
       .then((filename) => setStatus(`exported ${filename}`))
       .catch((e: Error) => setStatus(`export: ${e.message}`))
       .finally(() => setBusy(false));

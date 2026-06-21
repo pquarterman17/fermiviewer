@@ -79,6 +79,11 @@ class ExportRequest(BaseModel):
     include: list[str] = []  # ["scale_bar", "measurements", "colorbar", "caption"]
     measures: list[WireMeasure] = []
     overlay_color: str = "#35e0c2"
+    # measurement overlay styling (mirrors the on-screen overlay size + line
+    # width); multiplied by `scale` like the scale-bar font. None → legacy
+    # 2 px line and small fixed label (byte-identical to older exports).
+    overlay_font_size: int | None = Field(default=None, ge=1, le=200)
+    overlay_line_width: float | None = Field(default=None, gt=0, le=50)
     # report caption burned into a band below the figure (item WS4c); the
     # frontend composes the text (user caption + optional metadata line).
     # Rendered only when "caption" is in `include` and this is non-empty.
@@ -192,16 +197,24 @@ def export_image(req: ExportRequest) -> Response:
     # grow proportionally with the image (item #48)
     font_size = (req.scale_bar_font_size or 20) * req.scale
 
+    # measurement overlay styling × export scale (mirrors on-screen size +
+    # line width); None → backend legacy default (2 px line, 12 px label)
+    m_lw = (max(1, round(req.overlay_line_width * req.scale))
+            if req.overlay_line_width else 2)
+    m_font = (req.overlay_font_size * req.scale
+              if req.overlay_font_size else None)
+
     want_caption = "caption" in req.include and bool(req.caption)
 
     if req.format == "svg":
         svg = build_svg(img, bar, annos, req.overlay_color,
                         cbar=cbar, cmap=req.cmap, font_size=font_size,
+                        measure_font_size=m_font or 12, measure_line_width=m_lw,
                         caption=req.caption if want_caption else None)
         return _file_response(svg.encode(), f"{stem}.svg", "svg")
 
     img = _bake_raster_overlays(img, bar, annos, cbar, req, font_size,
-                                want_caption)
+                                want_caption, m_lw, m_font)
     return _encode_raster(img, req.format, stem)
 
 
@@ -213,13 +226,17 @@ def _bake_raster_overlays(
     req: ExportRequest,
     font_size: int,
     want_caption: bool,
+    anno_line_width: int = 2,
+    anno_font_size: int | None = None,
 ) -> Image.Image:
     """Bake scale bar, annotations, colorbar gutter, then caption band (in
     that order) onto the rendered RGB image; returns the final image."""
     if bar is not None:
         draw_scale_bar(img, bar, font_size=font_size)
     if annos:
-        draw_annotations(img, annos, _hex_rgb(req.overlay_color))
+        draw_annotations(img, annos, _hex_rgb(req.overlay_color),
+                         line_width=anno_line_width,
+                         label_font_size=anno_font_size)
     if cbar[0]:
         img = composite_colorbar(img, req.cmap, cbar[1], cbar[2])
     if want_caption:

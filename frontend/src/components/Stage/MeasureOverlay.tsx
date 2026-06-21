@@ -14,13 +14,13 @@ import {
 } from "../../lib/geometry";
 import { useStageInfo } from "../../store/stage";
 import {
+  OVERLAY_FONT_PX,
   useViewer,
   type EndSymbol,
   type Measure,
   type View,
 } from "../../store/viewer";
 
-const FONT_PX = { XS: 10, S: 13, M: 16, L: 20, XL: 26, XXL: 34 } as const;
 const HANDLE_R = 5;
 
 /** SVG glyph for an endpoint handle. The hit-circle (transparent, R=8)
@@ -154,7 +154,7 @@ export default function MeasureOverlay({
   const toImagePx = (m: Measure) =>
     m.pts.map((p) => ({ x: p.x * img.w, y: p.y * img.h }));
 
-  const globalFont = FONT_PX[overlay.size];
+  const globalFont = OVERLAY_FONT_PX[overlay.size];
   const color = overlay.color;
   // configurable line thickness (falls back for overlays persisted before
   // lineWidth existed); selected measures render one step thicker.

@@ -130,64 +130,67 @@ def _draw_glyphs(draw: ImageDraw.ImageDraw,
 
 
 def _draw_box_kind(draw: ImageDraw.ImageDraw, an: Annotation,
-                   color: tuple[int, int, int]) -> None:
+                   color: tuple[int, int, int], lw: int = 2) -> None:
     p = an.points
     x0 = min(p[0][0], p[1][0])
     y0 = min(p[0][1], p[1][1])
     x1 = max(p[0][0], p[1][0])
     y1 = max(p[0][1], p[1][1])
     if an.kind in ("ellipse", "circle"):
-        draw.ellipse([x0, y0, x1, y1], outline=color, width=2)
+        draw.ellipse([x0, y0, x1, y1], outline=color, width=lw)
     else:
-        draw.rectangle([x0, y0, x1, y1], outline=color, width=2)
+        draw.rectangle([x0, y0, x1, y1], outline=color, width=lw)
 
 
 def _draw_arrow_kind(draw: ImageDraw.ImageDraw, an: Annotation,
-                     color: tuple[int, int, int]) -> None:
+                     color: tuple[int, int, int], lw: int = 2) -> None:
     a, b = an.points[0], an.points[1]
-    draw.line([a, b], fill=color, width=2)
+    draw.line([a, b], fill=color, width=lw)
     ang = float(np.arctan2(b[1] - a[1], b[0] - a[0]))
     head = 9.0
     for da in (-0.45, 0.45):
         draw.line(
             [b, (b[0] - head * np.cos(ang + da),
                  b[1] - head * np.sin(ang + da))],
-            fill=color, width=2,
+            fill=color, width=lw,
         )
     _draw_end_glyph(draw, a[0], a[1], an.end_symbol, color,
                     ang=math.atan2(b[1] - a[1], b[0] - a[0]))
 
 
 def draw_annotations(img: Image.Image, annos: list[Annotation],
-                     color: tuple[int, int, int]) -> None:
+                     color: tuple[int, int, int], line_width: int = 2,
+                     label_font_size: int | None = None) -> None:
     draw = ImageDraw.Draw(img)
+    lw = line_width
+    font = _load_font(label_font_size) if label_font_size else None
     for an in annos:
         p = an.points
         sym = an.end_symbol
         if an.kind == "outline":
             # box-profile averaging box: closed solid polygon, no label
-            draw.polygon([tuple(pt) for pt in p], outline=color, width=2)
+            draw.polygon([tuple(pt) for pt in p], outline=color, width=lw)
             continue
         if an.kind in ("roi", "box", "ellipse", "circle"):
-            _draw_box_kind(draw, an, color)
+            _draw_box_kind(draw, an, color, lw)
         elif an.kind == "text":
             pass  # caption only — drawn below
         elif an.kind == "arrow":
-            _draw_arrow_kind(draw, an, color)
+            _draw_arrow_kind(draw, an, color, lw)
         elif an.kind == "angle":
-            draw.line([p[0], p[1], p[2]], fill=color, width=2)
+            draw.line([p[0], p[1], p[2]], fill=color, width=lw)
             _draw_glyphs(draw, p, sym, color)
         elif an.kind == "polyline":
             for i in range(len(p) - 1):
-                _dashed_line(draw, p[i], p[i + 1], color, 2)
+                _dashed_line(draw, p[i], p[i + 1], color, lw)
             _draw_glyphs(draw, p, sym, color)
         elif an.dashed:
-            _dashed_line(draw, p[0], p[1], color, 2)
+            _dashed_line(draw, p[0], p[1], color, lw)
             _draw_glyphs(draw, p[:2], sym, color)
         else:
-            draw.line([p[0], p[1]], fill=color, width=2)
+            draw.line([p[0], p[1]], fill=color, width=lw)
             _draw_glyphs(draw, p[:2], sym, color)
-        draw.text(an.label_xy, an.label, fill=color,
+        draw.text(an.label_xy, an.label, fill=color, font=font,
                   stroke_width=2, stroke_fill=(0, 0, 0))
 
 
@@ -346,16 +349,17 @@ def _svg_caption_parts(img: Image.Image, total_w: int, band_h: int,
 
 
 def _svg_annotation_parts(an: Annotation, color: str,
-                          text_attrs: str) -> list[str]:
+                          text_attrs: str, line_width: int = 2) -> list[str]:
     """SVG vector elements (+ label) for one measurement annotation.
     Mirrors draw_annotations() on the raster side."""
     p = an.points
     sym = an.end_symbol
+    lw = line_width
     if an.kind == "outline":
         # box-profile averaging box: closed polygon, no label/glyphs
         pts_str = " ".join(f"{x:.1f},{y:.1f}" for x, y in p)
         return [f'<polygon points="{pts_str}" fill="none" '
-                f'stroke="{color}" stroke-width="2"/>']
+                f'stroke="{color}" stroke-width="{lw}"/>']
     out: list[str] = []
     if an.kind in ("ellipse", "circle"):
         cx = (p[0][0] + p[1][0]) / 2
@@ -364,7 +368,7 @@ def _svg_annotation_parts(an: Annotation, color: str,
             f'<ellipse cx="{cx:.1f}" cy="{cy:.1f}" '
             f'rx="{abs(p[1][0] - p[0][0]) / 2:.1f}" '
             f'ry="{abs(p[1][1] - p[0][1]) / 2:.1f}" fill="none" '
-            f'stroke="{color}" stroke-width="2"/>'
+            f'stroke="{color}" stroke-width="{lw}"/>'
         )
     elif an.kind in ("roi", "box"):
         x0 = min(p[0][0], p[1][0])
@@ -373,7 +377,7 @@ def _svg_annotation_parts(an: Annotation, color: str,
             f'<rect x="{x0:.1f}" y="{y0:.1f}" '
             f'width="{abs(p[1][0] - p[0][0]):.1f}" '
             f'height="{abs(p[1][1] - p[0][1]):.1f}" fill="none" '
-            f'stroke="{color}" stroke-width="2"/>'
+            f'stroke="{color}" stroke-width="{lw}"/>'
         )
     elif an.kind == "text":
         pass  # caption only — <text> emitted below
@@ -389,11 +393,11 @@ def _svg_annotation_parts(an: Annotation, color: str,
         out.append(
             f'<line x1="{a[0]:.1f}" y1="{a[1]:.1f}" '
             f'x2="{b[0]:.1f}" y2="{b[1]:.1f}" '
-            f'stroke="{color}" stroke-width="2"/>'
+            f'stroke="{color}" stroke-width="{lw}"/>'
         )
         out.append(
             f'<polyline points="{wings[0]} {b[0]:.1f},{b[1]:.1f} '
-            f'{wings[1]}" fill="none" stroke="{color}" stroke-width="2"/>'
+            f'{wings[1]}" fill="none" stroke="{color}" stroke-width="{lw}"/>'
         )
         out.extend(_svg_end_glyph(p[0][0], p[0][1], sym, color,
                                   ang=_seg_angle(p, 0)))
@@ -402,7 +406,7 @@ def _svg_annotation_parts(an: Annotation, color: str,
         dash = ' stroke-dasharray="6 4"' if an.dashed else ""
         out.append(
             f'<polyline points="{pts_str}" fill="none" '
-            f'stroke="{color}" stroke-width="2"{dash}/>'
+            f'stroke="{color}" stroke-width="{lw}"{dash}/>'
         )
         for i, pt in enumerate(p):
             out.extend(_svg_end_glyph(pt[0], pt[1], sym, color,
@@ -412,7 +416,7 @@ def _svg_annotation_parts(an: Annotation, color: str,
         out.append(
             f'<line x1="{p[0][0]:.1f}" y1="{p[0][1]:.1f}" '
             f'x2="{p[1][0]:.1f}" y2="{p[1][1]:.1f}" '
-            f'stroke="{color}" stroke-width="2"{dash}/>'
+            f'stroke="{color}" stroke-width="{lw}"{dash}/>'
         )
         for i, pt in enumerate(p[:2]):
             out.extend(_svg_end_glyph(pt[0], pt[1], sym, color,
@@ -429,13 +433,14 @@ def build_svg(img: Image.Image, bar: ScaleBar | None,
               cbar: tuple[bool, float, float] = (False, 0.0, 1.0),
               cmap: str = "gray",
               font_size: int = _DEFAULT_FONT_SIZE,
+              measure_font_size: int = 12, measure_line_width: int = 2,
               caption: str | None = None) -> str:
     """Full-res PNG embedded as <image> + vector overlay elements.
 
     `font_size` sets the scale-bar label font size (already scaled by the
-    export scale factor). Measurement annotation labels use a fixed 12 px
-    size matching the on-screen overlay style. `caption`, if given, is
-    rendered as a dark band of <text> lines below the figure.
+    export scale factor). `measure_font_size` / `measure_line_width` style the
+    measurement labels + strokes to match the on-screen overlay. `caption`, if
+    given, is rendered as a dark band of <text> lines below the figure.
     """
     buf = io.BytesIO()
     img.save(buf, format="PNG")
@@ -457,10 +462,10 @@ def build_svg(img: Image.Image, bar: ScaleBar | None,
     ]
     if cbar[0]:
         parts.extend(_svg_colorbar_parts(img, cbar, cmap))
-    # measurement labels: fixed small size matching the on-screen overlay
-    text_attrs = ('font-family="\'JetBrains Mono\', monospace" font-size="12" '
-                  'paint-order="stroke" stroke="rgba(0,0,0,0.75)" '
-                  'stroke-width="3"')
+    # measurement labels: size matches the on-screen overlay (default 12)
+    text_attrs = (f'font-family="\'JetBrains Mono\', monospace" '
+                  f'font-size="{measure_font_size}" paint-order="stroke" '
+                  'stroke="rgba(0,0,0,0.75)" stroke-width="3"')
     # scale-bar label: user-controlled font size + same family
     sb_font_attrs = (
         f'font-family="\'JetBrains Mono\', monospace" font-size="{font_size}" '
@@ -480,7 +485,8 @@ def build_svg(img: Image.Image, bar: ScaleBar | None,
         )
 
     for an in annos:
-        parts.extend(_svg_annotation_parts(an, color, text_attrs))
+        parts.extend(_svg_annotation_parts(an, color, text_attrs,
+                                            measure_line_width))
 
     if cap_lines:
         parts.extend(_svg_caption_parts(img, total_w, band_h, cap_lines,

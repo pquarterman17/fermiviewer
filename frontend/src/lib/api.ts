@@ -648,6 +648,10 @@ export interface ExportOptions {
     width?: number; // box-profile ⊥ averaging width (image px)
   }[];
   overlay_color?: string;
+  // measurement overlay styling (mirrors the on-screen overlay size + line
+  // width); omitted → backend's legacy 2 px line / small fixed label
+  overlay_font_size?: number | null;
+  overlay_line_width?: number | null;
   // custom scale bar geometry (item #33); all optional — null → auto
   scale_bar_norm_x?: number | null;
   scale_bar_norm_y?: number | null;

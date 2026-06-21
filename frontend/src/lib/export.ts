@@ -5,7 +5,7 @@
 // a browser download.
 
 import { exportImage, type ExportOptions } from "./api";
-import { DEFAULT_DISPLAY, useViewer } from "../store/viewer";
+import { DEFAULT_DISPLAY, OVERLAY_FONT_PX, useViewer } from "../store/viewer";
 
 export interface ExportNowOpts {
   format: ExportOptions["format"];
@@ -74,6 +74,13 @@ function buildExportRequest(
         }))
       : undefined,
     overlay_color: s.overlay.color,
+    // burned measurements match the on-screen overlay size + line width
+    ...(wantMeasures
+      ? {
+          overlay_font_size: OVERLAY_FONT_PX[s.overlay.size],
+          overlay_line_width: s.overlay.lineWidth ?? 2.5,
+        }
+      : {}),
     // #34: baked distance labels match the on-screen corrected values
     ...(tilt && tilt.angle !== 0
       ? {
