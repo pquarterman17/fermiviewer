@@ -14,8 +14,17 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.signal import fftconvolve
 
-from fermiviewer.calc.crystal import PHASES, Phase, electron_wavelength, find_phase, plane_spacings
-from fermiviewer.calc.elements import atomic_number
+from fermiviewer.calc.crystal import (
+    PHASES,
+    Phase,
+    electron_wavelength,
+    find_phase,
+    plane_spacings,
+)
+from fermiviewer.calc.scattering_factors import (
+    build_basis_model,
+    reflection_intensity,
+)
 
 __all__ = [
     "IndexCandidate", "SimResult", "Spot",
@@ -271,11 +280,40 @@ def simulate(
     max_hkl: int = 5,
     min_intensity: float = 0.01,
     spot_sigma: float = 3,
+    scattering_model: str = "fe",
+    debye_waller_B: float | None = None,  # noqa: N803 — B is the physics symbol
 ) -> SimResult:
     """Kinematic zone-axis pattern (port of simulateDiffraction.m).
 
-    |F|² from the atomic basis (Z as scattering-factor proxy); phases
-    without a basis fall back to flat intensity + centering extinctions.
+    |F|² is summed over the atomic basis. The per-atom weight is chosen
+    by *scattering_model*:
+
+    * ``"fe"`` (default): real electron scattering factors f_e(s) from
+      the Doyle--Turner parameterisation (Acta Cryst. A24 (1968) 390),
+      evaluated at ``s = 1 / (2 d) = |g| / 2`` per reflection. This is
+      the physically correct weighting — high-angle reflections are
+      down-weighted by the falling f_e(s), and chemically distinct atoms
+      (e.g. Ga vs As) get different amplitudes. Elements absent from the
+      Doyle--Turner table raise a KeyError.
+    * ``"z"``: legacy atomic-number proxy (weight = Z, s-independent).
+      Pinned for golden parity; the frozen MATLAB simulate golden was
+      captured with this model.
+
+    Phases without an atomic basis fall back to flat intensity +
+    centering extinctions (unaffected by *scattering_model*).
+
+    Thermal damping (optional): when *debye_waller_B* is not None each
+    atomic weight is multiplied by ``exp(-B s^2)``. Pass a float B (A^2)
+    to use one isotropic B for every atom, or the sentinel ``-1.0`` to
+    use per-element room-temperature defaults
+    (``default_debye_waller_B``). The default ``None`` leaves behaviour
+    unchanged (no damping).
+
+    Args:
+        scattering_model: ``"fe"`` (Doyle--Turner, default) or ``"z"``
+            (atomic-number proxy).
+        debye_waller_B: isotropic B in A^2, or ``-1.0`` for per-element
+            defaults, or ``None`` (default) to disable thermal damping.
     """
     phase = find_phase(phase_name)
     lam = float(electron_wavelength(acc_voltage))
@@ -291,9 +329,7 @@ def simulate(
     e2 /= np.linalg.norm(e2)
 
     basis = phase.basis
-    if basis:
-        basis_z = np.array([atomic_number(sym) for sym, *_ in basis], dtype=np.float64)
-        basis_frac = np.array([[x, y, z] for _, x, y, z in basis])
+    bm = build_basis_model(basis, debye_waller_B) if basis else None
 
     rows: list[tuple[int, int, int, float, float]] = []
     rng = range(-max_hkl, max_hkl + 1)
@@ -302,16 +338,16 @@ def simulate(
             for l in rng:  # noqa: E741
                 if h == k == l == 0 or abs(h * uvw[0] + k * uvw[1] + l * uvw[2]) > 0.5:
                     continue
-                if not basis and _simulate_extinct(h, k, l, phase.centering):
+                if bm is None and _simulate_extinct(h, k, l, phase.centering):
                     continue
                 g = h * a_star + k * b_star + l * c_star
                 g_mag = float(np.linalg.norm(g))
                 if g_mag < np.finfo(float).eps:
                     continue
-                if basis:
-                    ph = 2 * np.pi * (basis_frac @ [h, k, l])
-                    f_hkl = (basis_z * np.exp(1j * ph)).sum()
-                    inten = float((f_hkl * np.conj(f_hkl)).real)
+                if bm is not None:
+                    # s = sinθ/λ = |g|/2 = 1/(2d)
+                    inten = reflection_intensity(bm, (h, k, l), g_mag / 2.0,
+                                                 scattering_model)
                 else:
                     inten = 1.0
                 rows.append((h, k, l, 1.0 / g_mag, inten))

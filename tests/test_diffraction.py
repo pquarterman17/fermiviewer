@@ -55,7 +55,9 @@ def test_index_round_trip_matlab_parity() -> None:
       2: Silicon score=1.0 n=12 meanErr=0.00565878
       3: LaNiO3  score=1.0 n=12 meanErr=0.00581723
     """
-    sim = simulate("Silicon", zone_axis=(0, 0, 1))
+    # Pin the legacy Z-proxy ("z") model: the MATLAB result was frozen
+    # with Z-as-scattering-factor, so this parity check uses the same.
+    sim = simulate("Silicon", zone_axis=(0, 0, 1), scattering_model="z")
     pos = np.array([[s.pixel_row, s.pixel_col] for s in sim.spots[1:]])
     cands = index_spots(pos, (512, 512), pixel_size=0.05,
                         camera_length=200, acc_voltage=200)
@@ -87,8 +89,11 @@ def test_index_no_match_scores_zero() -> None:
 class TestGolden:
     def test_simulate_silicon_001_top_spots(self, golden) -> None:
         g = golden("diffraction")["simulateSilicon001"]
+        # Golden frozen with the Z-proxy weighting → pin scattering_model="z"
+        # so the new Doyle-Turner default does not move the golden numbers.
         sim = simulate("Silicon", zone_axis=(0, 0, 1),
-                       acc_voltage=200, image_size=(512, 512))
+                       acc_voltage=200, image_size=(512, 512),
+                       scattering_model="z")
         assert sim.lam == pytest.approx(g["lambda"], rel=1e-12)
         assert len(sim.spots) == g["nSpots"]
         assert sim.image.sum() == pytest.approx(g["imageSum"], rel=1e-9)
