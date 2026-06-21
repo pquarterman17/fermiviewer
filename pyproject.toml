@@ -10,7 +10,7 @@ dependencies = [
     "fastapi>=0.115",
     # we only use the long-stable uvicorn.Server/Config/run API; a recent
     # floor that still leaves room for users not on the very latest
-    "uvicorn[standard]>=0.32",
+    "uvicorn[standard]>=0.49.0",
     "pydantic>=2.9",
     "numpy>=2.1",
     "scipy>=1.14",
