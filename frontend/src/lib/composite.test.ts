@@ -95,4 +95,32 @@ describe("compositeChannels — window + additive blend", () => {
     );
     expect(px(rgba, 0)).toEqual([255, 0, 0, 255]); // clamped, not 510
   });
+
+  it("max blend takes the per-channel maximum, not the sum (#9)", () => {
+    // red at half + green at full → add would mix; max keeps each channel's peak
+    const chs = [
+      { color: "#ff0000", intensity: 1, visible: true },
+      { color: "#00ff00", intensity: 1, visible: true },
+    ];
+    const rasters = [raster([Math.round(0.5 * 65535)]), raster([65535])];
+    const max = compositeChannels(rasters, chs, "max");
+    // green channel is full in both; red differs
+    expect(px(max.rgba, 0)[1]).toBe(255); // green peak preserved
+    expect(px(max.rgba, 0)[0]).toBeGreaterThan(120); // ~half red
+    // a second full-red channel: add saturates to 255, max stays at one peak
+    const two = [
+      { color: "#ff0000", intensity: 1, visible: true },
+      { color: "#ff0000", intensity: 0.5, visible: true },
+    ];
+    const tw = [raster([65535]), raster([65535])];
+    expect(px(compositeChannels(tw, two, "max").rgba, 0)[0]).toBe(255);
+    expect(px(compositeChannels(tw, two, "add").rgba, 0)[0]).toBe(255); // clamped
+    // distinguish: half-intensity reds, max=127 vs add=255
+    const half = [
+      { color: "#ff0000", intensity: 0.5, visible: true },
+      { color: "#ff0000", intensity: 0.5, visible: true },
+    ];
+    expect(px(compositeChannels(tw, half, "max").rgba, 0)[0]).toBeLessThan(130);
+    expect(px(compositeChannels(tw, half, "add").rgba, 0)[0]).toBe(255);
+  });
 });

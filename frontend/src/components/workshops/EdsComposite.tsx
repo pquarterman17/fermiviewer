@@ -44,6 +44,7 @@ export default function EdsComposite({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cacheRef = useRef(new Map<string, Raster16>());
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
+  const [blend, setBlend] = useState<"add" | "max">("add");
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -62,7 +63,7 @@ export default function EdsComposite({
           }),
         );
         if (stale) return;
-        const { w, h, rgba } = compositeChannels(rasters, channels);
+        const { w, h, rgba } = compositeChannels(rasters, channels, blend);
         const cv = canvasRef.current;
         if (!cv) return;
         cv.width = w;
@@ -79,7 +80,7 @@ export default function EdsComposite({
     return () => {
       stale = true;
     };
-  }, [channels]);
+  }, [channels, blend]);
 
   if (channels.length === 0) return null;
 
@@ -107,6 +108,22 @@ export default function EdsComposite({
     <>
       <div className="fvd-ws-row">
         <span className="k">Composite</span>
+        <div className="fvd-seg">
+          {(["add", "max"] as const).map((m) => (
+            <button
+              key={m}
+              className={`fvd-seg-btn${blend === m ? " active" : ""}`}
+              title={
+                m === "max"
+                  ? "per-channel max — cleaner element overlaps (GMS idiom)"
+                  : "additive blend"
+              }
+              onClick={() => setBlend(m)}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
         <button className="fvd-btn" onClick={savePng} disabled={!dims}>
           Save PNG
         </button>

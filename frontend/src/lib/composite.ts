@@ -39,15 +39,19 @@ const NAMED_CMAP = (cmap?: string): cmap is ColormapName =>
   !!cmap && cmap !== "solid";
 
 /** Blend N equal-size 16-bit rasters into an RGBA8 buffer. `rasters[k]`
- *  pairs with `channels[k]`. Returns the pixel buffer + dims; the caller
- *  wraps it in ImageData (kept out of here so the math is canvas-free). */
+ *  pairs with `channels[k]`. `blend` is "add" (additive, default) or "max"
+ *  (per-channel max — cleaner element overlaps, the GMS idiom). Returns the
+ *  pixel buffer + dims; the caller wraps it in ImageData (kept out of here so
+ *  the math is canvas-free). */
 export function compositeChannels(
   rasters: CompositeRaster[],
   channels: CompositeChannel[],
+  blend: "add" | "max" = "add",
 ): { w: number; h: number; rgba: Uint8ClampedArray } {
   const { w, h } = rasters[0];
   const n = w * h;
   const acc = new Float32Array(n * 3);
+  const isMax = blend === "max";
 
   channels.forEach((c, k) => {
     if (!c.visible || !rasters[k]) return;
@@ -76,9 +80,16 @@ export function compositeChannels(
         cg = t * g;
         cb = t * b;
       }
-      acc[i * 3] += cr * gain;
-      acc[i * 3 + 1] += cg * gain;
-      acc[i * 3 + 2] += cb * gain;
+      const o3 = i * 3;
+      if (isMax) {
+        acc[o3] = Math.max(acc[o3], cr * gain);
+        acc[o3 + 1] = Math.max(acc[o3 + 1], cg * gain);
+        acc[o3 + 2] = Math.max(acc[o3 + 2], cb * gain);
+      } else {
+        acc[o3] += cr * gain;
+        acc[o3 + 1] += cg * gain;
+        acc[o3 + 2] += cb * gain;
+      }
     }
   });
 
