@@ -14,9 +14,12 @@ from fermiviewer.datastruct import DataStruct
 from fermiviewer.io.bcf import load_bcf
 from fermiviewer.io.dm import load_dm
 from fermiviewer.io.emd import load_emd
+from fermiviewer.io.hspy import load_hspy
 from fermiviewer.io.images import load_image, load_tiff
 from fermiviewer.io.mrc import load_mrc
+from fermiviewer.io.msa import load_msa
 from fermiviewer.io.nanoscope import is_nanoscope, load_nanoscope
+from fermiviewer.io.nexus import load_hdf5_auto
 from fermiviewer.io.ser import load_ser
 
 __all__ = ["UnsupportedFormatError", "load_auto", "supported_extensions"]
@@ -30,8 +33,15 @@ _LOADERS: dict[str, Callable[[Path], DataStruct]] = {
     ".dm3": load_dm,
     ".dm4": load_dm,
     ".emd": load_emd,  # Velox + NCEM EMD (HDF5)
+    ".hspy": load_hspy,  # HyperSpy native signal (HDF5)
+    # shared HDF5 extensions — the sniffer hub routes EMD/hspy/NeXus/generic
+    ".h5": load_hdf5_auto,
+    ".hdf5": load_hdf5_auto,
+    ".nxs": load_hdf5_auto,
+    ".nx5": load_hdf5_auto,
     ".bcf": load_bcf,
     ".ser": load_ser,
+    ".msa": load_msa,  # EMSA/MAS single spectrum (EDS/EELS/WDS)
     ".mrc": load_mrc,
     ".tif": load_tiff,
     ".tiff": load_tiff,
