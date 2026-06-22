@@ -646,6 +646,42 @@ export function edsPeakfit(
   });
 }
 
+export interface EdsRecalibrateResult {
+  gain: number;
+  offset: number;
+  anchors: [number, number][];   // [observed_keV, true_keV] pairs used
+  skipped: string[];
+  applied: boolean;
+  scale?: number;
+  origin?: number;
+  units?: string;
+  image?: ImageMeta;
+}
+
+/** Linear energy-axis recalibration from known lines (#9). Anchors are
+ *  element symbols (true line energy looked up, observed peak auto-located)
+ *  and/or explicit [observed, true] keV pairs. Applies the correction to
+ *  the image's energy AxisCal when `apply` (default true). */
+export function edsRecalibrate(
+  id: string,
+  opts: {
+    elements?: string[];
+    pairs?: [number, number][];
+    beamKv?: number;
+    searchKev?: number;
+    apply?: boolean;
+  } = {},
+): Promise<EdsRecalibrateResult> {
+  return post("/api/eds/recalibrate", {
+    image_id: id,
+    elements: opts.elements ?? [],
+    pairs: opts.pairs ?? [],
+    beam_kv: opts.beamKv ?? 200,
+    search_kev: opts.searchKev ?? 0.15,
+    apply: opts.apply ?? true,
+  });
+}
+
 // ── EDS SI explorer ─────────────────────────────────────────────────
 
 export interface EdsLineEnergyResult {

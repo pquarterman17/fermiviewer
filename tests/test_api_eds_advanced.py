@@ -142,3 +142,87 @@ def test_peakfit_unknown_background_is_422(client, cube_id) -> None:
         "image_id": cube_id, "elements": ["Fe"], "background": "spline",
     })
     assert r.status_code == 422
+
+
+# ── /eds/recalibrate ─────────────────────────────────────────────────
+
+def _shifted_cube_id(client, tmp_path, gain_d: float, off_d: float) -> str:
+    """SI cube whose Fe/Cu peaks sit at observed = gain_d·true + off_d
+    (a simulated detector miscalibration on a correct keV axis)."""
+    pix = (
+        kramers_continuum(ENERGY, E0_KEV, amp=200.0)
+        + _peak(4000.0, gain_d * FE + off_d)
+        + _peak(6000.0, gain_d * CU + off_d)
+    )
+    arr = np.empty((NE, NY, NX))
+    for y in range(NY):
+        for x in range(NX):
+            arr[:, y, x] = pix
+    f = write_mini_dm4(
+        tmp_path / "eds_shift.dm4", dims=[NX, NY, NE],
+        data=arr.ravel().astype(np.float32), data_type=2,
+        cal=[
+            {"scale": 1, "origin": 0, "units": "nm"},
+            {"scale": 1, "origin": 0, "units": "nm"},
+            {"scale": SCALE, "origin": 0, "units": "keV"},
+        ],
+    )
+    return client.post("/api/session/open", json={"paths": [str(f)]}).json()[0]["id"]
+
+
+def test_recalibrate_well_calibrated_is_near_identity(client, cube_id) -> None:
+    r = client.post("/api/eds/recalibrate", json={
+        "image_id": cube_id, "elements": ["Fe", "Cu"],
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert body["gain"] == pytest.approx(1.0, abs=1e-2)
+    assert body["offset"] == pytest.approx(0.0, abs=2e-2)
+    assert body["applied"] is True
+    assert body["image"]["id"] == cube_id
+
+
+def test_recalibrate_corrects_a_shift(client, tmp_path) -> None:
+    gain_d, off_d = 0.99, 0.05
+    cid = _shifted_cube_id(client, tmp_path, gain_d, off_d)
+    r = client.post("/api/eds/recalibrate", json={
+        "image_id": cid, "elements": ["Fe", "Cu"],
+    })
+    assert r.status_code == 200
+    body = r.json()
+    # recovered correction is the inverse of the injected distortion
+    assert body["gain"] == pytest.approx(1.0 / gain_d, rel=2e-2)
+    assert body["offset"] == pytest.approx(-off_d / gain_d, abs=1e-2)
+    # the energy AxisCal scale was rewritten to gain·old_scale
+    assert body["scale"] == pytest.approx(body["gain"] * SCALE, rel=1e-9)
+
+
+def test_recalibrate_explicit_pairs(client, cube_id) -> None:
+    r = client.post("/api/eds/recalibrate", json={
+        "image_id": cube_id, "pairs": [[6.39, 6.404], [8.02, 8.048]],
+    })
+    assert r.status_code == 200
+    assert r.json()["gain"] == pytest.approx((8.048 - 6.404) / (8.02 - 6.39), rel=1e-9)
+
+
+def test_recalibrate_skips_unknown_elements(client, cube_id) -> None:
+    r = client.post("/api/eds/recalibrate", json={
+        "image_id": cube_id, "elements": ["Fe", "Cu", "Xx"],
+    })
+    assert r.status_code == 200
+    assert r.json()["skipped"] == ["Xx"]
+
+
+def test_recalibrate_no_anchors_is_422(client, cube_id) -> None:
+    r = client.post("/api/eds/recalibrate", json={"image_id": cube_id})
+    assert r.status_code == 422
+
+
+def test_recalibrate_preview_does_not_apply(client, cube_id) -> None:
+    r = client.post("/api/eds/recalibrate", json={
+        "image_id": cube_id, "pairs": [[6.39, 6.404], [8.02, 8.048]], "apply": False,
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert body["applied"] is False
+    assert "image" not in body

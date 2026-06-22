@@ -1,11 +1,12 @@
-"""Model-based EDS endpoints (PLAN_SPECTRAL_QUANT #4 + #5).
+"""Model-based EDS endpoints (PLAN_SPECTRAL_QUANT #4 + #5 + #9).
 
-Thin adapters over calc/eds_continuum (Kramers bremsstrahlung background)
-and calc/eds_peakfit (constrained multi-Gaussian peak deconvolution). Its
-own module because routes/analysis.py is at the 500-line ceiling. Both
-endpoints operate on an image's summed spectrum and return the fitted
-curves for an overlay on the EDS spectrum plot; /eds/peakfit can also
-Cliff-Lorimer quantify the deconvolved net areas.
+Thin adapters over calc/eds_continuum (Kramers bremsstrahlung background),
+calc/eds_peakfit (constrained multi-Gaussian peak deconvolution) and
+calc/eds_calib (energy recalibration). Its own module because
+routes/analysis.py is at the 500-line ceiling. The continuum/peakfit
+endpoints operate on an image's summed spectrum and return fitted curves
+for an overlay; /eds/peakfit can also Cliff-Lorimer quantify, and
+/eds/recalibrate applies a linear energy-axis correction to the image.
 """
 
 from __future__ import annotations
@@ -14,11 +15,13 @@ import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from fermiviewer.calc.eds import cliff_lorimer
+from fermiviewer.calc.eds import cliff_lorimer, line_energy
+from fermiviewer.calc.eds_calib import recalibrate as recalibrate_axis
 from fermiviewer.calc.eds_continuum import bremsstrahlung_component, fit_continuum
 from fermiviewer.calc.eds_peakfit import fit_peaks
 from fermiviewer.calc.spectral_fit import Component, linear_background
-from fermiviewer.datastruct import DataKind, DataStruct
+from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
+from fermiviewer.models import ImageMeta
 from fermiviewer.session import UnknownImageError, store
 
 router = APIRouter(prefix="/api")
@@ -160,5 +163,72 @@ def eds_peakfit(req: EdsPeakfitRequest) -> dict:
                 "atomic_percent": cl.mean_atomic_pct.tolist(),
                 "weight_percent": cl.mean_weight_pct.tolist(),
             }
+
+    return resp
+
+
+class EdsRecalibrateRequest(BaseModel):
+    image_id: str
+    elements: list[str] = []                  # known lines (true energies looked up)
+    pairs: list[tuple[float, float]] = []     # explicit (observed_kev, true_kev)
+    beam_kv: float = 200.0
+    search_kev: float = 0.15
+    apply: bool = True                        # apply to the image's energy axis
+
+
+@router.post("/eds/recalibrate")
+def eds_recalibrate(req: EdsRecalibrateRequest) -> dict:
+    """Linear energy-axis recalibration from known characteristic lines (#9).
+
+    Anchors are element symbols (their principal-line true energy is looked
+    up, and the observed peak is auto-located in the summed spectrum) and/or
+    explicit (observed_keV, true_keV) pairs. Computes ``E' = gain·E + offset``
+    and, when ``apply``, rewrites the image's energy ``AxisCal``
+    (``scale' = gain·scale``, ``origin' = origin − offset/scale'``).
+    """
+    ds = _spectral(req.image_id)
+    energy = ds.energy_axis
+    spectrum = ds.sum_spectrum()
+
+    anchors: list[float | tuple[float, float]] = []
+    skipped: list[str] = []
+    for sym in req.elements:
+        e, fam = line_energy(sym, beam_kv=req.beam_kv)
+        if fam and np.isfinite(e):
+            anchors.append(float(e))
+        else:
+            skipped.append(sym)
+    anchors.extend((float(a), float(b)) for a, b in req.pairs)
+    if not anchors:
+        raise HTTPException(422, "no usable anchors (unknown elements and no pairs)")
+
+    res = recalibrate_axis(energy, spectrum, anchors, search_kev=req.search_kev)
+
+    resp: dict = {
+        "gain": res.gain,
+        "offset": res.offset,
+        "anchors": [list(p) for p in res.anchors],   # [[observed, true], ...]
+        "skipped": skipped,
+        "applied": False,
+    }
+
+    if req.apply:
+        e_cal = ds.axes[-1]
+        scale2 = res.gain * e_cal.scale
+        if not np.isfinite(scale2) or scale2 == 0:
+            raise HTTPException(422, "recalibration produced a degenerate energy scale")
+        origin2 = e_cal.origin - res.offset / scale2
+        new_cal = AxisCal(scale=scale2, origin=origin2, units=e_cal.units)
+        new_ds = DataStruct(
+            data=ds.data, kind=ds.kind,
+            axes=(*ds.axes[:-1], new_cal), metadata=dict(ds.metadata),
+        )
+        store.replace(req.image_id, new_ds)
+        resp.update(
+            applied=True, scale=scale2, origin=origin2, units=e_cal.units,
+            image=ImageMeta.from_datastruct(
+                req.image_id, store.name(req.image_id), new_ds
+            ).model_dump(),
+        )
 
     return resp

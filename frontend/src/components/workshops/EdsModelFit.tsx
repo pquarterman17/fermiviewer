@@ -10,8 +10,10 @@ import uPlot from "uplot";
 import {
   edsContinuum,
   edsPeakfit,
+  edsRecalibrate,
   type EdsContinuumResult,
   type EdsPeakfitResult,
+  type EdsRecalibrateResult,
 } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
 import { EDS_PALETTE } from "./EdsComposite";
@@ -108,7 +110,8 @@ export default function EdsModelFit({
   const [quantify, setQuantify] = useState(true);
   const [cont, setCont] = useState<EdsContinuumResult | null>(null);
   const [peakfit, setPeakfit] = useState<EdsPeakfitResult | null>(null);
-  const [busy, setBusy] = useState<"" | "continuum" | "peakfit">("");
+  const [recal, setRecal] = useState<EdsRecalibrateResult | null>(null);
+  const [busy, setBusy] = useState<"" | "continuum" | "peakfit" | "recal">("");
 
   const els = elements
     .split(",")
@@ -154,6 +157,31 @@ export default function EdsModelFit({
         setStatus(`EDS peakfit · χ²ᵣ ${r.reduced_chi2.toExponential(2)} · ${ratios}`);
       })
       .catch((e: Error) => setStatus(`EDS peakfit: ${e.message}`))
+      .finally(() => setBusy(""));
+  };
+
+  const runRecal = () => {
+    if (!activeId) return;
+    if (els.length === 0) {
+      setStatus("recalibrate: list elements present at known lines first");
+      return;
+    }
+    setBusy("recal");
+    edsRecalibrate(activeId, { elements: els, beamKv: e0Kev })
+      .then((r) => {
+        setRecal(r);
+        // the energy axis changed — refresh the image meta in the store
+        if (r.applied && r.image) {
+          const img = r.image;
+          useViewer.setState((s) => ({ images: { ...s.images, [activeId]: img } }));
+        }
+        const sk = r.skipped.length ? ` (skipped ${r.skipped.join(", ")})` : "";
+        setStatus(
+          `EDS recal · gain ${r.gain.toFixed(4)} · offset ` +
+            `${r.offset.toFixed(4)} keV${sk}`,
+        );
+      })
+      .catch((e: Error) => setStatus(`EDS recal: ${e.message}`))
       .finally(() => setBusy(""));
   };
 
@@ -214,6 +242,22 @@ export default function EdsModelFit({
           />
           quant
         </label>
+      </div>
+
+      <div className="fvd-ws-row">
+        <button
+          className="fvd-btn"
+          title="Recalibrate the energy axis from the listed elements' known lines (#9)"
+          disabled={busy !== "" || !activeId || els.length === 0}
+          onClick={runRecal}
+        >
+          {busy === "recal" ? "Recalibrating…" : "Recalibrate E-axis"}
+        </button>
+        {recal && (
+          <span className="k" style={{ fontSize: 11 }}>
+            gain {recal.gain.toFixed(4)}, offset {recal.offset.toFixed(3)} keV
+          </span>
+        )}
       </div>
 
       {(cont || peakfit) && <ModelFitPlot cont={cont} peakfit={peakfit} />}

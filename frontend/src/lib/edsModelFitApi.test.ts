@@ -4,7 +4,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { edsContinuum, edsPeakfit } from "./api";
+import { edsContinuum, edsPeakfit, edsRecalibrate } from "./api";
 
 function makeFetch(body: unknown, status = 200) {
   return vi.fn().mockResolvedValue({
@@ -99,5 +99,32 @@ describe("edsPeakfit request body", () => {
     expect(body.e0_kev).toBe(18);
     expect(body.quantify).toBe(true);
     expect(body.k_factors).toEqual([1, 1.32]);
+  });
+});
+
+describe("edsRecalibrate request body", () => {
+  it("defaults beam_kv=200, search_kev=0.15, apply=true", async () => {
+    globalThis.fetch = makeFetch({
+      gain: 1, offset: 0, anchors: [], skipped: [], applied: true,
+    });
+    await edsRecalibrate("img4", { elements: ["Fe", "Cu"] });
+    const [url] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string];
+    expect(url).toBe("/api/eds/recalibrate");
+    const body = sentBody();
+    expect(body.elements).toEqual(["Fe", "Cu"]);
+    expect(body.pairs).toEqual([]);
+    expect(body.beam_kv).toBe(200);
+    expect(body.search_kev).toBe(0.15);
+    expect(body.apply).toBe(true);
+  });
+
+  it("forwards explicit pairs and apply=false", async () => {
+    globalThis.fetch = makeFetch({
+      gain: 1, offset: 0, anchors: [], skipped: [], applied: false,
+    });
+    await edsRecalibrate("img4", { pairs: [[6.39, 6.404]], apply: false });
+    const body = sentBody();
+    expect(body.pairs).toEqual([[6.39, 6.404]]);
+    expect(body.apply).toBe(false);
   });
 });
