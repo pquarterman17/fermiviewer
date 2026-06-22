@@ -233,6 +233,14 @@ export type CompareMode = "split" | "flicker" | "subtract" | "sidebyside";
 /** Which side-by-side pane the keyboard / arrows currently drive. */
 export type SbsPane = "L" | "R";
 export type SelectGesture = "single" | "toggle" | "range";
+/** Detected layer interfaces, surfaced on the stage by LayersOverlay. */
+export interface LayersOverlayState {
+  imageId: string;
+  axis: "y" | "x";
+  interfaces: number[];              // depth positions (image pixels)
+  traces: (number[] | null)[];       // per-interface wavy edge depths (px)
+}
+
 export type ToolKind =
   | "eels"
   | "eds"
@@ -548,6 +556,7 @@ interface ViewerState {
   // spectrum-navigation pixel (1-based [row, col]) picked on the main stage in
   // specnav mode; the EELS/EDS workshops watch it to drive their spectrum (#10)
   specnavPixel: [number, number] | null;
+  layersOverlay: LayersOverlayState | null;
   panTool: boolean;
   profileWidth: number;  // ⊥ averaging width (px) for profile captures
   profileReduce: "mean" | "sum"; // box/profile reduction mode (item #49)
@@ -648,6 +657,7 @@ interface ViewerState {
   setRoiStats: (measureId: string, stats: RoiStats) => void;
   setCaptureMode: (mode: CaptureMode) => void;
   setSpecnavPixel: (p: [number, number] | null) => void;
+  setLayersOverlay: (o: LayersOverlayState | null) => void;
   setPanTool: (on: boolean) => void;
   setProfileWidth: (w: number) => void;
   setProfileReduce: (r: "mean" | "sum") => void;
@@ -819,6 +829,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   fixedZoomH: _pref("fixedZoomH", 256),
   captureMode: "none",
   specnavPixel: null,
+  layersOverlay: null,
   panTool: false,
   profileWidth: _pref("profileWidth", 1),
   profileReduce: _pref<"mean" | "sum">("profileReduce", "mean"),
@@ -1350,6 +1361,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
     // leaving specnav clears the picked pixel so a stale marker doesn't linger
     set(mode === "specnav" ? { captureMode: mode } : { captureMode: mode, specnavPixel: null }),
   setSpecnavPixel: (specnavPixel) => set({ specnavPixel }),
+  setLayersOverlay: (layersOverlay) => set({ layersOverlay }),
   setProfileWidth: (w) => {
     const profileWidth = Math.max(1, Math.min(99, Math.round(w)));
     writePref("profileWidth", profileWidth);

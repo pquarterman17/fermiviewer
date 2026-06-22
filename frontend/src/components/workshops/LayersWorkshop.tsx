@@ -107,6 +107,7 @@ export default function LayersWorkshop() {
   const activeId = useViewer((s) => s.activeId);
   const meta = useViewer((s) => (s.activeId ? (s.images[s.activeId] ?? null) : null));
   const setStatus = useViewer((s) => s.setStatus);
+  const setLayersOverlay = useViewer((s) => s.setLayersOverlay);
 
   const [axis, setAxis] = useState<"auto" | "y" | "x">("auto");
   const [modality, setModality] = useState<"haadf" | "eels" | "bf" | "df">("haadf");
@@ -118,9 +119,12 @@ export default function LayersWorkshop() {
 
   const isImage = meta?.kind === "image";
 
+  // clear any prior overlay when the image changes; clear on unmount too
   useEffect(() => {
     setResult(null);
-  }, [activeId]);
+    setLayersOverlay(null);
+  }, [activeId, setLayersOverlay]);
+  useEffect(() => () => setLayersOverlay(null), [setLayersOverlay]);
 
   const run = () => {
     if (!activeId) return;
@@ -134,6 +138,12 @@ export default function LayersWorkshop() {
     })
       .then((r) => {
         setResult(r);
+        setLayersOverlay({
+          imageId: activeId,
+          axis: r.axis,
+          interfaces: r.interfaces.map((i) => i.position),
+          traces: r.interfaces.map((i) => i.trace),
+        });
         setStatus(
           `Layers: ${r.layers.length} layer(s), ${r.interfaces.length} interface(s)` +
             ` · ${r.axis}-axis · tilt ${r.tilt_deg == null ? "?" : r.tilt_deg.toFixed(1)}°`,

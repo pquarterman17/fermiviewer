@@ -45,6 +45,7 @@ import {
 } from "../../store/viewer";
 import CaptureBanner from "./CaptureBanner";
 import DockPlot from "./DockPlot";
+import LayersOverlay from "./LayersOverlay";
 import MeasureOverlay from "./MeasureOverlay";
 import Minimap from "./Minimap";
 import ScaleBarOverlay from "./ScaleBarOverlay";
@@ -946,6 +947,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
             pending={pending}
           />
           <FloatTools />
+          <LayersOverlay imageId={activeId} view={view} img={imgSize} vp={vp} />
           {paintActive && <ScribbleOverlay view={view} img={imgSize} vp={vp} />}
           {isGrainMap && (
             <GrainEditBar
