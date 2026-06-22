@@ -109,3 +109,23 @@ def test_layers_rejects_cube(client, tmp_path) -> None:
 def test_layers_unknown_image(client) -> None:
     r = client.post("/api/analyze/layers", json={"image_id": "nope"})
     assert r.status_code == 404
+
+
+def test_layers_waviness_returns_sigma_w_and_trace(client, image_id) -> None:
+    r = client.post("/api/analyze/layers", json={
+        "image_id": image_id, "waviness": True,
+    })
+    assert r.status_code == 200
+    body = r.json()
+    # flat synthetic layers → ~zero waviness, but the fields are populated
+    for it in body["interfaces"]:
+        assert it["sigma_w"] is not None
+        assert isinstance(it["trace"], list) and len(it["trace"]) == W
+    for lyr in body["layers"]:
+        assert lyr["thickness_std"] is not None
+
+
+def test_layers_no_waviness_leaves_fields_null(client, image_id) -> None:
+    r = client.post("/api/analyze/layers", json={"image_id": image_id})
+    body = r.json()
+    assert all(it["sigma_w"] is None and it["trace"] is None for it in body["interfaces"])

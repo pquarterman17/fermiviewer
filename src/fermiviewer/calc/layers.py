@@ -34,6 +34,7 @@ __all__ = [
     "cross_section_profile",
     "detect_growth_orientation",
     "detect_interfaces",
+    "trace_interface",
 ]
 
 _HALF_PI = np.pi / 2.0
@@ -79,6 +80,18 @@ def detect_growth_orientation(
     layer_angle = _wrap_to_pm_half_pi(dom_theta + _HALF_PI)
     tilt = layer_angle if layers_horizontal else _wrap_to_pm_half_pi(layer_angle - _HALF_PI)
     return OrientationResult(axis, layers_horizontal, float(np.degrees(tilt)), coherence)
+
+
+def _roi_subimage(arr: np.ndarray, roi: tuple[int, int, int, int] | None) -> np.ndarray:
+    """The ROI sub-image, clamped exactly like ``box_integrate`` (1-based,
+    inclusive) so trace indices line up with the depth profile."""
+    h, w = arr.shape
+    r1, c1, r2, c2 = roi if roi is not None else (1, 1, h, w)
+    r1, r2 = sorted((int(round(r1)), int(round(r2))))
+    c1, c2 = sorted((int(round(c1)), int(round(c2))))
+    r1, r2 = max(r1, 1), min(r2, h)
+    c1, c2 = max(c1, 1), min(c2, w)
+    return arr[r1 - 1 : r2, c1 - 1 : c2]
 
 
 def cross_section_profile(
@@ -145,6 +158,8 @@ class Interface:
     position: float        # sub-pixel depth (profile pixels)
     sigma_erf: float       # erf transition width in calibrated units (sharpness)
     r_squared: float
+    sigma_w: float = float("nan")          # geometric waviness, calibrated (Tier 2)
+    trace: np.ndarray | None = None        # per-lateral-column edge depths (px)
 
 
 @dataclass(frozen=True)
@@ -153,6 +168,7 @@ class Layer:
     top: float             # bounding interface positions (profile pixels)
     bottom: float
     thickness: float       # (bottom - top) × pixel_size, calibrated units
+    thickness_std: float = float("nan")    # FOV thickness std, calibrated (Tier 2)
 
 
 @dataclass(frozen=True)
@@ -167,6 +183,56 @@ class LayerResult:
     layers: list[Layer]
     pixel_size: float
     unit: str
+
+
+def _parabolic_edge(line: np.ndarray, approx: int, window: int) -> float:
+    """Sub-pixel gradient-peak edge in a 1-D profile near ``approx``.
+
+    The cheap per-column estimator (vs the expensive erf fit): the
+    |gradient| maximum within ``±window`` of ``approx``, refined by a
+    3-point parabolic fit. Fast enough to run on every lateral column.
+    """
+    n = line.size
+    lo = max(1, approx - window)
+    hi = min(n - 1, approx + window + 1)
+    if hi - lo < 1:
+        return float(approx)
+    g = np.abs(np.gradient(line))
+    k = int(np.argmax(g[lo:hi])) + lo
+    if k <= 0 or k >= n - 1:
+        return float(k)
+    y0, y1, y2 = g[k - 1], g[k], g[k + 1]
+    denom = y0 - 2.0 * y1 + y2
+    frac = 0.5 * (y0 - y2) / denom if abs(denom) > 1e-12 else 0.0
+    return float(k + np.clip(frac, -0.5, 0.5))
+
+
+def trace_interface(
+    img: np.ndarray,
+    axis: str,
+    interface_pos: float,
+    window: int = 10,
+    smooth: float = 1.0,
+) -> np.ndarray:
+    """Trace an interface column-by-column → its depth at each lateral pos.
+
+    For ``axis="y"`` (horizontal layers) each column is a depth profile and
+    the interface is traced across columns; ``axis="x"`` traces across rows.
+    The std of the returned depths is the geometric waviness σ_w (in pixels).
+    A light Gaussian pre-smooth suppresses per-column noise.
+    """
+    from scipy.ndimage import gaussian_filter1d
+
+    arr = np.asarray(img, dtype=np.float64)
+    lines = arr.T if axis == "y" else arr   # rows of `lines` are depth profiles
+    approx = int(round(interface_pos))
+    out = np.empty(lines.shape[0], dtype=np.float64)
+    for j in range(lines.shape[0]):
+        line = lines[j]
+        if smooth > 0:
+            line = gaussian_filter1d(line, smooth)
+        out[j] = _parabolic_edge(line, approx, window)
+    return out
 
 
 def _refine_interface(
@@ -207,14 +273,18 @@ def analyze_layers(
     unit: str = "px",
     fit_window: int = 15,
     orient_sigma: float = 3.0,
+    waviness: bool = False,
+    trace_window: int = 10,
 ) -> LayerResult:
-    """Full cross-section layer analysis (Tier 1: thickness + σ_erf).
+    """Full cross-section layer analysis (thickness + σ_erf; optional σ_w).
 
     Auto-detects the growth axis (override with ``axis="y"|"x"``), collapses
     the ROI to a depth profile, detects interfaces, refines each with the
     erf fit, and reports the layers between consecutive interfaces with
-    ``thickness = Δcentre × pixel_size``. ``sigma_erf`` is in calibrated
-    units; positions stay in profile pixels.
+    ``thickness = Δcentre × pixel_size``. With ``waviness`` (Tier 2) each
+    interface is also traced column-by-column → geometric roughness σ_w and
+    per-layer thickness std across the FOV. ``sigma_erf``/``sigma_w`` are in
+    calibrated units; positions stay in profile pixels.
     """
     arr = np.asarray(img, dtype=np.float64)
     orient = detect_growth_orientation(arr, orient_sigma)
@@ -225,14 +295,24 @@ def analyze_layers(
     depth_pos, profile = cross_section_profile(arr, roi, use_axis, reduce)
     peaks = detect_interfaces(profile, sensitivity, n_layers)
 
+    # the ROI sub-image (clamped like box_integrate) for column-by-column tracing
+    sub = _roi_subimage(arr, roi) if waviness else None
+
     interfaces: list[Interface] = []
     for p in peaks:
         center, sigma, r2 = _refine_interface(depth_pos, profile, int(p), fit_window)
+        sigma_w = float("nan")
+        trace: np.ndarray | None = None
+        if sub is not None:
+            trace = trace_interface(sub, use_axis, center, trace_window)
+            sigma_w = float(np.std(trace)) * pixel_size
         interfaces.append(
             Interface(
                 position=center,
                 sigma_erf=sigma * pixel_size if np.isfinite(sigma) else float("nan"),
                 r_squared=r2,
+                sigma_w=sigma_w,
+                trace=trace,
             )
         )
     interfaces.sort(key=lambda it: it.position)
@@ -241,9 +321,13 @@ def analyze_layers(
     for i in range(len(interfaces) - 1):
         top = interfaces[i].position
         bottom = interfaces[i + 1].position
+        t_std = float("nan")
+        tr_top, tr_bot = interfaces[i].trace, interfaces[i + 1].trace
+        if tr_top is not None and tr_bot is not None and tr_top.size == tr_bot.size:
+            t_std = float(np.std(tr_bot - tr_top)) * pixel_size
         layers.append(
             Layer(index=i, top=top, bottom=bottom,
-                  thickness=(bottom - top) * pixel_size)
+                  thickness=(bottom - top) * pixel_size, thickness_std=t_std)
         )
 
     return LayerResult(

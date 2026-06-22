@@ -76,14 +76,21 @@ function DepthPlot({ r }: { r: LayersResult }) {
 
 function exportCsv(r: LayersResult) {
   const rows: (string | number)[][] = [
-    ["layer", "top_px", "bottom_px", `thickness_${r.unit}`],
-    ...r.layers.map((l) => [l.index, l.top.toFixed(3), l.bottom.toFixed(3), l.thickness.toFixed(4)]),
+    ["layer", "top_px", "bottom_px", `thickness_${r.unit}`, `thickness_std_${r.unit}`],
+    ...r.layers.map((l) => [
+      l.index,
+      l.top.toFixed(3),
+      l.bottom.toFixed(3),
+      l.thickness.toFixed(4),
+      l.thickness_std == null ? "" : l.thickness_std.toFixed(4),
+    ]),
     [],
-    ["interface", "position_px", `sigma_erf_${r.unit}`, "r_squared"],
+    ["interface", "position_px", `sigma_erf_${r.unit}`, `sigma_w_${r.unit}`, "r_squared"],
     ...r.interfaces.map((i, k) => [
       k,
       i.position.toFixed(3),
       i.sigma_erf == null ? "" : i.sigma_erf.toFixed(4),
+      i.sigma_w == null ? "" : i.sigma_w.toFixed(4),
       i.r_squared.toFixed(4),
     ]),
   ];
@@ -104,6 +111,7 @@ export default function LayersWorkshop() {
   const [axis, setAxis] = useState<"auto" | "y" | "x">("auto");
   const [sensitivity, setSensitivity] = useState("0.3");
   const [nLayers, setNLayers] = useState("");
+  const [waviness, setWaviness] = useState(false);
   const [result, setResult] = useState<LayersResult | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -120,6 +128,7 @@ export default function LayersWorkshop() {
       axis,
       sensitivity: Number(sensitivity) || 0.3,
       nLayers: Number(nLayers) || 0,
+      waviness,
     })
       .then((r) => {
         setResult(r);
@@ -177,6 +186,19 @@ export default function LayersWorkshop() {
           {busy ? "Analyzing…" : "Analyze"}
         </button>
       </div>
+      <div className="fvd-ws-row">
+        <label className="k" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <input
+            type="checkbox"
+            checked={waviness}
+            onChange={(e) => setWaviness(e.target.checked)}
+          />
+          waviness (σ_w)
+        </label>
+        <span className="k" style={{ fontSize: 10, opacity: 0.7 }}>
+          column-by-column interface trace — geometric roughness + thickness ±std
+        </span>
+      </div>
 
       {result && (
         <div className="fvd-ws-note">
@@ -193,17 +215,22 @@ export default function LayersWorkshop() {
             <tr>
               <th>Layer</th>
               <th>Thickness ({result.unit})</th>
-              <th>σ_erf top ({result.unit})</th>
+              <th>σ_erf ({result.unit})</th>
+              <th>σ_w ({result.unit})</th>
             </tr>
           </thead>
           <tbody>
             {result.layers.map((l) => {
-              const sig = result.interfaces[l.index]?.sigma_erf;
+              const top = result.interfaces[l.index];
               return (
                 <tr key={l.index}>
                   <td>{l.index + 1}</td>
-                  <td>{l.thickness.toFixed(3)}</td>
-                  <td>{sig == null ? "—" : sig.toFixed(3)}</td>
+                  <td>
+                    {l.thickness.toFixed(2)}
+                    {l.thickness_std != null && ` ± ${l.thickness_std.toFixed(2)}`}
+                  </td>
+                  <td>{top?.sigma_erf == null ? "—" : top.sigma_erf.toFixed(3)}</td>
+                  <td>{top?.sigma_w == null ? "—" : top.sigma_w.toFixed(3)}</td>
                 </tr>
               );
             })}

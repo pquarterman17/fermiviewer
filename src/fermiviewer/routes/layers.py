@@ -40,6 +40,8 @@ class LayersRequest(BaseModel):
     n_layers: int = 0
     reduce: str = "mean"
     fit_window: int = 15
+    waviness: bool = False
+    trace_window: int = 10
 
 
 @router.post("/analyze/layers")
@@ -60,7 +62,8 @@ def analyze_layers_route(req: LayersRequest) -> dict:
         res = analyze_layers(
             ds.data, roi=req.roi, axis=req.axis, sensitivity=req.sensitivity,
             n_layers=req.n_layers, reduce=req.reduce, pixel_size=px, unit=unit,
-            fit_window=req.fit_window,
+            fit_window=req.fit_window, waviness=req.waviness,
+            trace_window=req.trace_window,
         )
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
@@ -79,6 +82,8 @@ def analyze_layers_route(req: LayersRequest) -> dict:
                 "position": i.position,
                 "sigma_erf": _nan_none(i.sigma_erf),
                 "r_squared": i.r_squared,
+                "sigma_w": _nan_none(i.sigma_w),
+                "trace": i.trace.tolist() if i.trace is not None else None,
             }
             for i in res.interfaces
         ],
@@ -88,6 +93,7 @@ def analyze_layers_route(req: LayersRequest) -> dict:
                 "top": lyr.top,
                 "bottom": lyr.bottom,
                 "thickness": lyr.thickness,
+                "thickness_std": _nan_none(lyr.thickness_std),
             }
             for lyr in res.layers
         ],

@@ -15,6 +15,7 @@ from fermiviewer.calc.layers import (
     cross_section_profile,
     detect_growth_orientation,
     detect_interfaces,
+    trace_interface,
 )
 
 pytestmark = pytest.mark.imaging
@@ -126,3 +127,61 @@ def test_analyze_layers_roi_restricts_depth() -> None:
 def test_analyze_layers_requires_2d() -> None:
     with pytest.raises(ValueError, match="2-D"):
         analyze_layers(np.zeros((4, 4, 4)))
+
+
+# ── Tier 2: σ_w waviness ─────────────────────────────────────────────
+
+def _wavy_interface(depth: np.ndarray) -> np.ndarray:
+    """Single erf interface whose depth varies per column (shape (H, W))."""
+    yy = np.arange(160, dtype=np.float64)[:, None]
+    return 0.2 + 0.6 * 0.5 * (1 + erf((yy - depth[None, :]) / (3 * np.sqrt(2))))
+
+
+def test_trace_interface_recovers_sinusoidal_waviness() -> None:
+    x = np.arange(200, dtype=np.float64)
+    amp = 4.0
+    depth = 80.0 + amp * np.sin(2 * np.pi * x / 40.0)
+    img = _wavy_interface(depth)
+    tr = trace_interface(img, axis="y", interface_pos=80.0, window=12)
+    assert tr.size == 200
+    np.testing.assert_allclose(tr, depth, atol=0.3)          # follows the wave
+    # std of an amplitude-A sine ≈ A/√2
+    assert float(np.std(tr)) == pytest.approx(amp / np.sqrt(2), rel=0.1)
+
+
+def test_trace_interface_flat_is_low_waviness() -> None:
+    img = _wavy_interface(np.full(200, 80.0))
+    tr = trace_interface(img, axis="y", interface_pos=80.0)
+    assert float(np.std(tr)) < 0.1
+
+
+def test_analyze_layers_waviness_random_sigma_w() -> None:
+    rng = np.random.default_rng(0)
+    x = np.arange(200)
+    sigma_true = 2.5
+    # two parallel interfaces, both jittered by the same per-column noise so
+    # σ_w is well-defined and the layer thickness stays ~constant
+    jitter = rng.normal(0.0, sigma_true, size=200)
+    yy = np.arange(160, dtype=np.float64)[:, None]
+    d1 = 50.0 + jitter
+    d2 = 110.0 + jitter
+    img = (
+        0.2
+        + 0.6 * 0.5 * (1 + erf((yy - d1[None, :]) / (3 * np.sqrt(2))))
+        - 0.4 * 0.5 * (1 + erf((yy - d2[None, :]) / (3 * np.sqrt(2))))
+    )
+    res = analyze_layers(img, pixel_size=1.0, waviness=True)
+    assert len(res.interfaces) == 2
+    for it in res.interfaces:
+        assert it.sigma_w == pytest.approx(sigma_true, rel=0.2)
+        assert it.trace is not None and it.trace.size == 200
+    # both interfaces share the jitter → thickness barely varies across the FOV
+    assert len(res.layers) == 1
+    assert res.layers[0].thickness_std < 0.5
+    _ = x
+
+
+def test_analyze_layers_without_waviness_has_nan_sigma_w() -> None:
+    res = analyze_layers(_layered(), pixel_size=1.0)   # waviness=False default
+    assert all(np.isnan(i.sigma_w) for i in res.interfaces)
+    assert all(i.trace is None for i in res.interfaces)

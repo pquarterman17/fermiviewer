@@ -1955,6 +1955,8 @@ export interface LayerInterface {
   position: number;          // sub-pixel depth (profile pixels)
   sigma_erf: number | null;  // erf transition width, calibrated units
   r_squared: number;
+  sigma_w: number | null;    // geometric waviness, calibrated (Tier 2)
+  trace: number[] | null;    // per-column edge depths (px)
 }
 
 export interface LayerBand {
@@ -1962,6 +1964,7 @@ export interface LayerBand {
   top: number;
   bottom: number;
   thickness: number;         // calibrated units
+  thickness_std: number | null;  // FOV thickness std, calibrated (Tier 2)
 }
 
 export interface LayersResult {
@@ -1987,6 +1990,8 @@ export function analyzeLayers(
     nLayers?: number;
     reduce?: "mean" | "sum";
     fitWindow?: number;
+    waviness?: boolean;
+    traceWindow?: number;
   } = {},
 ): Promise<LayersResult> {
   return post("/api/analyze/layers", {
@@ -1997,5 +2002,7 @@ export function analyzeLayers(
     n_layers: opts.nLayers ?? 0,
     reduce: opts.reduce ?? "mean",
     fit_window: opts.fitWindow ?? 15,
+    waviness: opts.waviness ?? false,
+    trace_window: opts.traceWindow ?? 10,
   });
 }
