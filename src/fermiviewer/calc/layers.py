@@ -34,8 +34,19 @@ __all__ = [
     "cross_section_profile",
     "detect_growth_orientation",
     "detect_interfaces",
+    "detect_interfaces_scale_space",
     "trace_interface",
 ]
+
+# modality → interface-detector preset. BF/DF have thickness fringes +
+# diffraction contrast that create false interfaces in raw intensity, so
+# they use multi-scale persistence; HAADF/EELS are monotonic per layer.
+_MODALITY_PRESETS: dict[str, dict[str, object]] = {
+    "haadf": {"scale_space": False},
+    "eels": {"scale_space": False},
+    "bf": {"scale_space": True, "scales": (2.0, 4.0, 8.0)},
+    "df": {"scale_space": True, "scales": (2.0, 4.0, 8.0)},
+}
 
 _HALF_PI = np.pi / 2.0
 
@@ -151,6 +162,64 @@ def detect_interfaces(
         order = np.argsort(props["peak_heights"])[::-1][: n_layers - 1]
         peaks = np.sort(peaks[order])
     return np.asarray(peaks, dtype=int)
+
+
+def detect_interfaces_scale_space(
+    profile: np.ndarray,
+    scales: tuple[float, ...] = (2.0, 4.0, 8.0),
+    sensitivity: float = 0.3,
+    n_layers: int = 0,
+    min_separation: int = 5,
+    persistence: int | None = None,
+) -> np.ndarray:
+    """Interfaces that PERSIST across smoothing scales (BF/DF robustness).
+
+    Gradient peaks are found at each Gaussian scale; a candidate is kept
+    only if a peak sits within ``min_separation`` of it at ≥``persistence``
+    scales (default: a majority). Real interfaces survive coarse smoothing;
+    thickness fringes / diffraction-contrast wiggles wash out and are
+    rejected. ``n_layers`` (>1) keeps the (n−1) strongest by coarse-scale
+    gradient height.
+    """
+    from scipy.ndimage import gaussian_filter1d
+    from scipy.signal import find_peaks
+
+    prof = np.asarray(profile, dtype=np.float64).ravel()
+    if prof.size < 5 or not scales:
+        return np.array([], dtype=int)
+    if persistence is None:
+        persistence = len(scales) // 2 + 1
+
+    per_scale: list[np.ndarray] = []
+    coarse_grad = np.zeros_like(prof)
+    for s in scales:
+        g = np.abs(np.gradient(gaussian_filter1d(prof, s)))
+        coarse_grad = g                       # last (coarsest) scale
+        gmax = float(g.max())
+        if gmax <= 0:
+            per_scale.append(np.array([], dtype=int))
+            continue
+        pk, _ = find_peaks(g, height=sensitivity * gmax, distance=max(1, int(min_separation)))
+        per_scale.append(pk)
+
+    candidates = sorted({int(p) for pks in per_scale for p in pks})
+    kept: list[int] = []
+    for c in candidates:
+        support = sum(
+            1 for pks in per_scale if pks.size and int(np.min(np.abs(pks - c))) <= min_separation
+        )
+        if support >= persistence:
+            kept.append(c)
+
+    deduped: list[int] = []
+    for c in sorted(kept):
+        if not deduped or c - deduped[-1] > min_separation:
+            deduped.append(c)
+    out = np.array(deduped, dtype=int)
+    if n_layers > 1 and out.size > n_layers - 1:
+        order = np.argsort(coarse_grad[out])[::-1][: n_layers - 1]
+        out = np.sort(out[order])
+    return out
 
 
 @dataclass(frozen=True)
@@ -275,6 +344,7 @@ def analyze_layers(
     orient_sigma: float = 3.0,
     waviness: bool = False,
     trace_window: int = 10,
+    modality: str = "haadf",
 ) -> LayerResult:
     """Full cross-section layer analysis (thickness + σ_erf; optional σ_w).
 
@@ -293,7 +363,14 @@ def analyze_layers(
         raise ValueError("axis must be 'auto', 'x', or 'y'")
 
     depth_pos, profile = cross_section_profile(arr, roi, use_axis, reduce)
-    peaks = detect_interfaces(profile, sensitivity, n_layers)
+    preset = _MODALITY_PRESETS.get(modality.lower(), _MODALITY_PRESETS["haadf"])
+    if preset["scale_space"]:
+        scales = preset.get("scales", (2.0, 4.0, 8.0))
+        peaks = detect_interfaces_scale_space(
+            profile, scales, sensitivity, n_layers  # type: ignore[arg-type]
+        )
+    else:
+        peaks = detect_interfaces(profile, sensitivity, n_layers)
 
     # the ROI sub-image (clamped like box_integrate) for column-by-column tracing
     sub = _roi_subimage(arr, roi) if waviness else None

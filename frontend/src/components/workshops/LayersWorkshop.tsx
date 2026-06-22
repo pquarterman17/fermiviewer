@@ -109,6 +109,7 @@ export default function LayersWorkshop() {
   const setStatus = useViewer((s) => s.setStatus);
 
   const [axis, setAxis] = useState<"auto" | "y" | "x">("auto");
+  const [modality, setModality] = useState<"haadf" | "eels" | "bf" | "df">("haadf");
   const [sensitivity, setSensitivity] = useState("0.3");
   const [nLayers, setNLayers] = useState("");
   const [waviness, setWaviness] = useState(false);
@@ -126,6 +127,7 @@ export default function LayersWorkshop() {
     setBusy(true);
     analyzeLayers(activeId, {
       axis,
+      modality,
       sensitivity: Number(sensitivity) || 0.3,
       nLayers: Number(nLayers) || 0,
       waviness,
@@ -162,6 +164,25 @@ export default function LayersWorkshop() {
               onClick={() => setAxis(a)}
             >
               {a}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="fvd-ws-row">
+        <span className="k">Modality</span>
+        <div className="fvd-seg">
+          {(["haadf", "eels", "bf", "df"] as const).map((m) => (
+            <button
+              key={m}
+              className={`fvd-seg-btn${modality === m ? " active" : ""}`}
+              title={
+                m === "bf" || m === "df"
+                  ? "scale-space interface detection (rejects thickness fringes)"
+                  : `${m} (intensity-step detection)`
+              }
+              onClick={() => setModality(m)}
+            >
+              {m.toUpperCase()}
             </button>
           ))}
         </div>

@@ -42,6 +42,7 @@ class LayersRequest(BaseModel):
     fit_window: int = 15
     waviness: bool = False
     trace_window: int = 10
+    modality: str = "haadf"          # "haadf" | "eels" | "bf" | "df"
 
 
 @router.post("/analyze/layers")
@@ -63,7 +64,7 @@ def analyze_layers_route(req: LayersRequest) -> dict:
             ds.data, roi=req.roi, axis=req.axis, sensitivity=req.sensitivity,
             n_layers=req.n_layers, reduce=req.reduce, pixel_size=px, unit=unit,
             fit_window=req.fit_window, waviness=req.waviness,
-            trace_window=req.trace_window,
+            trace_window=req.trace_window, modality=req.modality,
         )
     except ValueError as e:
         raise HTTPException(422, str(e)) from None

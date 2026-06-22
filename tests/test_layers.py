@@ -15,6 +15,7 @@ from fermiviewer.calc.layers import (
     cross_section_profile,
     detect_growth_orientation,
     detect_interfaces,
+    detect_interfaces_scale_space,
     trace_interface,
 )
 
@@ -185,3 +186,46 @@ def test_analyze_layers_without_waviness_has_nan_sigma_w() -> None:
     res = analyze_layers(_layered(), pixel_size=1.0)   # waviness=False default
     assert all(np.isnan(i.sigma_w) for i in res.interfaces)
     assert all(i.trace is None for i in res.interfaces)
+
+
+# ── Tier 3: BF/DF scale-space robustness ─────────────────────────────
+
+def _fringed_profile() -> np.ndarray:
+    """Two real erf interfaces (50, 100) buried under thickness fringes."""
+    y = np.arange(160, dtype=np.float64)
+    prof = (
+        0.2
+        + 0.6 * 0.5 * (1 + erf((y - 50) / (3 * np.sqrt(2))))
+        - 0.4 * 0.5 * (1 + erf((y - 100) / (3 * np.sqrt(2))))
+    )
+    return prof + 0.05 * np.sin(2 * np.pi * y / 8.0)   # diffraction-contrast fringes
+
+
+def test_scale_space_rejects_fringes() -> None:
+    prof = _fringed_profile()
+    plain = detect_interfaces(prof, sensitivity=0.3)
+    ss = detect_interfaces_scale_space(prof, scales=(2.0, 4.0, 8.0))
+    assert ss.size == 2
+    np.testing.assert_allclose(np.sort(ss), [50, 100], atol=3)
+    assert plain.size > ss.size                      # raw intensity over-detects
+
+
+def test_scale_space_keeps_clean_interfaces() -> None:
+    _pos, prof = cross_section_profile(_layered(), axis="y")
+    ss = detect_interfaces_scale_space(prof, scales=(1.5, 3.0, 6.0))
+    assert ss.size == 3
+    np.testing.assert_allclose(np.sort(ss), CENTERS, atol=3)
+
+
+def test_scale_space_n_layers_hint() -> None:
+    prof = _fringed_profile()
+    ss = detect_interfaces_scale_space(prof, n_layers=2)   # keep 1 strongest
+    assert ss.size == 1
+
+
+def test_analyze_layers_bf_modality_rejects_fringes() -> None:
+    img = np.tile(_fringed_profile()[:, None], (1, 80))
+    bf = analyze_layers(img, modality="bf")
+    haadf = analyze_layers(img, modality="haadf")
+    assert len(bf.interfaces) == 2                    # real interfaces only
+    assert len(haadf.interfaces) > 2                  # fooled by the fringes

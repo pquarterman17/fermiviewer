@@ -1992,6 +1992,7 @@ export function analyzeLayers(
     fitWindow?: number;
     waviness?: boolean;
     traceWindow?: number;
+    modality?: "haadf" | "eels" | "bf" | "df";
   } = {},
 ): Promise<LayersResult> {
   return post("/api/analyze/layers", {
@@ -2004,5 +2005,6 @@ export function analyzeLayers(
     fit_window: opts.fitWindow ?? 15,
     waviness: opts.waviness ?? false,
     trace_window: opts.traceWindow ?? 10,
+    modality: opts.modality ?? "haadf",
   });
 }

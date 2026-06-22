@@ -129,3 +129,12 @@ def test_layers_no_waviness_leaves_fields_null(client, image_id) -> None:
     r = client.post("/api/analyze/layers", json={"image_id": image_id})
     body = r.json()
     assert all(it["sigma_w"] is None and it["trace"] is None for it in body["interfaces"])
+
+
+def test_layers_bf_modality_runs(client, image_id) -> None:
+    # the clean synthetic stack still resolves under BF scale-space detection
+    r = client.post("/api/analyze/layers", json={
+        "image_id": image_id, "modality": "bf",
+    })
+    assert r.status_code == 200
+    assert len(r.json()["interfaces"]) == 3
