@@ -10,9 +10,41 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-__all__ = ["KKResult", "SVDResult", "align_zlp", "fourier_log", "kramers_kronig", "svd"]
+__all__ = [
+    "KKResult", "SVDResult", "align_zlp", "fourier_log", "fourier_ratio",
+    "kramers_kronig", "richardson_lucy", "svd",
+]
 
 _EPS = np.finfo(np.float64).eps
+
+
+def _parabolic_offset(xc: np.ndarray, peak: np.ndarray) -> np.ndarray:
+    """Sub-sample peak offset in [-0.5, 0.5] from a 3-point parabolic fit
+    around each column's argmax (circular neighbours)."""
+    nfft = xc.shape[0]
+    cols = np.arange(xc.shape[1])
+    y0 = xc[(peak - 1) % nfft, cols]
+    y1 = xc[peak, cols]
+    y2 = xc[(peak + 1) % nfft, cols]
+    denom = y0 - 2.0 * y1 + y2
+    frac = np.zeros_like(y1)
+    nz = np.abs(denom) > _EPS
+    frac[nz] = 0.5 * (y0[nz] - y2[nz]) / denom[nz]
+    return np.asarray(np.clip(frac, -0.5, 0.5), dtype=np.float64)
+
+
+def _fractional_shift(cube_d: np.ndarray, shift: np.ndarray) -> np.ndarray:
+    """Shift each pixel's spectrum by a fractional channel count via an FFT
+    phase ramp. Sign matches ``np.roll`` (positive → toward higher channel),
+    so integer shifts reproduce the integer-alignment path exactly."""
+    ny, nx, ne = cube_d.shape
+    flat = cube_d.reshape(ny * nx, ne)
+    s = shift.reshape(-1)
+    k = np.fft.fftfreq(ne)
+    spec = np.fft.fft(flat, axis=1)
+    phase = np.exp(-2j * np.pi * k[None, :] * s[:, None])
+    shifted = np.fft.ifft(spec * phase, axis=1).real
+    return shifted.reshape(ny, nx, ne)
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -21,9 +53,15 @@ def align_zlp(
     energy: np.ndarray,
     window: tuple[float, float] = (-20.0, 20.0),
     reference: str | np.ndarray = "mean",
+    subpixel: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Integer-channel ZLP alignment via FFT cross-correlation
-    (port of eelsAlignZLP.m). Returns (aligned_cube, shifts[Ny,Nx])."""
+    """ZLP alignment via FFT cross-correlation (port of eelsAlignZLP.m).
+
+    Returns ``(aligned_cube, shifts[Ny,Nx])``. With ``subpixel`` the
+    cross-correlation peak is refined by parabolic interpolation and the
+    fractional shift applied via an FFT phase ramp; ``shifts`` is then a
+    float array. The default integer path is byte-identical to the port
+    (goldens unchanged)."""
     cube_in = np.asarray(cube)
     cube_d = cube_in.astype(np.float64)
     energy = np.asarray(energy, dtype=np.float64).ravel()
@@ -55,10 +93,18 @@ def align_zlp(
     nfft = 2 * n_win - 1
     ref_f = np.conj(np.fft.fft(ref, nfft))
     xc = np.fft.ifft(np.fft.fft(zlp, nfft, axis=0) * ref_f[:, None], axis=0).real
-    lag = xc.argmax(axis=0)                       # [Np], 0-based
-    lag = np.where(lag > n_win - 1, lag - nfft, lag)
-    shifts = (-lag).astype(np.int32).reshape(ny, nx)
+    peak = xc.argmax(axis=0)                       # [Np], 0-based circular
+    lag = np.where(peak > n_win - 1, peak - nfft, peak)
 
+    if subpixel:
+        frac = _parabolic_offset(xc, peak)
+        shifts_f = (-(lag.astype(np.float64) + frac)).reshape(ny, nx)
+        aligned = _fractional_shift(cube_d, shifts_f)
+        if cube_in.dtype != np.float64:
+            aligned = aligned.astype(cube_in.dtype)
+        return aligned, shifts_f
+
+    shifts = (-lag).astype(np.int32).reshape(ny, nx)
     aligned = cube_d.copy()
     for s in np.unique(shifts):
         if s == 0:
@@ -271,3 +317,90 @@ def svd(
         mean_spectrum=mean_spec,
         denoised_cube=denoised,
     )
+
+
+# ════════════════════════════════════════════════════════════════════
+def fourier_ratio(
+    energy: np.ndarray,
+    core_loss: np.ndarray,
+    low_loss: np.ndarray,
+    zlp_window: tuple[float, float] = (-5.0, 5.0),
+    zlp_ref: np.ndarray | None = None,
+    regularize: float = 1e-6,
+) -> np.ndarray:
+    """Fourier-ratio deconvolution of plural scattering (Egerton §4.3).
+
+    Removes plural scattering from a core-loss edge using the low-loss
+    spectrum as the point-spread function, reconvolved with the ZLP to
+    restore the energy resolution (and suppress high-frequency noise)::
+
+        SSD = ℱ⁻¹{ ℱ[core] / ℱ[low] · ℱ[ZLP] }
+
+    ``core_loss`` and ``low_loss`` share ``energy`` (low-loss ZLP at E≈0).
+    Returns the single-scattering core-loss distribution (≥0).
+    """
+    energy = np.asarray(energy, dtype=np.float64).ravel()
+    core = np.asarray(core_loss, dtype=np.float64).ravel()
+    low = np.asarray(low_loss, dtype=np.float64).ravel()
+    n = energy.size
+    if core.size != n or low.size != n:
+        raise ValueError("energy, core_loss and low_loss must have equal length")
+
+    if zlp_ref is None:
+        mask = (energy >= zlp_window[0]) & (energy <= zlp_window[1])
+        if mask.sum() < 2:
+            raise ValueError("ZLP window has fewer than 2 channels")
+        zlp = np.zeros(n)
+        zlp[mask] = low[mask]
+    else:
+        zlp = np.asarray(zlp_ref, dtype=np.float64).ravel()
+        if zlp.size != n:
+            raise ValueError("zlp_ref must match spectrum length")
+
+    low_g = np.maximum(low, _EPS)
+    zlp_g = np.maximum(zlp, _EPS)
+
+    n2 = 1 << int(np.ceil(np.log2(2 * n)))
+    c = np.fft.fft(core, n2)
+    low_f = np.fft.fft(low_g, n2)
+    z = np.fft.fft(zlp_g, n2)
+
+    # regularise the denominator (low-loss) against division by near-zero
+    l_thresh = regularize * np.abs(low_f).max()
+    small = np.abs(low_f) < l_thresh
+    low_f[small] = l_thresh * np.exp(1j * np.angle(low_f[small]))
+
+    ssd = np.fft.ifft(c / low_f * z).real[:n]
+    return np.maximum(ssd, 0.0)
+
+
+# ════════════════════════════════════════════════════════════════════
+def richardson_lucy(
+    spectrum: np.ndarray,
+    psf: np.ndarray,
+    iterations: int = 15,
+) -> np.ndarray:
+    """Richardson–Lucy iterative deconvolution of a 1-D spectrum.
+
+    Recovers resolution lost to a known point-spread function (e.g. the
+    ZLP) by the multiplicative RL update. ``psf`` must be the same length
+    as ``spectrum`` and **centred** (peak at the array midpoint) so the
+    deconvolved spectrum is not shifted; the route extracts and centres the
+    ZLP before calling. Non-negative throughout (Poisson MLE).
+    """
+    d = np.maximum(np.asarray(spectrum, dtype=np.float64).ravel(), 0.0)
+    p = np.asarray(psf, dtype=np.float64).ravel()
+    if p.size != d.size:
+        raise ValueError("psf must match spectrum length")
+    ps = float(p.sum())
+    if ps <= 0:
+        raise ValueError("psf must have positive sum")
+    p = p / ps
+    p_flip = p[::-1]
+
+    u = d.copy()
+    for _ in range(max(1, int(iterations))):
+        conv = np.convolve(u, p, mode="same")
+        relative = d / np.maximum(conv, _EPS)
+        u = u * np.convolve(relative, p_flip, mode="same")
+    return np.maximum(u, 0.0)

@@ -9,6 +9,8 @@ import {
   eelsAlignZlp,
   eelsFourierLog,
   eelsKK,
+  eelsRichardsonLucy,
+  eelsSubpixelAlign,
   eelsSvd,
   eelsThickness,
   type KKResult,
@@ -37,6 +39,8 @@ export default function EelsAdvanced({
   const [nIndex, setNIndex] = useState("");
   const [nComp, setNComp] = useState("8");
   const [denoise, setDenoise] = useState(false);
+  const [rlIters, setRlIters] = useState("15");
+  const [subpixel, setSubpixel] = useState(false);
   const [plot, setPlot] = useState<AdvPlot | null>(null);
   const [note, setNote] = useState<string>("");
   const [busy, setBusy] = useState(false);
@@ -122,12 +126,28 @@ export default function EelsAdvanced({
 
   const runAlign = () =>
     guard(
-      eelsAlignZlp(activeId).then((r) => {
-        ingestDerived([r.aligned]);
-        setNote(
-          `aligned — max shift ${r.max_shift} ch, ` +
-            `${(r.shifted_fraction * 100).toFixed(0)}% pixels moved`,
-        );
+      (subpixel ? eelsSubpixelAlign(activeId) : eelsAlignZlp(activeId)).then(
+        (r) => {
+          ingestDerived([r.aligned]);
+          setNote(
+            `aligned${subpixel ? " (sub-pixel)" : ""} — max shift ` +
+              `${subpixel ? r.max_shift.toFixed(2) : r.max_shift} ch, ` +
+              `${(r.shifted_fraction * 100).toFixed(0)}% pixels moved`,
+          );
+        },
+      ),
+    );
+
+  const runRichardsonLucy = () =>
+    guard(
+      eelsRichardsonLucy(activeId, zlp(), Number(rlIters) || 15).then((r) => {
+        setPlot({
+          kind: "ssd",
+          energy: r.energy,
+          spectrum: r.spectrum,
+          ssd: r.deconvolved,
+        });
+        setNote(`Richardson–Lucy — ${r.iterations} iterations`);
       }),
     );
 
@@ -212,10 +232,18 @@ export default function EelsAdvanced({
               className="fvd-btn"
               onClick={runAlign}
               disabled={busy || !isCube}
-              title="Integer-channel ZLP alignment (cube)"
+              title="ZLP alignment (cube) — sub-pixel when checked"
             >
               Align ZLP
             </button>
+            <label className="fvd-check" title="Parabolic-refined fractional-channel ZLP alignment (#10)">
+              <input
+                type="checkbox"
+                checked={subpixel}
+                onChange={(e) => setSubpixel(e.target.checked)}
+              />
+              sub-px
+            </label>
             <button
               className="fvd-btn"
               onClick={runFourierLog}
@@ -223,6 +251,23 @@ export default function EelsAdvanced({
               title="Plural-scattering removal"
             >
               Fourier-log
+            </button>
+          </div>
+          <div className="fvd-ws-row">
+            <span className="k">RL iters</span>
+            <input
+              value={rlIters}
+              style={{ width: 40 }}
+              title="Richardson–Lucy iteration count"
+              onChange={(e) => setRlIters(e.target.value)}
+            />
+            <button
+              className="fvd-btn"
+              onClick={runRichardsonLucy}
+              disabled={busy}
+              title="Richardson–Lucy deconvolution — recover resolution lost to the ZLP (#10)"
+            >
+              Richardson–Lucy
             </button>
           </div>
           <div className="fvd-ws-row">

@@ -418,6 +418,39 @@ export function eelsAlignZlp(
   return post("/api/eels/align-zlp", { image_id: id, window });
 }
 
+/** Sub-pixel ZLP alignment (#10): parabolic peak refine + fractional FFT
+ *  shift. Registers the aligned cube as a derived spectrum-image. */
+export function eelsSubpixelAlign(
+  id: string,
+  window: [number, number] = [-20, 20],
+): Promise<{
+  aligned: ImageMeta;
+  max_shift: number;
+  shifted_fraction: number;
+}> {
+  return post("/api/eels/subpixel-align", { image_id: id, window });
+}
+
+/** Richardson–Lucy deconvolution of the summed spectrum using its own ZLP
+ *  as the point-spread function (#10) — recovers resolution lost to the
+ *  ZLP. Returns the spectrum + deconvolved curve for an overlay. */
+export function eelsRichardsonLucy(
+  id: string,
+  zlpWindow: [number, number] = [-5, 5],
+  iterations = 15,
+): Promise<{
+  energy: number[];
+  spectrum: number[];
+  deconvolved: number[];
+  iterations: number;
+}> {
+  return post("/api/eels/richardson-lucy", {
+    image_id: id,
+    zlp_window: zlpWindow,
+    iterations,
+  });
+}
+
 export interface EelsEdge {
   element: string;
   shell: string;
