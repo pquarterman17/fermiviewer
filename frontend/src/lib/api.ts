@@ -2009,6 +2009,34 @@ export function analyzeLayers(
   });
 }
 
+export interface LayersMultiMap {
+  image_id: string;
+  name: string;
+  interfaces: { position: number; sigma_erf: number | null; sigma_w: number | null }[];
+  layers: { index: number; thickness: number; thickness_std: number | null }[];
+}
+
+export interface LayersMultiResult {
+  axis: "y" | "x";
+  unit: string;
+  reference_positions: number[];
+  maps: LayersMultiMap[];
+}
+
+/** Per-element interface roughness across several maps (EELS/EDS · #7).
+ *  Detects interfaces on the reference map, re-measures them on each. */
+export function analyzeLayersMulti(
+  imageIds: string[],
+  opts: { reference?: number; modality?: "haadf" | "eels" | "bf" | "df"; waviness?: boolean } = {},
+): Promise<LayersMultiResult> {
+  return post("/api/analyze/layers/multi", {
+    image_ids: imageIds,
+    reference: opts.reference ?? 0,
+    modality: opts.modality ?? "haadf",
+    waviness: opts.waviness ?? true,
+  });
+}
+
 /** Re-measure layers from a user-edited interface list (Tier 3 #6). */
 export function editLayers(
   id: string,

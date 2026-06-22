@@ -135,3 +135,75 @@ def edit_layers_route(req: LayersEditRequest) -> dict:
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
     return _result_to_dict(res)
+
+
+class LayersMultiRequest(BaseModel):
+    image_ids: list[str]              # element/score maps to compare
+    reference: int = 0               # which map's detection defines the interfaces
+    axis: str = "auto"
+    sensitivity: float = 0.3
+    n_layers: int = 0
+    modality: str = "haadf"
+    waviness: bool = True            # σ_w is the point of a per-element comparison
+
+
+@router.post("/analyze/layers/multi")
+def multi_layers_route(req: LayersMultiRequest) -> dict:
+    """Per-element interface roughness across several maps (EELS/EDS · #7).
+
+    Detects interfaces on the reference map, then re-measures those same
+    interfaces on every map → per-element σ_erf / σ_w (chemical interface
+    sharpness vs geometric roughness). All maps must share a shape.
+    """
+    if not req.image_ids:
+        raise HTTPException(422, "give at least one image_id")
+    ref_idx = max(0, min(req.reference, len(req.image_ids) - 1))
+
+    structs = []
+    for img_id in req.image_ids:
+        ds = _get(img_id)
+        if ds.kind is not DataKind.IMAGE:
+            raise HTTPException(400, f"{img_id} is not a 2-D image map")
+        structs.append(ds)
+    shape0 = structs[0].data.shape
+    if any(s.data.shape != shape0 for s in structs):
+        raise HTTPException(422, "all maps must share the same shape")
+
+    ref = structs[ref_idx]
+    px = ref.pixel_size if np.isfinite(ref.pixel_size) and ref.pixel_size > 0 else 1.0
+    unit = ref.pixel_unit if ref.pixel_unit else "px"
+    try:
+        ref_res = analyze_layers(
+            ref.data, axis=req.axis, sensitivity=req.sensitivity,
+            n_layers=req.n_layers, modality=req.modality, waviness=req.waviness,
+            pixel_size=px, unit=unit,
+        )
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    positions = [i.position for i in ref_res.interfaces]
+    use_axis = ref_res.axis
+
+    maps = []
+    for img_id, ds in zip(req.image_ids, structs, strict=True):
+        m_px = ds.pixel_size if np.isfinite(ds.pixel_size) and ds.pixel_size > 0 else px
+        m_unit = ds.pixel_unit if ds.pixel_unit else unit
+        res = recompute_layers(
+            ds.data, positions, axis=use_axis, pixel_size=m_px, unit=m_unit,
+            waviness=req.waviness,
+        )
+        maps.append({
+            "image_id": img_id,
+            "name": store.name(img_id),
+            "interfaces": [
+                {"position": i.position, "sigma_erf": _nan_none(i.sigma_erf),
+                 "sigma_w": _nan_none(i.sigma_w)}
+                for i in res.interfaces
+            ],
+            "layers": [
+                {"index": lyr.index, "thickness": lyr.thickness,
+                 "thickness_std": _nan_none(lyr.thickness_std)}
+                for lyr in res.layers
+            ],
+        })
+
+    return {"axis": use_axis, "unit": unit, "reference_positions": positions, "maps": maps}

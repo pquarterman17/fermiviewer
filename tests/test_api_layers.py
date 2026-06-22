@@ -111,6 +111,57 @@ def test_layers_unknown_image(client) -> None:
     assert r.status_code == 404
 
 
+def _open_map(client, tmp_path, name: str, sig: float) -> str:
+    """A layered image with interfaces at CENTERS but a given erf width."""
+    y = np.arange(H, dtype=np.float64)
+    prof = np.full(H, LEVELS[0])
+    for c, (lo, hi) in zip(CENTERS, zip(LEVELS, LEVELS[1:], strict=False), strict=True):
+        prof += (hi - lo) * 0.5 * (1 + erf((y - c) / (sig * np.sqrt(2))))
+    img = np.tile(prof[:, None], (1, W))
+    f = write_mini_dm4(
+        tmp_path / f"{name}.dm4", dims=[W, H],
+        data=img.ravel().astype(np.float32), data_type=2,
+        cal=[{"scale": PX, "origin": 0, "units": "nm"},
+             {"scale": PX, "origin": 0, "units": "nm"}],
+    )
+    return client.post("/api/session/open", json={"paths": [str(f)]}).json()[0]["id"]
+
+
+def test_layers_multi_per_element_sigma(client, tmp_path) -> None:
+    sharp = _open_map(client, tmp_path, "sharp", 2.0)
+    diffuse = _open_map(client, tmp_path, "diffuse", 5.0)
+    r = client.post("/api/analyze/layers/multi", json={
+        "image_ids": [sharp, diffuse], "reference": 0,
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["maps"]) == 2
+    assert len(body["reference_positions"]) == 3
+    # the diffuse map has wider σ_erf at the shared interfaces than the sharp one
+    sharp_sig = np.mean([i["sigma_erf"] for i in body["maps"][0]["interfaces"]])
+    diffuse_sig = np.mean([i["sigma_erf"] for i in body["maps"][1]["interfaces"]])
+    assert diffuse_sig > sharp_sig * 1.5
+
+
+def test_layers_multi_shape_mismatch_422(client, tmp_path, image_id) -> None:
+    other = _open_map(client, tmp_path, "other", 3.0)
+    # `image_id` is 120×60; build a different-shaped one
+    small = write_mini_dm4(
+        tmp_path / "small.dm4", dims=[10, 10],
+        data=np.ones(100, dtype=np.float32), data_type=2,
+        cal=[{"scale": 1, "origin": 0, "units": "nm"},
+             {"scale": 1, "origin": 0, "units": "nm"}],
+    )
+    small_id = client.post("/api/session/open", json={"paths": [str(small)]}).json()[0]["id"]
+    r = client.post("/api/analyze/layers/multi", json={"image_ids": [other, small_id]})
+    assert r.status_code == 422
+
+
+def test_layers_multi_empty_422(client) -> None:
+    r = client.post("/api/analyze/layers/multi", json={"image_ids": []})
+    assert r.status_code == 422
+
+
 def test_layers_waviness_returns_sigma_w_and_trace(client, image_id) -> None:
     r = client.post("/api/analyze/layers", json={
         "image_id": image_id, "waviness": True,
