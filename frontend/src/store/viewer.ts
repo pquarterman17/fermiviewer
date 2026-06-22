@@ -219,6 +219,7 @@ export type CaptureMode =
   | "box-profile"
   | "crop-save"
   | "calibrate"
+  | "specnav" // click/drag the main image → drives the EELS/EDS spectrum
   | MeasureKind;
 export type Theme = "dark" | "light";
 /** Swappable accent scheme (kept in sync with lib/prefs Accent; no import
@@ -543,6 +544,9 @@ interface ViewerState {
   fixedZoomH: number;
   // tools
   captureMode: CaptureMode;
+  // spectrum-navigation pixel (1-based [row, col]) picked on the main stage in
+  // specnav mode; the EELS/EDS workshops watch it to drive their spectrum (#10)
+  specnavPixel: [number, number] | null;
   panTool: boolean;
   profileWidth: number;  // ⊥ averaging width (px) for profile captures
   profileReduce: "mean" | "sum"; // box/profile reduction mode (item #49)
@@ -642,6 +646,7 @@ interface ViewerState {
   setSelectedMeasure: (id: string | null) => void;
   setRoiStats: (measureId: string, stats: RoiStats) => void;
   setCaptureMode: (mode: CaptureMode) => void;
+  setSpecnavPixel: (p: [number, number] | null) => void;
   setPanTool: (on: boolean) => void;
   setProfileWidth: (w: number) => void;
   setProfileReduce: (r: "mean" | "sum") => void;
@@ -812,6 +817,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   fixedZoomW: _pref("fixedZoomW", 256),
   fixedZoomH: _pref("fixedZoomH", 256),
   captureMode: "none",
+  specnavPixel: null,
   panTool: false,
   profileWidth: _pref("profileWidth", 1),
   profileReduce: _pref<"mean" | "sum">("profileReduce", "mean"),
@@ -1339,7 +1345,10 @@ export const useViewer = create<ViewerState>((set, get) => ({
   setRoiStats: (measureId, stats) =>
     set((s) => ({ roiStats: { ...s.roiStats, [measureId]: stats } })),
 
-  setCaptureMode: (mode) => set({ captureMode: mode }),
+  setCaptureMode: (mode) =>
+    // leaving specnav clears the picked pixel so a stale marker doesn't linger
+    set(mode === "specnav" ? { captureMode: mode } : { captureMode: mode, specnavPixel: null }),
+  setSpecnavPixel: (specnavPixel) => set({ specnavPixel }),
   setProfileWidth: (w) => {
     const profileWidth = Math.max(1, Math.min(99, Math.round(w)));
     writePref("profileWidth", profileWidth);

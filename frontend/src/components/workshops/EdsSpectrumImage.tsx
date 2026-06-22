@@ -205,6 +205,9 @@ export default function EdsSpectrumImage() {
     s.activeId ? (s.images[s.activeId] ?? null) : null,
   );
   const setStatus = useViewer((s) => s.setStatus);
+  const captureMode = useViewer((s) => s.captureMode);
+  const setCaptureMode = useViewer((s) => s.setCaptureMode);
+  const specnavPixel = useViewer((s) => s.specnavPixel);
 
   // energy window state
   const [eLo, setELo] = useState(0.5);
@@ -268,6 +271,30 @@ export default function EdsSpectrumImage() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId, isCube]);
+
+  // #10 specnav: a pixel picked on the MAIN stage drives the spectrum (1×1 ROI)
+  useEffect(() => {
+    if (!isCube || !specnavPixel || !activeId) return;
+    const [r, c] = specnavPixel;
+    const rect: Rect1 = [r, c, r, c];
+    fetchSpectrum(activeId, rect)
+      .then((s) => {
+        setSpectrum(s);
+        setSpecLabel(`px [${r}, ${c}]`);
+        setRoi(rect);
+      })
+      .catch((e: Error) => setStatus(`EDS spectrum: ${e.message}`));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [specnavPixel, isCube, activeId]);
+
+  // turn specnav off when the workshop unmounts (don't leave the stage armed)
+  useEffect(
+    () => () => {
+      if (useViewer.getState().captureMode === "specnav")
+        useViewer.getState().setCaptureMode("none");
+    },
+    [],
+  );
 
   const handleElementChange = (sym: string) => {
     setSelElem(sym);
@@ -455,6 +482,23 @@ export default function EdsSpectrumImage() {
             </span>
           </div>
           <RegionPicker id={activeId} onRegion={handleRoi} />
+          {isCube && (
+            <div className="fvd-ws-row">
+              <label
+                className="fvd-check"
+                title="click or drag the main image to read its spectrum here"
+              >
+                <input
+                  type="checkbox"
+                  checked={captureMode === "specnav"}
+                  onChange={(e) =>
+                    setCaptureMode(e.target.checked ? "specnav" : "none")
+                  }
+                />
+                Navigate on main image
+              </label>
+            </div>
+          )}
         </>
       )}
 

@@ -144,6 +144,8 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   const setStackFrame = useViewer((s) => s.setStackFrame);
   const captureMode = useViewer((s) => s.captureMode);
   const setCaptureMode = useViewer((s) => s.setCaptureMode);
+  const setSpecnavPixel = useViewer((s) => s.setSpecnavPixel);
+  const specnavPixel = useViewer((s) => s.specnavPixel);
   const fixedZoomW = useViewer((s) => s.fixedZoomW);
   const fixedZoomH = useViewer((s) => s.fixedZoomH);
   const panTool = useViewer((s) => s.panTool);
@@ -180,6 +182,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     pts: Pt[];
   } | null>(null);
   const dragRef = useRef<{ last: Pt } | null>(null);
+  const specnavRef = useRef(false); // dragging in specnav mode (#10)
   const rasterRef = useRef<Raster16 | null>(null);
 
   const rasterless = meta?.kind === "spectrum";
@@ -478,6 +481,12 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     };
   };
 
+  // image-space point → 1-based [row, col] pixel, clamped to the image (#10)
+  const pixelAt = (ip: Pt): [number, number] => [
+    Math.min(imgSize!.h, Math.max(1, Math.floor(ip.y) + 1)),
+    Math.min(imgSize!.w, Math.max(1, Math.floor(ip.x) + 1)),
+  ];
+
   const finalizeMeasure = (kind: Measure["kind"], ptsImg: Pt[]) => {
     if (!activeId || !imgSize) return;
     const pts = ptsImg.map((p) => ({ x: p.x / imgSize.w, y: p.y / imgSize.h }));
@@ -651,6 +660,15 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       setCaptureMode("none");
       return;
     }
+
+    // #10 specnav: click (or drag) the main image → publish the picked 1-based
+    // pixel; the open EELS/EDS workshop watches it and refreshes its spectrum.
+    if (captureMode === "specnav" && imgSize) {
+      setSpecnavPixel(pixelAt(toImage(p)));
+      specnavRef.current = true;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      return;
+    }
     if (
       captureMode === "zoom" ||
       captureMode === "roi" ||
@@ -700,6 +718,11 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       addPoint([Math.floor(ip.x), Math.floor(ip.y)]);
       return;
     }
+    // specnav drag: keep publishing the pixel under the cursor (#10)
+    if (specnavRef.current && view && imgSize) {
+      setSpecnavPixel(pixelAt(toImage(p)));
+      return;
+    }
     if (dragRef.current && view && imgSize) {
       const { last } = dragRef.current;
       apply({
@@ -725,6 +748,15 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   const onPointerUp = (e: React.PointerEvent) => {
     if (paintingRef.current) {
       paintingRef.current = false;
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        // capture may already be gone; ignore
+      }
+      return;
+    }
+    if (specnavRef.current) {
+      specnavRef.current = false;
       try {
         e.currentTarget.releasePointerCapture(e.pointerId);
       } catch {
@@ -853,6 +885,13 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       ? imageToScreen(grainPending.x, grainPending.y, view, imgSize, vp)
       : null;
 
+  // screen-space crosshair for the specnav-picked pixel (#10); the 1-based
+  // [row, col] pixel's centre is at image coords (col − 0.5, row − 0.5)
+  const specnavMarkPos =
+    captureMode === "specnav" && specnavPixel && view && imgSize
+      ? imageToScreen(specnavPixel[1] - 0.5, specnavPixel[0] - 0.5, view, imgSize, vp)
+      : null;
+
   return (
     <div
       ref={wrapRef}
@@ -919,6 +958,12 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
             <div
               className="fvd-grain-mark"
               style={{ left: grainMarkPos.x, top: grainMarkPos.y }}
+            />
+          )}
+          {specnavMarkPos && (
+            <div
+              className="fvd-specnav-mark"
+              style={{ left: specnavMarkPos.x, top: specnavMarkPos.y }}
             />
           )}
           <Minimap

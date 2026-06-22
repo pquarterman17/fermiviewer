@@ -118,6 +118,23 @@ describe("ingest", () => {
   });
 });
 
+describe("specnav pixel (#10 main-stage spectrum navigation)", () => {
+  it("defaults null; setSpecnavPixel stores a [row, col]", () => {
+    expect(useViewer.getState().specnavPixel).toBeNull();
+    useViewer.getState().setSpecnavPixel([7, 12]);
+    expect(useViewer.getState().specnavPixel).toEqual([7, 12]);
+  });
+
+  it("entering specnav keeps the pixel; leaving specnav clears it", () => {
+    const s = useViewer.getState();
+    s.setSpecnavPixel([3, 4]);
+    s.setCaptureMode("specnav"); // entering must not wipe a fresh pick
+    expect(useViewer.getState().specnavPixel).toEqual([3, 4]);
+    s.setCaptureMode("none"); // leaving clears the stale marker
+    expect(useViewer.getState().specnavPixel).toBeNull();
+  });
+});
+
 describe("derivedTick lineage signal (#7 Live FFT)", () => {
   it("starts at 0 and bumps once per ingestDerived, not on plain ingest", () => {
     expect(useViewer.getState().derivedTick).toBe(0);

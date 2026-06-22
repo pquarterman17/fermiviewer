@@ -50,6 +50,9 @@ export default function EelsWorkshop() {
     s.activeId ? (s.images[s.activeId] ?? null) : null,
   );
   const setStatus = useViewer((s) => s.setStatus);
+  const captureMode = useViewer((s) => s.captureMode);
+  const setCaptureMode = useViewer((s) => s.setCaptureMode);
+  const specnavPixel = useViewer((s) => s.specnavPixel);
 
   const [spectrum, setSpectrum] = useState<Spectrum | null>(null);
   const [fit, setFit] = useState<EelsBackgroundResult | null>(null);
@@ -106,6 +109,23 @@ export default function EelsWorkshop() {
     setExplore(false);
     setPickMode("region");
   }, [activeId]);
+
+  // #10 specnav: a pixel picked on the MAIN stage drives the spectrum by
+  // feeding the same `region` the in-panel picker uses (1×1 rect).
+  useEffect(() => {
+    if (!isCube || !specnavPixel) return;
+    const [r, c] = specnavPixel;
+    setRegion([r, c, r, c]);
+  }, [specnavPixel, isCube]);
+
+  // turn specnav off when the workshop unmounts (don't leave the stage armed)
+  useEffect(
+    () => () => {
+      if (useViewer.getState().captureMode === "specnav")
+        useViewer.getState().setCaptureMode("none");
+    },
+    [],
+  );
 
   // (re)build the plot when spectrum or fit changes
   useEffect(() => {
@@ -322,6 +342,21 @@ export default function EelsWorkshop() {
               }}
             />
             Region explorer
+          </label>
+        )}
+        {isCube && (
+          <label
+            className="fvd-check"
+            title="click or drag the main image to read its spectrum here"
+          >
+            <input
+              type="checkbox"
+              checked={captureMode === "specnav"}
+              onChange={(e) =>
+                setCaptureMode(e.target.checked ? "specnav" : "none")
+              }
+            />
+            Navigate on image
           </label>
         )}
         {region && (

@@ -370,6 +370,45 @@ body {
   z-index: 6;
 }
 
+/* specnav (#10): crosshair ring at the pixel feeding the EELS/EDS spectrum */
+.fvd-specnav-mark {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border: 2px solid var(--capture);
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.6),
+    inset 0 0 0 1px rgb(0 0 0 / 0.4);
+  z-index: 6;
+}
+
+.fvd-specnav-mark::before,
+.fvd-specnav-mark::after {
+  content: "";
+  position: absolute;
+  background: var(--capture);
+}
+
+/* horizontal + vertical crosshair ticks through the ring centre */
+.fvd-specnav-mark::before {
+  left: 50%;
+  top: -5px;
+  width: 1.5px;
+  height: 26px;
+  margin-left: -0.75px;
+}
+
+.fvd-specnav-mark::after {
+  top: 50%;
+  left: -5px;
+  height: 1.5px;
+  width: 26px;
+  margin-top: -0.75px;
+}
+
 .fvd-inspector-tabs {
   display: flex;
   align-items: center;
