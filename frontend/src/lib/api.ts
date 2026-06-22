@@ -580,6 +580,7 @@ export interface PhaseCandidate {
   matched_hkl: number[][];
   matched_d: number[];   // measured d-spacings for each matched spot (Å)
   ref_d: number[];       // reference d-spacings for each matched spot (Å)
+  matched_idx: number[]; // index into the input spots[] for each matched spot
   zone_axis: number[];
 }
 

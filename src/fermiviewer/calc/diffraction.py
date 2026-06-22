@@ -9,7 +9,7 @@ differ by 0.5 px INTENTIONALLY (simulate: H/2+0.5; index: floor(H/2)+1)
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 from scipy.signal import fftconvolve
@@ -397,6 +397,9 @@ class IndexCandidate:
     matched_d: np.ndarray
     ref_d: np.ndarray
     zone_axis: tuple[float, float, float]
+    # index into the input `positions` for each matched spot, so callers can
+    # map a match back to its (row, col) for overlay labels / a report (#37)
+    matched_idx: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=int))
 
 
 def _zone_axis(hkl: np.ndarray) -> tuple[float, float, float]:
@@ -459,7 +462,7 @@ def index_spots(
             ph.a, b=ph.b, c=ph.c, alpha=ph.alpha, beta=ph.beta, gamma=ph.gamma,
             centering=ph.centering, max_hkl=max_hkl, lam=float("nan"),
         )
-        m_hkl, m_d, m_ref = [], [], []
+        m_hkl, m_d, m_ref, m_idx = [], [], [], []
         for i in range(n_spots):
             if not valid[i]:
                 continue
@@ -469,12 +472,14 @@ def index_spots(
                 m_hkl.append(refl.hkl[j])
                 m_d.append(d_meas[i])
                 m_ref.append(refl.d[j])
+                m_idx.append(i)  # which input spot this match came from
         n_m = len(m_d)
         hkl_arr = np.array(m_hkl) if m_hkl else np.zeros((0, 3))
         cands.append(IndexCandidate(
             ph.name, ph.formula, n_m / max(n_spots, 1), n_m, n_spots,
             hkl_arr, np.array(m_d), np.array(m_ref),
             _zone_axis(hkl_arr) if n_m >= 2 else (float("nan"),) * 3,
+            np.array(m_idx, dtype=int),
         ))
 
     def mean_err(c: IndexCandidate) -> float:

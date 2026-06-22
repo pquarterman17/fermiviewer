@@ -487,6 +487,9 @@ def diffraction_index(req: IndexRequest) -> dict:
                 # measured / reference d-spacings per matched spot (Å)
                 "matched_d": c.matched_d.tolist(),
                 "ref_d": c.ref_d.tolist(),
+                # index into req.spots for each matched spot (overlay labels /
+                # indexing report can map a match back to its (row, col))
+                "matched_idx": c.matched_idx.tolist(),
                 "zone_axis": list(c.zone_axis),
             }
             for c in cands

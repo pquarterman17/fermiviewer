@@ -22,6 +22,14 @@ import {
   type PhaseInfo,
   type SimulateResult,
 } from "../../lib/api";
+import {
+  downloadCsv,
+  downloadJson,
+  exportBaseName,
+  tableToCsv,
+  tableToJson,
+  type Cell,
+} from "../../lib/resultsExport";
 import { useViewer } from "../../store/viewer";
 
 const VIEW_W = 300;
@@ -85,6 +93,40 @@ function roiFromPoints(
  *  imgW: full image width (pixels), used for FFT-mode d↔R conversion.
  *  pixelSizeMm: pixel calibration (forwarded from the index call).
  */
+/** Map each matched spot k → its index into the posted spots[]. Prefers the
+ *  exact `matched_idx` from the index response; falls back to the old greedy
+ *  radius reconstruction for responses that predate that field. */
+export function matchedSpotIndices(
+  candidate: PhaseCandidate,
+  measuredR: number[],
+  imgW: number,
+  pixelSizeMm: number,
+): number[] {
+  const { matched_d, matched_idx } = candidate;
+  if (Array.isArray(matched_idx) && matched_idx.length === matched_d.length) {
+    return matched_idx;
+  }
+  // legacy fallback: d_meas[i] = W*px/R[i], greedily match each matched_d
+  const dPerSpot = measuredR.map((R) =>
+    R > 0 ? (imgW * pixelSizeMm) / R : Infinity,
+  );
+  const used = new Set<number>();
+  return matched_d.map((dm) => {
+    let best = -1;
+    let bestFrac = Infinity;
+    for (let i = 0; i < dPerSpot.length; i++) {
+      if (used.has(i)) continue;
+      const frac = Math.abs(dPerSpot[i] - dm) / dm;
+      if (frac < bestFrac) {
+        bestFrac = frac;
+        best = i;
+      }
+    }
+    if (best >= 0) used.add(best);
+    return best;
+  });
+}
+
 function matchedRingSvg(
   candidate: PhaseCandidate,
   measuredR: number[],
@@ -92,6 +134,9 @@ function matchedRingSvg(
   scale: number,
   imgW: number,
   pixelSizeMm: number,
+  spots: [number, number][],
+  showRings: boolean,
+  showLabels: boolean,
 ): React.ReactNode[] {
   const cx = (center[1] - 0.5) * scale;  // 1-based col → display px
   const cy = (center[0] - 0.5) * scale;
@@ -99,42 +144,46 @@ function matchedRingSvg(
   const { matched_hkl, matched_d } = candidate;
   if (!matched_d || matched_d.length === 0 || measuredR.length === 0) return [];
 
-  // Compute the measured d-spacing for each spot from its radius:
-  //   d_meas[i] = W * pixelSize / R[i]  (FFT mode, verbatim indexDiffraction.m)
-  // Then match each matched_d[k] to the nearest unused spot, greedy in spot order.
-  const dPerSpot = measuredR.map((R) =>
-    R > 0 ? (imgW * pixelSizeMm) / R : Infinity,
-  );
-  const used = new Set<number>();
+  const idx = matchedSpotIndices(candidate, measuredR, imgW, pixelSizeMm);
 
   for (let k = 0; k < matched_d.length; k++) {
-    const dm = matched_d[k];
-    let bestIdx = -1;
-    let bestFrac = Infinity;
-    for (let i = 0; i < dPerSpot.length; i++) {
-      if (used.has(i)) continue;
-      const frac = Math.abs(dPerSpot[i] - dm) / dm;
-      if (frac < bestFrac) { bestFrac = frac; bestIdx = i; }
-    }
-    if (bestIdx < 0) continue;
-    used.add(bestIdx);
-
-    const R = measuredR[bestIdx] * scale;
+    const i = idx[k];
+    if (i < 0 || i >= measuredR.length) continue;
+    const R = measuredR[i] * scale;
     const hkl = matched_hkl[k] ?? [0, 0, 0];
-    nodes.push(
-      <g key={`mring-${k}`}>
-        <circle cx={cx} cy={cy} r={R} fill="none" stroke="#22c55e" strokeWidth={1} />
-        <text
-          x={cx + R * 1.05}
-          y={cy}
-          fill="#22c55e"
-          fontSize={9}
-          dominantBaseline="middle"
-        >
-          ({hkl.join("")})
-        </text>
-      </g>,
-    );
+
+    if (showRings) {
+      nodes.push(
+        <circle key={`mring-${k}`} cx={cx} cy={cy} r={R} fill="none"
+          stroke="#22c55e" strokeWidth={1} />,
+      );
+      // on-ring hkl tag only when per-spot labels aren't carrying it
+      if (!showLabels) {
+        nodes.push(
+          <text key={`mrt-${k}`} x={cx + R * 1.05} y={cy} fill="#22c55e"
+            fontSize={9} dominantBaseline="middle">
+            ({hkl.join("")})
+          </text>,
+        );
+      }
+    }
+
+    // #4: hkl + measured-d label pinned at the matched spot's own position
+    if (showLabels && spots[i]) {
+      const [row, col] = spots[i];
+      const sx = (col - 0.5) * scale;
+      const sy = (row - 0.5) * scale;
+      nodes.push(
+        <g key={`mlbl-${k}`}>
+          <circle cx={sx} cy={sy} r={3} fill="#22c55e" />
+          <text x={sx + 6} y={sy - 4} fill="#22c55e" fontSize={9}
+            dominantBaseline="middle" stroke="#000" strokeWidth={0.5}
+            paintOrder="stroke">
+            ({hkl.join("")}) {matched_d[k].toFixed(3)}Å
+          </text>
+        </g>,
+      );
+    }
   }
   return nodes;
 }
@@ -197,6 +246,7 @@ export default function DiffractionWorkshop() {
   const [candidates, setCandidates] = useState<PhaseCandidate[]>([]);
   const [selectedCandIdx, setSelectedCandIdx] = useState(0);
   const [rings, setRings] = useState(false);
+  const [labels, setLabels] = useState(false);
   const [busy, setBusy] = useState(false);
   // A8 simulate
   const [phases, setPhases] = useState<PhaseInfo[]>([]);
@@ -523,7 +573,7 @@ export default function DiffractionWorkshop() {
 
   // ── matched-ring SVG nodes for the selected candidate ────────────
   const matchedRingNodes =
-    rings && indexResult && candidates.length > 0 && natural
+    (rings || labels) && indexResult && candidates.length > 0 && natural
       ? matchedRingSvg(
           candidates[selectedCandIdx] ?? candidates[0],
           indexResult.measured_r,
@@ -531,8 +581,73 @@ export default function DiffractionWorkshop() {
           scale,
           natural.w,
           Number(pixelSize) || 1.0,
+          spots,
+          rings,
+          labels,
         )
       : [];
+
+  // ── indexing report (#4): per-matched-spot table + provenance header ──
+  const buildReportTable = (): {
+    columns: string[];
+    rows: Cell[][];
+    meta: Record<string, unknown>;
+  } | null => {
+    if (!indexResult || candidates.length === 0) return null;
+    const c = candidates[selectedCandIdx] ?? candidates[0];
+    const idx = matchedSpotIndices(
+      c,
+      indexResult.measured_r,
+      natural?.w ?? 0,
+      Number(pixelSize) || 1,
+    );
+    const columns = [
+      "#", "row", "col", "r (px)", "d_meas (Å)", "d_ref (Å)", "hkl", "rel err (%)",
+    ];
+    const rows: Cell[][] = c.matched_d.map((dMeas, k) => {
+      const i = idx[k];
+      const sp = i >= 0 ? spots[i] : undefined;
+      const relErr =
+        c.ref_d[k] ? (Math.abs(dMeas - c.ref_d[k]) / c.ref_d[k]) * 100 : null;
+      return [
+        k + 1,
+        sp ? sp[0] : null,
+        sp ? sp[1] : null,
+        sp ? indexResult.measured_r[i] : null,
+        dMeas,
+        c.ref_d[k],
+        `(${(c.matched_hkl[k] ?? []).join(" ")})`,
+        relErr,
+      ];
+    });
+    return {
+      columns,
+      rows,
+      meta: {
+        imageName: meta?.name,
+        analysis: "Diffraction indexing",
+        params: {
+          phase: c.phase,
+          formula: c.formula,
+          zone_axis: `[${c.zone_axis.join(" ")}]`,
+          score: c.score,
+          n_matched: c.n_matched,
+          pixel_size: Number(pixelSize) || 1,
+          camera_length_mm: cameraLen ? Number(cameraLen) : "FFT mode",
+          acc_voltage_kv: Number(accKv) || 200,
+        },
+      },
+    };
+  };
+
+  const downloadReport = (fmt: "csv" | "json") => {
+    const t = buildReportTable();
+    if (!t) return;
+    const base = `${exportBaseName(meta?.name)}_indexing`;
+    if (fmt === "csv") downloadCsv(`${base}.csv`, tableToCsv(t.columns, t.rows, t.meta));
+    else downloadJson(`${base}.json`, tableToJson(t.columns, t.rows, t.meta));
+    setStatus(`indexing report: ${t.rows.length} matched spots`);
+  };
 
   const svgCursor =
     roiMode !== "none"
@@ -645,6 +760,17 @@ export default function DiffractionWorkshop() {
           />
           Rings
         </label>
+        <label
+          className="fvd-check"
+          title="label each matched spot with its (hkl) + measured d on the pattern"
+        >
+          <input
+            type="checkbox"
+            checked={labels}
+            onChange={(e) => setLabels(e.target.checked)}
+          />
+          Labels
+        </label>
       </div>
 
       {/* click-spot mode */}
@@ -746,9 +872,31 @@ export default function DiffractionWorkshop() {
         </table>
       )}
       {candidates.length > 0 && (
-        <div className="fvd-ws-note" style={{ fontSize: 10 }}>
-          Click a row to select · enable Rings to overlay matched d-spacings
-        </div>
+        <>
+          <div className="fvd-ws-row">
+            <span className="k">report</span>
+            <button
+              className="fvd-btn"
+              disabled={(candidates[selectedCandIdx]?.n_matched ?? 0) === 0}
+              title="Download the measured-vs-reference indexing table (CSV)"
+              onClick={() => downloadReport("csv")}
+            >
+              CSV
+            </button>
+            <button
+              className="fvd-btn"
+              disabled={(candidates[selectedCandIdx]?.n_matched ?? 0) === 0}
+              title="Download the indexing report with provenance (JSON)"
+              onClick={() => downloadReport("json")}
+            >
+              JSON
+            </button>
+          </div>
+          <div className="fvd-ws-note" style={{ fontSize: 10 }}>
+            Click a row to select · Rings overlays d-spacings · Labels tags each
+            spot with (hkl) + d
+          </div>
+        </>
       )}
 
       {/* Analysis ROI controls */}

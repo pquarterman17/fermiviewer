@@ -83,6 +83,29 @@ def test_index_no_match_scores_zero() -> None:
     assert all(c.score == 0 for c in cands)
 
 
+def test_index_matched_idx_maps_to_input_spots() -> None:
+    """matched_idx (Diffraction #4 overlay/report) points into the input
+    `positions`, and the indexed spot's d_meas = λL/r at that index."""
+    sim = simulate("Silicon", zone_axis=(0, 0, 1), scattering_model="z")
+    pos = np.array([[s.pixel_row, s.pixel_col] for s in sim.spots[1:]])
+    cands = index_spots(pos, (512, 512), pixel_size=0.05,
+                        camera_length=200, acc_voltage=200)
+    c = cands[1]  # Silicon (see parity test for the ordering rationale)
+    assert c.matched_idx.shape[0] == c.n_matched == c.matched_d.shape[0]
+    # every index is a valid row of the input spot list
+    assert c.matched_idx.min() >= 0 and c.matched_idx.max() < pos.shape[0]
+    assert len(set(c.matched_idx.tolist())) == c.n_matched  # no spot used twice
+    # the matched measured-d at each index reproduces d = λL/r from that spot's
+    # radius (the relation the overlay/report rely on)
+    from fermiviewer.calc.crystal import electron_wavelength
+    lam = float(electron_wavelength(200))
+    center = (512 // 2 + 1, 512 // 2 + 1)
+    for k, i in enumerate(c.matched_idx.tolist()):
+        r = float(np.hypot(pos[i, 0] - center[0], pos[i, 1] - center[1]))
+        d_from_r = (lam * 200 * 1e7) / (r * 0.05 * 1e7)
+        assert c.matched_d[k] == pytest.approx(d_from_r, rel=1e-6)
+
+
 # ── golden ───────────────────────────────────────────────────────────
 
 @pytest.mark.golden
