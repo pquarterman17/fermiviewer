@@ -2008,3 +2008,17 @@ export function analyzeLayers(
     modality: opts.modality ?? "haadf",
   });
 }
+
+/** Re-measure layers from a user-edited interface list (Tier 3 #6). */
+export function editLayers(
+  id: string,
+  positions: number[],
+  opts: { axis?: "y" | "x"; waviness?: boolean } = {},
+): Promise<LayersResult> {
+  return post("/api/analyze/layers/edit", {
+    image_id: id,
+    positions,
+    axis: opts.axis ?? "y",
+    waviness: opts.waviness ?? false,
+  });
+}

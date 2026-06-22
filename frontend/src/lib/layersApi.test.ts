@@ -2,7 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { analyzeLayers } from "./api";
+import { analyzeLayers, editLayers } from "./api";
 
 function makeFetch(body: unknown, status = 200) {
   return vi.fn().mockResolvedValue({
@@ -61,5 +61,25 @@ describe("analyzeLayers request body", () => {
     expect(body.axis).toBe("x");
     expect(body.sensitivity).toBe(0.5);
     expect(body.n_layers).toBe(4);
+  });
+});
+
+describe("editLayers request body", () => {
+  it("posts positions + axis to the edit endpoint", async () => {
+    globalThis.fetch = makeFetch({
+      axis: "y", layers_horizontal: true, tilt_deg: 0, coherence: 0.9,
+      pixel_size: 1, unit: "px", depth_pos: [], depth_profile: [],
+      interfaces: [], layers: [],
+    });
+    await editLayers("img3", [30, 90], { axis: "y", waviness: true });
+    const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
+    expect(url).toBe("/api/analyze/layers/edit");
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(body.positions).toEqual([30, 90]);
+    expect(body.axis).toBe("y");
+    expect(body.waviness).toBe(true);
   });
 });

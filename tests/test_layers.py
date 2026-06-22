@@ -16,6 +16,7 @@ from fermiviewer.calc.layers import (
     detect_growth_orientation,
     detect_interfaces,
     detect_interfaces_scale_space,
+    recompute_layers,
     trace_interface,
 )
 
@@ -221,6 +222,37 @@ def test_scale_space_n_layers_hint() -> None:
     prof = _fringed_profile()
     ss = detect_interfaces_scale_space(prof, n_layers=2)   # keep 1 strongest
     assert ss.size == 1
+
+
+def test_recompute_layers_from_edited_positions() -> None:
+    # supply the known interface depths directly → erf-refined, layers rebuilt
+    res = recompute_layers(_layered(), [50.0, 100.0, 150.0], axis="y", pixel_size=1.0)
+    assert len(res.interfaces) == 3
+    centers = sorted(i.position for i in res.interfaces)
+    np.testing.assert_allclose(centers, CENTERS, atol=0.5)
+    assert len(res.layers) == 2
+    for lyr in res.layers:
+        assert lyr.thickness == pytest.approx(50.0, abs=1.0)
+
+
+def test_recompute_layers_add_and_remove() -> None:
+    # remove the middle interface → one big layer; positions drop out of range
+    res = recompute_layers(_layered(), [50.0, 150.0, 999.0, -5.0], axis="y")
+    assert len(res.interfaces) == 2          # 999/-5 dropped (out of range)
+    assert len(res.layers) == 1
+    assert res.layers[0].thickness == pytest.approx(100.0, abs=1.0)
+
+
+def test_recompute_layers_waviness() -> None:
+    res = recompute_layers(_layered(), [50.0, 100.0], axis="y", waviness=True)
+    for it in res.interfaces:
+        assert it.trace is not None
+        assert np.isfinite(it.sigma_w)
+
+
+def test_recompute_layers_bad_axis() -> None:
+    with pytest.raises(ValueError, match="axis must be"):
+        recompute_layers(_layered(), [50.0], axis="auto")
 
 
 def test_analyze_layers_bf_modality_rejects_fringes() -> None:

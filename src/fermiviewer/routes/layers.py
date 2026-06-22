@@ -14,7 +14,7 @@ import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from fermiviewer.calc.layers import analyze_layers
+from fermiviewer.calc.layers import LayerResult, analyze_layers, recompute_layers
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.session import UnknownImageError, store
 
@@ -30,6 +30,39 @@ def _get(img_id: str) -> DataStruct:
 
 def _nan_none(x: float) -> float | None:
     return None if not math.isfinite(x) else float(x)
+
+
+def _result_to_dict(res: LayerResult) -> dict:
+    return {
+        "axis": res.axis,
+        "layers_horizontal": res.layers_horizontal,
+        "tilt_deg": _nan_none(res.tilt_deg),
+        "coherence": _nan_none(res.coherence),
+        "pixel_size": res.pixel_size,
+        "unit": res.unit,
+        "depth_pos": res.depth_pos.tolist(),
+        "depth_profile": res.depth_profile.tolist(),
+        "interfaces": [
+            {
+                "position": i.position,
+                "sigma_erf": _nan_none(i.sigma_erf),
+                "r_squared": i.r_squared,
+                "sigma_w": _nan_none(i.sigma_w),
+                "trace": i.trace.tolist() if i.trace is not None else None,
+            }
+            for i in res.interfaces
+        ],
+        "layers": [
+            {
+                "index": lyr.index,
+                "top": lyr.top,
+                "bottom": lyr.bottom,
+                "thickness": lyr.thickness,
+                "thickness_std": _nan_none(lyr.thickness_std),
+            }
+            for lyr in res.layers
+        ],
+    }
 
 
 class LayersRequest(BaseModel):
@@ -69,33 +102,36 @@ def analyze_layers_route(req: LayersRequest) -> dict:
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
 
-    return {
-        "axis": res.axis,
-        "layers_horizontal": res.layers_horizontal,
-        "tilt_deg": _nan_none(res.tilt_deg),
-        "coherence": _nan_none(res.coherence),
-        "pixel_size": res.pixel_size,
-        "unit": res.unit,
-        "depth_pos": res.depth_pos.tolist(),
-        "depth_profile": res.depth_profile.tolist(),
-        "interfaces": [
-            {
-                "position": i.position,
-                "sigma_erf": _nan_none(i.sigma_erf),
-                "r_squared": i.r_squared,
-                "sigma_w": _nan_none(i.sigma_w),
-                "trace": i.trace.tolist() if i.trace is not None else None,
-            }
-            for i in res.interfaces
-        ],
-        "layers": [
-            {
-                "index": lyr.index,
-                "top": lyr.top,
-                "bottom": lyr.bottom,
-                "thickness": lyr.thickness,
-                "thickness_std": _nan_none(lyr.thickness_std),
-            }
-            for lyr in res.layers
-        ],
-    }
+    return _result_to_dict(res)
+
+
+class LayersEditRequest(BaseModel):
+    image_id: str
+    positions: list[float]            # interface depths (profile pixels)
+    axis: str = "y"                   # explicit — editing assumes a known axis
+    roi: tuple[int, int, int, int] | None = None
+    reduce: str = "mean"
+    fit_window: int = 15
+    waviness: bool = False
+    trace_window: int = 10
+
+
+@router.post("/analyze/layers/edit")
+def edit_layers_route(req: LayersEditRequest) -> dict:
+    """Re-measure layers from a user-edited interface list (no detection)."""
+    ds = _get(req.image_id)
+    if ds.kind is not DataKind.IMAGE:
+        raise HTTPException(400, "layer analysis needs a 2-D image")
+    px = ds.pixel_size
+    unit = ds.pixel_unit
+    if not np.isfinite(px) or px <= 0:
+        px, unit = 1.0, "px"
+    try:
+        res = recompute_layers(
+            ds.data, list(req.positions), axis=req.axis, roi=req.roi,
+            reduce=req.reduce, pixel_size=px, unit=unit, fit_window=req.fit_window,
+            waviness=req.waviness, trace_window=req.trace_window,
+        )
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    return _result_to_dict(res)

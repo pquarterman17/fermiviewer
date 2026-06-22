@@ -131,6 +131,33 @@ def test_layers_no_waviness_leaves_fields_null(client, image_id) -> None:
     assert all(it["sigma_w"] is None and it["trace"] is None for it in body["interfaces"])
 
 
+def test_layers_edit_recomputes_from_positions(client, image_id) -> None:
+    r = client.post("/api/analyze/layers/edit", json={
+        "image_id": image_id, "positions": [30.0, 90.0], "axis": "y",
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["interfaces"]) == 2
+    assert len(body["layers"]) == 1
+    # 30→90 px × 0.5 nm = 30 nm
+    assert body["layers"][0]["thickness"] == pytest.approx(30.0, abs=0.5)
+
+
+def test_layers_edit_drops_out_of_range(client, image_id) -> None:
+    r = client.post("/api/analyze/layers/edit", json={
+        "image_id": image_id, "positions": [30.0, 9999.0], "axis": "y",
+    })
+    assert r.status_code == 200
+    assert len(r.json()["interfaces"]) == 1
+
+
+def test_layers_edit_bad_axis_422(client, image_id) -> None:
+    r = client.post("/api/analyze/layers/edit", json={
+        "image_id": image_id, "positions": [30.0], "axis": "auto",
+    })
+    assert r.status_code == 422
+
+
 def test_layers_bf_modality_runs(client, image_id) -> None:
     # the clean synthetic stack still resolves under BF scale-space detection
     r = client.post("/api/analyze/layers", json={

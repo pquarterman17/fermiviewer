@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState } from "react";
 import uPlot from "uplot";
 
-import { analyzeLayers, type LayersResult } from "../../lib/api";
+import { analyzeLayers, editLayers, type LayersResult } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
 
 function DepthPlot({ r }: { r: LayersResult }) {
@@ -116,8 +116,39 @@ export default function LayersWorkshop() {
   const [waviness, setWaviness] = useState(false);
   const [result, setResult] = useState<LayersResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [addPos, setAddPos] = useState("");
 
   const isImage = meta?.kind === "image";
+
+  // set the result + stage overlay + status from any (analyze or edit) response
+  const applyResult = (r: LayersResult) => {
+    setResult(r);
+    if (activeId) {
+      setLayersOverlay({
+        imageId: activeId,
+        axis: r.axis,
+        interfaces: r.interfaces.map((i) => i.position),
+        traces: r.interfaces.map((i) => i.trace),
+      });
+    }
+    setStatus(
+      `Layers: ${r.layers.length} layer(s), ${r.interfaces.length} interface(s)` +
+        ` · ${r.axis}-axis · tilt ${r.tilt_deg == null ? "?" : r.tilt_deg.toFixed(1)}°`,
+    );
+  };
+
+  // recompute from an edited interface list (add / remove)
+  const recompute = (positions: number[]) => {
+    if (!activeId || !result) return;
+    setBusy(true);
+    editLayers(activeId, positions, {
+      axis: result.axis === "x" ? "x" : "y",
+      waviness,
+    })
+      .then(applyResult)
+      .catch((e: Error) => setStatus(`Layers edit: ${e.message}`))
+      .finally(() => setBusy(false));
+  };
 
   // clear any prior overlay when the image changes; clear on unmount too
   useEffect(() => {
@@ -136,19 +167,7 @@ export default function LayersWorkshop() {
       nLayers: Number(nLayers) || 0,
       waviness,
     })
-      .then((r) => {
-        setResult(r);
-        setLayersOverlay({
-          imageId: activeId,
-          axis: r.axis,
-          interfaces: r.interfaces.map((i) => i.position),
-          traces: r.interfaces.map((i) => i.trace),
-        });
-        setStatus(
-          `Layers: ${r.layers.length} layer(s), ${r.interfaces.length} interface(s)` +
-            ` · ${r.axis}-axis · tilt ${r.tilt_deg == null ? "?" : r.tilt_deg.toFixed(1)}°`,
-        );
-      })
+      .then(applyResult)
       .catch((e: Error) => setStatus(`Layers: ${e.message}`))
       .finally(() => setBusy(false));
   };
@@ -270,6 +289,65 @@ export default function LayersWorkshop() {
       )}
       {result && result.interfaces.length === 0 && (
         <div className="fvd-ws-note">No interfaces detected — try a lower sensitivity.</div>
+      )}
+
+      {result && (
+        <details style={{ marginTop: 4 }}>
+          <summary style={{ cursor: "pointer", fontSize: 11, opacity: 0.85 }}>
+            Edit interfaces ({result.interfaces.length})
+          </summary>
+          <div className="fvd-ws-note" style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {result.interfaces.map((i, k) => (
+              <span
+                key={k}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 2,
+                  border: "1px solid var(--border)",
+                  borderRadius: 4,
+                  padding: "0 4px",
+                }}
+              >
+                {i.position.toFixed(1)}
+                <button
+                  className="fvd-icon-btn"
+                  title="Remove this interface + recompute"
+                  disabled={busy}
+                  onClick={() =>
+                    recompute(
+                      result.interfaces.filter((_, j) => j !== k).map((it) => it.position),
+                    )
+                  }
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+          <div className="fvd-ws-row">
+            <input
+              value={addPos}
+              placeholder="depth px"
+              style={{ width: 64 }}
+              title="Add an interface at this depth (px) and recompute"
+              onChange={(e) => setAddPos(e.target.value)}
+            />
+            <button
+              className="fvd-btn"
+              disabled={busy || !addPos}
+              onClick={() => {
+                const p = Number(addPos);
+                if (Number.isFinite(p)) {
+                  recompute([...result.interfaces.map((it) => it.position), p]);
+                  setAddPos("");
+                }
+              }}
+            >
+              Add
+            </button>
+          </div>
+        </details>
       )}
       {result && result.layers.length > 0 && (
         <div className="fvd-ws-row">

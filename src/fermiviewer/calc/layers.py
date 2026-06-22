@@ -35,6 +35,7 @@ __all__ = [
     "detect_growth_orientation",
     "detect_interfaces",
     "detect_interfaces_scale_space",
+    "recompute_layers",
     "trace_interface",
 ]
 
@@ -330,6 +331,55 @@ def _refine_interface(
     return float(fit.center), float(fit.sigma), float(fit.r_squared)
 
 
+def _interfaces_and_layers(
+    depth_pos: np.ndarray,
+    profile: np.ndarray,
+    idxs: np.ndarray,
+    sub: np.ndarray | None,
+    axis: str,
+    pixel_size: float,
+    fit_window: int,
+    trace_window: int,
+) -> tuple[list[Interface], list[Layer]]:
+    """Refine interfaces at ``idxs`` and build the layers between them.
+
+    Shared by :func:`analyze_layers` (auto-detected ``idxs``) and
+    :func:`recompute_layers` (user-edited ``idxs``).
+    """
+    interfaces: list[Interface] = []
+    for idx in idxs:
+        center, sigma, r2 = _refine_interface(depth_pos, profile, int(idx), fit_window)
+        sigma_w = float("nan")
+        trace: np.ndarray | None = None
+        if sub is not None:
+            trace = trace_interface(sub, axis, center, trace_window)
+            sigma_w = float(np.std(trace)) * pixel_size
+        interfaces.append(
+            Interface(
+                position=center,
+                sigma_erf=sigma * pixel_size if np.isfinite(sigma) else float("nan"),
+                r_squared=r2,
+                sigma_w=sigma_w,
+                trace=trace,
+            )
+        )
+    interfaces.sort(key=lambda it: it.position)
+
+    layers: list[Layer] = []
+    for i in range(len(interfaces) - 1):
+        top = interfaces[i].position
+        bottom = interfaces[i + 1].position
+        t_std = float("nan")
+        tr_top, tr_bot = interfaces[i].trace, interfaces[i + 1].trace
+        if tr_top is not None and tr_bot is not None and tr_top.size == tr_bot.size:
+            t_std = float(np.std(tr_bot - tr_top)) * pixel_size
+        layers.append(
+            Layer(index=i, top=top, bottom=bottom,
+                  thickness=(bottom - top) * pixel_size, thickness_std=t_std)
+        )
+    return interfaces, layers
+
+
 def analyze_layers(
     img: np.ndarray,
     *,
@@ -374,42 +424,63 @@ def analyze_layers(
 
     # the ROI sub-image (clamped like box_integrate) for column-by-column tracing
     sub = _roi_subimage(arr, roi) if waviness else None
-
-    interfaces: list[Interface] = []
-    for p in peaks:
-        center, sigma, r2 = _refine_interface(depth_pos, profile, int(p), fit_window)
-        sigma_w = float("nan")
-        trace: np.ndarray | None = None
-        if sub is not None:
-            trace = trace_interface(sub, use_axis, center, trace_window)
-            sigma_w = float(np.std(trace)) * pixel_size
-        interfaces.append(
-            Interface(
-                position=center,
-                sigma_erf=sigma * pixel_size if np.isfinite(sigma) else float("nan"),
-                r_squared=r2,
-                sigma_w=sigma_w,
-                trace=trace,
-            )
-        )
-    interfaces.sort(key=lambda it: it.position)
-
-    layers: list[Layer] = []
-    for i in range(len(interfaces) - 1):
-        top = interfaces[i].position
-        bottom = interfaces[i + 1].position
-        t_std = float("nan")
-        tr_top, tr_bot = interfaces[i].trace, interfaces[i + 1].trace
-        if tr_top is not None and tr_bot is not None and tr_top.size == tr_bot.size:
-            t_std = float(np.std(tr_bot - tr_top)) * pixel_size
-        layers.append(
-            Layer(index=i, top=top, bottom=bottom,
-                  thickness=(bottom - top) * pixel_size, thickness_std=t_std)
-        )
+    interfaces, layers = _interfaces_and_layers(
+        depth_pos, profile, peaks, sub, use_axis, pixel_size, fit_window, trace_window
+    )
 
     return LayerResult(
         axis=use_axis,
         layers_horizontal=(use_axis == "y"),
+        tilt_deg=orient.tilt_deg,
+        coherence=orient.coherence,
+        depth_pos=depth_pos,
+        depth_profile=profile,
+        interfaces=interfaces,
+        layers=layers,
+        pixel_size=pixel_size,
+        unit=unit,
+    )
+
+
+def recompute_layers(
+    img: np.ndarray,
+    positions: list[float],
+    *,
+    axis: str = "y",
+    roi: tuple[int, int, int, int] | None = None,
+    reduce: str = "mean",
+    pixel_size: float = 1.0,
+    unit: str = "px",
+    fit_window: int = 15,
+    waviness: bool = False,
+    trace_window: int = 10,
+) -> LayerResult:
+    """Re-measure layers from a user-edited interface list (Tier 3 #6).
+
+    Skips auto-detection: each supplied depth ``position`` (profile pixels)
+    is erf-refined and the layers between consecutive interfaces are
+    recomputed. ``axis`` is explicit (editing assumes a known orientation).
+    Out-of-range positions are dropped; duplicates within a pixel collapse.
+    """
+    arr = np.asarray(img, dtype=np.float64)
+    if arr.ndim != 2:
+        raise ValueError("layer analysis needs a 2-D image")
+    if axis not in ("x", "y"):
+        raise ValueError("axis must be 'x' or 'y'")
+
+    depth_pos, profile = cross_section_profile(arr, roi, axis, reduce)
+    n = profile.size
+    idxs = np.array(
+        sorted({int(round(p)) for p in positions if 0 <= round(p) < n}), dtype=int
+    )
+    sub = _roi_subimage(arr, roi) if waviness else None
+    interfaces, layers = _interfaces_and_layers(
+        depth_pos, profile, idxs, sub, axis, pixel_size, fit_window, trace_window
+    )
+    orient = detect_growth_orientation(arr)
+    return LayerResult(
+        axis=axis,
+        layers_horizontal=(axis == "y"),
         tilt_deg=orient.tilt_deg,
         coherence=orient.coherence,
         depth_pos=depth_pos,
