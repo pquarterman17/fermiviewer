@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from fermiviewer.calc.colormaps import build_lut
+from fermiviewer.calc.colormaps import build_label_lut, build_lut
 from fermiviewer.calc.render import window_level
 
 __all__ = [
@@ -53,18 +53,24 @@ def render_rgb(
     gamma: float = 1.0,
     cmap: str = "gray",
     scale: int = 1,
+    n_labels: int | None = None,
 ) -> np.ndarray:
     """Windowed + gamma + colormapped uint8 RGB at an integer scale.
 
     lo/hi are in REAL intensity units (None → full range), matching
     calc.render.window_level — the wire layer converts the client's
     normalized window using the raster min/max.
+
+    For the discrete grain palette (cmap="label"), pass n_labels (the
+    map's max id + 1) so the band count matches the stage exactly; the
+    caller windows lo=0/hi=n_labels-1 so each integer id lands on its band.
     """
     if not 1 <= scale <= 4:
         raise ValueError("scale must be in [1, 4]")
     t = window_level(raster, lo, hi, gamma)
     idx = (t * 255.0 + 0.5).astype(np.uint8)
-    rgb = build_lut(cmap)[idx]
+    lut = build_label_lut(n_labels) if cmap == "label" and n_labels else build_lut(cmap)
+    rgb = lut[idx]
     return _upscale(rgb, scale)
 
 

@@ -161,6 +161,15 @@ def export_image(req: ExportRequest) -> Response:
     raster = _raster(ds)
     lo, hi = _window_bounds(raster, req.lo, req.hi)
 
+    # discrete grain palette (Quick-Wins #1 export half): window 0..maxid so
+    # each integer label lands on its colour band, matching the stage. The
+    # continuous colorbar is meaningless for labels, so it is suppressed.
+    n_labels: int | None = None
+    if req.cmap == "label":
+        finite = raster[np.isfinite(raster)]
+        n_labels = int(round(float(finite.max()))) + 1 if finite.size else 1
+        lo, hi = 0.0, float(max(n_labels - 1, 1))
+
     name = store.name(req.image_id)
     stem = name.rsplit(".", 1)[0] or name
 
@@ -174,7 +183,8 @@ def export_image(req: ExportRequest) -> Response:
 
     try:
         rgb = render_rgb(
-            raster, lo, hi, req.gamma, req.cmap, 1 if phys_mode else req.scale
+            raster, lo, hi, req.gamma, req.cmap, 1 if phys_mode else req.scale,
+            n_labels=n_labels,
         )
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
@@ -223,7 +233,7 @@ def export_image(req: ExportRequest) -> Response:
             tilt_geometry=req.tilt_geometry,
         )
 
-    cbar = ("colorbar" in req.include, lo, hi)
+    cbar = ("colorbar" in req.include and req.cmap != "label", lo, hi)
     # font size: on-screen value (default 20) × effective scale so labels
     # grow proportionally with the image (item #48; float in physical mode)
     font_size = round((req.scale_bar_font_size or 20) * eff_scale)

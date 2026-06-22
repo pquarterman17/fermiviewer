@@ -990,3 +990,63 @@ def test_tiff16_ignores_physical_sizing(client, img_id) -> None:
 
     arr = tifffile.imread(io.BytesIO(r.content))
     assert arr.shape == (24, 32)  # 2× integer scale, NOT the 1051 px figure
+
+
+# ── Quick-Wins #1 export half: discrete grain-label palette ──────────
+
+def _open_labels(client, tmp_path) -> str:
+    """Open a 4×4 grain-label map: id 0 = boundary, ids 1–3 = grains."""
+    w, h = 4, 4
+    data = np.array([
+        0, 1, 1, 2,
+        0, 1, 1, 2,
+        0, 3, 3, 2,
+        0, 3, 3, 2,
+    ], dtype=float)
+    f = write_mini_dm4(
+        tmp_path / "grains.dm4", dims=[w, h], data=data,
+        cal=[{"scale": 1.0, "origin": 0, "units": "nm"}] * 2,
+    )
+    return client.post(
+        "/api/session/open", json={"paths": [str(f)]}
+    ).json()[0]["id"]
+
+
+def test_label_palette_mirrors_frontend() -> None:
+    from fermiviewer.calc.colormaps import build_label_lut, label_color
+
+    # 0 = black boundary; id 1 = hsv(0, .7, .78) → (199, 60, 60) (matches
+    # labelColor() in lib/colormaps.ts)
+    assert label_color(0) == (0, 0, 0)
+    assert label_color(1) == (199, 60, 60)
+    # band lookup: with 4 labels (max id 3), LUT index for id k = round(255·k/3)
+    lut = build_label_lut(4)
+    for k in range(4):
+        assert tuple(lut[round(255 * k / 3)]) == label_color(k)
+
+
+def test_grain_label_colormap_export(client, tmp_path) -> None:
+    gid = _open_labels(client, tmp_path)
+    r = client.post(
+        "/api/export",
+        json={"image_id": gid, "format": "png", "cmap": "label"},
+    )
+    assert r.status_code == 200  # used to 422 ("unknown colormap 'label'")
+    arr = np.asarray(Image.open(io.BytesIO(r.content)))
+    assert arr.shape == (4, 4, 3)
+    # the id-0 left column bakes to black; grains get distinct hues
+    assert (arr[:, 0] == 0).all()
+    nonblack = {tuple(p) for row in arr for p in row} - {(0, 0, 0)}
+    assert len(nonblack) == 3  # ids 1, 2, 3
+
+
+def test_grain_label_colorbar_suppressed(client, tmp_path) -> None:
+    # a continuous colorbar is meaningless for a discrete label map, so the
+    # gutter is dropped even when requested
+    gid = _open_labels(client, tmp_path)
+    r = client.post("/api/export", json={
+        "image_id": gid, "format": "png", "cmap": "label",
+        "include": ["colorbar"],
+    })
+    assert r.status_code == 200
+    assert Image.open(io.BytesIO(r.content)).width == 4  # no +81 gutter
