@@ -25,6 +25,8 @@ import RegionPicker, { type Rect1 } from "./RegionPicker";
 
 const HALF_WIN = 0.085; // keV, default half-window (matches MATLAB halfWin)
 
+type BgMode = "linear" | "none" | "bremsstrahlung";
+
 // ── spectrum uPlot ────────────────────────────────────────────────────
 
 function SpectrumPlot({
@@ -212,7 +214,8 @@ export default function EdsSpectrumImage() {
   // energy window state
   const [eLo, setELo] = useState(0.5);
   const [eHi, setEHi] = useState(1.5);
-  const [bgMode, setBgMode] = useState<"linear" | "none">("linear");
+  const [bgMode, setBgMode] = useState<BgMode>("linear");
+  const [e0Kev, setE0Kev] = useState(30); // beam energy for bremsstrahlung bg
 
   // element picker
   const elements: string[] = Array.isArray(meta?.meta?.elements)
@@ -235,10 +238,13 @@ export default function EdsSpectrumImage() {
 
   // recompute map on window/bg change
   const recomputeMap = useCallback(
-    (lo: number, hi: number, bg: "linear" | "none") => {
+    (lo: number, hi: number, bg: BgMode) => {
       if (!activeId) return;
       setMapBusy(true);
-      edsElementMap(activeId, lo, hi, { bg })
+      edsElementMap(activeId, lo, hi, {
+        bg,
+        e0Kev: bg === "bremsstrahlung" ? e0Kev : undefined,
+      })
         .then((r) => {
           setMapResult(r);
           setStatus(
@@ -249,7 +255,7 @@ export default function EdsSpectrumImage() {
         .catch((e: Error) => setStatus(`EDS map: ${e.message}`))
         .finally(() => setMapBusy(false));
     },
-    [activeId, setStatus],
+    [activeId, setStatus, e0Kev],
   );
 
   // fetch sum spectrum on mount / cube change
@@ -327,7 +333,7 @@ export default function EdsSpectrumImage() {
     }
   };
 
-  const handleBgChange = (mode: "linear" | "none") => {
+  const handleBgChange = (mode: BgMode) => {
     setBgMode(mode);
     recomputeMap(eLo, eHi, mode);
   };
@@ -430,16 +436,37 @@ export default function EdsSpectrumImage() {
       <div className="fvd-ws-row">
         <span className="k">Background</span>
         <div className="fvd-seg">
-          {(["linear", "none"] as const).map((m) => (
+          {(["linear", "none", "bremsstrahlung"] as const).map((m) => (
             <button
               key={m}
               className={`fvd-seg-btn${bgMode === m ? " active" : ""}`}
+              title={
+                m === "bremsstrahlung"
+                  ? "Physical Kramers continuum (per-pixel amplitude fit)"
+                  : `${m} background`
+              }
               onClick={() => handleBgChange(m)}
             >
-              {m}
+              {m === "bremsstrahlung" ? "brems" : m}
             </button>
           ))}
         </div>
+        {bgMode === "bremsstrahlung" && (
+          <>
+            <span className="k">E₀ (keV)</span>
+            <input
+              type="number"
+              value={e0Kev}
+              style={{ width: 56 }}
+              title="Beam energy — Duane–Hunt continuum cutoff"
+              onChange={(e) => {
+                const v = Number(e.target.value) || 0;
+                setE0Kev(v);
+                if (v > eHi) recomputeMap(eLo, eHi, "bremsstrahlung");
+              }}
+            />
+          </>
+        )}
         <button
           className="fvd-btn"
           style={{ marginLeft: "auto" }}

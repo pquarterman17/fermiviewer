@@ -22,6 +22,23 @@ def synthetic_cube() -> tuple[np.ndarray, np.ndarray]:
     return cube, energy
 
 
+@pytest.fixture()
+def kramers_cube() -> tuple[np.ndarray, np.ndarray, float]:
+    """Cube = per-pixel-scaled Kramers continuum + identical Fe-Kα peak.
+
+    The continuum amplitude ramps across pixels; the peak is the same at
+    every pixel. A correct bremsstrahlung subtraction removes the ramp and
+    leaves the same net peak area at every pixel.
+    """
+    energy = np.linspace(0.1, 12.0, 1200)         # ~10 eV/channel
+    e0 = 15.0
+    cont = (e0 - energy) / energy                 # unit pure-Kramers shape
+    amps = (np.arange(12, dtype=np.float64).reshape(3, 4) + 1.0)  # 1..12
+    peak = np.exp(-0.5 * ((energy - 6.404) / 0.04) ** 2)
+    cube = amps[..., None] * cont[None, None, :] + 500.0 * peak[None, None, :]
+    return cube, energy, e0
+
+
 def test_element_map_window_sum(synthetic_cube) -> None:
     cube, energy = synthetic_cube
     m = element_map(cube, energy, 6.3, 6.5)
@@ -38,6 +55,49 @@ def test_element_map_linear_bg_removes_flat_background(synthetic_cube) -> None:
     peak_only = cube[:, :, (energy >= 6.3) & (energy <= 6.5)].sum(axis=2) \
         - 2.0 * ((energy >= 6.3) & (energy <= 6.5)).sum()
     np.testing.assert_allclose(no_bg, peak_only, atol=1e-6)
+
+
+def test_element_map_bremsstrahlung_removes_continuum_ramp(kramers_cube) -> None:
+    cube, energy, e0 = kramers_cube
+    net = element_map(cube, energy, 6.254, 6.554, bg="bremsstrahlung",
+                      bg_gap=0.05, e0_kev=e0)
+    # the per-pixel continuum ramp is removed → identical net at every pixel,
+    # equal to the (continuum-free) Gaussian window sum
+    peak = (energy >= 6.254) & (energy <= 6.554)
+    expected = 500.0 * np.exp(-0.5 * ((energy[peak] - 6.404) / 0.04) ** 2).sum()
+    np.testing.assert_allclose(net, expected, rtol=2e-3)
+    assert net.max() - net.min() < expected * 2e-3   # flat across the ramp
+
+
+def test_element_map_bremsstrahlung_zero_on_pure_continuum() -> None:
+    # a pure (peak-free) Kramers continuum: the fixed Kramers shape matches
+    # it exactly, so a peak-free window nets to ~0 (the continuum is removed
+    # by its own shape, where a linear chord would over-subtract a convex
+    # continuum and clip to 0). Steep low-energy region exercises curvature.
+    energy = np.linspace(0.1, 12.0, 1200)
+    e0 = 15.0
+    cube = (5.0 * (e0 - energy) / energy)[None, None, :].repeat(2, 0).repeat(2, 1)
+    net = element_map(cube, energy, 1.0, 1.4, bg="bremsstrahlung", bg_gap=0.1, e0_kev=e0)
+    assert np.abs(net).max() < 1e-6
+
+
+def test_element_map_bremsstrahlung_requires_e0(kramers_cube) -> None:
+    cube, energy, _e0 = kramers_cube
+    with pytest.raises(ValueError, match="e0_kev"):
+        element_map(cube, energy, 6.3, 6.5, bg="bremsstrahlung")
+
+
+def test_element_map_bremsstrahlung_e0_must_exceed_window(kramers_cube) -> None:
+    cube, energy, _e0 = kramers_cube
+    with pytest.raises(ValueError, match="must exceed"):
+        element_map(cube, energy, 6.3, 6.5, bg="bremsstrahlung", e0_kev=6.0)
+
+
+def test_extract_element_maps_bremsstrahlung_passthrough(kramers_cube) -> None:
+    cube, energy, e0 = kramers_cube
+    entries = extract_element_maps(cube, energy, ["Fe"], half_window=0.15,
+                                   bg="bremsstrahlung", beam_kv=200.0, e0_kev=e0)
+    assert len(entries) == 1 and entries[0].total > 0
 
 
 def test_pixel_spectrum_mask_oracle(synthetic_cube) -> None:

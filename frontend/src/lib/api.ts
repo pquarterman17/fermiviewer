@@ -681,9 +681,10 @@ export function edsElementMap(
   eLo: number,
   eHi: number,
   opts: {
-    bg?: "linear" | "none";
+    bg?: "linear" | "none" | "bremsstrahlung";
     bgWidth?: number;
     bgGap?: number;
+    e0Kev?: number; // beam energy (keV) — required for bg="bremsstrahlung"
     saveDerived?: boolean;
   } = {},
 ): Promise<EdsElementMapResult> {
@@ -694,6 +695,7 @@ export function edsElementMap(
     bg: opts.bg ?? "linear",
     bg_width: opts.bgWidth ?? NaN,
     bg_gap: opts.bgGap ?? 0,
+    e0_kev: opts.e0Kev ?? NaN,
     save_derived: opts.saveDerived ?? false,
   });
 }

@@ -19,6 +19,61 @@ __all__ = [
     "virtual_dark_field","ElementMapEntry", "element_map", "extract_element_maps", "pixel_spectrum"]
 
 
+def _side_windows(
+    energy: np.ndarray, e_lo: float, e_hi: float, bg_width: float, bg_gap: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """The two flanking background windows shared by the linear and
+    bremsstrahlung background estimators."""
+    pw = e_hi - e_lo
+    bw = pw if (np.isnan(bg_width) or bg_width <= 0) else bg_width
+    gap = max(bg_gap, 0.0)
+    lo = (energy >= e_lo - gap - bw) & (energy < e_lo - gap)
+    hi = (energy > e_hi + gap) & (energy <= e_hi + gap + bw)
+    return lo, hi
+
+
+def _kramers_bg_map(
+    cube_d: np.ndarray,
+    energy: np.ndarray,
+    peak: np.ndarray,
+    peak_sum: np.ndarray,
+    e_lo: float,
+    e_hi: float,
+    e0_kev: float,
+    bg_width: float,
+    bg_gap: float,
+) -> np.ndarray:
+    """Per-pixel net map under a Kramers bremsstrahlung continuum.
+
+    The continuum *shape* is fixed pure Kramers (E0−E)/E (zero above the
+    Duane–Hunt cutoff e0_kev); only its per-pixel amplitude is solved, as
+    the closed-form least-squares scale of that shape to the flanking
+    background channels. Vectorised over all pixels — an O(pixels) linear
+    solve, never a per-pixel curve fit — then the continuum integral over
+    the peak window is subtracted from the window sum.
+    """
+    if not np.isfinite(e0_kev):
+        raise ValueError("bg='bremsstrahlung' requires a finite e0_kev (beam energy, keV)")
+    if e0_kev <= e_hi:
+        raise ValueError("e0_kev (beam energy) must exceed the peak window upper edge")
+    lo, hi = _side_windows(energy, e_lo, e_hi, bg_width, bg_gap)
+    side = lo | hi
+    if not side.any():
+        return peak_sum
+    c = np.where(
+        energy < e0_kev,
+        np.maximum(e0_kev - energy, 0.0) / np.maximum(energy, 1e-9),
+        0.0,
+    )
+    c_side = c[side]
+    denom = float(c_side @ c_side)
+    if denom <= 0:
+        return peak_sum
+    amp = (cube_d[:, :, side] * c_side).sum(axis=2) / denom   # (h, w)
+    out = peak_sum - amp * float(c[peak].sum())
+    return np.asarray(np.maximum(out, 0.0))
+
+
 def element_map(
     cube: np.ndarray,
     energy: np.ndarray,
@@ -27,9 +82,16 @@ def element_map(
     bg: str = "none",
     bg_width: float = float("nan"),
     bg_gap: float = 0.0,
+    e0_kev: float = float("nan"),
 ) -> np.ndarray:
-    """Energy-window integration map with optional two-sided linear
-    background (port of elementMap.m)."""
+    """Energy-window integration map (port of elementMap.m).
+
+    ``bg`` selects the background model subtracted from the window sum:
+    ``"none"`` (raw sum), ``"linear"`` (two-sided linear from the flanking
+    windows), or ``"bremsstrahlung"`` (physical Kramers continuum; needs
+    ``e0_kev``, the beam energy / Duane–Hunt cutoff). Default stays
+    ``"none"``; goldens are unaffected.
+    """
     if e_hi < e_lo:
         e_lo, e_hi = e_hi, e_lo
     cube = np.asarray(cube)
@@ -44,14 +106,15 @@ def element_map(
     cube_d = np.asarray(cube, dtype=np.float64)
     peak_sum: np.ndarray = cube_d[:, :, peak].sum(axis=2)
 
-    if bg.lower() != "linear":
+    bg_l = bg.lower()
+    if bg_l == "bremsstrahlung":
+        return _kramers_bg_map(
+            cube_d, energy, peak, peak_sum, e_lo, e_hi, e0_kev, bg_width, bg_gap
+        )
+    if bg_l != "linear":
         return peak_sum
 
-    pw = e_hi - e_lo
-    bw = pw if (np.isnan(bg_width) or bg_width <= 0) else bg_width
-    gap = max(bg_gap, 0.0)
-    lo = (energy >= e_lo - gap - bw) & (energy < e_lo - gap)
-    hi = (energy > e_hi + gap) & (energy <= e_hi + gap + bw)
+    lo, hi = _side_windows(energy, e_lo, e_hi, bg_width, bg_gap)
     n_peak = int(peak.sum())
 
     if lo.any() and hi.any():
@@ -119,9 +182,12 @@ def extract_element_maps(
     half_window: float = 0.085,
     bg: str = "linear",
     beam_kv: float = float("inf"),
+    e0_kev: float = float("nan"),
 ) -> list[ElementMapEntry]:
     """Per-element maps at each element's principal line (port of
-    extractElementMaps.m). Unknown / out-of-range lines warn and skip."""
+    extractElementMaps.m). Unknown / out-of-range lines warn and skip.
+
+    ``bg="bremsstrahlung"`` requires ``e0_kev`` (beam energy, keV)."""
     energy = np.asarray(energy, dtype=np.float64).ravel()
     e_min, e_max = float(energy.min()), float(energy.max())
     out: list[ElementMapEntry] = []
@@ -138,7 +204,8 @@ def extract_element_maps(
                 stacklevel=2,
             )
             continue
-        m = element_map(cube, energy, e - half_window, e + half_window, bg=bg)
+        m = element_map(cube, energy, e - half_window, e + half_window,
+                        bg=bg, e0_kev=e0_kev)
         out.append(ElementMapEntry(sym, line, e, (e - half_window, e + half_window),
                                    m, float(m.sum())))
     return out

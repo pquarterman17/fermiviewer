@@ -289,9 +289,10 @@ class EdsElementMapRequest(BaseModel):
     image_id: str
     e_lo: float                      # keV
     e_hi: float                      # keV
-    bg: str = "linear"               # "linear" | "none"
+    bg: str = "linear"               # "linear" | "none" | "bremsstrahlung"
     bg_width: float = float("nan")   # background window width (keV); NaN → peak width
     bg_gap: float = 0.0              # gap between peak and bg windows (keV)
+    e0_kev: float = float("nan")     # beam energy (keV); required for bg="bremsstrahlung"
     save_derived: bool = False       # True → save as derived image; False → inline only
 
 
@@ -341,6 +342,7 @@ def eds_element_map(req: EdsElementMapRequest) -> dict:
             bg=req.bg,
             bg_width=req.bg_width,
             bg_gap=req.bg_gap,
+            e0_kev=req.e0_kev,
         )
     except ValueError as e:
         raise HTTPException(422, str(e)) from None

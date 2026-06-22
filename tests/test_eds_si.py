@@ -139,6 +139,29 @@ def test_element_map_linear_bg(client: TestClient, tmp_path) -> None:
     assert total_lin <= total_none + 1e-6
 
 
+def test_element_map_bremsstrahlung_bg(client: TestClient, tmp_path) -> None:
+    """bremsstrahlung bg subtracts a positive continuum (≤ raw sum)."""
+    cube_id = _open_eds_cube(client, tmp_path)
+    r_none = client.post("/api/eds/element-map", json={
+        "image_id": cube_id, "e_lo": 6.3, "e_hi": 6.5, "bg": "none",
+    })
+    r_brems = client.post("/api/eds/element-map", json={
+        "image_id": cube_id, "e_lo": 6.3, "e_hi": 6.5,
+        "bg": "bremsstrahlung", "e0_kev": 12.0,
+    })
+    assert r_brems.status_code == 200
+    assert r_brems.json()["total_counts"] <= r_none.json()["total_counts"] + 1e-6
+
+
+def test_element_map_bremsstrahlung_requires_e0_422(client: TestClient, tmp_path) -> None:
+    """bremsstrahlung without e0_kev → calc ValueError → 422."""
+    cube_id = _open_eds_cube(client, tmp_path)
+    r = client.post("/api/eds/element-map", json={
+        "image_id": cube_id, "e_lo": 6.3, "e_hi": 6.5, "bg": "bremsstrahlung",
+    })
+    assert r.status_code == 422
+
+
 def test_element_map_bounds_clamped(client: TestClient, tmp_path) -> None:
     """Swapped lo/hi are accepted (sorted internally, matching MATLAB)."""
     cube_id = _open_eds_cube(client, tmp_path)

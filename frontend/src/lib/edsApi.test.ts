@@ -114,4 +114,22 @@ describe("edsElementMap request body", () => {
     expect(sent["bg"]).toBe("none");
     expect(sent["save_derived"]).toBe(true);
   });
+
+  it("forwards bremsstrahlung bg + e0_kev", async () => {
+    const body = {
+      map: [[1]], shape: [1, 1], e_lo: 6.3, e_hi: 6.5,
+      bg: "bremsstrahlung", total_counts: 1, map_meta: null,
+    };
+    globalThis.fetch = makeFetch(body);
+    const { edsElementMap } = await import("./api");
+    await edsElementMap("img3", 6.3, 6.5, { bg: "bremsstrahlung", e0Kev: 18 });
+    const [, init] =
+      (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+        string,
+        RequestInit,
+      ];
+    const sent = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(sent["bg"]).toBe("bremsstrahlung");
+    expect(sent["e0_kev"]).toBe(18);
+  });
 });
