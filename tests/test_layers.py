@@ -1,0 +1,128 @@
+"""Cross-section layer analysis tests — synthetic ground truth (no golden).
+
+Build stacks with interfaces at known depths and known erf widths, then
+recover thickness, σ_erf, growth axis and tilt within tolerance.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import pytest
+from scipy.special import erf
+
+from fermiviewer.calc.layers import (
+    analyze_layers,
+    cross_section_profile,
+    detect_growth_orientation,
+    detect_interfaces,
+)
+
+pytestmark = pytest.mark.imaging
+
+CENTERS = (50.0, 100.0, 150.0)
+SIGMAS = (3.0, 3.0, 3.0)
+LEVELS = (0.2, 0.8, 0.4, 0.9)          # 4 plateaus → 3 interfaces
+H, W = 200, 120
+
+
+def _layered(tilt_deg: float = 0.0) -> np.ndarray:
+    """Horizontal erf-step layers, optionally tilted by tilt_deg."""
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float64)
+    a = np.radians(tilt_deg)
+    d = (yy - H / 2) * np.cos(a) + (xx - W / 2) * np.sin(a) + H / 2
+    out = np.full_like(d, LEVELS[0])
+    steps = zip(LEVELS, LEVELS[1:], strict=False)   # 4 levels → 3 steps (intentional)
+    for c, s, (lo, hi) in zip(CENTERS, SIGMAS, steps, strict=True):
+        out += (hi - lo) * 0.5 * (1 + erf((d - c) / (s * np.sqrt(2))))
+    return out
+
+
+# ── orientation ──────────────────────────────────────────────────────
+
+def test_orientation_horizontal_layers() -> None:
+    o = detect_growth_orientation(_layered())
+    assert o.axis == "y"
+    assert o.layers_horizontal
+    assert abs(o.tilt_deg) < 1.0
+    assert o.coherence > 0.8
+
+
+def test_orientation_vertical_layers() -> None:
+    o = detect_growth_orientation(_layered().T)
+    assert o.axis == "x"
+    assert not o.layers_horizontal
+
+
+def test_orientation_tilt_recovered() -> None:
+    o = detect_growth_orientation(_layered(tilt_deg=5.0))
+    assert o.axis == "y"
+    assert 3.0 < abs(o.tilt_deg) < 7.0     # ~5° tilt detected
+
+
+# ── profile + interface detection ────────────────────────────────────
+
+def test_cross_section_profile_recovers_step_profile() -> None:
+    pos, prof = cross_section_profile(_layered(), axis="y", reduce="mean")
+    assert pos.size == H
+    # plateaus match the construction levels (lateral mean of a uniform stack)
+    assert prof[10] == pytest.approx(LEVELS[0], abs=1e-6)
+    assert prof[190] == pytest.approx(LEVELS[3], abs=1e-6)
+
+
+def test_detect_interfaces_finds_three() -> None:
+    _pos, prof = cross_section_profile(_layered(), axis="y")
+    peaks = detect_interfaces(prof)
+    assert peaks.size == 3
+    np.testing.assert_allclose(np.sort(peaks), CENTERS, atol=2)
+
+
+def test_detect_interfaces_n_layers_hint() -> None:
+    _pos, prof = cross_section_profile(_layered(), axis="y")
+    peaks = detect_interfaces(prof, sensitivity=0.05, n_layers=3)  # keep 2 strongest
+    assert peaks.size == 2
+
+
+# ── full pipeline ────────────────────────────────────────────────────
+
+def test_analyze_layers_recovers_thickness_and_sigma() -> None:
+    res = analyze_layers(_layered(), pixel_size=1.0)
+    assert res.axis == "y" and res.layers_horizontal
+    assert len(res.interfaces) == 3
+    centers = sorted(i.position for i in res.interfaces)
+    np.testing.assert_allclose(centers, CENTERS, atol=0.5)        # sub-pixel
+    for it in res.interfaces:
+        assert it.sigma_erf == pytest.approx(3.0, abs=0.6)        # erf width
+        assert it.r_squared > 0.98
+    # two bounded layers (between consecutive interfaces), each 50 px thick
+    assert len(res.layers) == 2
+    for lyr in res.layers:
+        assert lyr.thickness == pytest.approx(50.0, abs=1.0)
+
+
+def test_analyze_layers_pixel_size_scales_thickness() -> None:
+    res = analyze_layers(_layered(), pixel_size=0.5, unit="nm")
+    assert res.unit == "nm"
+    for lyr in res.layers:
+        assert lyr.thickness == pytest.approx(25.0, abs=0.5)      # 50 px × 0.5 nm
+    for it in res.interfaces:
+        assert it.sigma_erf == pytest.approx(1.5, abs=0.3)        # 3 px × 0.5 nm
+
+
+def test_analyze_layers_axis_override() -> None:
+    # force the wrong axis on a horizontal stack → no lateral structure → no layers
+    res = analyze_layers(_layered(), axis="x")
+    assert res.axis == "x"
+    assert len(res.interfaces) == 0
+
+
+def test_analyze_layers_roi_restricts_depth() -> None:
+    # ROI covering only the first two interfaces (rows 1..120)
+    res = analyze_layers(_layered(), roi=(1, 1, 120, W))
+    centers = sorted(i.position for i in res.interfaces)
+    assert len(centers) == 2
+    np.testing.assert_allclose(centers, [50.0, 100.0], atol=1.0)
+
+
+def test_analyze_layers_requires_2d() -> None:
+    with pytest.raises(ValueError, match="2-D"):
+        analyze_layers(np.zeros((4, 4, 4)))
