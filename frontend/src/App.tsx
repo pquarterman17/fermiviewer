@@ -33,6 +33,7 @@ import DiffractionWorkshop from "./components/workshops/DiffractionWorkshop";
 import FftMaskWorkshop from "./components/workshops/FftMaskWorkshop";
 import PixelInspector from "./components/workshops/PixelInspector";
 import ColorOverlayWorkshop from "./components/workshops/ColorOverlayWorkshop";
+import LayersWorkshop from "./components/workshops/LayersWorkshop";
 import StructureWorkshop from "./components/workshops/StructureWorkshop";
 import SurfaceView from "./components/workshops/SurfaceView";
 import EdsWorkshop from "./components/workshops/EdsWorkshop";
@@ -647,6 +648,7 @@ export default function App() {
               structure: "Structure",
               overlay: "Color Overlay",
               surface: "Surface Plot",
+              layers: "Cross-section Layers",
             }[t.kind]
           }
           x={t.x}
@@ -668,6 +670,7 @@ export default function App() {
           {t.kind === "structure" && <StructureWorkshop />}
           {t.kind === "overlay" && <ColorOverlayWorkshop />}
           {t.kind === "surface" && <SurfaceView />}
+          {t.kind === "layers" && <LayersWorkshop />}
         </ToolWindow>
       ))}
     </div>

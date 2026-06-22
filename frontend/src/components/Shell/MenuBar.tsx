@@ -1414,6 +1414,11 @@ export default function MenuBar({
         shortcut: "WINDOW",
         action: () => store.openTool("surface"),
       },
+      {
+        label: "Cross-section Layers",
+        shortcut: "WINDOW",
+        action: () => store.openTool("layers"),
+      },
     ],
     Help: [
       {

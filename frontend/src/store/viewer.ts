@@ -241,7 +241,8 @@ export type ToolKind =
   | "pixels"
   | "structure"
   | "overlay"
-  | "surface";
+  | "surface"
+  | "layers";
 
 export interface ToolWindowState {
   kind: ToolKind;

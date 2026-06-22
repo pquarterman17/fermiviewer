@@ -1948,3 +1948,54 @@ export function renderUrl(
   const qs = q.toString();
   return `/api/image/${id}/render${qs ? `?${qs}` : ""}`;
 }
+
+// ── Cross-section layers (PLAN_CROSS_SECTION_LAYERS) ─────────────────
+
+export interface LayerInterface {
+  position: number;          // sub-pixel depth (profile pixels)
+  sigma_erf: number | null;  // erf transition width, calibrated units
+  r_squared: number;
+}
+
+export interface LayerBand {
+  index: number;
+  top: number;
+  bottom: number;
+  thickness: number;         // calibrated units
+}
+
+export interface LayersResult {
+  axis: "y" | "x";
+  layers_horizontal: boolean;
+  tilt_deg: number | null;
+  coherence: number | null;
+  pixel_size: number;
+  unit: string;
+  depth_pos: number[];
+  depth_profile: number[];
+  interfaces: LayerInterface[];
+  layers: LayerBand[];
+}
+
+/** Cross-section layer analysis: thickness + interface sharpness (σ_erf). */
+export function analyzeLayers(
+  id: string,
+  opts: {
+    roi?: [number, number, number, number] | null;
+    axis?: "auto" | "y" | "x";
+    sensitivity?: number;
+    nLayers?: number;
+    reduce?: "mean" | "sum";
+    fitWindow?: number;
+  } = {},
+): Promise<LayersResult> {
+  return post("/api/analyze/layers", {
+    image_id: id,
+    roi: opts.roi ?? null,
+    axis: opts.axis ?? "auto",
+    sensitivity: opts.sensitivity ?? 0.3,
+    n_layers: opts.nLayers ?? 0,
+    reduce: opts.reduce ?? "mean",
+    fit_window: opts.fitWindow ?? 15,
+  });
+}
