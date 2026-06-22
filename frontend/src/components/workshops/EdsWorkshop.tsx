@@ -15,6 +15,7 @@ import {
 } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
 import EdsComposite, { EDS_PALETTE, type Channel } from "./EdsComposite";
+import EdsModelFit from "./EdsModelFit";
 import EdsSpectrumImage from "./EdsSpectrumImage";
 
 /** Per-element at% line plot for the composition profile (#46/A4). */
@@ -311,6 +312,14 @@ export default function EdsWorkshop() {
         </div>
       )}
       {comp && <CompProfilePlot r={comp} />}
+
+      <details style={{ marginTop: 6 }}>
+        <summary style={{ cursor: "pointer", padding: "4px 0", fontWeight: 500 }}>
+          Model fit (continuum + peak deconvolution)
+        </summary>
+        <EdsModelFit activeId={activeId} elements={elements} />
+      </details>
+
       <EdsComposite channels={channels} onChange={setChannels} />
     </div>
   );

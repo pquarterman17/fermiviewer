@@ -559,6 +559,93 @@ export function edsQuantify(
   });
 }
 
+// ── EDS model-based fit (PLAN_SPECTRAL_QUANT #4/#5) ──────────────────
+
+export interface EdsContinuumResult {
+  energy: number[];
+  spectrum: number[];
+  continuum: number[];
+  amp: number;
+  absorption: number;
+  reduced_chi2: number;
+  success: boolean;
+}
+
+/** Fit the Kramers bremsstrahlung continuum to the summed spectrum,
+ *  masking the named elements' characteristic peaks (#4). */
+export function edsContinuum(
+  id: string,
+  e0Kev: number,
+  opts: {
+    excludeLines?: string[];
+    excludeWindows?: [number, number][];
+    fitAbsorption?: boolean;
+    weights?: "poisson" | null;
+  } = {},
+): Promise<EdsContinuumResult> {
+  return post("/api/eds/continuum", {
+    image_id: id,
+    e0_kev: e0Kev,
+    exclude_lines: opts.excludeLines ?? [],
+    exclude_windows: opts.excludeWindows ?? [],
+    fit_absorption: opts.fitAbsorption ?? true,
+    weights: opts.weights === undefined ? "poisson" : opts.weights,
+  });
+}
+
+export interface EdsPeakfitElement {
+  symbol: string;
+  line: string;
+  energy_kev: number;
+  net_area: number;
+  net_area_error: number;
+  curve: number[] | null;
+}
+
+export interface EdsPeakfitQuant {
+  elements: string[];
+  atomic_percent: number[];
+  weight_percent: number[];
+}
+
+export interface EdsPeakfitResult {
+  energy: number[];
+  spectrum: number[];
+  model: number[];
+  elements: EdsPeakfitElement[];
+  reduced_chi2: number;
+  success: boolean;
+  quant?: EdsPeakfitQuant;
+}
+
+/** Constrained multi-Gaussian deconvolution of overlapping EDS peaks;
+ *  optional Cliff-Lorimer quant of the deconvolved net areas (#5). */
+export function edsPeakfit(
+  id: string,
+  elements: string[],
+  opts: {
+    beamKv?: number;
+    background?: "none" | "linear" | "bremsstrahlung";
+    e0Kev?: number;
+    centerTolKev?: number;
+    quantify?: boolean;
+    kFactors?: number[];
+    weights?: "poisson" | null;
+  } = {},
+): Promise<EdsPeakfitResult> {
+  return post("/api/eds/peakfit", {
+    image_id: id,
+    elements,
+    beam_kv: opts.beamKv ?? 200,
+    background: opts.background ?? "linear",
+    e0_kev: opts.e0Kev ?? null,
+    center_tol_kev: opts.centerTolKev ?? 0,
+    quantify: opts.quantify ?? false,
+    k_factors: opts.kFactors ?? null,
+    weights: opts.weights === undefined ? "poisson" : opts.weights,
+  });
+}
+
 // ── EDS SI explorer ─────────────────────────────────────────────────
 
 export interface EdsLineEnergyResult {
