@@ -471,6 +471,67 @@ export function eelsQuantifyMap(
   });
 }
 
+/** One fitted edge from the model-based fit (PLAN_SPECTRAL_QUANT #2). */
+export interface EelsFitEdge {
+  element: string;
+  shell: string;
+  atomic_percent: number;
+  amplitude: number;
+  amplitude_error: number;
+  curve: number[];
+}
+
+export interface EelsFitResult {
+  energy: number[];
+  spectrum: number[];
+  model: number[];
+  background: number[];
+  edges: EelsFitEdge[];
+  reduced_chi2: number;
+  success: boolean;
+}
+
+/** Simultaneous background + multi-edge model fit of the summed spectrum.
+ *  Returns at% from the fitted amplitude ratios, per-amplitude 1σ errors,
+ *  and the fitted curves (model / background / per-edge) for an overlay. */
+export function eelsFit(
+  id: string,
+  edges: EelsEdge[],
+  e0Kv = 200,
+  betaMrad = 10,
+  fitRange: [number, number] | null = null,
+): Promise<EelsFitResult> {
+  return post("/api/eels/fit", {
+    image_id: id,
+    edges,
+    e0_kv: e0Kv,
+    beta_mrad: betaMrad,
+    fit_range: fitRange,
+  });
+}
+
+/** Per-pixel model fit over an SI cube; registers at% maps as derived images. */
+export function eelsFitMap(
+  id: string,
+  edges: EelsEdge[],
+  e0Kv = 200,
+  betaMrad = 10,
+  fitRange: [number, number] | null = null,
+): Promise<{
+  elements: string[];
+  background_exponent: number;
+  mean_atomic_percent: number[];
+  maps: ImageMeta[];
+}> {
+  return post("/api/eels/fit-map", {
+    image_id: id,
+    edges,
+    e0_kv: e0Kv,
+    beta_mrad: betaMrad,
+    fit_range: fitRange,
+  });
+}
+
 export interface EdsQuantResult {
   elements: string[];
   lines: string[];

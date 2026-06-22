@@ -8,12 +8,15 @@ import uPlot from "uplot";
 import {
   analyzeElnes,
   eelsBackground,
+  eelsFit,
+  eelsFitMap,
   eelsMap,
   eelsQuantify,
   eelsQuantifyMap,
   fetchSpectrum,
   type EelsBackgroundResult,
   type EelsEdge,
+  type EelsFitResult,
   type EelsQuantResult,
   type ElnesResult,
   type Spectrum,
@@ -62,6 +65,7 @@ export default function EelsWorkshop() {
   const [sigHi, setSigHi] = useState("");
   const [edges, setEdges] = useState<EdgeRow[]>([]);
   const [quant, setQuant] = useState<EelsQuantResult | null>(null);
+  const [fitResult, setFitResult] = useState<EelsFitResult | null>(null);
   const [elnes, setElnes] = useState<ElnesResult | null>(null);
   const [showEdges, setShowEdges] = useState(false);
   const [elementFilter, setElementFilter] = useState("");
@@ -82,6 +86,7 @@ export default function EelsWorkshop() {
     setSpectrum(null);
     setFit(null);
     setQuant(null);
+    setFitResult(null);
     if (!activeId || !spectral) return;
     let alive = true;
     fetchSpectrum(activeId, region ?? undefined)
@@ -144,6 +149,22 @@ export default function EelsWorkshop() {
       series.push({ label: "signal", stroke: accent, width: 1.5 });
       (data as unknown as number[][]).push(fit.background, fit.signal);
     }
+    // model-fit overlay (#2): total model + power-law bg + per-edge components,
+    // shown on the same energy axis as the summed spectrum
+    if (fitResult && fitResult.energy.length === spectrum.energy.length) {
+      series.push({ label: "model", stroke: accent, width: 1.5, dash: [4, 2] });
+      series.push({ label: "bg (fit)", stroke: "#d97706", width: 1, dash: [2, 2] });
+      (data as unknown as number[][]).push(fitResult.model, fitResult.background);
+      const palette = ["#22d3ee", "#f472b6", "#fbbf24", "#34d399", "#c084fc"];
+      fitResult.edges.forEach((ed, k) => {
+        series.push({
+          label: ed.element,
+          stroke: palette[k % palette.length],
+          width: 1,
+        });
+        (data as unknown as number[][]).push(ed.curve);
+      });
+    }
     plotRef.current = new uPlot(
       {
         width: host.clientWidth,
@@ -191,7 +212,7 @@ export default function EelsWorkshop() {
       plotRef.current?.destroy();
       plotRef.current = null;
     };
-  }, [spectrum, fit, showEdges, elementFilter]);
+  }, [spectrum, fit, fitResult, showEdges, elementFilter]);
 
   const runFit = () => {
     if (!activeId) return;
@@ -277,6 +298,63 @@ export default function EelsWorkshop() {
         );
       })
       .catch((e: Error) => setStatus(`EELS maps: ${e.message}`));
+  };
+
+  // model-based simultaneous fit (#2): background + all edges in one fit,
+  // at% from the fitted amplitude ratios (separates overlapping edges)
+  const runModelFit = () => {
+    if (!activeId) return;
+    const clean = edges.filter((e) => e.element && e.z > 0);
+    if (clean.length === 0) {
+      setStatus("EELS fit: add at least one edge row");
+      return;
+    }
+    const fitRange: [number, number] | null =
+      bgLo && spectrum
+        ? [Number(bgLo), spectrum.energy[spectrum.energy.length - 1]]
+        : null;
+    eelsFit(
+      activeId,
+      clean.map(({ key: _key, ...e }) => e),
+      e0Kv,
+      betaMrad,
+      fitRange,
+    )
+      .then((r) => {
+        setFitResult(r);
+        setStatus(
+          `EELS fit · χ²ᵣ ${r.reduced_chi2.toExponential(2)} · ` +
+            r.edges
+              .map((ed) => `${ed.element} ${ed.atomic_percent.toFixed(1)}%`)
+              .join(" · "),
+        );
+      })
+      .catch((e: Error) => setStatus(`EELS fit: ${e.message}`));
+  };
+
+  const runModelFitMaps = () => {
+    if (!activeId) return;
+    const clean = edges.filter((e) => e.element && e.z > 0);
+    if (clean.length === 0) {
+      setStatus("EELS fit maps: add at least one edge row");
+      return;
+    }
+    eelsFitMap(
+      activeId,
+      clean.map(({ key: _key, ...e }) => e),
+      e0Kv,
+      betaMrad,
+    )
+      .then((r) => {
+        useViewer.getState().ingestDerived(r.maps);
+        setStatus(
+          `EELS fit maps · ` +
+            r.elements
+              .map((el, i) => `${el} ${r.mean_atomic_percent[i].toFixed(1)}%`)
+              .join(" · "),
+        );
+      })
+      .catch((e: Error) => setStatus(`EELS fit maps: ${e.message}`));
   };
 
   const runElnes = () => {
@@ -475,6 +553,22 @@ export default function EelsWorkshop() {
         </button>
         <button
           className="fvd-btn"
+          title="Model fit: background + all edges fitted jointly (separates overlapping edges; at% from amplitude ratios with 1σ)"
+          onClick={runModelFit}
+          disabled={edges.length === 0}
+        >
+          Model fit
+        </button>
+        <button
+          className="fvd-btn"
+          title="Per-pixel model-fit at% maps (SI cubes)"
+          onClick={runModelFitMaps}
+          disabled={edges.length === 0 || !isCube}
+        >
+          Fit maps
+        </button>
+        <button
+          className="fvd-btn"
           title="ELNES fine-structure extraction (uses last edge row's onset + bg window)"
           onClick={runElnes}
           disabled={edges.length === 0}
@@ -482,6 +576,35 @@ export default function EelsWorkshop() {
           ELNES
         </button>
       </div>
+      {fitResult && (
+        <>
+          <div className="fvd-ws-note">
+            Model fit · χ²ᵣ {fitResult.reduced_chi2.toExponential(2)}
+            {fitResult.success ? "" : " · (not converged)"}
+          </div>
+          <table className="fvd-ws-table">
+            <thead>
+              <tr>
+                <th>Element</th>
+                <th>at%</th>
+                <th>amp ± 1σ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {fitResult.edges.map((ed) => (
+                <tr key={`${ed.element}-${ed.shell}`}>
+                  <td>{ed.element}</td>
+                  <td>{ed.atomic_percent.toFixed(2)}</td>
+                  <td>
+                    {ed.amplitude.toExponential(2)} ±{" "}
+                    {ed.amplitude_error.toExponential(1)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
       {elnes && (
         <div className="fvd-ws-note">
           ELNES · edge jump {elnes.edge_jump.toExponential(2)} · onset{" "}
