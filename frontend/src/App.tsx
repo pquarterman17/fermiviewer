@@ -1,6 +1,6 @@
-// Desktop shell (handoff §5 <App>): TitleBar / MenuBar / Filmstrip /
-// Stage / Inspector / StatusBar grid + the global keyboard map (§9) +
-// command palette / shortcuts / radial overlays.
+// Desktop shell (handoff §5 <App>): MenuBar / Filmstrip / Stage / Inspector /
+// StatusBar grid + the global keyboard map (§9) + command palette / shortcuts /
+// radial overlays. (The standalone title bar was folded into the menubar.)
 
 import { useEffect, useMemo, useRef } from "react";
 
@@ -9,7 +9,6 @@ import Inspector from "./components/Inspector/Inspector";
 import Filmstrip from "./components/Library/Filmstrip";
 import MenuBar from "./components/Shell/MenuBar";
 import StatusBar from "./components/Shell/StatusBar";
-import TitleBar from "./components/Shell/TitleBar";
 import ColorbarChip from "./components/Stage/ColorbarChip";
 import CompareStage from "./components/Stage/CompareStage";
 import SideBySideStage from "./components/Stage/SideBySideStage";
@@ -598,7 +597,6 @@ export default function App() {
 
   return (
     <div className="fvd-app">
-      <TitleBar />
       <MenuBar
         onFit={() => stageRef.current?.fit()}
         onActualSize={() => stageRef.current?.actualSize()}

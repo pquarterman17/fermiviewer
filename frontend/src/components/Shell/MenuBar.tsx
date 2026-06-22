@@ -79,6 +79,9 @@ interface Entry {
   /** "section" = an uppercase group heading; "sep" = a hairline divider.
    *  Omitted = a normal action row. */
   kind?: "section" | "sep";
+  /** Nested flyout: when present this row opens a submenu of `submenu`
+   *  entries on hover (one level deep — submenus don't nest further). */
+  submenu?: Entry[];
 }
 
 export default function MenuBar({
@@ -89,6 +92,7 @@ export default function MenuBar({
   onActualSize: () => void;
 }) {
   const [open, setOpen] = useState<string | null>(null);
+  const [openSub, setOpenSub] = useState<string | null>(null);
   const [accept, setAccept] = useState<string>("");
   const [macroRec, setMacroRec] = useState(isRecording());
   const profile = useStageInfo((s) => s.profile);
@@ -199,6 +203,14 @@ export default function MenuBar({
   const fileRef = useRef<HTMLInputElement>(null);
   const store = useViewer();
 
+  // active-image doc title + panel-toggle icons live here now (the standalone
+  // title bar was removed as redundant — its brand was pure decoration)
+  const docName = store.activeId
+    ? (store.images[store.activeId]?.name ?? "")
+    : "";
+  const docStem = docName.replace(/(\.[^.]+)$/, "");
+  const docExt = docName.match(/\.[^.]+$/)?.[0] ?? "";
+
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent) => {
@@ -207,6 +219,9 @@ export default function MenuBar({
     window.addEventListener("mousedown", close);
     return () => window.removeEventListener("mousedown", close);
   }, [open]);
+
+  // collapse any open submenu when the top-level menu changes / closes
+  useEffect(() => setOpenSub(null), [open]);
 
   // accept filter from the backend's parser registry
   useEffect(() => {
@@ -224,12 +239,19 @@ export default function MenuBar({
     else fileRef.current?.click();
   };
 
-  // ⌘O / Ctrl+O opens the picker (a keydown counts as a user gesture)
+  // ⌘O / Ctrl+O opens the picker (a keydown counts as a user gesture);
+  // ⌘, / Ctrl+, opens Preferences (the universal Settings shortcut)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "o") {
-        e.preventDefault();
-        openFiles();
+      if (e.metaKey || e.ctrlKey) {
+        const k = e.key.toLowerCase();
+        if (k === "o") {
+          e.preventDefault();
+          openFiles();
+        } else if (e.key === ",") {
+          e.preventDefault();
+          useViewer.getState().setPrefsOpen(true);
+        }
       }
     };
     window.addEventListener("keydown", onKey);
@@ -655,6 +677,12 @@ export default function MenuBar({
           }
         },
       },
+      { kind: "sep" },
+      {
+        label: "Preferences…",
+        shortcut: "⌘,",
+        action: () => store.setPrefsOpen(true),
+      },
     ],
     View: [
       { label: "Fit", shortcut: "F", disabled: !store.activeId, action: onFit },
@@ -694,10 +722,6 @@ export default function MenuBar({
         action: store.toggleTheme,
       },
       {
-        label: "Preferences…",
-        action: () => store.setPrefsOpen(true),
-      },
-      {
         label: store.leftCol ? "Show Library" : "Hide Library",
         shortcut: "⌘[",
         action: store.toggleLeft,
@@ -709,7 +733,7 @@ export default function MenuBar({
       },
     ],
     Image: [
-      { kind: "section", label: "Transform" },
+      { label: "Transform", submenu: [
       {
         label: "Rotate 90° CW",
         disabled: !store.activeId,
@@ -740,7 +764,8 @@ export default function MenuBar({
         disabled: !store.activeId,
         action: () => cropToRoi(),
       },
-      { kind: "section", label: "Combine" },
+      ] },
+      { label: "Combine & Stack", submenu: [
       {
         label: "Image Math…",
         disabled: !store.activeId || store.order.length < 2,
@@ -780,7 +805,6 @@ export default function MenuBar({
           })();
         },
       },
-      { kind: "section", label: "Stack" },
       {
         label: "Stack → Frames",
         disabled:
@@ -866,7 +890,8 @@ export default function MenuBar({
         disabled: !store.activeId || store.selected.length < 2,
         action: () => void runBatchCrop(),
       },
-      { kind: "section", label: "Fourier" },
+      ] },
+      { label: "Fourier", submenu: [
       {
         label: "FFT",
         disabled: !store.activeId,
@@ -898,7 +923,8 @@ export default function MenuBar({
           })();
         },
       },
-      { kind: "section", label: "Batch & macro" },
+      ] },
+      { label: "Batch & Macro", submenu: [
       {
         label: "Batch Recipe…",
         disabled: store.order.length === 0,
@@ -937,7 +963,8 @@ export default function MenuBar({
             .catch((e: Error) => store.setStatus(`macro: ${e.message}`));
         },
       },
-      { kind: "section", label: "Calibration" },
+      ] },
+      { label: "Calibration", submenu: [
       {
         label: "Calibrate Pixel Size…",
         disabled: !store.activeId,
@@ -1054,7 +1081,8 @@ export default function MenuBar({
         disabled: !store.activeId,
         action: () => store.setMetaOpen(true),
       },
-      { kind: "section", label: "Profiles" },
+      ] },
+      { label: "Profiles", submenu: [
       {
         label: "Radial Profile",
         disabled: !store.activeId,
@@ -1065,6 +1093,7 @@ export default function MenuBar({
         disabled: !store.activeId,
         action: () => radialDock(true),
       },
+      ] },
     ],
     Measure: [
       { kind: "section", label: "Tools" },
@@ -1434,20 +1463,25 @@ export default function MenuBar({
   // subscribes to useCommands reactively, so this never triggers re-renders.
   useEffect(() => {
     const flat: Action[] = [];
+    const publish = (group: string, e: Entry) => {
+      if (e.kind || !e.action || !e.label) return; // skip sections/seps
+      if (e.label === "Command Palette") return; // self-referential
+      // sentinel tags like "WINDOW" are not real key hints
+      const sc =
+        e.shortcut && !/^[A-Z]{3,}$/.test(e.shortcut) ? e.shortcut : undefined;
+      flat.push({
+        id: `menu:${group}:${e.label}`,
+        group,
+        label: e.label,
+        shortcut: sc,
+        run: e.action,
+      });
+    };
     for (const [group, entries] of Object.entries(menus)) {
       for (const e of entries) {
-        if (e.kind || !e.action || !e.label) continue; // skip sections/seps
-        if (e.label === "Command Palette") continue; // self-referential
-        // sentinel tags like "WINDOW" are not real key hints
-        const sc =
-          e.shortcut && !/^[A-Z]{3,}$/.test(e.shortcut) ? e.shortcut : undefined;
-        flat.push({
-          id: `menu:${group}:${e.label}`,
-          group,
-          label: e.label,
-          shortcut: sc,
-          run: e.action,
-        });
+        // submenu rows have no action of their own — publish their children
+        if (e.submenu) e.submenu.forEach((se) => publish(group, se));
+        else publish(group, e);
       }
     }
     useCommands.getState().setMenuCommands(flat);
@@ -1483,6 +1517,46 @@ export default function MenuBar({
                       {e.label}
                     </div>
                   );
+                if (e.submenu) {
+                  const subKey = `${name}:${e.label}`;
+                  return (
+                    <div
+                      key={i}
+                      className="fvd-menu-entry has-sub"
+                      onMouseEnter={() => setOpenSub(subKey)}
+                      onMouseLeave={() => setOpenSub(null)}
+                    >
+                      <span>{e.label}</span>
+                      <span className="fvd-submenu-arrow">›</span>
+                      {openSub === subKey && (
+                        <div className="fvd-menu-dropdown fvd-submenu">
+                          {e.submenu.map((se, j) =>
+                            se.kind === "sep" ? (
+                              <div key={j} className="fvd-menu-sep" />
+                            ) : (
+                              <div
+                                key={j}
+                                className={`fvd-menu-entry${se.disabled ? " disabled" : ""}`}
+                                onMouseDown={(ev) => {
+                                  ev.stopPropagation();
+                                  setOpen(null);
+                                  se.action?.();
+                                }}
+                              >
+                                <span>{se.label}</span>
+                                {se.shortcut && (
+                                  <span className="fvd-shortcut">
+                                    {se.shortcut}
+                                  </span>
+                                )}
+                              </div>
+                            ),
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
                 return (
                   <div
                     key={i}
@@ -1505,6 +1579,45 @@ export default function MenuBar({
         </div>
       ))}
       <span style={{ flex: 1 }} />
+      {store.activeId && (
+        <div className="fvd-doc-title">
+          {docStem}
+          <span className="ext">{docExt}</span>
+        </div>
+      )}
+      <span style={{ flex: 1 }} />
+      <button
+        className="fvd-icon-btn"
+        data-tip="Keyboard shortcuts"
+        data-tip-key="?"
+        onClick={() => store.setShorts(true)}
+      >
+        ⌨
+      </button>
+      <button
+        className="fvd-icon-btn"
+        data-tip="Toggle theme"
+        data-tip-key="⌘⇧L"
+        onClick={store.toggleTheme}
+      >
+        {store.theme === "dark" ? "☾" : "☀"}
+      </button>
+      <button
+        className="fvd-icon-btn"
+        data-tip="Toggle library"
+        data-tip-key="⌘["
+        onClick={store.toggleLeft}
+      >
+        ◧
+      </button>
+      <button
+        className="fvd-icon-btn"
+        data-tip="Toggle inspector"
+        data-tip-key="⌘]"
+        onClick={store.toggleRight}
+      >
+        ◨
+      </button>
       <WorkspaceSwitcher />
       <button
         className="fvd-search-box"

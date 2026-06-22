@@ -22,11 +22,14 @@ body {
   -webkit-user-select: none;
 }
 
-/* ── App grid: titlebar / menubar / (filmstrip · stage · inspector) / status ── */
+/* ── App grid: menubar / (filmstrip · stage · inspector) / status ──
+   The standalone title bar was removed (redundant brand + wasted row); its
+   doc title + panel-toggle icons moved into the menubar, which is a touch
+   taller to hold them. */
 
 .fvd-app {
   display: grid;
-  grid-template-rows: 38px 30px 1fr 24px;
+  grid-template-rows: 34px 1fr 24px;
   height: 100%;
 }
 
@@ -48,18 +51,8 @@ body {
   grid-template-columns: 0 1fr 0;
 }
 
-/* ── TitleBar ── */
-
-.fvd-titlebar {
-  display: grid;
-  grid-template-columns: 80px 1fr 80px;
-  align-items: center;
-  background: var(--surface-1);
-  border-bottom: 1px solid var(--border-soft);
-  padding: 0 var(--pad-lg);
-}
-
-
+/* doc title + panel-toggle icons — now hosted in the menubar (the standalone
+   title bar was removed; see the app-grid note above) */
 
 .fvd-doc-title {
   text-align: center;
@@ -68,12 +61,8 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.fvd-panel-toggles {
-  display: flex;
-  justify-content: flex-end;
-  gap: 4px;
+  max-width: 32%; /* long filenames truncate instead of shoving the toolbar */
+  min-width: 0;
 }
 
 /* ── MenuBar ── */
@@ -146,6 +135,29 @@ body {
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
   color: var(--text-faint);
+}
+
+/* Submenu flyout (menu IA): a row with `has-sub` opens a nested dropdown to
+   its right on hover. The shared .fvd-menu-dropdown defaults to top:100%
+   (below the bar); override to sit beside the parent row instead. */
+.fvd-menu-entry.has-sub {
+  position: relative;
+}
+
+.fvd-submenu-arrow {
+  color: var(--text-faint);
+  font-size: var(--font-size-sm);
+}
+
+.fvd-menu-entry.has-sub:hover .fvd-submenu-arrow {
+  color: inherit;
+}
+
+.fvd-submenu {
+  top: -5px; /* align the first child with the parent row (4px dropdown pad) */
+  left: 100%;
+  margin-left: 3px;
+  z-index: 41;
 }
 
 /* UPPERCASE tracked group heading inside a dropdown (menu IA) */
@@ -815,6 +827,11 @@ details.fvd-card:not([open]) > summary {
 .fvd-tool-btn.active {
   background: var(--capture-soft);
   color: var(--capture);
+}
+
+.fvd-tool-btn:disabled {
+  opacity: 0.3;
+  pointer-events: none; /* no hover/click while unavailable */
 }
 
 .fvd-zoom-chip {
@@ -2213,29 +2230,6 @@ details.fvd-card:not([open]) > summary {
 }
 
 /* ── design-alignment pass (prototype parity) ── */
-
-.fvd-brand {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-
-
-.fvd-app-icon {
-  width: 18px;
-  height: 18px;
-  border-radius: 5px;
-  background: linear-gradient(135deg, oklch(0.75 0.16 295), oklch(0.6 0.19 295));
-}
-
-.fvd-app-name {
-  font-weight: var(--weight-semibold);
-  font-size: var(--font-size);
-}
-
-.fvd-titlebar {
-  grid-template-columns: 1fr auto 1fr;
-}
 
 .fvd-doc-title .ext {
   color: var(--text-faint);

@@ -986,6 +986,9 @@ function FloatTools() {
   const setPanTool = useViewer((s) => s.setPanTool);
   const deleteLastAnnotation = useViewer((s) => s.deleteLastAnnotation);
   const resetToOriginal = useViewer((s) => s.resetToOriginal);
+  const startSideBySide = useViewer((s) => s.startSideBySide);
+  // side-by-side compare needs at least two images loaded
+  const canCompare = useViewer((s) => s.order.length >= 2);
   // show delete-last only when there are annotations/measures to delete
   const hasMeasures = useViewer((s) =>
     activeId ? (s.measures[activeId] ?? []).length > 0 : false,
@@ -1075,6 +1078,15 @@ function FloatTools() {
         onClick={mode("crop-save")}
       >
         ⊡
+      </button>
+      <span className="fvd-tool-sep" />
+      <button
+        className="fvd-tool-btn"
+        data-tip="Side-by-side compare"
+        disabled={!canCompare}
+        onClick={() => startSideBySide()}
+      >
+        ◫
       </button>
       <span className="fvd-tool-sep" />
       {hasMeasures && (
