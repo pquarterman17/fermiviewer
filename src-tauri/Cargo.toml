@@ -1,6 +1,6 @@
 [package]
 name = "fermiviewer-shell"
-version = "0.1.6"
+version = "0.1.7"
 description = "FermiViewer desktop shell (Tauri 2 — handoff §11 option A)"
 license = "Apache-2.0"
 edition = "2021"
