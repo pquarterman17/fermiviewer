@@ -6,7 +6,14 @@
 import { useEffect, useRef, useState } from "react";
 import uPlot from "uplot";
 
-import { analyzeLayers, editLayers, type LayersResult } from "../../lib/api";
+import {
+  analyzeLayers,
+  analyzeLayersMulti,
+  applyFilter,
+  editLayers,
+  type LayersMultiResult,
+  type LayersResult,
+} from "../../lib/api";
 import { useViewer } from "../../store/viewer";
 
 function DepthPlot({ r }: { r: LayersResult }) {
@@ -108,6 +115,12 @@ export default function LayersWorkshop() {
   const meta = useViewer((s) => (s.activeId ? (s.images[s.activeId] ?? null) : null));
   const setStatus = useViewer((s) => s.setStatus);
   const setLayersOverlay = useViewer((s) => s.setLayersOverlay);
+  const ingestDerived = useViewer((s) => s.ingestDerived);
+  const setActive = useViewer((s) => s.setActive);
+  const layersEdit = useViewer((s) => s.layersEdit);
+  const setLayersEdit = useViewer((s) => s.setLayersEdit);
+  const layersEditReq = useViewer((s) => s.layersEditReq);
+  const setLayersEditReq = useViewer((s) => s.setLayersEditReq);
 
   const [axis, setAxis] = useState<"auto" | "y" | "x">("auto");
   const [modality, setModality] = useState<"haadf" | "eels" | "bf" | "df">("haadf");
@@ -117,15 +130,43 @@ export default function LayersWorkshop() {
   const [result, setResult] = useState<LayersResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [addPos, setAddPos] = useState("");
+  const images = useViewer((s) => s.images);
+  const order = useViewer((s) => s.order);
+  const [selectedMaps, setSelectedMaps] = useState<string[]>([]);
+  const [multi, setMulti] = useState<LayersMultiResult | null>(null);
+  const [multiBusy, setMultiBusy] = useState(false);
 
   const isImage = meta?.kind === "image";
+  const mapIds = order.filter((id) => images[id]?.kind === "image");
+
+  const toggleMap = (id: string) =>
+    setSelectedMaps((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+
+  const runMulti = () => {
+    // the active image is the reference (first); add the other selected maps
+    const ids = [
+      ...(activeId ? [activeId] : []),
+      ...selectedMaps.filter((id) => id !== activeId),
+    ];
+    if (ids.length === 0) return;
+    setMultiBusy(true);
+    analyzeLayersMulti(ids, { reference: 0, modality, waviness: true })
+      .then(setMulti)
+      .catch((e: Error) => setStatus(`Layers multi: ${e.message}`))
+      .finally(() => setMultiBusy(false));
+  };
+
+  const mean = (xs: (number | null)[]): number | null => {
+    const v = xs.filter((x): x is number => x != null);
+    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+  };
 
   // set the result + stage overlay + status from any (analyze or edit) response
-  const applyResult = (r: LayersResult) => {
+  const applyResult = (r: LayersResult, imageId: string | null = activeId) => {
     setResult(r);
-    if (activeId) {
+    if (imageId) {
       setLayersOverlay({
-        imageId: activeId,
+        imageId,
         axis: r.axis,
         interfaces: r.interfaces.map((i) => i.position),
         traces: r.interfaces.map((i) => i.trace),
@@ -135,6 +176,27 @@ export default function LayersWorkshop() {
       `Layers: ${r.layers.length} layer(s), ${r.interfaces.length} interface(s)` +
         ` · ${r.axis}-axis · tilt ${r.tilt_deg == null ? "?" : r.tilt_deg.toFixed(1)}°`,
     );
+  };
+
+  // rotate the image so layers become axis-aligned, then re-analyze it
+  const levelImage = () => {
+    if (!activeId || !result || result.tilt_deg == null) return;
+    const angle = result.tilt_deg;     // + tilt levels (verified by the route test)
+    setBusy(true);
+    applyFilter(activeId, "rotate", { angle })
+      .then((meta) => {
+        ingestDerived([meta]);
+        setActive(meta.id);
+        return analyzeLayers(meta.id, {
+          axis,
+          modality,
+          sensitivity: Number(sensitivity) || 0.3,
+          nLayers: Number(nLayers) || 0,
+          waviness,
+        }).then((r) => applyResult(r, meta.id));
+      })
+      .catch((e: Error) => setStatus(`Level: ${e.message}`))
+      .finally(() => setBusy(false));
   };
 
   // recompute from an edited interface list (add / remove)
@@ -150,12 +212,30 @@ export default function LayersWorkshop() {
       .finally(() => setBusy(false));
   };
 
-  // clear any prior overlay when the image changes; clear on unmount too
+  // clear any prior overlay + edit state when the image changes / unmounts
   useEffect(() => {
     setResult(null);
     setLayersOverlay(null);
-  }, [activeId, setLayersOverlay]);
-  useEffect(() => () => setLayersOverlay(null), [setLayersOverlay]);
+    setLayersEdit(false);
+    setLayersEditReq(null);
+  }, [activeId, setLayersOverlay, setLayersEdit, setLayersEditReq]);
+  useEffect(
+    () => () => {
+      setLayersOverlay(null);
+      setLayersEdit(false);
+      setLayersEditReq(null);
+    },
+    [setLayersOverlay, setLayersEdit, setLayersEditReq],
+  );
+
+  // a stage edit (drag / add / remove) published a new interface list → recompute
+  useEffect(() => {
+    if (layersEditReq && result) {
+      recompute(layersEditReq);
+      setLayersEditReq(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layersEditReq]);
 
   const run = () => {
     if (!activeId) return;
@@ -251,10 +331,22 @@ export default function LayersWorkshop() {
       </div>
 
       {result && (
-        <div className="fvd-ws-note">
-          {result.layers_horizontal ? "Horizontal" : "Vertical"} layers ({result.axis}-axis)
-          {result.tilt_deg != null && `, tilt ${result.tilt_deg.toFixed(1)}°`}
-          {result.coherence != null && ` · coherence ${result.coherence.toFixed(2)}`}
+        <div className="fvd-ws-row">
+          <span className="k" style={{ flex: 1 }}>
+            {result.layers_horizontal ? "Horizontal" : "Vertical"} layers ({result.axis}-axis)
+            {result.tilt_deg != null && `, tilt ${result.tilt_deg.toFixed(1)}°`}
+            {result.coherence != null && ` · coh ${result.coherence.toFixed(2)}`}
+          </span>
+          {result.tilt_deg != null && Math.abs(result.tilt_deg) > 0.5 && (
+            <button
+              className="fvd-btn"
+              disabled={busy}
+              title="Rotate the image so the layers are axis-aligned, then re-analyze"
+              onClick={levelImage}
+            >
+              Level
+            </button>
+          )}
         </div>
       )}
       {result && result.depth_pos.length > 0 && <DepthPlot r={result} />}
@@ -286,6 +378,21 @@ export default function LayersWorkshop() {
             })}
           </tbody>
         </table>
+      )}
+      {result && (
+        <div className="fvd-ws-row">
+          <label className="k" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <input
+              type="checkbox"
+              checked={layersEdit}
+              onChange={(e) => setLayersEdit(e.target.checked)}
+            />
+            edit on stage
+          </label>
+          <span className="k" style={{ fontSize: 10, opacity: 0.7 }}>
+            drag a line to nudge · click to add · right-click to remove
+          </span>
+        </div>
       )}
       {result && result.interfaces.length === 0 && (
         <div className="fvd-ws-note">No interfaces detected — try a lower sensitivity.</div>
@@ -356,6 +463,67 @@ export default function LayersWorkshop() {
           </button>
         </div>
       )}
+
+      <details style={{ marginTop: 6 }}>
+        <summary style={{ cursor: "pointer", padding: "4px 0", fontWeight: 500 }}>
+          Per-element comparison (multi-map)
+        </summary>
+        <div className="fvd-ws-note" style={{ fontSize: 11 }}>
+          The active image is the reference; pick other element/score maps to
+          measure the same interfaces on (per-element σ_erf vs σ_w).
+        </div>
+        <div style={{ maxHeight: 110, overflowY: "auto", margin: "2px 0" }}>
+          {mapIds
+            .filter((id) => id !== activeId)
+            .map((id) => (
+              <label
+                key={id}
+                className="k"
+                style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedMaps.includes(id)}
+                  onChange={() => toggleMap(id)}
+                />
+                {images[id]?.name ?? id}
+              </label>
+            ))}
+        </div>
+        <div className="fvd-ws-row">
+          <button
+            className="fvd-btn"
+            disabled={multiBusy || !activeId}
+            onClick={runMulti}
+          >
+            {multiBusy ? "Comparing…" : "Compare"}
+          </button>
+        </div>
+        {multi && multi.maps.length > 0 && (
+          <table className="fvd-ws-table">
+            <thead>
+              <tr>
+                <th>Map</th>
+                <th>σ_erf ({multi.unit})</th>
+                <th>σ_w ({multi.unit})</th>
+              </tr>
+            </thead>
+            <tbody>
+              {multi.maps.map((m) => {
+                const se = mean(m.interfaces.map((i) => i.sigma_erf));
+                const sw = mean(m.interfaces.map((i) => i.sigma_w));
+                return (
+                  <tr key={m.image_id}>
+                    <td title={m.name}>{m.name.length > 18 ? `${m.name.slice(0, 17)}…` : m.name}</td>
+                    <td>{se == null ? "—" : se.toFixed(3)}</td>
+                    <td>{sw == null ? "—" : sw.toFixed(3)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </details>
     </div>
   );
 }

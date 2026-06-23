@@ -557,6 +557,8 @@ interface ViewerState {
   // specnav mode; the EELS/EDS workshops watch it to drive their spectrum (#10)
   specnavPixel: [number, number] | null;
   layersOverlay: LayersOverlayState | null;
+  layersEdit: boolean;                 // stage interface-editing mode
+  layersEditReq: number[] | null;      // positions requested by a stage edit
   panTool: boolean;
   profileWidth: number;  // ⊥ averaging width (px) for profile captures
   profileReduce: "mean" | "sum"; // box/profile reduction mode (item #49)
@@ -658,6 +660,8 @@ interface ViewerState {
   setCaptureMode: (mode: CaptureMode) => void;
   setSpecnavPixel: (p: [number, number] | null) => void;
   setLayersOverlay: (o: LayersOverlayState | null) => void;
+  setLayersEdit: (b: boolean) => void;
+  setLayersEditReq: (p: number[] | null) => void;
   setPanTool: (on: boolean) => void;
   setProfileWidth: (w: number) => void;
   setProfileReduce: (r: "mean" | "sum") => void;
@@ -830,6 +834,8 @@ export const useViewer = create<ViewerState>((set, get) => ({
   captureMode: "none",
   specnavPixel: null,
   layersOverlay: null,
+  layersEdit: false,
+  layersEditReq: null,
   panTool: false,
   profileWidth: _pref("profileWidth", 1),
   profileReduce: _pref<"mean" | "sum">("profileReduce", "mean"),
@@ -1362,6 +1368,8 @@ export const useViewer = create<ViewerState>((set, get) => ({
     set(mode === "specnav" ? { captureMode: mode } : { captureMode: mode, specnavPixel: null }),
   setSpecnavPixel: (specnavPixel) => set({ specnavPixel }),
   setLayersOverlay: (layersOverlay) => set({ layersOverlay }),
+  setLayersEdit: (layersEdit) => set({ layersEdit }),
+  setLayersEditReq: (layersEditReq) => set({ layersEditReq }),
   setProfileWidth: (w) => {
     const profileWidth = Math.max(1, Math.min(99, Math.round(w)));
     writePref("profileWidth", profileWidth);

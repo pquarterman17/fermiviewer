@@ -48,8 +48,21 @@ def _crop(d: np.ndarray, p: dict[str, Any]) -> np.ndarray:
     return out
 
 
+def _rotate_arbitrary(d: np.ndarray, p: dict[str, Any]) -> np.ndarray:
+    """Arbitrary-angle rotate (CCW degrees), same dims, edge-extended fill —
+    used by the cross-section 'level' action to make tilted layers axis-
+    aligned. Square pixels assumed (the project's pixel_cal convention), so
+    the calibration scale is unchanged."""
+    from scipy.ndimage import rotate as _ndrot
+
+    angle = float(p.get("angle", 0.0))
+    out: np.ndarray = _ndrot(d, angle, reshape=False, order=1, mode="nearest")
+    return out
+
+
 # kind → (callable, resamples?) — dispatch table, never eval
 _FILTERS: dict[str, Callable[[np.ndarray, dict[str, Any]], np.ndarray]] = {
+    "rotate": _rotate_arbitrary,
     "gaussian": lambda d, p: filters.apply_gaussian(
         d, sigma=float(p.get("sigma", 1.0))
     ),

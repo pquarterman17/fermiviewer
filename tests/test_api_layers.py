@@ -162,6 +162,36 @@ def test_layers_multi_empty_422(client) -> None:
     assert r.status_code == 422
 
 
+def _tilted_image_id(client, tmp_path, tilt_deg: float) -> str:
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float64)
+    a = np.radians(tilt_deg)
+    d = (yy - H / 2) * np.cos(a) + (xx - W / 2) * np.sin(a) + H / 2
+    out = np.full_like(d, LEVELS[0])
+    for c, (lo, hi) in zip(CENTERS, zip(LEVELS, LEVELS[1:], strict=False), strict=True):
+        out += (hi - lo) * 0.5 * (1 + erf((d - c) / (3 * np.sqrt(2))))
+    f = write_mini_dm4(
+        tmp_path / "tilted.dm4", dims=[W, H],
+        data=out.ravel().astype(np.float32), data_type=2,
+        cal=[{"scale": PX, "origin": 0, "units": "nm"},
+             {"scale": PX, "origin": 0, "units": "nm"}],
+    )
+    return client.post("/api/session/open", json={"paths": [str(f)]}).json()[0]["id"]
+
+
+def test_layers_level_via_rotate(client, tmp_path) -> None:
+    tid = _tilted_image_id(client, tmp_path, 6.0)
+    before = client.post("/api/analyze/layers", json={"image_id": tid}).json()
+    assert abs(before["tilt_deg"]) > 3.0
+    # rotate by +tilt to level (arbitrary-angle rotate op, same dims)
+    leveled = client.post("/api/filter", json={
+        "image_id": tid, "kind": "rotate", "params": {"angle": before["tilt_deg"]},
+    })
+    assert leveled.status_code == 200
+    lid = leveled.json()["id"]
+    after = client.post("/api/analyze/layers", json={"image_id": lid}).json()
+    assert abs(after["tilt_deg"]) < abs(before["tilt_deg"]) / 2   # noticeably more level
+
+
 def test_layers_waviness_returns_sigma_w_and_trace(client, image_id) -> None:
     r = client.post("/api/analyze/layers", json={
         "image_id": image_id, "waviness": True,
