@@ -42,7 +42,24 @@ describe("analyzeLayers request body", () => {
     expect(body.sensitivity).toBe(0.3);
     expect(body.n_layers).toBe(0);
     expect(body.reduce).toBe("mean");
+    expect(body.destripe).toBe(false);
     expect(body.roi).toBeNull();
+  });
+
+  it("forwards de-curtain options (median reduce + destripe)", async () => {
+    globalThis.fetch = makeFetch({
+      axis: "y", layers_horizontal: true, tilt_deg: 0, coherence: 0.9,
+      pixel_size: 1, unit: "px", depth_pos: [], depth_profile: [],
+      interfaces: [], layers: [],
+    });
+    await analyzeLayers("img4", { reduce: "median", destripe: true });
+    const [, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(body.reduce).toBe("median");
+    expect(body.destripe).toBe(true);
   });
 
   it("forwards roi, axis, sensitivity and n_layers", async () => {
@@ -71,7 +88,9 @@ describe("editLayers request body", () => {
       pixel_size: 1, unit: "px", depth_pos: [], depth_profile: [],
       interfaces: [], layers: [],
     });
-    await editLayers("img3", [30, 90], { axis: "y", waviness: true });
+    await editLayers("img3", [30, 90], {
+      axis: "y", waviness: true, reduce: "median", destripe: true,
+    });
     const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
       string,
       RequestInit,
@@ -81,6 +100,8 @@ describe("editLayers request body", () => {
     expect(body.positions).toEqual([30, 90]);
     expect(body.axis).toBe("y");
     expect(body.waviness).toBe(true);
+    expect(body.reduce).toBe("median");
+    expect(body.destripe).toBe(true);
   });
 });
 

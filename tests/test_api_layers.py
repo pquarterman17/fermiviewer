@@ -246,3 +246,48 @@ def test_layers_bf_modality_runs(client, image_id) -> None:
     })
     assert r.status_code == 200
     assert len(r.json()["interfaces"]) == 3
+
+
+def _curtained_image_id(client, tmp_path) -> str:
+    """A layered stack with localised bright FIB curtains in ~1/8 of columns."""
+    img = _layered_image()
+    rng = np.random.default_rng(7)
+    bad = rng.choice(W, size=W // 8, replace=False)
+    yy = np.arange(H, dtype=np.float64)[:, None]
+    img[:, bad] += 4.0 * np.exp(-0.5 * ((yy - 45.0) / 3.0) ** 2)   # streak @ depth 45
+    f = write_mini_dm4(
+        tmp_path / "curtained.dm4", dims=[W, H],
+        data=img.ravel().astype(np.float32), data_type=2,
+        cal=[{"scale": PX, "origin": 0, "units": "nm"},
+             {"scale": PX, "origin": 0, "units": "nm"}],
+    )
+    return client.post("/api/session/open", json={"paths": [str(f)]}).json()[0]["id"]
+
+
+def test_layers_median_destripe_recovers_through_curtains(client, tmp_path) -> None:
+    cid = _curtained_image_id(client, tmp_path)
+    naive = client.post("/api/analyze/layers", json={"image_id": cid}).json()
+    robust = client.post("/api/analyze/layers", json={
+        "image_id": cid, "reduce": "median", "destripe": True,
+    }).json()
+    assert len(robust["interfaces"]) == 3                       # real layers recovered
+    assert len(naive["interfaces"]) > len(robust["interfaces"])  # mean is fooled
+    for lyr in robust["layers"]:
+        assert lyr["thickness"] == pytest.approx(15.0, abs=1.0)
+
+
+def test_layers_edit_accepts_destripe(client, tmp_path) -> None:
+    cid = _curtained_image_id(client, tmp_path)
+    r = client.post("/api/analyze/layers/edit", json={
+        "image_id": cid, "positions": [30.0, 60.0, 90.0], "axis": "y",
+        "reduce": "median", "destripe": True,
+    })
+    assert r.status_code == 200
+    assert len(r.json()["interfaces"]) == 3
+
+
+def test_layers_invalid_reduce_422(client, image_id) -> None:
+    r = client.post("/api/analyze/layers", json={
+        "image_id": image_id, "reduce": "bogus",
+    })
+    assert r.status_code == 422

@@ -127,6 +127,7 @@ export default function LayersWorkshop() {
   const [sensitivity, setSensitivity] = useState("0.3");
   const [nLayers, setNLayers] = useState("");
   const [waviness, setWaviness] = useState(false);
+  const [decurtain, setDecurtain] = useState(false);
   const [result, setResult] = useState<LayersResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [addPos, setAddPos] = useState("");
@@ -193,6 +194,8 @@ export default function LayersWorkshop() {
           sensitivity: Number(sensitivity) || 0.3,
           nLayers: Number(nLayers) || 0,
           waviness,
+          reduce: decurtain ? "median" : "mean",
+          destripe: decurtain,
         }).then((r) => applyResult(r, meta.id));
       })
       .catch((e: Error) => setStatus(`Level: ${e.message}`))
@@ -206,6 +209,8 @@ export default function LayersWorkshop() {
     editLayers(activeId, positions, {
       axis: result.axis === "x" ? "x" : "y",
       waviness,
+      reduce: decurtain ? "median" : "mean",
+      destripe: decurtain,
     })
       .then(applyResult)
       .catch((e: Error) => setStatus(`Layers edit: ${e.message}`))
@@ -246,6 +251,8 @@ export default function LayersWorkshop() {
       sensitivity: Number(sensitivity) || 0.3,
       nLayers: Number(nLayers) || 0,
       waviness,
+      reduce: decurtain ? "median" : "mean",
+      destripe: decurtain,
     })
       .then(applyResult)
       .catch((e: Error) => setStatus(`Layers: ${e.message}`))
@@ -327,6 +334,19 @@ export default function LayersWorkshop() {
         </label>
         <span className="k" style={{ fontSize: 10, opacity: 0.7 }}>
           column-by-column interface trace — geometric roughness + thickness ±std
+        </span>
+      </div>
+      <div className="fvd-ws-row">
+        <label className="k" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <input
+            type="checkbox"
+            checked={decurtain}
+            onChange={(e) => setDecurtain(e.target.checked)}
+          />
+          de-curtain (FIB)
+        </label>
+        <span className="k" style={{ fontSize: 10, opacity: 0.7 }}>
+          robust median collapse + FFT notch — suppresses FIB milling streaks
         </span>
       </div>
 

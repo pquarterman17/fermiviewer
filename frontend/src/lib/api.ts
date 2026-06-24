@@ -1988,11 +1988,12 @@ export function analyzeLayers(
     axis?: "auto" | "y" | "x";
     sensitivity?: number;
     nLayers?: number;
-    reduce?: "mean" | "sum";
+    reduce?: "mean" | "sum" | "median";
     fitWindow?: number;
     waviness?: boolean;
     traceWindow?: number;
     modality?: "haadf" | "eels" | "bf" | "df";
+    destripe?: boolean;
   } = {},
 ): Promise<LayersResult> {
   return post("/api/analyze/layers", {
@@ -2006,6 +2007,7 @@ export function analyzeLayers(
     waviness: opts.waviness ?? false,
     trace_window: opts.traceWindow ?? 10,
     modality: opts.modality ?? "haadf",
+    destripe: opts.destripe ?? false,
   });
 }
 
@@ -2041,12 +2043,19 @@ export function analyzeLayersMulti(
 export function editLayers(
   id: string,
   positions: number[],
-  opts: { axis?: "y" | "x"; waviness?: boolean } = {},
+  opts: {
+    axis?: "y" | "x";
+    waviness?: boolean;
+    reduce?: "mean" | "sum" | "median";
+    destripe?: boolean;
+  } = {},
 ): Promise<LayersResult> {
   return post("/api/analyze/layers/edit", {
     image_id: id,
     positions,
     axis: opts.axis ?? "y",
     waviness: opts.waviness ?? false,
+    reduce: opts.reduce ?? "mean",
+    destripe: opts.destripe ?? false,
   });
 }

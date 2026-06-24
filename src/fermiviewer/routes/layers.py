@@ -71,11 +71,12 @@ class LayersRequest(BaseModel):
     axis: str = "auto"                              # "auto" | "y" | "x"
     sensitivity: float = 0.3
     n_layers: int = 0
-    reduce: str = "mean"
+    reduce: str = "mean"             # "mean" | "sum" | "median" (robust to streaks)
     fit_window: int = 15
     waviness: bool = False
     trace_window: int = 10
     modality: str = "haadf"          # "haadf" | "eels" | "bf" | "df"
+    destripe: bool = False           # FFT notch out FIB curtaining first
 
 
 @router.post("/analyze/layers")
@@ -98,6 +99,7 @@ def analyze_layers_route(req: LayersRequest) -> dict:
             n_layers=req.n_layers, reduce=req.reduce, pixel_size=px, unit=unit,
             fit_window=req.fit_window, waviness=req.waviness,
             trace_window=req.trace_window, modality=req.modality,
+            destripe_fib=req.destripe,
         )
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
@@ -110,10 +112,11 @@ class LayersEditRequest(BaseModel):
     positions: list[float]            # interface depths (profile pixels)
     axis: str = "y"                   # explicit — editing assumes a known axis
     roi: tuple[int, int, int, int] | None = None
-    reduce: str = "mean"
+    reduce: str = "mean"             # "mean" | "sum" | "median"
     fit_window: int = 15
     waviness: bool = False
     trace_window: int = 10
+    destripe: bool = False
 
 
 @router.post("/analyze/layers/edit")
@@ -131,6 +134,7 @@ def edit_layers_route(req: LayersEditRequest) -> dict:
             ds.data, list(req.positions), axis=req.axis, roi=req.roi,
             reduce=req.reduce, pixel_size=px, unit=unit, fit_window=req.fit_window,
             waviness=req.waviness, trace_window=req.trace_window,
+            destripe_fib=req.destripe,
         )
     except ValueError as e:
         raise HTTPException(422, str(e)) from None

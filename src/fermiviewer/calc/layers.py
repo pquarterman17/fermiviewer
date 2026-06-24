@@ -22,6 +22,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from fermiviewer.calc.layers_detect import (
+    detect_interfaces,
+    detect_interfaces_scale_space,
+)
 from fermiviewer.calc.profiles import box_integrate, fit_interface_width
 from fermiviewer.calc.texture import structure_tensor
 
@@ -32,6 +36,7 @@ __all__ = [
     "OrientationResult",
     "analyze_layers",
     "cross_section_profile",
+    "destripe",
     "detect_growth_orientation",
     "detect_interfaces",
     "detect_interfaces_scale_space",
@@ -118,109 +123,73 @@ def cross_section_profile(
     for horizontal layers); ``axis="x"`` reduces over rows. ``roi`` is a
     1-based ``(r1, c1, r2, c2)`` rect (whole image if ``None``). Returns
     ``(depth_pos_px, profile)``.
+
+    ``reduce`` is ``"mean"`` / ``"sum"`` (via the golden-tested
+    :func:`box_integrate`) or ``"median"`` — a *robust* collapse that ignores
+    outlier columns/rows (e.g. strong localised FIB curtains) where the mean
+    is pulled. Positions stay 0-based pixels from the box edge.
     """
     arr = np.asarray(img, dtype=np.float64)
     if arr.ndim != 2:
         raise ValueError("layer analysis needs a 2-D image")
+    if axis not in ("x", "y"):
+        raise ValueError("axis must be 'y' or 'x'")
+    if reduce == "median":
+        sub = _roi_subimage(arr, roi)
+        prof = np.median(sub, axis=1) if axis == "y" else np.median(sub, axis=0)
+        return np.arange(prof.size, dtype=np.float64), prof
     h, w = arr.shape
     r1, c1, r2, c2 = roi if roi is not None else (1, 1, h, w)
     x_pos, x_int, y_pos, y_int, _ = box_integrate(arr, r1, c1, r2, c2, reduce=reduce)
-    if axis == "y":
-        return y_pos, y_int
-    if axis == "x":
-        return x_pos, x_int
-    raise ValueError("axis must be 'y' or 'x'")
+    return (y_pos, y_int) if axis == "y" else (x_pos, x_int)
 
 
-def detect_interfaces(
-    profile: np.ndarray,
-    sensitivity: float = 0.3,
-    n_layers: int = 0,
-    smooth: float = 1.5,
-    min_separation: int = 5,
+def destripe(
+    img: np.ndarray,
+    axis: str = "y",
+    *,
+    cutoff: float = 4.0,
+    band: float = 1.0,
+    strength: float = 1.0,
 ) -> np.ndarray:
-    """Interface positions (integer profile indices) = gradient-peak depths.
+    """Suppress FIB *curtaining* (streaks parallel to the depth axis) via an FFT notch.
 
-    The smoothed depth profile's |gradient| peaks mark interfaces.
-    ``sensitivity`` is the peak-height threshold as a fraction of the max
-    gradient (lower → more interfaces). ``n_layers`` (>1) keeps only the
-    ``n_layers-1`` strongest peaks; ``min_separation`` rejects near-duplicates.
+    FIB-milling-rate variations leave streaks running parallel to the growth
+    (depth) axis. Such streaks are ~constant along their length, so in the 2-D
+    Fourier transform their energy concentrates on the zero-frequency *line*
+    perpendicular to the depth axis. A smooth Gaussian notch damps that line
+    beyond ``cutoff`` cycles/FOV — removing the stripe texture that biases the
+    lateral profile and inflates the per-column σ_w trace — while leaving DC,
+    broad illumination, and the layer interfaces (which vary *along* the depth
+    axis, off the notched line) intact.
+
+    ``axis`` is the depth axis (``"y"`` ⇒ vertical streaks; ``"x"`` ⇒
+    horizontal). ``cutoff`` is the lateral frequency below which structure is
+    preserved; ``band`` is the notch half-width across the perpendicular
+    frequency (px); ``strength`` 0..1 scales notch depth (1 = full removal).
+    Targets the *measurement* (profile + trace), not the orientation estimate.
+    Returns a float image of the same shape.
     """
-    from scipy.ndimage import gaussian_filter1d
-    from scipy.signal import find_peaks
-
-    prof = np.asarray(profile, dtype=np.float64).ravel()
-    if prof.size < 5:
-        return np.array([], dtype=int)
-    grad = np.abs(np.gradient(gaussian_filter1d(prof, max(smooth, 1e-6))))
-    gmax = float(grad.max())
-    if gmax <= 0:
-        return np.array([], dtype=int)
-    peaks, props = find_peaks(
-        grad, height=sensitivity * gmax, distance=max(1, int(min_separation))
-    )
-    if n_layers > 1 and peaks.size > n_layers - 1:
-        order = np.argsort(props["peak_heights"])[::-1][: n_layers - 1]
-        peaks = np.sort(peaks[order])
-    return np.asarray(peaks, dtype=int)
-
-
-def detect_interfaces_scale_space(
-    profile: np.ndarray,
-    scales: tuple[float, ...] = (2.0, 4.0, 8.0),
-    sensitivity: float = 0.3,
-    n_layers: int = 0,
-    min_separation: int = 5,
-    persistence: int | None = None,
-) -> np.ndarray:
-    """Interfaces that PERSIST across smoothing scales (BF/DF robustness).
-
-    Gradient peaks are found at each Gaussian scale; a candidate is kept
-    only if a peak sits within ``min_separation`` of it at ≥``persistence``
-    scales (default: a majority). Real interfaces survive coarse smoothing;
-    thickness fringes / diffraction-contrast wiggles wash out and are
-    rejected. ``n_layers`` (>1) keeps the (n−1) strongest by coarse-scale
-    gradient height.
-    """
-    from scipy.ndimage import gaussian_filter1d
-    from scipy.signal import find_peaks
-
-    prof = np.asarray(profile, dtype=np.float64).ravel()
-    if prof.size < 5 or not scales:
-        return np.array([], dtype=int)
-    if persistence is None:
-        persistence = len(scales) // 2 + 1
-
-    per_scale: list[np.ndarray] = []
-    coarse_grad = np.zeros_like(prof)
-    for s in scales:
-        g = np.abs(np.gradient(gaussian_filter1d(prof, s)))
-        coarse_grad = g                       # last (coarsest) scale
-        gmax = float(g.max())
-        if gmax <= 0:
-            per_scale.append(np.array([], dtype=int))
-            continue
-        pk, _ = find_peaks(g, height=sensitivity * gmax, distance=max(1, int(min_separation)))
-        per_scale.append(pk)
-
-    candidates = sorted({int(p) for pks in per_scale for p in pks})
-    kept: list[int] = []
-    for c in candidates:
-        support = sum(
-            1 for pks in per_scale if pks.size and int(np.min(np.abs(pks - c))) <= min_separation
-        )
-        if support >= persistence:
-            kept.append(c)
-
-    deduped: list[int] = []
-    for c in sorted(kept):
-        if not deduped or c - deduped[-1] > min_separation:
-            deduped.append(c)
-    out = np.array(deduped, dtype=int)
-    if n_layers > 1 and out.size > n_layers - 1:
-        order = np.argsort(coarse_grad[out])[::-1][: n_layers - 1]
-        out = np.sort(out[order])
-    return out
+    arr = np.asarray(img, dtype=np.float64)
+    if arr.ndim != 2:
+        raise ValueError("destripe needs a 2-D image")
+    if axis not in ("x", "y"):
+        raise ValueError("axis must be 'x' or 'y'")
+    s = float(np.clip(strength, 0.0, 1.0))
+    if s <= 0.0:
+        return arr.copy()
+    h, w = arr.shape
+    f = np.fft.fftshift(np.fft.fft2(arr))
+    kr = (np.arange(h) - h // 2).astype(np.float64)   # row frequency (centred)
+    kc = (np.arange(w) - w // 2).astype(np.float64)   # col frequency (centred)
+    rr, cc = np.meshgrid(kr, kc, indexing="ij")
+    # vertical streaks (axis="y") concentrate on the kr≈0 line; localise the
+    # notch across that perpendicular frequency, high-pass guard the lateral one
+    along, across = (rr, cc) if axis == "y" else (cc, rr)
+    line = np.exp(-0.5 * (along / max(band, 1e-6)) ** 2)        # ~1 on the 0-line
+    keep_low = np.exp(-0.5 * (across / max(cutoff, 1e-6)) ** 2)  # preserve DC/broad
+    notch = 1.0 - s * line * (1.0 - keep_low)
+    return np.asarray(np.fft.ifft2(np.fft.ifftshift(f * notch)).real, dtype=np.float64)
 
 
 @dataclass(frozen=True)
@@ -395,6 +364,9 @@ def analyze_layers(
     waviness: bool = False,
     trace_window: int = 10,
     modality: str = "haadf",
+    destripe_fib: bool = False,
+    destripe_strength: float = 1.0,
+    destripe_cutoff: float = 4.0,
 ) -> LayerResult:
     """Full cross-section layer analysis (thickness + σ_erf; optional σ_w).
 
@@ -405,6 +377,10 @@ def analyze_layers(
     interface is also traced column-by-column → geometric roughness σ_w and
     per-layer thickness std across the FOV. ``sigma_erf``/``sigma_w`` are in
     calibrated units; positions stay in profile pixels.
+
+    ``destripe_fib`` removes FIB curtaining (:func:`destripe`) from the working
+    image before profiling/tracing — pair with ``reduce="median"`` on heavily
+    streaked specimens. Orientation/tilt are still read from the raw image.
     """
     arr = np.asarray(img, dtype=np.float64)
     orient = detect_growth_orientation(arr, orient_sigma)
@@ -412,7 +388,12 @@ def analyze_layers(
     if use_axis not in ("x", "y"):
         raise ValueError("axis must be 'auto', 'x', or 'y'")
 
-    depth_pos, profile = cross_section_profile(arr, roi, use_axis, reduce)
+    work = (
+        destripe(arr, use_axis, cutoff=destripe_cutoff, strength=destripe_strength)
+        if destripe_fib
+        else arr
+    )
+    depth_pos, profile = cross_section_profile(work, roi, use_axis, reduce)
     preset = _MODALITY_PRESETS.get(modality.lower(), _MODALITY_PRESETS["haadf"])
     if preset["scale_space"]:
         scales = preset.get("scales", (2.0, 4.0, 8.0))
@@ -423,7 +404,7 @@ def analyze_layers(
         peaks = detect_interfaces(profile, sensitivity, n_layers)
 
     # the ROI sub-image (clamped like box_integrate) for column-by-column tracing
-    sub = _roi_subimage(arr, roi) if waviness else None
+    sub = _roi_subimage(work, roi) if waviness else None
     interfaces, layers = _interfaces_and_layers(
         depth_pos, profile, peaks, sub, use_axis, pixel_size, fit_window, trace_window
     )
@@ -454,6 +435,9 @@ def recompute_layers(
     fit_window: int = 15,
     waviness: bool = False,
     trace_window: int = 10,
+    destripe_fib: bool = False,
+    destripe_strength: float = 1.0,
+    destripe_cutoff: float = 4.0,
 ) -> LayerResult:
     """Re-measure layers from a user-edited interface list (Tier 3 #6).
 
@@ -461,6 +445,8 @@ def recompute_layers(
     is erf-refined and the layers between consecutive interfaces are
     recomputed. ``axis`` is explicit (editing assumes a known orientation).
     Out-of-range positions are dropped; duplicates within a pixel collapse.
+    ``destripe_fib``/``reduce="median"`` mirror :func:`analyze_layers` so an
+    edited result stays consistent with how it was first measured.
     """
     arr = np.asarray(img, dtype=np.float64)
     if arr.ndim != 2:
@@ -468,12 +454,17 @@ def recompute_layers(
     if axis not in ("x", "y"):
         raise ValueError("axis must be 'x' or 'y'")
 
-    depth_pos, profile = cross_section_profile(arr, roi, axis, reduce)
+    work = (
+        destripe(arr, axis, cutoff=destripe_cutoff, strength=destripe_strength)
+        if destripe_fib
+        else arr
+    )
+    depth_pos, profile = cross_section_profile(work, roi, axis, reduce)
     n = profile.size
     idxs = np.array(
         sorted({int(round(p)) for p in positions if 0 <= round(p) < n}), dtype=int
     )
-    sub = _roi_subimage(arr, roi) if waviness else None
+    sub = _roi_subimage(work, roi) if waviness else None
     interfaces, layers = _interfaces_and_layers(
         depth_pos, profile, idxs, sub, axis, pixel_size, fit_window, trace_window
     )

@@ -13,6 +13,7 @@ from scipy.special import erf
 from fermiviewer.calc.layers import (
     analyze_layers,
     cross_section_profile,
+    destripe,
     detect_growth_orientation,
     detect_interfaces,
     detect_interfaces_scale_space,
@@ -261,3 +262,88 @@ def test_analyze_layers_bf_modality_rejects_fringes() -> None:
     haadf = analyze_layers(img, modality="haadf")
     assert len(bf.interfaces) == 2                    # real interfaces only
     assert len(haadf.interfaces) > 2                  # fooled by the fringes
+
+
+# ── FIB curtaining robustness: median reduction + FFT destripe ────────
+
+def _vertical_curtain(amp: float = 0.5) -> np.ndarray:
+    """Multi-frequency vertical stripes (constant down rows, varying across cols)."""
+    x = np.arange(W, dtype=np.float64)
+    stripe = amp * (np.sin(2 * np.pi * x / 7.0) + 0.6 * np.sin(2 * np.pi * x / 3.0))
+    return stripe[None, :]                              # broadcasts over depth rows
+
+
+def test_cross_section_profile_median_robust_to_outlier_columns() -> None:
+    clean = _layered()
+    corrupt = clean.copy()
+    rng = np.random.default_rng(1)
+    bad = rng.choice(W, size=W // 8, replace=False)    # ~12% of columns are streaks
+    corrupt[:, bad] += 5.0                              # strong bright curtains
+    _, clean_prof = cross_section_profile(clean, axis="y", reduce="mean")
+    _, mean_prof = cross_section_profile(corrupt, axis="y", reduce="mean")
+    _, med_prof = cross_section_profile(corrupt, axis="y", reduce="median")
+    # the mean is pulled by the bright streaks; the median ignores the minority
+    assert np.mean(np.abs(med_prof - clean_prof)) < np.mean(np.abs(mean_prof - clean_prof))
+    assert med_prof[10] == pytest.approx(LEVELS[0], abs=0.05)   # plateau intact
+
+
+def test_cross_section_profile_median_matches_mean_when_clean() -> None:
+    pos, mean_prof = cross_section_profile(_layered(), axis="y", reduce="mean")
+    pos_m, med_prof = cross_section_profile(_layered(), axis="y", reduce="median")
+    assert pos_m.size == pos.size == H
+    # a uniform stack has identical columns → mean == median
+    np.testing.assert_allclose(med_prof, mean_prof, atol=1e-9)
+
+
+def test_destripe_attenuates_vertical_curtains() -> None:
+    clean = _layered()
+    curtained = clean + _vertical_curtain(0.5)
+    fixed = destripe(curtained, axis="y")
+    assert fixed.shape == curtained.shape
+    before = float(np.std(curtained - clean))
+    after = float(np.std(fixed - clean))
+    assert after < 0.25 * before                       # stripe residual collapses
+
+
+def test_destripe_preserves_layer_profile() -> None:
+    clean = _layered()
+    _, p0 = cross_section_profile(clean, axis="y")
+    _, p1 = cross_section_profile(destripe(clean, axis="y"), axis="y")
+    np.testing.assert_allclose(p1, p0, atol=0.02)      # interfaces/plateaus untouched
+
+
+def test_destripe_zero_strength_is_identity() -> None:
+    img = _layered() + _vertical_curtain(0.5)
+    np.testing.assert_allclose(destripe(img, strength=0.0), img)
+
+
+def test_destripe_requires_2d() -> None:
+    with pytest.raises(ValueError, match="2-D"):
+        destripe(np.zeros(10))
+    with pytest.raises(ValueError, match="axis must be"):
+        destripe(_layered(), axis="auto")
+
+
+def test_analyze_layers_median_destripe_ignores_localized_curtains() -> None:
+    clean = _layered()
+    corrupt = clean.copy()
+    rng = np.random.default_rng(3)
+    bad = rng.choice(W, size=W // 8, replace=False)
+    yy = np.arange(H, dtype=np.float64)[:, None]
+    blob = 4.0 * np.exp(-0.5 * ((yy - 75.0) / 3.0) ** 2)   # bright streak segment @ depth 75
+    corrupt[:, bad] += blob                                  # localised to a few columns
+    naive = analyze_layers(corrupt, reduce="mean")           # mean → bump → false interface(s)
+    robust = analyze_layers(corrupt, reduce="median", destripe_fib=True)
+    assert len(robust.interfaces) == 3                       # the real 3 recovered
+    centers = sorted(i.position for i in robust.interfaces)
+    np.testing.assert_allclose(centers, CENTERS, atol=1.5)
+    assert len(naive.interfaces) > len(robust.interfaces)    # mean is fooled by the streak
+
+
+def test_recompute_layers_median_destripe() -> None:
+    img = _layered() + _vertical_curtain(0.4)
+    res = recompute_layers(
+        img, [50.0, 100.0, 150.0], axis="y", reduce="median", destripe_fib=True
+    )
+    assert len(res.interfaces) == 3
+    np.testing.assert_allclose(sorted(i.position for i in res.interfaces), CENTERS, atol=1.0)
