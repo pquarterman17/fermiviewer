@@ -150,6 +150,9 @@ class GrainRequest(BaseModel):
     # superpixel-RAG params
     n_superpixels: int = Field(default=400, ge=50, le=4000)
     merge_threshold: float = Field(default=0.08, ge=0.0, le=1.0)
+    # robustness (watershed methods): denoise pre-pass + outlier-clipped stretch
+    denoise_sigma: float = Field(default=0.0, ge=0.0, le=10.0)
+    robust: bool = True
     # shared
     min_area: int = 25
     run_async: bool = False
@@ -215,7 +218,8 @@ def _run_grains(
             raster, method=req.method, granularity=req.granularity,
             compactness=req.compactness, min_area=req.min_area,
             n_superpixels=req.n_superpixels, merge_threshold=req.merge_threshold,
-            orientation_sigma=req.orientation_sigma, progress=progress,
+            orientation_sigma=req.orientation_sigma,
+            denoise_sigma=req.denoise_sigma, robust=req.robust, progress=progress,
         )
     return _grains_payload(seg.labels, req.method, ds, raster, req.image_id)
 

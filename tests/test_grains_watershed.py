@@ -13,6 +13,9 @@ import pytest
 from skimage.filters import gaussian
 
 from fermiviewer.calc.grains import (
+    _normalize01,
+    _robust_normalize01,
+    _sanitize,
     astm_grain_size_number,
     enforce_connected_grains,
     grain_stats,
@@ -64,6 +67,70 @@ def test_orientation_splits_two_lattices() -> None:
         orientation_sigma=2.0, min_area=100,
     )
     assert seg.n_grains == 2
+
+
+# ── robustness: outlier rejection, NaN safety, denoise ───────────────
+
+def test_sanitize_replaces_nonfinite() -> None:
+    a = np.array([[1.0, np.nan], [np.inf, 3.0]])
+    s = _sanitize(a)
+    assert np.all(np.isfinite(s))
+    assert s[0, 0] == 1.0 and s[1, 1] == 3.0
+    assert s[0, 1] == 2.0 and s[1, 0] == 2.0     # median of finite {1, 3}
+
+
+def test_sanitize_is_noop_on_clean_data() -> None:
+    a = np.linspace(0.0, 1.0, 12).reshape(3, 4)
+    np.testing.assert_array_equal(_sanitize(a), a)
+
+
+def test_robust_normalize_clips_hot_pixel() -> None:
+    a = np.linspace(0.0, 1.0, 2500).reshape(50, 50)
+    a[0, 0] = 1e6                                  # detector spike
+    n = _robust_normalize01(a)                     # default 0.5% clip
+    assert 0.0 <= float(n.min()) and float(n.max()) <= 1.0
+    assert n[-1, -1] > 0.9                         # real max still maps near 1
+    assert _normalize01(a)[-1, -1] < 0.01          # min/max stretch crushes it
+
+
+def test_rag_watershed_survives_hot_pixel() -> None:
+    # rag merges on absolute mean intensity, so a single saturated pixel that
+    # crushes the [0,1] stretch makes every band look equal → all merge.
+    img = np.zeros((60, 90), dtype=np.float64)
+    img[:, :30] = 0.2
+    img[:, 30:60] = 0.6
+    img[:, 60:] = 1.0
+    img[10, 10] = 1e6                              # single detector spike
+    robust = segment_watershed(
+        img, method="rag", n_superpixels=200, merge_threshold=0.2, min_area=50
+    )
+    naive = segment_watershed(
+        img, method="rag", n_superpixels=200, merge_threshold=0.2,
+        min_area=50, robust=False,
+    )
+    assert robust.n_grains == 3                    # outlier clipped → bands recovered
+    assert naive.n_grains < 3                      # crushed contrast merges the bands
+
+
+def test_gradient_watershed_survives_nan_region(striped) -> None:
+    img = striped.copy()
+    img[0:3, 0:3] = np.nan                         # masked corner
+    seg = segment_watershed(img, method="gradient", granularity=0.05, min_area=50)
+    assert seg.n_grains == 3                        # NaNs filled, bands still found
+
+
+def test_denoise_reduces_noise_oversegmentation() -> None:
+    rng = np.random.default_rng(0)
+    img = np.zeros((80, 120), dtype=np.float64)
+    img[:, :60] = 0.3
+    img[:, 60:] = 0.7
+    noisy = img + rng.normal(0.0, 0.15, img.shape)
+    raw = segment_watershed(noisy, method="gradient", granularity=0.05, min_area=30)
+    smoothed = segment_watershed(
+        noisy, method="gradient", granularity=0.05, min_area=30, denoise_sigma=2.0
+    )
+    assert raw.n_grains > smoothed.n_grains         # denoise merges noise fragments
+    assert smoothed.n_grains >= 2                    # the two real grains survive
 
 
 def test_unknown_method_raises(striped) -> None:

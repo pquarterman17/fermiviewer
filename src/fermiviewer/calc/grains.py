@@ -18,6 +18,9 @@ from skimage.filters import scharr
 
 from fermiviewer.calc.filters import apply_gaussian
 from fermiviewer.calc.ml import kmeans_lite, standardize_features
+from fermiviewer.calc.normalize import normalize01 as _normalize01
+from fermiviewer.calc.normalize import robust_normalize01 as _robust_normalize01
+from fermiviewer.calc.normalize import sanitize as _sanitize
 from fermiviewer.calc.particles import RegionStats, region_stats
 from fermiviewer.calc.segment import label_components
 from fermiviewer.calc.texture import structure_tensor
@@ -102,8 +105,9 @@ def segment_auto(
     if progress:
         progress(0.05, "extracting texture features")
     if features is None:
+        # NaN/Inf-safe (no-op on clean data → golden path unchanged)
         feats = extract_grain_features(
-            img, scales=scales, gradient_sigma=gradient_sigma
+            _sanitize(img), scales=scales, gradient_sigma=gradient_sigma
         )
     else:
         feats = np.asarray(features, dtype=np.float64)
@@ -142,12 +146,6 @@ def segment_auto(
         inertia=info.inertia,
         k=info.k,
     )
-
-
-def _normalize01(a: np.ndarray) -> np.ndarray:
-    a = np.asarray(a, dtype=np.float64)
-    lo, hi = float(a.min()), float(a.max())
-    return (a - lo) / (hi - lo) if hi > lo else np.zeros_like(a)
 
 
 def _relabel_connected(
@@ -207,6 +205,9 @@ def segment_watershed(
     n_superpixels: int = 400,
     merge_threshold: float = 0.08,
     orientation_sigma: float = 2.0,
+    denoise_sigma: float = 0.0,
+    robust: bool = True,
+    clip_percentile: float = 0.5,
     progress: Callable[[float, str], None] | None = None,
 ) -> WatershedSegmentation:
     """Modern grain segmentation (scikit-image; no MATLAB-parity target).
@@ -225,10 +226,23 @@ def segment_watershed(
     The coarseness knob is `granularity` for gradient/orientation (h-minima
     depth) and `merge_threshold` for rag (max mean-intensity gap that still
     merges two superpixels) — both higher → fewer, larger grains.
+
+    Robustness for real EM data: ``robust`` (default) uses an outlier-
+    rejecting percentile stretch (``clip_percentile`` per tail) so hot/dead
+    pixels don't crush the contrast range, and NaN/Inf are filled with the
+    finite median; ``denoise_sigma>0`` Gaussian-smooths first to suppress
+    noise-driven over-segmentation (every gradient ridge from shot noise
+    would otherwise seed a spurious basin).
     """
-    d = _normalize01(img)
+    d = (
+        _robust_normalize01(img, clip_percentile)
+        if robust
+        else _normalize01(img)
+    )
     if d.shape[0] < 2 or d.shape[1] < 2:
         raise ValueError("image too small to segment (need at least 2×2)")
+    if denoise_sigma > 0:
+        d = _normalize01(apply_gaussian(d, denoise_sigma))
     if progress:
         progress(0.1, f"segmenting ({method})")
 

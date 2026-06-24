@@ -260,6 +260,29 @@ def test_grains_gradient_method(client, tmp_path) -> None:
     assert body["boundary_network_px"] > 0
 
 
+def test_grains_robust_denoise_params_accepted(client, tmp_path) -> None:
+    # a noisy 2-band field: denoise + robust stretch should still resolve it
+    rng = np.random.default_rng(0)
+    img = np.zeros((60, 90), dtype=np.float64)
+    img[:, :45] = 30.0
+    img[:, 45:] = 70.0
+    img += rng.normal(0.0, 8.0, img.shape)
+    img[5, 5] = 1e6                      # hot pixel — robust stretch must absorb it
+    img_id = _open(client, tmp_path, img)
+    rg = client.post(
+        "/api/analyze/grains",
+        json={
+            "image_id": img_id, "method": "rag", "n_superpixels": 200,
+            "merge_threshold": 0.2, "min_area": 50,
+            "denoise_sigma": 1.5, "robust": True,
+        },
+    )
+    assert rg.status_code == 200
+    body = rg.json()
+    assert body["method"] == "rag"
+    assert body["n_grains"] >= 2          # the two bands survive the spike + noise
+
+
 def test_grains_map_is_tagged_for_the_editor(client, tmp_path) -> None:
     # the stage shows the grain editor iff the active image's meta carries
     # grain_labels — verify that tag survives ImageMeta serialization and

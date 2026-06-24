@@ -1070,6 +1070,10 @@ export interface GrainParams {
   n_superpixels?: number;
   merge_threshold?: number;
   min_area?: number;
+  /** Gaussian denoise σ (px) before watershed — suppresses noise over-segmentation */
+  denoise_sigma?: number;
+  /** outlier-rejecting percentile contrast stretch (default true) */
+  robust?: boolean;
 }
 
 export interface GrainResult {

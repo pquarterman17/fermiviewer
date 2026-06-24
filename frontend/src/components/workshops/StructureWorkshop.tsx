@@ -466,6 +466,7 @@ function GrainsMode({ id }: { id: string }) {
   const [coarseness, setCoarseness] = useState("0.05");
   const [mergeThr, setMergeThr] = useState("0.08");
   const [minArea, setMinArea] = useState("25");
+  const [denoise, setDenoise] = useState("0");
   // trained-mode pixel classifier: forest (nonlinear, #8) is the default
   const [classifier, setClassifier] = useState<"softmax" | "forest">("forest");
   const [busy, setBusy] = useState(false);
@@ -550,12 +551,13 @@ function GrainsMode({ id }: { id: string }) {
   const run = () => {
     setBusy(true);
     setProgress("starting…");
+    const denoiseSigma = Number(denoise) || 0;
     const params: GrainParams =
       method === "kmeans"
         ? { method, k: Number(k) || 3 }
         : method === "rag"
-          ? { method, merge_threshold: Number(mergeThr) || 0.08 }
-          : { method, granularity: Number(coarseness) || 0.05 };
+          ? { method, merge_threshold: Number(mergeThr) || 0.08, denoise_sigma: denoiseSigma }
+          : { method, granularity: Number(coarseness) || 0.05, denoise_sigma: denoiseSigma };
     runJob<GrainResult>(
       () => analyzeGrainsAsync(id, params),
       (f, msg) => setProgress(`${Math.round(f * 100)}% ${msg}`),
@@ -634,6 +636,22 @@ function GrainsMode({ id }: { id: string }) {
             style={{ width: 44 }}
             onChange={(e) => setKnob(e.target.value)}
           />
+          {method !== "kmeans" && (
+            <>
+              <span
+                className="k"
+                title="Gaussian denoise σ (px) before segmenting — raise to tame noisy images (0 = off)"
+              >
+                denoise
+              </span>
+              <input
+                value={denoise}
+                style={{ width: 36 }}
+                title="Gaussian denoise σ (px); 0 = off"
+                onChange={(e) => setDenoise(e.target.value)}
+              />
+            </>
+          )}
           <button className="fvd-btn primary" onClick={run} disabled={busy}>
             {busy ? progress || "Segmenting…" : "Identify grains"}
           </button>
