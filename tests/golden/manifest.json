@@ -3,5 +3,13 @@
   "sourceCommit": "6b1e6b7",
   "matlabRelease": "R2025b",
   "generated": "2026-06-13 10:01",
-  "skipped": []
+  "skipped": [],
+  "partialRefreezes": [
+    {
+      "scope": "bcf.Fig4b_EDSmap_Bruker.bcf",
+      "sourceCommit": "c0bfb53",
+      "generated": "2026-06-25",
+      "reason": "importBCF MaxCubeBytes cap 1.5 GB -> 5 GB (fermi-viewer 5b32222) now loads the 512x512x4096 cube instead of skipping it; the 5 other BCF entries re-froze byte-identical, confirming no decoder drift."
+    }
+  ]
 }

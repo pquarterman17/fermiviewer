@@ -100,11 +100,37 @@ def test_committed_bcf_matches_matlab(golden, ml_datasets: Path) -> None:
 
 @pytest.mark.golden
 @pytest.mark.realdata
-def test_real_esprit_map(golden, ml_datasets: Path) -> None:
+def test_real_esprit_map_default_cap_loads(
+    golden, ml_datasets: Path, monkeypatch
+) -> None:
+    """Default 5 GB cap (parity with importBCF 5b32222) keeps the real
+    512x512x4096 cube (~4.3 GB dense) — the old 1.5 GB cap silently dropped
+    it, leaving a black EDS panel. We assert the *cap decision* (load vs
+    skip) without paying for the full pure-Python decode here; decoder
+    correctness on real data is covered by the small-cube golden corpus."""
     f = ml_datasets / "BCF" / "Fig4b_EDSmap_Bruker.bcf"
     if not f.is_file():
         pytest.skip("real Esprit map absent — run fetch script")
-    ds = load_bcf(f)  # 4.3 GB cube must be skipped by the size guard
+
+    sentinel = np.zeros((2, 2, 4096), dtype=np.uint16)
+    monkeypatch.setattr("fermiviewer.io.bcf.decode_cube", lambda *a, **k: sentinel)
+
+    ds = load_bcf(f)  # default cap -> 4.3 GB est <= 5 GB -> load branch
+    assert "cube_skipped" not in ds.metadata
+    assert ds.kind is DataKind.SPECTRUM_IMAGE
+    assert ds.data is sentinel
+
+
+@pytest.mark.golden
+@pytest.mark.realdata
+def test_real_esprit_map_small_cap_skips(golden, ml_datasets: Path) -> None:
+    """Explicit small-cap guard: the size guard still skips the dense cube
+    and falls back cleanly to the SEM survey image + header sum spectrum."""
+    f = ml_datasets / "BCF" / "Fig4b_EDSmap_Bruker.bcf"
+    if not f.is_file():
+        pytest.skip("real Esprit map absent — run fetch script")
+
+    ds = load_bcf(f, max_cube_bytes=1e8)  # 4.3 GB est > cap -> skip
     assert "cube_skipped" in ds.metadata
     assert ds.kind is DataKind.IMAGE
     assert ds.data.shape == (512, 512)

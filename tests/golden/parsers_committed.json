@@ -354,11 +354,12 @@
       ],
       "sumSpectrumTotal": 639893,
       "cubeSize": [
-        0,
-        0
+        512,
+        512,
+        4096
       ],
-      "cubeClass": "double",
-      "cubeTotal": []
+      "cubeClass": "uint16",
+      "cubeTotal": 639893
     },
     {
       "file": "Hitachi_TM3030Plus.bcf",

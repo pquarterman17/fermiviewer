@@ -167,8 +167,13 @@ def _load_cube(
 def load_bcf(
     path: str | Path,
     load_cube: bool = True,
-    max_cube_bytes: float = 1.5e9,
+    max_cube_bytes: float = 5e9,
 ) -> DataStruct:
+    # max_cube_bytes default 5 GB (parity with importBCF, fermi-viewer
+    # 5b32222 2026-06-24): a typical 512x512x4096 SEM-EDS map peaks near
+    # 4.3 GB. The old 1.5 GB cap silently dropped that cube, leaving only
+    # the often-blank SEM survey image — a black EDS panel. The SEM image
+    # and header sum spectrum are still returned when a cube is skipped.
     path = Path(path)
     sfs = SfsFile(path.read_bytes(), source=str(path))
 
