@@ -1886,6 +1886,12 @@ export interface SessionClientState {
   overlay?: unknown;
   /** Named saved ROIs per image (Tier-2 #5 ROI Manager); keyed by image id. */
   savedRois?: Record<string, unknown>;
+  /** Named, reusable image groups for side-by-side compare. */
+  imageGroups?: unknown;
+  /** The compare grid: per-pane image + group bindings, plus its shape. */
+  sbsPanes?: unknown;
+  sbsRows?: number;
+  sbsCols?: number;
 }
 
 export async function saveSession(

@@ -1173,8 +1173,14 @@ details.fvd-card:not([open]) > summary {
   gap: 2px;
 }
 
-/* ── side-by-side compare (MATLAB parity: two independently-scrollable
-   panes, focus the one you want to scroll, freeze the other) ── */
+/* ── side-by-side compare (MATLAB parity, generalized to an N-pane grid:
+   independently-scrollable panes, focus the one you want to scroll, freeze
+   the rest; grid-template-columns/rows come from sbsRows×sbsCols inline) ── */
+
+.fvd-compare.grid {
+  display: grid;
+  gap: 2px;
+}
 
 .fvd-compare.sidebyside {
   display: grid;
@@ -1208,12 +1214,66 @@ details.fvd-card:not([open]) > summary {
   min-width: 0;
 }
 
+/* the per-pane group binder sits left of the image dropdown; capped width so
+   the image picker keeps the lion's share of the bar */
+.fvd-sbs-group {
+  flex: 0 1 auto;
+  max-width: 38%;
+  min-width: 0;
+}
+
 .fvd-sbs-canvas-wrap {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
   cursor: grab;
+}
+
+/* ── named compare groups bar (filmstrip) ── */
+
+.fvd-groups-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px 0 2px;
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
+}
+
+.fvd-groups-head {
+  font-size: var(--font-size-sm);
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.fvd-group-chip {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.fvd-group-name {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  cursor: default;
+}
+
+.fvd-group-count {
+  color: var(--text-faint);
 }
 
 /* ── measurement overlay ── */

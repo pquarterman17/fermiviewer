@@ -15,6 +15,14 @@ const MODES: { key: CompareMode; label: string }[] = [
   { key: "sidebyside", label: "Side-by-side" },
 ];
 
+/** Grid shapes offered for the N-pane side-by-side compare. */
+const GRID_SHAPES: { rows: number; cols: number; label: string }[] = [
+  { rows: 1, cols: 2, label: "1×2" },
+  { rows: 1, cols: 3, label: "1×3" },
+  { rows: 2, cols: 2, label: "2×2" },
+  { rows: 2, cols: 3, label: "2×3" },
+];
+
 export default function CompareInspector() {
   const compareSet = useViewer((s) => s.compareSet ?? EMPTY_IDS);
   const compareMode = useViewer((s) => s.compareMode);
@@ -26,8 +34,12 @@ export default function CompareInspector() {
   const exitCompare = useViewer((s) => s.exitCompare);
   const images = useViewer((s) => s.images);
   const startCompare = useViewer((s) => s.startCompare);
+  const sbsPanes = useViewer((s) => s.sbsPanes);
+  const sbsRows = useViewer((s) => s.sbsRows);
+  const sbsCols = useViewer((s) => s.sbsCols);
   const sbsActive = useViewer((s) => s.sbsActive);
-  const setSbsActive = useViewer((s) => s.setSbsActive);
+  const setActivePane = useViewer((s) => s.setActivePane);
+  const setGrid = useViewer((s) => s.setGrid);
   const sbsLinked = useViewer((s) => s.sbsLinked);
   const setSbsLinked = useViewer((s) => s.setSbsLinked);
   const sideBySide = compareMode === "sidebyside";
@@ -71,23 +83,41 @@ export default function CompareInspector() {
               </button>
             </div>
             <div className="fvd-meta-row" style={{ marginTop: 6 }}>
-              <span className="k">Scroll side</span>
+              <span className="k">Grid</span>
               <div className="fvd-seg">
-                {(["L", "R"] as const).map((p) => (
+                {GRID_SHAPES.map((g) => (
                   <button
-                    key={p}
-                    className={`fvd-seg-btn${sbsActive === p ? " active" : ""}`}
-                    onClick={() => setSbsActive(p)}
+                    key={g.label}
+                    className={`fvd-seg-btn${
+                      sbsRows === g.rows && sbsCols === g.cols ? " active" : ""
+                    }`}
+                    title={`${g.rows * g.cols} panes`}
+                    onClick={() => setGrid(g.rows, g.cols)}
                   >
-                    {p === "L" ? "Left" : "Right"}
+                    {g.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="fvd-meta-row" style={{ marginTop: 6 }}>
+              <span className="k">Focus pane</span>
+              <div className="fvd-seg" style={{ flexWrap: "wrap" }}>
+                {sbsPanes.map((_, i) => (
+                  <button
+                    key={i}
+                    className={`fvd-seg-btn${sbsActive === i ? " active" : ""}`}
+                    onClick={() => setActivePane(i)}
+                  >
+                    {i + 1}
                   </button>
                 ))}
               </div>
             </div>
             <div className="fvd-text-faint" style={{ fontSize: 11, marginTop: 6 }}>
-              Click a side to focus it (cyan border); ◀ ▶ or ←/→ scroll it,
-              Tab switches sides. The other side stays frozen. With zoom
-              linked, zooming one pane matches the other's magnification.
+              Click a pane to focus it (cyan border); ◀ ▶ or ←/→ step it within
+              its bound group, Tab cycles panes. The others stay frozen. With
+              zoom linked, zooming one pane matches the rest. Bind a named group
+              to a pane from its top-left dropdown.
             </div>
           </>
         )}

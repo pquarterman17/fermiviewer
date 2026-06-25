@@ -19,8 +19,16 @@ import {
 import type { ColormapName } from "../lib/colormaps";
 import { logStatus } from "../lib/errlog";
 import type { TiltSettings } from "../lib/geometry";
+import {
+  groupMembers as groupMembersOf,
+  resizePanes,
+  stepWithin,
+  type ComparePane,
+  type ImageGroup,
+} from "../lib/groups";
 
 export type { TiltSettings };
+export type { ComparePane, ImageGroup } from "../lib/groups";
 
 /** Per-image view: z = screen px per image px (1 → 100 %),
  *  (px, py) = normalized image point under the viewport centre. */
@@ -229,9 +237,6 @@ export type Accent = "violet" | "teal" | "ocean" | "amber" | "rose";
 export type Density = "compact" | "regular" | "comfy";
 export type ListView = "thumbs" | "names";
 export type CompareMode = "split" | "flicker" | "subtract" | "sidebyside";
-
-/** Which side-by-side pane the keyboard / arrows currently drive. */
-export type SbsPane = "L" | "R";
 export type SelectGesture = "single" | "toggle" | "range";
 /** Detected layer interfaces, surfaced on the stage by LayersOverlay. */
 export interface LayersOverlayState {
@@ -287,6 +292,23 @@ function loadJson<T>(key: string, fallback: T): T {
 }
 
 let measureSeq = 0;
+/** Monotonic counter for stable, collision-free group ids across a session. */
+let groupSeq = 0;
+
+/** The distinct, in-order image ids currently shown across the compare grid
+ *  — used to keep compareSet (which drives Save/Copy of the comparison) in
+ *  sync with the panes. */
+function paneCompareSet(panes: ComparePane[]): string[] {
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const p of panes) {
+    if (p.imageId && !seen.has(p.imageId)) {
+      seen.add(p.imageId);
+      ids.push(p.imageId);
+    }
+  }
+  return ids;
+}
 
 type SetState = (
   fn: (s: {
@@ -508,14 +530,20 @@ interface ViewerState {
   /** Explicit A/B slot override: [indexA, indexB] into compareSet
    *  (null = cycle the full set, original behaviour).  Audit #15. */
   compareAB: [number, number] | null;
-  // ── side-by-side compare (MATLAB-style independent panes) ──
-  /** Image id shown in the left / right pane (compareMode "sidebyside"). */
-  sbsLeft: string | null;
-  sbsRight: string | null;
-  /** Which pane the ←/→ keys + ◀▶ buttons drive; the other stays frozen. */
-  sbsActive: SbsPane;
-  /** Link zoom/pan across the two panes (default true; toggle to unlink). */
+  // ── side-by-side compare: an N-pane grid (compareMode "sidebyside") ──
+  /** Each grid cell: the image it shows + an optional bound group. Default
+   *  grid is 1×2, both panes unbound → original two-pane behaviour. */
+  sbsPanes: ComparePane[];
+  /** Grid shape; sbsPanes.length always equals sbsRows*sbsCols. */
+  sbsRows: number;
+  sbsCols: number;
+  /** Index into sbsPanes the ←/→ keys + ◀▶ buttons drive; others freeze. */
+  sbsActive: number;
+  /** Link zoom level across all panes (default true; toggle to unlink). */
   sbsLinked: boolean;
+  // ── named image groups (reusable, persisted) ──
+  /** Ordered named groups built from multi-selections; bind one to a pane. */
+  imageGroups: ImageGroup[];
   // monotonic counter bumped on every ingestDerived — a lineage signal that
   // lets views like Live FFT re-fetch when a new derived image is produced
   // without subscribing to the whole image map (Quick-Wins #7)
@@ -604,15 +632,30 @@ interface ViewerState {
   setCompareMode: (m: CompareMode) => void;
   setCompareFlickerMs: (ms: number) => void;
   setCompareAB: (ab: [number, number] | null) => void;
-  /** Enter side-by-side compare seeded from the current image (left =
-   *  active, right = next in order). No pre-selection needed. */
+  /** Enter side-by-side compare seeded from the current image (pane 0 =
+   *  active, pane 1 = next in order). No pre-selection needed. */
   startSideBySide: () => void;
   /** Set a pane's image directly (e.g. dropdown pick) and focus it. */
-  setSbsPane: (pane: SbsPane, id: string) => void;
-  /** Step a pane through `order` by delta (wrapping) and focus it. */
-  stepSbs: (pane: SbsPane, delta: 1 | -1) => void;
-  setSbsActive: (pane: SbsPane) => void;
+  setPaneImage: (idx: number, id: string) => void;
+  /** Bind a named group to a pane (null = unbound → steps all images);
+   *  snaps the pane's image to the group's first member if needed. */
+  setPaneGroup: (idx: number, groupId: string | null) => void;
+  /** Step a pane within its bound group's members by delta (wrapping);
+   *  snaps to the first member if the current image isn't in the group. */
+  stepPane: (idx: number, delta: 1 | -1) => void;
+  /** Focus a pane (the ←/→ keys + ◀▶ buttons drive the focused pane). */
+  setActivePane: (idx: number) => void;
+  /** Resize the compare grid, preserving existing pane bindings by index. */
+  setGrid: (rows: number, cols: number) => void;
   setSbsLinked: (linked: boolean) => void;
+  // ── named image groups ──────────────────────────────────────────────
+  /** Create a named group from the given image ids; default name `Group N`. */
+  createGroup: (ids: string[], name?: string) => void;
+  renameGroup: (id: string, name: string) => void;
+  /** Delete a group and unbind it from any pane that referenced it. */
+  deleteGroup: (id: string) => void;
+  /** Replace a group's member list. */
+  setGroupMembers: (id: string, ids: string[]) => void;
   cycleImage: (dir: 1 | -1) => void;
   closeImage: (id: string) => Promise<void>;
   setView: (id: string, view: View) => void;
@@ -725,6 +768,10 @@ function _clientState(s: ViewerState): SessionClientState {
     measures: s.measures,
     overlay: s.overlay,
     savedRois: s.savedRois,
+    imageGroups: s.imageGroups,
+    sbsPanes: s.sbsPanes,
+    sbsRows: s.sbsRows,
+    sbsCols: s.sbsCols,
   };
 }
 
@@ -749,6 +796,28 @@ function sessionSlice(
     typeof cs.activeId === "string" && cs.activeId in images
       ? cs.activeId
       : (order[0] ?? null);
+  // groups: prune member ids to what actually loaded; drop now-empty groups
+  const rawGroups = (cs.imageGroups as ImageGroup[] | undefined) ?? [];
+  const imageGroups: ImageGroup[] = rawGroups
+    .map((g) => ({
+      id: g.id,
+      name: g.name,
+      ids: (g.ids ?? []).filter((id) => id in images),
+    }))
+    .filter((g) => g.ids.length > 0);
+  const liveGroupIds = new Set(imageGroups.map((g) => g.id));
+  // grid: restore shape, then prune each pane's image + group binding
+  const sbsRows = Math.max(1, Math.round((cs.sbsRows as number) ?? 1));
+  const sbsCols = Math.max(1, Math.round((cs.sbsCols as number) ?? 2));
+  const rawPanes = (cs.sbsPanes as ComparePane[] | undefined) ?? [];
+  const sbsPanes = resizePanes(
+    rawPanes.map((p) => ({
+      imageId: p?.imageId && p.imageId in images ? p.imageId : null,
+      groupId: p?.groupId && liveGroupIds.has(p.groupId) ? p.groupId : null,
+    })),
+    sbsRows,
+    sbsCols,
+  );
   return {
     images,
     order,
@@ -757,6 +826,11 @@ function sessionSlice(
     compareSet: null,
     selectedMeasure: null,
     selectedMulti: [],
+    imageGroups,
+    sbsPanes,
+    sbsRows,
+    sbsCols,
+    sbsActive: 0,
     views: (cs.views as Record<string, View>) ?? {},
     display: (cs.display as Record<string, Display>) ?? {},
     measures: (cs.measures as Record<string, Measure[]>) ?? {},
@@ -785,10 +859,15 @@ export const useViewer = create<ViewerState>((set, get) => ({
   compareMode: "split",
   compareFlickerMs: 600,
   compareAB: null,
-  sbsLeft: null,
-  sbsRight: null,
-  sbsActive: "L",
+  sbsPanes: [
+    { imageId: null, groupId: null },
+    { imageId: null, groupId: null },
+  ],
+  sbsRows: 1,
+  sbsCols: 2,
+  sbsActive: 0,
   sbsLinked: true,
+  imageGroups: [],
   derivedTick: 0,
   views: loadJson<Record<string, View>>(VIEWS_KEY, {}),
   display: {},
@@ -1024,28 +1103,31 @@ export const useViewer = create<ViewerState>((set, get) => ({
       set({ compareMode });
       return;
     }
-    // entering side-by-side: seed panes from existing sbs ids if still
-    // valid, else the compareSet's first two, else active + next-in-order.
-    // The `ok` guard also self-heals dangling ids left by a prior close.
+    // entering side-by-side: seed any empty panes (or panes whose image was
+    // closed) from the compareSet, then the active image + following order.
+    // Existing valid pane images + group bindings are preserved.
     const s = get();
     const ok = (id: string | null): id is string => !!id && !!s.images[id];
-    const cs = s.compareSet ?? [];
+    const cs = (s.compareSet ?? []).filter(ok);
     const nextOf = (id: string | null): string | null => {
       if (s.order.length === 0) return id;
       const i = id ? s.order.indexOf(id) : -1;
       return s.order[(i + 1 + s.order.length) % s.order.length] ?? id;
     };
-    const L = ok(s.sbsLeft) ? s.sbsLeft : (cs[0] ?? s.activeId ?? s.order[0] ?? null);
-    const R =
-      ok(s.sbsRight) && s.sbsRight !== L
-        ? s.sbsRight
-        : ((ok(cs[1]) ? cs[1] : null) ?? nextOf(L) ?? L);
-    set({
-      compareMode,
-      sbsLeft: L,
-      sbsRight: R,
-      compareSet: L && R ? [L, R] : s.compareSet,
+    let seed = 0;
+    let prev: string | null = null;
+    const sbsPanes = s.sbsPanes.map((p) => {
+      if (ok(p.imageId)) {
+        prev = p.imageId;
+        return p;
+      }
+      // fill from compareSet first, then chase the order after the last image
+      const id =
+        cs[seed++] ?? nextOf(prev ?? s.activeId ?? s.order[0] ?? null);
+      prev = id;
+      return { ...p, imageId: ok(id) ? id : p.imageId };
     });
+    set({ compareMode, sbsPanes, compareSet: paneCompareSet(sbsPanes) });
   },
   setCompareFlickerMs: (ms) =>
     set({ compareFlickerMs: Math.max(100, Math.round(ms)) }),
@@ -1057,50 +1139,150 @@ export const useViewer = create<ViewerState>((set, get) => ({
       s.setStatus("open at least 2 images to compare side-by-side");
       return;
     }
-    const L = s.activeId ?? s.order[0];
-    const i = s.order.indexOf(L);
-    const R = s.order[(i + 1) % s.order.length] ?? L;
+    // seed each pane in turn from its bound group (or the full order),
+    // starting at the active image, advancing through the member list.
+    const first = s.activeId ?? s.order[0];
+    const sbsPanes = s.sbsPanes.map((p, i) => {
+      const members = groupMembersOf(s.imageGroups, s.images, s.order, p.groupId);
+      const start = members.indexOf(first);
+      const base = start >= 0 ? start : 0;
+      const id = members[(base + i) % members.length] ?? first;
+      return { ...p, imageId: id };
+    });
     set({
       compareMode: "sidebyside",
-      compareSet: [L, R],
-      sbsLeft: L,
-      sbsRight: R,
-      sbsActive: "L",
+      sbsPanes,
+      compareSet: paneCompareSet(sbsPanes),
+      sbsActive: 0,
       captureMode: "none",
       selectedMeasure: null,
       compareAB: null,
     });
   },
 
-  setSbsPane: (pane, id) => {
+  setPaneImage: (idx, id) => {
     const s = get();
-    if (!s.images[id]) return;
-    const L = pane === "L" ? id : s.sbsLeft;
-    const R = pane === "R" ? id : s.sbsRight;
+    if (!s.images[id] || idx < 0 || idx >= s.sbsPanes.length) return;
+    const sbsPanes = s.sbsPanes.map((p, i) =>
+      i === idx ? { ...p, imageId: id } : p,
+    );
+    set({ sbsPanes, sbsActive: idx, compareSet: paneCompareSet(sbsPanes) });
+  },
+
+  setPaneGroup: (idx, groupId) => {
+    const s = get();
+    if (idx < 0 || idx >= s.sbsPanes.length) return;
+    const members = groupMembersOf(s.imageGroups, s.images, s.order, groupId);
+    const sbsPanes = s.sbsPanes.map((p, i) => {
+      if (i !== idx) return p;
+      // keep the current image if it's still a member, else snap to the first
+      const imageId =
+        p.imageId && members.includes(p.imageId)
+          ? p.imageId
+          : (members[0] ?? p.imageId);
+      return { imageId, groupId };
+    });
+    set({ sbsPanes, sbsActive: idx, compareSet: paneCompareSet(sbsPanes) });
+  },
+
+  stepPane: (idx, delta) => {
+    const s = get();
+    const pane = s.sbsPanes[idx];
+    if (!pane) return;
+    const members = groupMembersOf(s.imageGroups, s.images, s.order, pane.groupId);
+    const next = stepWithin(members, pane.imageId, delta);
+    if (!next) return;
+    get().setPaneImage(idx, next);
+  },
+
+  setActivePane: (idx) => {
+    const s = get();
+    if (idx < 0 || idx >= s.sbsPanes.length) return;
+    set({ sbsActive: idx });
+  },
+
+  setGrid: (rows, cols) => {
+    const s = get();
+    const r = Math.max(1, Math.round(rows));
+    const c = Math.max(1, Math.round(cols));
+    const sbsPanes = resizePanes(s.sbsPanes, r, c);
+    // seed any freshly-added empty panes so the grid is never blank on grow:
+    // step one past the previous pane's image within the new pane's group
+    const ok = (id: string | null | undefined): id is string =>
+      !!id && !!s.images[id];
+    let prev: string | null =
+      [...s.sbsPanes].reverse().find((p) => ok(p.imageId))?.imageId ??
+      s.activeId ??
+      s.order[0] ??
+      null;
+    for (let i = 0; i < sbsPanes.length; i++) {
+      const cur = sbsPanes[i].imageId;
+      if (ok(cur)) {
+        prev = cur;
+        continue;
+      }
+      const members = groupMembersOf(
+        s.imageGroups,
+        s.images,
+        s.order,
+        sbsPanes[i].groupId,
+      );
+      const next: string | null = stepWithin(members, prev, 1);
+      if (ok(next)) {
+        sbsPanes[i] = { ...sbsPanes[i], imageId: next };
+        prev = next;
+      }
+    }
+    const sbsActive = Math.min(s.sbsActive, sbsPanes.length - 1);
     set({
-      sbsLeft: L,
-      sbsRight: R,
-      sbsActive: pane,
-      compareSet: L && R ? [L, R] : s.compareSet,
+      sbsRows: r,
+      sbsCols: c,
+      sbsPanes,
+      sbsActive,
+      compareSet: paneCompareSet(sbsPanes),
     });
   },
 
-  stepSbs: (pane, delta) => {
+  setSbsLinked: (sbsLinked) => set({ sbsLinked }),
+
+  // ── named image groups ────────────────────────────────────────────────
+  createGroup: (ids, name) => {
     const s = get();
-    const cur = pane === "L" ? s.sbsLeft : s.sbsRight;
-    if (!cur || s.order.length === 0) return;
-    const n = s.order.length;
-    const i = s.order.indexOf(cur);
-    // pane's image no longer in order (e.g. closed) → reset to the first
-    if (i === -1) {
-      get().setSbsPane(pane, s.order[0]);
+    const members = ids.filter((id) => id in s.images);
+    if (members.length === 0) {
+      s.setStatus("select at least one image to make a group");
       return;
     }
-    get().setSbsPane(pane, s.order[((i + delta) % n + n) % n]);
+    const id = `g${++groupSeq}`;
+    const groupName = name?.trim() || `Group ${s.imageGroups.length + 1}`;
+    set({
+      imageGroups: [...s.imageGroups, { id, name: groupName, ids: members }],
+    });
+    s.setStatus(`group "${groupName}" created (${members.length})`);
   },
 
-  setSbsActive: (pane) => set({ sbsActive: pane }),
-  setSbsLinked: (sbsLinked) => set({ sbsLinked }),
+  renameGroup: (id, name) =>
+    set((s) => ({
+      imageGroups: s.imageGroups.map((g) =>
+        g.id === id ? { ...g, name: name.trim() || g.name } : g,
+      ),
+    })),
+
+  deleteGroup: (id) =>
+    set((s) => ({
+      imageGroups: s.imageGroups.filter((g) => g.id !== id),
+      // unbind the deleted group from every pane (image stays put)
+      sbsPanes: s.sbsPanes.map((p) =>
+        p.groupId === id ? { ...p, groupId: null } : p,
+      ),
+    })),
+
+  setGroupMembers: (id, ids) =>
+    set((s) => ({
+      imageGroups: s.imageGroups.map((g) =>
+        g.id === id ? { ...g, ids: ids.filter((x) => x in s.images) } : g,
+      ),
+    })),
 
   cycleImage: (dir) => {
     const { order, activeId } = get();
@@ -1122,10 +1304,20 @@ export const useViewer = create<ViewerState>((set, get) => ({
       const activeId =
         s.activeId === id ? (order[order.length - 1] ?? null) : s.activeId;
       const compareSet = s.compareSet?.filter((c) => c !== id) ?? null;
-      // if the closed image sat in a side-by-side pane, drop the dangling ref
-      // (the pane reseeds from `order` when compare is re-entered)
-      const sbsLeft = s.sbsLeft === id ? null : s.sbsLeft;
-      const sbsRight = s.sbsRight === id ? null : s.sbsRight;
+      // if the closed image sat in any compare pane, drop the dangling ref
+      // (the pane reseeds from its group/order when compare is re-entered)
+      const sbsPanes = s.sbsPanes.map((p) =>
+        p.imageId === id ? { ...p, imageId: null } : p,
+      );
+      // drop the closed image from every group's member list; prune groups
+      // that become empty, and unbind those from any pane that referenced them
+      const imageGroups = s.imageGroups
+        .map((g) => ({ ...g, ids: g.ids.filter((m) => m !== id) }))
+        .filter((g) => g.ids.length > 0);
+      const liveGroupIds = new Set(imageGroups.map((g) => g.id));
+      const sbsPanesPruned = sbsPanes.map((p) =>
+        p.groupId && !liveGroupIds.has(p.groupId) ? { ...p, groupId: null } : p,
+      );
       // drop the closed image's per-image state so these maps don't grow
       // unbounded across an open/close-heavy session (and evict its
       // persisted view from localStorage)
@@ -1155,8 +1347,8 @@ export const useViewer = create<ViewerState>((set, get) => ({
         activeId,
         selected: s.selected.filter((x) => x !== id),
         compareSet: compareSet && compareSet.length >= 2 ? compareSet : null,
-        sbsLeft,
-        sbsRight,
+        sbsPanes: sbsPanesPruned,
+        imageGroups,
         views,
         display,
         history,

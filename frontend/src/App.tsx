@@ -213,23 +213,27 @@ export default function App() {
       if (mod) return; // leave other ⌘/Ctrl chords to the browser
       if (s.cmdk) return; // palette owns the keyboard while open
 
-      // Side-by-side compare: ←/→ scroll the FOCUSED pane through the loaded
-      // images (the other pane stays frozen); Tab swaps which pane is focused.
-      // SELECT is excluded so the per-pane dropdown keeps native arrow nav.
-      if (s.compareSet && s.compareMode === "sidebyside" && t.tagName !== "SELECT") {
+      // Side-by-side compare: ←/→ step the FOCUSED pane within its bound
+      // group (the other panes stay frozen); Tab cycles which pane is focused
+      // through the grid. SELECT is excluded so the per-pane dropdowns keep
+      // their native arrow nav.
+      if (s.compareMode === "sidebyside" && t.tagName !== "SELECT") {
         if (e.key === "ArrowRight") {
           e.preventDefault();
-          s.stepSbs(s.sbsActive, 1);
+          s.stepPane(s.sbsActive, 1);
           return;
         }
         if (e.key === "ArrowLeft") {
           e.preventDefault();
-          s.stepSbs(s.sbsActive, -1);
+          s.stepPane(s.sbsActive, -1);
           return;
         }
         if (e.key === "Tab") {
           e.preventDefault();
-          s.setSbsActive(s.sbsActive === "L" ? "R" : "L");
+          const n = s.sbsPanes.length;
+          if (n > 0) {
+            s.setActivePane((s.sbsActive + (e.shiftKey ? -1 : 1) + n) % n);
+          }
           return;
         }
       }

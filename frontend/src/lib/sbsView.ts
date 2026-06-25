@@ -1,30 +1,34 @@
-// Pure view-coupling logic for side-by-side compare. Kept out of the React
-// component so it can be unit-tested directly.
+// Pure view-coupling logic for the side-by-side compare grid. Kept out of
+// the React component so it can be unit-tested directly.
 //
-// When the two panes are zoom-linked, a wheel-zoom on one pane propagates
-// only the ZOOM LEVEL (z) to the other — each pane keeps its own pan, so you
-// can compare the same magnification at different regions. Pan and fit are
-// always per-pane; unlinked, zoom is per-pane too.
+// When the panes are zoom-linked, a wheel-zoom on one pane propagates only
+// the ZOOM LEVEL (z) to every OTHER pane — each pane keeps its own pan, so
+// you can compare the same magnification at different regions. Pan and fit
+// are always per-pane; unlinked, zoom is per-pane too.
 
-import type { SbsPane, View } from "../store/viewer";
+import type { View } from "../store/viewer";
 
 export type ViewChange = "zoom" | "pan" | "fit";
 
-export function nextSbsViews(
-  pane: SbsPane,
+/** Compute the next per-pane view array after pane `idx` changed to `v`.
+ *  `views` is the current array (entries may be null before first render);
+ *  the returned array is a fresh copy with the acted-on pane set to `v` and,
+ *  on a zoom-linked zoom, the other panes' z matched to v.z (pan preserved). */
+export function nextGridViews(
+  idx: number,
   v: View,
   kind: ViewChange,
-  viewL: View | null,
-  viewR: View | null,
+  views: (View | null)[],
   zoomLinked: boolean,
-): { viewL: View | null; viewR: View | null } {
-  // couple only the zoom level, and only on a zoom gesture
+): (View | null)[] {
+  const out = views.slice();
+  out[idx] = v;
   if (zoomLinked && kind === "zoom") {
-    if (pane === "L") {
-      return { viewL: v, viewR: { ...(viewR ?? v), z: v.z } };
+    for (let i = 0; i < out.length; i++) {
+      if (i === idx) continue;
+      const cur = out[i] ?? v; // first-zoom: adopt the acted-on view's center
+      out[i] = { ...cur, z: v.z };
     }
-    return { viewL: { ...(viewL ?? v), z: v.z }, viewR: v };
   }
-  // pan / fit / unlinked-zoom → only the acted-on pane moves
-  return pane === "L" ? { viewL: v, viewR } : { viewL, viewR: v };
+  return out;
 }

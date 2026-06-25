@@ -3,6 +3,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { loadWorkspaceNamed as apiLoadWorkspaceNamed } from "../lib/api";
 import type { ImageMeta } from "../lib/api";
 import { useViewer } from "./viewer";
 
@@ -552,73 +553,72 @@ describe("compare flicker rate + A/B pair (audit #15)", () => {
   });
 });
 
-describe("side-by-side compare", () => {
+describe("side-by-side compare (N-pane grid)", () => {
   beforeEach(() => {
+    // a fresh store each test so the grid/group state never leaks between them
+    useViewer.setState(initialState, true);
     useViewer.getState().ingest([meta("a"), meta("b"), meta("c")]);
   });
 
-  it("startSideBySide seeds left=active, right=next-in-order, enters mode", () => {
+  it("startSideBySide seeds pane0=active, pane1=next-in-order, enters mode", () => {
     useViewer.getState().setActive("a");
     useViewer.getState().startSideBySide();
     const s = useViewer.getState();
     expect(s.compareMode).toBe("sidebyside");
     expect(s.compareSet).toEqual(["a", "b"]);
-    expect(s.sbsLeft).toBe("a");
-    expect(s.sbsRight).toBe("b");
-    expect(s.sbsActive).toBe("L");
+    expect(s.sbsPanes.map((p) => p.imageId)).toEqual(["a", "b"]);
+    expect(s.sbsActive).toBe(0);
   });
 
-  it("startSideBySide wraps right to the first image when active is last", () => {
+  it("startSideBySide wraps pane1 to the first image when active is last", () => {
     useViewer.getState().setActive("c");
     useViewer.getState().startSideBySide();
     const s = useViewer.getState();
-    expect(s.sbsLeft).toBe("c");
-    expect(s.sbsRight).toBe("a");
+    expect(s.sbsPanes.map((p) => p.imageId)).toEqual(["c", "a"]);
   });
 
-  it("stepSbs scrolls only the targeted pane (wrapping); the other is frozen", () => {
+  it("stepPane steps only the targeted pane (wrapping); the others freeze", () => {
     useViewer.getState().setActive("a");
-    useViewer.getState().startSideBySide(); // L=a, R=b
-    useViewer.getState().stepSbs("L", 1); // a → b
-    expect(useViewer.getState().sbsLeft).toBe("b");
-    expect(useViewer.getState().sbsRight).toBe("b"); // frozen
-    expect(useViewer.getState().sbsActive).toBe("L");
-    useViewer.getState().stepSbs("L", -1); // b → a
-    useViewer.getState().stepSbs("L", -1); // a → c (wrap back)
-    expect(useViewer.getState().sbsLeft).toBe("c");
+    useViewer.getState().startSideBySide(); // 0=a, 1=b
+    useViewer.getState().stepPane(0, 1); // a → b
+    expect(useViewer.getState().sbsPanes[0].imageId).toBe("b");
+    expect(useViewer.getState().sbsPanes[1].imageId).toBe("b"); // frozen
+    expect(useViewer.getState().sbsActive).toBe(0);
+    useViewer.getState().stepPane(0, -1); // b → a
+    useViewer.getState().stepPane(0, -1); // a → c (wrap back)
+    expect(useViewer.getState().sbsPanes[0].imageId).toBe("c");
   });
 
-  it("setSbsPane sets a pane directly, focuses it, and syncs compareSet", () => {
+  it("setPaneImage sets a pane directly, focuses it, and syncs compareSet", () => {
     useViewer.getState().setActive("a");
     useViewer.getState().startSideBySide();
-    useViewer.getState().setSbsPane("R", "c");
+    useViewer.getState().setPaneImage(1, "c");
     const s = useViewer.getState();
-    expect(s.sbsRight).toBe("c");
-    expect(s.sbsActive).toBe("R");
+    expect(s.sbsPanes[1].imageId).toBe("c");
+    expect(s.sbsActive).toBe(1);
     expect(s.compareSet).toEqual(["a", "c"]);
   });
 
-  it("setSbsPane ignores unknown image ids", () => {
+  it("setPaneImage ignores unknown image ids", () => {
     useViewer.getState().setActive("a");
     useViewer.getState().startSideBySide();
-    useViewer.getState().setSbsPane("R", "nope");
-    expect(useViewer.getState().sbsRight).toBe("b");
+    useViewer.getState().setPaneImage(1, "nope");
+    expect(useViewer.getState().sbsPanes[1].imageId).toBe("b");
   });
 
-  it("setCompareMode('sidebyside') seeds panes from the current compareSet", () => {
+  it("setCompareMode('sidebyside') seeds empty panes from the compareSet", () => {
     useViewer.getState().startCompare(["b", "c"]);
     useViewer.getState().setCompareMode("sidebyside");
     const s = useViewer.getState();
-    expect(s.sbsLeft).toBe("b");
-    expect(s.sbsRight).toBe("c");
+    expect(s.sbsPanes.map((p) => p.imageId)).toEqual(["b", "c"]);
     expect(s.compareSet).toEqual(["b", "c"]);
   });
 
-  it("setSbsLinked / setSbsActive toggle their flags", () => {
+  it("setSbsLinked / setActivePane toggle their flags", () => {
     useViewer.getState().setSbsLinked(false);
     expect(useViewer.getState().sbsLinked).toBe(false);
-    useViewer.getState().setSbsActive("R");
-    expect(useViewer.getState().sbsActive).toBe("R");
+    useViewer.getState().setActivePane(1);
+    expect(useViewer.getState().sbsActive).toBe(1);
   });
 
   it("startSideBySide needs >=2 images (no-op with 1)", () => {
@@ -643,11 +643,175 @@ describe("side-by-side compare", () => {
     expect(useViewer.getState().compareSet).toBeNull();
   });
 
-  it("closeImage drops a side-by-side pane ref that held the closed image", async () => {
+  it("closeImage drops a pane ref that held the closed image", async () => {
     useViewer.getState().setActive("a");
-    useViewer.getState().startSideBySide(); // L=a, R=b
+    useViewer.getState().startSideBySide(); // 0=a, 1=b
     await useViewer.getState().closeImage("a");
-    expect(useViewer.getState().sbsLeft).toBeNull();
-    expect(useViewer.getState().sbsRight).toBe("b");
+    expect(useViewer.getState().sbsPanes[0].imageId).toBeNull();
+    expect(useViewer.getState().sbsPanes[1].imageId).toBe("b");
+  });
+
+  it("setGrid grows the grid, preserving existing panes and seeding new ones", () => {
+    useViewer.getState().setActive("a");
+    useViewer.getState().startSideBySide(); // 0=a, 1=b
+    useViewer.getState().setGrid(2, 2);
+    const s = useViewer.getState();
+    expect(s.sbsRows).toBe(2);
+    expect(s.sbsCols).toBe(2);
+    expect(s.sbsPanes).toHaveLength(4);
+    expect(s.sbsPanes[0].imageId).toBe("a");
+    expect(s.sbsPanes[1].imageId).toBe("b");
+    // freshly-added panes are seeded, never left blank
+    expect(s.sbsPanes[2].imageId).not.toBeNull();
+    expect(s.sbsPanes[3].imageId).not.toBeNull();
+  });
+
+  it("setGrid shrinks the grid and clamps the active index", () => {
+    useViewer.getState().setActive("a");
+    useViewer.getState().startSideBySide();
+    useViewer.getState().setGrid(2, 2);
+    useViewer.getState().setActivePane(3);
+    useViewer.getState().setGrid(1, 2); // back to two panes
+    const s = useViewer.getState();
+    expect(s.sbsPanes).toHaveLength(2);
+    expect(s.sbsActive).toBe(1); // clamped from 3
+  });
+});
+
+describe("named image groups", () => {
+  beforeEach(() => {
+    useViewer.setState(initialState, true);
+    useViewer.getState().ingest([meta("a"), meta("b"), meta("c")]);
+  });
+
+  it("createGroup makes a named group from selected ids (default name)", () => {
+    useViewer.getState().createGroup(["a", "c"]);
+    const s = useViewer.getState();
+    expect(s.imageGroups).toHaveLength(1);
+    expect(s.imageGroups[0].name).toBe("Group 1");
+    expect(s.imageGroups[0].ids).toEqual(["a", "c"]);
+  });
+
+  it("createGroup prunes ids that aren't open and honours a custom name", () => {
+    useViewer.getState().createGroup(["a", "ghost", "b"], "My set");
+    const g = useViewer.getState().imageGroups[0];
+    expect(g.name).toBe("My set");
+    expect(g.ids).toEqual(["a", "b"]); // ghost dropped
+  });
+
+  it("createGroup is a no-op when nothing valid is selected", () => {
+    useViewer.getState().createGroup(["ghost"]);
+    expect(useViewer.getState().imageGroups).toHaveLength(0);
+  });
+
+  it("renameGroup / setGroupMembers mutate the named group", () => {
+    useViewer.getState().createGroup(["a", "b"], "one");
+    const id = useViewer.getState().imageGroups[0].id;
+    useViewer.getState().renameGroup(id, "two");
+    expect(useViewer.getState().imageGroups[0].name).toBe("two");
+    useViewer.getState().setGroupMembers(id, ["c", "ghost"]);
+    expect(useViewer.getState().imageGroups[0].ids).toEqual(["c"]);
+  });
+
+  it("deleteGroup removes the group and unbinds it from any pane", () => {
+    useViewer.getState().createGroup(["a", "b"]);
+    const id = useViewer.getState().imageGroups[0].id;
+    useViewer.getState().startSideBySide();
+    useViewer.getState().setPaneGroup(0, id);
+    expect(useViewer.getState().sbsPanes[0].groupId).toBe(id);
+    useViewer.getState().deleteGroup(id);
+    expect(useViewer.getState().imageGroups).toHaveLength(0);
+    expect(useViewer.getState().sbsPanes[0].groupId).toBeNull();
+  });
+
+  it("setPaneGroup snaps the pane's image to the group's first member", () => {
+    useViewer.getState().createGroup(["b", "c"]); // a not in the group
+    const id = useViewer.getState().imageGroups[0].id;
+    useViewer.getState().setActive("a");
+    useViewer.getState().startSideBySide(); // pane0 = a
+    useViewer.getState().setPaneGroup(0, id);
+    expect(useViewer.getState().sbsPanes[0].groupId).toBe(id);
+    expect(useViewer.getState().sbsPanes[0].imageId).toBe("b"); // snapped
+  });
+
+  it("stepPane cycles within the bound group only (wrap + frozen others)", () => {
+    useViewer.getState().createGroup(["a", "c"]); // skips b
+    const id = useViewer.getState().imageGroups[0].id;
+    useViewer.getState().setActive("a");
+    useViewer.getState().startSideBySide(); // pane0 = a
+    useViewer.getState().setPaneGroup(0, id); // a is a member → kept
+    expect(useViewer.getState().sbsPanes[0].imageId).toBe("a");
+    useViewer.getState().stepPane(0, 1); // a → c (b skipped)
+    expect(useViewer.getState().sbsPanes[0].imageId).toBe("c");
+    useViewer.getState().stepPane(0, 1); // c → a (wrap inside the group)
+    expect(useViewer.getState().sbsPanes[0].imageId).toBe("a");
+  });
+
+  it("closeImage prunes the id from groups and drops empty ones", async () => {
+    useViewer.getState().createGroup(["a", "b"], "ab");
+    useViewer.getState().createGroup(["c"], "just-c");
+    await useViewer.getState().closeImage("a");
+    const s = useViewer.getState();
+    expect(s.imageGroups.find((g) => g.name === "ab")?.ids).toEqual(["b"]);
+    await useViewer.getState().closeImage("c");
+    // the "just-c" group became empty → pruned entirely
+    expect(useViewer.getState().imageGroups.find((g) => g.name === "just-c")).toBeUndefined();
+  });
+});
+
+describe("groups + grid persistence round-trip", () => {
+  it("restores groups + pane bindings + grid shape on load, pruning stale refs", async () => {
+    // a saved session whose payload references one image that didn't load
+    // ("gone") and one stale group id bound to a pane — both must prune.
+    const images: ImageMeta[] = [meta("a"), meta("b"), meta("c")];
+    vi.mocked(apiLoadWorkspaceNamed).mockResolvedValueOnce({
+      images,
+      name: "Saved",
+      client_state: {
+        order: ["a", "b", "c"],
+        activeId: "b",
+        imageGroups: [
+          { id: "g1", name: "AB", ids: ["a", "b"] },
+          { id: "g2", name: "Gone", ids: ["gone"] }, // prunes to empty → dropped
+        ],
+        sbsRows: 2,
+        sbsCols: 2,
+        sbsPanes: [
+          { imageId: "a", groupId: "g1" },
+          { imageId: "gone", groupId: null }, // image not loaded → cleared
+          { imageId: "c", groupId: "g2" }, // group pruned → unbound
+          { imageId: "b", groupId: "g1" },
+        ],
+      },
+    });
+
+    await useViewer.getState().loadWorkspaceNamed("saved");
+    const s = useViewer.getState();
+
+    // only the live group survives, with its members intact
+    expect(s.imageGroups).toEqual([{ id: "g1", name: "AB", ids: ["a", "b"] }]);
+    // grid shape restored
+    expect(s.sbsRows).toBe(2);
+    expect(s.sbsCols).toBe(2);
+    expect(s.sbsPanes).toHaveLength(4);
+    // bindings restored where valid; pruned where dangling
+    expect(s.sbsPanes[0]).toEqual({ imageId: "a", groupId: "g1" });
+    expect(s.sbsPanes[1]).toEqual({ imageId: null, groupId: null }); // closed image
+    expect(s.sbsPanes[2]).toEqual({ imageId: "c", groupId: null }); // group gone
+    expect(s.sbsPanes[3]).toEqual({ imageId: "b", groupId: "g1" });
+  });
+
+  it("falls back to the default 1×2 grid when the payload omits grid state", async () => {
+    vi.mocked(apiLoadWorkspaceNamed).mockResolvedValueOnce({
+      images: [meta("a")],
+      name: "Bare",
+      client_state: { order: ["a"], activeId: "a" },
+    });
+    await useViewer.getState().loadWorkspaceNamed("bare");
+    const s = useViewer.getState();
+    expect(s.imageGroups).toEqual([]);
+    expect(s.sbsRows).toBe(1);
+    expect(s.sbsCols).toBe(2);
+    expect(s.sbsPanes).toHaveLength(2);
   });
 });

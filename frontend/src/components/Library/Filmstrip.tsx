@@ -6,7 +6,11 @@ import { useEffect, useRef, useState } from "react";
 
 import { renderUrl } from "../../lib/api";
 import { renameSingleImage } from "../../lib/rename";
-import { useViewer, type SelectGesture } from "../../store/viewer";
+import {
+  useViewer,
+  type ImageGroup,
+  type SelectGesture,
+} from "../../store/viewer";
 
 interface CtxMenu {
   x: number;
@@ -26,6 +30,10 @@ export default function Filmstrip() {
   const startCompare = useViewer((s) => s.startCompare);
   const closeImage = useViewer((s) => s.closeImage);
   const setBatchOpen = useViewer((s) => s.setBatchOpen);
+  const imageGroups = useViewer((s) => s.imageGroups);
+  const createGroup = useViewer((s) => s.createGroup);
+  const renameGroup = useViewer((s) => s.renameGroup);
+  const deleteGroup = useViewer((s) => s.deleteGroup);
 
   const [ctx, setCtx] = useState<CtxMenu | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
@@ -86,6 +94,31 @@ export default function Filmstrip() {
         >
           ⚙ Batch {compareIds.length}
         </button>
+      )}
+
+      {compareIds && (
+        <button
+          className="fvd-compare-btn"
+          data-tip="Save the selection as a named, reusable compare group"
+          onClick={() => createGroup(compareIds)}
+        >
+          ＋ Group {compareIds.length}
+        </button>
+      )}
+
+      {imageGroups.length > 0 && (
+        <GroupsBar
+          groups={imageGroups}
+          onRecall={(ids) => {
+            // re-select the group's members so it's easy to act on / re-group
+            const live = ids.filter((id) => id in images);
+            live.forEach((id, i) =>
+              select(id, i === 0 ? "single" : "toggle"),
+            );
+          }}
+          onRename={renameGroup}
+          onDelete={deleteGroup}
+        />
       )}
 
       {order.length === 0 && (
@@ -214,6 +247,54 @@ function ContextMenu({
       {item("Rename…  F2", onRename)}
       <div className="fvd-menu-sep" />
       {item("Close", onClose)}
+    </div>
+  );
+}
+
+/** Named compare-group chips: click to re-select members, rename, or delete.
+ *  Groups bind to compare panes (the panes' dropdowns reference them). */
+function GroupsBar({
+  groups,
+  onRecall,
+  onRename,
+  onDelete,
+}: {
+  groups: ImageGroup[];
+  onRecall: (ids: string[]) => void;
+  onRename: (id: string, name: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <div className="fvd-groups-bar">
+      <div className="fvd-groups-head">Groups</div>
+      {groups.map((g) => (
+        <div key={g.id} className="fvd-group-chip" title={`${g.ids.length} images`}>
+          <button
+            className="fvd-group-name"
+            onClick={() => onRecall(g.ids)}
+            title="Re-select this group's images"
+          >
+            {g.name} <span className="fvd-group-count">{g.ids.length}</span>
+          </button>
+          <button
+            className="fvd-icon-btn"
+            title="Rename group"
+            onClick={() => {
+              const name = window.prompt("Rename group", g.name);
+              if (name != null) onRename(g.id, name);
+            }}
+          >
+            ✎
+          </button>
+          <button
+            className="fvd-icon-btn"
+            title="Delete group"
+            onClick={() => onDelete(g.id)}
+          >
+            ✕
+          </button>
+        </div>
+      ))}
     </div>
   );
 }
