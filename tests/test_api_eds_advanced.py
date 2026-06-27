@@ -128,6 +128,12 @@ def test_peakfit_quantify_returns_composition(client, cube_id) -> None:
     assert quant["elements"] == ["Fe", "Cu"]
     # weight% ∝ k·I → 4000:6000 = 40:60 with equal k-factors
     np.testing.assert_allclose(quant["weight_percent"], [40.0, 60.0], rtol=0.05)
+    # at%/wt% 1σ propagated from the peak-amplitude fit covariance — present,
+    # finite, non-negative (≈0 here: noiseless synthetic fit; the >0 / coverage
+    # behaviour is validated with real noise in test_uncertainty.py)
+    for key in ("atomic_percent_error", "weight_percent_error"):
+        assert len(quant[key]) == 2
+        assert all(np.isfinite(s) and s >= 0 for s in quant[key])
 
 
 def test_peakfit_bremsstrahlung_without_e0_is_422(client, cube_id) -> None:

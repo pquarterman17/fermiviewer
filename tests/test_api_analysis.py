@@ -93,6 +93,9 @@ def test_eels_quantify_endpoint(client, eels_cube_id) -> None:
     assert body["elements"] == ["O"]
     assert body["atomic_percent"] == [pytest.approx(100.0)]
     assert body["sigma"][0] > 0
+    # a single edge is 100 % by construction → zero compositional error;
+    # the >0 / coverage behaviour is validated in test_uncertainty.py
+    assert body["atomic_percent_error"] == [pytest.approx(0.0)]
 
 
 @pytest.fixture()
@@ -124,6 +127,9 @@ def test_eds_quantify_endpoint(client, eds_cube_id) -> None:
     assert body["lines"] == ["K"]
     assert body["mean_atomic_pct"] == [pytest.approx(100.0)]
     assert body["maps"][0]["shape"] == [4, 5]
+    # single element → zero compositional error (additive uncertainty fields)
+    assert body["mean_atomic_pct_error"] == [pytest.approx(0.0)]
+    assert body["mean_weight_pct_error"] == [pytest.approx(0.0)]
 
     zaf = client.post("/api/eds/quantify", json={
         "image_id": eds_cube_id, "elements": ["Fe"], "method": "zaf",

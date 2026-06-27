@@ -20,6 +20,7 @@ from fermiviewer.calc.eds_calib import recalibrate as recalibrate_axis
 from fermiviewer.calc.eds_continuum import bremsstrahlung_component, fit_continuum
 from fermiviewer.calc.eds_peakfit import fit_peaks
 from fermiviewer.calc.spectral_fit import Component, linear_background
+from fermiviewer.calc.uncertainty import cliff_lorimer_uncertainty
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.models import ImageMeta
 from fermiviewer.session import UnknownImageError, store
@@ -158,10 +159,17 @@ def eds_peakfit(req: EdsPeakfitRequest) -> dict:
             if req.k_factors is not None and len(quant_elems) == len(req.elements):
                 k = np.asarray(req.k_factors, dtype=np.float64)
             cl = cliff_lorimer(maps, quant_elems, k_factors=k)
+            # propagate each peak's amplitude 1σ (already in net_area_errors)
+            # through Cliff-Lorimer to at%/wt% error bars
+            net = [max(pf.net_areas[s], 0.0) for s in quant_elems]
+            var = [pf.net_area_errors[s] ** 2 for s in quant_elems]
+            unc = cliff_lorimer_uncertainty(net, var, quant_elems, cl.k_factors)
             resp["quant"] = {
                 "elements": quant_elems,
                 "atomic_percent": cl.mean_atomic_pct.tolist(),
+                "atomic_percent_error": unc.atomic_pct_sigma.tolist(),
                 "weight_percent": cl.mean_weight_pct.tolist(),
+                "weight_percent_error": unc.weight_pct_sigma.tolist(),
             }
 
     return resp

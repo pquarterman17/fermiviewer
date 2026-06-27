@@ -463,6 +463,8 @@ export interface EelsEdge {
 export interface EelsQuantResult {
   elements: string[];
   atomic_percent: number[];
+  /** 1σ counting-statistics error on each at% (percentage points). */
+  atomic_percent_error: number[];
   intensity: number[];
   sigma: number[];
 }
@@ -509,6 +511,8 @@ export interface EelsFitEdge {
   element: string;
   shell: string;
   atomic_percent: number;
+  /** 1σ on at% from the fit covariance (percentage points). */
+  atomic_percent_error: number;
   amplitude: number;
   amplitude_error: number;
   curve: number[];
@@ -570,6 +574,9 @@ export interface EdsQuantResult {
   lines: string[];
   mean_atomic_pct: number[];
   mean_weight_pct: number[];
+  /** Aggregate counting-statistics 1σ on the field composition (pct points). */
+  mean_atomic_pct_error: number[];
+  mean_weight_pct_error: number[];
   k_factors: number[];
   maps: ImageMeta[];
 }
@@ -639,6 +646,9 @@ export interface EdsPeakfitQuant {
   elements: string[];
   atomic_percent: number[];
   weight_percent: number[];
+  /** 1σ on at%/wt% from the peak-amplitude fit covariance (pct points). */
+  atomic_percent_error: number[];
+  weight_percent_error: number[];
 }
 
 export interface EdsPeakfitResult {

@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from fermiviewer.calc.eels_model import fit_edges, fit_edges_map
 from fermiviewer.calc.eels_quant import ElementEdge
+from fermiviewer.calc.uncertainty import atomic_fraction_sigma
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.models import ImageMeta
 from fermiviewer.session import UnknownImageError, store
@@ -90,11 +91,15 @@ def eels_fit(req: EelsFitRequest) -> dict:
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
 
+    # at% 1σ from the fitted amplitude covariance (delta method through the
+    # amplitude-ratio normalisation), in percentage points
+    at_err = atomic_fraction_sigma(res.amplitudes, res.amplitude_errors)
     edges_out = [
         {
             "element": el,
             "shell": req.edges[k].shell,
             "atomic_percent": float(res.atomic_percent[k]),
+            "atomic_percent_error": float(at_err[k]),
             "amplitude": float(res.amplitudes[k]),
             "amplitude_error": float(res.amplitude_errors[k]),
             "curve": res.edge_curves[k].tolist(),

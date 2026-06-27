@@ -14,8 +14,6 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from fermiviewer.calc import diffraction as diff
-from fermiviewer.calc.eds import ClResult, ZafResult, cliff_lorimer, zaf_correction
-from fermiviewer.calc.eds_maps import extract_element_maps
 from fermiviewer.calc.eels import background, extract_map, thickness_map
 from fermiviewer.calc.eels_advanced import (
     align_zlp,
@@ -25,6 +23,7 @@ from fermiviewer.calc.eels_advanced import (
 )
 from fermiviewer.calc.eels_quant import ElementEdge, quantify, quantify_map
 from fermiviewer.calc.phase_registry import registry as _phase_registry
+from fermiviewer.calc.uncertainty import eels_atomic_sigma
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.models import ImageMeta
 from fermiviewer.session import UnknownImageError, store
@@ -131,16 +130,24 @@ class EelsQuantifyRequest(BaseModel):
 @router.post("/eels/quantify")
 def eels_quantify(req: EelsQuantifyRequest) -> dict:
     ds = _spectral(req.image_id)
+    energy = ds.energy_axis
+    spectrum = ds.sum_spectrum()
     edges = [ElementEdge(e.element, e.shell, e.z, e.onset_ev,
                          e.signal_window, e.bg_window) for e in req.edges]
     try:
-        res = quantify(ds.energy_axis, ds.sum_spectrum(), edges,
+        res = quantify(energy, spectrum, edges,
                        req.e0_kv, req.beta_mrad, req.method)
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
+    # Poisson counting-statistics 1σ on each at% (percentage points)
+    at_err = eels_atomic_sigma(
+        energy, spectrum, [e.signal_window for e in edges],
+        res.areal_ratio, res.sigma,
+    )
     return {
         "elements": res.elements,
         "atomic_percent": res.atomic_percent.tolist(),
+        "atomic_percent_error": at_err.tolist(),
         "intensity": res.intensity.tolist(),
         "sigma": res.sigma.tolist(),
     }
@@ -338,43 +345,8 @@ def eels_align_zlp(req: EelsAlignRequest) -> dict:
 
 
 # ── EDS ──────────────────────────────────────────────────────────────
-
-class EdsQuantifyRequest(BaseModel):
-    image_id: str
-    elements: list[str]
-    method: str = "cliff-lorimer"            # | "zaf"
-    half_window_kev: float = 0.085
-    thickness_nm: float = 100
-    take_off_angle_deg: float = 20
-
-
-@router.post("/eds/quantify")
-def eds_quantify(req: EdsQuantifyRequest) -> dict:
-    ds = _cube(req.image_id)
-    entries = extract_element_maps(ds.data, ds.energy_axis, req.elements,
-                                   half_window=req.half_window_kev)
-    if not entries:
-        raise HTTPException(422, "no usable element lines in the energy range")
-    maps = [e.map for e in entries]
-    syms = [e.symbol for e in entries]
-    res: ClResult | ZafResult
-    if req.method == "zaf":
-        res = zaf_correction(maps, syms, thickness_nm=req.thickness_nm,
-                             take_off_angle_deg=req.take_off_angle_deg)
-    else:
-        res = cliff_lorimer(maps, syms)
-    map_meta = [
-        _register_map(m, f"{sym} at%", ds, req.image_id).model_dump()
-        for sym, m in zip(syms, res.atomic_pct_maps, strict=True)
-    ]
-    return {
-        "elements": syms,
-        "lines": [e.line for e in entries],
-        "mean_atomic_pct": res.mean_atomic_pct.tolist(),
-        "mean_weight_pct": res.mean_weight_pct.tolist(),
-        "k_factors": res.k_factors.tolist(),
-        "maps": map_meta,
-    }
+# Window-integration EDS quant (/eds/quantify) moved to routes/eds_quant.py
+# when #6 uncertainty pushed analysis.py to the 500-line ceiling.
 
 
 # ── Diffraction ──────────────────────────────────────────────────────

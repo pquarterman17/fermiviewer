@@ -10,6 +10,7 @@ function makeResult(overrides: Partial<EelsQuantResult> = {}): EelsQuantResult {
   return {
     elements: ["O", "Fe", "La"],
     atomic_percent: [60.0, 25.0, 15.0],
+    atomic_percent_error: [0.8, 0.5, 0.4],
     intensity: [1.2e5, 4.8e4, 2.1e4],
     sigma: [3.5e-22, 1.1e-21, 8.7e-22],
     ...overrides,
@@ -25,7 +26,7 @@ describe("eelsQuantToCsv", () => {
 
   it("emits correct column header", () => {
     const csv = eelsQuantToCsv(makeResult(), { imageName: "x" });
-    expect(csv).toContain("element,atomic_percent,intensity,sigma");
+    expect(csv).toContain("element,atomic_percent,atomic_percent_error,intensity,sigma");
   });
 
   it("emits one data row per element", () => {
@@ -37,9 +38,10 @@ describe("eelsQuantToCsv", () => {
   it("first element row has correct values", () => {
     const csv = eelsQuantToCsv(makeResult(), { imageName: "x" });
     const lines = csv.split("\n").filter((l) => !l.startsWith("#") && l.trim() !== "");
-    const [el, atPct, intensity, sigma] = lines[1].split(",");
+    const [el, atPct, atErr, intensity, sigma] = lines[1].split(",");
     expect(el).toBe("O");
     expect(Number(atPct)).toBeCloseTo(60.0);
+    expect(Number(atErr)).toBeCloseTo(0.8);
     expect(Number(intensity)).toBeCloseTo(1.2e5, -1);
     expect(Number(sigma)).toBeCloseTo(3.5e-22, -24);
   });
@@ -55,7 +57,7 @@ describe("eelsQuantToCsv", () => {
     const r = makeResult({ sigma: [3.5e-22, NaN, 8.7e-22] });
     const csv = eelsQuantToCsv(r, { imageName: "x" });
     const lines = csv.split("\n").filter((l) => !l.startsWith("#") && l.trim() !== "");
-    const [, , , sigma2] = lines[2].split(",");
+    const [, , , , sigma2] = lines[2].split(",");
     expect(sigma2.trim()).toBe(""); // NaN → blank
   });
 

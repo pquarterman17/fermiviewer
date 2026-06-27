@@ -22,6 +22,7 @@ import {
   type Spectrum,
 } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
+import { formatPlusMinus } from "../../lib/formatUncertainty";
 import {
   csvBaseName,
   downloadCsv,
@@ -586,7 +587,7 @@ export default function EelsWorkshop() {
             <thead>
               <tr>
                 <th>Element</th>
-                <th>at%</th>
+                <th>at% ± 1σ</th>
                 <th>amp ± 1σ</th>
               </tr>
             </thead>
@@ -594,7 +595,13 @@ export default function EelsWorkshop() {
               {fitResult.edges.map((ed) => (
                 <tr key={`${ed.element}-${ed.shell}`}>
                   <td>{ed.element}</td>
-                  <td>{ed.atomic_percent.toFixed(2)}</td>
+                  <td>
+                    {formatPlusMinus(
+                      ed.atomic_percent,
+                      ed.atomic_percent_error,
+                      2,
+                    )}
+                  </td>
                   <td>
                     {ed.amplitude.toExponential(2)} ±{" "}
                     {ed.amplitude_error.toExponential(1)}
@@ -630,7 +637,7 @@ export default function EelsWorkshop() {
             <thead>
               <tr>
                 <th>Element</th>
-                <th>at%</th>
+                <th>at% ± 1σ</th>
                 <th>I</th>
               </tr>
             </thead>
@@ -638,7 +645,13 @@ export default function EelsWorkshop() {
               {quant.elements.map((el, i) => (
                 <tr key={el}>
                   <td>{el}</td>
-                  <td>{quant.atomic_percent[i].toFixed(2)}</td>
+                  <td>
+                    {formatPlusMinus(
+                      quant.atomic_percent[i],
+                      quant.atomic_percent_error?.[i] ?? 0,
+                      2,
+                    )}
+                  </td>
                   <td>{quant.intensity[i].toExponential(2)}</td>
                 </tr>
               ))}

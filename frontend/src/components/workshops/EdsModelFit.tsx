@@ -15,6 +15,7 @@ import {
   type EdsPeakfitResult,
   type EdsRecalibrateResult,
 } from "../../lib/api";
+import { formatPlusMinus } from "../../lib/formatUncertainty";
 import { useViewer } from "../../store/viewer";
 import { EDS_PALETTE } from "./EdsComposite";
 
@@ -269,8 +270,8 @@ export default function EdsModelFit({
               <th>El</th>
               <th>Line</th>
               <th>net area ± 1σ</th>
-              {quant && <th>at%</th>}
-              {quant && <th>wt%</th>}
+              {quant && <th>at% ± 1σ</th>}
+              {quant && <th>wt% ± 1σ</th>}
             </tr>
           </thead>
           <tbody>
@@ -286,10 +287,26 @@ export default function EdsModelFit({
                       : "—"}
                   </td>
                   {quant && (
-                    <td>{qi >= 0 ? quant.atomic_percent[qi].toFixed(2) : "—"}</td>
+                    <td>
+                      {qi >= 0
+                        ? formatPlusMinus(
+                            quant.atomic_percent[qi],
+                            quant.atomic_percent_error?.[qi] ?? 0,
+                            2,
+                          )
+                        : "—"}
+                    </td>
                   )}
                   {quant && (
-                    <td>{qi >= 0 ? quant.weight_percent[qi].toFixed(2) : "—"}</td>
+                    <td>
+                      {qi >= 0
+                        ? formatPlusMinus(
+                            quant.weight_percent[qi],
+                            quant.weight_percent_error?.[qi] ?? 0,
+                            2,
+                          )
+                        : "—"}
+                    </td>
                   )}
                 </tr>
               );

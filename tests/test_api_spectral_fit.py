@@ -70,6 +70,9 @@ def test_eels_fit_endpoint(client, fit_cube_id) -> None:
     assert body["edges"][0]["atomic_percent"] == pytest.approx(66.7, abs=3.0)
     assert body["edges"][1]["atomic_percent"] == pytest.approx(33.3, abs=3.0)
     assert body["edges"][0]["amplitude_error"] >= 0
+    # at% 1σ from the fit covariance — a genuine 2-element fit has real error
+    assert body["edges"][0]["atomic_percent_error"] > 0
+    assert body["edges"][1]["atomic_percent_error"] > 0
     # curves are returned for the overlay, full-length
     assert len(body["energy"]) == 512
     assert len(body["model"]) == 512

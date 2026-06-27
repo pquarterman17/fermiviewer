@@ -14,6 +14,7 @@ import {
   type EdsQuantResult,
 } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
+import { formatPlusMinus } from "../../lib/formatUncertainty";
 import EdsComposite, { EDS_PALETTE, type Channel } from "./EdsComposite";
 import EdsModelFit from "./EdsModelFit";
 import EdsSpectrumImage from "./EdsSpectrumImage";
@@ -266,8 +267,8 @@ export default function EdsWorkshop() {
             <tr>
               <th>El</th>
               <th>Line</th>
-              <th>at%</th>
-              <th>wt%</th>
+              <th>at% ± 1σ</th>
+              <th>wt% ± 1σ</th>
               <th>k</th>
             </tr>
           </thead>
@@ -276,8 +277,20 @@ export default function EdsWorkshop() {
               <tr key={el}>
                 <td>{el}</td>
                 <td>{result.lines[i]}</td>
-                <td>{result.mean_atomic_pct[i].toFixed(2)}</td>
-                <td>{result.mean_weight_pct[i].toFixed(2)}</td>
+                <td>
+                  {formatPlusMinus(
+                    result.mean_atomic_pct[i],
+                    result.mean_atomic_pct_error?.[i] ?? 0,
+                    2,
+                  )}
+                </td>
+                <td>
+                  {formatPlusMinus(
+                    result.mean_weight_pct[i],
+                    result.mean_weight_pct_error?.[i] ?? 0,
+                    2,
+                  )}
+                </td>
                 <td>{result.k_factors[i].toFixed(3)}</td>
               </tr>
             ))}

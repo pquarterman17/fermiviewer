@@ -2,7 +2,7 @@
 // Operates on the EelsQuantResult shape returned by /api/eels/quantify.
 // Pure string builder — no DOM, no store — so it is trivially unit-testable.
 //
-// Columns: element, atomic_percent, intensity, sigma
+// Columns: element, atomic_percent, atomic_percent_error, intensity, sigma
 // A commented provenance header records image name and edge count.
 
 import type { EelsQuantResult } from "./api";
@@ -23,8 +23,9 @@ export interface EelsQuantCsvContext {
 /**
  * Serialise an EelsQuantResult to CSV.
  *
- * Columns: element, atomic_percent, intensity, sigma.
- * The provenance header records image name and the number of edges.
+ * Columns: element, atomic_percent, atomic_percent_error, intensity, sigma.
+ * atomic_percent_error is the 1σ counting-statistics error (percentage
+ * points). The provenance header records image name and the number of edges.
  *
  * Reference: Egerton, "Electron Energy-Loss Spectroscopy in the Electron
  * Microscope" 3rd ed. Ch. 5 — Hartree-Slater cross-section quantification.
@@ -42,11 +43,11 @@ export function eelsQuantToCsv(
     "# fermiviewer EELS quantification export",
     `# image: ${ctx.imageName}`,
     `# n_edges: ${n}`,
-    "element,atomic_percent,intensity,sigma",
+    "element,atomic_percent,atomic_percent_error,intensity,sigma",
   ];
   for (let i = 0; i < n; i++) {
     lines.push(
-      `${r.elements[i]},${num(r.atomic_percent[i])},${num(r.intensity[i])},${num(r.sigma[i])}`,
+      `${r.elements[i]},${num(r.atomic_percent[i])},${num(r.atomic_percent_error?.[i] ?? Number.NaN)},${num(r.intensity[i])},${num(r.sigma[i])}`,
     );
   }
   return lines.join("\n") + "\n";
