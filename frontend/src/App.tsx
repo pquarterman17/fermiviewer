@@ -49,7 +49,6 @@ import { undoLabel, useViewer, type CaptureMode } from "./store/viewer";
 
 installErrLog(); // module scope: catch errors from the very first render
 
-const NUDGE = 50; // css px per arrow press
 
 function applyAutoContrast(): void {
   const s = useViewer.getState();
@@ -357,17 +356,15 @@ export default function App() {
           s.setRadial(null);
           s.setSelectedMulti([]);
           break;
+        // Arrows cycle through the open files (not pan the image — panning
+        // is mouse-drag / the pan tool). ←/↑ previous, →/↓ next; wraps.
         case "ArrowLeft":
-          stageRef.current?.nudge(NUDGE, 0);
+        case "ArrowUp":
+          s.cycleImage(-1);
           break;
         case "ArrowRight":
-          stageRef.current?.nudge(-NUDGE, 0);
-          break;
-        case "ArrowUp":
-          stageRef.current?.nudge(0, NUDGE);
-          break;
         case "ArrowDown":
-          stageRef.current?.nudge(0, -NUDGE);
+          s.cycleImage(1);
           break;
         default:
           return;

@@ -530,6 +530,11 @@ export default function MeasureOverlay({
                 ? undefined
                 : (e) => {
                     e.stopPropagation();
+                    // select on label click too — for text annotations the
+                    // label is the ONLY hit target (no line/shape/hit layer),
+                    // so without this they can't be selected and Del would
+                    // fall through to closing the image instead of deleting.
+                    setSelected(m.id);
                     labelDragRef.current = {
                       mid: m.id,
                       startX: e.clientX,
@@ -558,6 +563,7 @@ export default function MeasureOverlay({
                 : (e) => {
                     e.preventDefault();
                     e.stopPropagation();
+                    setSelected(m.id);
                     setCtxMenu({ mid: m.id, x: e.clientX, y: e.clientY });
                   }
             }

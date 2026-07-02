@@ -1046,6 +1046,38 @@ details.fvd-card:not([open]) > summary {
   flex: 1;
 }
 
+/* ── status-bar image cycler: ‹ 3 / 12 › prev/next ── */
+.fvd-imgnav {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.fvd-imgnav-count {
+  min-width: 3.5em;
+  text-align: center;
+}
+
+.fvd-imgnav-btn {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: default;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.fvd-imgnav-btn:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
 /* ── filmstrip phase 3: header, names mode, selection, ctx menu ── */
 
 .fvd-film-head {

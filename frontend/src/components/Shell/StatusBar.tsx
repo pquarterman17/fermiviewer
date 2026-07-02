@@ -16,6 +16,8 @@ export default function StatusBar() {
     const i = s.order.indexOf(s.activeId);
     return i === -1 ? "" : `${i + 1} / ${s.order.length}`;
   });
+  const nImages = useViewer((s) => s.order.length);
+  const cycleImage = useViewer((s) => s.cycleImage);
   const cursor = useStageInfo((s) => s.cursor);
   const zoom = useStageInfo((s) => s.zoom);
   const captureMode = useViewer((s) => s.captureMode);
@@ -33,7 +35,28 @@ export default function StatusBar() {
       <span className="grow" />
       {meta && (
         <>
-          {nOfM && <span>{nOfM}</span>}
+          {nOfM &&
+            (nImages > 1 ? (
+              <span className="fvd-imgnav">
+                <button
+                  className="fvd-imgnav-btn"
+                  data-tip="Previous image (←)"
+                  onClick={() => cycleImage(-1)}
+                >
+                  ‹
+                </button>
+                <span className="fvd-imgnav-count">{nOfM}</span>
+                <button
+                  className="fvd-imgnav-btn"
+                  data-tip="Next image (→)"
+                  onClick={() => cycleImage(1)}
+                >
+                  ›
+                </button>
+              </span>
+            ) : (
+              <span>{nOfM}</span>
+            ))}
           <span>{meta.shape.join(" × ")}</span>
           <span>{meta.dtype}</span>
           {meta.pixel_size !== null && (
