@@ -160,8 +160,24 @@ async fn check_for_update(app: tauri::AppHandle) {
     }
 }
 
+/// Bring the existing window to the foreground. Called when the user
+/// launches a second copy (single-instance short-circuits the new process
+/// before it can spawn a rival shell + sidecar).
+fn focus_main_window(app: &tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.unminimize(); // restore if minimized to the taskbar
+        let _ = win.show(); // reveal if hidden
+        let _ = win.set_focus();
+    }
+}
+
 fn main() {
     tauri::Builder::default()
+        // MUST be the first plugin: it decides whether this process is the
+        // primary instance before anything else (window, server) is set up.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            focus_main_window(app);
+        }))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
