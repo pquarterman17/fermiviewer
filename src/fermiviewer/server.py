@@ -22,6 +22,13 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
 from fermiviewer import __version__
+from fermiviewer.netprobe import (
+    _await_health,
+    _bind,
+    _find_free_port,
+    _health_ok,
+    _port_listening,
+)
 
 if TYPE_CHECKING:
     import uvicorn
@@ -225,42 +232,6 @@ def _open_browser_later(url: str, delay: float = 0.8) -> None:
     timer.start()
 
 
-def _health_ok(host: str, port: int, timeout: float = 0.4) -> bool:
-    """True iff a *FermiViewer* server answers /api/health with 200 — used
-    to tell our own running instance apart from a foreign app on the port
-    and to gate the browser/window open on the server actually being up."""
-    import json
-    import urllib.request
-
-    try:
-        with urllib.request.urlopen(
-            f"http://{host}:{port}/api/health", timeout=timeout
-        ) as r:
-            if r.status != 200:
-                return False
-            data = json.loads(r.read())
-            return bool(isinstance(data, dict) and data.get("status") == "ok")
-    except Exception:
-        return False
-
-
-def _port_listening(host: str, port: int) -> bool:
-    """True iff something is accepting TCP connections on host:port."""
-    import socket
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.settimeout(0.4)
-        return s.connect_ex((host, port)) == 0
-
-
-def _find_free_port(host: str, start: int) -> int:
-    """First free port at or above ``start`` (small bounded scan)."""
-    for port in range(start, start + 50):
-        if not _port_listening(host, port):
-            return port
-    return start  # give up gracefully; uvicorn will report the bind error
-
-
 def _open_when_healthy(url: str, host: str, port: int, timeout: float = 30.0) -> None:
     """Open the browser only once the server answers — replaces the old
     fixed-delay timer, which raced a cold numpy/scipy import and showed
@@ -297,20 +268,25 @@ def _run_desktop() -> None:
         )
         return
 
-    # if the port is already taken, reuse our own instance rather than
-    # binding a dead server thread and waiting 30 s for a window that can
-    # never connect; refuse outright on a foreign app instead of hanging
-    if _port_listening(_HOST, _PORT) and not _health_ok(_HOST, _PORT):
-        print(f"port {_PORT} is in use by another app — close it and retry")
-        return
-
-    global _server
-    server = uvicorn.Server(
-        uvicorn.Config(app, host=_HOST, port=_PORT, log_level="warning")
-    )
-    _server = server
-    t = threading.Thread(target=server.run, daemon=True)
-    t.start()
+    # Bind up front so a taken port is a clean branch, not a crashed server
+    # thread: reuse our own healthy instance (point the window at it), or
+    # refuse a foreign app instead of hanging 30 s on a dead window.
+    sock = _bind(_HOST, _PORT)
+    server: uvicorn.Server | None = None
+    t: threading.Thread | None = None
+    if sock is None:
+        if not _health_ok(_HOST, _PORT):
+            print(f"port {_PORT} is in use by another app — close it and retry")
+            return
+    else:
+        global _server
+        server = uvicorn.Server(
+            uvicorn.Config(app, host=_HOST, port=_PORT, log_level="warning")
+        )
+        _server = server
+        s = sock  # bound socket handed to uvicorn — closes the bind race
+        t = threading.Thread(target=lambda: server.run(sockets=[s]), daemon=True)
+        t.start()
 
     # wait for the server to bind before pointing the window at it, else
     # the webview shows a connection-refused page and never retries
@@ -330,8 +306,10 @@ def _run_desktop() -> None:
     try:
         webview.start()
     finally:
-        server.should_exit = True
-        t.join(timeout=5)
+        if server is not None:
+            server.should_exit = True
+        if t is not None:
+            t.join(timeout=5)
 
 
 def _run_dev() -> None:
@@ -409,22 +387,41 @@ def main() -> None:
         _run_desktop()
         return
 
-    # Port handling differs by mode. The browser CLI may float to a free
-    # port and reuse a running instance. The headless sidecar (--no-browser,
-    # spawned by the Tauri shell) must stay on the FIXED port the shell
-    # navigates to — stepping to another port would leave the window
-    # pointing at nothing. So it binds _PORT or fails loudly (the shell then
-    # shows its error splash) and never orphans a server on a surprise port.
+    # The browser CLI may float to a free port; the headless sidecar
+    # (--no-browser, spawned by the Tauri/Start-Menu shell) must stay on the
+    # FIXED port the shell navigates to, so it never floats.
     host, port = _HOST, _PORT
-    if not args.no_browser and _port_listening(host, port):
-        if _health_ok(host, port):
-            print(f"FermiViewer already running — opening http://{host}:{port}")
+
+    # If a healthy FermiViewer already owns the port, REUSE it instead of
+    # starting a second server — the browser CLI opens it; the sidecar exits
+    # so the shell connects to the running instance. This is the common
+    # "launched twice" / "orphaned sidecar" case (--no-auto-shutdown means a
+    # crashed shell leaves the sidecar holding :8000) and must never crash
+    # with 'address already in use'. The sidecar waits a few seconds since
+    # the shell's own 800 ms probe may have raced a still-starting sibling.
+    if _port_listening(host, port) and _await_health(
+        host, port, timeout=5.0 if args.no_browser else 0.5
+    ):
+        print(f"FermiViewer already running — using http://{host}:{port}")
+        if not args.no_browser:
             import webbrowser
 
             webbrowser.open(f"http://{host}:{port}")
-            return
+        return
+
+    # Bind ourselves so a taken port floats (browser) or fails readably
+    # (sidecar) here — not as an OSError traceback inside uvicorn.run().
+    sock = _bind(host, port)
+    if sock is None and not args.no_browser:
         port = _find_free_port(host, _PORT + 1)
+        sock = _bind(host, port)
         print(f"port {_PORT} is in use by another app — using {port}")
+    if sock is None:
+        print(
+            f"Cannot start FermiViewer: port {_PORT} is in use by another "
+            "program (or a stuck FermiViewer process). Close it and relaunch."
+        )
+        raise SystemExit(1)
 
     dist = _frontend_dist()
     if dist is None:
@@ -442,7 +439,7 @@ def main() -> None:
     _auto_shutdown = dist is not None and not args.no_auto_shutdown
     server = uvicorn.Server(uvicorn.Config(app, host=host, port=port))
     _server = server
-    server.run()
+    server.run(sockets=[sock])
 
 
 if __name__ == "__main__":

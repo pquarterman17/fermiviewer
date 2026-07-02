@@ -140,3 +140,25 @@ def test_find_free_port_returns_free_port() -> None:
     port = server._find_free_port("127.0.0.1", 8725)
     assert 8725 <= port < 8775
     assert server._port_listening("127.0.0.1", port) is False
+
+
+def test_bind_claims_free_port_and_rejects_taken() -> None:
+    """The launch fix hinges on _bind turning a busy port into None (a value
+    to branch on) instead of an 'address already in use' crash."""
+    sock = server._bind("127.0.0.1", 8726)
+    assert sock is not None
+    try:
+        # port is ours now — a second bind must return None, never raise
+        assert server._bind("127.0.0.1", 8726) is None
+        assert server._port_listening("127.0.0.1", 8726) is True
+    finally:
+        sock.close()
+
+
+def test_await_health_times_out_without_hanging() -> None:
+    import time
+
+    start = time.monotonic()
+    assert server._await_health("127.0.0.1", 8727, timeout=0.3) is False
+    # returns at ~the timeout, not the process-lifetime
+    assert time.monotonic() - start < 2.0
