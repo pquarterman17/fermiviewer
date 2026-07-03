@@ -14,8 +14,10 @@ PNG/JPEG, headerless RAW, plus Bruker Nanoscope AFM (`.spm` / `.000`).
 **Analysis:** EELS (background, maps, quantification, thickness,
 Kramers–Kronig, Fourier-log, SVD), EDS (Cliff–Lorimer / ZAF, composition
 maps, composite overlays), diffraction (spot detection, phase indexing,
-d-spacings), GPA strain, CTF estimation, atom columns, particles, grains,
-FFT filtering, drift alignment, and a full measurement/annotation suite.
+d-spacings), GPA strain, CTF estimation, atom columns, particles, grains
+(k-means / watershed / paint-to-train classifier), cross-section layer &
+interface-roughness analysis, FFT filtering, drift alignment, and a full
+measurement/annotation suite.
 
 ---
 
@@ -119,8 +121,13 @@ Feature walkthroughs, screenshots, and how-tos live in the
 - **[Viewing &amp; Display](https://github.com/pquarterman17/fermiviewer/wiki/Viewing-and-Display)** — colormaps, the calibrated color scale, scale bar
 - **[Measurements](https://github.com/pquarterman17/fermiviewer/wiki/Measurements)** — line/box profiles, distances, ROIs, annotations
 - **[Analysis Workshops](https://github.com/pquarterman17/fermiviewer/wiki/Analysis-Workshops)** — EELS, EDS, diffraction
+- **[Structure &amp; Grains](https://github.com/pquarterman17/fermiviewer/wiki/Structure-and-Grains)** — grain segmentation (incl. paint-to-train), cross-section layer &amp; interface-roughness analysis
 - **[AFM Support](https://github.com/pquarterman17/fermiviewer/wiki/AFM-Support)** — Bruker Nanoscope height maps + Z-scale color bar
 - **[Supported Formats](https://github.com/pquarterman17/fermiviewer/wiki/Supported-Formats)**
+
+| Cross-section layer stack | Trained grain classifier |
+|---|---|
+| [![Cross-section Layers workshop — layer-stack band diagram with calibrated thickness table](docs/images/layers-workshop.png)](https://github.com/pquarterman17/fermiviewer/wiki/Structure-and-Grains) | [![Trained grains — painted class examples and a pixel-classification preview](docs/images/grains-trained.png)](https://github.com/pquarterman17/fermiviewer/wiki/Structure-and-Grains) |
 
 | Calibrated color scale (AFM height) | EELS analysis |
 |---|---|
