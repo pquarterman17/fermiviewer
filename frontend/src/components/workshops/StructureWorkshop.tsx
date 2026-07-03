@@ -558,7 +558,7 @@ function TrainedGrainControls({
         <button
           className="fvd-btn primary"
           onClick={onRun}
-          disabled={busy || nStrokes === 0}
+          disabled={busy || previewBusy || nStrokes === 0}
         >
           {busy ? progress || "Training…" : "Train & segment"}
         </button>
@@ -647,7 +647,17 @@ function GrainsMode({ id }: { id: string }) {
   const scribbleBegin = useScribble((s) => s.begin);
   const scribbleEnd = useScribble((s) => s.end);
 
+  // Training swaps the active image to the grain map it produced (so the stage
+  // merge/split editor can act on it). That self-initiated activeId change must
+  // NOT trip the image-switch reset below — which exists for *user* switches —
+  // or the just-computed results (tiles, note, export buttons) get wiped on the
+  // very next commit.
+  const selfSetActiveId = useRef<string | null>(null);
   useEffect(() => {
+    if (id === selfSetActiveId.current) {
+      selfSetActiveId.current = null;
+      return;
+    }
     setLabelsId(null);
     setGrainResult(null);
     setNote("");
@@ -688,8 +698,11 @@ function GrainsMode({ id }: { id: string }) {
       radius: s.radius,
       points: s.points,
     }));
+    const reqId = id;
     grainsTrainPreview(id, payload, { boundaryClass: bnd, classifier })
       .then((r) => {
+        // ignore a response that arrives after the user switched images
+        if (useViewer.getState().activeId !== reqId) return;
         setPreviewClasses(r.classes);
         const phases = r.classes.filter((c) => !c.is_boundary).length;
         setStatus(`trained grains: preview — ${phases} phase(s) classified`);
@@ -718,6 +731,10 @@ function GrainsMode({ id }: { id: string }) {
     })
       .then((r) => {
         const s = useViewer.getState();
+        // mark this activeId change as self-initiated so the reset effect
+        // keeps the results we're about to set (both ingestDerived and
+        // setActive make the grain map active; see selfSetActiveId)
+        selfSetActiveId.current = r.labels.id;
         s.ingestDerived([r.labels]);
         s.setActive(r.labels.id);
         setLabelsId(r.labels.id);
@@ -757,6 +774,9 @@ function GrainsMode({ id }: { id: string }) {
       (f, msg) => setProgress(`${Math.round(f * 100)}% ${msg}`),
     )
       .then((r) => {
+        // ingestDerived makes the new grain map the active image (via _ingest);
+        // mark that so the [id] reset effect keeps the results we set here
+        selfSetActiveId.current = r.labels.id;
         ingestDerived([r.labels]);
         setLabelsId(r.labels.id);
         setGrainResult(r);
