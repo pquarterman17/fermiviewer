@@ -232,3 +232,139 @@ def test_recalibrate_preview_does_not_apply(client, cube_id) -> None:
     body = r.json()
     assert body["applied"] is False
     assert "image" not in body
+
+
+# ── /eds/zeta (#7) ───────────────────────────────────────────────────
+
+def test_zeta_composition_and_mass_thickness(client, cube_id) -> None:
+    r = client.post("/api/eds/zeta", json={
+        "image_id": cube_id, "elements": ["Fe", "Cu"],
+        "background": "bremsstrahlung", "e0_kev": E0_KEV, "weights": None,
+        "zeta_factors": [1.0, 1.0], "probe_current_na": 1.0,
+        "live_time_s": 100.0, "absorption": False,
+    })
+    assert r.status_code == 200
+    q = r.json()["quant"]
+    # equal ζ → wt% follows the summed areas 24000:36000 = 40:60
+    np.testing.assert_allclose(q["weight_percent"], [40.0, 60.0], rtol=0.05)
+    # ρt = Σζ·I/D_e with D_e = 1 nA·100 s = 6.2415e11 electrons
+    total = (4000.0 + 6000.0) * NY * NX
+    assert q["mass_thickness_kg_m2"] == pytest.approx(
+        total / 6.2415091e11, rel=0.05)
+    assert q["mass_thickness_ug_cm2"] == pytest.approx(
+        q["mass_thickness_kg_m2"] * 1e5, rel=1e-9)
+    assert q["thickness_nm"] is None
+    assert q["absorption_factors"] == [1.0, 1.0]
+    for key in ("atomic_percent_error", "weight_percent_error"):
+        assert all(np.isfinite(s) and s >= 0 for s in q[key])
+
+
+def test_zeta_from_zeta_si_scales_k_table(client, cube_id) -> None:
+    r = client.post("/api/eds/zeta", json={
+        "image_id": cube_id, "elements": ["Fe", "Cu"],
+        "background": "bremsstrahlung", "e0_kev": E0_KEV, "weights": None,
+        "zeta_si": 1000.0, "absorption": False,
+    })
+    assert r.status_code == 200
+    q = r.json()["quant"]
+    assert q["zeta_factors"] == pytest.approx([1210.0, 1320.0])  # k·ζ_Si
+
+
+def test_zeta_thickness_with_density_and_absorption(client, cube_id) -> None:
+    r = client.post("/api/eds/zeta", json={
+        "image_id": cube_id, "elements": ["Fe", "Cu"],
+        "background": "bremsstrahlung", "e0_kev": E0_KEV, "weights": None,
+        "zeta_factors": [900.0, 950.0], "density_g_cm3": 8.5,
+        "absorption": True,
+    })
+    assert r.status_code == 200
+    q = r.json()["quant"]
+    # t = ρt/ρ (nm); absorption restores intensity so every A_i ≥ 1
+    assert q["thickness_nm"] == pytest.approx(
+        q["mass_thickness_kg_m2"] / 8500.0 * 1e9, rel=1e-6)
+    assert all(a >= 1.0 for a in q["absorption_factors"])
+
+
+def test_zeta_requires_a_zeta_source(client, cube_id) -> None:
+    r = client.post("/api/eds/zeta", json={
+        "image_id": cube_id, "elements": ["Fe", "Cu"],
+    })
+    assert r.status_code == 422
+
+
+def test_zeta_factor_length_mismatch_is_422(client, cube_id) -> None:
+    r = client.post("/api/eds/zeta", json={
+        "image_id": cube_id, "elements": ["Fe", "Cu"], "zeta_factors": [1.0],
+    })
+    assert r.status_code == 422
+
+
+# ── /eds/artifacts + peakfit remove_artifacts (#8) ───────────────────
+
+ESC_FRAC = 0.01
+
+
+@pytest.fixture()
+def artifact_cube_id(client, tmp_path) -> str:
+    """The Fe/Cu cube plus a Cu escape peak (on Fe-Kα!) and a Fe+Cu sum."""
+    pix = (
+        PIXEL
+        + _peak(ESC_FRAC * 6000.0, CU - 1.740)   # Cu esc @6.308, biases Fe
+        + _peak(30.0, FE + CU)                   # sum peak @14.452
+    )
+    arr = np.empty((NE, NY, NX))
+    for y in range(NY):
+        for x in range(NX):
+            arr[:, y, x] = pix
+    f = write_mini_dm4(
+        tmp_path / "eds_art.dm4", dims=[NX, NY, NE],
+        data=arr.ravel().astype(np.float32), data_type=2,
+        cal=[
+            {"scale": 1, "origin": 0, "units": "nm"},
+            {"scale": 1, "origin": 0, "units": "nm"},
+            {"scale": SCALE, "origin": 0, "units": "keV"},
+        ],
+    )
+    return client.post("/api/session/open", json={"paths": [str(f)]}).json()[0]["id"]
+
+
+def test_artifacts_endpoint_marks_and_measures(client, artifact_cube_id) -> None:
+    r = client.post("/api/eds/artifacts", json={
+        "image_id": artifact_cube_id, "elements": ["Fe", "Cu"],
+        "background": "bremsstrahlung", "e0_kev": E0_KEV,
+        "weights": None, "escape_fraction": ESC_FRAC,
+    })
+    assert r.status_code == 200
+    body = r.json()
+    marks = {a["name"]: a for a in body["artifacts"]}
+    # Cu escape sits on Fe-Kα → cannot be fitted, modeled from its parent
+    assert marks["esc_Cu"]["status"] == "modeled"
+    assert marks["esc_Cu"]["area"] == pytest.approx(
+        ESC_FRAC * 6000.0 * NY * NX, rel=0.1)
+    # the sum peak is clear of lines → freely measured
+    assert marks["sum_Fe_Cu"]["status"] == "measured"
+    assert marks["sum_Fe_Cu"]["area"] == pytest.approx(30.0 * NY * NX, rel=0.1)
+    assert marks["esc_Fe"]["status"] == "measured"   # present, ~0 area
+    assert len(body["corrected"]) == NE
+
+
+def test_peakfit_remove_artifacts_corrects_fe(client, artifact_cube_id) -> None:
+    def fe_area(remove: bool) -> tuple[float, dict]:
+        r = client.post("/api/eds/peakfit", json={
+            "image_id": artifact_cube_id, "elements": ["Fe", "Cu"],
+            "background": "bremsstrahlung", "e0_kev": E0_KEV, "weights": None,
+            "remove_artifacts": remove, "escape_fraction": ESC_FRAC,
+        })
+        assert r.status_code == 200
+        body = r.json()
+        return {e["symbol"]: e["net_area"] for e in body["elements"]}["Fe"], body
+
+    truth = 4000.0 * NY * NX
+    naive, naive_body = fe_area(False)
+    corrected, body = fe_area(True)
+    assert "artifacts" not in naive_body
+    assert naive > truth * 1.002                 # escape leaks into Fe-Kα
+    assert corrected == pytest.approx(truth, rel=5e-3)
+    assert abs(corrected - truth) < abs(naive - truth)
+    assert any(a["name"] == "esc_Cu" and a["status"] == "modeled"
+               for a in body["artifacts"])

@@ -1,10 +1,10 @@
-// Unit tests for the EDS model-fit API functions (continuum + peakfit).
-// Verify URL + request-body shape (option defaults, snake_case mapping)
-// without a live server.
+// Unit tests for the EDS model-fit API functions (continuum + peakfit +
+// zeta + artifacts). Verify URL + request-body shape (option defaults,
+// snake_case mapping) without a live server.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { edsContinuum, edsPeakfit, edsRecalibrate } from "./api";
+import { edsArtifacts, edsContinuum, edsPeakfit, edsRecalibrate, edsZeta } from "./api";
 
 function makeFetch(body: unknown, status = 200) {
   return vi.fn().mockResolvedValue({
@@ -99,6 +99,73 @@ describe("edsPeakfit request body", () => {
     expect(body.e0_kev).toBe(18);
     expect(body.quantify).toBe(true);
     expect(body.k_factors).toEqual([1, 1.32]);
+  });
+});
+
+describe("edsZeta request body", () => {
+  it("defaults dose inputs and forwards zeta_si (#7)", async () => {
+    globalThis.fetch = makeFetch({
+      energy: [], spectrum: [], model: [], elements: [],
+      reduced_chi2: 1, success: true, quant: {},
+    });
+    await edsZeta("img5", ["Fe", "Cu"], { zetaSi: 1000 });
+    const [url] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string];
+    expect(url).toBe("/api/eds/zeta");
+    const body = sentBody();
+    expect(body.zeta_si).toBe(1000);
+    expect(body.zeta_factors).toBeNull();
+    expect(body.probe_current_na).toBe(1);
+    expect(body.live_time_s).toBe(100);
+    expect(body.take_off_angle_deg).toBe(20);
+    expect(body.absorption).toBe(true);
+    expect(body.density_g_cm3).toBeNull();
+    expect(body.remove_artifacts).toBe(false);
+  });
+
+  it("forwards explicit zeta_factors, density, and the artifact pre-pass", async () => {
+    globalThis.fetch = makeFetch({
+      energy: [], spectrum: [], model: [], elements: [],
+      reduced_chi2: 1, success: true, quant: {},
+    });
+    await edsZeta("img5", ["Fe", "Cu"], {
+      zetaFactors: [900, 950],
+      densityGCm3: 8.5,
+      removeArtifacts: true,
+      escapeFraction: 0.02,
+    });
+    const body = sentBody();
+    expect(body.zeta_factors).toEqual([900, 950]);
+    expect(body.density_g_cm3).toBe(8.5);
+    expect(body.remove_artifacts).toBe(true);
+    expect(body.escape_fraction).toBe(0.02);
+  });
+});
+
+describe("edsArtifacts request body", () => {
+  it("defaults linear background + 1% escape fraction (#8)", async () => {
+    globalThis.fetch = makeFetch({
+      energy: [], spectrum: [], artifacts: [], corrected: [],
+    });
+    await edsArtifacts("img6", ["Fe", "Cu"]);
+    const [url] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string];
+    expect(url).toBe("/api/eds/artifacts");
+    const body = sentBody();
+    expect(body.elements).toEqual(["Fe", "Cu"]);
+    expect(body.background).toBe("linear");
+    expect(body.escape_fraction).toBe(0.01);
+  });
+});
+
+describe("edsPeakfit artifact options", () => {
+  it("defaults remove_artifacts=false and forwards the toggle (#8)", async () => {
+    globalThis.fetch = makeFetch({
+      energy: [], spectrum: [], model: [], elements: [],
+      reduced_chi2: 1, success: true,
+    });
+    await edsPeakfit("img2", ["Fe"], { removeArtifacts: true });
+    const body = sentBody();
+    expect(body.remove_artifacts).toBe(true);
+    expect(body.escape_fraction).toBe(0.01);
   });
 });
 

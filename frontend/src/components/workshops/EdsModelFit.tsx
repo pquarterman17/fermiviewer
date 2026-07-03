@@ -1,8 +1,11 @@
-// EDS model-fit section (PLAN_SPECTRAL_QUANT #4/#5): fit the Kramers
-// bremsstrahlung continuum, or deconvolve overlapping characteristic peaks
-// with a constrained multi-Gaussian model and optionally Cliff-Lorimer
-// quantify the net areas. Renders the summed spectrum + fitted curves
-// straight from the endpoint response (which carries energy/spectrum/curve).
+// EDS model-fit section (PLAN_SPECTRAL_QUANT #4/#5/#7/#8/#11): fit the
+// Kramers bremsstrahlung continuum, or deconvolve overlapping
+// characteristic peaks with a constrained multi-Gaussian model and
+// quantify the net areas — Cliff-Lorimer (k-factors) or ζ-factor
+// (Watanabe: composition + mass-thickness from the electron dose).
+// Optional escape/sum artifact pre-pass draws markers on the spectrum;
+// the result table exports to CSV. Renders the summed spectrum + fitted
+// curves straight from the endpoint response.
 
 import { useEffect, useRef, useState } from "react";
 import uPlot from "uplot";
@@ -11,15 +14,28 @@ import {
   edsContinuum,
   edsPeakfit,
   edsRecalibrate,
+  edsZeta,
+  type EdsArtifactMark,
   type EdsContinuumResult,
   type EdsPeakfitResult,
   type EdsRecalibrateResult,
+  type EdsZetaQuant,
+  type EdsZetaResult,
 } from "../../lib/api";
+import { csvBaseName, downloadCsv } from "../../lib/eelsQuantCsv";
+import { edsModelFitToCsv } from "../../lib/edsQuantCsv";
 import { formatPlusMinus } from "../../lib/formatUncertainty";
 import { useViewer } from "../../store/viewer";
 import { EDS_PALETTE } from "./EdsComposite";
 
 type Background = "none" | "linear" | "bremsstrahlung";
+type QuantMethod = "cl" | "zeta";
+
+const MARK_COLOR: Record<EdsArtifactMark["status"], string> = {
+  measured: "#a3e635", // fitted freely — trustworthy
+  modeled: "#f59e0b", // fraction × parent — an estimate
+  skipped: "#ef4444", // blocked sum peak left in the data — beware
+};
 
 /** Summed spectrum + fitted-curve overlay (continuum or model + peaks). */
 function ModelFitPlot({
@@ -27,7 +43,7 @@ function ModelFitPlot({
   peakfit,
 }: {
   cont: EdsContinuumResult | null;
-  peakfit: EdsPeakfitResult | null;
+  peakfit: EdsPeakfitResult | EdsZetaResult | null;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
@@ -65,6 +81,7 @@ function ModelFitPlot({
         data.push(el.curve);
       });
     }
+    const marks = peakfit?.artifacts ?? [];
 
     plotRef.current = new uPlot(
       {
@@ -78,6 +95,34 @@ function ModelFitPlot({
         ],
         legend: { show: true },
         cursor: { y: false },
+        hooks: {
+          draw: [
+            (u) => {
+              // artifact markers: dashed verticals at predicted energies,
+              // coloured by how the artifact was handled (#8)
+              if (marks.length === 0) return;
+              const ctx = u.ctx;
+              ctx.save();
+              ctx.setLineDash([3, 3]);
+              ctx.lineWidth = 1;
+              ctx.font = "9px sans-serif";
+              ctx.textAlign = "center";
+              marks.forEach((m, i) => {
+                const x = u.valToPos(m.energy_kev, "x", true);
+                if (x < u.bbox.left || x > u.bbox.left + u.bbox.width) return;
+                ctx.strokeStyle = MARK_COLOR[m.status];
+                ctx.fillStyle = MARK_COLOR[m.status];
+                ctx.beginPath();
+                ctx.moveTo(x, u.bbox.top);
+                ctx.lineTo(x, u.bbox.top + u.bbox.height);
+                ctx.stroke();
+                // stagger labels on two rows so neighbours stay legible
+                ctx.fillText(m.label, x, u.bbox.top + 10 + (i % 2) * 10);
+              });
+              ctx.restore();
+            },
+          ],
+        },
       },
       data as uPlot.AlignedData,
       host,
@@ -106,12 +151,21 @@ export default function EdsModelFit({
   elements: string;
 }) {
   const setStatus = useViewer((s) => s.setStatus);
+  const imageName = useViewer((s) =>
+    activeId ? s.images[activeId]?.name : undefined,
+  );
 
   const [e0, setE0] = useState("200");
   const [background, setBackground] = useState<Background>("bremsstrahlung");
   const [quantify, setQuantify] = useState(true);
+  const [method, setMethod] = useState<QuantMethod>("cl");
+  const [zetaSi, setZetaSi] = useState("1000");
+  const [probeNa, setProbeNa] = useState("1");
+  const [liveS, setLiveS] = useState("100");
+  const [density, setDensity] = useState("");
+  const [removeArts, setRemoveArts] = useState(false);
   const [cont, setCont] = useState<EdsContinuumResult | null>(null);
-  const [peakfit, setPeakfit] = useState<EdsPeakfitResult | null>(null);
+  const [peakfit, setPeakfit] = useState<EdsPeakfitResult | EdsZetaResult | null>(null);
   const [recal, setRecal] = useState<EdsRecalibrateResult | null>(null);
   const [busy, setBusy] = useState<"" | "continuum" | "peakfit" | "recal">("");
 
@@ -145,18 +199,34 @@ export default function EdsModelFit({
     }
     setBusy("peakfit");
     setCont(null);
-    edsPeakfit(activeId, els, {
+    const common = {
       beamKv: e0Kev,
       background,
       e0Kev: background === "bremsstrahlung" ? e0Kev : undefined,
-      quantify,
-    })
+      removeArtifacts: removeArts,
+    };
+    const run: Promise<EdsPeakfitResult | EdsZetaResult> =
+      method === "zeta" && quantify
+        ? edsZeta(activeId, els, {
+            ...common,
+            zetaSi: Number(zetaSi) || 1000,
+            probeCurrentNa: Number(probeNa) || 1,
+            liveTimeS: Number(liveS) || 100,
+            densityGCm3: Number(density) > 0 ? Number(density) : undefined,
+          })
+        : edsPeakfit(activeId, els, { ...common, quantify });
+    run
       .then((r) => {
         setPeakfit(r);
+        const q = r.quant;
+        const rho =
+          q && "mass_thickness_ug_cm2" in q
+            ? ` · ρt ${(q as EdsZetaQuant).mass_thickness_ug_cm2.toPrecision(3)} µg/cm²`
+            : "";
         const ratios = r.elements
           .map((el) => `${el.symbol} ${el.net_area.toPrecision(3)}`)
           .join(" · ");
-        setStatus(`EDS peakfit · χ²ᵣ ${r.reduced_chi2.toExponential(2)} · ${ratios}`);
+        setStatus(`EDS peakfit · χ²ᵣ ${r.reduced_chi2.toExponential(2)} · ${ratios}${rho}`);
       })
       .catch((e: Error) => setStatus(`EDS peakfit: ${e.message}`))
       .finally(() => setBusy(""));
@@ -187,9 +257,19 @@ export default function EdsModelFit({
       .finally(() => setBusy(""));
   };
 
+  const exportCsv = () => {
+    if (!peakfit) return;
+    downloadCsv(
+      `${csvBaseName(imageName)}_eds_quant.csv`,
+      edsModelFitToCsv(peakfit, { imageName: imageName ?? "image" }),
+    );
+  };
+
   // quant lookup by symbol for the merged net-area + at%/wt% table
   const quant = peakfit?.quant;
   const quantIdx = (sym: string) => quant?.elements.indexOf(sym) ?? -1;
+  const zetaQuant =
+    quant && "mass_thickness_ug_cm2" in quant ? (quant as EdsZetaQuant) : null;
 
   return (
     <div>
@@ -244,7 +324,52 @@ export default function EdsModelFit({
           />
           quant
         </label>
+        <div className="fvd-seg">
+          {(["cl", "zeta"] as const).map((m) => (
+            <button
+              key={m}
+              className={`fvd-seg-btn${method === m ? " active" : ""}`}
+              title={
+                m === "zeta"
+                  ? "ζ-factor (Watanabe): composition + mass-thickness from the electron dose (#7)"
+                  : "Cliff-Lorimer k-factor ratios"
+              }
+              onClick={() => setMethod(m)}
+            >
+              {m === "zeta" ? "ζ" : "CL"}
+            </button>
+          ))}
+        </div>
+        <label
+          className="k"
+          title="Predict escape/sum peaks, measure or model them, and refit on the corrected spectrum (#8)"
+          style={{ display: "flex", alignItems: "center", gap: 4 }}
+        >
+          <input
+            type="checkbox"
+            checked={removeArts}
+            onChange={(e) => setRemoveArts(e.target.checked)}
+          />
+          artifacts
+        </label>
       </div>
+
+      {method === "zeta" && quantify && (
+        <div className="fvd-ws-row">
+          <span className="k" title="Absolute ζ for Si-Kα on this detector (kg/m²) — scales the built-in k-factor table via ζᵢ = kᵢ·ζ_Si">
+            ζ_Si
+          </span>
+          <input value={zetaSi} style={{ width: 52 }} onChange={(e) => setZetaSi(e.target.value)} />
+          <span className="k">I (nA)</span>
+          <input value={probeNa} style={{ width: 40 }} onChange={(e) => setProbeNa(e.target.value)} />
+          <span className="k">τ (s)</span>
+          <input value={liveS} style={{ width: 48 }} onChange={(e) => setLiveS(e.target.value)} />
+          <span className="k" title="Optional density (g/cm³) to convert mass-thickness into thickness (nm)">
+            ρ (g/cc)
+          </span>
+          <input value={density} style={{ width: 44 }} placeholder="—" onChange={(e) => setDensity(e.target.value)} />
+        </div>
+      )}
 
       <div className="fvd-ws-row">
         <button
@@ -260,9 +385,29 @@ export default function EdsModelFit({
             gain {recal.gain.toFixed(4)}, offset {recal.offset.toFixed(3)} keV
           </span>
         )}
+        {peakfit && (
+          <button
+            className="fvd-btn"
+            title="Export the fit table (net areas, at%/wt% ± 1σ, ζ mass-thickness, artifact trail) as CSV (#11)"
+            onClick={exportCsv}
+          >
+            Export CSV
+          </button>
+        )}
       </div>
 
       {(cont || peakfit) && <ModelFitPlot cont={cont} peakfit={peakfit} />}
+
+      {zetaQuant && (
+        <div className="fvd-ws-row k" style={{ fontSize: 11 }}>
+          ρt {formatPlusMinus(zetaQuant.mass_thickness_ug_cm2,
+            zetaQuant.mass_thickness_error_kg_m2 * 1e5, 3)}{" "}
+          µg/cm²
+          {zetaQuant.thickness_nm != null &&
+            ` · t ${zetaQuant.thickness_nm.toPrecision(3)} nm`}
+          {` · dose ${zetaQuant.dose_electrons.toExponential(2)} e⁻`}
+        </div>
+      )}
 
       {peakfit && (
         <table className="fvd-ws-table">
