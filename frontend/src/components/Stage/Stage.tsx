@@ -139,8 +139,11 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   );
   const setView = useViewer((s) => s.setView);
   const setDisplay = useViewer((s) => s.setDisplay);
+  // -1 = the energy SUM view (the sensible cube overview). Defaulting to a
+  // channel index showed channel 0 (~0 keV, empty for EDS) as a black stage
+  // while the filmstrip's summed /render looked fine.
   const stackFrame = useViewer((s) =>
-    s.activeId ? (s.stackFrames[s.activeId] ?? 0) : 0,
+    s.activeId ? (s.stackFrames[s.activeId] ?? -1) : -1,
   );
   const setStackFrame = useViewer((s) => s.setStackFrame);
   const captureMode = useViewer((s) => s.captureMode);
@@ -239,7 +242,8 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       return;
     }
     const isStack = meta?.kind === "spectrum_image";
-    const frameArg = isStack ? stackFrame : undefined;
+    // frame < 0 → omit the param so the backend returns the energy sum
+    const frameArg = isStack && stackFrame >= 0 ? stackFrame : undefined;
     let alive = true;
     fetchData16(activeId, frameArg)
       .then((r) => {
@@ -382,7 +386,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       if (!activeId || !nFrames || nFrames < 2) return;
       if (e.key === "," || e.key === "<") {
         e.preventDefault();
-        setStackFrame(activeId, Math.max(0, stackFrame - 1));
+        setStackFrame(activeId, Math.max(-1, stackFrame - 1)); // -1 = sum
       } else if (e.key === "." || e.key === ">") {
         e.preventDefault();
         setStackFrame(activeId, Math.min(nFrames - 1, stackFrame + 1));
@@ -1007,7 +1011,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
           frame={stackFrame}
           total={nFrames}
           onStep={(delta) => {
-            const next = Math.min(nFrames - 1, Math.max(0, stackFrame + delta));
+            const next = Math.min(nFrames - 1, Math.max(-1, stackFrame + delta));
             setStackFrame(activeId, next);
           }}
         />
@@ -1306,7 +1310,7 @@ function StackStepper({
     <div className="fvd-glass fvd-stack-stepper">
       <button
         className="fvd-icon-btn"
-        disabled={frame <= 0}
+        disabled={frame <= -1}
         onClick={(e) => {
           e.stopPropagation();
           onStep(-1);
@@ -1316,7 +1320,7 @@ function StackStepper({
         ◀
       </button>
       <span className="fvd-stack-label">
-        {frame + 1} / {total}
+        {frame < 0 ? `Σ / ${total}` : `${frame + 1} / ${total}`}
       </span>
       <button
         className="fvd-icon-btn"

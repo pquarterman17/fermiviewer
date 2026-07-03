@@ -170,6 +170,7 @@ export default function EelsWorkshop() {
       {
         width: host.clientWidth,
         height: 180,
+        scales: { x: { time: false } }, // x is eV energy-loss, not a timestamp
         series,
         axes: [
           { stroke: "#888", grid: { stroke: "rgba(128,128,128,0.15)" } },

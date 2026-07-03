@@ -32,6 +32,7 @@ function DepthPlot({ r }: { r: LayersResult }) {
       {
         width: host.clientWidth || 300,
         height: 160,
+        scales: { x: { time: false } }, // x is depth (px), not a timestamp
         series: [
           { label: "depth (px)" },
           { label: "I", stroke: accent, width: 1.5, points: { show: false } },

@@ -56,6 +56,9 @@ function SpectrumPlot({
         width: host.clientWidth || 320,
         height: 160,
         title: label,
+        // energy axis is keV, not a timestamp — uPlot defaults x to a time
+        // scale, which renders small keV values as clock/date labels
+        scales: { x: { time: false } },
         series: [
           { label: `E (${spec.units})` },
           {

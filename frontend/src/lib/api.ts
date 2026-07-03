@@ -578,7 +578,9 @@ export interface EdsQuantResult {
   mean_atomic_pct_error: number[];
   mean_weight_pct_error: number[];
   k_factors: number[];
-  maps: ImageMeta[];
+  /** One at% map per element, aligned with `elements`; null where the map is
+   *  blank (element not really present) and was skipped to keep the library clean. */
+  maps: (ImageMeta | null)[];
 }
 
 export function edsQuantify(

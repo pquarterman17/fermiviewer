@@ -51,6 +51,19 @@ def _register_map(arr: np.ndarray, name: str, parent: DataStruct,
     return ImageMeta.from_datastruct(new_id, name, derived)
 
 
+def _map_is_blank(arr: np.ndarray) -> bool:
+    """True for an at% map with essentially no signal — an element that isn't
+    really present, so its at% stays below detection everywhere and the map
+    renders flat black. Skipped so absent elements don't clutter the library
+    (email 2026-07-02). A present element is kept even if uniform (e.g. a
+    single-element quant sits at ~100 at% across the field)."""
+    a = np.asarray(arr, dtype=np.float64)
+    finite = a[np.isfinite(a)]
+    if finite.size == 0:
+        return True
+    return bool(finite.max() < 1.0)  # <1 at% everywhere ≈ below detection
+
+
 class EdsQuantifyRequest(BaseModel):
     image_id: str
     elements: list[str]
@@ -75,8 +88,12 @@ def eds_quantify(req: EdsQuantifyRequest) -> dict:
                              take_off_angle_deg=req.take_off_angle_deg)
     else:
         res = cliff_lorimer(maps, syms)
+    # Blank (solid-black) maps mean the element isn't really present — skip
+    # registering them so they don't clutter the library. `maps` stays aligned
+    # with `elements` (null placeholder) so the table still lists every element.
     map_meta = [
-        _register_map(m, f"{sym} at%", ds, req.image_id).model_dump()
+        None if _map_is_blank(m)
+        else _register_map(m, f"{sym} at%", ds, req.image_id).model_dump()
         for sym, m in zip(syms, res.atomic_pct_maps, strict=True)
     ]
     # Aggregate counting-statistics 1σ on the field composition: the net

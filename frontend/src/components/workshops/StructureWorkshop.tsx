@@ -890,6 +890,7 @@ function CtfMode({ id }: { id: string }) {
       {
         width: el.clientWidth,
         height: 160,
+        scales: { x: { time: false } }, // x is spatial frequency, not time
         series: [
           {},
           { label: "power", stroke: "#8888aa", width: 1 },

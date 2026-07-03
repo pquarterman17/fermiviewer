@@ -126,7 +126,9 @@ def test_eds_quantify_endpoint(client, eds_cube_id) -> None:
     assert body["elements"] == ["Fe"]            # unknown symbol skipped
     assert body["lines"] == ["K"]
     assert body["mean_atomic_pct"] == [pytest.approx(100.0)]
-    assert body["maps"][0]["shape"] == [4, 5]
+    # `maps` stays aligned 1:1 with `elements` (null placeholder for blanks)
+    assert len(body["maps"]) == len(body["elements"])
+    assert body["maps"][0]["shape"] == [4, 5]  # present element → kept
     # single element → zero compositional error (additive uncertainty fields)
     assert body["mean_atomic_pct_error"] == [pytest.approx(0.0)]
     assert body["mean_weight_pct_error"] == [pytest.approx(0.0)]
@@ -139,6 +141,21 @@ def test_eds_quantify_endpoint(client, eds_cube_id) -> None:
     assert client.post("/api/eds/quantify", json={
         "image_id": eds_cube_id, "elements": ["Xx"],
     }).status_code == 422
+
+
+def test_eds_map_is_blank_criterion() -> None:
+    """Blank = below detection everywhere (absent element), NOT merely
+    uniform — a present-everywhere element (e.g. single-element quant at
+    ~100 at%) must be kept."""
+    from fermiviewer.routes.eds_quant import _map_is_blank
+
+    assert _map_is_blank(np.zeros((4, 5)))            # absent → blank
+    assert _map_is_blank(np.full((4, 5), 0.3))        # <1 at% → blank
+    assert _map_is_blank(np.full((4, 5), np.nan))     # no finite data → blank
+    assert not _map_is_blank(np.full((4, 5), 100.0))  # present everywhere
+    hot = np.zeros((4, 5))
+    hot[1, 2] = 42.0
+    assert not _map_is_blank(hot)                     # a real hotspot
 
 
 @pytest.fixture()

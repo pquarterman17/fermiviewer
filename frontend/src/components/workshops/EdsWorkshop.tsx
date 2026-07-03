@@ -41,6 +41,7 @@ function CompProfilePlot({ r }: { r: CompositionProfileResult }) {
       {
         width: host.clientWidth || 300,
         height: 160,
+        scales: { x: { time: false } }, // x is distance, not a timestamp
         series,
         axes: [
           { stroke: "#888", grid: { stroke: "rgba(128,128,128,0.15)" } },
@@ -146,26 +147,38 @@ export default function EdsWorkshop() {
     })
       .then((r) => {
         setResult(r);
-        // surface derived at% maps in the library
+        // surface derived at% maps in the library — blank (absent-element)
+        // maps come back null and are skipped so they don't clutter the strip
+        const kept = r.maps
+          .map((m, i) => ({ m, el: r.elements[i], i }))
+          .filter((x): x is { m: (typeof r.maps)[number] & object; el: string; i: number } =>
+            x.m != null,
+          );
         useViewer.setState((s) => {
           const images = { ...s.images };
           const order = [...s.order];
-          for (const m of r.maps) {
+          for (const { m } of kept) {
             if (!(m.id in images)) order.push(m.id);
             images[m.id] = m;
           }
           return { images, order };
         });
         setChannels(
-          r.maps.map((m, i) => ({
+          kept.map(({ m, el, i }) => ({
             id: m.id,
-            el: r.elements[i],
+            el,
             color: EDS_PALETTE[i % EDS_PALETTE.length],
             intensity: 1,
             visible: true,
           })),
         );
-        setStatus(`EDS: quantified ${r.elements.join(", ")}`);
+        const nSkipped = r.maps.length - kept.length;
+        setStatus(
+          `EDS: quantified ${r.elements.join(", ")}` +
+            (nSkipped > 0
+              ? ` · ${nSkipped} blank map${nSkipped > 1 ? "s" : ""} skipped`
+              : ""),
+        );
       })
       .catch((e: Error) => setStatus(`EDS: ${e.message}`))
       .finally(() => setBusy(false));
@@ -297,12 +310,15 @@ export default function EdsWorkshop() {
           </tbody>
         </table>
       )}
-      {result && (
-        <div className="fvd-ws-note">
-          {result.maps.length} at% map{result.maps.length === 1 ? "" : "s"}{" "}
-          added to the library.
-        </div>
-      )}
+      {result &&
+        (() => {
+          const added = result.maps.filter(Boolean).length;
+          return (
+            <div className="fvd-ws-note">
+              {added} at% map{added === 1 ? "" : "s"} added to the library.
+            </div>
+          );
+        })()}
       {channels.length > 0 && (
         <div className="fvd-ws-row">
           <button

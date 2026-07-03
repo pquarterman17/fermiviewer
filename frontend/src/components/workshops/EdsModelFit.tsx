@@ -70,6 +70,7 @@ function ModelFitPlot({
       {
         width: host.clientWidth || 300,
         height: 180,
+        scales: { x: { time: false } }, // x is keV energy, not a timestamp
         series,
         axes: [
           { stroke: "#888", grid: { stroke: "rgba(128,128,128,0.15)" } },
