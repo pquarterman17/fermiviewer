@@ -144,18 +144,22 @@ def test_eds_quantify_endpoint(client, eds_cube_id) -> None:
 
 
 def test_eds_map_is_blank_criterion() -> None:
-    """Blank = below detection everywhere (absent element), NOT merely
-    uniform — a present-everywhere element (e.g. single-element quant at
-    ~100 at%) must be kept."""
+    """Blank = no COHERENT signal (<1% of pixels above 1 at%). Because
+    Cliff-Lorimer normalizes per pixel, an absent element spikes to 100 at%
+    in stray noise pixels, so peak value can't discriminate — coverage does.
+    A present-everywhere element (single-element quant ~100 at%) is kept."""
     from fermiviewer.routes.eds_quant import _map_is_blank
 
-    assert _map_is_blank(np.zeros((4, 5)))            # absent → blank
-    assert _map_is_blank(np.full((4, 5), 0.3))        # <1 at% → blank
-    assert _map_is_blank(np.full((4, 5), np.nan))     # no finite data → blank
-    assert not _map_is_blank(np.full((4, 5), 100.0))  # present everywhere
-    hot = np.zeros((4, 5))
-    hot[1, 2] = 42.0
-    assert not _map_is_blank(hot)                     # a real hotspot
+    assert _map_is_blank(np.zeros((10, 10)))            # all-zero → blank
+    assert _map_is_blank(np.full((10, 10), 0.3))        # <1 at% → blank
+    assert _map_is_blank(np.full((10, 10), np.nan))     # all-NaN → blank
+    sparse = np.zeros((20, 20))
+    sparse[0, 0] = 90.0                                 # 1/400 = 0.25% coverage
+    assert _map_is_blank(sparse)                        # stray noise spike → blank
+    assert not _map_is_blank(np.full((10, 10), 100.0))  # present everywhere
+    region = np.zeros((10, 10))
+    region[:, :4] = 40.0                                # 40% coverage
+    assert not _map_is_blank(region)                    # coherent region → kept
 
 
 @pytest.fixture()

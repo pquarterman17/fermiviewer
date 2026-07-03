@@ -52,16 +52,22 @@ def _register_map(arr: np.ndarray, name: str, parent: DataStruct,
 
 
 def _map_is_blank(arr: np.ndarray) -> bool:
-    """True for an at% map with essentially no signal — an element that isn't
-    really present, so its at% stays below detection everywhere and the map
-    renders flat black. Skipped so absent elements don't clutter the library
-    (email 2026-07-02). A present element is kept even if uniform (e.g. a
-    single-element quant sits at ~100 at% across the field)."""
+    """True for an at% map with no coherent signal — an element that isn't
+    really present. Skipped so absent elements don't clutter the library
+    (email 2026-07-02).
+
+    Coverage, not peak value, is the discriminator. Because Cliff-Lorimer
+    normalizes at% per pixel, an ABSENT element still spikes to ~100 at% in
+    stray noise/vacuum pixels (validated on real Bruker SEM data: Au/Pb/W hit
+    100 at% yet cover <1% of the field, while present Cu/Al/O cover 2-12%).
+    So a map is blank when <1% of pixels rise above 1 at%. This also catches
+    the all-zero / all-NaN cases, and keeps a present-everywhere element (a
+    single-element quant sits at ~100 at% across the whole field → 100%
+    coverage). NaN pixels never satisfy `> 1.0`, so they don't count."""
     a = np.asarray(arr, dtype=np.float64)
-    finite = a[np.isfinite(a)]
-    if finite.size == 0:
+    if a.size == 0:
         return True
-    return bool(finite.max() < 1.0)  # <1 at% everywhere ≈ below detection
+    return int(np.count_nonzero(a > 1.0)) < 0.01 * a.size
 
 
 class EdsQuantifyRequest(BaseModel):

@@ -45,3 +45,17 @@ def eels_corpus(ml_datasets: Path) -> Path:
     if not (p / "FigS6_apatite_ZLP.dm4").is_file():
         pytest.skip("local EELS corpus absent — run fetch script")
     return p
+
+
+# Sibling example-dataset repo (../fv-example-data) — real BCF corpus for
+# TEM/SEM EDS, kept out of this repo (GPL data). See its README.
+EXAMPLE_DATA_ROOT = Path(__file__).resolve().parents[2] / "fv-example-data"
+
+
+@pytest.fixture(scope="session")
+def bcf_examples() -> Path:
+    """Path to ../fv-example-data/BCF; skips when the corpus isn't present."""
+    p = EXAMPLE_DATA_ROOT / "BCF"
+    if not (p / "SEM" / "Hitachi_TM3030Plus.bcf").is_file():
+        pytest.skip("fv-example-data BCF corpus absent (sibling repo)")
+    return p
