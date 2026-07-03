@@ -2308,6 +2308,130 @@ details.fvd-card:not([open]) > summary {
   pointer-events: none;
 }
 
+/* ── layer-stack band diagram (Cross-section workshop, WS5b) ── */
+.fvd-layerstack {
+  display: flex;
+  gap: 10px;
+  height: 200px;
+}
+
+.fvd-layerstack-bands {
+  width: 120px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.fvd-layerstack-band {
+  min-height: 16px;
+  display: grid;
+  place-items: center;
+}
+
+.fvd-layerstack-band + .fvd-layerstack-band {
+  border-top: 1px dashed rgba(255, 255, 255, 0.5);
+}
+
+.fvd-layerstack-band > span {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-medium);
+  color: rgba(0, 0, 0, 0.72);
+}
+
+.fvd-layerstack-labels {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.fvd-layerstack-label {
+  min-height: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fvd-layerstack-chip {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 2px;
+}
+
+.fvd-layerstack-name {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fvd-layerstack-th {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+.fvd-layerstack-th .dim {
+  color: var(--text-faint);
+}
+
+.fvd-layerstack-iface {
+  height: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fvd-layerstack-iface .rail {
+  flex: 1;
+  height: 1px;
+  opacity: 0.65;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--capture) 0 4px,
+    transparent 4px 8px
+  );
+}
+
+.fvd-layerstack-iface .sig {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--capture);
+}
+
+/* ── metric tiles (grain/result summaries, WS5b) ── */
+.fvd-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.fvd-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.fvd-metric .v {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  line-height: 1.1;
+  color: var(--text);
+}
+
+.fvd-metric .k {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--text-faint);
+}
+
 /* ── shared atoms ── */
 
 .fvd-icon-btn {

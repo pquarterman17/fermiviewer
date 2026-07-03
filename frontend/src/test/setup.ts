@@ -44,6 +44,25 @@ function ensureStorage(name: "localStorage" | "sessionStorage"): void {
 ensureStorage("localStorage");
 ensureStorage("sessionStorage");
 
+// jsdom has no matchMedia; uPlot reads it at module import (setPxRatio) so any
+// test importing a chart-bearing module needs it defined before that import.
+if (typeof globalThis.matchMedia === "undefined") {
+  Object.defineProperty(globalThis, "matchMedia", {
+    configurable: true,
+    value: (query: string): MediaQueryList =>
+      ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      }) as unknown as MediaQueryList,
+  });
+}
+
 beforeEach(() => {
   localStorage.clear();
 });

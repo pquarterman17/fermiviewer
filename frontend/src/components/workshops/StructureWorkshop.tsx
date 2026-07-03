@@ -308,12 +308,42 @@ function ParticlesMode({ id }: { id: string }) {
 
 // method → the one tuning knob it exposes; higher coarseness / merge / K
 // is fewer, larger grains. Classic k-means is the ported MATLAB path.
-const GRAIN_METHODS: { value: GrainMethod; label: string; knob: string }[] = [
-  { value: "gradient", label: "Gradient — visible boundaries", knob: "coarseness" },
-  { value: "rag", label: "Superpixel — diffraction contrast", knob: "merge thr" },
-  { value: "orientation", label: "Orientation — atomic-res", knob: "coarseness" },
-  { value: "kmeans", label: "Classic k-means", knob: "classes" },
-  { value: "trained", label: "Trained — paint examples", knob: "" },
+const GRAIN_METHODS: {
+  value: GrainMethod;
+  label: string;
+  knob: string;
+  when: string;
+}[] = [
+  {
+    value: "gradient",
+    label: "Gradient — visible boundaries",
+    knob: "coarseness",
+    when: "Visible grain boundaries in the image. Fast watershed on the gradient.",
+  },
+  {
+    value: "rag",
+    label: "Superpixel — diffraction contrast",
+    knob: "merge thr",
+    when: "Diffraction-contrast grains. Over-segments, then merges similar regions.",
+  },
+  {
+    value: "orientation",
+    label: "Orientation — atomic-res",
+    knob: "coarseness",
+    when: "Atomic-resolution lattices. Segments by local crystal orientation.",
+  },
+  {
+    value: "kmeans",
+    label: "Classic k-means",
+    knob: "classes",
+    when: "Simple intensity classes. The ported MATLAB path.",
+  },
+  {
+    value: "trained",
+    label: "Trained — paint examples",
+    knob: "",
+    when: "Anything the others miss. You teach it by painting a few examples.",
+  },
 ];
 
 // Trained-mode controls: pick a class, set the brush, paint examples on the
@@ -457,6 +487,30 @@ function TrainedGrainControls({
   );
 }
 
+// Compact mono metric tiles summarizing a grain result (WS5b redesign) — a
+// visual upgrade of the old numeric status line, backed by the same
+// GrainResult fields. The full per-grain table still opens in the results
+// window.
+export function GrainMetrics({ r }: { r: GrainResult }) {
+  const tiles: { v: string; k: string }[] = [
+    { v: String(r.n_grains), k: "grains" },
+    { v: `${r.mean_diameter_px.toFixed(1)} px`, k: "mean ⌀" },
+  ];
+  if (r.astm_grain_size != null)
+    tiles.push({ v: `G ${r.astm_grain_size.toFixed(1)}`, k: "ASTM" });
+  tiles.push({ v: String(r.n_triple_junctions), k: "junctions" });
+  return (
+    <div className="fvd-metrics">
+      {tiles.map((t) => (
+        <div key={t.k} className="fvd-metric">
+          <span className="v">{t.v}</span>
+          <span className="k">{t.k}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function GrainsMode({ id }: { id: string }) {
   const setStatus = useViewer((s) => s.setStatus);
   const ingestDerived = useViewer((s) => s.ingestDerived);
@@ -529,7 +583,8 @@ function GrainsMode({ id }: { id: string }) {
         s.setActive(r.labels.id);
         setLabelsId(r.labels.id);
         setGrainResult(r);
-        setNote(`${r.n_grains} grains · click to merge/split on the stage`);
+        setStatus(`trained grains: ${r.n_grains} grains`);
+        setNote("click a grain then another to merge · right-click to split");
         useResults.getState().show({
           title: `Grains (${r.n_grains}) · trained`,
           columns: ["#", "area (px)", "perim (px)", "ecc."],
@@ -566,6 +621,8 @@ function GrainsMode({ id }: { id: string }) {
         ingestDerived([r.labels]);
         setLabelsId(r.labels.id);
         setGrainResult(r);
+        // numbers now shown as metric tiles; keep the status line as the terse
+        // one-line summary
         const bits = [
           `${r.n_grains} grains`,
           `mean ⌀ ${r.mean_diameter_px.toFixed(1)} px`,
@@ -573,7 +630,8 @@ function GrainsMode({ id }: { id: string }) {
         if (r.astm_grain_size != null)
           bits.push(`ASTM G ${r.astm_grain_size.toFixed(1)}`);
         bits.push(`${r.n_triple_junctions} junctions`);
-        setNote(bits.join(" · "));
+        setStatus(`grains: ${bits.join(" · ")}`);
+        setNote("");
         useResults.getState().show({
           title: `Grains (${r.n_grains}) · ${r.method}`,
           columns: ["#", "area (px)", "perim (px)", "ecc."],
@@ -612,6 +670,9 @@ function GrainsMode({ id }: { id: string }) {
             </option>
           ))}
         </select>
+      </div>
+      <div className="fvd-ws-note">
+        {GRAIN_METHODS.find((m) => m.value === method)!.when}
       </div>
       {method === "trained" ? (
         <TrainedGrainControls
@@ -657,6 +718,7 @@ function GrainsMode({ id }: { id: string }) {
           </button>
         </div>
       )}
+      {grainResult && <GrainMetrics r={grainResult} />}
       {note && <div className="fvd-ws-note">{note}</div>}
       {grainResult && labelsId && (
         <div className="fvd-ws-row">
