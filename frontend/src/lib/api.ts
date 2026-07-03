@@ -2009,12 +2009,25 @@ export function renderUrl(
 
 // ── Cross-section layers (PLAN_CROSS_SECTION_LAYERS) ─────────────────
 
+export interface InterfaceRoughness {
+  sigma_ci: [number, number] | null;  // 95% block-bootstrap CI on sigma_w
+  sigma_raw: number | null;           // robust rms before noise subtraction
+  noise_floor: number | null;         // edge-localisation jitter estimate
+  quality: number;                    // fraction of columns kept (0..1)
+  xi: number | null;                  // HHCF correlation length, calibrated
+  hurst: number | null;               // HHCF Hurst exponent
+  sigma_chem: number | null;          // sqrt(sigma_erf² − sigma_w²), or null
+  psd_wavelength: number[];           // lateral wavelength per PSD bin
+  psd_power: number[];
+}
+
 export interface LayerInterface {
   position: number;          // sub-pixel depth (profile pixels)
   sigma_erf: number | null;  // erf transition width, calibrated units
   r_squared: number;
   sigma_w: number | null;    // geometric waviness, calibrated (Tier 2)
   trace: number[] | null;    // per-column edge depths (px)
+  roughness: InterfaceRoughness | null;  // full metrology (waviness on)
 }
 
 export interface LayerBand {
@@ -2023,6 +2036,7 @@ export interface LayerBand {
   bottom: number;
   thickness: number;         // calibrated units
   thickness_std: number | null;  // FOV thickness std, calibrated (Tier 2)
+  conformality: number | null;   // Pearson r between the bounding traces
 }
 
 export interface LayersResult {

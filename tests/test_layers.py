@@ -159,12 +159,18 @@ def test_trace_interface_flat_is_low_waviness() -> None:
 
 
 def test_analyze_layers_waviness_random_sigma_w() -> None:
+    from scipy.ndimage import gaussian_filter1d
+
     rng = np.random.default_rng(0)
-    x = np.arange(200)
     sigma_true = 2.5
-    # two parallel interfaces, both jittered by the same per-column noise so
-    # σ_w is well-defined and the layer thickness stays ~constant
-    jitter = rng.normal(0.0, sigma_true, size=200)
+    # two parallel interfaces sharing laterally-CORRELATED waviness (a real
+    # interface is PSF-smoothed — it cannot jump independently every column;
+    # delta-correlated jitter is measurement noise and gets subtracted).
+    # FOV must span many correlation lengths: the poly-2 detrend defines a
+    # pass band, and roughness power at wavelengths ~ FOV is (correctly)
+    # removed as form — so keep xi << n or the ground truth isn't in-band.
+    jitter = gaussian_filter1d(rng.normal(0.0, 1.0, 512), 5.0)
+    jitter *= sigma_true / jitter.std()
     yy = np.arange(160, dtype=np.float64)[:, None]
     d1 = 50.0 + jitter
     d2 = 110.0 + jitter
@@ -177,11 +183,23 @@ def test_analyze_layers_waviness_random_sigma_w() -> None:
     assert len(res.interfaces) == 2
     for it in res.interfaces:
         assert it.sigma_w == pytest.approx(sigma_true, rel=0.2)
-        assert it.trace is not None and it.trace.size == 200
+        assert it.trace is not None and it.trace.size == 512
     # both interfaces share the jitter → thickness barely varies across the FOV
     assert len(res.layers) == 1
     assert res.layers[0].thickness_std < 0.5
-    _ = x
+
+
+def test_analyze_layers_uncorrelated_jitter_is_noise_not_roughness() -> None:
+    # item #8 contract: column-to-column-independent displacement is
+    # edge-localisation noise — σ_w must report well below its raw std
+    rng = np.random.default_rng(0)
+    jitter = rng.normal(0.0, 2.5, size=200)
+    yy = np.arange(160, dtype=np.float64)[:, None]
+    img = 0.2 + 0.6 * 0.5 * (1 + erf((yy - (80.0 + jitter)[None, :]) / (3 * np.sqrt(2))))
+    res = analyze_layers(img, pixel_size=1.0, waviness=True, n_layers=2)
+    it = res.interfaces[0]
+    assert it.trace is not None
+    assert it.sigma_w < 0.7 * float(np.std(it.trace))
 
 
 def test_analyze_layers_without_waviness_has_nan_sigma_w() -> None:

@@ -28,6 +28,11 @@ from fermiviewer.calc.layers_detect import (
 )
 from fermiviewer.calc.profiles import box_integrate, fit_interface_width
 from fermiviewer.calc.texture import structure_tensor
+from fermiviewer.calc.trace_roughness import (
+    robust_sigma,
+    robust_sigma_w,
+    trace_interface,
+)
 
 __all__ = [
     "Interface",
@@ -224,56 +229,6 @@ class LayerResult:
     unit: str
 
 
-def _parabolic_edge(line: np.ndarray, approx: int, window: int) -> float:
-    """Sub-pixel gradient-peak edge in a 1-D profile near ``approx``.
-
-    The cheap per-column estimator (vs the expensive erf fit): the
-    |gradient| maximum within ``±window`` of ``approx``, refined by a
-    3-point parabolic fit. Fast enough to run on every lateral column.
-    """
-    n = line.size
-    lo = max(1, approx - window)
-    hi = min(n - 1, approx + window + 1)
-    if hi - lo < 1:
-        return float(approx)
-    g = np.abs(np.gradient(line))
-    k = int(np.argmax(g[lo:hi])) + lo
-    if k <= 0 or k >= n - 1:
-        return float(k)
-    y0, y1, y2 = g[k - 1], g[k], g[k + 1]
-    denom = y0 - 2.0 * y1 + y2
-    frac = 0.5 * (y0 - y2) / denom if abs(denom) > 1e-12 else 0.0
-    return float(k + np.clip(frac, -0.5, 0.5))
-
-
-def trace_interface(
-    img: np.ndarray,
-    axis: str,
-    interface_pos: float,
-    window: int = 10,
-    smooth: float = 1.0,
-) -> np.ndarray:
-    """Trace an interface column-by-column → its depth at each lateral pos.
-
-    For ``axis="y"`` (horizontal layers) each column is a depth profile and
-    the interface is traced across columns; ``axis="x"`` traces across rows.
-    The std of the returned depths is the geometric waviness σ_w (in pixels).
-    A light Gaussian pre-smooth suppresses per-column noise.
-    """
-    from scipy.ndimage import gaussian_filter1d
-
-    arr = np.asarray(img, dtype=np.float64)
-    lines = arr.T if axis == "y" else arr   # rows of `lines` are depth profiles
-    approx = int(round(interface_pos))
-    out = np.empty(lines.shape[0], dtype=np.float64)
-    for j in range(lines.shape[0]):
-        line = lines[j]
-        if smooth > 0:
-            line = gaussian_filter1d(line, smooth)
-        out[j] = _parabolic_edge(line, approx, window)
-    return out
-
-
 def _refine_interface(
     depth_pos: np.ndarray, profile: np.ndarray, idx: int, window: int
 ) -> tuple[float, float, float]:
@@ -315,14 +270,33 @@ def _interfaces_and_layers(
     Shared by :func:`analyze_layers` (auto-detected ``idxs``) and
     :func:`recompute_layers` (user-edited ``idxs``).
     """
+    # adaptive per-interface trace window: never wider than half the gap to
+    # the nearest neighbour, or a thin layer's trace locks onto the stronger
+    # adjacent interface (the |gradient| max inside the window wins)
+    srt = np.sort(np.asarray(idxs, dtype=np.float64))
+    gaps: dict[int, int] = {}
+    for i, v in enumerate(srt):
+        near = min(
+            v - srt[i - 1] if i > 0 else np.inf,
+            srt[i + 1] - v if i < srt.size - 1 else np.inf,
+        )
+        gaps[int(v)] = int(near // 2) if np.isfinite(near) else trace_window
     interfaces: list[Interface] = []
     for idx in idxs:
-        center, sigma, r2 = _refine_interface(depth_pos, profile, int(idx), fit_window)
+        half_gap = gaps.get(int(idx), fit_window)
+        # the erf fit window must also respect the neighbour gap, or both
+        # fits around a thin layer converge onto the same (stronger) step
+        center, sigma, r2 = _refine_interface(
+            depth_pos, profile, int(idx), max(3, min(fit_window, half_gap))
+        )
         sigma_w = float("nan")
         trace: np.ndarray | None = None
         if sub is not None:
-            trace = trace_interface(sub, axis, center, trace_window)
-            sigma_w = float(np.std(trace)) * pixel_size
+            win = max(3, min(trace_window, half_gap))
+            trace = trace_interface(sub, axis, center, win)
+            # detrended + outlier-robust + noise-floor-corrected (item #8);
+            # the raw std conflated tilt/bow + hot columns with roughness
+            sigma_w = robust_sigma_w(trace) * pixel_size
         interfaces.append(
             Interface(
                 position=center,
@@ -341,7 +315,11 @@ def _interfaces_and_layers(
         t_std = float("nan")
         tr_top, tr_bot = interfaces[i].trace, interfaces[i + 1].trace
         if tr_top is not None and tr_bot is not None and tr_top.size == tr_bot.size:
-            t_std = float(np.std(tr_bot - tr_top)) * pixel_size
+            # robust (MAD) std: differencing already cancels common tilt/bow,
+            # but a single bad column in either trace would poison a raw std.
+            # A real thickness wedge (non-parallel interfaces) stays in — it
+            # IS thickness variation, not a measurement artifact.
+            t_std = robust_sigma(tr_bot - tr_top) * pixel_size
         layers.append(
             Layer(index=i, top=top, bottom=bottom,
                   thickness=(bottom - top) * pixel_size, thickness_std=t_std)

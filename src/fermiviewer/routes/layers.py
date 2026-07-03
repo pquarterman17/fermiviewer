@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from fermiviewer.calc.layers import LayerResult, analyze_layers, recompute_layers
+from fermiviewer.calc.trace_roughness import analyze_trace, conformality, sigma_chem
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.session import UnknownImageError, store
 
@@ -32,7 +33,49 @@ def _nan_none(x: float) -> float | None:
     return None if not math.isfinite(x) else float(x)
 
 
+def _roughness_blocks(
+    res: LayerResult,
+) -> tuple[list[dict | None], list[float | None]]:
+    """Per-interface roughness reports + per-layer conformality (items #9-12).
+
+    Runs the full trace metrology (detrend/robust/noise-corrected sigma with a
+    block-bootstrap CI, PSD, self-affine xi/H, quality) on every traced
+    interface, plus the sigma_chem quadrature decomposition and the adjacent-
+    trace conformality r for each layer. Interfaces without a trace (waviness
+    off) report None.
+    """
+    reports: list[dict | None] = []
+    resids: list[np.ndarray | None] = []
+    for i in res.interfaces:
+        if i.trace is None:
+            reports.append(None)
+            resids.append(None)
+            continue
+        r = analyze_trace(i.trace, res.pixel_size)
+        resids.append(r.detrended)
+        lo, hi = r.sigma_ci
+        reports.append({
+            "sigma_ci": [lo, hi] if math.isfinite(lo) and math.isfinite(hi) else None,
+            "sigma_raw": _nan_none(r.sigma_raw),
+            "noise_floor": _nan_none(r.noise_floor),
+            "quality": r.quality,
+            "xi": _nan_none(r.xi),
+            "hurst": _nan_none(r.hurst),
+            "sigma_chem": _nan_none(sigma_chem(i.sigma_erf, r.sigma_w)),
+            "psd_wavelength": r.psd_wavelength.tolist(),
+            "psd_power": r.psd_power.tolist(),
+        })
+    conf: list[float | None] = []
+    for k in range(max(0, len(res.interfaces) - 1)):
+        a, b = resids[k], resids[k + 1]
+        conf.append(
+            _nan_none(conformality(a, b)) if a is not None and b is not None else None
+        )
+    return reports, conf
+
+
 def _result_to_dict(res: LayerResult) -> dict:
+    rough, conf = _roughness_blocks(res)
     return {
         "axis": res.axis,
         "layers_horizontal": res.layers_horizontal,
@@ -49,8 +92,9 @@ def _result_to_dict(res: LayerResult) -> dict:
                 "r_squared": i.r_squared,
                 "sigma_w": _nan_none(i.sigma_w),
                 "trace": i.trace.tolist() if i.trace is not None else None,
+                "roughness": rough[k],
             }
-            for i in res.interfaces
+            for k, i in enumerate(res.interfaces)
         ],
         "layers": [
             {
@@ -59,6 +103,7 @@ def _result_to_dict(res: LayerResult) -> dict:
                 "bottom": lyr.bottom,
                 "thickness": lyr.thickness,
                 "thickness_std": _nan_none(lyr.thickness_std),
+                "conformality": conf[lyr.index] if lyr.index < len(conf) else None,
             }
             for lyr in res.layers
         ],

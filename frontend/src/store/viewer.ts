@@ -587,6 +587,7 @@ interface ViewerState {
   layersOverlay: LayersOverlayState | null;
   layersEdit: boolean;                 // stage interface-editing mode
   layersEditReq: number[] | null;      // positions requested by a stage edit
+  layersFocusReq: number | null;       // interface index clicked on the stage
   panTool: boolean;
   profileWidth: number;  // ⊥ averaging width (px) for profile captures
   profileReduce: "mean" | "sum"; // box/profile reduction mode (item #49)
@@ -705,6 +706,7 @@ interface ViewerState {
   setLayersOverlay: (o: LayersOverlayState | null) => void;
   setLayersEdit: (b: boolean) => void;
   setLayersEditReq: (p: number[] | null) => void;
+  setLayersFocusReq: (k: number | null) => void;
   setPanTool: (on: boolean) => void;
   setProfileWidth: (w: number) => void;
   setProfileReduce: (r: "mean" | "sum") => void;
@@ -915,6 +917,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   layersOverlay: null,
   layersEdit: false,
   layersEditReq: null,
+  layersFocusReq: null,
   panTool: false,
   profileWidth: _pref("profileWidth", 1),
   profileReduce: _pref<"mean" | "sum">("profileReduce", "mean"),
@@ -1562,6 +1565,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   setLayersOverlay: (layersOverlay) => set({ layersOverlay }),
   setLayersEdit: (layersEdit) => set({ layersEdit }),
   setLayersEditReq: (layersEditReq) => set({ layersEditReq }),
+  setLayersFocusReq: (layersFocusReq) => set({ layersFocusReq }),
   setProfileWidth: (w) => {
     const profileWidth = Math.max(1, Math.min(99, Math.round(w)));
     writePref("profileWidth", profileWidth);

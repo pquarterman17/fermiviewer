@@ -15,6 +15,7 @@ import {
   type LayersResult,
 } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
+import LayersRoughnessDetail from "./LayersRoughnessDetail";
 
 function DepthPlot({ r }: { r: LayersResult }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -172,13 +173,25 @@ function exportCsv(r: LayersResult) {
       l.thickness_std == null ? "" : l.thickness_std.toFixed(4),
     ]),
     [],
-    ["interface", "position_px", `sigma_erf_${r.unit}`, `sigma_w_${r.unit}`, "r_squared"],
+    [
+      "interface", "position_px", `sigma_erf_${r.unit}`, `sigma_w_${r.unit}`,
+      "r_squared", `sigma_w_ci_lo_${r.unit}`, `sigma_w_ci_hi_${r.unit}`,
+      "trace_quality", `noise_floor_${r.unit}`, `xi_${r.unit}`, "hurst",
+      `sigma_chem_${r.unit}`,
+    ],
     ...r.interfaces.map((i, k) => [
       k,
       i.position.toFixed(3),
       i.sigma_erf == null ? "" : i.sigma_erf.toFixed(4),
       i.sigma_w == null ? "" : i.sigma_w.toFixed(4),
       i.r_squared.toFixed(4),
+      i.roughness?.sigma_ci == null ? "" : i.roughness.sigma_ci[0].toFixed(4),
+      i.roughness?.sigma_ci == null ? "" : i.roughness.sigma_ci[1].toFixed(4),
+      i.roughness == null ? "" : i.roughness.quality.toFixed(3),
+      i.roughness?.noise_floor == null ? "" : i.roughness.noise_floor.toFixed(4),
+      i.roughness?.xi == null ? "" : i.roughness.xi.toFixed(2),
+      i.roughness?.hurst == null ? "" : i.roughness.hurst.toFixed(3),
+      i.roughness?.sigma_chem == null ? "" : i.roughness.sigma_chem.toFixed(4),
     ]),
   ];
   const csv = rows.map((row) => row.join(",")).join("\n");
@@ -208,9 +221,13 @@ export default function LayersWorkshop() {
   const [nLayers, setNLayers] = useState("");
   const [waviness, setWaviness] = useState(false);
   const [decurtain, setDecurtain] = useState(false);
+  const [foilT, setFoilT] = useState("");         // ≈ foil thickness, calibrated
+  const [detailIdx, setDetailIdx] = useState<number | null>(null);
   const [result, setResult] = useState<LayersResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [addPos, setAddPos] = useState("");
+  const layersFocusReq = useViewer((s) => s.layersFocusReq);
+  const setLayersFocusReq = useViewer((s) => s.setLayersFocusReq);
   const images = useViewer((s) => s.images);
   const order = useViewer((s) => s.order);
   const [selectedMaps, setSelectedMaps] = useState<string[]>([]);
@@ -303,7 +320,16 @@ export default function LayersWorkshop() {
     setLayersOverlay(null);
     setLayersEdit(false);
     setLayersEditReq(null);
+    setDetailIdx(null);
   }, [activeId, setLayersOverlay, setLayersEdit, setLayersEditReq]);
+
+  // a stage click on an interface line focuses its roughness detail card
+  useEffect(() => {
+    if (layersFocusReq != null) {
+      setDetailIdx(layersFocusReq);
+      setLayersFocusReq(null);
+    }
+  }, [layersFocusReq, setLayersFocusReq]);
   useEffect(
     () => () => {
       setLayersOverlay(null);
@@ -413,7 +439,7 @@ export default function LayersWorkshop() {
           waviness (σ_w)
         </label>
         <span className="k" style={{ fontSize: 10, opacity: 0.7 }}>
-          column-by-column interface trace — geometric roughness + thickness ±std
+          per-column trace → detrended robust roughness ±CI, spectrum, conformality
         </span>
       </div>
       <div className="fvd-ws-row">
@@ -427,6 +453,19 @@ export default function LayersWorkshop() {
         </label>
         <span className="k" style={{ fontSize: 10, opacity: 0.7 }}>
           robust median collapse + FFT notch — suppresses FIB milling streaks
+        </span>
+      </div>
+      <div className="fvd-ws-row">
+        <span className="k">≈ foil t</span>
+        <input
+          value={foilT}
+          placeholder="optional"
+          style={{ width: 56 }}
+          title="Approximate TEM foil thickness (same units as the calibration). Roughness at lateral wavelengths shorter than the foil is projection-smeared — the PSD marks that region and σ_w reads as a lower bound."
+          onChange={(e) => setFoilT(e.target.value)}
+        />
+        <span className="k" style={{ fontSize: 10, opacity: 0.7 }}>
+          marks projection-limited wavelengths in the roughness spectrum
         </span>
       </div>
 
@@ -463,13 +502,21 @@ export default function LayersWorkshop() {
             <tr>
               <th>Layer</th>
               <th>Thickness ({result.unit})</th>
-              <th>σ_erf ({result.unit})</th>
-              <th>σ_w ({result.unit})</th>
+              <th title="erf width of the laterally AVERAGED profile — convolves chemical grading with waviness and residual tilt. See σ_chem in the interface detail for the decomposed intrinsic width.">
+                σ_erf ({result.unit})
+              </th>
+              <th title="Geometric interface waviness: detrended, outlier-robust, noise-corrected rms of the per-column trace. A lower bound (projection through the foil).">
+                σ_w ({result.unit})
+              </th>
+              <th title="Pearson r between this layer's two interface traces: ~1 = roughness replicated from below (conformal growth), ~0 = independent.">
+                conf r
+              </th>
             </tr>
           </thead>
           <tbody>
             {result.layers.map((l) => {
               const top = result.interfaces[l.index];
+              const rough = top?.roughness ?? null;
               return (
                 <tr key={l.index}>
                   <td>{l.index + 1}</td>
@@ -478,12 +525,49 @@ export default function LayersWorkshop() {
                     {l.thickness_std != null && ` ± ${l.thickness_std.toFixed(2)}`}
                   </td>
                   <td>{top?.sigma_erf == null ? "—" : top.sigma_erf.toFixed(3)}</td>
-                  <td>{top?.sigma_w == null ? "—" : top.sigma_w.toFixed(3)}</td>
+                  <td>
+                    {top?.sigma_w == null ? "—" : top.sigma_w.toFixed(3)}
+                    {rough?.sigma_ci && (
+                      <span className="dim" style={{ fontSize: 10 }}>
+                        {" "}
+                        [{rough.sigma_ci[0].toFixed(2)}–{rough.sigma_ci[1].toFixed(2)}]
+                      </span>
+                    )}
+                    {rough != null && rough.quality < 0.9 && (
+                      <span title={`only ${(rough.quality * 100).toFixed(0)}% of trace columns usable`}> ⚠</span>
+                    )}
+                  </td>
+                  <td>{l.conformality == null ? "—" : l.conformality.toFixed(2)}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
+      )}
+      {result && result.interfaces.some((i) => i.roughness) && (
+        <>
+          <div className="fvd-ws-row" style={{ flexWrap: "wrap", gap: 4 }}>
+            <span className="k">Interface detail</span>
+            {result.interfaces.map((i, k) => (
+              <button
+                key={k}
+                className={`fvd-seg-btn${detailIdx === k ? " active" : ""}`}
+                title={`Interface ${k + 1} at depth ${i.position.toFixed(1)} px — click for the full roughness report (or click its line on the image)`}
+                onClick={() => setDetailIdx(detailIdx === k ? null : k)}
+              >
+                {k + 1}
+              </button>
+            ))}
+          </div>
+          {detailIdx != null && result.interfaces[detailIdx] && (
+            <LayersRoughnessDetail
+              iface={result.interfaces[detailIdx]}
+              index={detailIdx}
+              unit={result.unit}
+              foilT={Number(foilT) > 0 ? Number(foilT) : null}
+            />
+          )}
+        </>
       )}
       {result && (
         <div className="fvd-ws-row">

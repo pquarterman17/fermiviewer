@@ -9,8 +9,10 @@ import { describe, expect, it } from "vitest";
 import type {
   GrainPreviewClass,
   GrainResult,
+  LayerInterface,
   LayersResult,
 } from "../../lib/api";
+import LayersRoughnessDetail from "./LayersRoughnessDetail";
 import { LayerStack } from "./LayersWorkshop";
 import {
   GrainMetrics,
@@ -29,12 +31,12 @@ function makeLayers(): LayersResult {
     depth_pos: [],
     depth_profile: [],
     interfaces: [
-      { position: 0, sigma_erf: 1.1, r_squared: 0.99, sigma_w: null, trace: null },
-      { position: 6, sigma_erf: 1.82, r_squared: 0.98, sigma_w: null, trace: null },
+      { position: 0, sigma_erf: 1.1, r_squared: 0.99, sigma_w: null, trace: null, roughness: null },
+      { position: 6, sigma_erf: 1.82, r_squared: 0.98, sigma_w: null, trace: null, roughness: null },
     ],
     layers: [
-      { index: 0, top: 0, bottom: 6.2, thickness: 6.2, thickness_std: 0.5 },
-      { index: 1, top: 6.2, bottom: 18.6, thickness: 12.4, thickness_std: 0.3 },
+      { index: 0, top: 0, bottom: 6.2, thickness: 6.2, thickness_std: 0.5, conformality: null },
+      { index: 1, top: 6.2, bottom: 18.6, thickness: 12.4, thickness_std: 0.3, conformality: null },
     ],
   };
 }
@@ -153,5 +155,59 @@ describe("TrainedPreviewLegend", () => {
     // boundary class 3 gets the ∅ prefix; non-boundary classes do not
     expect(screen.getByText("∅ Class 3")).toBeInTheDocument();
     expect(screen.getByText("7%")).toBeInTheDocument();
+  });
+});
+
+describe("LayersRoughnessDetail", () => {
+  const iface = (over: Partial<LayerInterface> = {}): LayerInterface => ({
+    position: 60,
+    sigma_erf: 2.5,
+    r_squared: 0.98,
+    sigma_w: 1.5,
+    trace: [60, 61, 59],
+    roughness: {
+      sigma_ci: [1.2, 1.9],
+      sigma_raw: 1.6,
+      noise_floor: 0.4,
+      quality: 0.97,
+      xi: 24,
+      hurst: 0.85,
+      sigma_chem: 2.0,
+      psd_wavelength: [],
+      psd_power: [],
+    },
+    ...over,
+  });
+
+  it("shows sigma_w with its CI plus xi, Hurst and sigma_chem tiles", () => {
+    const { container } = render(
+      <LayersRoughnessDetail iface={iface()} index={0} unit="nm" foilT={null} />,
+    );
+    expect(container.querySelectorAll(".fvd-metric")).toHaveLength(4);
+    expect(screen.getByText("1.50")).toBeInTheDocument();        // sigma_w
+    expect(screen.getByText(/\[1\.20–1\.90\]/)).toBeInTheDocument();
+    expect(screen.getByText("24")).toBeInTheDocument();          // xi
+    expect(screen.getByText("0.85")).toBeInTheDocument();        // Hurst
+    expect(screen.getByText("2.00")).toBeInTheDocument();        // sigma_chem
+    expect(screen.getByText(/97% of columns OK/)).toBeInTheDocument();
+  });
+
+  it("warns when the trace quality is poor", () => {
+    const bad = iface();
+    bad.roughness!.quality = 0.55;
+    render(<LayersRoughnessDetail iface={bad} index={0} unit="nm" foilT={null} />);
+    expect(screen.getByText(/noisy trace/)).toBeInTheDocument();
+  });
+
+  it("points at the waviness toggle when no trace was computed", () => {
+    render(
+      <LayersRoughnessDetail
+        iface={iface({ roughness: null })}
+        index={0}
+        unit="nm"
+        foilT={null}
+      />,
+    );
+    expect(screen.getByText(/re-analyze/)).toBeInTheDocument();
   });
 });

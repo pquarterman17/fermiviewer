@@ -111,6 +111,55 @@ def test_layers_unknown_image(client) -> None:
     assert r.status_code == 404
 
 
+def test_layers_without_waviness_has_no_roughness_block(client, image_id) -> None:
+    body = client.post("/api/analyze/layers", json={"image_id": image_id}).json()
+    assert all(i["roughness"] is None for i in body["interfaces"])
+    assert all(lyr["conformality"] is None for lyr in body["layers"])
+
+
+def test_layers_roughness_block_and_conformality(client, tmp_path) -> None:
+    """Items #9-12 over the wire: CI + quality + spectrum per interface,
+    conformality per layer (both interfaces share the same waviness → r~1)."""
+    from scipy.ndimage import gaussian_filter1d
+
+    rng = np.random.default_rng(0)
+    n_c, n_r = 256, 140
+    jitter = gaussian_filter1d(rng.normal(0.0, 1.0, n_c), 6.0)
+    jitter *= 1.5 / jitter.std()
+    y = np.arange(n_r, dtype=np.float64)[:, None]
+    d1, d2 = 40.0 + jitter, 95.0 + jitter
+    img = (
+        0.2
+        + 0.6 * 0.5 * (1 + erf((y - d1[None, :]) / (2 * np.sqrt(2))))
+        - 0.4 * 0.5 * (1 + erf((y - d2[None, :]) / (2 * np.sqrt(2))))
+    )
+    f = write_mini_dm4(
+        tmp_path / "wavy.dm4", dims=[n_c, n_r],
+        data=img.ravel().astype(np.float32), data_type=2,
+        cal=[{"scale": PX, "origin": 0, "units": "nm"},
+             {"scale": PX, "origin": 0, "units": "nm"}],
+    )
+    wid = client.post("/api/session/open", json={"paths": [str(f)]}).json()[0]["id"]
+    r = client.post(
+        "/api/analyze/layers",
+        json={"image_id": wid, "waviness": True, "n_layers": 3},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["interfaces"]) == 2
+    for it in body["interfaces"]:
+        rb = it["roughness"]
+        assert rb is not None
+        assert 0.9 <= rb["quality"] <= 1.0
+        assert rb["sigma_ci"] is not None
+        lo, hi = rb["sigma_ci"]
+        assert 0 < lo <= it["sigma_w"] <= hi
+        assert len(rb["psd_wavelength"]) == len(rb["psd_power"]) > 0
+        # true waviness 1.5 px x 0.5 nm/px = 0.75 nm, well inside the CI
+        assert it["sigma_w"] == pytest.approx(0.75, rel=0.35)
+    assert body["layers"][0]["conformality"] > 0.9
+
+
 def _open_map(client, tmp_path, name: str, sig: float) -> str:
     """A layered image with interfaces at CENTERS but a given erf width."""
     y = np.arange(H, dtype=np.float64)

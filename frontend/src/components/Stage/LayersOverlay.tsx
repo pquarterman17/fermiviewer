@@ -24,6 +24,7 @@ export default function LayersOverlay({
   const edit = useViewer((s) => s.layersEdit);
   const setLayersOverlay = useViewer((s) => s.setLayersOverlay);
   const setLayersEditReq = useViewer((s) => s.setLayersEditReq);
+  const setLayersFocusReq = useViewer((s) => s.setLayersFocusReq);
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<{ index: number; pos: number } | null>(null);
 
@@ -124,24 +125,32 @@ export default function LayersOverlay({
               strokeDasharray="5 3"
               opacity={0.9}
             />
-            {edit && (
-              // fat transparent hit line: drag to nudge, right-click to remove
-              <line
-                x1={a.x}
-                y1={a.y}
-                x2={b.x}
-                y2={b.y}
-                stroke="transparent"
-                strokeWidth={12}
-                style={{ cursor: horizontal ? "ns-resize" : "ew-resize" }}
-                onPointerDown={(e) => onLineDown(e, k)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  commit(positions.filter((_, i) => i !== k));
-                }}
-              />
-            )}
+            {/* fat transparent hit line. Edit mode: drag to nudge, right-click
+                to remove. Otherwise: click focuses this interface's roughness
+                detail card in the workshop (pointerEvents re-enabled per-line
+                so the rest of the stage still pans/zooms). */}
+            <line
+              x1={a.x}
+              y1={a.y}
+              x2={b.x}
+              y2={b.y}
+              stroke="transparent"
+              strokeWidth={12}
+              style={{
+                cursor: edit ? (horizontal ? "ns-resize" : "ew-resize") : "pointer",
+                pointerEvents: "stroke",
+              }}
+              onPointerDown={(e) => onLineDown(e, k)}
+              onClick={() => {
+                if (!edit) setLayersFocusReq(k);
+              }}
+              onContextMenu={(e) => {
+                if (!edit) return;
+                e.preventDefault();
+                e.stopPropagation();
+                commit(positions.filter((_, i) => i !== k));
+              }}
+            />
           </g>
         );
       })}
