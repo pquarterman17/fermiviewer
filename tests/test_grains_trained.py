@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from fermiviewer.calc.grains_trained import (
+    preview_trained,
     rasterize_strokes,
     segment_trained,
     train_from_scribbles,
@@ -146,6 +147,26 @@ def test_train_requires_some_labels() -> None:
         train_from_scribbles(img, np.zeros((60, 90), dtype=np.int64))
 
 
+def test_preview_reports_class_composition() -> None:
+    # the two-region image is a 50/50 split, so a trained preview should put
+    # ~half the pixels in each class and the fractions must sum to 1
+    img = _two_region_image()
+    mask = rasterize_strokes(
+        (60, 90),
+        [
+            {"class_id": 1, "radius": 3.0, "points": [[10, 20], [30, 40]]},
+            {"class_id": 2, "radius": 3.0, "points": [[65, 20], [80, 40]]},
+        ],
+    )
+    model = train_from_scribbles(img, mask)
+    prev = preview_trained(img, model)
+    assert list(prev.classes) == [1, 2]
+    assert prev.class_map.shape == img.shape
+    assert sum(prev.fractions.values()) == pytest.approx(1.0)
+    assert prev.fractions[1] == pytest.approx(0.5, abs=0.1)
+    assert prev.fractions[2] == pytest.approx(0.5, abs=0.1)
+
+
 def test_boundary_class_is_excluded_from_grains() -> None:
     img = _two_region_image()
     mask = rasterize_strokes(
@@ -259,3 +280,59 @@ def test_train_segment_unknown_image_is_404(client) -> None:
         },
     )
     assert r.status_code == 404
+
+
+def test_train_preview_endpoint_reports_classes(client, tmp_path) -> None:
+    img_id = _open(client, tmp_path, _two_region_image())
+    before = set(store.ids())
+    r = client.post(
+        "/api/grains/train-preview",
+        json={
+            "image_id": img_id,
+            "strokes": [
+                {"class_id": 1, "radius": 3, "points": [[10, 20], [30, 40]]},
+                {"class_id": 2, "radius": 3, "points": [[65, 20], [80, 40]]},
+            ],
+        },
+    )
+    assert r.status_code == 200, r.text
+    classes = r.json()["classes"]
+    assert [c["class_id"] for c in classes] == [1, 2]
+    assert sum(c["fraction"] for c in classes) == pytest.approx(1.0)
+    assert all(c["is_boundary"] is False for c in classes)
+    # non-committing: the preview must NOT register a derived image
+    assert set(store.ids()) == before
+
+
+def test_train_preview_marks_boundary_class(client, tmp_path) -> None:
+    img_id = _open(client, tmp_path, _two_region_image())
+    r = client.post(
+        "/api/grains/train-preview",
+        json={
+            "image_id": img_id,
+            "strokes": [
+                {"class_id": 1, "radius": 3, "points": [[10, 20]]},
+                {"class_id": 2, "radius": 3, "points": [[80, 20]]},
+                {"class_id": 3, "radius": 3, "points": [[44, 30]]},
+            ],
+            "boundary_class": [3],
+        },
+    )
+    assert r.status_code == 200, r.text
+    by_id = {c["class_id"]: c for c in r.json()["classes"]}
+    assert by_id[3]["is_boundary"] is True
+    assert by_id[1]["is_boundary"] is False
+
+
+def test_train_preview_one_class_is_422(client, tmp_path) -> None:
+    img_id = _open(client, tmp_path, _two_region_image())
+    r = client.post(
+        "/api/grains/train-preview",
+        json={
+            "image_id": img_id,
+            "strokes": [
+                {"class_id": 1, "radius": 3, "points": [[10, 20], [30, 40]]},
+            ],
+        },
+    )
+    assert r.status_code == 422

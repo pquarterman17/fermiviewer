@@ -6,9 +6,17 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import type { GrainResult, LayersResult } from "../../lib/api";
+import type {
+  GrainPreviewClass,
+  GrainResult,
+  LayersResult,
+} from "../../lib/api";
 import { LayerStack } from "./LayersWorkshop";
-import { GrainMetrics, paintedReadyCount } from "./StructureWorkshop";
+import {
+  GrainMetrics,
+  paintedReadyCount,
+  TrainedPreviewLegend,
+} from "./StructureWorkshop";
 
 function makeLayers(): LayersResult {
   return {
@@ -120,5 +128,30 @@ describe("paintedReadyCount", () => {
   it("is 0 for no strokes and 1 when only one class is painted", () => {
     expect(paintedReadyCount([], [])).toBe(0);
     expect(paintedReadyCount([stroke(1)], [])).toBe(1);
+  });
+});
+
+describe("TrainedPreviewLegend", () => {
+  const classes: GrainPreviewClass[] = [
+    { class_id: 1, fraction: 0.62, is_boundary: false },
+    { class_id: 2, fraction: 0.31, is_boundary: false },
+    { class_id: 3, fraction: 0.07, is_boundary: true },
+  ];
+
+  it("renders a labelled row per class with rounded percentages", () => {
+    const { container } = render(<TrainedPreviewLegend classes={classes} />);
+    expect(
+      container.querySelectorAll(".fvd-legend-item"),
+    ).toHaveLength(3);
+    expect(screen.getByText("Class 1")).toBeInTheDocument();
+    expect(screen.getByText("62%")).toBeInTheDocument();
+    expect(screen.getByText("31%")).toBeInTheDocument();
+  });
+
+  it("marks a boundary class with the ∅ prefix", () => {
+    render(<TrainedPreviewLegend classes={classes} />);
+    // boundary class 3 gets the ∅ prefix; non-boundary classes do not
+    expect(screen.getByText("∅ Class 3")).toBeInTheDocument();
+    expect(screen.getByText("7%")).toBeInTheDocument();
   });
 });

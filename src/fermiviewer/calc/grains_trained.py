@@ -31,7 +31,9 @@ from fermiviewer.calc.segment import label_components
 
 __all__ = [
     "TrainedGrainModel",
+    "TrainedPreview",
     "TrainedSegmentation",
+    "preview_trained",
     "rasterize_strokes",
     "segment_trained",
     "train_from_scribbles",
@@ -122,6 +124,54 @@ def train_from_scribbles(
         scales=scales,
         gradient_sigma=gradient_sigma,
         classifier=classifier,
+    )
+
+
+@dataclass(frozen=True)
+class TrainedPreview:
+    """The pixel-classification result *before* grains are labelled — used by
+    the optional non-committing preview: which class each pixel got and what
+    fraction of the image each class covers. No connected-components step, so
+    it is cheaper than `segment_trained` and never registers a label map."""
+
+    class_map: np.ndarray  # (H, W) predicted class per pixel
+    classes: np.ndarray  # sorted unique class ids the model knows
+    fractions: dict[int, float]  # class id → fraction of pixels (0..1)
+
+
+def preview_trained(
+    img: np.ndarray,
+    model: TrainedGrainModel,
+    features: np.ndarray | None = None,
+) -> TrainedPreview:
+    """Classify every pixel with a trained model and report the per-class
+    pixel composition — the classify half of `segment_trained`, without the
+    connected-components grain labelling. Lets the UI show how the paint
+    strokes generalize before committing to segmentation."""
+    if features is None:
+        feats = extract_grain_features(
+            img, scales=model.scales, gradient_sigma=model.gradient_sigma
+        )
+    else:
+        feats = np.asarray(features, dtype=np.float64)
+    h, w, f = feats.shape
+    x = feats.reshape(h * w, f)
+
+    if model.classifier == "forest":
+        cls, _ = forest_predict(model.model, x)  # type: ignore[arg-type]
+    else:
+        cls, _ = softmax_predict(model.model, x)  # type: ignore[arg-type]
+    class_map = cls.reshape(h, w)
+
+    total = float(class_map.size)
+    fractions = {
+        int(c): float(np.count_nonzero(class_map == c)) / total
+        for c in model.model.classes
+    }
+    return TrainedPreview(
+        class_map=class_map,
+        classes=model.model.classes,
+        fractions=fractions,
     )
 
 

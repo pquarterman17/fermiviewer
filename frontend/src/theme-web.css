@@ -2432,6 +2432,42 @@ details.fvd-card:not([open]) > summary {
   color: var(--text-faint);
 }
 
+/* ── color-keyed legend (trained-grain preview, WS5b) ── */
+.fvd-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.fvd-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--font-size-sm);
+}
+
+.fvd-legend-chip {
+  width: 11px;
+  height: 11px;
+  flex: none;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px var(--border-soft);
+}
+
+.fvd-legend-label {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fvd-legend-val {
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+}
+
 /* ── shared atoms ── */
 
 .fvd-icon-btn {

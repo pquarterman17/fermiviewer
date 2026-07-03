@@ -1177,6 +1177,42 @@ export function grainsTrainSegment(
   });
 }
 
+/** One predicted class in a trained-grain preview: its id, the fraction of the
+ *  image it covers (0..1), and whether it was flagged boundary/background. */
+export interface GrainPreviewClass {
+  class_id: number;
+  fraction: number;
+  is_boundary: boolean;
+}
+
+export interface GrainPreview {
+  classes: GrainPreviewClass[];
+}
+
+/** Optional, non-committing preview of the trained pixel classifier: fit on
+ *  the painted strokes and report the per-class pixel composition, WITHOUT
+ *  labelling grains or registering any image. Lets the user check the split
+ *  before committing with grainsTrainSegment. */
+export function grainsTrainPreview(
+  id: string,
+  strokes: TrainStroke[],
+  opts: {
+    scales?: number[];
+    gradientSigma?: number;
+    boundaryClass?: number[];
+    classifier?: "softmax" | "forest";
+  } = {},
+): Promise<GrainPreview> {
+  return post("/api/grains/train-preview", {
+    image_id: id,
+    strokes,
+    scales: opts.scales ?? [2, 4],
+    gradient_sigma: opts.gradientSigma ?? 0,
+    boundary_class: opts.boundaryClass ?? [],
+    classifier: opts.classifier ?? "softmax",
+  });
+}
+
 // ── user-configurable metadata (custom fields + filename auto-fill) ──────
 
 export interface MetaField {

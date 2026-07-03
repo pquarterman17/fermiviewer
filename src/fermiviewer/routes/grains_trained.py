@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from fermiviewer.calc.grains_trained import (
+    preview_trained,
     rasterize_strokes,
     segment_trained,
     train_from_scribbles,
@@ -78,3 +79,52 @@ def grains_train_segment(req: TrainSegmentRequest) -> dict:
 
     raster_f = np.asarray(raster, dtype=np.float64)
     return _grains_payload(seg.labels, "trained", ds, raster_f, req.image_id)
+
+
+class TrainPreviewRequest(BaseModel):
+    image_id: str
+    strokes: list[Stroke]
+    scales: list[float] = Field(default=[2.0, 4.0])
+    gradient_sigma: float = Field(default=0.0, ge=0.0, le=10.0)
+    # class id(s) flagged as boundary/background — reported so the preview can
+    # mark them ∅; does NOT change the classification itself
+    boundary_class: list[int] = Field(default=[])
+    classifier: Literal["softmax", "forest"] = "softmax"
+
+
+@router.post("/grains/train-preview")
+def grains_train_preview(req: TrainPreviewRequest) -> dict:
+    """Optional, non-committing preview: fit the pixel classifier on the
+    painted strokes and report the per-class pixel composition, WITHOUT
+    labelling grains or registering any image. Lets the UI show how the paint
+    generalizes before the user commits with /grains/train-segment."""
+    _ds, raster = _raster(req.image_id)
+    h, w = raster.shape
+
+    label_mask = rasterize_strokes(
+        (h, w), [s.model_dump() for s in req.strokes]
+    )
+    scales = tuple(float(s) for s in req.scales) or (2.0, 4.0)
+    try:
+        model = train_from_scribbles(
+            raster,
+            label_mask,
+            scales=scales,
+            gradient_sigma=req.gradient_sigma,
+            classifier=req.classifier,
+        )
+        prev = preview_trained(raster, model)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+
+    boundary = {int(b) for b in req.boundary_class}
+    return {
+        "classes": [
+            {
+                "class_id": int(c),
+                "fraction": prev.fractions[int(c)],
+                "is_boundary": int(c) in boundary,
+            }
+            for c in prev.classes
+        ],
+    }

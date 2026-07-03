@@ -16,6 +16,7 @@ import {
   analyzeStitch,
   analyzeTemplate,
   fetchData16,
+  grainsTrainPreview,
   grainsTrainSegment,
   imageFft,
   renderUrl,
@@ -23,6 +24,7 @@ import {
   type CtfResult,
   type GrainMethod,
   type GrainParams,
+  type GrainPreviewClass,
   type GrainResult,
   type Raster16,
   type TrainStroke,
@@ -358,6 +360,41 @@ export function paintedReadyCount(
   return Array.from(painted).filter((c) => !boundary.includes(c)).length;
 }
 
+// Color-keyed legend of the trained classifier's per-class pixel composition
+// (the optional preview). Boundary (∅) classes show a dashed hollow chip.
+export function TrainedPreviewLegend({
+  classes,
+}: {
+  classes: GrainPreviewClass[];
+}) {
+  return (
+    <div className="fvd-legend">
+      {classes.map((c) => {
+        const col = SCRIBBLE_COLORS[(c.class_id - 1) % SCRIBBLE_COLORS.length];
+        return (
+          <div key={c.class_id} className="fvd-legend-item">
+            <span
+              className="fvd-legend-chip"
+              style={{
+                background: c.is_boundary ? "transparent" : col,
+                border: c.is_boundary
+                  ? "1px dashed var(--text-faint)"
+                  : "none",
+              }}
+            />
+            <span className="fvd-legend-label">
+              {c.is_boundary ? "∅ " : ""}Class {c.class_id}
+            </span>
+            <span className="fvd-legend-val">
+              {Math.round(c.fraction * 100)}%
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // Trained-mode controls: pick a class, set the brush, paint examples on the
 // stage, then train+segment. A class can be flagged as boundary/background
 // (∅) so its pixels are excluded from grains.
@@ -374,6 +411,9 @@ function TrainedGrainControls({
   busy,
   progress,
   onRun,
+  onPreview,
+  previewBusy,
+  previewClasses,
 }: {
   numClasses: number;
   classId: number;
@@ -387,6 +427,9 @@ function TrainedGrainControls({
   busy: boolean;
   progress: string;
   onRun: () => void;
+  onPreview: () => void;
+  previewBusy: boolean;
+  previewClasses: GrainPreviewClass[] | null;
 }) {
   const setClass = useScribble((s) => s.setClass);
   const setNumClasses = useScribble((s) => s.setNumClasses);
@@ -493,8 +536,24 @@ function TrainedGrainControls({
           style={{ width: 44 }}
           onChange={(e) => setMinArea(e.target.value)}
         />
-        <button className="fvd-btn" onClick={clear} disabled={nStrokes === 0}>
+        <span style={{ flex: 1 }} />
+        <button
+          className="fvd-btn"
+          style={{ flex: "0 0 auto", padding: "4px 10px" }}
+          onClick={clear}
+          disabled={nStrokes === 0}
+        >
           Clear
+        </button>
+      </div>
+      <div className="fvd-ws-row">
+        <button
+          className="fvd-btn"
+          title="Preview the pixel classification (per-class %) without committing to grains"
+          onClick={onPreview}
+          disabled={previewBusy || busy || nStrokes === 0}
+        >
+          {previewBusy ? "Previewing…" : "Preview"}
         </button>
         <button
           className="fvd-btn primary"
@@ -504,6 +563,15 @@ function TrainedGrainControls({
           {busy ? progress || "Training…" : "Train & segment"}
         </button>
       </div>
+      {previewClasses && (
+        <>
+          <div className="fvd-ws-note">
+            pixel classification preview — check the split, then train &amp;
+            segment
+          </div>
+          <TrainedPreviewLegend classes={previewClasses} />
+        </>
+      )}
       <div
         className="fvd-ws-note"
         style={{ color: readyCount >= 2 ? "var(--capture)" : undefined }}
@@ -563,6 +631,12 @@ function GrainsMode({ id }: { id: string }) {
   const [labelsId, setLabelsId] = useState<string | null>(null);
   const [grainResult, setGrainResult] = useState<GrainResult | null>(null);
   const [note, setNote] = useState("");
+  // optional, non-committing preview of the trained classifier's per-class
+  // pixel composition (does not register an image or segment grains)
+  const [previewClasses, setPreviewClasses] = useState<
+    GrainPreviewClass[] | null
+  >(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
 
   // trained-mode scribble state (paint examples directly on the stage)
   const numClasses = useScribble((s) => s.numClasses);
@@ -577,7 +651,13 @@ function GrainsMode({ id }: { id: string }) {
     setLabelsId(null);
     setGrainResult(null);
     setNote("");
+    setPreviewClasses(null);
   }, [id]);
+
+  // a fresh Clear (or a new image) wipes the strokes → drop the stale preview
+  useEffect(() => {
+    if (nStrokes === 0) setPreviewClasses(null);
+  }, [nStrokes]);
 
   // open/close the stage paint overlay as the Trained method is selected.
   // Never arm paint on a grain-label map (e.g. right after training swaps to
@@ -593,6 +673,30 @@ function GrainsMode({ id }: { id: string }) {
   const knobValue = method === "kmeans" ? k : method === "rag" ? mergeThr : coarseness;
   const setKnob =
     method === "kmeans" ? setK : method === "rag" ? setMergeThr : setCoarseness;
+
+  // optional preview: classify pixels from the current strokes and show the
+  // per-class composition, committing nothing (no image, no grain labels)
+  const previewRun = () => {
+    const { strokes, boundary: bnd } = useScribble.getState();
+    if (new Set(strokes.map((s) => s.classId)).size < 2) {
+      setStatus("trained grains: paint at least 2 different classes");
+      return;
+    }
+    setPreviewBusy(true);
+    const payload: TrainStroke[] = strokes.map((s) => ({
+      class_id: s.classId,
+      radius: s.radius,
+      points: s.points,
+    }));
+    grainsTrainPreview(id, payload, { boundaryClass: bnd, classifier })
+      .then((r) => {
+        setPreviewClasses(r.classes);
+        const phases = r.classes.filter((c) => !c.is_boundary).length;
+        setStatus(`trained grains: preview — ${phases} phase(s) classified`);
+      })
+      .catch((e: Error) => setStatus(`trained grains preview: ${e.message}`))
+      .finally(() => setPreviewBusy(false));
+  };
 
   const trainRun = () => {
     const { strokes, boundary: bnd } = useScribble.getState();
@@ -723,6 +827,9 @@ function GrainsMode({ id }: { id: string }) {
           busy={busy}
           progress={progress}
           onRun={trainRun}
+          onPreview={previewRun}
+          previewBusy={previewBusy}
+          previewClasses={previewClasses}
         />
       ) : (
         <div className="fvd-ws-row">
