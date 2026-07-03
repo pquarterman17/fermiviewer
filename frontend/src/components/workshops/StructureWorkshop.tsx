@@ -346,6 +346,18 @@ const GRAIN_METHODS: {
   },
 ];
 
+// Distinct non-boundary classes that have at least one painted stroke — the
+// pixel classifier needs ≥2 of these to train. A class flagged ∅ (boundary/
+// background) is excluded from the count even if painted, since it labels the
+// boundary rather than a grain phase.
+export function paintedReadyCount(
+  strokes: { classId: number }[],
+  boundary: number[],
+): number {
+  const painted = new Set(strokes.map((s) => s.classId));
+  return Array.from(painted).filter((c) => !boundary.includes(c)).length;
+}
+
 // Trained-mode controls: pick a class, set the brush, paint examples on the
 // stage, then train+segment. A class can be flagged as boundary/background
 // (∅) so its pixels are excluded from grains.
@@ -381,6 +393,13 @@ function TrainedGrainControls({
   const setBrush = useScribble((s) => s.setBrush);
   const toggleBoundary = useScribble((s) => s.toggleBoundary);
   const clear = useScribble((s) => s.clear);
+  // live painted-state (the design's ✓/○ chips): which classes have at least
+  // one stroke, and how many non-boundary classes are painted (≥2 to train).
+  // Read the stroke array by reference — no fresh-array selector, so no
+  // re-render churn.
+  const strokes = useScribble((s) => s.strokes);
+  const painted = new Set(strokes.map((s) => s.classId));
+  const readyCount = paintedReadyCount(strokes, boundary);
 
   return (
     <>
@@ -394,7 +413,10 @@ function TrainedGrainControls({
               <button
                 key={c}
                 className="fvd-btn"
-                title={isBnd ? "boundary/background class" : `class ${c}`}
+                title={
+                  (isBnd ? "boundary/background class" : `class ${c}`) +
+                  (painted.has(c) ? " · painted" : " · not painted yet")
+                }
                 onClick={() => setClass(c)}
                 style={{
                   minWidth: 26,
@@ -406,6 +428,9 @@ function TrainedGrainControls({
                 }}
               >
                 {isBnd ? "∅" : c}
+                {painted.has(c) && (
+                  <span style={{ marginLeft: 3, fontSize: 9 }}>✓</span>
+                )}
               </button>
             );
           })}
@@ -478,6 +503,16 @@ function TrainedGrainControls({
         >
           {busy ? progress || "Training…" : "Train & segment"}
         </button>
+      </div>
+      <div
+        className="fvd-ws-note"
+        style={{ color: readyCount >= 2 ? "var(--capture)" : undefined }}
+      >
+        {readyCount >= 2
+          ? `${readyCount} classes painted · ready to train & segment`
+          : `paint ${2 - readyCount} more class${
+              2 - readyCount === 1 ? "" : "es"
+            } to train`}
       </div>
       <div className="fvd-ws-note">
         Paint a few strokes of each class on the image, then train. ∅ marks a

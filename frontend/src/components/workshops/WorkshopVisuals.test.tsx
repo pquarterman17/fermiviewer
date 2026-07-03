@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import type { GrainResult, LayersResult } from "../../lib/api";
 import { LayerStack } from "./LayersWorkshop";
-import { GrainMetrics } from "./StructureWorkshop";
+import { GrainMetrics, paintedReadyCount } from "./StructureWorkshop";
 
 function makeLayers(): LayersResult {
   return {
@@ -102,5 +102,23 @@ describe("GrainMetrics", () => {
     // the other tiles remain
     expect(screen.getByText("grains")).toBeInTheDocument();
     expect(screen.getByText("junctions")).toBeInTheDocument();
+  });
+});
+
+describe("paintedReadyCount", () => {
+  const stroke = (classId: number) => ({ classId });
+
+  it("counts distinct painted classes, not strokes", () => {
+    expect(paintedReadyCount([stroke(1), stroke(1), stroke(2)], [])).toBe(2);
+  });
+
+  it("excludes a class flagged as boundary (∅) even when painted", () => {
+    // classes 1, 2, 3 painted but 3 is the boundary class → only 2 count
+    expect(paintedReadyCount([stroke(1), stroke(2), stroke(3)], [3])).toBe(2);
+  });
+
+  it("is 0 for no strokes and 1 when only one class is painted", () => {
+    expect(paintedReadyCount([], [])).toBe(0);
+    expect(paintedReadyCount([stroke(1)], [])).toBe(1);
   });
 });
