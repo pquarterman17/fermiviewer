@@ -38,7 +38,8 @@ export function ScaleBarCtxMenu({ x, y, onClose }: ScaleBarCtxProps) {
   // compute a couple of nice presets relative to current zoom
   const presets: number[] =
     pixelSize != null
-      ? [1, 2, 4].map((z) => niceScaleLength((120 * pixelSize) / z))
+      ? [1, 2, 4]
+          .map((z) => niceScaleLength((120 * pixelSize) / z))
           .filter((v, i, a) => a.indexOf(v) === i)
       : [];
 
@@ -59,6 +60,7 @@ export function ScaleBarCtxMenu({ x, y, onClose }: ScaleBarCtxProps) {
       >
         <button
           className="fvd-ctx-item"
+          title="Toggle the scale-bar overlay on this image"
           onClick={() => {
             toggleScaleBar();
             onClose();
@@ -72,6 +74,7 @@ export function ScaleBarCtxMenu({ x, y, onClose }: ScaleBarCtxProps) {
             <span className="fvd-ctx-label">Length</span>
             <button
               className="fvd-ctx-item"
+              title="Auto-size the scale bar to a round physical length"
               onClick={() => {
                 setScaleBar(activeId, { lengthPhys: null });
                 onClose();
@@ -83,6 +86,7 @@ export function ScaleBarCtxMenu({ x, y, onClose }: ScaleBarCtxProps) {
               <button
                 key={p}
                 className="fvd-ctx-item"
+                title="Set the scale bar to this fixed length"
                 onClick={() => {
                   setScaleBar(activeId, { lengthPhys: p });
                   onClose();
@@ -100,8 +104,15 @@ export function ScaleBarCtxMenu({ x, y, onClose }: ScaleBarCtxProps) {
             <div className="fvd-ctx-sep" />
             <button
               className="fvd-ctx-item"
+              title="Move the scale bar back to its default corner"
               onClick={() => {
-                setScaleBar(activeId, { x: 0.02, y: 0.92, lengthPhys: null, thickness: null, fontSize: null });
+                setScaleBar(activeId, {
+                  x: 0.02,
+                  y: 0.92,
+                  lengthPhys: null,
+                  thickness: null,
+                  fontSize: null,
+                });
                 onClose();
               }}
             >

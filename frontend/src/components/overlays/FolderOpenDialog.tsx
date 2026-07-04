@@ -113,10 +113,18 @@ export default function FolderOpenDialog() {
           onChange={onBrowse}
         />
         <div className="fvd-btn-row">
-          <button className="fvd-btn" onClick={() => fileRef.current?.click()}>
+          <button
+            className="fvd-btn"
+            onClick={() => fileRef.current?.click()}
+            title="Open the system file picker"
+          >
             Browse elsewhere…
           </button>
-          <button className="fvd-btn" onClick={() => setOpen(false)}>
+          <button
+            className="fvd-btn"
+            onClick={() => setOpen(false)}
+            title="Cancel and close (Esc)"
+          >
             Cancel
           </button>
           <button
@@ -124,6 +132,7 @@ export default function FolderOpenDialog() {
             disabled={sel.size === 0}
             onClick={openSelected}
             autoFocus
+            title="Open the selected file(s) (Enter)"
           >
             Open {sel.size > 0 ? `(${sel.size})` : ""}
           </button>

@@ -749,7 +749,12 @@ export default function DiffractionWorkshop() {
           style={{ width: 52 }}
           onChange={(e) => setThreshold(e.target.value)}
         />
-        <button className="fvd-btn" onClick={detect} disabled={busy}>
+        <button
+          className="fvd-btn"
+          title="Detect diffraction spots (uses min r + threshold, and ROI if set)"
+          onClick={detect}
+          disabled={busy}
+        >
           Detect
         </button>
         <label className="fvd-check">
@@ -832,6 +837,7 @@ export default function DiffractionWorkshop() {
         />
         <button
           className="fvd-btn"
+          title="Index the detected spots against candidate phases"
           onClick={index}
           disabled={busy || spots.length === 0}
         >
@@ -959,7 +965,12 @@ export default function DiffractionWorkshop() {
           title="known standard ring d-spacing; blank → use the selected phase's 111"
           onChange={(e) => setCalKnownD(e.target.value)}
         />
-        <button className="fvd-btn" onClick={calibrate} disabled={busy || !activeId}>
+        <button
+          className="fvd-btn"
+          title="Fit ring ellipse to calibrate distortion & camera constant"
+          onClick={calibrate}
+          disabled={busy || !activeId}
+        >
           Fit ellipse
         </button>
       </div>
@@ -1039,6 +1050,7 @@ export default function DiffractionWorkshop() {
         />
         <button
           className="fvd-btn"
+          title="Simulate the kinematic diffraction pattern for the phase + zone axis"
           onClick={simulate}
           disabled={busy || !simPhase}
         >

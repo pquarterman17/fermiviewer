@@ -102,6 +102,7 @@ export default function ToolsBrowser() {
             key={p}
             className={`fvd-pill${pill === p ? " active" : ""}`}
             onClick={() => setPill(p)}
+            title={`Show only ${p} tools`}
           >
             {p}
           </button>
@@ -126,6 +127,7 @@ export default function ToolsBrowser() {
                       onClick={() =>
                         setCaptureMode(captureMode === t.kind ? "none" : t.kind)
                       }
+                      title={`Arm the ${t.label} capture tool (click again to disarm)`}
                     >
                       <span className="glyph">{t.glyph}</span>
                       <span className="label">{t.label}</span>
@@ -153,6 +155,7 @@ export default function ToolsBrowser() {
                       <button
                         className={`fvd-cmd-row${isOpen ? " active" : ""}`}
                         onClick={() => onTransformClick(t)}
+                        title={`Run ${t.label} (expands if it has parameters)`}
                       >
                         <span className="glyph">{t.glyph}</span>
                         <span className="label">{t.label}</span>
@@ -177,12 +180,14 @@ export default function ToolsBrowser() {
                             <button
                               className="fvd-btn"
                               onClick={() => setOpenKind(null)}
+                              title="Discard these parameters and close the form"
                             >
                               Cancel
                             </button>
                             <button
                               className="fvd-btn primary"
                               onClick={() => apply(t)}
+                              title="Run the tool with the parameters above"
                             >
                               Apply
                             </button>

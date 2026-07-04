@@ -425,7 +425,12 @@ export default function LayersWorkshop() {
           title="Optional hint: keep only the (n−1) strongest interfaces"
           onChange={(e) => setNLayers(e.target.value)}
         />
-        <button className="fvd-btn" onClick={run} disabled={busy || !activeId}>
+        <button
+          className="fvd-btn"
+          title="Detect layers & interface sharpness (σ_erf)"
+          onClick={run}
+          disabled={busy || !activeId}
+        >
           {busy ? "Analyzing…" : "Analyze"}
         </button>
       </div>
@@ -632,6 +637,7 @@ export default function LayersWorkshop() {
             />
             <button
               className="fvd-btn"
+              title="Add an interface at the entered depth and recompute"
               disabled={busy || !addPos}
               onClick={() => {
                 const p = Number(addPos);
@@ -683,6 +689,7 @@ export default function LayersWorkshop() {
         <div className="fvd-ws-row">
           <button
             className="fvd-btn"
+            title="Measure the same interfaces across the selected element maps"
             disabled={multiBusy || !activeId}
             onClick={runMulti}
           >

@@ -54,8 +54,13 @@ export default function BatchDialog() {
   // selection drives the target set; fall back to every open image
   const targets = selected.length > 0 ? selected : order;
 
-  const addStep = async (kind: string, label: string, fields?: ParamField[]) => {
-    const params = fields && fields.length ? await askParams(label, fields) : {};
+  const addStep = async (
+    kind: string,
+    label: string,
+    fields?: ParamField[],
+  ) => {
+    const params =
+      fields && fields.length ? await askParams(label, fields) : {};
     if (params === null) return; // user cancelled the param modal
     setSteps((s) => [...s, { uid: uid.current++, kind, label, params }]);
   };
@@ -130,6 +135,7 @@ export default function BatchDialog() {
               className="fvd-pill"
               disabled={running}
               onClick={() => void addStep(f.kind, f.label, f.fields)}
+              title={`Add "${f.label}" as a batch step`}
             >
               + {f.label}
             </button>
@@ -191,13 +197,19 @@ export default function BatchDialog() {
         )}
 
         <div className="fvd-btn-row">
-          <button className="fvd-btn" onClick={close} disabled={running}>
+          <button
+            className="fvd-btn"
+            onClick={close}
+            disabled={running}
+            title="Close the batch dialog (Esc)"
+          >
             Close
           </button>
           <button
             className="fvd-btn primary"
             onClick={() => void run()}
             disabled={running || steps.length === 0 || targets.length === 0}
+            title="Run the recipe on all target images"
           >
             {running ? "Running…" : `Run batch (${targets.length})`}
           </button>

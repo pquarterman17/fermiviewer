@@ -129,10 +129,9 @@ function showLog(
       m.kind,
       value,
       ...(tiltOn ? [raw] : []),
-      ...px.slice(0, 2).flatMap((p) => [
-        Number(p.x.toFixed(2)),
-        Number(p.y.toFixed(2)),
-      ]),
+      ...px
+        .slice(0, 2)
+        .flatMap((p) => [Number(p.x.toFixed(2)), Number(p.y.toFixed(2))]),
     ] as (string | number | null)[];
   });
   useResults.getState().show({
@@ -379,6 +378,7 @@ export default function MeasurePanel() {
                       onClick={() =>
                         setCaptureMode(captureMode === t.kind ? "none" : t.kind)
                       }
+                      title={`Arm the ${t.label} tool — drag on the image to place it (click again to disarm)`}
                     >
                       <span className="glyph">{t.glyph}</span>
                       <span className="label">{t.label}</span>
@@ -512,23 +512,20 @@ export default function MeasurePanel() {
                 value={sel.color ?? overlay.color}
                 style={{ width: 28, height: 20, padding: 0, border: "none" }}
                 onChange={(e) =>
-                  useViewer
-                    .getState()
-                    .setMeasureStyle(activeId, sel.id, {
-                      color: e.target.value,
-                    })
+                  useViewer.getState().setMeasureStyle(activeId, sel.id, {
+                    color: e.target.value,
+                  })
                 }
               />
               {sel.color && (
                 <button
                   className="fvd-btn"
                   onClick={() =>
-                    useViewer
-                      .getState()
-                      .setMeasureStyle(activeId, sel.id, {
-                        color: undefined,
-                      })
+                    useViewer.getState().setMeasureStyle(activeId, sel.id, {
+                      color: undefined,
+                    })
                   }
+                  title="Clear this item's colour override (use overlay default)"
                 >
                   Reset
                 </button>
@@ -600,6 +597,7 @@ export default function MeasurePanel() {
                 key={sz}
                 className={`fvd-seg-btn${overlay.size === sz ? " active" : ""}`}
                 onClick={() => setOverlay({ size: sz })}
+                title={`Set overlay label size to ${sz}`}
               >
                 {sz}
               </button>
@@ -614,6 +612,7 @@ export default function MeasurePanel() {
                 key={w}
                 className={`fvd-seg-btn${(overlay.lineWidth ?? 2.5) === w ? " active" : ""}`}
                 onClick={() => setOverlay({ lineWidth: w })}
+                title={`Set overlay line width to ${w} px`}
               >
                 {w}
               </button>
@@ -629,6 +628,7 @@ export default function MeasurePanel() {
                 className={`fvd-swatch${overlay.color === c ? " active" : ""}`}
                 style={{ background: c }}
                 onClick={() => setOverlay({ color: c })}
+                title="Use this overlay colour"
               />
             ))}
           </div>
@@ -652,8 +652,8 @@ export default function MeasurePanel() {
 
       <Card title="Tilt correction" defaultOpen={false}>
         <div className="fvd-ws-note">
-          Corrects distance/profile/polyline lengths for stage tilt
-          (#34). 0° = off; labels gain a θ marker when active.
+          Corrects distance/profile/polyline lengths for stage tilt (#34). 0° =
+          off; labels gain a θ marker when active.
         </div>
         <div className="fvd-slider-row">
           <span className="k">Angle (°)</span>
@@ -665,7 +665,10 @@ export default function MeasurePanel() {
             style={{ width: 64 }}
             value={tilt?.angle ?? 0}
             onChange={(e) => {
-              const v = Math.max(-89.9, Math.min(89.9, Number(e.target.value) || 0));
+              const v = Math.max(
+                -89.9,
+                Math.min(89.9, Number(e.target.value) || 0),
+              );
               setTilt(activeId, {
                 angle: v,
                 axis: tilt?.axis ?? "Y",
@@ -707,6 +710,7 @@ export default function MeasurePanel() {
                     seedAngle: tilt?.seedAngle,
                   })
                 }
+                title={`Tilt-correction axis: ${ax}`}
               >
                 {ax}
               </button>
@@ -719,10 +723,12 @@ export default function MeasurePanel() {
             {(
               [
                 // MATLAB names on the buttons; formula on hover
-                ["cross-section", "Cross-section",
-                 "1/sin θ — FIB cross-section"],
-                ["surface", "Plan-view",
-                 "1/cos θ — tilted plan-view surface"],
+                [
+                  "cross-section",
+                  "Cross-section",
+                  "1/sin θ — FIB cross-section",
+                ],
+                ["surface", "Plan-view", "1/cos θ — tilted plan-view surface"],
               ] as const
             ).map(([g, lbl, hint]) => (
               <button

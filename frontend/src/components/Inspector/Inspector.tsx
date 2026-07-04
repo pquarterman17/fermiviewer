@@ -135,6 +135,7 @@ export default function Inspector() {
               key={t}
               className={`fvd-seg-btn${tab === t ? " active" : ""}`}
               onClick={() => setTab(t)}
+              title={`Switch inspector to the ${t} tab`}
             >
               {t}
             </button>
@@ -159,7 +160,9 @@ export default function Inspector() {
       {tab === "Image" && unified && <ToolsBrowser />}
       {tab === "Image" && !unified && <MeasurePanel />}
       {tab === "Image" && meta.kind !== "spectrum" && <RoiManagerCard />}
-      {tab === "Image" && !unified && meta.kind !== "spectrum" && <TransformPanel />}
+      {tab === "Image" && !unified && meta.kind !== "spectrum" && (
+        <TransformPanel />
+      )}
       {tab === "Image" && meta.kind !== "spectrum" && <AdjustPanel />}
       {tab === "Image" && meta.kind !== "spectrum" && <HistoryCard />}
       {tab === "Image" && meta.kind !== "spectrum" && <CalibrationCard />}

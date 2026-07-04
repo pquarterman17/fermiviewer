@@ -80,8 +80,8 @@ export default function ScaleBarCard() {
 
   const thickness = sbState?.thickness ?? null;
   const fontSize = sbState?.fontSize ?? null;
-  const color = sbState?.color ?? null;        // null = default white
-  const unitOverride = sbState?.unitOverride ?? null;  // null = auto
+  const color = sbState?.color ?? null; // null = default white
+  const unitOverride = sbState?.unitOverride ?? null; // null = auto
 
   const apply = (str: string, u: Unit) => {
     const v = Number(str);
@@ -178,6 +178,7 @@ export default function ScaleBarCard() {
             <span className="k">{pixelUnit}</span>
             <button
               className={`fvd-seg-btn${current == null ? " active" : ""}`}
+              title="Auto-pick a scale-bar length from the current zoom"
               onClick={() => {
                 setValStr("");
                 setScaleBar(activeId, { lengthPhys: null });
@@ -212,6 +213,7 @@ export default function ScaleBarCard() {
         <div className="fvd-sb-spin">
           <button
             className="fvd-icon-btn"
+            title="Thinner scale bar (−1 px)"
             onClick={() =>
               setScaleBar(activeId, {
                 thickness: Math.max(1, (thickness ?? 3) - 1),
@@ -223,6 +225,7 @@ export default function ScaleBarCard() {
           <span>{thickness ?? "auto"}</span>
           <button
             className="fvd-icon-btn"
+            title="Thicker scale bar (+1 px)"
             onClick={() =>
               setScaleBar(activeId, { thickness: (thickness ?? 3) + 1 })
             }
@@ -246,6 +249,7 @@ export default function ScaleBarCard() {
         <div className="fvd-sb-spin">
           <button
             className="fvd-icon-btn"
+            title="Smaller label font (−1 px)"
             onClick={() =>
               setScaleBar(activeId, {
                 fontSize: Math.max(8, (fontSize ?? 20) - 1),
@@ -257,6 +261,7 @@ export default function ScaleBarCard() {
           <span>{fontSize ?? "auto (20)"}</span>
           <button
             className="fvd-icon-btn"
+            title="Larger label font (+1 px)"
             onClick={() =>
               setScaleBar(activeId, { fontSize: (fontSize ?? 20) + 1 })
             }
@@ -292,7 +297,13 @@ export default function ScaleBarCard() {
           <input
             type="color"
             value={color ?? "#ffffff"}
-            style={{ width: 28, height: 22, padding: 0, border: "none", cursor: "pointer" }}
+            style={{
+              width: 28,
+              height: 22,
+              padding: 0,
+              border: "none",
+              cursor: "pointer",
+            }}
             title="Custom color"
             onChange={(e) => setScaleBar(activeId, { color: e.target.value })}
           />
@@ -333,7 +344,11 @@ export default function ScaleBarCard() {
 
       <div className="fvd-meta-row">
         <span className="k">Position</span>
-        <button className="fvd-seg-btn" onClick={reset}>
+        <button
+          className="fvd-seg-btn"
+          title="Reset scale bar to defaults (position, size, colour, length)"
+          onClick={reset}
+        >
           Reset
         </button>
       </div>

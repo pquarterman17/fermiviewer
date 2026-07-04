@@ -17,9 +17,7 @@ export default function CalibrationManager() {
   const activeId = useViewer((s) => s.activeId);
   const setStatus = useViewer((s) => s.setStatus);
 
-  const [entries, setEntries] = useState<Record<string, CalibrationEntry>>(
-    {},
-  );
+  const [entries, setEntries] = useState<Record<string, CalibrationEntry>>({});
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -41,9 +39,7 @@ export default function CalibrationManager() {
         useViewer.setState((s) => ({
           images: { ...s.images, [r.image.id]: r.image },
         }));
-        setStatus(
-          `calibrated: ${r.image.pixel_size} ${r.image.pixel_unit}/px`,
-        );
+        setStatus(`calibrated: ${r.image.pixel_size} ${r.image.pixel_unit}/px`);
       })
       .catch((e: Error) => setStatus(`apply: ${e.message}`))
       .finally(() => setBusy(false));
@@ -117,7 +113,11 @@ export default function CalibrationManager() {
           </table>
         )}
         <div className="fvd-btn-row">
-          <button className="fvd-btn" onClick={() => setOpen(false)}>
+          <button
+            className="fvd-btn"
+            onClick={() => setOpen(false)}
+            title="Close the calibration manager (Esc)"
+          >
             Close
           </button>
         </div>

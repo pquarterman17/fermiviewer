@@ -63,6 +63,7 @@ export default function CompareInspector() {
               key={m.key}
               className={`fvd-seg-btn${compareMode === m.key ? " active" : ""}`}
               onClick={() => setCompareMode(m.key)}
+              title={`Show the compared images as ${m.label}`}
             >
               {m.label}
             </button>
@@ -107,13 +108,17 @@ export default function CompareInspector() {
                     key={i}
                     className={`fvd-seg-btn${sbsActive === i ? " active" : ""}`}
                     onClick={() => setActivePane(i)}
+                    title={`Focus pane ${i + 1} (arrow keys step, Tab cycles)`}
                   >
                     {i + 1}
                   </button>
                 ))}
               </div>
             </div>
-            <div className="fvd-text-faint" style={{ fontSize: 11, marginTop: 6 }}>
+            <div
+              className="fvd-text-faint"
+              style={{ fontSize: 11, marginTop: 6 }}
+            >
               Click a pane to focus it (cyan border); ◀ ▶ or ←/→ step it within
               its bound group, Tab cycles panes. The others stay frozen. With
               zoom linked, zooming one pane matches the rest. Bind a named group
@@ -205,13 +210,20 @@ export default function CompareInspector() {
         )}
 
         {compareMode === "flicker" && (
-          <div className="fvd-text-faint" style={{ fontSize: 11, marginTop: 4 }}>
+          <div
+            className="fvd-text-faint"
+            style={{ fontSize: 11, marginTop: 4 }}
+          >
             Tab advances the visible panel
           </div>
         )}
 
         <div className="fvd-btn-row">
-          <button className="fvd-btn" onClick={exitCompare}>
+          <button
+            className="fvd-btn"
+            onClick={exitCompare}
+            title="Exit compare and return to single-image view (Esc)"
+          >
             Exit compare
           </button>
         </div>

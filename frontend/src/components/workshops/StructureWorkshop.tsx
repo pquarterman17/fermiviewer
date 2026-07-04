@@ -53,6 +53,17 @@ const MODES = [
 ] as const;
 type Mode = (typeof MODES)[number];
 
+const MODE_DESC: Record<Mode, string> = {
+  Atoms: "Atom-column detection, fitting & PPA strain",
+  Particles: "Threshold-based particle detection & counting",
+  Grains: "Grain segmentation & boundary metrology",
+  Template: "Template matching via a drawn ROI motif",
+  GPA: "Geometric phase analysis — strain from FFT g-vectors",
+  CTF: "Contrast transfer function fit (defocus, R²)",
+  Lattice: "Lattice spacing & unit cell from FFT spot picks",
+  Stitch: "Stitch multiple tiles into one mosaic",
+};
+
 const NO_MEASURES: Measure[] = [];
 
 export default function StructureWorkshop() {
@@ -72,6 +83,7 @@ export default function StructureWorkshop() {
             key={m}
             className={`fvd-seg-btn${mode === m ? " active" : ""}`}
             onClick={() => setMode(m)}
+            title={MODE_DESC[m]}
           >
             {m}
           </button>
@@ -82,13 +94,9 @@ export default function StructureWorkshop() {
       ) : (
         <>
           {mode === "Atoms" && activeId && <AtomsMode id={activeId} />}
-          {mode === "Particles" && activeId && (
-            <ParticlesMode id={activeId} />
-          )}
+          {mode === "Particles" && activeId && <ParticlesMode id={activeId} />}
           {mode === "Grains" && activeId && <GrainsMode id={activeId} />}
-          {mode === "Template" && activeId && (
-            <TemplateMode id={activeId} />
-          )}
+          {mode === "Template" && activeId && <TemplateMode id={activeId} />}
           {mode === "GPA" && activeId && <GpaMode id={activeId} />}
           {mode === "CTF" && activeId && <CtfMode id={activeId} />}
           {mode === "Lattice" && activeId && <LatticeMode id={activeId} />}
@@ -257,10 +265,7 @@ function ParticlesMode({ id }: { id: string }) {
   const viewH = dims ? (dims.h / dims.w) * VIEW_W : VIEW_W;
   return (
     <>
-      <div
-        className="fvd-ws-pattern"
-        style={{ width: VIEW_W, height: viewH }}
-      >
+      <div className="fvd-ws-pattern" style={{ width: VIEW_W, height: viewH }}>
         <canvas
           ref={canvasRef}
           style={{
@@ -290,15 +295,24 @@ function ParticlesMode({ id }: { id: string }) {
               key={p}
               className={`fvd-seg-btn${polarity === p ? " active" : ""}`}
               onClick={() => setPolarity(p)}
+              title={`Detect ${p} particles on a ${p === "bright" ? "dark" : "bright"} background`}
             >
               {p}
             </button>
           ))}
         </div>
         <span className="k">min px</span>
-        <input value={minArea} style={{ width: 40 }}
-               onChange={(e) => setMinArea(e.target.value)} />
-        <button className="fvd-btn primary" onClick={count} disabled={busy}>
+        <input
+          value={minArea}
+          style={{ width: 40 }}
+          onChange={(e) => setMinArea(e.target.value)}
+        />
+        <button
+          className="fvd-btn primary"
+          onClick={count}
+          disabled={busy}
+          title="Count particles above the threshold and list area/centroid"
+        >
           {busy ? "Counting…" : "Count"}
         </button>
       </div>
@@ -377,9 +391,7 @@ export function TrainedPreviewLegend({
               className="fvd-legend-chip"
               style={{
                 background: c.is_boundary ? "transparent" : col,
-                border: c.is_boundary
-                  ? "1px dashed var(--text-faint)"
-                  : "none",
+                border: c.is_boundary ? "1px dashed var(--text-faint)" : "none",
               }}
             />
             <span className="fvd-legend-label">
@@ -542,6 +554,7 @@ function TrainedGrainControls({
           style={{ flex: "0 0 auto", padding: "4px 10px" }}
           onClick={clear}
           disabled={nStrokes === 0}
+          title="Clear all painted training strokes"
         >
           Clear
         </button>
@@ -559,6 +572,7 @@ function TrainedGrainControls({
           className="fvd-btn primary"
           onClick={onRun}
           disabled={busy || previewBusy || nStrokes === 0}
+          title="Train the classifier on your strokes, then segment grains"
         >
           {busy ? progress || "Training…" : "Train & segment"}
         </button>
@@ -680,7 +694,8 @@ function GrainsMode({ id }: { id: string }) {
   }, [method, id, sourceIsGrainMap, scribbleBegin, scribbleEnd]);
 
   const knob = GRAIN_METHODS.find((m) => m.value === method)!.knob;
-  const knobValue = method === "kmeans" ? k : method === "rag" ? mergeThr : coarseness;
+  const knobValue =
+    method === "kmeans" ? k : method === "rag" ? mergeThr : coarseness;
   const setKnob =
     method === "kmeans" ? setK : method === "rag" ? setMergeThr : setCoarseness;
 
@@ -767,8 +782,16 @@ function GrainsMode({ id }: { id: string }) {
       method === "kmeans"
         ? { method, k: Number(k) || 3 }
         : method === "rag"
-          ? { method, merge_threshold: Number(mergeThr) || 0.08, denoise_sigma: denoiseSigma }
-          : { method, granularity: Number(coarseness) || 0.05, denoise_sigma: denoiseSigma };
+          ? {
+              method,
+              merge_threshold: Number(mergeThr) || 0.08,
+              denoise_sigma: denoiseSigma,
+            }
+          : {
+              method,
+              granularity: Number(coarseness) || 0.05,
+              denoise_sigma: denoiseSigma,
+            };
     runJob<GrainResult>(
       () => analyzeGrainsAsync(id, params),
       (f, msg) => setProgress(`${Math.round(f * 100)}% ${msg}`),
@@ -875,7 +898,12 @@ function GrainsMode({ id }: { id: string }) {
               />
             </>
           )}
-          <button className="fvd-btn primary" onClick={run} disabled={busy}>
+          <button
+            className="fvd-btn primary"
+            onClick={run}
+            disabled={busy}
+            title="Segment grains with the selected method"
+          >
             {busy ? progress || "Segmenting…" : "Identify grains"}
           </button>
         </div>
@@ -897,6 +925,7 @@ function GrainsMode({ id }: { id: string }) {
               );
               setStatus(`grains: exported ${grainResult.n_grains} rows`);
             }}
+            title="Download grain measurements as CSV"
           >
             CSV
           </button>
@@ -912,6 +941,7 @@ function GrainsMode({ id }: { id: string }) {
                 (msg) => setStatus(`grains PNG: ${msg}`),
               );
             }}
+            title="Download the grain-boundary overlay as PNG"
           >
             Overlay PNG
           </button>
@@ -984,13 +1014,20 @@ function TemplateMode({ id }: { id: string }) {
       />
       <div className="fvd-ws-row">
         <span className="k">thr</span>
-        <input value={thresh} style={{ width: 44 }}
-               onChange={(e) => setThresh(e.target.value)} />
+        <input
+          value={thresh}
+          style={{ width: 44 }}
+          onChange={(e) => setThresh(e.target.value)}
+        />
         <button
           className="fvd-btn primary"
           onClick={run}
           disabled={busy || rois.length === 0}
-          title={rois.length ? "" : "draw an ROI around the motif first (R)"}
+          title={
+            rois.length
+              ? "Template-match the latest ROI motif across the image"
+              : "draw an ROI around the motif first (R)"
+          }
         >
           {busy ? "Matching…" : "Match ROI template"}
         </button>
@@ -1152,22 +1189,36 @@ function CtfMode({ id }: { id: string }) {
     <>
       <div className="fvd-ws-row">
         <span className="k">kV</span>
-        <input value={kv} style={{ width: 44 }}
-               onChange={(e) => setKv(e.target.value)} />
+        <input
+          value={kv}
+          style={{ width: 44 }}
+          onChange={(e) => setKv(e.target.value)}
+        />
         <span className="k">Cs mm</span>
-        <input value={cs} style={{ width: 40 }}
-               onChange={(e) => setCs(e.target.value)} />
+        <input
+          value={cs}
+          style={{ width: 40 }}
+          onChange={(e) => setCs(e.target.value)}
+        />
         <span className="k">Å/px</span>
-        <input value={pxA} style={{ width: 44 }}
-               onChange={(e) => setPxA(e.target.value)} />
-        <button className="fvd-btn primary" onClick={run} disabled={busy}>
+        <input
+          value={pxA}
+          style={{ width: 44 }}
+          onChange={(e) => setPxA(e.target.value)}
+        />
+        <button
+          className="fvd-btn primary"
+          onClick={run}
+          disabled={busy}
+          title="Fit the CTF to estimate defocus (Δf), λ and R²"
+        >
           {busy ? "Fitting…" : "Estimate"}
         </button>
       </div>
       {res && (
         <div className="fvd-ws-note">
-          Δf = {res.defocus_nm.toFixed(1)} nm · R² ={" "}
-          {res.r_squared.toFixed(3)} · λ = {res.lambda_a.toFixed(4)} Å
+          Δf = {res.defocus_nm.toFixed(1)} nm · R² = {res.r_squared.toFixed(3)}{" "}
+          · λ = {res.lambda_a.toFixed(4)} Å
         </div>
       )}
       {res && <div ref={host} className="fvd-ws-plot" />}
@@ -1195,12 +1246,12 @@ function LatticeMode({ id }: { id: string }) {
       analyzeLattice(id, next[0], next[1])
         .then((r) =>
           setTable({
-            "a": `${r.a.toFixed(3)} ${r.unit}`,
-            "b": `${r.b.toFixed(3)} ${r.unit}`,
-            "γ": `${r.gamma_deg.toFixed(2)}°`,
+            a: `${r.a.toFixed(3)} ${r.unit}`,
+            b: `${r.b.toFixed(3)} ${r.unit}`,
+            γ: `${r.gamma_deg.toFixed(2)}°`,
             "d₁": `${r.d_spacing1.toFixed(3)} ${r.unit}`,
             "d₂": `${r.d_spacing2.toFixed(3)} ${r.unit}`,
-            "A_cell": `${r.unit_cell_area.toFixed(4)} ${r.unit}²`,
+            A_cell: `${r.unit_cell_area.toFixed(4)} ${r.unit}²`,
           }),
         )
         .catch((e: Error) => setStatus(`lattice: ${e.message}`));
@@ -1270,6 +1321,7 @@ function StitchMode() {
               key={l}
               className={`fvd-seg-btn${layout === l ? " active" : ""}`}
               onClick={() => setLayout(l)}
+              title={`Arrange tiles in a ${l} layout`}
             >
               {l}
             </button>
@@ -1278,19 +1330,23 @@ function StitchMode() {
       </div>
       <div className="fvd-ws-row">
         <span className="k">overlap</span>
-        <input value={overlap} style={{ width: 44 }}
-               onChange={(e) => setOverlap(e.target.value)} />
+        <input
+          value={overlap}
+          style={{ width: 44 }}
+          onChange={(e) => setOverlap(e.target.value)}
+        />
         <button
           className="fvd-btn primary"
           onClick={run}
           disabled={busy || selected.length < 2}
+          title="Stitch the selected tiles into one mosaic"
         >
           {busy ? "Stitching…" : `Stitch ${selected.length} tiles`}
         </button>
       </div>
       <div className="fvd-ws-note">
-        ⌘-click tiles in the filmstrip (equal sizes required), in
-        acquisition order.
+        ⌘-click tiles in the filmstrip (equal sizes required), in acquisition
+        order.
       </div>
     </>
   );

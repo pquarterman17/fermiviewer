@@ -83,7 +83,9 @@ export default function CustomMetaCard() {
         );
         setDirty(false);
         setInfo((p) =>
-          p ? { ...p, values, has_sidecar: r.wrote_sidecar || p.has_sidecar } : p,
+          p
+            ? { ...p, values, has_sidecar: r.wrote_sidecar || p.has_sidecar }
+            : p,
         );
       })
       .catch((e: Error) => setStatus(`metadata: ${e.message}`))
@@ -113,7 +115,11 @@ export default function CustomMetaCard() {
       // keep a non-listed current value selectable (e.g. filename-derived)
       const opts = v && !f.options.includes(v) ? [v, ...f.options] : f.options;
       return (
-        <select value={v} style={{ flex: 1 }} onChange={(e) => onChange(e.target.value)}>
+        <select
+          value={v}
+          style={{ flex: 1 }}
+          onChange={(e) => onChange(e.target.value)}
+        >
           <option value="" />
           {opts.map((o) => (
             <option key={o} value={o}>
@@ -156,6 +162,7 @@ export default function CustomMetaCard() {
           className="fvd-btn primary"
           onClick={save}
           disabled={busy || !dirty}
+          title="Save these values (writes a .fvmeta.yaml sidecar)"
         >
           {busy ? "Saving…" : "Save"}
         </button>

@@ -31,9 +31,7 @@ export default function FftMaskWorkshop() {
   );
 
   const [fftId, setFftId] = useState<string | null>(null);
-  const [natural, setNatural] = useState<{ w: number; h: number } | null>(
-    null,
-  );
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
   const [masks, setMasks] = useState<Mask[]>([]);
   const [radius, setRadius] = useState("6");
   const [mode, setMode] = useState<"pass" | "reject">("pass");
@@ -213,6 +211,11 @@ export default function FftMaskWorkshop() {
               key={m}
               className={`fvd-seg-btn${mode === m ? " active" : ""}`}
               onClick={() => setMode(m)}
+              title={
+                m === "pass"
+                  ? "Keep only the masked spots"
+                  : "Remove the masked spots"
+              }
             >
               {m}
             </button>
@@ -228,6 +231,7 @@ export default function FftMaskWorkshop() {
           className="fvd-btn"
           disabled={masks.length === 0}
           onClick={() => setMasks((ms) => ms.slice(0, -1))}
+          title="Remove the last placed mask"
         >
           Undo
         </button>
@@ -235,6 +239,7 @@ export default function FftMaskWorkshop() {
           className="fvd-btn"
           disabled={masks.length === 0}
           onClick={() => setMasks([])}
+          title="Remove all masks"
         >
           Clear
         </button>
@@ -244,7 +249,7 @@ export default function FftMaskWorkshop() {
           title={
             local
               ? "masks apply to the full-image FFT — switch Live FFT off"
-              : ""
+              : "Inverse-transform the masked FFT to make a Fourier-filtered image"
           }
           onClick={apply}
         >

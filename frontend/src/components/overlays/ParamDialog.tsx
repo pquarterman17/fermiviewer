@@ -5,7 +5,11 @@
 import { useEffect, useState } from "react";
 import { create } from "zustand";
 
-import { coerceParams, type ParamField, type ParamValues } from "../../lib/params";
+import {
+  coerceParams,
+  type ParamField,
+  type ParamValues,
+} from "../../lib/params";
 import { ParamFieldRow } from "./ParamFields";
 
 // Param types now live in lib/params (framework-agnostic, so lib/ tool
@@ -89,12 +93,17 @@ export default function ParamDialog() {
           />
         ))}
         <div className="fvd-btn-row">
-          <button className="fvd-btn" onClick={() => finish(null)}>
+          <button
+            className="fvd-btn"
+            onClick={() => finish(null)}
+            title="Cancel — close without running (Esc)"
+          >
             Cancel
           </button>
           <button
             className="fvd-btn primary"
             onClick={() => finish(coerceParams(values, fields))}
+            title="Run the operation with these parameters (Enter)"
           >
             Run
           </button>

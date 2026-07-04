@@ -207,6 +207,7 @@ export default function AdjustPanel() {
           onClick={() =>
             setDisplay(activeId, { lo: 0, hi: 1, gamma: 1, invert: false })
           }
+          title="Reset contrast window, gamma and invert to defaults"
         >
           Reset
         </button>
@@ -299,6 +300,7 @@ export default function AdjustPanel() {
         <button
           className={`fvd-chip${display.invert ? " active" : ""}`}
           onClick={() => setDisplay(activeId, { invert: !display.invert })}
+          title="Invert the display (swap black/white)"
         >
           invert {display.invert ? "on" : "off"}
         </button>
@@ -359,9 +361,13 @@ export default function AdjustPanel() {
             <NumField
               title="Colorbar tick interval (0 = auto)"
               value={
-                display.tickStep && display.tickStep > 0 ? display.tickStep : null
+                display.tickStep && display.tickStep > 0
+                  ? display.tickStep
+                  : null
               }
-              onCommit={(v) => setDisplay(activeId, { tickStep: Math.max(0, v) })}
+              onCommit={(v) =>
+                setDisplay(activeId, { tickStep: Math.max(0, v) })
+              }
             />
             <span className="unit">{unit}</span>
             <div className="fvd-seg" title="Colorbar side (L / R / bottom)">
@@ -391,9 +397,13 @@ export default function AdjustPanel() {
             <NumField
               title="Number of colorbar ticks (overrides step when > 0; 0 = use step)"
               value={
-                display.tickCount && display.tickCount > 0 ? display.tickCount : null
+                display.tickCount && display.tickCount > 0
+                  ? display.tickCount
+                  : null
               }
-              onCommit={(v) => setDisplay(activeId, { tickCount: Math.max(0, Math.round(v)) })}
+              onCommit={(v) =>
+                setDisplay(activeId, { tickCount: Math.max(0, Math.round(v)) })
+              }
             />
             <button
               className="fvd-icon-btn"
@@ -408,7 +418,11 @@ export default function AdjustPanel() {
             <span className="k">Tick font</span>
             <NumField
               title="Colorbar tick-label font size (px; default 11)"
-              value={display.tickFontSize && display.tickFontSize > 0 ? display.tickFontSize : null}
+              value={
+                display.tickFontSize && display.tickFontSize > 0
+                  ? display.tickFontSize
+                  : null
+              }
               onCommit={(v) =>
                 setDisplay(activeId, {
                   tickFontSize: Math.min(48, Math.max(6, Math.round(v))),
@@ -420,7 +434,9 @@ export default function AdjustPanel() {
               <button
                 className="fvd-icon-btn"
                 title="Reset to default"
-                onClick={() => setDisplay(activeId, { tickFontSize: undefined })}
+                onClick={() =>
+                  setDisplay(activeId, { tickFontSize: undefined })
+                }
               >
                 ↺
               </button>

@@ -199,7 +199,9 @@ export default function ExportDialog() {
   const included: string[] = [];
   if (canBar && scaleBar) included.push("scale bar");
   if (canMeasure && bakeMeasures)
-    included.push(`${measures.length} measurement${measures.length === 1 ? "" : "s"}`);
+    included.push(
+      `${measures.length} measurement${measures.length === 1 ? "" : "s"}`,
+    );
   if (canCaption && colorbar) included.push("colorbar");
   if (canCaption && caption) included.push("caption");
   const summary = included.length ? included.join(", ") : "image only";
@@ -305,6 +307,7 @@ export default function ExportDialog() {
                     key={f.key}
                     className={`fvd-seg-btn${format === f.key ? " active" : ""}`}
                     onClick={() => setFormat(f.key)}
+                    title={`Export as ${f.label}`}
                   >
                     {f.label}
                   </button>
@@ -318,6 +321,7 @@ export default function ExportDialog() {
                 <button
                   className={`fvd-seg-btn${!effPhysical ? " active" : ""}`}
                   onClick={() => setSizeMode("scale")}
+                  title="Size by integer pixel multiple"
                 >
                   Scale
                 </button>
@@ -372,6 +376,7 @@ export default function ExportDialog() {
                         key={d}
                         className={`fvd-seg-btn${dpi === d ? " active" : ""}`}
                         onClick={() => setDpi(d)}
+                        title={`Render at ${d} DPI`}
                       >
                         {d}
                       </button>
@@ -388,6 +393,7 @@ export default function ExportDialog() {
                       key={s}
                       className={`fvd-seg-btn${scale === s ? " active" : ""}`}
                       onClick={() => setScale(s)}
+                      title={`Render at ${s}× native resolution`}
                     >
                       {s}×
                     </button>
@@ -439,10 +445,19 @@ export default function ExportDialog() {
         </div>
 
         <div className="fvd-btn-row">
-          <button className="fvd-btn" onClick={() => setOpen(false)}>
+          <button
+            className="fvd-btn"
+            onClick={() => setOpen(false)}
+            title="Cancel export (Esc)"
+          >
             Cancel
           </button>
-          <button className="fvd-btn primary" onClick={run} disabled={busy}>
+          <button
+            className="fvd-btn primary"
+            onClick={run}
+            disabled={busy}
+            title="Export the image with these settings"
+          >
             {busy ? "Exporting…" : "Export"}
           </button>
         </div>

@@ -80,6 +80,7 @@ export default function Filmstrip() {
       {compareIds && (
         <button
           className="fvd-compare-btn"
+          data-tip="Compare the selected images"
           onClick={() => startCompare(compareIds)}
         >
           Compare {compareIds.length}
@@ -112,9 +113,7 @@ export default function Filmstrip() {
           onRecall={(ids) => {
             // re-select the group's members so it's easy to act on / re-group
             const live = ids.filter((id) => id in images);
-            live.forEach((id, i) =>
-              select(id, i === 0 ? "single" : "toggle"),
-            );
+            live.forEach((id, i) => select(id, i === 0 ? "single" : "toggle"));
           }}
           onRename={renameGroup}
           onDelete={deleteGroup}
@@ -268,7 +267,11 @@ function GroupsBar({
     <div className="fvd-groups-bar">
       <div className="fvd-groups-head">Groups</div>
       {groups.map((g) => (
-        <div key={g.id} className="fvd-group-chip" title={`${g.ids.length} images`}>
+        <div
+          key={g.id}
+          className="fvd-group-chip"
+          title={`${g.ids.length} images`}
+        >
           <button
             className="fvd-group-name"
             onClick={() => onRecall(g.ids)}

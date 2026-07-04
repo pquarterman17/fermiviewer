@@ -208,7 +208,9 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       // degrade to a status message; the rest of the UI stays usable.
       useViewer
         .getState()
-        .setStatus(`GPU image rendering unavailable: ${(err as Error).message}`);
+        .setStatus(
+          `GPU image rendering unavailable: ${(err as Error).message}`,
+        );
       return;
     }
     glRef.current = gl;
@@ -298,7 +300,16 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     return () => {
       alive = false;
     };
-  }, [activeId, rasterless, stackFrame, meta?.kind, setDisplay, setProfile, setRaster, setStatus]);
+  }, [
+    activeId,
+    rasterless,
+    stackFrame,
+    meta?.kind,
+    setDisplay,
+    setProfile,
+    setRaster,
+    setStatus,
+  ]);
 
   // ── colormap LUT upload ──
   useEffect(() => {
@@ -329,11 +340,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   useEffect(() => {
     const r = rasterRef.current;
     if (!glRef.current || !r) return;
-    glRef.current.setImage16(
-      transformU16(r.data, display.transform),
-      r.w,
-      r.h,
-    );
+    glRef.current.setImage16(transformU16(r.data, display.transform), r.w, r.h);
   }, [display.transform, imgSize]);
 
   // ── draw on any view / window / size change ──
@@ -524,8 +531,12 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
         .then((r) => setProfile({ ...r, measureId: mid }))
         .catch((e: Error) => setStatus(e.message));
     } else if (kind === "roi" || kind === "ellipse") {
-      measureRoi(activeId, ptsImg[0], ptsImg[1],
-                 kind === "ellipse" ? "ellipse" : "rect")
+      measureRoi(
+        activeId,
+        ptsImg[0],
+        ptsImg[1],
+        kind === "ellipse" ? "ellipse" : "rect",
+      )
         .then((r) => setRoiStats(mid, r))
         .catch((e: Error) => setStatus(e.message));
     }
@@ -550,7 +561,9 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     const mid = addMeasure(activeId, { kind: "distance", pts });
     setCaptureMode("none");
     useViewer.getState().setSelectedMeasure(mid);
-    setStatus("calibration line drawn — set its real length in the Calibration card");
+    setStatus(
+      "calibration line drawn — set its real length in the Calibration card",
+    );
   };
 
   /** Box profile (user request 2026-06-09): drag a box → profile runs
@@ -701,9 +714,10 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       } else {
         setPending({
           // preview the calibration line as a plain distance line
-          kind: captureMode === "calibrate"
-            ? "distance"
-            : (captureMode as Measure["kind"]),
+          kind:
+            captureMode === "calibrate"
+              ? "distance"
+              : (captureMode as Measure["kind"]),
           pts: [...committed, ip],
         });
       }
@@ -878,7 +892,11 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
 
   const cls = [
     "fvd-stage",
-    captureMode === "fixed-zoom" ? "box-zoom" : captureMode !== "none" ? "box-zoom" : "",
+    captureMode === "fixed-zoom"
+      ? "box-zoom"
+      : captureMode !== "none"
+        ? "box-zoom"
+        : "",
     panning ? "panning" : panTool || spaceHeld ? "pan-ready" : "",
   ]
     .filter(Boolean)
@@ -894,7 +912,13 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   // [row, col] pixel's centre is at image coords (col − 0.5, row − 0.5)
   const specnavMarkPos =
     captureMode === "specnav" && specnavPixel && view && imgSize
-      ? imageToScreen(specnavPixel[1] - 0.5, specnavPixel[0] - 0.5, view, imgSize, vp)
+      ? imageToScreen(
+          specnavPixel[1] - 0.5,
+          specnavPixel[0] - 0.5,
+          view,
+          imgSize,
+          vp,
+        )
       : null;
 
   return (
@@ -1011,7 +1035,10 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
           frame={stackFrame}
           total={nFrames}
           onStep={(delta) => {
-            const next = Math.min(nFrames - 1, Math.max(-1, stackFrame + delta));
+            const next = Math.min(
+              nFrames - 1,
+              Math.max(-1, stackFrame + delta),
+            );
             setStackFrame(activeId, next);
           }}
         />
@@ -1064,10 +1091,20 @@ function FloatTools() {
   const tools: [string, string, boolean, () => void][] = [
     ["✥", "Hand tool  H", panTool, () => setPanTool(!panTool)],
     ["⬚", "Box zoom  Z", captureMode === "zoom", mode("zoom")],
-    ["⊞", "Fixed Size Zoom  F", captureMode === "fixed-zoom", mode("fixed-zoom")],
+    [
+      "⊞",
+      "Fixed Size Zoom  F",
+      captureMode === "fixed-zoom",
+      mode("fixed-zoom"),
+    ],
     ["↔", "Distance  D", captureMode === "distance", mode("distance")],
     ["∿", "Line profile  L", captureMode === "profile", mode("profile")],
-    ["⧈", "Box profile (integrated)  B", captureMode === "box-profile", mode("box-profile")],
+    [
+      "⧈",
+      "Box profile (integrated)  B",
+      captureMode === "box-profile",
+      mode("box-profile"),
+    ],
     ["⌇", "Polyline  P", captureMode === "polyline", mode("polyline")],
     ["∠", "Angle  G", captureMode === "angle", mode("angle")],
     ["▭", "ROI stats  R", captureMode === "roi", mode("roi")],
@@ -1144,7 +1181,9 @@ function FloatTools() {
         <button
           className="fvd-tool-btn"
           data-tip="Delete last annotation"
-          onClick={() => { if (activeId) deleteLastAnnotation(activeId); }}
+          onClick={() => {
+            if (activeId) deleteLastAnnotation(activeId);
+          }}
         >
           ⌫
         </button>
@@ -1153,7 +1192,9 @@ function FloatTools() {
         <button
           className="fvd-tool-btn"
           data-tip="Reset to original pixels"
-          onClick={() => { if (activeId) resetToOriginal(activeId); }}
+          onClick={() => {
+            if (activeId) resetToOriginal(activeId);
+          }}
         >
           ⟳₀
         </button>
@@ -1211,11 +1252,19 @@ function ZoomChip({ onZoom }: { onZoom: (f: number) => void }) {
   if (zoom === null) return null;
   return (
     <div className="fvd-glass fvd-zoom-chip">
-      <button className="fvd-icon-btn" onClick={() => onZoom(0.8)}>
+      <button
+        className="fvd-icon-btn"
+        data-tip="Zoom out"
+        onClick={() => onZoom(0.8)}
+      >
         ⊖
       </button>
       <span>{Math.round(zoom * 100)} %</span>
-      <button className="fvd-icon-btn" onClick={() => onZoom(1.25)}>
+      <button
+        className="fvd-icon-btn"
+        data-tip="Zoom in"
+        onClick={() => onZoom(1.25)}
+      >
         ⊕
       </button>
     </div>

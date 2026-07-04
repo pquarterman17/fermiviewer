@@ -73,9 +73,7 @@ export default function MetadataDialog() {
             <input
               style={{ flex: 1 }}
               value={edits[k] ?? String(v)}
-              onChange={(e) =>
-                setEdits((p) => ({ ...p, [k]: e.target.value }))
-              }
+              onChange={(e) => setEdits((p) => ({ ...p, [k]: e.target.value }))}
             />
           </div>
         ))}
@@ -94,10 +92,18 @@ export default function MetadataDialog() {
           />
         </div>
         <div className="fvd-btn-row">
-          <button className="fvd-btn" onClick={() => setOpen(false)}>
+          <button
+            className="fvd-btn"
+            onClick={() => setOpen(false)}
+            title="Discard changes and close (Esc)"
+          >
             Cancel
           </button>
-          <button className="fvd-btn primary" onClick={save}>
+          <button
+            className="fvd-btn primary"
+            onClick={save}
+            title="Save metadata changes to the image"
+          >
             Save
           </button>
         </div>

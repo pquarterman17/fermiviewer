@@ -100,11 +100,12 @@ export default function EdsWorkshop() {
       .reverse()
       .find(
         (m) =>
-          (m.kind === "distance" || m.kind === "profile") &&
-          m.pts.length === 2,
+          (m.kind === "distance" || m.kind === "profile") && m.pts.length === 2,
       );
     if (!line) {
-      setStatus("comp profile: draw a Distance or Profile line on the cube first");
+      setStatus(
+        "comp profile: draw a Distance or Profile line on the cube first",
+      );
       return;
     }
     const w = meta.shape[1] ?? 1;
@@ -121,9 +122,11 @@ export default function EdsWorkshop() {
     )
       .then((r) => {
         setComp(r);
-        setStatus(`comp profile: ${r.elements.join(", ")} along ${
-          Number(r.distance[r.distance.length - 1]?.toPrecision(4)) || 0
-        } ${r.unit}`);
+        setStatus(
+          `comp profile: ${r.elements.join(", ")} along ${
+            Number(r.distance[r.distance.length - 1]?.toPrecision(4)) || 0
+          } ${r.unit}`,
+        );
       })
       .catch((e: Error) => setStatus(`comp profile: ${e.message}`))
       .finally(() => setCompBusy(false));
@@ -151,8 +154,14 @@ export default function EdsWorkshop() {
         // maps come back null and are skipped so they don't clutter the strip
         const kept = r.maps
           .map((m, i) => ({ m, el: r.elements[i], i }))
-          .filter((x): x is { m: (typeof r.maps)[number] & object; el: string; i: number } =>
-            x.m != null,
+          .filter(
+            (
+              x,
+            ): x is {
+              m: (typeof r.maps)[number] & object;
+              el: string;
+              i: number;
+            } => x.m != null,
           );
         useViewer.setState((s) => {
           const images = { ...s.images };
@@ -196,12 +205,20 @@ export default function EdsWorkshop() {
     <div className="fvd-ws">
       {/* SI explorer — always shown first for spectrum_image cubes */}
       <details open>
-        <summary style={{ cursor: "pointer", padding: "4px 0", fontWeight: 500 }}>
+        <summary
+          style={{ cursor: "pointer", padding: "4px 0", fontWeight: 500 }}
+        >
           Spectrum-Image Explorer
         </summary>
         <EdsSpectrumImage />
       </details>
-      <hr style={{ margin: "6px 0", border: "none", borderTop: "1px solid var(--border)" }} />
+      <hr
+        style={{
+          margin: "6px 0",
+          border: "none",
+          borderTop: "1px solid var(--border)",
+        }}
+      />
 
       <div className="fvd-ws-row">
         <span className="k">Elements</span>
@@ -228,7 +245,9 @@ export default function EdsWorkshop() {
                   setElements(unique.join(", "));
                   setStatus(`EDS auto-assign: ${unique.join(", ")}`);
                 } else {
-                  setStatus("EDS auto-assign: no peaks detected above threshold");
+                  setStatus(
+                    "EDS auto-assign: no peaks detected above threshold",
+                  );
                 }
               })
               .catch((e: Error) => setStatus(`auto-assign: ${e.message}`))
@@ -246,6 +265,11 @@ export default function EdsWorkshop() {
               key={m}
               className={`fvd-seg-btn${method === m ? " active" : ""}`}
               onClick={() => setMethod(m)}
+              title={
+                m === "zaf"
+                  ? "ZAF matrix-corrected quantification"
+                  : "Cliff–Lorimer thin-film k-factor"
+              }
             >
               {m === "cliff-lorimer" ? "Cliff–Lorimer" : "ZAF"}
             </button>
@@ -269,7 +293,12 @@ export default function EdsWorkshop() {
         </div>
       )}
       <div className="fvd-ws-row">
-        <button className="fvd-btn" onClick={run} disabled={busy}>
+        <button
+          className="fvd-btn"
+          onClick={run}
+          disabled={busy}
+          title="Quantify composition and derive at% element maps"
+        >
           {busy ? "Quantifying…" : "Quantify"}
         </button>
       </div>
@@ -343,7 +372,9 @@ export default function EdsWorkshop() {
       {comp && <CompProfilePlot r={comp} />}
 
       <details style={{ marginTop: 6 }}>
-        <summary style={{ cursor: "pointer", padding: "4px 0", fontWeight: 500 }}>
+        <summary
+          style={{ cursor: "pointer", padding: "4px 0", fontWeight: 500 }}
+        >
           Model fit (continuum + peak deconvolution)
         </summary>
         <EdsModelFit activeId={activeId} elements={elements} />

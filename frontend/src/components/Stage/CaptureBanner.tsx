@@ -36,7 +36,11 @@ export default function CaptureBanner({
       )}
       <span className="hint">{hint}</span>
       <kbd>esc</kbd>
-      <button className="fvd-icon-btn" onClick={onCancel}>
+      <button
+        className="fvd-icon-btn"
+        title="Cancel capture  Esc"
+        onClick={onCancel}
+      >
         ✕
       </button>
     </div>

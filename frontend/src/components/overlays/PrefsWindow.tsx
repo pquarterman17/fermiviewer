@@ -205,6 +205,7 @@ export default function PrefsWindow() {
               <button
                 key={s}
                 className={`fvd-prefs-navbtn${section === s ? " active" : ""}`}
+                title={`Show ${s} settings`}
                 onClick={() => setSection(s)}
               >
                 {s}
@@ -342,14 +343,26 @@ export default function PrefsWindow() {
         </div>
 
         <div className="fvd-prefs-footer">
-          <button className="fvd-btn" onClick={reset}>
+          <button
+            className="fvd-btn"
+            title="Restore all preferences to defaults"
+            onClick={reset}
+          >
             Reset to defaults
           </button>
           <div className="fvd-prefs-footer-right">
-            <button className="fvd-btn" onClick={() => setOpen(false)}>
+            <button
+              className="fvd-btn"
+              title="Discard changes and close (Esc)"
+              onClick={() => setOpen(false)}
+            >
               Cancel
             </button>
-            <button className="fvd-btn primary" onClick={save}>
+            <button
+              className="fvd-btn primary"
+              title="Save and apply preferences"
+              onClick={save}
+            >
               Save
             </button>
           </div>
@@ -440,6 +453,7 @@ function Seg<T extends string | number>({
         <button
           key={String(v)}
           className={`fvd-seg-btn${value === v ? " active" : ""}`}
+          title={`Select ${label}`}
           onClick={() => onChange(v)}
         >
           {label}

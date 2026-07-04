@@ -39,13 +39,33 @@ let edgeSeq = 0;
 
 /** Common EELS edge onsets (eV) for the edge-ID overlay. */
 const KNOWN_EDGES: [string, number][] = [
-  ["Li-K", 55], ["B-K", 188], ["C-K", 284], ["N-K", 401], ["O-K", 532],
-  ["F-K", 685], ["Na-K", 1072], ["Mg-K", 1305], ["Al-K", 1560],
-  ["Si-K", 1839], ["Si-L2,3", 99], ["P-L2,3", 132], ["S-L2,3", 165],
-  ["Ca-L2,3", 346], ["Ti-L2,3", 456], ["V-L2,3", 513], ["Cr-L2,3", 575],
-  ["Mn-L2,3", 640], ["Fe-L2,3", 708], ["Co-L2,3", 779], ["Ni-L2,3", 855],
-  ["Cu-L2,3", 931], ["Zn-L2,3", 1020], ["Sr-L2,3", 1940],
-  ["La-M4,5", 832], ["Ce-M4,5", 883], ["Gd-M4,5", 1185],
+  ["Li-K", 55],
+  ["B-K", 188],
+  ["C-K", 284],
+  ["N-K", 401],
+  ["O-K", 532],
+  ["F-K", 685],
+  ["Na-K", 1072],
+  ["Mg-K", 1305],
+  ["Al-K", 1560],
+  ["Si-K", 1839],
+  ["Si-L2,3", 99],
+  ["P-L2,3", 132],
+  ["S-L2,3", 165],
+  ["Ca-L2,3", 346],
+  ["Ti-L2,3", 456],
+  ["V-L2,3", 513],
+  ["Cr-L2,3", 575],
+  ["Mn-L2,3", 640],
+  ["Fe-L2,3", 708],
+  ["Co-L2,3", 779],
+  ["Ni-L2,3", 855],
+  ["Cu-L2,3", 931],
+  ["Zn-L2,3", 1020],
+  ["Sr-L2,3", 1940],
+  ["La-M4,5", 832],
+  ["Ce-M4,5", 883],
+  ["Gd-M4,5", 1185],
 ];
 
 export default function EelsWorkshop() {
@@ -154,8 +174,16 @@ export default function EelsWorkshop() {
     // shown on the same energy axis as the summed spectrum
     if (fitResult && fitResult.energy.length === spectrum.energy.length) {
       series.push({ label: "model", stroke: accent, width: 1.5, dash: [4, 2] });
-      series.push({ label: "bg (fit)", stroke: "#d97706", width: 1, dash: [2, 2] });
-      (data as unknown as number[][]).push(fitResult.model, fitResult.background);
+      series.push({
+        label: "bg (fit)",
+        stroke: "#d97706",
+        width: 1,
+        dash: [2, 2],
+      });
+      (data as unknown as number[][]).push(
+        fitResult.model,
+        fitResult.background,
+      );
       const palette = ["#22d3ee", "#f472b6", "#fbbf24", "#34d399", "#c084fc"];
       fitResult.edges.forEach((ed, k) => {
         series.push({
@@ -193,7 +221,8 @@ export default function EelsWorkshop() {
               ctx.font = "10px monospace";
               const efLower = elementFilter.toLowerCase();
               for (const [name, ev] of KNOWN_EDGES) {
-                if (efLower && !name.toLowerCase().startsWith(efLower)) continue;
+                if (efLower && !name.toLowerCase().startsWith(efLower))
+                  continue;
                 if (ev < lo || ev > hi) continue;
                 const x = u.valToPos(ev, "x", true);
                 ctx.beginPath();
@@ -292,10 +321,7 @@ export default function EelsWorkshop() {
         setStatus(
           `EELS composition maps: ` +
             r.elements
-              .map(
-                (el, i) =>
-                  `${el} ${r.mean_atomic_percent[i].toFixed(1)}%`,
-              )
+              .map((el, i) => `${el} ${r.mean_atomic_percent[i].toFixed(1)}%`)
               .join(" · "),
         );
       })
@@ -484,7 +510,11 @@ export default function EelsWorkshop() {
         <span>–</span>
         <input value={bgHi} onChange={(e) => setBgHi(e.target.value)} />
         <span className="k">{spectrum?.units ?? "eV"}</span>
-        <button className="fvd-btn" onClick={runFit}>
+        <button
+          className="fvd-btn"
+          onClick={runFit}
+          title="Fit the power-law background over the selected window"
+        >
           Fit
         </button>
       </div>
@@ -499,7 +529,12 @@ export default function EelsWorkshop() {
         <span>–</span>
         <input value={sigHi} onChange={(e) => setSigHi(e.target.value)} />
         <span className="k">{spectrum?.units ?? "eV"}</span>
-        <button className="fvd-btn" onClick={runMap} disabled={!isCube}>
+        <button
+          className="fvd-btn"
+          onClick={runMap}
+          disabled={!isCube}
+          title="Extract a signal-intensity map over the signal window (SI cube)"
+        >
           Map
         </button>
       </div>
@@ -535,13 +570,18 @@ export default function EelsWorkshop() {
       </div>
       <div className="fvd-ws-section">
         <span>Edges</span>
-        <button className="fvd-btn" onClick={addEdge}>
+        <button
+          className="fvd-btn"
+          onClick={addEdge}
+          title="Add an edge row to quantify"
+        >
           + edge
         </button>
         <button
           className="fvd-btn"
           onClick={runQuantify}
           disabled={edges.length === 0}
+          title="Quantify at% from the edge windows"
         >
           Quantify
         </button>
@@ -616,8 +656,7 @@ export default function EelsWorkshop() {
       {elnes && (
         <div className="fvd-ws-note">
           ELNES · edge jump {elnes.edge_jump.toExponential(2)} · onset{" "}
-          {elnes.edge_onset.toFixed(1)} eV ·{" "}
-          {elnes.relative_energy.length} pts
+          {elnes.edge_onset.toFixed(1)} eV · {elnes.relative_energy.length} pts
         </div>
       )}
       {edges.map((row, i) => (
@@ -627,9 +666,7 @@ export default function EelsWorkshop() {
           onChange={(r) =>
             setEdges((rows) => rows.map((x, j) => (j === i ? r : x)))
           }
-          onRemove={() =>
-            setEdges((rows) => rows.filter((_, j) => j !== i))
-          }
+          onRemove={() => setEdges((rows) => rows.filter((_, j) => j !== i))}
         />
       ))}
       {quant && (
@@ -665,10 +702,13 @@ export default function EelsWorkshop() {
                 const base = csvBaseName(meta?.name);
                 downloadCsv(
                   `${base}_eels_quant.csv`,
-                  eelsQuantToCsv(quant, { imageName: meta?.name ?? (activeId ?? "") }),
+                  eelsQuantToCsv(quant, {
+                    imageName: meta?.name ?? activeId ?? "",
+                  }),
                 );
                 setStatus(`EELS: exported ${quant.elements.length} elements`);
               }}
+              title="Download the EELS quantification table as CSV"
             >
               Export CSV
             </button>
@@ -745,7 +785,11 @@ function EdgeEditor({
           })
         }
       />
-      <button className="fvd-icon-btn" onClick={onRemove}>
+      <button
+        className="fvd-icon-btn"
+        onClick={onRemove}
+        title="Remove this edge row"
+      >
         ✕
       </button>
     </div>

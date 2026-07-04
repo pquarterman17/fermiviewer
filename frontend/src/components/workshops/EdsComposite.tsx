@@ -124,14 +124,16 @@ export default function EdsComposite({
             </button>
           ))}
         </div>
-        <button className="fvd-btn" onClick={savePng} disabled={!dims}>
+        <button
+          className="fvd-btn"
+          onClick={savePng}
+          disabled={!dims}
+          title="Download the element-composite image as PNG"
+        >
           Save PNG
         </button>
       </div>
-      <div
-        className="fvd-ws-pattern"
-        style={{ width: VIEW_W, height: viewH }}
-      >
+      <div className="fvd-ws-pattern" style={{ width: VIEW_W, height: viewH }}>
         <canvas
           ref={canvasRef}
           style={{

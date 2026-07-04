@@ -78,7 +78,12 @@ export default function ExportCard() {
         </select>
       </div>
       <div className="fvd-btn-row">
-        <button className="fvd-btn primary" onClick={run} disabled={busy}>
+        <button
+          className="fvd-btn primary"
+          onClick={run}
+          disabled={busy}
+          title="Export the active image in the chosen format and resolution"
+        >
           {busy ? "Exporting…" : "Export"}
         </button>
         <button

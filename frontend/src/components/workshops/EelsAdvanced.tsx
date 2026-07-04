@@ -47,10 +47,7 @@ export default function EelsAdvanced({
   const host = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
 
-  const zlp = (): [number, number] => [
-    Number(zlpLo) || -5,
-    Number(zlpHi) || 5,
-  ];
+  const zlp = (): [number, number] => [Number(zlpLo) || -5, Number(zlpHi) || 5];
 
   useEffect(() => {
     setPlot(null);
@@ -199,7 +196,11 @@ export default function EelsAdvanced({
     <>
       <div className="fvd-ws-section">
         <span>Advanced</span>
-        <button className="fvd-btn" onClick={() => setOpen(!open)}>
+        <button
+          className="fvd-btn"
+          onClick={() => setOpen(!open)}
+          title={`${open ? "Hide" : "Show"} advanced EELS tools`}
+        >
           {open ? "Hide" : "Show"}
         </button>
       </div>
@@ -237,7 +238,10 @@ export default function EelsAdvanced({
             >
               Align ZLP
             </button>
-            <label className="fvd-check" title="Parabolic-refined fractional-channel ZLP alignment (#10)">
+            <label
+              className="fvd-check"
+              title="Parabolic-refined fractional-channel ZLP alignment (#10)"
+            >
               <input
                 type="checkbox"
                 checked={subpixel}
@@ -280,7 +284,12 @@ export default function EelsAdvanced({
               title="Refractive index for KK normalisation (blank = unnormalised)"
               onChange={(e) => setNIndex(e.target.value)}
             />
-            <button className="fvd-btn" onClick={runKK} disabled={busy}>
+            <button
+              className="fvd-btn"
+              onClick={runKK}
+              disabled={busy}
+              title="Kramers–Kronig dielectric analysis (ε₁, ε₂, ELF, thickness)"
+            >
               Kramers–Kronig
             </button>
           </div>
@@ -303,6 +312,7 @@ export default function EelsAdvanced({
               className="fvd-btn"
               onClick={runSvd}
               disabled={busy || !isCube}
+              title="SVD/MSA decomposition — denoise + component maps (cube)"
             >
               SVD
             </button>

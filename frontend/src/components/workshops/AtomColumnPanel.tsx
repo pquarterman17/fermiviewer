@@ -371,6 +371,7 @@ export default function AtomColumnPanel({ id }: { id: string }) {
             <button
               key={p}
               className={`fvd-seg-btn${polarity === p ? " active" : ""}`}
+              title={`Fit ${p} columns${p === "bright" ? " (HAADF)" : " (BF/ABF)"}`}
               onClick={() => setPolarity(p)}
             >
               {p}
@@ -387,7 +388,12 @@ export default function AtomColumnPanel({ id }: { id: string }) {
             <option key={n} value={n}>{n}</option>
           ))}
         </select>
-        <button className="fvd-btn primary" onClick={runDetect} disabled={busy}>
+        <button
+          className="fvd-btn primary"
+          title="Detect and Gaussian-fit atom columns"
+          onClick={runDetect}
+          disabled={busy}
+        >
           {busy ? "Fitting…" : "Detect + Fit"}
         </button>
       </div>
@@ -396,6 +402,7 @@ export default function AtomColumnPanel({ id }: { id: string }) {
       <div className="fvd-ws-row">
         <button
           className="fvd-btn"
+          title="Compute per-column strain (εxx/εyy/εxy/rotation) via PPA"
           onClick={runStrain}
           disabled={strainBusy || !res || res.n_columns === 0}
         >
@@ -447,8 +454,20 @@ export default function AtomColumnPanel({ id }: { id: string }) {
       {/* Export buttons */}
       {res && (
         <div className="fvd-ws-row">
-          <button className="fvd-btn" onClick={exportCsv}>CSV</button>
-          <button className="fvd-btn" onClick={exportPng}>PNG overlay</button>
+          <button
+            className="fvd-btn"
+            title="Download atom-column positions & strain as CSV"
+            onClick={exportCsv}
+          >
+            CSV
+          </button>
+          <button
+            className="fvd-btn"
+            title="Download the atom-column overlay as PNG"
+            onClick={exportPng}
+          >
+            PNG overlay
+          </button>
         </div>
       )}
     </>

@@ -48,7 +48,8 @@ export default function CalibrationCard() {
     : 0;
 
   const lenVal = Number(len);
-  const canCalibrate = !!line && lenPx > 0 && Number.isFinite(lenVal) && lenVal > 0;
+  const canCalibrate =
+    !!line && lenPx > 0 && Number.isFinite(lenVal) && lenVal > 0;
   const previewPx = canCalibrate ? lenVal / lenPx : null;
 
   const calibrate = () => {
@@ -130,7 +131,10 @@ export default function CalibrationCard() {
       </div>
 
       {previewPx != null && (
-        <div className="fvd-text-faint" style={{ fontSize: 11, marginBottom: 4 }}>
+        <div
+          className="fvd-text-faint"
+          style={{ fontSize: 11, marginBottom: 4 }}
+        >
           → {previewPx.toPrecision(4)} {unit}/px
         </div>
       )}
@@ -141,6 +145,7 @@ export default function CalibrationCard() {
             className="fvd-btn primary"
             disabled={!canCalibrate || busy}
             onClick={calibrate}
+            title="Set pixel size from the drawn line and its known length"
           >
             Calibrate from line
           </button>

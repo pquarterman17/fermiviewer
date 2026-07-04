@@ -84,52 +84,55 @@ export default function TransformPanel() {
               </button>
               {open &&
                 tools.map((t) => {
-                const expandable = !!t.fields && t.fields.length > 0;
-                const open = openKind === t.kind;
-                return (
-                  <Fragment key={t.kind}>
-                    <button
-                      className={`fvd-cmd-row${open ? " active" : ""}`}
-                      onClick={() => onToolClick(t)}
-                    >
-                      <span className="glyph">{t.glyph}</span>
-                      <span className="label">{t.label}</span>
-                      {expandable && (
-                        <span className="chev">{open ? "▾" : "▸"}</span>
-                      )}
-                    </button>
-                    {open && t.fields && (
-                      <div className="fvd-tool-form">
-                        {t.fields.map((f, i) => (
-                          <ParamFieldRow
-                            key={f.key}
-                            field={f}
-                            value={values[f.key]}
-                            autoFocus={i === 0}
-                            onChange={(v) =>
-                              setValues((cur) => ({ ...cur, [f.key]: v }))
-                            }
-                          />
-                        ))}
-                        <div className="fvd-btn-row">
-                          <button
-                            className="fvd-btn"
-                            onClick={() => setOpenKind(null)}
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            className="fvd-btn primary"
-                            onClick={() => apply(t)}
-                          >
-                            Apply
-                          </button>
+                  const expandable = !!t.fields && t.fields.length > 0;
+                  const open = openKind === t.kind;
+                  return (
+                    <Fragment key={t.kind}>
+                      <button
+                        className={`fvd-cmd-row${open ? " active" : ""}`}
+                        onClick={() => onToolClick(t)}
+                        title={`Run ${t.label} on the active image`}
+                      >
+                        <span className="glyph">{t.glyph}</span>
+                        <span className="label">{t.label}</span>
+                        {expandable && (
+                          <span className="chev">{open ? "▾" : "▸"}</span>
+                        )}
+                      </button>
+                      {open && t.fields && (
+                        <div className="fvd-tool-form">
+                          {t.fields.map((f, i) => (
+                            <ParamFieldRow
+                              key={f.key}
+                              field={f}
+                              value={values[f.key]}
+                              autoFocus={i === 0}
+                              onChange={(v) =>
+                                setValues((cur) => ({ ...cur, [f.key]: v }))
+                              }
+                            />
+                          ))}
+                          <div className="fvd-btn-row">
+                            <button
+                              className="fvd-btn"
+                              onClick={() => setOpenKind(null)}
+                              title="Discard these parameters and close the form"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              className="fvd-btn primary"
+                              onClick={() => apply(t)}
+                              title="Run the tool with the parameters above"
+                            >
+                              Apply
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </Fragment>
-                );
-              })}
+                      )}
+                    </Fragment>
+                  );
+                })}
             </Fragment>
           );
         })}
