@@ -7,7 +7,7 @@ license = "Apache-2.0"
 requires-python = ">=3.10"
 authors = [{ name = "Paige Quarterman" }]
 dependencies = [
-    "fastapi>=0.138.0",
+    "fastapi>=0.139.0",
     # we only use the long-stable uvicorn.Server/Config/run API; a recent
     # floor that still leaves room for users not on the very latest
     "uvicorn[standard]>=0.32",
@@ -15,7 +15,7 @@ dependencies = [
     "numpy>=2.1",
     "scipy>=1.14",
     "scikit-image>=0.24",
-    "pillow>=11",
+    "pillow>=12.3.0",
     "tifffile>=2024.8",
     "orjson>=3.10",
     # SECURITY floor: < 0.0.18 carries the multipart ReDoS (CVE-2024-53981)
@@ -33,7 +33,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "ruff>=0.15.18",
+    "ruff>=0.15.20",
     "pytest>=9.1.1",
     "pytest-cov>=5.0",
     "mypy>=1.13",
