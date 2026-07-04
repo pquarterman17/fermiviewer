@@ -73,6 +73,65 @@ def test_committed_corpus_vs_rsciio(ml_datasets: Path) -> None:
 
 
 @pytest.mark.realdata
+def test_rsciio_corpus_sums_vs_oracle(rsciio_examples: Path) -> None:
+    """Live cross-check: for every rsciio-corpus file both readers can open,
+    our data sum must match the oracle's (best-matching signal, since some
+    files carry several). Belt-and-suspenders over the pinned realdata tests
+    in test_em_examples.py."""
+    files: list[Path] = []
+    for sub, pats in (
+        ("dm", ("*.dm3", "*.dm4")),
+        ("tia", ("*.ser",)),
+        ("emd", ("*.emd",)),
+        ("mrc", ("*.mrc",)),
+        ("msa", ("*.msa",)),
+        ("bruker", ("*.bcf",)),
+    ):
+        for pat in pats:
+            files.extend(sorted((rsciio_examples / sub).glob(pat)))
+
+    def _oracle(path: Path):
+        ext = path.suffix.lower()
+        mod = {
+            ".dm3": "digitalmicrograph", ".dm4": "digitalmicrograph",
+            ".ser": "tia", ".emd": "emd", ".mrc": "mrc", ".msa": "msa",
+            ".bcf": "bruker",
+        }[ext]
+        return __import__(f"rsciio.{mod}", fromlist=["file_reader"]).file_reader(str(path))
+
+    # multi-frame stacks intentionally return only the first frame (no
+    # image-stack DataKind); their partial sum is pinned in test_em_examples.
+    partial = {
+        "16x16-line_profile_horizontal_5x128x128_EDS_2.ser",
+        "fei_example_tem_stack.emd",
+        "4DSTEMscan.mrc",  # 4D-STEM: we return the first 2D frame (deferred feature)
+    }
+    compared = 0
+    for f in files:
+        if f.name in partial:
+            continue
+        try:
+            ours = load_auto(f)
+        except Exception:  # noqa: BLE001 — documented-limitation files (complex FFT, NCEM-4D)
+            continue
+        try:
+            theirs = _oracle(f)
+        except Exception as e:  # noqa: BLE001
+            print(f"  oracle skip {f.name}: {e}")
+            continue
+        our_sum = float(np.nan_to_num(np.asarray(ours.data, np.float64)).sum())
+        their_sums = [
+            float(np.nan_to_num(np.asarray(s["data"], np.float64)).sum()) for s in theirs
+        ]
+        assert any(
+            abs(our_sum - t) <= 1e-6 * max(abs(t), 1) for t in their_sums
+        ), f"{f.name}: sum {our_sum} not among oracle sums {their_sums}"
+        compared += 1
+    print(f"  rsciio-corpus oracle compared {compared}/{len(files)} files")
+    assert compared >= 15, "too few oracle comparisons succeeded"
+
+
+@pytest.mark.realdata
 def test_real_eels_cube_vs_rsciio(eels_corpus: Path) -> None:
     f = eels_corpus / "FigS6_apatite_ZLP.dm4"
     ours = load_auto(f)

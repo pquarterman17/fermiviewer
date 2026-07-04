@@ -218,6 +218,14 @@ def _load_velox(f: h5py.File, path: Path) -> DataStruct:
     # Velox image data is [H, W, frames]; take the first frame (record count)
     if raw.ndim == 3:
         meta["n_frames"] = int(raw.shape[2])
+        if raw.shape[2] > 1:
+            import warnings
+
+            warnings.warn(
+                f"{path.name}: Velox EMD holds {raw.shape[2]} image frames; only "
+                "the first is returned (image stacks are not supported).",
+                stacklevel=2,
+            )
         img = raw[:, :, 0]
     elif raw.ndim == 2:
         img = raw

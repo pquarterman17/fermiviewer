@@ -71,3 +71,17 @@ def afm_examples() -> Path:
     if not (p / "topostats" / "minicircle.spm").is_file():
         pytest.skip("fv-example-data AFM corpus absent (sibling repo)")
     return p
+
+
+@pytest.fixture(scope="session")
+def rsciio_examples() -> Path:
+    """Path to ../fv-example-data/rsciio; skips when the corpus isn't present.
+
+    Real TEM/STEM/EDS/EELS files (DM, TIA-SER, EMD, MRC, MSA, BCF) from the
+    rosettasciio test corpus, cross-validated against that oracle; see the
+    corpus README.
+    """
+    p = EXAMPLE_DATA_ROOT / "rsciio"
+    if not (p / "dm" / "test_STEM_image.dm3").is_file():
+        pytest.skip("fv-example-data rsciio corpus absent (sibling repo)")
+    return p
