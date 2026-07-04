@@ -1,6 +1,6 @@
 [project]
 name = "fermiviewer"
-version = "0.1.10"
+version = "0.1.11"
 description = "Electron-microscopy image analysis — Python/FastAPI port of fermi-viewer"
 readme = "README.md"
 license = "Apache-2.0"
