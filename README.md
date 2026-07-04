@@ -93,6 +93,30 @@ folder you launched from. If a copy is already running it just opens a
 new tab; if port 8000 is taken by another app it steps to the next free
 port. `fv` remains as a short alias for the same entry point.
 
+### Option 5 — air-gapped / offline machine (source install, no exe)
+
+For machines with no internet access — or where IT policy rules out
+running downloaded executables — each release ships per-OS
+`fv-offline-*.zip` bundles: the FermiViewer wheel (web UI already baked
+in) plus every dependency as pre-built wheels and a standard-library-only
+installer. The only requirement on the target is a 64-bit Python 3.10+.
+
+1. Download `fv-offline-win64.zip` (or `-macos-arm64` / `-linux-x64`)
+   from the [latest release](../../releases/latest) and carry it over.
+2. Extract anywhere writable and run `py install.py`
+   (macOS/Linux: `python3 install.py`).
+3. Launch with the generated `FermiViewer.bat` / `./fermiviewer`.
+
+Everything lives in that one folder (nothing downloaded, no admin
+rights); deleting the folder uninstalls it. Full details, including how
+to review the exact pinned dependency versions, are in the bundle's
+`README-OFFLINE.md`. To build a bundle yourself from a checkout (on a
+connected machine of the same OS):
+
+```bash
+uv run python tools/offline/make_bundle.py
+```
+
 ---
 
 ## Usage

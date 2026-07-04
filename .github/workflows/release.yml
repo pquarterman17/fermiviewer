@@ -40,6 +40,7 @@ jobs:
             # needs its sibling .sig. Signed via the TAURI_SIGNING_* secrets.
             updater-glob: src-tauri/target/release/bundle/nsis/*-setup.exe.sig
             server-archive: fv-server-win64.zip
+            offline-archive: fv-offline-win64.zip
           - os: macos-latest
             label: macos
             bundles: dmg
@@ -49,6 +50,7 @@ jobs:
             # Re-add this glob when macOS gets Developer-ID signing/notarizing.
             updater-glob: ""
             server-archive: fv-server-macos.tar.gz
+            offline-archive: fv-offline-macos-arm64.zip
           - os: ubuntu-latest
             label: linux
             bundles: deb
@@ -56,6 +58,7 @@ jobs:
             # .deb is not an updater target — Linux stays manual install
             updater-glob: ""
             server-archive: fv-server-linux.tar.gz
+            offline-archive: fv-offline-linux-x64.zip
     steps:
       - uses: actions/checkout@v6
 
@@ -126,6 +129,13 @@ jobs:
           fi
           echo "sidecar healthy, SPA served"
 
+      # Source-install kit for air-gapped machines: fermiviewer wheel (SPA
+      # baked in by hatch_build.py) + full dependency wheelhouse + stdlib
+      # installer. Reuses the SPA built above; uv fetches each covered
+      # Python so pip resolves markers natively per version.
+      - name: Build offline source-install bundle
+        run: uv run python tools/offline/make_bundle.py --out ${{ matrix.offline-archive }}
+
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
@@ -178,6 +188,7 @@ jobs:
           path: |
             ${{ matrix.installer-glob }}
             ${{ matrix.server-archive }}
+            ${{ matrix.offline-archive }}
           if-no-files-found: error
 
       - name: Attach artifacts to the Release
@@ -188,6 +199,7 @@ jobs:
             ${{ matrix.installer-glob }}
             ${{ matrix.updater-glob }}
             ${{ matrix.server-archive }}
+            ${{ matrix.offline-archive }}
           generate_release_notes: true
 
   # Build the updater manifest (latest.json) AFTER all installers have

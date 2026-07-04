@@ -75,7 +75,9 @@ def _request_shutdown() -> None:
 
 def _frontend_dist() -> Path | None:
     """frontend/dist — repo layout in dev, bundled data when frozen
-    (PyInstaller sidecar packs the SPA under <bundle>/frontend/dist)."""
+    (PyInstaller sidecar packs the SPA under <bundle>/frontend/dist),
+    or fermiviewer/_spa package data in a wheel install (hatch_build.py
+    bakes frontend/dist in at build time — the offline-install path)."""
     import sys
 
     candidates = []
@@ -88,6 +90,7 @@ def _frontend_dist() -> Path | None:
     candidates.append(
         Path(__file__).resolve().parents[2] / "frontend" / "dist"
     )
+    candidates.append(Path(__file__).resolve().parent / "_spa")
     for dist in candidates:
         if (dist / "index.html").is_file():
             return dist

@@ -67,6 +67,12 @@ packages = ["src/fermiviewer"]
 # OFL-licensed font vendored for baked-text export (PIL TTF path)
 artifacts = ["src/fermiviewer/assets/fonts/*.ttf", "src/fermiviewer/assets/fonts/OFL.txt"]
 
+[tool.hatch.build.targets.wheel.hooks.custom]
+# bakes frontend/dist into the wheel as fermiviewer/_spa when present,
+# so a wheel install serves the SPA with no Node on the machine
+# (the tools/offline/ air-gapped path relies on this)
+path = "hatch_build.py"
+
 [tool.ruff]
 line-length = 100
 # lint against the supported FLOOR so version guards stay valid and we are
