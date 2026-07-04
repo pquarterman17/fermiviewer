@@ -102,3 +102,72 @@ def test_non_nanoscope_numeric_extension(tmp_path):
     p.write_bytes(b"not a nanoscope file at all")
     with pytest.raises(UnsupportedFormatError):
         load_auto(p)
+
+
+# ── header-spelling variants (legacy NanoScope III) ──────────────────
+
+
+def test_lowercase_scan_size_key(tmp_path):
+    # legacy files spell it `Scan size`; lookup must be case-insensitive
+    p = tmp_path / "legacy.spm"
+    ex = write_nanoscope(p, scan_size_key="Scan size")
+    ds = load_nanoscope(p)
+    assert ds.axes[1].scale == pytest.approx(ex["nm_per_px"], rel=1e-6)
+
+
+def test_tilde_micron_unit(tmp_path):
+    # `~m` is legacy NanoScope's 7-bit-safe spelling of µm
+    p = tmp_path / "micron.spm"
+    write_nanoscope(p, scan_size_value="2 2 ~m")  # 2 µm = 2000 nm over 4 px
+    ds = load_nanoscope(p)
+    assert ds.metadata["scan_size_nm"] == [2000.0, 2000.0]
+    assert ds.axes[1].scale == pytest.approx(2000.0 / 4, rel=1e-6)
+
+
+def test_single_value_square_scan_size(tmp_path):
+    # legacy files often give one number for a square scan
+    p = tmp_path / "square.spm"
+    write_nanoscope(p, scan_size_value="500 nm")
+    ds = load_nanoscope(p)
+    assert ds.metadata["scan_size_nm"] == [500.0, 500.0]
+
+
+# ── per-channel unit derivation (hard-scale parenthetical) ───────────
+
+
+def test_channel_unit_from_hard_scale(tmp_path):
+    # a non-length channel takes its unit from the `(… Arb/LSB)` hard scale,
+    # not the sensitivity line (which carries a bogus placeholder unit)
+    p = tmp_path / "multi.spm"
+    write_nanoscope(p, extra_channel="Arb/LSB")
+    chans = {c.metadata["channel"]: c for c in load_nanoscope_all(p)}
+    assert chans["ZSensor"].metadata["value_unit"] == "nm"  # V/LSB → sens unit
+    assert chans["Other"].metadata["value_unit"] == "Arb"  # hard-scale unit
+
+
+def test_log_unit_with_nested_parens(tmp_path):
+    # `log(Arb)/LSB` — the inner parens must not confuse unit extraction
+    p = tmp_path / "log.spm"
+    write_nanoscope(p, extra_channel="log(Arb)/LSB")
+    chans = {c.metadata["channel"]: c for c in load_nanoscope_all(p)}
+    assert chans["Other"].metadata["value_unit"] == "log(Arb)"
+
+
+# ── robustness / error paths ─────────────────────────────────────────
+
+
+def test_truncated_data_block_rejected(tmp_path):
+    # a header that promises more data than the file holds must not read
+    # past EOF — it should raise, like the real header-only captures
+    p = tmp_path / "trunc.spm"
+    write_nanoscope(p)
+    p.write_bytes(p.read_bytes()[:-8])  # lop off part of the data block
+    with pytest.raises(NanoscopeError, match="past end"):
+        load_nanoscope(p)
+
+
+def test_missing_scan_size_rejected(tmp_path):
+    p = tmp_path / "noscan.spm"
+    write_nanoscope(p, scan_size_value="")
+    with pytest.raises(NanoscopeError, match="Scan Size"):
+        load_nanoscope(p)

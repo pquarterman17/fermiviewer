@@ -59,3 +59,15 @@ def bcf_examples() -> Path:
     if not (p / "SEM" / "Hitachi_TM3030Plus.bcf").is_file():
         pytest.skip("fv-example-data BCF corpus absent (sibling repo)")
     return p
+
+
+@pytest.fixture(scope="session")
+def afm_examples() -> Path:
+    """Path to ../fv-example-data/AFM; skips when the corpus isn't present.
+
+    Real Bruker NanoScope files (TopoStats + pySPM); see the corpus README.
+    """
+    p = EXAMPLE_DATA_ROOT / "AFM"
+    if not (p / "topostats" / "minicircle.spm").is_file():
+        pytest.skip("fv-example-data AFM corpus absent (sibling repo)")
+    return p

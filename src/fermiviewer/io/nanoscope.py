@@ -30,8 +30,9 @@ class NanoscopeError(ValueError):
     """Unparseable / unsupported Nanoscope file (force curves, text mode…)."""
 
 
-# Scan-size unit suffix → nanometres.
-_UNIT_TO_NM = {"m": 1e9, "um": 1e3, "µm": 1e3, "nm": 1.0, "pm": 1e-3}
+# Scan-size unit suffix → nanometres. `~m` is legacy NanoScope's 7-bit-safe
+# spelling of µm (the µ byte is written as `~`); `um`/`µm` are the modern forms.
+_UNIT_TO_NM = {"m": 1e9, "um": 1e3, "µm": 1e3, "~m": 1e3, "nm": 1.0, "pm": 1e-3}
 
 # A CIAO "V"-type parameter line (leading backslash already stripped):
 #   @[group:]Key: V [SoftScale] (HardScale units) HardValue units
@@ -119,9 +120,22 @@ def _ciao_sensitivities(sections: list[_Section]) -> dict[str, tuple[float, str]
     return out
 
 
+def _kv_ci(kv: dict[str, str], *keys: str) -> str:
+    """First value whose key matches one of ``keys`` case-insensitively.
+
+    Legacy NanoScope headers spell it ``Scan size`` where modern ones use
+    ``Scan Size``; a case-insensitive lookup reads both.
+    """
+    lower = {k.lower(): v for k, v in kv.items()}
+    for k in keys:
+        if k.lower() in lower:
+            return lower[k.lower()]
+    return ""
+
+
 def _scan_size_nm(scan: _Section) -> tuple[float, float]:
     """(x, y) physical extent in nm from ``\\Scan Size: 5e-006 5e-006 m``."""
-    raw = scan.kv.get("Scan Size", "")
+    raw = _kv_ci(scan.kv, "Scan Size")
     toks = raw.split()
     nums = [t for t in toks if _is_num(t)]
     unit = next((t for t in reversed(toks) if not _is_num(t)), "m")
@@ -147,6 +161,11 @@ _SOFT = re.compile(r"\[([^\]]*)\]")
 # first number inside the hard-scale parenthetical (units may themselves
 # contain parens, e.g. "log(Arb)/LSB", so match the number, not the whole ())
 _HARD = re.compile(r"\(\s*(" + _NUM + r")")
+# the hard-scale unit is the token(s) between that number and `/LSB`
+# — e.g. "(… Arb/LSB)" → Arb, "(… log(Arb)/LSB)" → log(Arb). This is the
+# authoritative channel unit; the sensitivity line often carries a bogus
+# "nm" placeholder for non-length channels (modulus, dissipation).
+_HARD_UNIT = re.compile(r"\(\s*" + _NUM + r"\s+(?P<unit>.+?)\s*/\s*LSB\b")
 # the trailing hard value: the number after the parenthetical's close paren
 _VALUE = re.compile(r"\)\s+(" + _NUM + r")")
 
@@ -168,17 +187,32 @@ def _z_scale(
       already volts-per-LSB and encodes the bit depth, so no extra divisor.
     * **Method B** (legacy v5/v6): ``z = raw · (hard_value / 2^(8·bpp)) ·
       sensitivity`` — divide the full-scale hard value by the ADC range.
+
+    The unit is taken from the hard-scale parenthetical (``Arb/LSB`` →
+    ``Arb``). Only when that is a raw electrical unit (``V``/``LSB``) — as
+    for a height channel measured in volts and converted by a nm/V
+    sensitivity — does the sensitivity's own unit win.
     """
     line = next((b for b in image.raw if _ZSCALE_LINE.match(b)), None)
     if line is None:
         return 1.0, ""
     soft_m, hard_m, val_m = _SOFT.search(line), _HARD.search(line), _VALUE.search(line)
     soft = soft_m.group(1).strip() if soft_m else ""
-    sensitivity, unit = 1.0, ""
-    for key in (soft, "Sens. Zsens", "Sens. Zscale", "Sensitivity"):
-        if key and key in sens:
-            sensitivity, unit = sens[key]
+
+    # A named soft-scale must resolve to *its own* sensitivity — never
+    # borrow the height (Zsens) sensitivity for a different channel, which
+    # would silently mis-scale it. Only an empty bracket falls back to the
+    # generic Z keys.
+    sensitivity, sens_unit = 1.0, ""
+    for key in ([soft] if soft else ["Sens. Zsens", "Sens. Zscale", "Sensitivity"]):
+        if key in sens:
+            sensitivity, sens_unit = sens[key]
             break
+
+    hu = _HARD_UNIT.search(line)
+    hard_unit = hu.group("unit").strip() if hu else ""
+    unit = hard_unit if hard_unit and hard_unit not in ("V", "LSB") else sens_unit
+
     hard_scale = float(hard_m.group(1)) if hard_m else 0.0
     if hard_scale:  # Method A
         return hard_scale * sensitivity, unit
