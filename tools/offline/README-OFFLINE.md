@@ -1,5 +1,10 @@
 # FermiViewer — offline / air-gapped install
 
+FermiViewer is a local web app for electron-microscopy image analysis:
+TEM/STEM image viewing, EELS / EDS / diffraction analysis, measurements,
+and image processing. It runs entirely on this machine and opens in your
+browser — no data ever leaves the computer.
+
 This folder is a self-contained FermiViewer install kit. It needs **no
 internet, no Node.js, no compiler, and no admin rights** on this machine —
 only a 64-bit Python. Everything installs into this folder; nothing else

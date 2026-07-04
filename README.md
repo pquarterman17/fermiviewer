@@ -5,7 +5,7 @@ diffraction analysis, measurements, and image processing. Python (FastAPI)
 backend + React frontend + Tauri desktop shell.
 
 Ground-up port of [fermi-viewer](https://github.com/pquarterman17/fermi-viewer)
-(MATLAB), and this is hte long term future of this style project. 
+(MATLAB), and the long-term home of this project line.
 
 ![FermiViewer — multi-format image viewer with EELS/EDS/diffraction analysis and a measurement suite](docs/images/overview.png)
 
@@ -51,20 +51,25 @@ auto-open).
 ### Option 3 — from source
 
 Requirements: [uv](https://docs.astral.sh/uv/) (a suitable Python is
-fetched automatically) and Node 20+ for the frontend.
+fetched automatically) and Node 20+ for the frontend. Get the code with
+`git clone`, or download *Source code (zip)* from any
+[release](../../releases/latest) and extract it — no git needed.
 
 ```bash
 git clone https://github.com/pquarterman17/fermiviewer
 cd fermiviewer
 
-cd frontend && npm ci && npm run build && cd ..   # build the SPA once
+cd frontend && npm ci && npm run build && cd ..   # build the web UI (once)
 uv sync                                           # install backend deps
 uv run fv                                         # → http://127.0.0.1:8000
 ```
 
-`uv run fv --desktop` opens a native window instead of the browser
-(pywebview). For the Tauri shell / installer build, see *Packaging*
-below.
+That is the whole build — after the first time, `uv run fv` is all you
+run. `uv run fv --desktop` opens a native window instead of the browser
+(pywebview). Building from source needs internet (PyPI + npm) — for a
+machine without it, use the ready-made offline bundle in **Option 5**,
+which skips Node and PyPI entirely. For the Tauri shell / installer
+build, see *Packaging* below.
 
 > **OneDrive checkouts (Windows):** if the repo lives in a synced
 > folder, move the venv out of OneDrive's reach before the first sync:
@@ -193,7 +198,9 @@ A tagged push builds and publishes everything automatically
 
 ```bash
 git tag v0.2.0 && git push origin v0.2.0
-# → Release with FermiViewer_x64-setup.exe + fv-server-win64.zip
+# → Release with the per-OS installers (.exe / .dmg / .deb), the
+#   fv-server-* standalone archives, the fv-offline-* air-gapped
+#   bundles, and the auto-updater's latest.json
 ```
 
 Local equivalents (Windows; needs Rust + VS Build Tools for the shell):
