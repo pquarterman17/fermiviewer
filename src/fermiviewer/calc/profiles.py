@@ -282,9 +282,12 @@ def roi_stats(
         raise ValueError("shape must be 'rect' or 'ellipse'")
     area_px = float(sel.size)
     area = area_px * pixel_size**2 if np.isfinite(pixel_size) else area_px
+    # MATLAB sample-std (N-1) parity: +fermiViewer/+interaction/rectROI.m:29
+    # calls std(vals), i.e. ddof=1; MATLAB's std() of a scalar is 0.
+    std_val = float(sel.std(ddof=1)) if sel.size > 1 else 0.0
     return {
         "mean": float(sel.mean()),
-        "std": float(sel.std(ddof=0)),
+        "std": std_val,
         "min": float(sel.min()),
         "max": float(sel.max()),
         "n_pixels": area_px,

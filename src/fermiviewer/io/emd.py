@@ -76,7 +76,7 @@ def _find_ncem_group(f: h5py.File) -> h5py.Group | None:
     return found[0] if found else None
 
 
-def _ncem_axis(grp: h5py.Group, d: int, n: int) -> tuple[AxisCal, bool]:
+def _ncem_axis(grp: h5py.Group, d: int) -> tuple[AxisCal, bool]:
     """AxisCal for NCEM ``dim<d>`` (1-based). Scale/offset come from the
     sample spacing of the dim array; name/units from its attrs."""
     key = f"dim{d}"
@@ -99,7 +99,7 @@ def _load_ncem(grp: h5py.Group, path: Path) -> DataStruct:
     data = np.asarray(grp["data"][()])
     _no_4d(data.shape, path)
     ndim = data.ndim
-    axes_info = [_ncem_axis(grp, d + 1, data.shape[d]) for d in range(ndim)]
+    axes_info = [_ncem_axis(grp, d + 1) for d in range(ndim)]
     meta: dict[str, Any] = {
         "source": str(path),
         "parser": "emd",
@@ -154,6 +154,12 @@ def _velox_metadata_json(node: h5py.Group) -> dict[str, Any]:
         return {}
 
 
+#  Velox's PixelSize dict is keyed "height"/"width", but the sibling
+#  PixelUnit keys are keyed "PixelUnitX"/"PixelUnitY" (X=width, Y=height)
+#  — NOT "PixelUnitW"/"PixelUnitH". See tests/fixtures/miniemd.py.
+_VELOX_UNIT_LETTER = {"height": "Y", "width": "X"}
+
+
 def _velox_pixel_axes(md: dict[str, Any]) -> tuple[AxisCal, AxisCal]:
     """(y, x) AxisCals from a Velox metadata dict's BinaryResult.PixelSize.
     Velox stores metres; converted to nm for readability."""
@@ -165,7 +171,7 @@ def _velox_pixel_axes(md: dict[str, Any]) -> tuple[AxisCal, AxisCal]:
             scale = float(psize.get(axis, "nan"))
         except (TypeError, ValueError):
             return AxisCal()
-        unit = str(br.get(f"PixelUnit{axis[0].upper()}", "m"))
+        unit = str(br.get(f"PixelUnit{_VELOX_UNIT_LETTER[axis]}", "m"))
         if not np.isfinite(scale) or scale == 0:
             return AxisCal()
         if unit == "m":  # metres → nm

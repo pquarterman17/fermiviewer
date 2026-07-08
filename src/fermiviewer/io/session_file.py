@@ -25,20 +25,24 @@ _VERSION = 1
 
 def _json_safe(value: Any) -> Any:
     """Recursively keep JSON-representable values; numpy scalars are
-    converted, ndarrays and exotic objects dropped."""
+    converted. Unsupported values (ndarrays, exotic objects) become None:
+    dropped as dict keys, kept as list placeholders (index alignment)."""
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
     if isinstance(value, (np.integer, np.floating)):
         return value.item()
     if isinstance(value, dict):
-        out = {
-            str(k): _json_safe(v)
-            for k, v in value.items()
-            if _json_safe(v) is not None or v is None
-        }
+        out: dict[str, Any] = {}
+        for k, v in value.items():
+            safe_v = _json_safe(v)
+            if safe_v is not None or v is None:
+                out[str(k)] = safe_v
         return out
     if isinstance(value, (list, tuple)):
-        return [_json_safe(v) for v in value if not isinstance(v, np.ndarray)]
+        # Unrepresentable elements (e.g. ndarrays) fall through to the
+        # None catch-all below rather than being dropped — deliberate,
+        # so each element's index stays aligned with the source list.
+        return [_json_safe(v) for v in value]
     return None
 
 
