@@ -241,6 +241,8 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     setRaster(null);
     if (!activeId || rasterless) {
       glRef.current?.clear();
+      // no raster → no stack: drop the stale StackStepper overlay + ,/. wiring
+      setNFrames(null);
       return;
     }
     const isStack = meta?.kind === "spectrum_image";
@@ -520,15 +522,24 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     }
     const mid = addMeasure(activeId, { kind, pts, text });
     setCaptureMode("none");
+    // a slow response must not overwrite the dock plot/ROI stats once the
+    // user has navigated to a different image (matches runGrainEdit below)
+    const startId = activeId;
     const width = useViewer.getState().profileWidth;
     const reduce = useViewer.getState().profileReduce;
     if (kind === "profile") {
       measureProfile(activeId, ptsImg[0], ptsImg[1], width, null, reduce)
-        .then((r) => setProfile({ ...r, measureId: mid }))
+        .then((r) => {
+          if (useViewer.getState().activeId === startId)
+            setProfile({ ...r, measureId: mid });
+        })
         .catch((e: Error) => setStatus(e.message));
     } else if (kind === "polyline") {
       measurePolyline(activeId, ptsImg, width, reduce)
-        .then((r) => setProfile({ ...r, measureId: mid }))
+        .then((r) => {
+          if (useViewer.getState().activeId === startId)
+            setProfile({ ...r, measureId: mid });
+        })
         .catch((e: Error) => setStatus(e.message));
     } else if (kind === "roi" || kind === "ellipse") {
       measureRoi(
@@ -537,7 +548,9 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
         ptsImg[1],
         kind === "ellipse" ? "ellipse" : "rect",
       )
-        .then((r) => setRoiStats(mid, r))
+        .then((r) => {
+          if (useViewer.getState().activeId === startId) setRoiStats(mid, r);
+        })
         .catch((e: Error) => setStatus(e.message));
     }
   };
@@ -586,10 +599,13 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     }));
     const mid = addMeasure(activeId, { kind: "profile", pts, width });
     setCaptureMode("none");
+    // don't apply a slow response after the user has switched images
+    const startId = activeId;
     const tilt = useViewer.getState().tilts[activeId] ?? null;
     const reduce = useViewer.getState().profileReduce;
     measureProfile(activeId, p0, p1, width, tilt, reduce)
       .then((r) => {
+        if (useViewer.getState().activeId !== startId) return;
         setProfile({ ...r, measureId: mid });
         setStatus(`profile integrated over ${width} px`);
       })
