@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -47,13 +48,31 @@ def _load() -> dict[str, dict[str, Any]]:
         data = json.loads(p.read_text(encoding="utf-8"))
         return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
+        # Corrupt file: preserve it for forensics instead of silently
+        # letting the next _save() overwrite it, then warn and fall back
+        # to an empty DB (same behaviour as before, minus the data loss).
+        backup = p.with_name(f"{p.name}.corrupt-{int(time.time())}")
+        try:
+            os.replace(p, backup)
+        except OSError:
+            backup = None
+        warnings.warn(
+            f"calibration DB at {p} is corrupt and could not be parsed; "
+            f"starting fresh"
+            + (f" (bad file preserved at {backup})" if backup else ""),
+            stacklevel=2,
+        )
         return {}
 
 
 def _save(data: dict[str, dict[str, Any]]) -> None:
     p = db_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(data, indent=1), encoding="utf-8")
+    # Write to a temp file in the same directory then atomically replace,
+    # so a crash/kill mid-write never leaves a half-written JSON file.
+    tmp = p.with_name(f"{p.name}.tmp-{os.getpid()}")
+    tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
+    os.replace(tmp, p)
 
 
 def _search(node: Any, key: str) -> Any:

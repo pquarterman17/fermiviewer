@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import glob
+import warnings
+
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
+from fermiviewer.io import calibration_db
 from fermiviewer.io.calibration_db import (
     extract_calibration_key,
     save_calibration,
@@ -126,3 +130,44 @@ def test_key_extraction_and_auto_apply_unit() -> None:
     assert after.metadata["calibration_source"] == "db:Titan|50000"
     # already-calibrated images are left alone
     assert auto_apply_calibration(img_id, after) is False
+
+
+# ── durability: atomic _save, corrupt-file recovery ──────────────────
+
+
+def test_save_load_roundtrip_unchanged() -> None:
+    """The atomic write (_save via temp-file + os.replace) still round-trips
+    a normal calibration DB exactly like the direct-write version did."""
+    save_calibration("Roundtrip|1", 0.31, "nm", "note")
+    p = calibration_db.db_path()
+    assert p.is_file()
+    assert calibration_db.list_calibrations()["Roundtrip|1"]["pixel_size"] == (
+        pytest.approx(0.31)
+    )
+    # no leftover temp file from the atomic write
+    assert list(p.parent.glob(f"{p.name}.tmp-*")) == []
+
+
+def test_corrupt_db_backed_up_and_warns() -> None:
+    """A corrupt calibrations.json is preserved as a `.corrupt-<ts>` backup
+    (not silently overwritten on the next save) and _load warns + returns
+    {} instead of crashing."""
+    p = calibration_db.db_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("{not valid json", encoding="utf-8")
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = calibration_db.list_calibrations()
+    assert result == {}
+    assert any("corrupt" in str(w.message) for w in caught)
+    assert not p.is_file()  # original renamed away, not left in place
+    backups = glob.glob(str(p) + ".corrupt-*")
+    assert len(backups) == 1
+
+    # subsequent saves work normally against a fresh DB
+    save_calibration("Fresh|1", 1.0, "um")
+    fresh = calibration_db.list_calibrations()
+    assert set(fresh) == {"Fresh|1"}
+    assert fresh["Fresh|1"]["pixel_size"] == pytest.approx(1.0)
+    assert p.is_file()
