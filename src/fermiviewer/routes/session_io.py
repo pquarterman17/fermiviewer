@@ -121,12 +121,20 @@ def workspace_save(req: SaveNamedRequest) -> dict[str, Any]:
     return {"slug": slug, "name": name, "n_images": len(entries)}
 
 
+def _valid_slug(slug: str) -> bool:
+    # slugs are produced by slugify ([a-z0-9-]); reject anything else so a
+    # crafted slug like "../../foo" can't escape the workspaces directory
+    return bool(re.fullmatch(r"[a-z0-9-]+", slug))
+
+
 class LoadNamedRequest(BaseModel):
     slug: str
 
 
 @router.post("/workspaces/load")
 def workspace_load(req: LoadNamedRequest) -> dict[str, Any]:
+    if not _valid_slug(req.slug):
+        raise HTTPException(422, "invalid workspace slug")
     path = workspaces.session_path(req.slug)
     if not path.is_file():
         raise HTTPException(404, f"workspace not found: {req.slug}")
@@ -148,8 +156,6 @@ def workspace_load(req: LoadNamedRequest) -> dict[str, Any]:
 
 @router.delete("/workspaces/{slug}")
 def workspace_delete(slug: str) -> dict[str, bool]:
-    # slugs are produced by slugify ([a-z0-9-]); reject anything else so a
-    # crafted slug like "../../foo" can't escape the workspaces directory
-    if not re.fullmatch(r"[a-z0-9-]+", slug):
+    if not _valid_slug(slug):
         raise HTTPException(422, "invalid workspace slug")
     return {"deleted": workspaces.delete_workspace(slug)}
