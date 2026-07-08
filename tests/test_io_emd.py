@@ -3,6 +3,7 @@ energy-last reorder, 4D rejection, and registry wiring."""
 
 from __future__ import annotations
 
+import h5py
 import numpy as np
 import pytest
 
@@ -98,6 +99,51 @@ def test_velox_2d_image_without_frames(tmp_path) -> None:
     ds = load_emd(fp)
     assert ds.kind is DataKind.IMAGE
     assert ds.data.shape == (4, 4)
+
+
+def test_velox_pixel_unit_non_metric(tmp_path) -> None:
+    """The unit lookup keys off PixelUnitX/PixelUnitY (not PixelUnitW/H);
+    a non-metre file unit (e.g. nm) must pass through unconverted."""
+    img = np.ones((4, 4), dtype=np.uint16)
+    fp = write_velox_emd(
+        tmp_path / "vnm.emd", img,
+        metadata={
+            "BinaryResult": {
+                "PixelSize": {"width": "0.25", "height": "0.25"},
+                "PixelUnitX": "nm",
+                "PixelUnitY": "nm",
+            }
+        },
+    )
+    ds = load_emd(fp)
+    assert ds.pixel_cal.units == "nm"
+    assert ds.pixel_cal.scale == pytest.approx(0.25)
+
+
+def test_velox_spectrumstream_only_raises(tmp_path) -> None:
+    """A SpectrumStream-only Velox EMD (raw EDS event stream, no rendered
+    /Data/Image) hits the clean 'not yet supported' error."""
+    fp = tmp_path / "eds_stream.emd"
+    with h5py.File(fp, "w") as f:
+        grp = f.create_group("Data/SpectrumStream/0123abcd")
+        grp.create_dataset("Data", data=np.zeros((4,), dtype=np.uint16))
+    with pytest.raises(EMDFormatError, match="SpectrumStream"):
+        load_emd(fp)
+
+
+def test_velox_corrupt_metadata_json_falls_back(tmp_path) -> None:
+    """An unparseable Metadata blob must not raise — the image still loads,
+    just uncalibrated (empty dict fallback in _velox_metadata_json)."""
+    fp = tmp_path / "badmeta.emd"
+    img = np.ones((3, 3), dtype=np.uint16)
+    with h5py.File(fp, "w") as f:
+        node = f.create_group("Data/Image/0123abcd")
+        node.create_dataset("Data", data=img)
+        garbage = np.frombuffer(b"{not valid json!!!\x00", dtype=np.uint8)
+        node.create_dataset("Metadata", data=garbage.reshape(-1, 1))
+    ds = load_emd(fp)
+    assert ds.kind is DataKind.IMAGE
+    assert ds.pixel_cal.units == ""  # uncalibrated fallback, not a crash
 
 
 # ── registry + error paths ───────────────────────────────────────────
