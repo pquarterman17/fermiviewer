@@ -103,6 +103,24 @@ def test_no_units_falls_back_to_energy_last(tmp_path) -> None:
     assert ds.data[1, 2, 3] == encode(2, 1, 3)
 
 
+def test_1x1_single_pixel_image(tmp_path) -> None:
+    # _parse_array collapses a 1-element Data array to a bare float; the
+    # scalar branch in _read_pixels must reconstitute it (used to raise
+    # "Image Data tag has unexpected format")
+    f = write_mini_dm4(
+        tmp_path / "one.dm4",
+        dims=[1, 1],
+        data=np.array([7], dtype=np.int64),
+        cal=[
+            {"scale": 0.5, "origin": 0, "units": "nm"},
+            {"scale": 0.5, "origin": 0, "units": "nm"},
+        ],
+    )
+    ds = load_dm(f)
+    assert ds.data.shape == (1, 1)
+    assert float(ds.data[0, 0]) == 7.0
+
+
 def test_1d_spectrum_nonzero_origin(tmp_path) -> None:
     n, zlp_ch = 64, 20
     counts = np.round(1000 * np.exp(-((np.arange(n) - zlp_ch) ** 2) / 8)) + 1

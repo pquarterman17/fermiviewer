@@ -287,6 +287,11 @@ def _read_pixels(buf: bytes, rec: Any, n_px: int, dtype: str, le: bool) -> np.nd
         px = np.frombuffer(buf, dtype=f"{bo}{dtype}", count=n_read, offset=rec.offset)
     elif isinstance(rec, np.ndarray):
         px = rec.astype(dtype)
+    elif isinstance(rec, (int, float)):
+        # 1-px image: _parse_array collapses single-element arrays to a
+        # bare scalar (the metadata-friendly form), so Data arrives here
+        # as a float rather than an ndarray
+        px = np.asarray([rec], dtype=dtype)
     else:
         raise DMFormatError("Image Data tag has unexpected format")
     if px.size < n_px:
