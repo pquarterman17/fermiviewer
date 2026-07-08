@@ -691,6 +691,64 @@ def test_batch_export_dedupes_identical_names(client, tmp_path) -> None:
     assert names == ["dup.png", "dup_2.png"]
 
 
+def test_batch_export_unknown_format_is_422(client, tmp_path) -> None:
+    ids = [_open_frame(client, tmp_path, "fmt.dm4", 0.0)]
+    r = client.post("/api/export/batch", json={
+        "image_ids": ids, "format": "bmp",
+    })
+    assert r.status_code == 422
+
+
+def test_batch_export_scale_out_of_bounds_is_422(client, tmp_path) -> None:
+    ids = [_open_frame(client, tmp_path, "sc.dm4", 0.0)]
+    # scale: Field(ge=1, le=4) — pydantic validation, not app logic
+    assert client.post("/api/export/batch", json={
+        "image_ids": ids, "scale": 5,
+    }).status_code == 422
+    assert client.post("/api/export/batch", json={
+        "image_ids": ids, "scale": 0,
+    }).status_code == 422
+
+
+def test_batch_export_unknown_id_inside_list_is_404(client, tmp_path) -> None:
+    """A mix of a valid id and an unknown one must 404 on the unknown one,
+    not silently drop it or 500 mid-ZIP."""
+    good = _open_frame(client, tmp_path, "good.dm4", 0.0)
+    r = client.post("/api/export/batch", json={
+        "image_ids": [good, "does-not-exist"], "format": "png",
+    })
+    assert r.status_code == 404
+    assert "does-not-exist" in r.json()["detail"]
+
+
+def test_batch_export_jpeg_and_tiff16_formats(client, tmp_path) -> None:
+    import zipfile
+
+    import tifffile
+
+    ids = [_open_frame(client, tmp_path, f"j{i}.dm4", 0.4 * i)
+           for i in range(2)]
+    rj = client.post("/api/export/batch", json={
+        "image_ids": ids, "format": "jpeg", "scale": 1,
+    })
+    assert rj.status_code == 200
+    zj = zipfile.ZipFile(io.BytesIO(rj.content))
+    names_j = zj.namelist()
+    assert all(n.endswith(".jpg") for n in names_j)
+    Image.open(io.BytesIO(zj.read(names_j[0]))).load()  # decodes cleanly
+
+    rt = client.post("/api/export/batch", json={
+        "image_ids": ids, "format": "tiff16", "scale": 1,
+    })
+    assert rt.status_code == 200
+    zt = zipfile.ZipFile(io.BytesIO(rt.content))
+    names_t = zt.namelist()
+    assert all(n.endswith(".tif") for n in names_t)
+    u16 = tifffile.imread(io.BytesIO(zt.read(names_t[0])))
+    assert u16.dtype == np.uint16
+    assert u16.shape == (12, 16)
+
+
 def test_rename_and_open_raw(client, tmp_path) -> None:
     ids = [_open_frame(client, tmp_path, "r0.dm4", 0.0)]
     r = client.post(f"/api/image/{ids[0]}/rename", json={"name": "renamed"})
@@ -728,6 +786,31 @@ def test_figure_panel(client, tmp_path) -> None:
     assert client.post("/api/export/figure", json={
         "image_ids": ids[:1],
     }).status_code == 422
+
+
+def test_figure_panel_unknown_id_is_404(client, tmp_path) -> None:
+    good = _open_frame(client, tmp_path, "fg.dm4", 0.0)
+    r = client.post("/api/export/figure", json={
+        "image_ids": [good, "nope"],
+    })
+    assert r.status_code == 404
+    assert "nope" in r.json()["detail"]
+
+
+def test_figure_panel_auto_cols_and_partial_labels(client, tmp_path) -> None:
+    """cols=0 (default) -> ceil(sqrt(n)); a labels list shorter than
+    image_ids, including a falsy empty-string entry, must not crash the
+    per-panel label-draw loop (`if k < len(labels) and labels[k]`)."""
+    ids = [_open_frame(client, tmp_path, f"auto{i}.dm4", 0.15 * i)
+           for i in range(4)]
+    r = client.post("/api/export/figure", json={
+        "image_ids": ids, "gap": 0, "scale": 1,
+        "labels": ["", "b"],  # shorter than n=4, one empty
+    })
+    assert r.status_code == 200
+    fig = Image.open(io.BytesIO(r.content))
+    # auto cols = ceil(sqrt(4)) = 2 -> 2x2 grid, no gap
+    assert fig.size == (16 * 2, 12 * 2)
 
 
 def test_scale_bar_label_subunit() -> None:
