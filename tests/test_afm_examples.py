@@ -25,7 +25,7 @@ import pytest
 from fermiviewer.io.nanoscope import NanoscopeError, load_nanoscope, load_nanoscope_all
 from fermiviewer.io.registry import load_auto
 
-pytestmark = pytest.mark.realdata
+pytestmark = [pytest.mark.parser, pytest.mark.realdata]
 
 # stem → (channels, primary channel, shape, nm/px, ptp nm, std nm) for the
 # height/ZSensor channel; ptp+std pin the calibrated *scale*, mean pins the

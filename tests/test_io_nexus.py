@@ -108,3 +108,48 @@ def test_non_hdf5_raises(tmp_path) -> None:
     bad.write_bytes(b"not hdf5")
     with pytest.raises(NexusFormatError, match="not an HDF5"):
         load_hdf5_auto(bad)
+
+
+def test_load_nexus_non_hdf5_raises(tmp_path) -> None:
+    # load_nexus has its own not-HDF5 guard, distinct from load_hdf5_auto's
+    bad = tmp_path / "bad.nxs"
+    bad.write_bytes(b"not hdf5 content")
+    with pytest.raises(NexusFormatError, match="not an HDF5/NeXus"):
+        load_nexus(bad)
+
+
+def test_no_plottable_dataset_raises(tmp_path) -> None:
+    fp = tmp_path / "novalid.h5"
+    with h5py.File(fp, "w") as f:
+        f.create_dataset("scalar", data=5)                       # 0-d
+        f.create_dataset("text", data=b"hello")                   # non-numeric
+        f.create_dataset("toobig", data=np.zeros((2, 2, 2, 2), dtype=np.float32))  # 4-D
+    with pytest.raises(NexusFormatError, match="no plottable"):
+        load_nexus(fp)
+
+
+def test_nxdata_4d_signal_raises(tmp_path) -> None:
+    sig = np.zeros((2, 2, 2, 2), dtype=np.float32)
+    fp = _write_nxdata(
+        tmp_path / "4d.nxs",
+        sig,
+        [(n, np.arange(2), "") for n in ("a", "b", "c", "d")],
+    )
+    with pytest.raises(NexusFormatError, match="4D"):
+        load_nexus(fp)
+
+
+def test_axes_dot_placeholder_normalizes(tmp_path) -> None:
+    # NeXus uses "." in @axes to mean "no axis dataset for this dimension"
+    img = np.arange(12, dtype=np.float32).reshape(3, 4)
+    fp = _write_nxdata(
+        tmp_path / "dotaxis.nxs",
+        img,
+        [(".", None, ""), ("x", np.arange(4) * 0.5, "nm")],
+    )
+    ds = load_nexus(fp)
+    assert ds.kind is DataKind.IMAGE
+    assert ds.axes[0].units == ""
+    assert ds.axes[0].scale == pytest.approx(1.0)
+    assert ds.axes[1].units == "nm"
+    assert ds.axes[1].scale == pytest.approx(0.5)

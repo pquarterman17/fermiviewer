@@ -15,6 +15,8 @@ from fermiviewer.io.nanoscope import (
 from fermiviewer.io.registry import UnsupportedFormatError, load_auto, supported_extensions
 from fixtures.nanoscope import write_nanoscope
 
+pytestmark = pytest.mark.parser
+
 
 @pytest.fixture
 def spm(tmp_path):
@@ -101,6 +103,31 @@ def test_non_nanoscope_numeric_extension(tmp_path):
     p = tmp_path / "mystery.123"
     p.write_bytes(b"not a nanoscope file at all")
     with pytest.raises(UnsupportedFormatError):
+        load_auto(p)
+
+
+def test_registry_unknown_extension_raises_directly(tmp_path):
+    # a plain unrecognised extension hits _LOADERS.get(ext) is None directly
+    # (the .xyz upload-route rejection tested elsewhere is a different layer
+    # — the HTTP filter — that never reaches the registry at all)
+    p = tmp_path / "mystery.xyz"
+    p.write_bytes(b"whatever")
+    with pytest.raises(UnsupportedFormatError, match="no parser for"):
+        load_auto(p)
+
+
+def test_empty_spm_falls_through_to_tiff_and_raises_tifffile_error(tmp_path):
+    # .spm content-sniffs Nanoscope vs Park/JPK-TIFF; an empty file fails the
+    # Nanoscope sniff (is_nanoscope needs >= 12 bytes) and falls through to
+    # load_tiff, which raises tifffile's own TiffFileError rather than a
+    # clean UnsupportedFormatError/ValueError. This pins today's behavior —
+    # not necessarily the ideal one — so a future change is a deliberate
+    # decision, not an accidental regression.
+    import tifffile
+
+    p = tmp_path / "empty.spm"
+    p.write_bytes(b"")
+    with pytest.raises(tifffile.TiffFileError):
         load_auto(p)
 
 

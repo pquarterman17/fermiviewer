@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import zlib
 from pathlib import Path
 
 import numpy as np
@@ -9,7 +10,7 @@ import pytest
 
 from fermiviewer.datastruct import DataKind
 from fermiviewer.io.bcf import load_bcf
-from fermiviewer.io.sfs import SFSError, SfsFile
+from fermiviewer.io.sfs import SFSError, SfsFile, decompress_if_aacs
 from fixtures.minisfs import write_mini_sfs_bcf
 
 pytestmark = pytest.mark.parser
@@ -53,6 +54,99 @@ def test_non_sfs_rejected(tmp_path) -> None:
     bad.write_bytes(b"NotToday-not-an-sfs" * 30)
     with pytest.raises(SFSError, match="not a Bruker"):
         SfsFile(bad.read_bytes(), source=str(bad))
+
+
+def test_data_chunk_out_of_bounds_raises(tmp_path) -> None:
+    # distinct from test_corrupt_chain_raises_cleanly: that corrupts the
+    # pointer-TABLE chain header; this corrupts a data-chunk index recorded
+    # *inside* a (structurally intact) pointer table.
+    f = write_mini_sfs_bcf(
+        tmp_path / "baddata.bcf", _xml(48, 170_000), chunk_size=512,
+        corrupt_data_ptr_at=0,
+    )
+    with pytest.raises(SFSError, match="data chunk .* out of bounds"):
+        load_bcf(f)
+
+
+def _wrap_aacs(payload: bytes) -> bytes:
+    """AACS-block-compress a payload (see decompress_if_aacs): 128-byte
+    header (magic + n_blocks at 12:16) then one [size(4) + pad(12) + zlib
+    bytes] block."""
+    comp = zlib.compress(payload)
+    header = bytearray(128)
+    header[0:4] = b"AACS"
+    header[12:16] = (1).to_bytes(4, "little")
+    block = len(comp).to_bytes(4, "little") + b"\x00" * 12 + comp
+    return bytes(header) + block
+
+
+def test_decompress_if_aacs_unit() -> None:
+    payload = b"<xml>plain HeaderData content</xml>"
+    assert decompress_if_aacs(_wrap_aacs(payload)) == payload
+    assert decompress_if_aacs(payload) == payload  # passthrough (no AACS magic)
+
+
+def test_aacs_compressed_header_data_loads(tmp_path) -> None:
+    # current fixture (write_mini_sfs_bcf) always wrote xml_bytes uncompressed;
+    # here the HeaderData *entry payload itself* is an AACS zlib block, as
+    # real Esprit files sometimes store it.
+    xml = _xml(8, 0)
+    f = write_mini_sfs_bcf(tmp_path / "aacs.bcf", _wrap_aacs(xml), chunk_size=512)
+    ds = load_bcf(f)
+    assert ds.kind is DataKind.SPECTRUM
+    np.testing.assert_array_equal(ds.data, np.arange(1, 9))
+
+
+def test_missing_header_data_raises(tmp_path) -> None:
+    f = write_mini_sfs_bcf(
+        tmp_path / "noheader.bcf", _xml(4, 0), header_name="EDSDatabase/SomethingElse"
+    )
+    with pytest.raises(ValueError, match="no EDSDatabase/HeaderData"):
+        load_bcf(f)
+
+
+def test_no_image_no_spectrum_raises(tmp_path) -> None:
+    # header entry exists but has neither a ChCount/Channels spectrum nor
+    # any TRTImageData block — nothing plottable at all.
+    f = write_mini_sfs_bcf(tmp_path / "bare.bcf", b"<Root></Root>")
+    with pytest.raises(ValueError, match="no SEM image and no EDS spectrum"):
+        load_bcf(f)
+
+
+def test_zero_channel_cube_silently_skipped(tmp_path, monkeypatch) -> None:
+    # A cube whose raw header reports height=0 (h*w*n_chan*4 == 0) is a
+    # distinct skip path from the over-cap skip: no metadata["cube_skipped"]
+    # message is set (nothing to report — there's no cube-shaped data at
+    # all), and the header sum spectrum is used instead. Building a second
+    # real SFS-internal file (EDSDatabase/SpectrumData0) would require
+    # multi-entry tree support the fixture doesn't have, so this monkeypatches
+    # SfsFile.find/.read for just that one path — the same technique the
+    # realdata cap tests use for decode_cube.
+    f = write_mini_sfs_bcf(tmp_path / "zerochan.bcf", _xml(4, 0))
+
+    sentinel = object()
+    real_find, real_read = SfsFile.find, SfsFile.read
+
+    def fake_find(self, target):
+        if target == "EDSDatabase/SpectrumData0":
+            return sentinel
+        return real_find(self, target)
+
+    def fake_read(self, entry):
+        if entry is sentinel:
+            # raw cube header: height=0, width=5 (little-endian int32 pair)
+            return (0).to_bytes(4, "little", signed=True) + (5).to_bytes(
+                4, "little", signed=True
+            )
+        return real_read(self, entry)
+
+    monkeypatch.setattr(SfsFile, "find", fake_find)
+    monkeypatch.setattr(SfsFile, "read", fake_read)
+
+    ds = load_bcf(f)
+    assert ds.kind is DataKind.SPECTRUM
+    assert "cube_skipped" not in ds.metadata
+    np.testing.assert_array_equal(ds.data, np.arange(1, 5))
 
 
 # ── golden corpus (committed BCF vectors in ../fermi-viewer) ─────────

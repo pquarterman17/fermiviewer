@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from fermiviewer.datastruct import DataKind
-from fermiviewer.io.dm import load_dm
+from fermiviewer.io.dm import DMFormatError, load_dm
 from fixtures.minidm4 import write_mini_dm4
 
 pytestmark = pytest.mark.parser
@@ -157,3 +157,58 @@ def test_2d_image_orientation(tmp_path) -> None:
     assert ds.data.shape == (h, w)
     assert ds.data[2, 4] == encode(4, 2, 0)
     assert ds.pixel_size == pytest.approx(0.2)
+
+
+def test_big_endian_payload(tmp_path) -> None:
+    # header byte-order flag = 0 → every tag payload (dims, cal, pixels) is
+    # big-endian, not just the always-big-endian structural fields.
+    w, h = 6, 4
+    flat = np.array([encode(x, y, 0) for y in range(h) for x in range(w)])
+    f = write_mini_dm4(
+        tmp_path / "be.dm4",
+        dims=[w, h],
+        data=flat,
+        cal=[
+            {"scale": 0.2, "origin": 0, "units": "nm"},
+            {"scale": 0.2, "origin": 0, "units": "nm"},
+        ],
+        little_endian=False,
+    )
+    ds = load_dm(f)
+    assert ds.kind is DataKind.IMAGE
+    assert ds.data.shape == (h, w)
+    assert ds.data[2, 4] == encode(4, 2, 0)
+    assert ds.pixel_size == pytest.approx(0.2)
+    assert ds.pixel_unit == "nm"
+
+
+def test_bad_version_raises(tmp_path) -> None:
+    # 6-byte junk (e.g. b"notdm4") dies at the earlier length guard (<16
+    # bytes); this vector is long enough to reach the version check itself.
+    junk = tmp_path / "bad.dm4"
+    junk.write_bytes(b"\x00\x00\x00\x63" + b"not a real dm4 file, just padding")
+    with pytest.raises(DMFormatError, match="not a DM3/DM4"):
+        load_dm(junk)
+
+
+def test_truncated_data_zero_pads(tmp_path) -> None:
+    # nx*ny*ne > LARGE_ARRAY_THRESHOLD so the Data tag is an offset record —
+    # tree parsing succeeds even though the payload itself is chopped short.
+    nx, ny, ne = 9, 8, 16
+    f = write_mini_dm4(
+        tmp_path / "full.dm4",
+        dims=[nx, ny, ne],
+        data=file_order_cube([nx, ny, ne], {"x": 0, "y": 1, "e": 2}),
+        cal=[
+            {"scale": 1, "origin": 0, "units": "nm"},
+            {"scale": 1, "origin": 0, "units": "nm"},
+            {"scale": 0.1, "origin": 0, "units": "eV"},
+        ],
+    )
+    truncated = tmp_path / "short.dm4"
+    truncated.write_bytes(f.read_bytes()[:-500])
+    with pytest.warns(UserWarning, match="zero-padding"):
+        ds = load_dm(truncated)
+    assert ds.data.shape == (ny, nx, ne)
+    assert ds.data[0, 0, 0] == encode(0, 0, 0)          # untouched
+    assert ds.data[ny - 1, nx - 1, ne - 1] == 0          # chopped off → zero

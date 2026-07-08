@@ -19,7 +19,16 @@ def write_mini_sfs_bcf(
     chunk_size: int = 512,
     shuffle: bool = True,
     break_table_at: int = 0,
+    corrupt_data_ptr_at: int | None = None,
+    header_name: str = "EDSDatabase/HeaderData",
 ) -> Path:
+    """`corrupt_data_ptr_at` overwrites one entry of the pointer TABLE's data-
+    chunk index (not the table-chain header `break_table_at` corrupts) with
+    an out-of-bounds chunk number — exercises the data-chunk-OOB guard
+    (distinct from the pointer-table-chunk-OOB guard). `header_name` lets a
+    test point the tree entry at a different path, e.g. to simulate a BCF
+    with no EDSDatabase/HeaderData entry at all.
+    """
     usable = chunk_size - 32
     file_size = len(xml_bytes)
 
@@ -50,7 +59,10 @@ def write_mini_sfs_bcf(
         buf[base + 32 : base + 32 + len(sl)] = sl
 
     # pointer table, chained through table-chunk headers
-    ptr_bytes = b"".join(i.to_bytes(4, "little") for i in data_idx)
+    ptr_idx = list(data_idx)
+    if corrupt_data_ptr_at is not None:
+        ptr_idx[corrupt_data_ptr_at] = 1_000_000  # chunk far past EOF
+    ptr_bytes = b"".join(i.to_bytes(4, "little") for i in ptr_idx)
     for t in range(n_tab):
         c_idx = first_tab + t
         base = 280 + c_idx * chunk_size
@@ -68,7 +80,7 @@ def write_mini_sfs_bcf(
     buf[e : e + 4] = first_tab.to_bytes(4, "little", signed=True)
     buf[e + 4 : e + 12] = file_size.to_bytes(8, "little")
     buf[e + 220] = 0
-    name = b"EDSDatabase/HeaderData"
+    name = header_name.encode("ascii")
     buf[e + 224 : e + 224 + len(name)] = name
 
     out = Path(path)
