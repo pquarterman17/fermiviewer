@@ -86,8 +86,19 @@ def detect_growth_orientation(
     axis (vertical vs horizontal layers) and the small off-axis tilt to
     level. ``θ`` is the gradient direction from +x; ``θ≈±π/2`` ⇒ vertical
     gradient ⇒ horizontal layers (axis ``"y"``).
+
+    NaN policy (deliberate extension beyond the MATLAB reference — this is a
+    net-new function with no fermi-viewer analogue): ``structure_tensor``'s
+    gradient/Gaussian pipeline is not NaN-aware, so a single non-finite pixel
+    would silently corrupt the coherence-weighted orientation over a whole
+    neighbourhood rather than just at that pixel. Proper NaN handling would
+    mean threading a mask through ``calc.texture.structure_tensor`` (out of
+    scope here), so this fails loudly instead.
     """
-    st = structure_tensor(np.asarray(img, dtype=np.float64), sigma)
+    arr = np.asarray(img, dtype=np.float64)
+    if not np.all(np.isfinite(arr)):
+        raise ValueError("detect_growth_orientation: image contains non-finite values")
+    st = structure_tensor(arr, sigma)
     w = st.coherence.ravel()
     two_theta = 2.0 * st.orientation.ravel()
     # coherence-weighted circular mean of the (mod-π) orientation
@@ -133,6 +144,14 @@ def cross_section_profile(
     :func:`box_integrate`) or ``"median"`` — a *robust* collapse that ignores
     outlier columns/rows (e.g. strong localised FIB curtains) where the mean
     is pulled. Positions stay 0-based pixels from the box edge.
+
+    NaN policy (deliberate extension beyond the MATLAB reference, same
+    convention as the 2026-06 grain-finding hardening): ``reduce="median"``
+    uses ``nanmedian`` so a dead/hot pixel in one column doesn't blank the
+    whole depth row — fitting, since "robust to outliers" is exactly this
+    mode's purpose. ``"mean"``/``"sum"`` delegate to the golden-tested
+    :func:`box_integrate`, which is not NaN-aware and must not be touched
+    here, so a non-finite ROI raises instead of silently propagating.
     """
     arr = np.asarray(img, dtype=np.float64)
     if arr.ndim != 2:
@@ -141,10 +160,15 @@ def cross_section_profile(
         raise ValueError("axis must be 'y' or 'x'")
     if reduce == "median":
         sub = _roi_subimage(arr, roi)
-        prof = np.median(sub, axis=1) if axis == "y" else np.median(sub, axis=0)
+        prof = np.nanmedian(sub, axis=1) if axis == "y" else np.nanmedian(sub, axis=0)
         return np.arange(prof.size, dtype=np.float64), prof
     h, w = arr.shape
     r1, c1, r2, c2 = roi if roi is not None else (1, 1, h, w)
+    if not np.all(np.isfinite(_roi_subimage(arr, roi))):
+        raise ValueError(
+            "cross_section_profile: non-finite values in ROI; use "
+            "reduce='median' or pre-sanitize (calc.normalize.sanitize)"
+        )
     x_pos, x_int, y_pos, y_int, _ = box_integrate(arr, r1, c1, r2, c2, reduce=reduce)
     return (y_pos, y_int) if axis == "y" else (x_pos, x_int)
 
@@ -174,12 +198,19 @@ def destripe(
     frequency (px); ``strength`` 0..1 scales notch depth (1 = full removal).
     Targets the *measurement* (profile + trace), not the orientation estimate.
     Returns a float image of the same shape.
+
+    NaN policy (deliberate extension beyond the MATLAB reference — net-new
+    function): ``fft2`` has global support, so a SINGLE non-finite pixel
+    corrupts every output pixel, not just its neighbourhood. Fail loudly
+    instead of silently returning an all-NaN image.
     """
     arr = np.asarray(img, dtype=np.float64)
     if arr.ndim != 2:
         raise ValueError("destripe needs a 2-D image")
     if axis not in ("x", "y"):
         raise ValueError("axis must be 'x' or 'y'")
+    if not np.all(np.isfinite(arr)):
+        raise ValueError("destripe: image contains non-finite values")
     s = float(np.clip(strength, 0.0, 1.0))
     if s <= 0.0:
         return arr.copy()

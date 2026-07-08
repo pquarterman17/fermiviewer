@@ -310,7 +310,16 @@ def _poly_design(
 def plane_level(
     img: np.ndarray, order: int = 1, mask: np.ndarray | None = None
 ) -> PlaneLevelResult:
-    """Polynomial background removal — ported (1-based x/y coordinates)."""
+    """Polynomial background removal — ported (1-based x/y coordinates).
+
+    NaN policy (deliberate extension beyond the MATLAB reference, same
+    convention as the 2026-06 grain-finding hardening / calc.trace_roughness):
+    a non-finite pixel inside the active mask would otherwise poison ``lstsq``
+    and NaN the coefficients — and hence the WHOLE reconstructed surface, not
+    just that pixel — silently. Callers that already exclude non-finite
+    pixels from ``mask`` (e.g. calc.roughness.surface_roughness) are
+    unaffected; this is a backstop for direct callers.
+    """
     d = np.asarray(img, dtype=np.float64)
     h, w = d.shape
     yy, xx = np.mgrid[1 : h + 1, 1 : w + 1].astype(np.float64)
@@ -322,6 +331,8 @@ def plane_level(
             raise ValueError("mask must match image shape")
         if not m.any():
             raise ValueError("mask contains no true pixels")
+    if not np.all(np.isfinite(d[m])):
+        raise ValueError("plane_level: masked region contains non-finite values")
     a = _poly_design(xx[m], yy[m], order)
     coeffs, *_ = np.linalg.lstsq(a, d[m], rcond=None)
     surface = (_poly_design(xx.ravel(), yy.ravel(), order) @ coeffs).reshape(

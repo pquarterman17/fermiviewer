@@ -175,11 +175,21 @@ def cliff_lorimer(
 
     w_i ∝ k_i·I_i; atomic fractions via w_i/M_i renormalisation. Pixels
     with total intensity ≤ mask_threshold are NaN.
+
+    Negative input counts are clipped to 0 before any arithmetic. The MATLAB
+    reference (+imaging/+eds/cliffLorimer.m) does NOT clip — a stray negative
+    count (e.g. a background-over-subtraction artifact upstream) flows
+    straight into k·I there and can flip signs in the weight/atomic
+    fractions. This is a deliberate, small divergence from the ported
+    behaviour: it aligns with :func:`fermiviewer.calc.eds_zeta.zeta_quantify`,
+    which already clamps (net-new code, no MATLAB analogue), and with the
+    non-negative-counts convention used elsewhere in the quant stack.
     """
     n = len(elements)
     if len(intensity_maps) != n:
         raise ValueError("intensity_maps and elements must have equal length")
     cube = np.stack([np.asarray(m, dtype=np.float64) for m in intensity_maps], axis=2)
+    cube = np.clip(cube, 0.0, None)
 
     k = _resolve_k(elements, k_factors)
     masses = np.array([atomic_mass(s) if s in ELEMENTS else 1.0 for s in elements])
