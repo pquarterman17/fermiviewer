@@ -5,7 +5,6 @@ trip (invalid dims, no valid elements, truncation)."""
 
 from __future__ import annotations
 
-import numpy as np
 import pytest
 
 from fermiviewer.datastruct import DataKind

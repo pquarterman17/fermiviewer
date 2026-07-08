@@ -51,11 +51,13 @@ def _load() -> dict[str, dict[str, Any]]:
         # Corrupt file: preserve it for forensics instead of silently
         # letting the next _save() overwrite it, then warn and fall back
         # to an empty DB (same behaviour as before, minus the data loss).
-        backup = p.with_name(f"{p.name}.corrupt-{int(time.time())}")
+        backup: Path | None = None
+        candidate = p.with_name(f"{p.name}.corrupt-{int(time.time())}")
         try:
-            os.replace(p, backup)
+            os.replace(p, candidate)
+            backup = candidate
         except OSError:
-            backup = None
+            pass
         warnings.warn(
             f"calibration DB at {p} is corrupt and could not be parsed; "
             f"starting fresh"
