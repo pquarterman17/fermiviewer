@@ -1,5 +1,7 @@
 # fermiviewer
 
+[![PyPI](https://img.shields.io/pypi/v/fermiviewer)](https://pypi.org/project/fermiviewer/)
+
 Electron-microscopy image analysis: TEM/STEM image viewing, EELS / EDS /
 diffraction analysis, measurements, and image processing. Python (FastAPI)
 backend + React frontend + Tauri desktop shell.
@@ -81,16 +83,22 @@ build, see *Packaging* below.
 > (`[tool.uv] link-mode = "copy"` is already set in `pyproject.toml`;
 > the junction prevents sync-lock races during installs.)
 
-### Option 4 — `fermiviewer` terminal command
+### Option 4 — install from PyPI (`pip` / `uv`)
 
-Install once as a tool, then launch from any terminal — including from a
-folder of images:
+FermiViewer is [on PyPI](https://pypi.org/project/fermiviewer/) with the
+web UI already baked into the wheel — no Node, no checkout, no release
+download; any 64-bit Python 3.10+ works. Install once, then launch from
+any terminal — including from a folder of images:
 
 ```powershell
-uv tool install --from . fermiviewer    # exposes `fermiviewer` on PATH
+uv tool install fermiviewer              # exposes `fermiviewer` on PATH
 fermiviewer                              # launch from anywhere
 fermiviewer C:\data\session-42           # …or point it at a folder
 ```
+
+`pip install fermiviewer` works too (same wheel; use pip if you don't
+have uv). From a source checkout, the equivalent is
+`uv tool install --from . fermiviewer`.
 
 `fermiviewer` opens a browser tab once the server is confirmed up (no
 more racing a cold start), and the in-app **Open** dialog defaults to the
@@ -201,6 +209,8 @@ git tag v0.2.0 && git push origin v0.2.0
 # → Release with the per-OS installers (.exe / .dmg / .deb), the
 #   fv-server-* standalone archives, the fv-offline-* air-gapped
 #   bundles, and the auto-updater's latest.json
+# → PyPI wheel (SPA baked in), published via trusted publishing after
+#   a clean-venv install + boot smoke test
 ```
 
 Local equivalents (Windows; needs Rust + VS Build Tools for the shell):
