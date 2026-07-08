@@ -185,9 +185,11 @@ def load_bcf(
     spec = _class_blocks(xml, "TRTSpectrumHeader", first_only=True)
     calib_abs = _tag_float(spec[0], "CalibAbs") if spec else float("nan")
     calib_lin = _tag_float(spec[0], "CalibLin") if spec else float("nan")
-    n_chan = int(_tag_float(xml, "ChCount") or 0)
-    if n_chan <= 0:
-        n_chan = 0
+    ch_count = _tag_float(xml, "ChCount")
+    # `_tag_float` returns NaN for an absent tag; NaN is truthy so the old
+    # `... or 0` idiom didn't catch it, and int(nan) raises ValueError —
+    # a missing <ChCount> (no EDS data at all) must fall through cleanly.
+    n_chan = int(ch_count) if np.isfinite(ch_count) and ch_count > 0 else 0
 
     sum_spec = np.array([])
     ch_text = _tag_text(xml, "Channels")
