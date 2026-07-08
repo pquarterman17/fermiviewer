@@ -57,6 +57,20 @@ def test_mac_formula() -> None:
     assert mass_absorption_coeff("O", "Fe") == pytest.approx(expected, rel=1e-12)
 
 
+def test_cliff_lorimer_clips_negative_counts() -> None:
+    # MATLAB's cliffLorimer.m does NOT clip negative counts; this is a
+    # deliberate, small divergence (see calc/eds.py docstring) that aligns
+    # with calc.eds_zeta.zeta_quantify's existing clamp. A stray negative
+    # count (e.g. a background-over-subtraction artifact upstream) must not
+    # flip signs in the weight/atomic fractions.
+    fe = np.array([[-5.0, 20.0]])
+    o = np.array([[10.0, 20.0]])
+    res = cliff_lorimer([fe, o], ["Fe", "O"], k_factors=np.array([1.0, 1.0]))
+    assert res.weight_pct_maps[0][0, 0] == pytest.approx(0.0)
+    assert res.weight_pct_maps[1][0, 0] == pytest.approx(100.0)
+    assert res.mask[0, 0]                              # still a valid pixel
+
+
 def test_zaf_reduces_to_cl_at_zero_absorption() -> None:
     ones = np.ones((3, 3))
     res = zaf_correction(

@@ -52,6 +52,65 @@ def test_quantify_closure_two_elements() -> None:
     assert res.intensity[1] == pytest.approx(80 * 50, rel=0.05)
 
 
+def test_quantify_signal_window_too_narrow_raises() -> None:
+    e = np.linspace(200.0, 800.0, 600)
+    bg = 1e6 * e**-2.2
+    edge = ElementEdge("C", "K", 6, 284.0, (290.0, 290.5), (220.0, 280.0))
+    with pytest.raises(ValueError, match="has < 2 channels"):
+        quantify(e, bg, [edge], e0_kv=200, beta_mrad=10)
+
+
+def test_quantify_empty_spectrum_raises() -> None:
+    edge = ElementEdge("C", "K", 6, 284.0, (290.0, 340.0), (220.0, 280.0))
+    with pytest.raises(ValueError, match="< 2 channels"):
+        quantify(np.array([]), np.array([]), [edge], e0_kv=200, beta_mrad=10)
+
+
+def test_quantify_zero_cross_section_gives_zero_contribution() -> None:
+    # a duplicate energy point forces signal_window (300, 300) -> delta=0,
+    # so cross_section's trapezoid over a zero-width grid is exactly 0
+    # (the ``ratios.append(i_x / s_x if s_x > 0 else 0.0)`` branch).
+    energy = np.array([100.0, 200.0, 290.0, 300.0, 300.0, 340.0, 400.0, 500.0])
+    spectrum = np.array([80.0, 60.0, 45.0, 260.0, 260.0, 42.0, 38.0, 30.0])
+    zero_edge = ElementEdge("Zz", "K", 30, 300.0, (300.0, 300.0), (100.0, 200.0))
+    real_edge = ElementEdge("C", "K", 6, 284.0, (290.0, 340.0), (100.0, 200.0))
+    res = quantify(energy, spectrum, [zero_edge, real_edge], e0_kv=200, beta_mrad=10)
+    assert res.sigma[0] == pytest.approx(0.0)
+    assert res.areal_ratio[0] == pytest.approx(0.0)
+    assert res.atomic_percent[0] == pytest.approx(0.0)
+    assert res.atomic_percent[1] == pytest.approx(100.0)
+
+
+def test_quantify_all_zero_spectrum_gives_zero_percent() -> None:
+    # a truly empty detector: total signal is 0 in every window -> the
+    # ``at_pct = ... if total > 0 else np.zeros(...)`` branch, not NaN.
+    energy = np.linspace(200.0, 800.0, 500)
+    spectrum = np.zeros_like(energy)
+    edges = [
+        ElementEdge("C", "K", 6, 284.0, (290.0, 340.0), (220.0, 280.0)),
+        ElementEdge("O", "K", 8, 532.0, (540.0, 590.0), (460.0, 525.0)),
+    ]
+    res = quantify(energy, spectrum, edges, e0_kv=200, beta_mrad=10)
+    assert np.all(res.atomic_percent == 0.0)
+    assert np.all(res.intensity == 0.0)
+
+
+def test_quantify_negative_after_background_clamps_not_negative() -> None:
+    # the signal window dips well BELOW the power-law background fitted
+    # just below it; the per-channel clamp in eels.background (and the
+    # max(trapezoid(...), 0.0) in quantify) must keep the net intensity
+    # at 0, never negative.
+    energy = np.linspace(200.0, 800.0, 600)
+    bg = 1e6 * energy**-2.0
+    spectrum = bg.copy()
+    dip = (energy >= 400.0) & (energy <= 450.0)
+    spectrum[dip] *= 0.2
+    edge = ElementEdge("Zz", "K", 30, 400.0, (400.0, 450.0), (250.0, 350.0))
+    res = quantify(energy, spectrum, [edge], e0_kv=200, beta_mrad=10)
+    assert res.intensity[0] == pytest.approx(0.0, abs=1e-9)
+    assert res.intensity[0] >= 0.0
+
+
 def test_elnes_normalisation_and_window() -> None:
     e = np.linspace(450, 650, 800)
     bg = 5e5 * e**-2.0

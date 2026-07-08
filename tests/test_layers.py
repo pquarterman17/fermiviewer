@@ -365,3 +365,71 @@ def test_recompute_layers_median_destripe() -> None:
     )
     assert len(res.interfaces) == 3
     np.testing.assert_allclose(sorted(i.position for i in res.interfaces), CENTERS, atol=1.0)
+
+
+# ── NaN policy (deliberate extension beyond the MATLAB reference) ─────
+# Mirrors the calc.trace_roughness / 2026-06 grain-hardening convention:
+# entry points that cannot cheaply be made NaN-robust fail loudly instead
+# of silently corrupting orientation/profile/destripe output.
+
+def test_detect_growth_orientation_rejects_nan() -> None:
+    img = _layered()
+    img[10, 10] = np.nan
+    with pytest.raises(ValueError, match="non-finite"):
+        detect_growth_orientation(img)
+
+
+def test_destripe_rejects_nan() -> None:
+    img = _layered()
+    img[0, 0] = np.nan
+    with pytest.raises(ValueError, match="non-finite"):
+        destripe(img)
+
+
+def test_cross_section_profile_mean_rejects_nan() -> None:
+    img = _layered()
+    img[10, 10] = np.nan
+    with pytest.raises(ValueError, match="non-finite"):
+        cross_section_profile(img, axis="y", reduce="mean")
+    with pytest.raises(ValueError, match="non-finite"):
+        cross_section_profile(img, axis="y", reduce="sum")
+
+
+def test_cross_section_profile_median_ignores_nan_pixels() -> None:
+    # reduce="median" is the ROBUST reduce mode — a couple of dead/hot
+    # pixels must not blank (or bias) the depth row via nanmedian.
+    rng = np.random.default_rng(4)
+    clean = 100.0 + rng.normal(0.0, 0.01, (30, 20))
+    dirty = clean.copy()
+    dirty[5, 3] = np.nan
+    dirty[5, 7] = np.nan
+    _, prof_clean = cross_section_profile(clean, axis="y", reduce="median")
+    _, prof_dirty = cross_section_profile(dirty, axis="y", reduce="median")
+    assert np.all(np.isfinite(prof_dirty))
+    np.testing.assert_allclose(prof_dirty, prof_clean, atol=0.05)
+
+
+def test_cross_section_profile_median_all_nan_row_is_nan() -> None:
+    img = _layered()
+    img[10, :] = np.nan               # an entire depth row is missing
+    _, prof = cross_section_profile(img, axis="y", reduce="median")
+    assert np.isnan(prof[10])
+    assert np.all(np.isfinite(np.delete(prof, 10)))
+
+
+# ── layers_detect.py: <5-sample / flat-profile guards ─────────────────
+
+def test_detect_interfaces_short_profile_is_empty() -> None:
+    assert detect_interfaces(np.array([1.0, 2.0, 3.0])).size == 0
+
+
+def test_detect_interfaces_flat_profile_is_empty() -> None:
+    assert detect_interfaces(np.full(50, 5.0)).size == 0
+
+
+def test_detect_interfaces_scale_space_short_profile_is_empty() -> None:
+    assert detect_interfaces_scale_space(np.array([1.0, 2.0, 3.0])).size == 0
+
+
+def test_detect_interfaces_scale_space_flat_profile_is_empty() -> None:
+    assert detect_interfaces_scale_space(np.full(50, 5.0)).size == 0

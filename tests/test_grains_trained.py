@@ -19,6 +19,8 @@ from fermiviewer.server import create_app
 from fermiviewer.session import store
 from fixtures.minidm4 import write_mini_dm4
 
+pytestmark = pytest.mark.imaging
+
 # ── softmax classifier ───────────────────────────────────────────────
 
 

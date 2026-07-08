@@ -150,6 +150,53 @@ def test_blank_pixels_are_masked_nan() -> None:
     assert np.isfinite(r.mass_thickness_map[0, 0])
 
 
+def test_zeta_from_k_factors_rejects_nonpositive_zeta_si() -> None:
+    with pytest.raises(ValueError, match="zeta_si must be positive"):
+        zeta_from_k_factors(["Fe"], 0.0)
+    with pytest.raises(ValueError, match="zeta_si must be positive"):
+        zeta_from_k_factors(["Fe"], -1.0)
+
+
+def test_negative_counts_are_clamped() -> None:
+    # a stray negative count (e.g. a background-subtraction artifact) must
+    # clamp to 0, not flow through as a negative intensity (:246 np.clip).
+    fe = np.array([[-100.0, 200.0]])
+    o = np.array([[50.0, 100.0]])
+    r = zeta_quantify([fe, o], ["Fe", "O"], [500.0, 1000.0], dose=1e10, absorption=False)
+    assert r.weight_pct_maps[0][0, 0] == pytest.approx(0.0)
+    assert r.weight_pct_maps[1][0, 0] == pytest.approx(100.0)
+    assert r.mask[0, 0]
+
+
+def test_fully_blank_map_is_all_nan() -> None:
+    # every pixel below mask_threshold -> mean_rt (and mean at%/wt%) NaN
+    # (:271), not a crash from meaning over an empty valid-pixel selection.
+    fe = np.zeros((2, 2))
+    o = np.zeros((2, 2))
+    r = zeta_quantify([fe, o], ["Fe", "O"], [500.0, 1000.0], dose=1e10, absorption=False)
+    assert not r.mask.any()
+    assert np.isnan(r.mean_mass_thickness)
+    assert np.all(np.isnan(r.mean_weight_pct))
+    assert np.all(np.isnan(r.mean_atomic_pct))
+    assert np.all(np.isnan(r.weight_pct_maps[0]))
+
+
+def test_nan_intensity_pixel_is_auto_masked() -> None:
+    # PINNED behaviour (no explicit NaN policy in eds_zeta.py): a NaN in the
+    # intensity cube makes that pixel's summed intensity NaN, and
+    # ``NaN > mask_threshold`` is False in numpy, so the pixel is EXCLUDED
+    # from the mask automatically rather than poisoning the composition.
+    fe = np.array([[np.nan, 200.0]])
+    o = np.array([[50.0, 100.0]])
+    r = zeta_quantify([fe, o], ["Fe", "O"], [500.0, 1000.0], dose=1e10, absorption=False)
+    assert not r.mask[0, 0]
+    assert r.mask[0, 1]
+    assert np.isnan(r.weight_pct_maps[0][0, 0])
+    assert np.isfinite(r.weight_pct_maps[0][0, 1])
+    assert np.isnan(r.mass_thickness_map[0, 0])
+    assert np.isfinite(r.mass_thickness_map[0, 1])
+
+
 def test_input_validation() -> None:
     m = [np.array([[1.0]]), np.array([[1.0]])]
     with pytest.raises(ValueError):
