@@ -27,14 +27,15 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Sync deps
         run: uv sync --group dev
-      # Lint + type-check ONCE, on the latest interpreter. They are
-      # OS-independent, and mypy against the floor's older numpy stubs
-      # (numpy 2.2 on 3.10) reports stub-version differences, not real issues.
+      # Lint + type-check ONCE, pinned to 3.13: matches local dev, and the
+      # numpy stubs are known-good there. They are OS-independent, and mypy
+      # against the floor's older numpy stubs (numpy 2.2 on 3.10) reports
+      # stub-version differences, not real issues.
       - name: Lint
-        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.14'
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.13'
         run: uv run ruff check src tests
       - name: Type check
-        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.14'
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.13'
         run: uv run mypy src
       - name: Tests
         # realdata/oracle tests skip in CI (corpus + rsciio absent), which

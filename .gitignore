@@ -46,3 +46,6 @@ build/
 .coverage.*
 htmlcov/
 coverage.xml
+
+# per-machine Claude Code instructions (repo is attribution-scrubbed)
+CLAUDE.md
