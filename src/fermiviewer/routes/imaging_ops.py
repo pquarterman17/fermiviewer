@@ -20,6 +20,7 @@ from fermiviewer.calc.radial import azimuthal_integrate, radial_profile
 from fermiviewer.calc.roughness import surface_roughness
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.models import ImageMeta
+from fermiviewer.routes._arrays import value_error_as_422
 from fermiviewer.session import UnknownImageError, store
 
 router = APIRouter(prefix="/api")
@@ -151,19 +152,20 @@ class RadialRequest(BaseModel):
 def analyze_radial(req: RadialRequest) -> dict:
     ds, raster = _raster(req.image_id)
     px = ds.pixel_size if np.isfinite(ds.pixel_size) else 1.0
-    if req.azimuthal:
-        radii, intensity = azimuthal_integrate(
-            raster, center=req.center, n_bins=req.n_bins,
-            sector_min=req.sector_min, sector_max=req.sector_max,
-            pixel_size=px,
-        )
-        avg = intensity
-        mx = intensity
-    else:
-        radii_px, avg, mx = radial_profile(
-            raster, center=req.center, n_bins=req.n_bins
-        )
-        radii = radii_px * px
+    with value_error_as_422():
+        if req.azimuthal:
+            radii, intensity = azimuthal_integrate(
+                raster, center=req.center, n_bins=req.n_bins,
+                sector_min=req.sector_min, sector_max=req.sector_max,
+                pixel_size=px,
+            )
+            avg = intensity
+            mx = intensity
+        else:
+            radii_px, avg, mx = radial_profile(
+                raster, center=req.center, n_bins=req.n_bins
+            )
+            radii = radii_px * px
     unit = ds.pixel_unit or "px"
     nan_to_none = [None if not np.isfinite(v) else float(v) for v in avg]
     return {
@@ -275,10 +277,11 @@ class CtfRequest(BaseModel):
 @router.post("/analyze/ctf")
 def analyze_ctf(req: CtfRequest) -> dict:
     _, raster = _raster(req.image_id)
-    res = estimate_ctf(
-        raster, voltage_kv=req.voltage_kv, cs_mm=req.cs_mm,
-        pixel_size=req.pixel_size_a,
-    )
+    with value_error_as_422():
+        res = estimate_ctf(
+            raster, voltage_kv=req.voltage_kv, cs_mm=req.cs_mm,
+            pixel_size=req.pixel_size_a,
+        )
     return {
         "defocus_a": res.defocus,
         "defocus_nm": res.defocus_nm,
