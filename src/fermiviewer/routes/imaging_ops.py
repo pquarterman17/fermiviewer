@@ -331,8 +331,10 @@ def analyze_noise(req: NoiseRequest) -> dict:
 class DefectsRequest(BaseModel):
     image_id: str
     direction: float | None = None
-    kernel_length: int = 15
-    grid_spacing: int = 50
+    kernel_length: int = Field(15, ge=1)
+    # ge=1: a zero spacing reaches np.arange with step 0 in calc/defects
+    # (ZeroDivisionError, which the ValueError→422 guard can't catch)
+    grid_spacing: int = Field(50, ge=1)
 
 
 @router.post("/analyze/defects")

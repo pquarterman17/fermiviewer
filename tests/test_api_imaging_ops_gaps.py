@@ -202,28 +202,17 @@ def test_defects_endpoint_unknown_id(client) -> None:
     ).status_code == 404
 
 
-def test_defects_zero_grid_spacing_is_an_unhandled_500(tmp_path) -> None:
-    """PINS A KNOWN GAP — deliberately NOT fixed here (tests-only rules for
-    this pass forbid touching src/).
-
-    `DefectsRequest.grid_spacing` has no `ge=1` bound. grid_spacing=0
-    reaches ``np.arange(gap, roi_h, gap)`` in
-    calc/defects.py:count_defect_lines with a zero step, which raises
-    ZeroDivisionError — NOT the ValueError that
-    routes/imaging_ops.py:analyze_defects catches (`except ValueError as e:
-    raise HTTPException(422, ...)`) — so it escapes that guard and
-    surfaces as an unhandled 500 instead of a clean 422. Every sibling
-    analyze/* endpoint returns 422 for bad numeric input; this one
-    doesn't. Uses its own TestClient(raise_server_exceptions=False) so the
-    exception is captured as a response instead of propagating into the
-    test run.
-    """
+def test_defects_zero_grid_spacing_is_422(tmp_path) -> None:
+    """grid_spacing=0 used to reach np.arange with step 0 in
+    calc/defects.py (ZeroDivisionError → unhandled 500, escaping the
+    ValueError→422 guard); the ge=1 bound on DefectsRequest.grid_spacing
+    now rejects it at validation like every sibling analyze/* endpoint."""
     raw_client = TestClient(create_app(), raise_server_exceptions=False)
     img_id = _open(raw_client, tmp_path, _synth_pattern())
     r = raw_client.post("/api/analyze/defects", json={
         "image_id": img_id, "grid_spacing": 0,
     })
-    assert r.status_code == 500
+    assert r.status_code == 422
 
 
 # ── shared _raster() helper: wrong-kind + SPECTRUM_IMAGE branches ──────
