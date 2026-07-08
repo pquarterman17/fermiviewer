@@ -26,7 +26,6 @@ from fermiviewer.netprobe import (
     _await_health,
     _bind,
     _find_free_port,
-    _health_ok,
     _port_listening,
 )
 
@@ -251,133 +250,16 @@ async def _grace_check() -> None:
 
 app = create_app()
 
-
-def _open_browser_later(url: str, delay: float = 0.8) -> None:
-    """Fixed-delay browser open — used only for the dev path, where the
-    target is the Vite server (no /api/health to poll)."""
-    import threading
-    import webbrowser
-
-    timer = threading.Timer(delay, webbrowser.open, [url])
-    timer.daemon = True  # don't keep the process alive on Ctrl+C in --dev
-    timer.start()
-
-
-def _open_when_healthy(url: str, host: str, port: int, timeout: float = 30.0) -> None:
-    """Open the browser only once the server answers — replaces the old
-    fixed-delay timer, which raced a cold numpy/scipy import and showed
-    'can't reach this page'. Polls /api/health in a daemon thread."""
-    import threading
-    import time
-    import webbrowser
-
-    def _wait_then_open() -> None:
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            if _health_ok(host, port):
-                webbrowser.open(url)
-                return
-            time.sleep(0.25)
-        webbrowser.open(url)  # last resort: open anyway after the timeout
-
-    threading.Thread(target=_wait_then_open, daemon=True).start()
-
-
-_WEBVIEW_BACKEND_HINT = (
-    "pywebview needs a native GUI backend. On Linux, install PyGObject + "
-    "WebKitGTK (e.g. `sudo apt install python3-gi gir1.2-webkit2-4.1`) or "
-    "PyQt5/PySide2, then retry."
+# --desktop (pywebview) and --dev (Vite HMR) launch paths live in
+# server_launch.py — split out to respect the 500-line ceiling — and are
+# re-exported here so main() below and existing tests/monkeypatches keep
+# working unchanged.
+from fermiviewer.server_launch import (  # noqa: E402 — re-export
+    _open_browser_later,
+    _open_when_healthy,
+    _run_desktop,
+    _run_dev,
 )
-
-
-def _run_desktop() -> None:
-    """Desktop standalone (handoff §11 option B): uvicorn in a thread,
-    pywebview native window on top — pure Python, no Rust toolchain.
-    Closing the window stops the server."""
-    import threading
-
-    import uvicorn
-
-    if _frontend_dist() is None:
-        print(
-            "frontend/dist not found — build it once with:\n"
-            "    cd frontend && npm run build"
-        )
-        return
-
-    try:
-        import webview
-    except ImportError as e:
-        print(f"--desktop: {_WEBVIEW_BACKEND_HINT}\n(import error: {e})")
-        return
-
-    # Bind up front so a taken port is a clean branch, not a crashed server
-    # thread: reuse our own healthy instance (point the window at it), or
-    # refuse a foreign app instead of hanging 30 s on a dead window.
-    sock = _bind(_HOST, _PORT)
-    server: uvicorn.Server | None = None
-    t: threading.Thread | None = None
-    if sock is None:
-        if not _health_ok(_HOST, _PORT):
-            print(f"port {_PORT} is in use by another app — close it and retry")
-            return
-    else:
-        global _server
-        server = uvicorn.Server(
-            uvicorn.Config(app, host=_HOST, port=_PORT, log_level="warning")
-        )
-        _server = server
-        s = sock  # bound socket handed to uvicorn — closes the bind race
-        t = threading.Thread(target=lambda: server.run(sockets=[s]), daemon=True)
-        t.start()
-
-    # wait for the server to bind before pointing the window at it, else
-    # the webview shows a connection-refused page and never retries
-    import time
-
-    deadline = time.monotonic() + 30.0
-    while time.monotonic() < deadline and not _health_ok(_HOST, _PORT):
-        time.sleep(0.25)
-
-    try:
-        webview.create_window(
-            "FermiViewer",
-            f"http://{_HOST}:{_PORT}",
-            width=1440,
-            height=920,
-            background_color="#16141d",
-        )
-        webview.start()
-    except Exception as e:
-        print(f"--desktop: {_WEBVIEW_BACKEND_HINT}\n(error: {e})")
-    finally:
-        if server is not None:
-            server.should_exit = True
-        if t is not None:
-            t.join(timeout=5)
-
-
-def _run_dev() -> None:
-    """Vite dev server (HMR) + reloading uvicorn in one terminal."""
-    import os
-    import subprocess
-
-    import uvicorn
-
-    frontend = Path(__file__).resolve().parents[2] / "frontend"
-    if not frontend.is_dir():
-        print(f"--dev requires a source checkout; frontend/ not found at {frontend}")
-        raise SystemExit(2)
-    npm = "npm.cmd" if os.name == "nt" else "npm"
-    vite = subprocess.Popen([npm, "run", "dev"], cwd=frontend)
-    _open_browser_later("http://localhost:5173", delay=2.0)
-    try:
-        uvicorn.run(
-            "fermiviewer.server:app", host=_HOST, port=_PORT, reload=True
-        )
-    finally:
-        vite.terminate()
-        vite.wait(timeout=10)
 
 
 def main() -> None:
