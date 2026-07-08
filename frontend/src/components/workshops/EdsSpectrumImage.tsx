@@ -10,7 +10,7 @@
 //   Pixel-click / ROI-drag → spectrum (via RegionPicker)
 //   Element-map CSV export / spectrum CSV export
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import uPlot from "uplot";
 
 import {
@@ -154,8 +154,17 @@ function SpectrumPlot({
 function MapCanvas({ result }: { result: EdsElementMapResult }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [h, w] = result.shape;
-  const flat = result.map.flat();
-  const vmax = Math.max(...flat, 1);
+  // iterative max — Math.max(...flat) spreads every element as a call
+  // argument and throws a RangeError once the map crosses ~65k px
+  const vmax = useMemo(() => {
+    let m = 1;
+    for (const row of result.map) {
+      for (const v of row) {
+        if (v > m) m = v;
+      }
+    }
+    return m;
+  }, [result.map]);
 
   useEffect(() => {
     const cv = canvasRef.current;
