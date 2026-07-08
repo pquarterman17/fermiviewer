@@ -777,6 +777,20 @@ function _clientState(s: ViewerState): SessionClientState {
   };
 }
 
+/** Bump `current` past every numeric suffix found in `ids` matching `re`
+ *  (captured in group 1). Used to re-seed measureSeq/groupSeq on session
+ *  restore so a subsequent addMeasure/createGroup can never mint an id
+ *  that collides with one just restored (duplicate React keys, double
+ *  drag/delete on the wrong element). */
+function reseedSeq(current: number, ids: Iterable<string>, re: RegExp): number {
+  let max = current;
+  for (const id of ids) {
+    const m = re.exec(id);
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  return max;
+}
+
 /** Build the store slice that a loaded session replaces — shared by
  *  loadWorkspace (arbitrary path) and loadWorkspaceNamed (config-dir
  *  workspace) so both restore identical state (status + currentWorkspace
@@ -820,6 +834,19 @@ function sessionSlice(
     sbsRows,
     sbsCols,
   );
+  const measures = (cs.measures as Record<string, Measure[]>) ?? {};
+  // re-seed the module id counters past whatever this session contains —
+  // see reseedSeq above for why.
+  measureSeq = reseedSeq(
+    measureSeq,
+    Object.values(measures).flatMap((list) => list.map((m) => m.id)),
+    /^m(\d+)$/,
+  );
+  groupSeq = reseedSeq(
+    groupSeq,
+    imageGroups.map((g) => g.id),
+    /^g(\d+)$/,
+  );
   return {
     images,
     order,
@@ -835,7 +862,7 @@ function sessionSlice(
     sbsActive: 0,
     views: (cs.views as Record<string, View>) ?? {},
     display: (cs.display as Record<string, Display>) ?? {},
-    measures: (cs.measures as Record<string, Measure[]>) ?? {},
+    measures,
     overlay: (cs.overlay as OverlayStyle) ?? fallbackOverlay,
     savedRois: (cs.savedRois as Record<string, SavedRoi[]>) ?? {},
     // a load is a fresh session: drop undo history + per-image state that

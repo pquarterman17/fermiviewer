@@ -76,6 +76,53 @@ beforeEach(() => {
   localStorage.clear();
 });
 
+// measureSeq/groupSeq are module-level counters, not part of the Zustand
+// state that beforeEach resets — this suite MUST run before any other test
+// calls addMeasure/createGroup, or the asserted "m10"/"g4" ids below will be
+// off by however much those other tests already bumped the counters.
+describe("id counter reseed on restore (dup-id fix)", () => {
+  it("bumps measureSeq/groupSeq past restored ids so new mints don't collide", async () => {
+    const images: ImageMeta[] = [meta("a")];
+    vi.mocked(apiLoadWorkspaceNamed).mockResolvedValueOnce({
+      images,
+      name: "Saved",
+      client_state: {
+        order: ["a"],
+        activeId: "a",
+        measures: {
+          a: [
+            {
+              id: "m9",
+              kind: "distance",
+              pts: [
+                { x: 0, y: 0 },
+                { x: 1, y: 0 },
+              ],
+            },
+          ],
+        },
+        imageGroups: [{ id: "g3", name: "G", ids: ["a"] }],
+      },
+    });
+
+    await useViewer.getState().loadWorkspaceNamed("saved");
+
+    const newMeasureId = useViewer.getState().addMeasure("a", {
+      kind: "distance",
+      pts: [
+        { x: 0, y: 0 },
+        { x: 1, y: 0 },
+      ],
+    });
+    expect(newMeasureId).toBe("m10");
+
+    useViewer.getState().createGroup(["a"]);
+    expect(useViewer.getState().imageGroups.some((g) => g.id === "g4")).toBe(
+      true,
+    );
+  });
+});
+
 describe("ingest", () => {
   it("adds images, preserves order, activates the last", () => {
     useViewer.getState().ingest([meta("a"), meta("b")]);
