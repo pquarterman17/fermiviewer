@@ -273,9 +273,14 @@ def measure_annotations(
                 r0, r1 = sorted((int(y0), int(y1)))
                 c0, c1 = sorted((int(x0), int(x1)))
                 sel = raster[max(r0, 0):r1 + 1, max(c0, 0):c1 + 1]
-                label = (f"μ {_fmt(float(sel.mean()))} · "
-                         f"σ {_fmt(float(sel.std()))}"
-                         if sel.size else "—")
+                if sel.size:
+                    # MATLAB sample-std (N-1) parity — see
+                    # calc/profiles.py roi_stats for the same convention.
+                    std_val = float(sel.std(ddof=1)) if sel.size > 1 else 0.0
+                    label = (f"μ {_fmt(float(sel.mean()))} · "
+                             f"σ {_fmt(std_val)}")
+                else:
+                    label = "—"
             else:
                 w_px, h_px = abs(x1 - x0), abs(y1 - y0)
                 label = f"{_fmt(w_px)} × {_fmt(h_px)} px"

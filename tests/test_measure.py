@@ -45,7 +45,8 @@ def test_roi_stats_against_numpy() -> None:
     rng_free = np.arange(48, dtype=np.float64).reshape(6, 8)
     s = roi_stats(rng_free, 2, 3, 5, 7)
     sel = rng_free[1:5, 2:7]
-    assert s["mean"] == sel.mean() and s["std"] == sel.std()
+    # MATLAB sample-std (N-1) parity, not numpy's population default
+    assert s["mean"] == sel.mean() and s["std"] == sel.std(ddof=1)
     assert s["min"] == sel.min() and s["max"] == sel.max()
     assert s["n_pixels"] == sel.size
     s2 = roi_stats(rng_free, 5, 7, 2, 3, pixel_size=2.0)   # swapped + calibrated
