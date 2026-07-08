@@ -12,7 +12,6 @@ to keep this file under the 500-line god-module ceiling.
 from __future__ import annotations
 
 import io
-import zipfile
 
 import numpy as np
 from fastapi import APIRouter, HTTPException, Response
@@ -362,60 +361,6 @@ def export_gif(req: GifRequest) -> Response:
     )
     stem = store.name(req.image_ids[0]).rsplit(".", 1)[0] or "stack"
     return _file_response(buf.getvalue(), f"{stem}.gif", "gif")
-
-
-class BatchExportRequest(BaseModel):
-    image_ids: list[str]
-    format: str = "png"
-    scale: int = Field(default=1, ge=1, le=4)
-    lo: float = 0.0
-    hi: float = 1.0
-    gamma: float = 1.0
-    cmap: str = "gray"
-
-
-@router.post("/export/batch")
-def export_batch(req: BatchExportRequest) -> Response:
-    """ZIP of individually exported images (checklist M)."""
-    if not req.image_ids:
-        raise HTTPException(422, "image_ids must not be empty")
-    if req.format not in _MEDIA or req.format in ("gif", "svg", "pdf"):
-        raise HTTPException(422, f"batch supports png/jpeg/tiff16, not {req.format!r}")
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for iid in req.image_ids:
-            try:
-                ds = store.get(iid)
-            except UnknownImageError:
-                raise HTTPException(404, f"unknown image id: {iid}") from None
-            raster = _raster(ds)
-            lo, hi = _window_bounds(raster, req.lo, req.hi)
-            name = store.name(iid)
-            stem = name.rsplit(".", 1)[0] or name
-            if req.format == "tiff16":
-                try:
-                    import tifffile
-                except ImportError:  # pragma: no cover
-                    raise HTTPException(500, "tifffile not installed") from None
-                u16 = render_u16(raster, lo, hi, req.gamma, req.scale)
-                fb = io.BytesIO()
-                tifffile.imwrite(fb, u16)
-                zf.writestr(f"{stem}.tif", fb.getvalue())
-            else:
-                rgb = render_rgb(raster, lo, hi, req.gamma, req.cmap, req.scale)
-                img = Image.fromarray(rgb, mode="RGB")
-                fb = io.BytesIO()
-                if req.format == "jpeg":
-                    img.save(fb, format="JPEG", quality=92)
-                    zf.writestr(f"{stem}.jpg", fb.getvalue())
-                else:
-                    img.save(fb, format="PNG")
-                    zf.writestr(f"{stem}.png", fb.getvalue())
-    return Response(
-        content=buf.getvalue(),
-        media_type="application/zip",
-        headers={"Content-Disposition": 'attachment; filename="export.zip"'},
-    )
 
 
 def _file_response(data: bytes, filename: str, fmt: str) -> Response:

@@ -667,6 +667,30 @@ def test_batch_export_zip(client, tmp_path) -> None:
     }).status_code == 422
 
 
+def test_batch_export_dedupes_identical_names(client, tmp_path) -> None:
+    """Two images sharing a display name must not collide inside the ZIP.
+
+    export.py used to register its own /export/batch handler (without
+    de-dup) that shadowed export_batch.py's — same-named images silently
+    overwrote each other in the archive. Only export_batch.py's handler
+    is registered now.
+    """
+    id_a = _open_frame(client, tmp_path, "dup.dm4", 0.0)
+    id_b = _open_frame(client, tmp_path, "dup.dm4", 0.5)
+    assert id_a != id_b
+    r = client.post("/api/export/batch", json={
+        "image_ids": [id_a, id_b], "format": "png", "scale": 1,
+    })
+    assert r.status_code == 200
+    import zipfile
+
+    zf = zipfile.ZipFile(io.BytesIO(r.content))
+    names = zf.namelist()
+    assert len(names) == 2
+    assert len(set(names)) == 2  # uniquely named, not silently overwritten
+    assert names == ["dup.png", "dup_2.png"]
+
+
 def test_rename_and_open_raw(client, tmp_path) -> None:
     ids = [_open_frame(client, tmp_path, "r0.dm4", 0.0)]
     r = client.post(f"/api/image/{ids[0]}/rename", json={"name": "renamed"})
