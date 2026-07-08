@@ -281,4 +281,4 @@ def composite_colorbar(img: Image.Image, cmap: str, lo: float,
 # ── SVG vector composition ───────────────────────────────────────────
 # Moved to _export_svg.py (split out to respect the 500-line ceiling) and
 # re-exported here so routes/export.py's import list keeps working.
-from fermiviewer.routes._export_svg import build_svg  # noqa: E402 — re-export
+from fermiviewer.routes._export_svg import build_svg  # noqa: E402, F401 — re-export

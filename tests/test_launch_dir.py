@@ -129,7 +129,9 @@ def test_workspace_delete_rejects_bad_slug() -> None:
 
 def test_health_ok_false_when_nothing_listening() -> None:
     # an almost-certainly-free port: no server, so health must be False
-    assert server._health_ok("127.0.0.1", 8723) is False
+    from fermiviewer.netprobe import _health_ok
+
+    assert _health_ok("127.0.0.1", 8723) is False
 
 
 def test_port_listening_false_when_free() -> None:

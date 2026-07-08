@@ -255,7 +255,7 @@ app = create_app()
 # re-exported here so main() below and existing tests/monkeypatches keep
 # working unchanged.
 from fermiviewer.server_launch import (  # noqa: E402 — re-export
-    _open_browser_later,
+    _open_browser_later,  # noqa: F401
     _open_when_healthy,
     _run_desktop,
     _run_dev,
