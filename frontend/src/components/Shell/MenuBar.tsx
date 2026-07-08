@@ -2,6 +2,7 @@
 // WINDOW-badged workshop items arrive with Phase 4 tool windows.
 
 import { useEffect, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 
 import {
   analyzeAlignStack,
@@ -120,11 +121,12 @@ export default function MenuBar({
       if (!meta) continue;
       const [h, w] = meta.shape;
       try {
+        // read live — profileWidth isn't part of the narrow render subscription
         const r = await measureProfile(
           id,
           { x: m.pts[0].x * w, y: m.pts[0].y * h },
           { x: m.pts[1].x * w, y: m.pts[1].y * h },
-          store.profileWidth,
+          useViewer.getState().profileWidth,
           null,
           useViewer.getState().profileReduce,
         );
@@ -161,7 +163,10 @@ export default function MenuBar({
       const dists = (store.measures[id] ?? []).filter(
         (m) => m.kind === "distance",
       );
-      const d = dists.find((m) => m.id === store.selectedMeasure) ?? dists.at(-1);
+      // read live — selectedMeasure isn't part of the narrow render subscription
+      const d =
+        dists.find((m) => m.id === useViewer.getState().selectedMeasure) ??
+        dists.at(-1);
       if (!meta || !d) return;
       const [h, w] = meta.shape;
       const lenPx = Math.hypot(
@@ -201,7 +206,60 @@ export default function MenuBar({
   };
   const barRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const store = useViewer();
+  // narrow selector: only the fields the menu STRUCTURE reads (labels,
+  // disabled state, submenu content) + the stable action refs every
+  // `store.<action>()` call site below needs. A whole-store `useViewer()`
+  // subscription re-rendered this 1,600-line component on every store write
+  // (e.g. once per pointermove while panning/zooming, which only touch
+  // views/display/tools — fields never read here).
+  const store = useViewer(
+    useShallow((s) => ({
+      activeId: s.activeId,
+      selected: s.selected,
+      order: s.order,
+      images: s.images,
+      measures: s.measures,
+      undoStack: s.undoStack,
+      redoStack: s.redoStack,
+      minimap: s.minimap,
+      scaleBarVisible: s.scaleBarVisible,
+      colorbar: s.colorbar,
+      theme: s.theme,
+      leftCol: s.leftCol,
+      rightCol: s.rightCol,
+      // actions are stable references — including them here never triggers
+      // an extra render, and keeps every call site below unchanged
+      setStatus: s.setStatus,
+      openFiles: s.openFiles,
+      openPaths: s.openPaths,
+      closeImage: s.closeImage,
+      saveWorkspace: s.saveWorkspace,
+      loadWorkspace: s.loadWorkspace,
+      undo: s.undo,
+      redo: s.redo,
+      clearMeasures: s.clearMeasures,
+      setPrefsOpen: s.setPrefsOpen,
+      toggleMinimap: s.toggleMinimap,
+      toggleScaleBar: s.toggleScaleBar,
+      setGalleryOpen: s.setGalleryOpen,
+      startSideBySide: s.startSideBySide,
+      toggleColorbar: s.toggleColorbar,
+      toggleTheme: s.toggleTheme,
+      toggleLeft: s.toggleLeft,
+      toggleRight: s.toggleRight,
+      setExportOpen: s.setExportOpen,
+      setCaptureMode: s.setCaptureMode,
+      removeMeasure: s.removeMeasure,
+      ingest: s.ingest,
+      ingestDerived: s.ingestDerived,
+      setCmdk: s.setCmdk,
+      setShorts: s.setShorts,
+      setBatchOpen: s.setBatchOpen,
+      setCalibOpen: s.setCalibOpen,
+      setMetaOpen: s.setMetaOpen,
+      openTool: s.openTool,
+    })),
+  );
 
   // active-image doc title + panel-toggle icons live here now (the standalone
   // title bar was removed as redundant — its brand was pure decoration)
@@ -1466,6 +1524,9 @@ export default function MenuBar({
   // current `store` snapshot, so they must be re-published fresh each render
   // rather than cached (a stale closure would read an old store state). No one
   // subscribes to useCommands reactively, so this never triggers re-renders.
+  // Now that `store` above is a narrow shallow-selected slice, this effect
+  // itself fires far less often too — only on the renders that slice change
+  // actually causes, not on every store write (pan/zoom no longer counts).
   useEffect(() => {
     const flat: Action[] = [];
     const publish = (group: string, e: Entry) => {
