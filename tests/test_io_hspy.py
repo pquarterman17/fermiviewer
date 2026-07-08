@@ -110,3 +110,19 @@ def test_non_hdf5_hspy_raises(tmp_path) -> None:
     bad.write_bytes(b"plain text not hdf5")
     with pytest.raises(HspyFormatError, match="not an HDF5"):
         load_hspy(bad)
+
+
+def test_missing_experiments_group_raises(tmp_path) -> None:
+    fp = tmp_path / "noexp.hspy"
+    with h5py.File(fp, "w") as f:
+        f.create_group("NotExperiments")
+    with pytest.raises(HspyFormatError, match="no /Experiments"):
+        load_hspy(fp)
+
+
+def test_experiment_without_data_raises(tmp_path) -> None:
+    fp = tmp_path / "nodata.hspy"
+    with h5py.File(fp, "w") as f:
+        f.create_group("Experiments/sig")  # no "data" dataset inside
+    with pytest.raises(HspyFormatError, match="no experiment with a data array"):
+        load_hspy(fp)

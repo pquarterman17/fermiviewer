@@ -31,7 +31,7 @@ from fermiviewer.io.dm import DMFormatError
 from fermiviewer.io.emd import EMDFormatError
 from fermiviewer.io.registry import load_auto
 
-pytestmark = pytest.mark.realdata
+pytestmark = [pytest.mark.parser, pytest.mark.realdata]
 
 
 def _load(corpus: Path, rel: str):

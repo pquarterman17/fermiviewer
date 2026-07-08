@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from fermiviewer.datastruct import DataKind
-from fermiviewer.io.images import load_image, load_raw
+from fermiviewer.io.images import load_image, load_raw, load_tiff
 from fermiviewer.io.registry import load_auto
 
 pytestmark = pytest.mark.parser
@@ -72,6 +72,43 @@ def test_raw_geometry_errors(tmp_path) -> None:
         load_raw(f, width=100, height=100)
     with pytest.raises(ValueError, match="bit_depth"):
         load_raw(f, width=1, height=1, bit_depth=24)
+
+
+def test_raw_zero_and_negative_dims_raise(tmp_path) -> None:
+    # bit_depth is valid (16) so the width/height guard is the one that
+    # fires, not the bit_depth guard which would otherwise shortcut first.
+    f = tmp_path / "tiny.raw"
+    f.write_bytes(b"\x00" * 100)
+    with pytest.raises(ValueError, match="width and height must be positive"):
+        load_raw(f, width=0, height=5, bit_depth=16)
+    with pytest.raises(ValueError, match="width and height must be positive"):
+        load_raw(f, width=5, height=-1, bit_depth=16)
+
+
+def test_tiff_big_endian_multi_page(tmp_path) -> None:
+    import tifffile
+
+    frames = np.stack(
+        [np.arange(12, dtype=np.uint16).reshape(3, 4) + i * 100 for i in range(3)]
+    )
+    f = tmp_path / "multi_be.tif"
+    with tifffile.TiffWriter(f, byteorder=">") as tw:
+        for fr in frames:
+            tw.write(fr, photometric="minisblack")
+    assert f.read_bytes()[:2] == b"MM"  # confirms genuinely big-endian
+
+    ds = load_tiff(f)
+    assert ds.kind is DataKind.IMAGE
+    assert ds.data.shape == (3, 4)
+    assert ds.metadata["n_frames"] == 3
+    np.testing.assert_array_equal(ds.data, frames[0])
+
+
+def test_corrupt_image_raises(tmp_path) -> None:
+    f = tmp_path / "corrupt.png"
+    f.write_bytes(b"not a real image, just text pretending" * 3)
+    with pytest.raises(ValueError, match="unreadable image file"):
+        load_image(f)
 
 
 def test_png_rgb_collapses_to_gray(tmp_path) -> None:

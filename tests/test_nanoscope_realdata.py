@@ -24,7 +24,7 @@ from fermiviewer.io.nanoscope import load_nanoscope, load_nanoscope_all
 _SAMPLE = (
     Path(__file__).resolve().parents[1] / "build" / "afm-samples" / "sample_0.spm"
 )
-pytestmark = pytest.mark.realdata
+pytestmark = [pytest.mark.parser, pytest.mark.realdata]
 
 
 @pytest.fixture

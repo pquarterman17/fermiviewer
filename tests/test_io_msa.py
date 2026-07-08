@@ -38,6 +38,34 @@ _XY = """#FORMAT   : EMSA/MAS Spectral Data File
 #ENDOFDATA
 """
 
+_ALL_ZERO = """#FORMAT : EMSA/MAS Spectral Data File
+#XUNITS : eV
+#XPERCHAN : 1.0
+#OFFSET : 0.0
+#DATATYPE : Y
+#SPECTRUM :
+0.0, 0.0, 0.0, 0.0
+#ENDOFDATA
+"""
+
+_SINGLE_CHANNEL = """#FORMAT : EMSA/MAS Spectral Data File
+#XUNITS : eV
+#XPERCHAN : 5.0
+#OFFSET : 10.0
+#DATATYPE : Y
+#SPECTRUM :
+42.0
+#ENDOFDATA
+"""
+
+_NO_XPERCHAN_KEV = """#FORMAT : EMSA/MAS Spectral Data File
+#XUNITS : keV
+#DATATYPE : Y
+#SPECTRUM :
+1.0, 2.0, 3.0
+#ENDOFDATA
+"""
+
 
 def test_y_only_spectrum_with_calibration(tmp_path) -> None:
     fp = tmp_path / "s.msa"
@@ -81,3 +109,35 @@ def test_empty_and_non_emsa_raise(tmp_path) -> None:
     nodata.write_text("#FORMAT : EMSA/MAS Spectral Data File\n#SPECTRUM :\n")
     with pytest.raises(MSAFormatError, match="no spectrum data"):
         load_msa(nodata)
+
+
+def test_all_zero_spectrum_loads(tmp_path) -> None:
+    # all-zero counts must NOT be treated as "no data" (falsy-value trap)
+    fp = tmp_path / "zero.msa"
+    fp.write_text(_ALL_ZERO)
+    ds = load_msa(fp)
+    assert ds.kind is DataKind.SPECTRUM
+    assert ds.n_channels == 4
+    assert np.all(np.asarray(ds.data) == 0)
+
+
+def test_single_channel_spectrum(tmp_path) -> None:
+    fp = tmp_path / "single.msa"
+    fp.write_text(_SINGLE_CHANNEL)
+    ds = load_msa(fp)
+    assert ds.kind is DataKind.SPECTRUM
+    assert ds.n_channels == 1
+    assert ds.data[0] == 42.0
+    assert ds.energy_axis[0] == pytest.approx(10.0)
+
+
+def test_missing_xperchan_defaults_with_non_ev_units(tmp_path) -> None:
+    # DATATYPE Y (not XY) with no #XPERCHAN at all → falls to the 1.0/channel
+    # default; XUNITS is passed through as-is (keV), not forced to eV.
+    fp = tmp_path / "kev.msa"
+    fp.write_text(_NO_XPERCHAN_KEV)
+    ds = load_msa(fp)
+    assert ds.kind is DataKind.SPECTRUM
+    assert ds.energy_cal.units == "keV"
+    assert ds.energy_cal.scale == pytest.approx(1.0)
+    assert np.allclose(ds.energy_axis, [0.0, 1.0, 2.0])
