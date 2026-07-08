@@ -38,6 +38,9 @@ def _restore_into_store(
     """Push loaded entries back into the session store; return their metas."""
     if replace:
         store.clear()
+        from fermiviewer.routes.images import clear_level_cache
+
+        clear_level_cache()  # every id it could reference is gone too
     metas = []
     for img_id, name, ds in entries:
         final_id = store.restore(img_id, ds, name)

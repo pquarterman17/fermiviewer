@@ -243,6 +243,7 @@ def session_images() -> list[ImageMeta]:
 def close_image(img_id: str) -> dict[str, str]:
     _get(img_id)
     store.close(img_id)
+    evict_level_cache(img_id)
     return {"status": "closed"}
 
 
@@ -310,6 +311,21 @@ def image_data16(img_id: str, frame: int | None = None) -> Response:
 
 _TILE_SIZE = 256
 _LEVEL_CACHE: dict[tuple[str, int], np.ndarray] = {}
+
+
+def evict_level_cache(img_id: str) -> None:
+    """Drop every cached pyramid level for `img_id` — called wherever an
+    image leaves the session store so a closed image's full-res rasters
+    (up to ~64 entries, ~1 GB worst case) aren't retained after close."""
+    for key in [k for k in _LEVEL_CACHE if k[0] == img_id]:
+        del _LEVEL_CACHE[key]
+
+
+def clear_level_cache() -> None:
+    """Drop the whole pyramid cache — called when the store is wholesale
+    replaced (session/workspace load), since every id it might reference
+    is about to be gone."""
+    _LEVEL_CACHE.clear()
 
 
 def _pyramid_level(img_id: str, z: int) -> np.ndarray:

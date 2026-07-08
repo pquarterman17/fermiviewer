@@ -90,3 +90,30 @@ def test_data16_frame_param(tmp_path) -> None:
     # out-of-range frame is clamped (not 422)
     r_clamp = client.get(f"/api/image/{sid}/data16?frame=999")
     assert r_clamp.status_code == 200
+
+
+def test_close_evicts_level_cache(tmp_path) -> None:
+    """Closing an image must drop its cached pyramid levels — otherwise a
+    session that opens/closes many large images leaks their full-res
+    rasters (up to ~64 cached levels) for the life of the process."""
+    from fermiviewer.routes.images import _LEVEL_CACHE
+
+    client = TestClient(create_app())
+    w, h = 600, 400
+    flat = np.arange(w * h) % 1000
+    f = write_mini_dm4(
+        tmp_path / "big.dm4", dims=[w, h], data=flat,
+        cal=[{"scale": 1, "origin": 0, "units": "nm"}] * 2,
+    )
+    img_id = client.post(
+        "/api/session/open", json={"paths": [str(f)]}
+    ).json()[0]["id"]
+
+    # populate the pyramid cache via the tile endpoint
+    assert client.get(
+        f"/api/image/{img_id}/tile", params={"z": 0}
+    ).status_code == 200
+    assert any(k[0] == img_id for k in _LEVEL_CACHE)
+
+    assert client.delete(f"/api/image/{img_id}").status_code == 200
+    assert not any(k[0] == img_id for k in _LEVEL_CACHE)
