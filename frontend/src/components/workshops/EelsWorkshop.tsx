@@ -165,7 +165,11 @@ export default function EelsWorkshop() {
       { label: "spectrum", stroke: "#8888aa", width: 1 },
     ];
     const data: uPlot.AlignedData = [spectrum.energy, spectrum.counts];
-    if (fit) {
+    if (
+      fit &&
+      fit.background.length === spectrum.energy.length &&
+      fit.signal.length === spectrum.energy.length
+    ) {
       series.push({ label: "background", stroke: "#d97706", width: 1 });
       series.push({ label: "signal", stroke: accent, width: 1.5 });
       (data as unknown as number[][]).push(fit.background, fit.signal);
@@ -247,8 +251,11 @@ export default function EelsWorkshop() {
 
   const runFit = () => {
     if (!activeId) return;
+    const startId = activeId;
     eelsBackground(activeId, [Number(bgLo), Number(bgHi)])
-      .then(setFit)
+      .then((r) => {
+        if (useViewer.getState().activeId === startId) setFit(r);
+      })
       .catch((e: Error) => setStatus(`EELS fit: ${e.message}`));
   };
 
@@ -260,12 +267,10 @@ export default function EelsWorkshop() {
       bgLo && bgHi ? [Number(bgLo), Number(bgHi)] : null,
     )
       .then((m) => {
+        // ingestDerived (not a raw setState) seeds history/undo/displayPrefs
+        // and bumps derivedTick, same as every other workshop's derived image
+        useViewer.getState().ingestDerived([m]);
         setStatus(`map registered: ${m.name}`);
-        // surface the derived image in the library
-        useViewer.setState((s) => ({
-          images: { ...s.images, [m.id]: m },
-          order: s.order.includes(m.id) ? s.order : [...s.order, m.id],
-        }));
       })
       .catch((e: Error) => setStatus(`EELS map: ${e.message}`));
   };
@@ -291,6 +296,7 @@ export default function EelsWorkshop() {
       setStatus("EELS quantify: add at least one edge row");
       return;
     }
+    const startId = activeId;
     eelsQuantify(
       activeId,
       clean.map(({ key: _key, ...e }) => e),
@@ -298,7 +304,9 @@ export default function EelsWorkshop() {
       betaMrad,
       quantMethod,
     )
-      .then(setQuant)
+      .then((r) => {
+        if (useViewer.getState().activeId === startId) setQuant(r);
+      })
       .catch((e: Error) => setStatus(`EELS quantify: ${e.message}`));
   };
 
@@ -341,6 +349,7 @@ export default function EelsWorkshop() {
       bgLo && spectrum
         ? [Number(bgLo), spectrum.energy[spectrum.energy.length - 1]]
         : null;
+    const startId = activeId;
     eelsFit(
       activeId,
       clean.map(({ key: _key, ...e }) => e),
@@ -349,6 +358,7 @@ export default function EelsWorkshop() {
       fitRange,
     )
       .then((r) => {
+        if (useViewer.getState().activeId !== startId) return;
         setFitResult(r);
         setStatus(
           `EELS fit · χ²ᵣ ${r.reduced_chi2.toExponential(2)} · ` +
@@ -400,8 +410,10 @@ export default function EelsWorkshop() {
       edge.bg_window[0] || onset - 100,
       edge.bg_window[1] || onset - 10,
     ];
+    const startId = activeId;
     analyzeElnes(activeId, onset, fitWin)
       .then((r) => {
+        if (useViewer.getState().activeId !== startId) return;
         setElnes(r);
         setStatus(
           `ELNES: jump ${r.edge_jump.toExponential(2)} · onset ${r.edge_onset.toFixed(1)} eV`,
