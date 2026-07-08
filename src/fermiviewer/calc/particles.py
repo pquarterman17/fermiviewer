@@ -250,7 +250,6 @@ def region_stats(
 
     if len(out) < n:
         renumbered = np.zeros_like(lab)
-        keep_ids = []
         # recover original ids in kept order: re-walk labels
         kept = 0
         for k in range(1, n + 1):
@@ -260,7 +259,6 @@ def region_stats(
                 continue
             kept += 1
             renumbered[sel] = kept
-            keep_ids.append(k)
         return out, renumbered, len(out)
     return out, lab, len(out)
 

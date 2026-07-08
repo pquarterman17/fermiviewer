@@ -367,12 +367,8 @@ def scale_bar_geometry(
         y = out_h - margin - height
 
     if unit_override is not None:
-        # Apply unit step-down relative to the override unit so that
-        # e.g. "force Å" still auto-picks a nice round number in Å.
-        label = _bar_label(phys, pixel_unit)
-        # Replace the auto-unit suffix with the requested one, keeping
-        # the numeric prefix (the same phys value expressed in the new
-        # unit via _bar_label-style rounding).
+        # Express phys (measured in pixel_unit) in the requested unit,
+        # using _bar_label's rounding convention for the numeric prefix.
         label = _bar_label_with_unit(phys, pixel_unit, unit_override)
     else:
         label = _bar_label(phys, pixel_unit)
