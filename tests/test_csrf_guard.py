@@ -1,4 +1,4 @@
-"""Cross-origin (CSRF / DNS-rebinding) guard on the /api surface."""
+"""Cross-origin (CSRF) + Host-header (DNS-rebinding) guards on the API."""
 
 from __future__ import annotations
 
@@ -6,6 +6,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from fermiviewer.server import create_app
+
+pytestmark = pytest.mark.api
 
 
 @pytest.fixture
@@ -47,4 +49,38 @@ def test_guard_only_covers_api(client: TestClient) -> None:
     # non-/api paths aren't origin-guarded (no 403 from the guard)
     assert (
         client.get("/", headers={"Origin": "https://evil.example"}).status_code != 403
+    )
+
+
+# ── Host header (DNS-rebinding) guard ────────────────────────────────
+
+
+def test_spoofed_host_blocked(client: TestClient) -> None:
+    # no Origin header at all — the same-origin request a DNS-rebinding
+    # attack relies on — but the Host header names a foreign hostname
+    r = client.get("/api/health", headers={"Host": "evil.example"})
+    assert r.status_code == 403
+
+
+@pytest.mark.parametrize(
+    "host",
+    [
+        "127.0.0.1",
+        "127.0.0.1:8000",
+        "localhost",
+        "localhost:5173",
+        "[::1]",
+        "[::1]:8000",
+        "testserver",  # conftest.py extends ALLOWED_HOSTS for the suite
+    ],
+)
+def test_allowed_hosts_pass(client: TestClient, host: str) -> None:
+    assert client.get("/api/health", headers={"Host": host}).status_code == 200
+
+
+def test_host_guard_covers_non_api_paths_too(client: TestClient) -> None:
+    # unlike the Origin/CSRF guard, the Host guard applies everywhere —
+    # DNS rebinding isn't limited to /api
+    assert (
+        client.get("/", headers={"Host": "evil.example"}).status_code == 403
     )

@@ -37,13 +37,35 @@ _HOST = "127.0.0.1"
 _PORT = 8000
 _SHUTDOWN_GRACE_S = 4.0
 
+# Hostnames (port ignored) this server answers to — the DNS-rebinding
+# guard. Production has NO "testserver"; tests/conftest.py extends this
+# set once for the suite (TestClient sends `Host: testserver`).
+ALLOWED_HOSTS: set[str] = {"127.0.0.1", "localhost", "::1"}
+
+
+def _host_allowed(host_header: str | None) -> bool:
+    """Host header (port/IPv6-brackets stripped) names our own hostname.
+
+    Unlike `_origin_allowed`, this also catches DNS rebinding: a browser
+    tricked into resolving evil.example to 127.0.0.1 sends NO Origin
+    header (same-origin, from its view) but still `Host: evil.example`.
+    """
+    if not host_header:
+        return False
+    v = host_header.strip()
+    if v.startswith("["):
+        v = v[1 : v.find("]")] if "]" in v else v
+    elif v.count(":") == 1:  # "host:port" — a bare IPv6 literal has 2+
+        v = v.split(":", 1)[0]
+    return v.lower() in ALLOWED_HOSTS
+
 
 def _origin_allowed(origin: str) -> bool:
-    """True for the app's own origins — any localhost-family host (the
-    served SPA on :8000, the Vite dev server on :5173, a pywebview window)
-    and the Tauri desktop shell. Everything else (a real web origin like
-    https://evil.example) is a cross-origin caller and is rejected — this
-    is the localhost-CSRF / DNS-rebinding guard for the API."""
+    """CSRF guard: True for this app's own origins (served SPA, Vite dev
+    server, pywebview, Tauri). Only ever sees requests carrying an Origin
+    header — same-origin/curl/desktop-shell calls send none and rely on
+    `_host_allowed` instead, which is what actually covers DNS rebinding.
+    """
     # exact Tauri origins only — `endswith` would also pass a crafted
     # `evil.tauri.localhost` from another local app
     if origin.startswith("tauri://") or origin in {
@@ -124,11 +146,15 @@ def create_app() -> FastAPI:
     app = FastAPI(title="fermiviewer", version=__version__)
 
     @app.middleware("http")
-    async def _csrf_guard(request: Request, call_next):
-        """Reject cross-origin calls to /api/* so a malicious web page in
-        the user's browser can't drive the localhost API (open/read/write
-        files) via the user's session. Requests with no Origin header
-        (same-origin navigations, the desktop shell, curl, tests) pass."""
+    async def _security_guard(request: Request, call_next):
+        """Host check (all paths, defeats DNS rebinding) then Origin
+        check (/api/* only, the CSRF guard) — see `_host_allowed` /
+        `_origin_allowed` for exactly what each one does and doesn't
+        cover."""
+        if not _host_allowed(request.headers.get("host")):
+            return JSONResponse(
+                {"detail": "unrecognized Host header"}, status_code=403
+            )
         if request.url.path.startswith("/api"):
             origin = request.headers.get("origin")
             if origin and not _origin_allowed(origin):
@@ -191,9 +217,11 @@ async def _lifecycle_ws(ws: WebSocket) -> None:
     down (if armed by main()). Module-level so its branches don't inflate
     create_app's complexity."""
     global _clients, _ever_connected
-    # the HTTP CSRF middleware doesn't run on the WS upgrade, so a
-    # cross-origin page could otherwise drive the lifecycle counter
-    # (delay/force shutdown). Enforce the same origin allowlist here.
+    # the HTTP middleware doesn't run on the WS upgrade — enforce the same
+    # Host + Origin checks here (closing before accept() → HTTP 403).
+    if not _host_allowed(ws.headers.get("host")):
+        await ws.close(code=1008)  # policy violation
+        return
     origin = ws.headers.get("origin")
     if origin and not _origin_allowed(origin):
         await ws.close(code=1008)  # policy violation
@@ -255,6 +283,13 @@ def _open_when_healthy(url: str, host: str, port: int, timeout: float = 30.0) ->
     threading.Thread(target=_wait_then_open, daemon=True).start()
 
 
+_WEBVIEW_BACKEND_HINT = (
+    "pywebview needs a native GUI backend. On Linux, install PyGObject + "
+    "WebKitGTK (e.g. `sudo apt install python3-gi gir1.2-webkit2-4.1`) or "
+    "PyQt5/PySide2, then retry."
+)
+
+
 def _run_desktop() -> None:
     """Desktop standalone (handoff §11 option B): uvicorn in a thread,
     pywebview native window on top — pure Python, no Rust toolchain.
@@ -262,13 +297,18 @@ def _run_desktop() -> None:
     import threading
 
     import uvicorn
-    import webview
 
     if _frontend_dist() is None:
         print(
             "frontend/dist not found — build it once with:\n"
             "    cd frontend && npm run build"
         )
+        return
+
+    try:
+        import webview
+    except ImportError as e:
+        print(f"--desktop: {_WEBVIEW_BACKEND_HINT}\n(import error: {e})")
         return
 
     # Bind up front so a taken port is a clean branch, not a crashed server
@@ -299,15 +339,17 @@ def _run_desktop() -> None:
     while time.monotonic() < deadline and not _health_ok(_HOST, _PORT):
         time.sleep(0.25)
 
-    webview.create_window(
-        "FermiViewer",
-        f"http://{_HOST}:{_PORT}",
-        width=1440,
-        height=920,
-        background_color="#16141d",
-    )
     try:
+        webview.create_window(
+            "FermiViewer",
+            f"http://{_HOST}:{_PORT}",
+            width=1440,
+            height=920,
+            background_color="#16141d",
+        )
         webview.start()
+    except Exception as e:
+        print(f"--desktop: {_WEBVIEW_BACKEND_HINT}\n(error: {e})")
     finally:
         if server is not None:
             server.should_exit = True
@@ -323,6 +365,9 @@ def _run_dev() -> None:
     import uvicorn
 
     frontend = Path(__file__).resolve().parents[2] / "frontend"
+    if not frontend.is_dir():
+        print(f"--dev requires a source checkout; frontend/ not found at {frontend}")
+        raise SystemExit(2)
     npm = "npm.cmd" if os.name == "nt" else "npm"
     vite = subprocess.Popen([npm, "run", "dev"], cwd=frontend)
     _open_browser_later("http://localhost:5173", delay=2.0)

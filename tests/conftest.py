@@ -8,11 +8,21 @@ from pathlib import Path
 
 import pytest
 
+from fermiviewer.server import ALLOWED_HOSTS
+
 # Make tests/fixtures/ importable (synthetic file generators)
 sys.path.insert(0, str(Path(__file__).parent))
 
 GOLDEN_DIR = Path(__file__).parent / "golden"
 ML_ROOT = Path(__file__).resolve().parents[2] / "fermi-viewer"
+
+# server.py's Host-header guard (DNS-rebinding defense) only allows this
+# app's own hostnames. FastAPI's TestClient sends `Host: testserver`, so
+# every test in the suite would 403 without this — extended here, in the
+# ONE place all ~40 `TestClient(create_app())` call sites share, instead
+# of a per-file fixture or per-request header. Production's default set
+# (127.0.0.1/localhost/::1) never includes "testserver".
+ALLOWED_HOSTS.add("testserver")
 
 
 @pytest.fixture(scope="session")
