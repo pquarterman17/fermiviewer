@@ -111,3 +111,11 @@ def test_empty_elements_raises() -> None:
     e = _axis()
     with pytest.raises(ValueError, match="at least one element"):
         fit_peaks(e, np.zeros_like(e), [])
+
+
+def test_all_unknown_lines_raises() -> None:
+    e = _axis()
+    counts = np.ones_like(e)
+    with pytest.warns(UserWarning, match="no characteristic line"):
+        with pytest.raises(ValueError, match="no fittable element lines"):
+            fit_peaks(e, counts, ["Xx", "Yy"], weights=None)

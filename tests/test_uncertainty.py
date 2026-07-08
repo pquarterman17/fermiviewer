@@ -35,6 +35,15 @@ def test_poisson_sigma_root_n_and_clamp() -> None:
     assert s == pytest.approx([10.0, 0.0, 0.0, 5.0])
 
 
+def test_poisson_sigma_nan_counts_propagate_nan() -> None:
+    # PINNED behaviour: poisson_sigma has no explicit NaN policy — a NaN
+    # count survives np.maximum(nan, 0.0) == nan and sqrt(nan) == nan,
+    # rather than clamping to 0 like a genuinely negative count does.
+    s = poisson_sigma([np.nan, 25.0])
+    assert np.isnan(s[0])
+    assert s[1] == pytest.approx(5.0)
+
+
 def test_trapezoid_weights_reproduce_integral() -> None:
     x = np.array([0.0, 1.0, 2.5, 3.0, 7.0])
     y = np.array([2.0, 5.0, 1.0, 4.0, 0.5])
@@ -52,6 +61,18 @@ def test_integral_variance_hand_computed() -> None:
 def test_integral_variance_clamps_negative_counts() -> None:
     v = integral_variance([10.0, -10.0, 10.0], [0.0, 1.0, 2.0])
     assert v == pytest.approx(0.25 * 10 + 1.0 * 0.0 + 0.25 * 10)  # 5.0
+
+
+def test_integral_variance_length_mismatch_raises() -> None:
+    with pytest.raises(ValueError, match="equal length"):
+        integral_variance([1.0, 2.0, 3.0], [0.0, 1.0])
+
+
+def test_trapezoid_weights_needs_at_least_two_samples() -> None:
+    with pytest.raises(ValueError, match="at least 2 samples"):
+        trapezoid_weights([1.0])
+    with pytest.raises(ValueError, match="at least 2 samples"):
+        trapezoid_weights([])
 
 
 def test_fraction_variance_single_element_is_zero() -> None:
@@ -83,6 +104,16 @@ def test_fraction_variance_common_mode_cancels() -> None:
 def test_fraction_variance_nonpositive_total_is_nan() -> None:
     v = fraction_variance([0.0, 0.0], [1.0, 1.0])
     assert np.all(np.isnan(v))
+
+
+def test_fraction_variance_non_finite_total_is_nan() -> None:
+    v = fraction_variance([np.inf, 1.0], [1.0, 1.0])
+    assert np.all(np.isnan(v))
+
+
+def test_fraction_variance_empty_input_is_empty() -> None:
+    v = fraction_variance([], [])
+    assert v.shape == (0,)
 
 
 def test_atomic_fraction_sigma_matches_primitive() -> None:
@@ -123,6 +154,25 @@ def test_cliff_lorimer_uncertainty_regime_agnostic() -> None:
     assert fiterr.atomic_pct_sigma[0] > 0
     # different variances → different sigmas (sanity that var_intensity is used)
     assert poisson.atomic_pct_sigma[0] != pytest.approx(fiterr.atomic_pct_sigma[0])
+
+
+@pytest.mark.eds
+def test_cliff_lorimer_uncertainty_length_mismatch_raises() -> None:
+    with pytest.raises(ValueError, match="length mismatch"):
+        cliff_lorimer_uncertainty([1.0, 2.0], [1.0, 2.0], ["Fe"], [1.0, 2.0])
+
+
+@pytest.mark.eds
+def test_cliff_lorimer_uncertainty_unknown_element_mass_fallback() -> None:
+    # an element missing from calc.elements.ELEMENTS falls back to mass=1.0
+    # (matching calc.eds.cliff_lorimer's own fallback) rather than raising.
+    k = default_k_factors(["Fe", "Zzunobtainium"])
+    u = cliff_lorimer_uncertainty(
+        [1000.0, 1000.0], [1000.0, 1000.0], ["Fe", "Zzunobtainium"], k
+    )
+    assert np.all(np.isfinite(u.atomic_pct_sigma))
+    assert np.all(np.isfinite(u.weight_pct_sigma))
+    assert u.atomic_pct_sigma[0] > 0
 
 
 @pytest.mark.eds
@@ -213,6 +263,35 @@ def test_eels_atomic_sigma_monte_carlo_coverage() -> None:
     ratio = pred / emp
     assert np.all(ratio > 0.55)
     assert np.all(ratio < 1.8)
+
+
+@pytest.mark.eels
+def test_eels_atomic_sigma_zero_cross_section_is_nan() -> None:
+    # var(r) = var(I)/sigma^2 is undefined for sigma == 0 (:202); NaN
+    # propagates through fraction_variance's covariance to ALL elements,
+    # not just the zero-cross-section one (cov is not block-diagonal once
+    # any entry is NaN) — pinning that as the current behaviour.
+    energy, spectrum, edges = _synthetic_eels()
+    res = quantify(energy, spectrum, edges, e0_kv=200, beta_mrad=10)
+    sig = eels_atomic_sigma(
+        energy, spectrum,
+        [e.signal_window for e in edges],
+        res.areal_ratio, np.array([0.0, res.sigma[1]]),
+    )
+    assert np.all(np.isnan(sig))
+
+
+@pytest.mark.eels
+def test_eels_atomic_sigma_narrow_window_is_nan() -> None:
+    # a signal window selecting < 2 channels -> var_i[k] = NaN (:196-197)
+    energy, spectrum, edges = _synthetic_eels()
+    res = quantify(energy, spectrum, edges, e0_kv=200, beta_mrad=10)
+    lo = edges[0].signal_window[0]
+    narrow_windows = [(lo, lo + 0.05), edges[1].signal_window]
+    sig = eels_atomic_sigma(
+        energy, spectrum, narrow_windows, res.areal_ratio, res.sigma,
+    )
+    assert np.all(np.isnan(sig))
 
 
 @pytest.mark.eels

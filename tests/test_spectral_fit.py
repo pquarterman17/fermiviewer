@@ -159,3 +159,39 @@ def test_validation_errors() -> None:
         fit_spectrum(e, e, [])                               # no components
     with pytest.raises(ValueError):
         Component("bad", ("a", "b"), lambda x, p: x, (1.0,))  # p0 mismatch
+
+
+def test_fit_range_too_narrow_raises() -> None:
+    e = np.linspace(0.0, 100.0, 500)
+    truth = 5.0 + 0.1 * e
+    with pytest.raises(ValueError, match="fewer than 2 channels"):
+        fit_spectrum(e, truth, [linear_background("bg")], fit_range=(0.0, 0.05))
+
+
+def test_unknown_weights_scheme_raises() -> None:
+    e = np.linspace(0.0, 100.0, 50)
+    truth = 5.0 + 0.1 * e
+    with pytest.raises(ValueError, match="unknown weights scheme"):
+        fit_spectrum(e, truth, [linear_background("bg")], weights="bogus")
+
+
+def test_single_data_point_clamps_dof_to_one() -> None:
+    # n_data - n_param = 1 - 2 = -1 -> dof = max(..., 1) rather than a
+    # division by a non-positive number in reduced_chi2.
+    e = np.array([5.0])
+    y = np.array([10.0])
+    r = fit_spectrum(e, y, [linear_background("bg", intercept=10.0, slope=0.0)])
+    assert r.success
+    assert np.isfinite(r.reduced_chi2)
+
+
+def test_nan_counts_raise_from_the_optimizer() -> None:
+    # PINNED behaviour: fit_spectrum has no explicit NaN policy of its own;
+    # scipy.optimize.least_squares rejects a non-finite residual at the
+    # initial point outright rather than silently fitting garbage.
+    e = np.linspace(0.0, 100.0, 50)
+    truth = 5.0 + 0.1 * e
+    counts = truth.copy()
+    counts[0] = np.nan
+    with pytest.raises(ValueError, match="not finite"):
+        fit_spectrum(e, counts, [linear_background("bg")])

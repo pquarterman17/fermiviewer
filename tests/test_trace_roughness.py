@@ -15,6 +15,8 @@ from scipy.ndimage import gaussian_filter1d
 from fermiviewer.calc import trace_roughness as tr
 from fermiviewer.calc.layers import analyze_layers
 
+pytestmark = pytest.mark.imaging
+
 
 def _correlated(n: int, smooth: float, sigma: float, seed: int) -> np.ndarray:
     """Gaussian-correlated roughness: ACF exp(-(r/xi)^2) with xi = 2*smooth."""
@@ -154,6 +156,78 @@ def _stack_image(
     img[thin_bot:, :] = 160.0
     img = gaussian_filter1d(img, 1.5, axis=0)
     return img + rng.normal(0.0, 2.0, (n, n))
+
+
+class TestFitFailureExits:
+    """HHCF/bootstrap/PSD fit-failure exits — documented-but-untested NaN/empty
+    returns (module docstring items #8-12)."""
+
+    def test_short_trace_hurst_and_xi_are_nan(self):
+        # n_valid=20 < 32 required by hhcf_fit -> immediate (nan, nan) exit
+        r = tr.analyze_trace(np.arange(20.0))
+        assert np.isnan(r.hurst)
+        assert np.isnan(r.xi)
+
+    def test_bootstrap_below_sixteen_valid_is_nan_ci(self):
+        # a short but CLEAN trace (nothing rejected) has quality 1.0 yet still
+        # too few points (< 16) for the block bootstrap to resample
+        trace = 50.0 + 0.1 * np.arange(15.0)
+        r = tr.analyze_trace(trace, order=1)
+        assert r.quality == pytest.approx(1.0)
+        lo, hi = r.sigma_ci
+        assert np.isnan(lo) and np.isnan(hi)
+
+    def test_psd_below_eight_valid_points_is_empty(self):
+        resid = np.array([1.0, 2.0, np.nan, np.nan, np.nan, np.nan, 3.0])
+        wl, p = tr.trace_psd(resid)
+        assert wl.size == 0 and p.size == 0
+
+    def test_hhcf_fit_nugget_absorbs_pure_jitter_not_roughness(self):
+        # a KNOWN correlated roughness component plus PURE iid jitter (no
+        # tilt/bow/outliers) isolates the nugget term in _saff/hhcf_fit:
+        # without it, the lag-1 jitter jump would bias H down / xi up (see
+        # module docstring). The fit must still recover the true xi/H, and
+        # the jitter itself must land in noise_floor, not sigma_w.
+        rough = _correlated(1024, 12.0, 2.0, seed=20)   # true sigma=2, xi=24
+        rng = np.random.default_rng(21)
+        jitter = rng.normal(0.0, 1.5, 1024)             # pure delta-correlated noise
+        trace = 100.0 + rough + jitter
+        r = tr.analyze_trace(trace)
+        assert r.hurst == pytest.approx(1.0, abs=0.2)
+        assert r.xi == pytest.approx(24.0, rel=0.4)
+        assert r.noise_floor == pytest.approx(1.5, rel=0.3)
+        assert r.sigma_w == pytest.approx(2.0, rel=0.3)
+
+
+class TestConformalityEdgeCases:
+    def test_length_mismatch_is_nan(self):
+        assert np.isnan(tr.conformality(np.zeros(5), np.zeros(6)))
+
+    def test_overlap_below_sixteen_is_nan(self):
+        assert np.isnan(tr.conformality(np.arange(10.0), np.arange(10.0)))
+
+    def test_constant_trace_is_nan(self):
+        # zero variance in one trace -> denom <= 0
+        assert np.isnan(tr.conformality(np.full(20, 5.0), np.arange(20.0)))
+
+
+class TestEndToEndDegenerateTraces:
+    def test_nan_bearing_trace_does_not_poison_the_result(self):
+        rng_trace = _correlated(500, 12.0, 2.0, seed=3) + 100.0
+        rng_trace[50:55] = np.nan
+        r = tr.analyze_trace(rng_trace)
+        assert np.isfinite(r.sigma_w)
+        assert r.sigma_w == pytest.approx(2.0, rel=0.2)
+
+    def test_empty_trace_returns_nan_and_empty_arrays(self):
+        r = tr.analyze_trace(np.array([]))
+        assert np.isnan(r.sigma_w)
+        assert np.isnan(r.hurst) and np.isnan(r.xi)
+        lo, hi = r.sigma_ci
+        assert np.isnan(lo) and np.isnan(hi)
+        assert r.psd_wavelength.size == 0
+        assert r.detrended.size == 0
+        assert r.quality == 0.0
 
 
 class TestAdaptiveTraceWindow:

@@ -51,18 +51,40 @@ def surface_roughness(
         if not m.any():
             raise ValueError("mask contains no true pixels")
 
-    if level == "plane":
-        d = plane_level(d, order=1, mask=m).leveled
-    elif level == "quadratic":
-        d = plane_level(d, order=2, mask=m).leveled
-    elif level != "none":
+    if level not in ("none", "plane", "quadratic"):
         raise ValueError("level must be 'none', 'plane' or 'quadratic'")
 
-    z = d[m]
+    # NaN-robustness is a deliberate extension beyond the MATLAB reference
+    # (same convention as the 2026-06 grain-finding hardening and
+    # calc.trace_roughness): a single non-finite pixel used to poison every
+    # metric silently (NaN mean -> NaN everything downstream, and lstsq
+    # inside plane_level would return NaN coefficients for the WHOLE
+    # surface). Drop non-finite samples from the active mask instead, and
+    # report NaN/empty when too few valid pixels remain to level/summarize.
+    mf = m & np.isfinite(d)
+    min_valid = {"none": 1, "plane": 3, "quadratic": 6}[level]
+    if int(mf.sum()) < min_valid:
+        return RoughnessResult(
+            ra=float("nan"), rq=float("nan"), rz=float("nan"),
+            rsk=float("nan"), rku=float("nan"), rp=float("nan"), rv=float("nan"),
+            sar=float("nan"),
+            bearing_heights=np.empty(0), bearing_fraction=np.empty(0),
+            n_pixels=int(mf.sum()), level=level,
+        )
+
+    if level == "plane":
+        d = plane_level(d, order=1, mask=mf).leveled
+    elif level == "quadratic":
+        d = plane_level(d, order=2, mask=mf).leveled
+
+    z = d[mf]
     zc = z - z.mean()
     rq = float(np.sqrt((zc**2).mean()))
 
-    # surface-area ratio over the FULL image (not masked), triangulated
+    # surface-area ratio over the FULL image (not masked), triangulated.
+    # A NaN corner poisons only the triangle(s) touching it (not the whole
+    # sum): exclude non-finite triangles from both the numerator and the
+    # projected-area denominator so a few dead pixels don't NaN the ratio.
     ps = pixel_size
     z00 = d[:-1, :-1]
     z01 = d[:-1, 1:]
@@ -74,8 +96,9 @@ def surface_roughness(
     tri2 = 0.5 * np.sqrt(
         (ps * (z10 - z11)) ** 2 + (ps * (z01 - z11)) ** 2 + ps**4
     )
-    projected = (h - 1) * (w - 1) * ps**2
-    sar = float((tri1.sum() + tri2.sum()) / projected) if projected > 0 else 1.0
+    n_valid_tris = int(np.isfinite(tri1).sum() + np.isfinite(tri2).sum())
+    projected = n_valid_tris * 0.5 * ps**2
+    sar = float((np.nansum(tri1) + np.nansum(tri2)) / projected) if projected > 0 else 1.0
 
     heights = np.sort(z)[::-1]
     n = z.size

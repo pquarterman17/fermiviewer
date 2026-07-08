@@ -12,6 +12,8 @@ import pytest
 from fermiviewer.calc.forest import forest_predict, forest_train
 from fermiviewer.calc.ml import softmax_predict, softmax_train
 
+pytestmark = pytest.mark.imaging
+
 
 def test_forest_separates_two_clusters() -> None:
     rng = np.random.default_rng(0)

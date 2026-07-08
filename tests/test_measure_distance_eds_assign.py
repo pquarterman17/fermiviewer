@@ -211,6 +211,13 @@ class TestDetectPeaks:
         peaks = detect_peaks(energy, counts, threshold=0.05)
         assert peaks.size == 0
 
+    def test_fewer_than_three_points_returns_empty(self):
+        # box-3 smoothing + 3-point local-max comparison need >= 3 channels
+        peaks = detect_peaks(np.array([1.0, 2.0]), np.array([5.0, 10.0]))
+        assert peaks.size == 0
+        assert peaks.dtype == np.float64
+        assert detect_peaks(np.array([]), np.array([])).size == 0
+
 
 class TestAssignElements:
     def test_fe_ka_6404(self):
