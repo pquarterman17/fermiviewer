@@ -4,10 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from fermiviewer.devsamples import DEFAULT_EXTS, find_sample_files
 from fermiviewer.server import create_app
+
+pytestmark = pytest.mark.api
 
 
 def test_sample_files_endpoint_returns_list() -> None:

@@ -35,6 +35,7 @@ from fermiviewer.calc.texture import template_match
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.jobs import jobs
 from fermiviewer.models import ImageMeta
+from fermiviewer.routes._arrays import value_error_as_422
 from fermiviewer.session import UnknownImageError, store
 
 router = APIRouter(prefix="/api")
@@ -91,7 +92,7 @@ class ParticleRequest(BaseModel):
 def analyze_particles(req: ParticleRequest) -> dict:
     ds, raster = _raster(req.image_id)
     px = ds.pixel_size if np.isfinite(ds.pixel_size) else float("nan")
-    try:
+    with value_error_as_422():
         res = particle_analysis(
             raster,
             threshold=req.threshold,
@@ -101,8 +102,6 @@ def analyze_particles(req: ParticleRequest) -> dict:
             use_watershed=req.use_watershed,
             min_marker_distance=req.min_marker_distance,
         )
-    except ValueError as e:
-        raise HTTPException(422, str(e)) from None
     name = store.name(req.image_id)
     return {
         "n_particles": res.n_particles,
@@ -282,10 +281,8 @@ def analyze_grains(req: GrainRequest) -> dict:
         # validate the image id up front so the 404 is synchronous
         _raster(req.image_id)
         return {"job_id": jobs.submit(lambda p: _run_grains(req, p))}
-    try:
+    with value_error_as_422():
         return _run_grains(req)
-    except ValueError as e:
-        raise HTTPException(422, str(e)) from None
 
 
 # ── atom columns ─────────────────────────────────────────────────────
@@ -306,11 +303,9 @@ class AtomsRequest(BaseModel):
 @router.post("/analyze/atoms")
 def analyze_atoms(req: AtomsRequest) -> dict:
     _, raster = _raster(req.image_id)
-    try:
+    with value_error_as_422():
         det = detect_columns(raster, sigma=req.sigma, threshold=req.threshold,
                              min_separation=req.min_separation, polarity=req.polarity)
-    except ValueError as e:
-        raise HTTPException(422, str(e)) from None
 
     positions, amplitude, converged = det.positions, det.intensities, None
     if req.refine and positions.shape[0] > 0:
@@ -360,11 +355,12 @@ class AtomsStrainRequest(BaseModel):
 @router.post("/atoms/strain")
 def atoms_strain(req: AtomsStrainRequest) -> dict:
     """PPA strain from already-fitted positions (no re-detection needed)."""
-    pos = np.asarray(req.positions, dtype=np.float64)
-    rv = np.asarray(req.ref_vectors, dtype=np.float64) if req.ref_vectors else None
-    org = np.asarray(req.origin, dtype=np.float64) if req.origin else None
-    return _ppa_payload(peak_pair_strain(pos, ref_vectors=rv, origin=org,
-                                         neighbors=req.neighbors))
+    with value_error_as_422():
+        pos = np.asarray(req.positions, dtype=np.float64)
+        rv = np.asarray(req.ref_vectors, dtype=np.float64) if req.ref_vectors else None
+        org = np.asarray(req.origin, dtype=np.float64) if req.origin else None
+        return _ppa_payload(peak_pair_strain(pos, ref_vectors=rv, origin=org,
+                                             neighbors=req.neighbors))
 
 
 # ── template match ───────────────────────────────────────────────────
@@ -387,13 +383,11 @@ def analyze_template(req: TemplateRequest) -> dict:
             and r0 + th - 1 <= h and c0 + tw - 1 <= w):
         raise HTTPException(422, "template rect out of bounds")
     template = raster[r0 - 1 : r0 - 1 + th, c0 - 1 : c0 - 1 + tw]
-    try:
+    with value_error_as_422():
         res = template_match(
             raster, template, threshold=req.threshold,
             max_matches=req.max_matches,
         )
-    except ValueError as e:
-        raise HTTPException(422, str(e)) from None
     return {
         "n_matches": res.n_matches,
         "locations": res.locations.tolist(),  # (row, col) centres
@@ -425,13 +419,11 @@ def analyze_stitch(req: StitchRequest) -> dict:
     shapes = {r.shape for r in rasters}
     if len(shapes) != 1:
         raise HTTPException(422, "stitch requires equal-size tiles")
-    try:
+    with value_error_as_422():
         res = stitch_images(
             rasters, layout=req.layout,
             overlap_frac=req.overlap_frac, blend_width=req.blend_width,
         )
-    except ValueError as e:
-        raise HTTPException(422, str(e)) from None
     assert parent is not None
     return {
         "mosaic": _register(
@@ -456,10 +448,8 @@ class ImageMathRequest(BaseModel):
 def analyze_image_math(req: ImageMathRequest) -> dict:
     ds_a, a = _raster(req.a_id)
     _, b = _raster(req.b_id)
-    try:
+    with value_error_as_422():
         out = image_math(a, b, req.op)
-    except ValueError as e:
-        raise HTTPException(422, str(e)) from None
     name = f"{req.op}({store.name(req.a_id)}, {store.name(req.b_id)})"
     return {"image": _register(out, name, ds_a, req.a_id)}
 
@@ -475,10 +465,8 @@ def analyze_align_stack(req: StackIdsRequest) -> dict:
     if len(req.image_ids) < 2:
         raise HTTPException(422, "need at least 2 images to align")
     pairs = [_raster(i) for i in req.image_ids]
-    try:
+    with value_error_as_422():
         aligned, shifts = align_stack([r for _, r in pairs])
-    except ValueError as e:
-        raise HTTPException(422, str(e)) from None
     images = []
     for i, img_id in enumerate(req.image_ids[1:], start=1):
         ds = pairs[i][0]
