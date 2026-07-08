@@ -18,7 +18,17 @@ on:
   # Manual dry run: builds + smoke-tests + uploads artifacts, but does NOT
   # create or attach to a GitHub Release (no tag context). Use this to
   # validate the pipeline without cutting a version.
+  #
+  # publish_pypi input: dispatch with this ON to publish the CURRENT
+  # pyproject version to PyPI without cutting a new tag (used for the
+  # initial v0.1.12 backfill). With it on, the installer dry-run matrix is
+  # skipped — the dispatch means "PyPI only". Tag pushes always publish.
   workflow_dispatch:
+    inputs:
+      publish_pypi:
+        description: "Publish the wheel to PyPI (backfill; skips installer dry-run)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -26,6 +36,9 @@ permissions:
 jobs:
   installers:
     name: ${{ matrix.label }}
+    # skipped when a dispatch asks for a PyPI-only backfill publish; on tag
+    # pushes `inputs` is empty so this stays truthy and the matrix runs
+    if: ${{ !inputs.publish_pypi }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -235,3 +248,91 @@ jobs:
               platforms:{"windows-x86_64":{signature:$s,url:$u}}}' > latest.json
           echo "--- latest.json ---"; cat latest.json
           gh release upload "$TAG" latest.json --repo "$REPO" --clobber
+
+  # Publish the pure-Python wheel to PyPI so `pip install fermiviewer` /
+  # `uv tool install fermiviewer` work. WHEEL-ONLY on purpose: the SPA is
+  # baked in by hatch_build.py only for wheel builds, so an sdist would
+  # pip-compile into a UI-less install for anyone building from source —
+  # and with a py3-none-any wheel available, pip never needs the sdist.
+  #
+  # Auth is PyPI Trusted Publishing (GitHub OIDC via the `pypi` environment
+  # + id-token permission) — no API-token secret exists or is needed.
+  # Runs independently of the installer matrix: the wheel gates on its own
+  # boot smoke below, and a broken .dmg shouldn't block the PyPI artifact.
+  pypi:
+    name: publish to PyPI
+    if: startsWith(github.ref, 'refs/tags/') || inputs.publish_pypi
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      # PyPI uploads are immutable — a version number, once burned, is gone
+      # even after a yank. Refuse to publish a tag whose pyproject version
+      # doesn't match it (dispatch backfills have no tag; they publish
+      # whatever pyproject says, which is the point).
+      - name: Guard - tag matches pyproject version
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          v=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          if [ "v$v" != "$TAG" ]; then
+            echo "::error::pyproject version $v does not match tag $TAG"; exit 1
+          fi
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # must precede `uv build` — hatch_build.py bakes frontend/dist into
+      # the wheel; building without it would publish a backend-only wheel
+      - name: Build SPA
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+
+      - name: Build wheel
+        run: uv build --wheel
+
+      # Install the exact artifact we're about to publish into a clean venv
+      # and boot it — same health/SPA gate as the sidecar smoke. Catches a
+      # broken entry point or a wheel that silently missed the SPA bake.
+      - name: Smoke-test the wheel
+        run: |
+          uv venv smoke
+          uv pip install --python smoke/bin/python dist/*.whl
+          smoke/bin/python - <<'PY'
+          import pathlib
+          import fermiviewer
+          spa = pathlib.Path(fermiviewer.__file__).parent / "_spa" / "index.html"
+          assert spa.is_file(), f"SPA was not baked into the wheel ({spa} missing)"
+          PY
+          smoke/bin/fv --no-browser --no-auto-shutdown &
+          pid=$!
+          ok=0
+          for i in $(seq 1 40); do
+            if curl -sf http://127.0.0.1:8000/api/health | grep -qE '"status": *"ok"'; then
+              ok=1; break
+            fi
+            sleep 1
+          done
+          spa=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/ || echo 000)
+          kill "$pid" 2>/dev/null || true
+          if [ "$ok" != "1" ] || [ "$spa" != "200" ]; then
+            echo "wheel smoke failed (health=$ok spa=$spa)"; exit 1
+          fi
+          echo "wheel healthy, SPA served"
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
