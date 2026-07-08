@@ -11,15 +11,18 @@ Ground-up port of [fermi-viewer](https://github.com/pquarterman17/fermi-viewer)
 
 ![FermiViewer — multi-format image viewer with EELS/EDS/diffraction analysis and a measurement suite](docs/images/overview.png)
 
-**Formats:** DM3 / DM4 (Gatan), BCF (Bruker), SER (TIA), MRC, TIFF,
-PNG/JPEG, headerless RAW, plus Bruker Nanoscope AFM (`.spm` / `.000`).
-**Analysis:** EELS (background, maps, quantification, thickness,
-Kramers–Kronig, Fourier-log, SVD), EDS (Cliff–Lorimer / ZAF, composition
-maps, composite overlays), diffraction (spot detection, phase indexing,
+**Formats:** DM3/DM4 (Gatan), EMD (Velox/NCEM), BCF (Bruker), SER (TIA),
+MRC, HDF5 family (.hspy, NeXus .nxs/.nx5, generic .h5/.hdf5), MSA/EMSA spectra,
+TIFF, PNG/JPEG/BMP/GIF, headerless RAW, Bruker Nanoscope AFM (.spm/.000).
+**Analysis:** EELS (background, maps, quantification ± σ, thickness,
+Kramers–Kronig, Fourier-log, model-based peak fitting, SVD), EDS
+(Cliff–Lorimer / ZAF / ζ-factor composition with mass-thickness ± σ, maps,
+artifacts, peak fitting, composite overlays), diffraction (camera-length &
+ellipse calibration, CIF phase import, spot detection, phase indexing,
 d-spacings), GPA strain, CTF estimation, atom columns, particles, grains
 (k-means / watershed / paint-to-train classifier), cross-section layer &
-interface-roughness analysis, FFT filtering, drift alignment, and a full
-measurement/annotation suite.
+interface-roughness analysis, FFT filtering, drift alignment, Python
+scripting API, and a full measurement/annotation suite.
 
 ---
 
