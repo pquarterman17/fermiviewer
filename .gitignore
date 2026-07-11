@@ -49,3 +49,8 @@ coverage.xml
 
 # per-machine Claude Code instructions (repo is attribution-scrubbed)
 CLAUDE.md
+
+# per-machine Codex CLI config (same attribution-scrub policy as CLAUDE.md)
+.agents/
+.codex/
+AGENTS.md
