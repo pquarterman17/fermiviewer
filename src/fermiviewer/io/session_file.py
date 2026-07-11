@@ -114,21 +114,36 @@ def _commit_pair(
         installed.append(json_path)
     except BaseException as exc:
         rollback_errors: list[OSError] = []
-        for final in reversed(installed):
-            try:
-                final.unlink(missing_ok=True)
-            except OSError as error:
-                rollback_errors.append(error)
+        surviving_backups: list[Path] = []
+        # os.replace atomically overwrites a newly installed file, so
+        # restoring a backup doubles as the undo for that install.
         for final, backup in reversed(moved_backups):
             try:
                 os.replace(backup, final)
             except OSError as error:
                 rollback_errors.append(error)
-        _cleanup([staged_json, staged_npz, backup_json, backup_npz])
+                surviving_backups.append(backup)
+        backed_up = {final for final, _ in moved_backups}
+        for final in reversed(installed):
+            if final in backed_up:
+                continue
+            try:
+                final.unlink(missing_ok=True)
+            except OSError as error:
+                rollback_errors.append(error)
+        # Never delete backups here: one whose restore failed is the only
+        # surviving copy of the previous session, and one that restored no
+        # longer exists at its backup path.
+        _cleanup([staged_json, staged_npz])
         if rollback_errors:
-            raise OSError(
-                "session save failed and the previous files could not be fully restored"
-            ) from exc
+            message = (
+                "session save failed and the previous files could not be "
+                "fully restored"
+            )
+            if surviving_backups:
+                names = ", ".join(str(p) for p in surviving_backups)
+                message += f"; previous data preserved at: {names}"
+            raise OSError(message) from exc
         raise
     else:
         _cleanup([backup_json, backup_npz])

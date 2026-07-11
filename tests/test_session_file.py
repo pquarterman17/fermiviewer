@@ -108,25 +108,63 @@ def test_staging_failure_preserves_existing_session(
     assert _transaction_files(tmp_path) == []
 
 
+@pytest.mark.parametrize("target_suffix", [".json", ".npz"])
 def test_install_failure_rolls_back_existing_pair(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target_suffix: str
 ) -> None:
     path = tmp_path / "work.json"
+    target = path.with_suffix(target_suffix)
     session_file.save_session(path, _entries(1))
     real_replace = os.replace
     failed = False
 
-    def fail_manifest_install(src: str | Path, dst: str | Path) -> None:
+    def fail_install(src: str | Path, dst: str | Path) -> None:
         nonlocal failed
         src_path, dst_path = Path(src), Path(dst)
-        if not failed and src_path.name.endswith(".tmp") and dst_path == path:
+        if (
+            not failed
+            and src_path.name.endswith(".tmp")
+            and dst_path == target
+        ):
             failed = True
             raise OSError("simulated install failure")
         real_replace(src, dst)
 
-    monkeypatch.setattr(session_file.os, "replace", fail_manifest_install)
+    monkeypatch.setattr(session_file.os, "replace", fail_install)
     with pytest.raises(OSError, match="simulated install failure"):
         session_file.save_session(path, _entries(2))
 
     _assert_value(path, 1)
     assert _transaction_files(tmp_path) == []
+
+
+def test_failed_restore_keeps_backup_for_recovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A destination locked through both install and restore (e.g. an
+    antivirus scan on Windows) must leave the previous NPZ recoverable
+    from its backup instead of deleting the last surviving copy."""
+    path = tmp_path / "work.json"
+    npz_final = path.with_suffix(".npz")
+    session_file.save_session(path, _entries(1))
+    real_replace = os.replace
+
+    def locked_npz_destination(src: str | Path, dst: str | Path) -> None:
+        if Path(dst) == npz_final:
+            raise OSError("simulated: destination locked")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(session_file.os, "replace", locked_npz_destination)
+    with pytest.raises(OSError, match="could not be fully restored") as exc:
+        session_file.save_session(path, _entries(2))
+    assert "previous data preserved at" in str(exc.value)
+
+    backups = [
+        p for p in _transaction_files(tmp_path) if p.name.endswith(".bak")
+    ]
+    assert len(backups) == 1
+    with np.load(backups[0]) as arrays:
+        np.testing.assert_array_equal(arrays["image-1"], 1)
+    # The manifest itself was restored; only the locked NPZ is displaced.
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    assert manifest["images"][0]["name"] == "sample.dm4"
