@@ -1,6 +1,6 @@
 """Structural guards — the fermi-viewer ratchet idea, enforced forward.
 
-Three invariants, checked from day one so they never need retrofitting:
+Four invariants, checked forward so they never need retrofitting:
 
 1. LICENSE GUARD — no GPL package in runtime dependencies. This project
    is Apache-2.0; rosettasciio/hyperspy live only in the 'oracle' dev
@@ -11,6 +11,8 @@ Three invariants, checked from day one so they never need retrofitting:
    written justification in the commit message.
 3. LAYERING GUARD — io/ and calc/ never import fastapi/pydantic/routes.
    Pure-library isolation is what keeps their tests server-free.
+4. FRONTEND MODULE RATCHET — new production TypeScript modules stay below
+   500 lines; legacy giants may shrink but cannot grow before being split.
 """
 
 from __future__ import annotations
@@ -25,9 +27,28 @@ else:  # py<3.11 — backport (dev dep guarded by the same marker)
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "fermiviewer"
+FRONTEND_SRC = ROOT / "frontend" / "src"
 
 GPL_PACKAGES = {"rosettasciio", "rsciio", "hyperspy", "exspy", "holospy"}
 MAX_MODULE_LINES = 500
+FRONTEND_MAX_MODULE_LINES = 500
+# Existing production modules above the default ceiling. These are debt, not
+# precedent: each cap is its current size, so a module may shrink but not grow.
+# Delete an entry as soon as that module is split below the default ceiling.
+FRONTEND_LEGACY_CAPS = {
+    "App.tsx": 679,
+    "components/Inspector/MeasurePanel.tsx": 755,
+    "components/Shell/MenuBar.tsx": 1698,
+    "components/Stage/MeasureOverlay.tsx": 783,
+    "components/Stage/Stage.tsx": 1403,
+    "components/overlays/PrefsWindow.tsx": 511,
+    "components/workshops/DiffractionWorkshop.tsx": 1090,
+    "components/workshops/EdsSpectrumImage.tsx": 565,
+    "components/workshops/EelsWorkshop.tsx": 813,
+    "components/workshops/LayersWorkshop.tsx": 726,
+    "components/workshops/StructureWorkshop.tsx": 1353,
+    "store/viewer.ts": 1778,
+}
 PURE_LAYERS = ("io", "calc", "ops")
 FORBIDDEN_IN_PURE = ("fastapi", "pydantic", "fermiviewer.routes", "starlette")
 
@@ -55,6 +76,24 @@ def test_no_god_modules() -> None:
             offenders.append(f"{f.relative_to(ROOT)}: {n} lines")
     assert not offenders, (
         f"Modules over {MAX_MODULE_LINES} lines (split before merging):\n  "
+        + "\n  ".join(offenders)
+    )
+
+
+def test_frontend_module_size_ratchet() -> None:
+    """Production TS modules have a 500-line default; legacy files are frozen."""
+    offenders = []
+    source_files = [*FRONTEND_SRC.rglob("*.ts"), *FRONTEND_SRC.rglob("*.tsx")]
+    for path in source_files:
+        if ".test." in path.name:
+            continue
+        relative = path.relative_to(FRONTEND_SRC).as_posix()
+        limit = FRONTEND_LEGACY_CAPS.get(relative, FRONTEND_MAX_MODULE_LINES)
+        lines = len(path.read_text(encoding="utf-8").splitlines())
+        if lines > limit:
+            offenders.append(f"frontend/src/{relative}: {lines} lines (limit {limit})")
+    assert not offenders, (
+        "Frontend modules exceeded the size ratchet (split before adding more):\n  "
         + "\n  ".join(offenders)
     )
 
