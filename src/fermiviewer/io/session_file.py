@@ -11,6 +11,8 @@ preserves derived images that have no file of their own.
 from __future__ import annotations
 
 import json
+import os
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +23,7 @@ from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 __all__ = ["load_session", "save_session"]
 
 _VERSION = 1
+_GENERATION_KEY = "__fv_generation__"
 
 
 def _json_safe(value: Any) -> Any:
@@ -53,6 +56,84 @@ def _paths(path: str | Path) -> tuple[Path, Path]:
     return p, p.with_suffix(".npz")
 
 
+def _transaction_path(path: Path, generation: str, role: str) -> Path:
+    """Hidden sibling used while installing a session file pair."""
+    return path.with_name(f".{path.name}.{generation}.{role}")
+
+
+def _write_manifest(path: Path, manifest: dict[str, Any]) -> None:
+    """Write and flush a staged manifest before it can become visible."""
+    with path.open("w", encoding="utf-8") as fh:
+        json.dump(manifest, fh, indent=1)
+        fh.flush()
+        os.fsync(fh.fileno())
+
+
+def _write_arrays(path: Path, arrays: dict[str, np.ndarray]) -> None:
+    """Write and flush a staged NPZ without numpy changing its filename."""
+    with path.open("wb") as fh:
+        # numpy stubs type the kwargs as allow_pickle; arrays-as-kwargs is
+        # the documented savez API.
+        np.savez_compressed(fh, **arrays)  # type: ignore[arg-type]
+        fh.flush()
+        os.fsync(fh.fileno())
+
+
+def _cleanup(paths: list[Path]) -> None:
+    """Best-effort cleanup; a valid committed pair must not become an error."""
+    for path in paths:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def _commit_pair(
+    staged_json: Path,
+    staged_npz: Path,
+    json_path: Path,
+    npz_path: Path,
+    generation: str,
+) -> None:
+    """Install both staged files, restoring the previous pair on failure."""
+    backup_json = _transaction_path(json_path, generation, "bak")
+    backup_npz = _transaction_path(npz_path, generation, "bak")
+    backups = ((json_path, backup_json), (npz_path, backup_npz))
+    installed: list[Path] = []
+    moved_backups: list[tuple[Path, Path]] = []
+
+    try:
+        for final, backup in backups:
+            if final.exists():
+                os.replace(final, backup)
+                moved_backups.append((final, backup))
+        # The manifest is the commit marker, so expose the pixel sidecar first.
+        os.replace(staged_npz, npz_path)
+        installed.append(npz_path)
+        os.replace(staged_json, json_path)
+        installed.append(json_path)
+    except BaseException as exc:
+        rollback_errors: list[OSError] = []
+        for final in reversed(installed):
+            try:
+                final.unlink(missing_ok=True)
+            except OSError as error:
+                rollback_errors.append(error)
+        for final, backup in reversed(moved_backups):
+            try:
+                os.replace(backup, final)
+            except OSError as error:
+                rollback_errors.append(error)
+        _cleanup([staged_json, staged_npz, backup_json, backup_npz])
+        if rollback_errors:
+            raise OSError(
+                "session save failed and the previous files could not be fully restored"
+            ) from exc
+        raise
+    else:
+        _cleanup([backup_json, backup_npz])
+
+
 def save_session(
     path: str | Path,
     entries: list[tuple[str, str, DataStruct]],
@@ -60,8 +141,10 @@ def save_session(
 ) -> tuple[Path, Path]:
     """Write (id, name, DataStruct) entries; returns (json, npz) paths."""
     json_path, npz_path = _paths(path)
+    generation = uuid.uuid4().hex
     manifest: dict[str, Any] = {
         "version": _VERSION,
+        "generation": generation,
         "images": [],
         "client_state": client_state,
     }
@@ -81,11 +164,19 @@ def save_session(
         )
         arrays[img_id] = np.asarray(ds.data)
 
+    arrays[_GENERATION_KEY] = np.asarray(generation)
     json_path.parent.mkdir(parents=True, exist_ok=True)
-    json_path.write_text(json.dumps(manifest, indent=1), encoding="utf-8")
-    # numpy stubs type the kwargs as allow_pickle; arrays-as-kwargs is
-    # the documented savez API
-    np.savez_compressed(npz_path, **arrays)  # type: ignore[arg-type]
+    staged_json = _transaction_path(json_path, generation, "tmp")
+    staged_npz = _transaction_path(npz_path, generation, "tmp")
+    try:
+        _write_arrays(staged_npz, arrays)
+        _write_manifest(staged_json, manifest)
+        _commit_pair(
+            staged_json, staged_npz, json_path, npz_path, generation
+        )
+    except BaseException:
+        _cleanup([staged_json, staged_npz])
+        raise
     return json_path, npz_path
 
 
@@ -106,6 +197,15 @@ def load_session(
 
     entries: list[tuple[str, str, DataStruct]] = []
     with np.load(npz_path) as arrays:
+        manifest_generation = manifest.get("generation")
+        sidecar_generation = (
+            str(np.asarray(arrays[_GENERATION_KEY]).item())
+            if _GENERATION_KEY in arrays
+            else None
+        )
+        if manifest_generation is not None or sidecar_generation is not None:
+            if manifest_generation != sidecar_generation:
+                raise ValueError("session manifest and data sidecar do not match")
         for img in manifest["images"]:
             img_id = img["id"]
             if img_id not in arrays:
