@@ -73,7 +73,7 @@ jobs:
             server-archive: fv-server-linux.tar.gz
             offline-archive: fv-offline-linux-x64.zip
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install Linux build deps (Tauri)
         if: runner.os == 'Linux'
@@ -268,7 +268,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # PyPI uploads are immutable — a version number, once burned, is gone
       # even after a yank. Refuse to publish a tag whose pyproject version
