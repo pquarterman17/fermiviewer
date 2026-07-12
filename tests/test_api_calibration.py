@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
+from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.io import calibration_db
 from fermiviewer.io.calibration_db import (
     extract_calibration_key,
@@ -113,7 +114,6 @@ def test_key_extraction_and_auto_apply_unit() -> None:
     assert extract_calibration_key({"x": 1}) is None
 
     # auto-apply path: store an entry then run the helper on a fake image
-    from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
     from fermiviewer.routes.calibration import auto_apply_calibration
 
     save_calibration("Titan|50000", 0.42, "nm")
@@ -130,6 +130,114 @@ def test_key_extraction_and_auto_apply_unit() -> None:
     assert after.metadata["calibration_source"] == "db:Titan|50000"
     # already-calibrated images are left alone
     assert auto_apply_calibration(img_id, after) is False
+
+
+def test_recalibrate_spectrum_image_and_reject_spectrum() -> None:
+    from fastapi import HTTPException
+
+    from fermiviewer.routes.calibration import recalibrate
+
+    cube = DataStruct(
+        data=np.zeros((2, 3, 4)),
+        kind=DataKind.SPECTRUM_IMAGE,
+        axes=(AxisCal(), AxisCal(), AxisCal(2.0, 1.0, "eV")),
+    )
+    calibrated = recalibrate(cube, 0.25, "nm")
+    assert calibrated.axes[0] == AxisCal(0.25, 0.0, "nm")
+    assert calibrated.axes[1] == AxisCal(0.25, 0.0, "nm")
+    assert calibrated.axes[2] == cube.axes[2]
+
+    spectrum = DataStruct(
+        data=np.arange(4), kind=DataKind.SPECTRUM, axes=(AxisCal(1, 0, "eV"),)
+    )
+    with pytest.raises(HTTPException, match="no spatial calibration"):
+        recalibrate(spectrum, 1.0, "nm")
+
+
+def test_auto_apply_noop_paths() -> None:
+    from fermiviewer.routes.calibration import auto_apply_calibration
+
+    spectrum = DataStruct(
+        data=np.arange(4), kind=DataKind.SPECTRUM, axes=(AxisCal(1, 0, "eV"),)
+    )
+    assert auto_apply_calibration("unused", spectrum) is False
+
+    no_key = DataStruct(
+        data=np.zeros((2, 2)),
+        kind=DataKind.IMAGE,
+        axes=(AxisCal(), AxisCal()),
+        metadata={},
+    )
+    assert auto_apply_calibration("unused", no_key) is False
+
+    unknown_key = DataStruct(
+        data=np.zeros((2, 2)),
+        kind=DataKind.IMAGE,
+        axes=(AxisCal(), AxisCal()),
+        metadata={"Microscope": "Unknown", "Magnification": 123},
+    )
+    assert auto_apply_calibration("unused", unknown_key) is False
+
+
+def test_save_derives_key_and_reports_missing_key(client) -> None:
+    ds = DataStruct(
+        data=np.zeros((2, 2)),
+        kind=DataKind.IMAGE,
+        axes=(AxisCal(), AxisCal()),
+        metadata={"Microscope": "Titan", "Magnification": 50000},
+    )
+    img_id = store.add_parsed(ds, "derived-key.dm4")
+    saved = client.post(
+        "/api/calibration",
+        json={"image_id": img_id, "pixel_size": 0.2, "unit": "nm"},
+    )
+    assert saved.status_code == 200
+    assert saved.json() == {"key": "Titan|50000"}
+
+    missing = client.post(
+        "/api/calibration", json={"pixel_size": 0.2, "unit": "nm"}
+    )
+    assert missing.status_code == 422
+    assert "none derivable" in missing.json()["detail"]
+
+
+def test_calibration_error_paths_and_stored_apply(client, tmp_path) -> None:
+    img_id = _open_uncal(client, tmp_path)
+    save_calibration("Stored|1", 0.75, "um")
+    applied = client.post(
+        "/api/calibration/apply",
+        json={"image_id": img_id, "key": "Stored|1"},
+    )
+    assert applied.status_code == 200
+    assert applied.json()["image"]["pixel_size"] == pytest.approx(0.75)
+    assert applied.json()["image"]["pixel_unit"] == "um"
+
+    unknown = client.post(
+        "/api/calibration/apply",
+        json={"image_id": img_id, "key": "missing"},
+    )
+    assert unknown.status_code == 404
+    no_method = client.post(
+        "/api/calibration/apply", json={"image_id": img_id}
+    )
+    assert no_method.status_code == 422
+
+    spectrum = DataStruct(
+        data=np.arange(8), kind=DataKind.SPECTRUM, axes=(AxisCal(1, 0, "eV"),)
+    )
+    spectrum_id = store.add_parsed(spectrum, "spectrum.msa")
+    assert (
+        client.post(
+            "/api/calibration/detect-bar", json={"image_id": spectrum_id}
+        ).status_code
+        == 400
+    )
+    assert (
+        client.post(
+            "/api/calibration/clear", json={"image_id": spectrum_id}
+        ).status_code
+        == 400
+    )
 
 
 # ── durability: atomic _save, corrupt-file recovery ──────────────────
