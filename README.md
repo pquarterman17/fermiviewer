@@ -86,6 +86,22 @@ build, see *Packaging* below.
 > (`[tool.uv] link-mode = "copy"` is already set in `pyproject.toml`;
 > the junction prevents sync-lock races during installs.)
 
+> **Windows Store Python recovery:** a `.venv` created from the Microsoft
+> Store interpreter can stop building wheels after the Store updates Python;
+> the old executable is a stale reparse point, so `uv` fails while copying it
+> into an isolated build environment (`os error 1920`). Recreate the environment
+> with a uv-managed interpreter instead:
+>
+> ```powershell
+> uv python install 3.13
+> uv venv --managed-python --python 3.13 --clear .venv
+> uv sync --group dev --managed-python --python 3.13
+> uv run pytest -q tests\test_offline_install.py
+> ```
+>
+> The final command verifies the wheel and baked-SPA path that exposes the
+> stale-interpreter problem. It should report four passing tests.
+
 ### Option 4 — install from PyPI (`pip` / `uv`)
 
 FermiViewer is [on PyPI](https://pypi.org/project/fermiviewer/) with the
