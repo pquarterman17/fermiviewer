@@ -161,11 +161,11 @@ def cross_section_profile(
     if reduce == "median":
         sub = _roi_subimage(arr, roi)
         if axis == "y":
-            has_data = np.isfinite(sub).any(axis=1)
+            has_data = (~np.isnan(sub)).any(axis=1)
             prof = np.full(sub.shape[0], np.nan)
             prof[has_data] = np.nanmedian(sub[has_data], axis=1)
         else:
-            has_data = np.isfinite(sub).any(axis=0)
+            has_data = (~np.isnan(sub)).any(axis=0)
             prof = np.full(sub.shape[1], np.nan)
             prof[has_data] = np.nanmedian(sub[:, has_data], axis=0)
         return np.arange(prof.size, dtype=np.float64), prof
