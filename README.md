@@ -100,7 +100,9 @@ build, see *Packaging* below.
 > ```
 >
 > The final command verifies the wheel and baked-SPA path that exposes the
-> stale-interpreter problem. It should report four passing tests.
+> stale-interpreter problem. It should report four passing tests. This is
+> safe with the OneDrive junction above: `--clear` empties the junction's
+> target without replacing the link, so `.venv` stays out of OneDrive.
 
 ### Option 4 — install from PyPI (`pip` / `uv`)
 
