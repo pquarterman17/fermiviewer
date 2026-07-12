@@ -98,6 +98,35 @@ def test_frontend_module_size_ratchet() -> None:
     )
 
 
+# Shrink past this and the cap must be lowered to the new size — that is the
+# ratchet locking the extraction in. Small slack so trivial edits don't churn.
+FRONTEND_CAP_SLACK = 50
+
+
+def test_frontend_legacy_caps_are_tight() -> None:
+    """Caps only move DOWN: each must track its file (no re-growth headroom),
+    and a file that fits the default ceiling must lose its cap entry."""
+    stale, graduated, missing = [], [], []
+    for relative, cap in FRONTEND_LEGACY_CAPS.items():
+        path = FRONTEND_SRC / relative
+        if not path.is_file():
+            missing.append(relative)
+            continue
+        lines = len(path.read_text(encoding="utf-8").splitlines())
+        if lines <= FRONTEND_MAX_MODULE_LINES:
+            graduated.append(f"{relative} ({lines} lines)")
+        elif cap - lines > FRONTEND_CAP_SLACK:
+            stale.append(f"{relative}: lower cap {cap} -> {lines}")
+    assert not missing, f"caps for files that no longer exist: {missing}"
+    assert not graduated, (
+        f"these fit the {FRONTEND_MAX_MODULE_LINES}-line ceiling — delete "
+        f"their FRONTEND_LEGACY_CAPS entries: {graduated}"
+    )
+    assert not stale, (
+        "lock the extraction in by lowering the cap:\n  " + "\n  ".join(stale)
+    )
+
+
 def test_pure_layers_do_not_import_server_stack() -> None:
     pure_files = [SRC / "datastruct.py"]
     for layer in PURE_LAYERS:
