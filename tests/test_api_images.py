@@ -159,6 +159,20 @@ def test_upload_over_size_limit_is_413(
     assert "upload limit" in r.json()["detail"]
 
 
+@pytest.mark.parametrize("bad", ["..", "."])
+def test_upload_rejects_directory_filenames(
+    client: TestClient, bad: str
+) -> None:
+    """A filename of '..' or '.' resolves the staging path to a directory;
+    open('wb') on it used to raise an unhandled 500. Reject with 422."""
+    r = client.post(
+        "/api/session/upload",
+        files=[("files", (bad, b"payload", "application/octet-stream"))],
+    )
+    assert r.status_code == 422
+    assert "invalid upload filename" in r.json()["detail"]
+
+
 def test_data16_normalized_raster(client: TestClient, dm4_image) -> None:
     img_id = client.post(
         "/api/session/open", json={"paths": [str(dm4_image)]}

@@ -228,3 +228,76 @@ def test_job_cancel_endpoint(client) -> None:
         release.set()
     for jid in blockers:
         _wait_status(jobs, jid, "done")
+
+
+def test_submit_serializes_with_shutdown() -> None:
+    """Regression: pool.submit must run under _lock so a concurrent
+    shutdown() cannot tear the pool down mid-submit — which would raise
+    RuntimeError and strand a phantom 'queued' job. Proven by showing
+    shutdown() blocks while a submit is inside the pool's submit()."""
+    entered = threading.Event()
+    release = threading.Event()
+
+    class GatedPool:
+        """Wraps the real pool; stalls inside the FIRST submit() so the
+        test can drive the submit/shutdown interleaving deterministically."""
+
+        def __init__(self, inner) -> None:
+            self._inner = inner
+            self._armed = True
+
+        def submit(self, fn):
+            if self._armed:
+                self._armed = False
+                entered.set()
+                release.wait(timeout=30)
+            return self._inner.submit(fn)
+
+        def shutdown(self, *args, **kwargs):
+            return self._inner.shutdown(*args, **kwargs)
+
+    store_ = JobStore(max_workers=1)
+    store_._pool = GatedPool(store_._pool)
+
+    errors: list[BaseException] = []
+
+    def do_submit() -> None:
+        try:
+            store_.submit(lambda p: "ok")
+        except BaseException as e:  # noqa: BLE001
+            errors.append(e)
+
+    submitter = threading.Thread(target=do_submit)
+    submitter.start()
+    assert entered.wait(timeout=30)  # inside pool.submit, holding _lock
+
+    shutter = threading.Thread(target=store_.shutdown)
+    shutter.start()
+    # With the fix, shutdown() blocks on _lock until submit() finishes.
+    # With the bug (pool.submit outside the lock) it would run right now.
+    shutter.join(timeout=0.5)
+    assert shutter.is_alive(), "shutdown ran during submit — pool.submit escaped the lock"
+
+    release.set()
+    submitter.join(timeout=30)
+    shutter.join(timeout=30)
+    assert not submitter.is_alive() and not shutter.is_alive()
+    assert errors == []  # no RuntimeError escaped the race
+
+
+def test_lifespan_shutdown_invokes_job_shutdown(monkeypatch) -> None:
+    """The FastAPI lifespan must call jobs.shutdown() on server stop.
+    A bare TestClient(app) skips lifespan entirely; only the `with` form
+    runs startup/shutdown — this exercises the real wiring, not JobStore
+    in isolation."""
+    called = threading.Event()
+    real_shutdown = jobs.shutdown
+
+    def spy() -> None:
+        called.set()
+        real_shutdown()
+
+    monkeypatch.setattr(jobs, "shutdown", spy)
+    with TestClient(create_app()):
+        pass
+    assert called.is_set()

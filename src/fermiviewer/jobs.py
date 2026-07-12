@@ -85,6 +85,29 @@ class JobStore:
     def submit(self, fn: Callable[[ProgressFn], Any]) -> str:
         """Queue fn(progress) for the pool; returns the job id immediately."""
         job = Job(id=uuid.uuid4().hex[:12])
+
+        def run() -> None:
+            with job._lock:
+                if job.status != "queued":  # cancelled before starting
+                    return
+                job.status = "running"
+            try:
+                result = fn(job.report)
+                with job._lock:
+                    job.result = result
+                    job.progress = 1.0
+                    job.status = "done"
+            except Exception as e:  # noqa: BLE001 — surfaced to the client
+                with job._lock:
+                    job.error = str(e)
+                    job.status = "error"
+
+        # Everything — pending count, eviction, pool (re)creation, AND the
+        # pool.submit — happens under _lock so submit and shutdown fully
+        # serialize: shutdown can never tear the pool down mid-submit (which
+        # would raise RuntimeError and strand a phantom "queued" job), and a
+        # submit racing shutdown either lands on the live pool before it is
+        # cancelled or transparently starts a fresh one.
         with self._lock:
             pending = sum(
                 1 for j in self._jobs.values() if j.status == "queued"
@@ -104,26 +127,8 @@ class JobStore:
                     del self._jobs[k]
             if self._pool is None:  # restarted after shutdown()
                 self._pool = self._new_pool()
-            pool = self._pool
             self._jobs[job.id] = job
-
-        def run() -> None:
-            with job._lock:
-                if job.status != "queued":  # cancelled before starting
-                    return
-                job.status = "running"
-            try:
-                result = fn(job.report)
-                with job._lock:
-                    job.result = result
-                    job.progress = 1.0
-                    job.status = "done"
-            except Exception as e:  # noqa: BLE001 — surfaced to the client
-                with job._lock:
-                    job.error = str(e)
-                    job.status = "error"
-
-        job._future = pool.submit(run)
+            job._future = self._pool.submit(run)
         return job.id
 
     def cancel(self, job_id: str) -> bool:

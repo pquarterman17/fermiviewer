@@ -79,6 +79,10 @@ async def session_upload(files: list[UploadFile]) -> list[ImageMeta]:
     with tempfile.TemporaryDirectory(prefix="fv_upload_") as tmp:
         for up in files:
             name = Path(up.filename or "upload").name  # strip any path
+            # ".." / "." survive .name as ".." / "" and would resolve the
+            # staging path to a directory (open("wb") → 500); reject them.
+            if name in ("", ".."):
+                raise HTTPException(422, f"invalid upload filename: {up.filename!r}")
             staged = Path(tmp) / name
             # chunked copy — never hold a whole instrument file in RAM
             total = 0
