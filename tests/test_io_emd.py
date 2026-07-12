@@ -80,7 +80,8 @@ def test_velox_image_first_frame_and_pixel_size(tmp_path) -> None:
     stack[..., 0] = 7  # frame 0 distinct
     stack[..., 1] = 9
     fp = write_velox_emd(tmp_path / "v.emd", stack, pixel_size_m=2e-10)
-    ds = load_emd(fp)
+    with pytest.warns(UserWarning, match="only the first is returned"):
+        ds = load_emd(fp)
     assert ds.kind is DataKind.IMAGE
     assert ds.data.shape == (5, 6)
     assert (ds.data == 7).all()  # first frame

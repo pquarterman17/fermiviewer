@@ -266,8 +266,12 @@ def zeta_quantify(
     valid = mask.ravel()
     at_maps = [at[:, :, i] * 100 for i in range(n)]
     w_maps = [w[:, :, i] * 100 for i in range(n)]
-    mean_at = np.array([np.nanmean(m.ravel()[valid]) for m in at_maps])
-    mean_wt = np.array([np.nanmean(m.ravel()[valid]) for m in w_maps])
+    if valid.any():
+        mean_at = np.array([np.nanmean(m.ravel()[valid]) for m in at_maps])
+        mean_wt = np.array([np.nanmean(m.ravel()[valid]) for m in w_maps])
+    else:
+        mean_at = np.full(n, np.nan)
+        mean_wt = np.full(n, np.nan)
     mean_rt = float(np.nanmean(rho_t.ravel()[valid])) if valid.any() else float("nan")
 
     t_map: np.ndarray | None = None

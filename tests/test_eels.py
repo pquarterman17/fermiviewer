@@ -124,7 +124,8 @@ def test_kramers_kronig_synthetic_drude() -> None:
 @pytest.mark.realdata
 class TestGoldenRealData:
     @pytest.fixture(scope="class")
-    def zlp_ds(self, eels_corpus):
+    @classmethod
+    def zlp_ds(cls, eels_corpus):
         return load_dm(eels_corpus / "FigS6_apatite_ZLP.dm4")
 
     def test_fourier_log_matches(self, golden, zlp_ds) -> None:

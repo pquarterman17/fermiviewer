@@ -130,6 +130,13 @@ def _nan_none(v: float) -> float | None:
     return None if not np.isfinite(v) else float(v)
 
 
+def _finite_mean(values: np.ndarray) -> float:
+    """Mean of finite values, or NaN when a result has no valid samples."""
+    finite = np.asarray(values, dtype=np.float64)
+    finite = finite[np.isfinite(finite)]
+    return float(finite.mean()) if finite.size else float("nan")
+
+
 # ── grain segmentation ───────────────────────────────────────────────
 
 
@@ -336,9 +343,9 @@ def _ppa_payload(st: PairStrain) -> dict:
     _s = lambda a: [_nan_none(v) for v in a]  # noqa: E731
     return {
         "valid": bool(st.valid),
-        "exx_mean": _nan_none(float(np.nanmean(st.exx))),
-        "eyy_mean": _nan_none(float(np.nanmean(st.eyy))),
-        "exy_mean": _nan_none(float(np.nanmean(st.exy))),
+        "exx_mean": _nan_none(_finite_mean(st.exx)),
+        "eyy_mean": _nan_none(_finite_mean(st.eyy)),
+        "exy_mean": _nan_none(_finite_mean(st.exy)),
         "exx": _s(st.exx), "eyy": _s(st.eyy),
         "exy": _s(st.exy), "rotation": _s(st.rotation),
         "displacement": st.displacement.tolist() if st.valid else [],

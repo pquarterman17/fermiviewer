@@ -116,7 +116,8 @@ def test_pixel_spectrum_mask_oracle(synthetic_cube) -> None:
 
 def test_extract_element_maps_line_snap(synthetic_cube) -> None:
     cube, energy = synthetic_cube
-    entries = extract_element_maps(cube, energy, ["Fe", "Xx"], half_window=0.1)
+    with pytest.warns(UserWarning, match="no known line for 'Xx'"):
+        entries = extract_element_maps(cube, energy, ["Fe", "Xx"], half_window=0.1)
     assert len(entries) == 1                                     # Xx warned+skipped
     e = entries[0]
     assert e.symbol == "Fe" and e.line == "K"
