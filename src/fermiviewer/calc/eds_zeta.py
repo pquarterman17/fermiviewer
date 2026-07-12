@@ -269,10 +269,11 @@ def zeta_quantify(
     if valid.any():
         mean_at = np.array([np.nanmean(m.ravel()[valid]) for m in at_maps])
         mean_wt = np.array([np.nanmean(m.ravel()[valid]) for m in w_maps])
+        mean_rt = float(np.nanmean(rho_t.ravel()[valid]))
     else:
         mean_at = np.full(n, np.nan)
         mean_wt = np.full(n, np.nan)
-    mean_rt = float(np.nanmean(rho_t.ravel()[valid])) if valid.any() else float("nan")
+        mean_rt = float("nan")
 
     t_map: np.ndarray | None = None
     mean_t = float("nan")
