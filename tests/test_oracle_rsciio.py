@@ -17,7 +17,13 @@ from fermiviewer.io.registry import load_auto
 
 rsciio = pytest.importorskip("rsciio", reason="oracle group not installed")
 
-pytestmark = [pytest.mark.oracle, pytest.mark.parser]
+pytestmark = [
+    pytest.mark.oracle,
+    pytest.mark.parser,
+    # rosettasciio 0.14's MRC reader leaves its input handle for GC. Keep this
+    # third-party, oracle-only leak from weakening the first-party warning gate.
+    pytest.mark.filterwarnings("ignore:unclosed file.*:ResourceWarning"),
+]
 
 
 def _rsciio_load(path: Path) -> list[dict]:

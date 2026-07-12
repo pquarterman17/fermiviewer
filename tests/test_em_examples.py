@@ -160,7 +160,10 @@ def test_emd_velox_stack_limitation(rsciio_examples: Path) -> None:
 def test_emd_ncem_4d_sim_limitation(rsciio_examples: Path) -> None:
     # NCEM CBED-style layout (Si100_3D) isn't a recognised /Data/Image or
     # emd_group_type structure — must fail cleanly, not crash
-    with pytest.raises(EMDFormatError):
+    with (
+        pytest.warns(UserWarning, match="no Velox or NCEM EMD structure"),
+        pytest.raises(EMDFormatError),
+    ):
         _load(rsciio_examples, "emd/Si100_3D.emd")
 
 

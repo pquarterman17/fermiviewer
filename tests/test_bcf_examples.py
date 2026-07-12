@@ -85,10 +85,11 @@ def test_example_bcf_quantify_skips_absent_elements(
     """Bug B on real data: Cu/Al/O are present (maps kept); Au/Pb are not
     (maps skipped → null), with `maps` staying aligned to `elements`."""
     img = _open(client, bcf_examples / HITACHI)
-    r = client.post(
-        "/api/eds/quantify",
-        json={"image_id": img, "elements": ["Cu", "Al", "O", "Au", "Pb"]},
-    )
+    with pytest.warns(UserWarning, match="no built-in k-factor for 'Pb'"):
+        r = client.post(
+            "/api/eds/quantify",
+            json={"image_id": img, "elements": ["Cu", "Al", "O", "Au", "Pb"]},
+        )
     assert r.status_code == 200
     body = r.json()
     assert len(body["maps"]) == len(body["elements"])

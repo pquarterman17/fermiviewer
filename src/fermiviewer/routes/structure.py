@@ -130,6 +130,14 @@ def _nan_none(v: float) -> float | None:
     return None if not np.isfinite(v) else float(v)
 
 
+def _nanmean_or_nan(values: np.ndarray) -> float:
+    """NaN-aware mean without warning when every sample is missing."""
+    array = np.asarray(values, dtype=np.float64)
+    if array.size == 0 or np.isnan(array).all():
+        return float("nan")
+    return float(np.nanmean(array))
+
+
 # ── grain segmentation ───────────────────────────────────────────────
 
 
@@ -336,9 +344,9 @@ def _ppa_payload(st: PairStrain) -> dict:
     _s = lambda a: [_nan_none(v) for v in a]  # noqa: E731
     return {
         "valid": bool(st.valid),
-        "exx_mean": _nan_none(float(np.nanmean(st.exx))),
-        "eyy_mean": _nan_none(float(np.nanmean(st.eyy))),
-        "exy_mean": _nan_none(float(np.nanmean(st.exy))),
+        "exx_mean": _nan_none(_nanmean_or_nan(st.exx)),
+        "eyy_mean": _nan_none(_nanmean_or_nan(st.eyy)),
+        "exy_mean": _nan_none(_nanmean_or_nan(st.exy)),
         "exx": _s(st.exx), "eyy": _s(st.eyy),
         "exy": _s(st.exy), "rotation": _s(st.rotation),
         "displacement": st.displacement.tolist() if st.valid else [],

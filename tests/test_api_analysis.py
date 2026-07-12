@@ -118,9 +118,10 @@ def eds_cube_id(client, tmp_path) -> str:
 
 
 def test_eds_quantify_endpoint(client, eds_cube_id) -> None:
-    r = client.post("/api/eds/quantify", json={
-        "image_id": eds_cube_id, "elements": ["Fe", "Xx"],
-    })
+    with pytest.warns(UserWarning, match="no known line for 'Xx'"):
+        r = client.post("/api/eds/quantify", json={
+            "image_id": eds_cube_id, "elements": ["Fe", "Xx"],
+        })
     assert r.status_code == 200
     body = r.json()
     assert body["elements"] == ["Fe"]            # unknown symbol skipped
@@ -138,9 +139,11 @@ def test_eds_quantify_endpoint(client, eds_cube_id) -> None:
     })
     assert zaf.status_code == 200
 
-    assert client.post("/api/eds/quantify", json={
-        "image_id": eds_cube_id, "elements": ["Xx"],
-    }).status_code == 422
+    with pytest.warns(UserWarning, match="no known line for 'Xx'"):
+        invalid = client.post("/api/eds/quantify", json={
+            "image_id": eds_cube_id, "elements": ["Xx"],
+        })
+    assert invalid.status_code == 422
 
 
 def test_eds_map_is_blank_criterion() -> None:
