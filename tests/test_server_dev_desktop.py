@@ -125,7 +125,9 @@ def test_run_desktop_rejects_foreign_port_owner(
     monkeypatch.setattr(server_launch, "_health_ok", lambda *_args: False)
 
     server._run_desktop()
-    assert "port 8000 is in use by another app" in capsys.readouterr().out
+    assert (
+        f"port {server._PORT} is in use by another app" in capsys.readouterr().out
+    )
 
 
 def test_run_desktop_starts_and_stops_owned_server(monkeypatch) -> None:
