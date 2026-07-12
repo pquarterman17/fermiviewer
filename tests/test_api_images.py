@@ -125,6 +125,40 @@ def test_upload_via_picker(client: TestClient, dm4_image) -> None:
     assert ".dm4" in exts and ".tif" in exts
 
 
+def test_upload_copies_in_chunks(
+    client: TestClient, dm4_image, monkeypatch
+) -> None:
+    """The staging copy must work chunk-by-chunk (never a whole-file
+    read): with a tiny chunk size the same upload takes many loop
+    iterations and must still parse identically."""
+    from fermiviewer.routes import images as images_routes
+
+    monkeypatch.setattr(images_routes, "_UPLOAD_CHUNK", 64)
+    with open(dm4_image, "rb") as f:
+        r = client.post(
+            "/api/session/upload",
+            files=[("files", ("chunked.dm4", f, "application/octet-stream"))],
+        )
+    assert r.status_code == 200
+    assert r.json()[0]["name"] == "chunked.dm4"
+    assert r.json()[0]["shape"] == [4, 6]
+
+
+def test_upload_over_size_limit_is_413(
+    client: TestClient, dm4_image, monkeypatch
+) -> None:
+    from fermiviewer.routes import images as images_routes
+
+    monkeypatch.setattr(images_routes, "_MAX_UPLOAD_BYTES", 16)
+    with open(dm4_image, "rb") as f:
+        r = client.post(
+            "/api/session/upload",
+            files=[("files", ("huge.dm4", f, "application/octet-stream"))],
+        )
+    assert r.status_code == 413
+    assert "upload limit" in r.json()["detail"]
+
+
 def test_data16_normalized_raster(client: TestClient, dm4_image) -> None:
     img_id = client.post(
         "/api/session/open", json={"paths": [str(dm4_image)]}

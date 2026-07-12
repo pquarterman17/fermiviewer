@@ -23,6 +23,9 @@ from fermiviewer.session import UnknownImageError, store
 
 router = APIRouter(prefix="/api")
 
+_UPLOAD_CHUNK = 1 << 20  # copy spooled uploads in 1 MiB slices
+_MAX_UPLOAD_BYTES = 8 << 30  # 8 GiB — real EDS cubes run ~4.3 GB
+
 
 def _get(img_id: str) -> DataStruct:
     try:
@@ -77,7 +80,18 @@ async def session_upload(files: list[UploadFile]) -> list[ImageMeta]:
         for up in files:
             name = Path(up.filename or "upload").name  # strip any path
             staged = Path(tmp) / name
-            staged.write_bytes(await up.read())
+            # chunked copy — never hold a whole instrument file in RAM
+            total = 0
+            with staged.open("wb") as out:
+                while chunk := await up.read(_UPLOAD_CHUNK):
+                    total += len(chunk)
+                    if total > _MAX_UPLOAD_BYTES:
+                        raise HTTPException(
+                            413,
+                            f"{name}: exceeds the "
+                            f"{_MAX_UPLOAD_BYTES >> 30} GiB upload limit",
+                        )
+                    out.write(chunk)
             try:
                 ds = load_auto(staged)
             except UnsupportedFormatError as e:
