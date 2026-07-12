@@ -33,7 +33,7 @@ from fermiviewer.calc.stack import align_stack, image_math, mip
 from fermiviewer.calc.stitch import stitch_images
 from fermiviewer.calc.texture import template_match
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
-from fermiviewer.jobs import jobs
+from fermiviewer.jobs import JobQueueFullError, jobs
 from fermiviewer.models import ImageMeta
 from fermiviewer.routes._arrays import value_error_as_422
 from fermiviewer.session import UnknownImageError, store
@@ -288,7 +288,10 @@ def analyze_grains(req: GrainRequest) -> dict:
     if req.run_async:
         # validate the image id up front so the 404 is synchronous
         _raster(req.image_id)
-        return {"job_id": jobs.submit(lambda p: _run_grains(req, p))}
+        try:
+            return {"job_id": jobs.submit(lambda p: _run_grains(req, p))}
+        except JobQueueFullError as e:
+            raise HTTPException(429, str(e)) from None
     with value_error_as_422():
         return _run_grains(req)
 

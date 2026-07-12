@@ -14,6 +14,8 @@ main()'s non-dev path — never under tests or --dev.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
@@ -118,6 +120,16 @@ def _frontend_dist() -> Path | None:
     return None
 
 
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """On server stop, cancel still-queued background jobs so exit never
+    waits behind a queue backlog (running jobs finish on their thread)."""
+    yield
+    from fermiviewer.jobs import jobs
+
+    jobs.shutdown()
+
+
 def create_app() -> FastAPI:
     """Build the FastAPI app. Routers attach here as they land (W5)."""
     from fermiviewer.routes.analysis import router as analysis_router
@@ -142,7 +154,7 @@ def create_app() -> FastAPI:
     from fermiviewer.routes.structure import router as structure_router
     from fermiviewer.routes.usermeta import router as usermeta_router
 
-    app = FastAPI(title="fermiviewer", version=__version__)
+    app = FastAPI(title="fermiviewer", version=__version__, lifespan=_lifespan)
 
     @app.middleware("http")
     async def _security_guard(request: Request, call_next):

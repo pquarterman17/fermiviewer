@@ -4,6 +4,14 @@ Thread-pool execution with polled status: routes submit a callable
 (usually a closure over an existing handler body) and return a job id;
 the frontend polls GET /jobs/{id}. No FastAPI imports here — routes
 adapt, mirroring the session-store layering.
+
+Lifecycle: jobs are born ``queued``, flip to ``running`` when a worker
+picks them up, and end ``done`` or ``error``. Cancellation reports as
+``error`` so pollers always reach a terminal state. Admission is
+bounded — ``submit`` raises :class:`JobQueueFullError` once
+``max_pending`` jobs are queued — and :meth:`JobStore.shutdown`
+(wired to the FastAPI lifespan) cancels still-queued work so quitting
+the app never waits behind a queue backlog.
 """
 
 from __future__ import annotations
@@ -11,24 +19,32 @@ from __future__ import annotations
 import threading
 import uuid
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
 
-__all__ = ["Job", "JobStore", "jobs"]
+__all__ = ["Job", "JobQueueFullError", "JobStore", "jobs"]
 
 ProgressFn = Callable[[float, str], None]
+
+MAX_PENDING = 32
+"""Queued-job admission bound — generous for a single local user."""
+
+
+class JobQueueFullError(RuntimeError):
+    """Raised by submit() when the pending-job bound is reached."""
 
 
 @dataclass
 class Job:
     id: str
-    status: str = "running"  # running | done | error
+    status: str = "queued"  # queued | running | done | error
     progress: float = 0.0
     message: str = ""
     result: Any = None
     error: str = ""
     _lock: threading.Lock = field(default_factory=threading.Lock)
+    _future: Future[None] | None = None
 
     def report(self, fraction: float, message: str = "") -> None:
         with self._lock:
@@ -52,27 +68,50 @@ class Job:
 
 
 class JobStore:
-    def __init__(self, max_workers: int = 2) -> None:
+    def __init__(
+        self, max_workers: int = 2, max_pending: int = MAX_PENDING
+    ) -> None:
         self._jobs: dict[str, Job] = {}
-        self._pool = ThreadPoolExecutor(
-            max_workers=max_workers, thread_name_prefix="fv-job"
-        )
+        self._max_workers = max_workers
+        self._max_pending = max_pending
+        self._pool: ThreadPoolExecutor | None = self._new_pool()
         self._lock = threading.Lock()
 
+    def _new_pool(self) -> ThreadPoolExecutor:
+        return ThreadPoolExecutor(
+            max_workers=self._max_workers, thread_name_prefix="fv-job"
+        )
+
     def submit(self, fn: Callable[[ProgressFn], Any]) -> str:
-        """Run fn(progress) in the pool; returns the job id immediately."""
+        """Queue fn(progress) for the pool; returns the job id immediately."""
         job = Job(id=uuid.uuid4().hex[:12])
         with self._lock:
+            pending = sum(
+                1 for j in self._jobs.values() if j.status == "queued"
+            )
+            if pending >= self._max_pending:
+                raise JobQueueFullError(
+                    f"{pending} jobs already queued — retry when some finish"
+                )
             # bound the registry: drop oldest finished jobs past 100
             if len(self._jobs) > 100:
-                done = [
-                    k for k, j in self._jobs.items() if j.status != "running"
+                finished = [
+                    k
+                    for k, j in self._jobs.items()
+                    if j.status in ("done", "error")
                 ]
-                for k in done[:50]:
+                for k in finished[:50]:
                     del self._jobs[k]
+            if self._pool is None:  # restarted after shutdown()
+                self._pool = self._new_pool()
+            pool = self._pool
             self._jobs[job.id] = job
 
         def run() -> None:
+            with job._lock:
+                if job.status != "queued":  # cancelled before starting
+                    return
+                job.status = "running"
             try:
                 result = fn(job.report)
                 with job._lock:
@@ -84,8 +123,34 @@ class JobStore:
                     job.error = str(e)
                     job.status = "error"
 
-        self._pool.submit(run)
+        job._future = pool.submit(run)
         return job.id
+
+    def cancel(self, job_id: str) -> bool:
+        """Cancel a still-queued job. Running/finished jobs return False
+        (a worker thread can't be interrupted mid-computation)."""
+        job = self._jobs.get(job_id)
+        if job is None or job._future is None or not job._future.cancel():
+            return False
+        with job._lock:
+            job.status = "error"
+            job.error = "cancelled"
+        return True
+
+    def shutdown(self) -> None:
+        """Cancel queued work when the app stops; running jobs finish on
+        their worker thread. A later submit() starts a fresh pool."""
+        with self._lock:
+            pool, self._pool = self._pool, None
+            queued = [j for j in self._jobs.values() if j.status == "queued"]
+        if pool is None:
+            return
+        pool.shutdown(wait=False, cancel_futures=True)
+        for job in queued:
+            if job._future is not None and job._future.cancelled():
+                with job._lock:
+                    job.status = "error"
+                    job.error = "cancelled at shutdown"
 
     def get(self, job_id: str) -> Job | None:
         return self._jobs.get(job_id)

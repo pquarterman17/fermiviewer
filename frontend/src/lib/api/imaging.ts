@@ -113,7 +113,7 @@ export function analyzeParticles(
 
 export interface JobStatus {
   id: string;
-  status: "running" | "done" | "error";
+  status: "queued" | "running" | "done" | "error";
   progress: number;
   message: string;
   result?: unknown;
