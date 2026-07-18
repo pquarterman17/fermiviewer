@@ -8,6 +8,7 @@ import { type ExportOptions } from "../../lib/api";
 import { exportActive, previewActive } from "../../lib/export";
 import { loadPrefs } from "../../lib/prefs";
 import { useViewer, type Measure } from "../../store/viewer";
+import ModalDialog from "./ModalDialog";
 
 type Format = ExportOptions["format"];
 
@@ -164,15 +165,14 @@ export default function ExportDialog() {
   if (!open) return null;
   if (!exportable || !meta) {
     return (
-      <div className="fvd-overlay-backdrop" onMouseDown={() => setOpen(false)}>
-        <div
-          className="fvd-glass fvd-export"
-          onMouseDown={(e) => e.stopPropagation()}
-        >
+      <ModalDialog
+        ariaLabel="Export"
+        className="fvd-export"
+        onClose={() => setOpen(false)}
+      >
           <h2>Export</h2>
           <div className="fvd-ws-empty">No exportable image selected.</div>
-        </div>
-      </div>
+      </ModalDialog>
     );
   }
 
@@ -226,11 +226,11 @@ export default function ExportDialog() {
   };
 
   return (
-    <div className="fvd-overlay-backdrop" onMouseDown={() => setOpen(false)}>
-      <div
-        className="fvd-glass fvd-export"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
+    <ModalDialog
+      ariaLabel={`Export — ${meta.name}`}
+      className="fvd-export"
+      onClose={() => setOpen(false)}
+    >
         <h2>Export — {meta.name}</h2>
 
         <div className="fvd-export-body">
@@ -461,8 +461,7 @@ export default function ExportDialog() {
             {busy ? "Exporting…" : "Export"}
           </button>
         </div>
-      </div>
-    </div>
+    </ModalDialog>
   );
 }
 

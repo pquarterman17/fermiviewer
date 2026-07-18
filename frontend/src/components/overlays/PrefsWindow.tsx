@@ -10,6 +10,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { setCustomColormap } from "../../lib/colormaps";
 import { DEFAULTS, loadPrefs, savePrefs, type Prefs } from "../../lib/prefs";
 import { useViewer } from "../../store/viewer";
+import ModalDialog from "./ModalDialog";
 
 const SECTIONS = [
   "Appearance",
@@ -193,11 +194,11 @@ export default function PrefsWindow() {
   };
 
   return (
-    <div className="fvd-overlay-backdrop" onMouseDown={() => setOpen(false)}>
-      <div
-        className="fvd-glass fvd-prefs"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
+    <ModalDialog
+      ariaLabel="Preferences"
+      className="fvd-prefs"
+      onClose={() => setOpen(false)}
+    >
         <h2>Preferences</h2>
         <div className="fvd-prefs-body">
           <nav className="fvd-prefs-nav">
@@ -367,8 +368,7 @@ export default function PrefsWindow() {
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </ModalDialog>
   );
 }
 

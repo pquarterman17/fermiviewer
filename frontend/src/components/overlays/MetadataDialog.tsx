@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import { updateMetadata } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
+import ModalDialog from "./ModalDialog";
 
 export default function MetadataDialog() {
   const open = useViewer((s) => s.metaOpen);
@@ -51,12 +52,12 @@ export default function MetadataDialog() {
   };
 
   return (
-    <div className="fvd-overlay-backdrop" onMouseDown={() => setOpen(false)}>
-      <div
-        className="fvd-glass fvd-export"
-        style={{ maxHeight: "70vh", overflowY: "auto" }}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
+    <ModalDialog
+      ariaLabel={`Metadata — ${meta?.name ?? "no image"}`}
+      className="fvd-export"
+      style={{ maxHeight: "70vh", overflowY: "auto" }}
+      onClose={() => setOpen(false)}
+    >
         <h2>Metadata — {meta?.name ?? "(no image)"}</h2>
         {entries.length === 0 && (
           <div className="fvd-ws-empty">No metadata entries.</div>
@@ -107,7 +108,6 @@ export default function MetadataDialog() {
             Save
           </button>
         </div>
-      </div>
-    </div>
+    </ModalDialog>
   );
 }

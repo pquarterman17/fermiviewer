@@ -1,6 +1,7 @@
 // "?" shortcuts overlay — the §9 keyboard map.
 
 import { useViewer } from "../../store/viewer";
+import ModalDialog from "./ModalDialog";
 
 const GROUPS: [string, [string, string][]][] = [
   [
@@ -50,11 +51,11 @@ export default function ShortcutsOverlay() {
   if (!open) return null;
 
   return (
-    <div className="fvd-overlay-backdrop" onMouseDown={() => setShorts(false)}>
-      <div
-        className="fvd-glass fvd-shorts"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
+    <ModalDialog
+      ariaLabel="Keyboard shortcuts"
+      className="fvd-shorts"
+      onClose={() => setShorts(false)}
+    >
         <h2>Keyboard shortcuts</h2>
         <div className="fvd-shorts-cols">
           {GROUPS.map(([title, rows]) => (
@@ -69,7 +70,6 @@ export default function ShortcutsOverlay() {
             </div>
           ))}
         </div>
-      </div>
-    </div>
+    </ModalDialog>
   );
 }

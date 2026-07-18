@@ -3,6 +3,7 @@
 
 import { renderUrl } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
+import ModalDialog from "./ModalDialog";
 
 export default function GalleryGrid() {
   const open = useViewer((s) => s.galleryOpen);
@@ -15,11 +16,11 @@ export default function GalleryGrid() {
   if (!open) return null;
 
   return (
-    <div className="fvd-overlay-backdrop" onMouseDown={() => setOpen(false)}>
-      <div
-        className="fvd-glass fvd-gallery"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
+    <ModalDialog
+      ariaLabel={`All images (${order.length})`}
+      className="fvd-gallery"
+      onClose={() => setOpen(false)}
+    >
         <h2>All images ({order.length})</h2>
         <div className="fvd-gallery-grid">
           {order.map((id) => {
@@ -45,7 +46,6 @@ export default function GalleryGrid() {
             );
           })}
         </div>
-      </div>
-    </div>
+    </ModalDialog>
   );
 }
