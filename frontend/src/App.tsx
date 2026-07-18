@@ -15,17 +15,9 @@ import CompareStage from "./components/Stage/CompareStage";
 import SideBySideStage from "./components/Stage/SideBySideStage";
 import Stage, { type StageHandle } from "./components/Stage/Stage";
 import CommandPalette, { type Action } from "./components/overlays/CommandPalette";
-import ExportDialog from "./components/overlays/ExportDialog";
-import ParamDialog from "./components/overlays/ParamDialog";
+import LazyOverlays from "./components/overlays/LazyOverlays";
 import ResultsWindow from "./components/overlays/ResultsWindow";
 import RadialMenu from "./components/overlays/RadialMenu";
-import ShortcutsOverlay from "./components/overlays/ShortcutsOverlay";
-import CalibrationManager from "./components/overlays/CalibrationManager";
-import MetadataDialog from "./components/overlays/MetadataDialog";
-import GalleryGrid from "./components/overlays/GalleryGrid";
-import FolderOpenDialog from "./components/overlays/FolderOpenDialog";
-import BatchDialog from "./components/overlays/BatchDialog";
-import PrefsWindow from "./components/overlays/PrefsWindow";
 import TooltipLayer from "./components/overlays/TooltipLayer";
 import ToolWindows from "./components/overlays/ToolWindows";
 import { devSampleFiles, launchDir, listImages } from "./lib/api";
@@ -613,16 +605,8 @@ export default function App() {
       <StatusBar />
       <TooltipLayer />
       <CommandPalette actions={actions} />
-      <ShortcutsOverlay />
       <RadialMenu />
-      <ExportDialog />
-      <CalibrationManager />
-      <MetadataDialog />
-      <PrefsWindow />
-      <BatchDialog />
-      <GalleryGrid />
-      <FolderOpenDialog />
-      <ParamDialog />
+      <LazyOverlays />
       <ResultsWindow />
       <ToolWindows />
     </div>

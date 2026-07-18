@@ -10,9 +10,9 @@ import { useRef, useState } from "react";
 import { applyFilter, type ImageMeta } from "../../lib/api";
 import type { ParamField } from "../../lib/params";
 import { BATCH_FILTERS } from "../../lib/transformTools";
+import { askParams } from "../../store/params";
 import { useViewer } from "../../store/viewer";
 import ModalDialog from "./ModalDialog";
-import { askParams } from "./ParamDialog";
 
 interface RecipeStep {
   uid: number;

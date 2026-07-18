@@ -9,11 +9,11 @@ vi.mock("./api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./api")>()),
   renameImage: vi.fn(),
 }));
-vi.mock("../components/overlays/ParamDialog", () => ({
+vi.mock("../store/params", () => ({
   askParams: vi.fn(),
 }));
 
-import { askParams } from "../components/overlays/ParamDialog";
+import { askParams } from "../store/params";
 import { useViewer } from "../store/viewer";
 import { renameImage } from "./api";
 import { renameSingleImage } from "./rename";

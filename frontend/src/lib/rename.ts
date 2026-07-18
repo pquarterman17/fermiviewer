@@ -1,7 +1,7 @@
 // Single-image rename (audit D4) — shared by the filmstrip context
 // menu and the F2 shortcut. Same backend path as Batch Rename.
 
-import { askParams } from "../components/overlays/ParamDialog";
+import { askParams } from "../store/params";
 import { useViewer } from "../store/viewer";
 import { renameImage } from "./api";
 

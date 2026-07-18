@@ -35,6 +35,7 @@ import {
 } from "../../lib/api";
 import { downloadBugReport } from "../../lib/errlog";
 import { copyActive } from "../../lib/export";
+import type { ParamField } from "../../lib/params";
 import {
   isRecording,
   loadMacro,
@@ -45,12 +46,9 @@ import {
 import { applyGeometry, cropToRoi } from "../../lib/stageOps";
 import { BATCH_FILTERS } from "../../lib/transformTools";
 import { useCommands, type Action } from "../../store/commands";
+import { askParams } from "../../store/params";
 import { useStageInfo } from "../../store/stage";
 import { undoLabel, useViewer } from "../../store/viewer";
-import {
-  askParams,
-  type ParamField,
-} from "../overlays/ParamDialog";
 import { useResults } from "../overlays/ResultsWindow";
 import Icon from "../icons/Icon";
 import DesktopMenus, { type MenuEntry as Entry } from "./DesktopMenus";
