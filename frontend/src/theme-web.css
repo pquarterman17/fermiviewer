@@ -1225,6 +1225,10 @@ details.fvd-card:not([open]) > summary {
 }
 
 .fvd-compare-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   flex-shrink: 0;
   padding: 5px 0;
   border: 1px solid var(--accent);
@@ -2610,6 +2614,11 @@ details.fvd-card:not([open]) > summary {
 
 /* ── shared atoms ── */
 
+.fvd-icon {
+  display: block;
+  flex: 0 0 auto;
+}
+
 .fvd-icon-btn {
   width: 26px;
   height: 26px;
@@ -2738,7 +2747,7 @@ textarea:disabled {
   color: var(--text);
 }
 
-.fvd-workspace-chip .icon {
+.fvd-workspace-chip > .fvd-icon:first-child {
   color: var(--accent);
 }
 
@@ -2748,15 +2757,20 @@ textarea:disabled {
   white-space: nowrap;
 }
 
-.fvd-workspace-chip .caret {
+.fvd-workspace-chip > .fvd-icon:last-child {
   color: var(--text-faint);
-  font-size: 0.8em;
 }
 
 /* right-align so a chip near the menu-bar edge doesn't overflow */
 .fvd-workspace-menu {
   right: 0;
   left: auto;
+}
+
+.fvd-workspace-menu .fvd-menu-entry > span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .fvd-workspace-del {

@@ -38,6 +38,7 @@ describe("Filmstrip view toggle", () => {
     render(<Filmstrip />);
     const toggle = screen.getByRole("button", { name: "Show image names" });
     expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(toggle.querySelector("svg.fvd-icon")).not.toBeNull();
 
     fireEvent.click(toggle);
     expect(

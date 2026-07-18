@@ -11,6 +11,7 @@ import {
   type ImageGroup,
   type SelectGesture,
 } from "../../store/viewer";
+import Icon from "../icons/Icon";
 
 interface CtxMenu {
   x: number;
@@ -112,7 +113,7 @@ export default function Filmstrip() {
             setListView(listView === "thumbs" ? "names" : "thumbs")
           }
         >
-          {listView === "thumbs" ? "☰" : "▦"}
+          <Icon name={listView === "thumbs" ? "list" : "grid"} />
         </button>
       </div>
 
@@ -132,7 +133,7 @@ export default function Filmstrip() {
           data-tip="Build a recipe and apply it to the selected images"
           onClick={() => setBatchOpen(true)}
         >
-          ⚙ Batch {compareIds.length}
+          <Icon name="settings" /> Batch {compareIds.length}
         </button>
       )}
 
@@ -142,7 +143,7 @@ export default function Filmstrip() {
           data-tip="Save the selection as a named, reusable compare group"
           onClick={() => createGroup(compareIds)}
         >
-          ＋ Group {compareIds.length}
+          <Icon name="plus" /> Group {compareIds.length}
         </button>
       )}
 
@@ -341,7 +342,7 @@ function GroupsBar({
               if (name != null) onRename(g.id, name);
             }}
           >
-            ✎
+            <Icon name="edit" />
           </button>
           <button
             className="fvd-icon-btn"
@@ -349,7 +350,7 @@ function GroupsBar({
             title="Delete group"
             onClick={() => onDelete(g.id)}
           >
-            ✕
+            <Icon name="close" />
           </button>
         </div>
       ))}

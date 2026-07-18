@@ -12,6 +12,7 @@ import {
   type WorkspaceInfo,
 } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
+import Icon from "../icons/Icon";
 
 export default function WorkspaceSwitcher() {
   const current = useViewer((s) => s.currentWorkspace);
@@ -82,9 +83,9 @@ export default function WorkspaceSwitcher() {
         onClick={() => setOpen((o) => !o)}
         data-tip="Switch or save workspace"
       >
-        <span className="icon">▦</span>
+        <Icon name="workspace" />
         <span className="name">{current?.name ?? "Default"}</span>
-        <span className="caret">▾</span>
+        <Icon name="chevron-down" size={12} />
       </button>
       {open && (
         <div className="fvd-menu-dropdown fvd-workspace-menu">
@@ -104,7 +105,7 @@ export default function WorkspaceSwitcher() {
               }}
             >
               <span>
-                {w.slug === current?.slug ? "✓ " : ""}
+                {w.slug === current?.slug && <Icon name="check" size={14} />}
                 {w.name}
               </span>
               <span
@@ -112,7 +113,7 @@ export default function WorkspaceSwitcher() {
                 title="Delete workspace"
                 onMouseDown={(ev) => onDelete(ev, w)}
               >
-                ✕
+                <Icon name="close" size={14} />
               </span>
             </div>
           ))}
@@ -124,7 +125,7 @@ export default function WorkspaceSwitcher() {
               onSave();
             }}
           >
-            <span>+ Save current layout…</span>
+            <span><Icon name="plus" size={14} /> Save current layout…</span>
           </div>
         </div>
       )}

@@ -5,6 +5,7 @@
 import { useConnection } from "../../lib/lifecycle";
 import { useStageInfo } from "../../store/stage";
 import { useViewer } from "../../store/viewer";
+import Icon from "../icons/Icon";
 
 export default function StatusBar() {
   const status = useViewer((s) => s.status);
@@ -44,7 +45,7 @@ export default function StatusBar() {
                   data-tip="Previous image (←)"
                   onClick={() => cycleImage(-1)}
                 >
-                  ‹
+                  <Icon name="chevron-left" size={14} />
                 </button>
                 <span className="fvd-imgnav-count">{nOfM}</span>
                 <button
@@ -53,7 +54,7 @@ export default function StatusBar() {
                   data-tip="Next image (→)"
                   onClick={() => cycleImage(1)}
                 >
-                  ›
+                  <Icon name="chevron-right" size={14} />
                 </button>
               </span>
             ) : (

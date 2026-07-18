@@ -1,6 +1,5 @@
 // Inline dropdown menu bar (handoff §4 "Menu bar"). Items run inline;
 // WINDOW-badged workshop items arrive with Phase 4 tool windows.
-
 import { useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 
@@ -53,6 +52,7 @@ import {
   type ParamField,
 } from "../overlays/ParamDialog";
 import { useResults } from "../overlays/ResultsWindow";
+import Icon from "../icons/Icon";
 import DesktopMenus, { type MenuEntry as Entry } from "./DesktopMenus";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
 
@@ -1551,7 +1551,7 @@ export default function MenuBar({
         data-tip-key="?"
         onClick={() => store.setShorts(true)}
       >
-        ⌨
+        <Icon name="keyboard" />
       </button>
       <button
         className="fvd-icon-btn" aria-label="Dark theme" aria-pressed={store.theme === "dark"}
@@ -1559,7 +1559,7 @@ export default function MenuBar({
         data-tip-key="⌘⇧L"
         onClick={store.toggleTheme}
       >
-        {store.theme === "dark" ? "☾" : "☀"}
+        <Icon name={store.theme === "dark" ? "moon" : "sun"} />
       </button>
       <button
         className="fvd-icon-btn" aria-label="Library panel" aria-pressed={!store.leftCol}
@@ -1567,7 +1567,7 @@ export default function MenuBar({
         data-tip-key="⌘["
         onClick={store.toggleLeft}
       >
-        ◧
+        <Icon name="panel-left" />
       </button>
       <button
         className="fvd-icon-btn" aria-label="Inspector panel" aria-pressed={!store.rightCol}
@@ -1575,7 +1575,7 @@ export default function MenuBar({
         data-tip-key="⌘]"
         onClick={store.toggleRight}
       >
-        ◨
+        <Icon name="panel-right" />
       </button>
       <WorkspaceSwitcher />
       <button
@@ -1583,7 +1583,7 @@ export default function MenuBar({
         onClick={() => store.setCmdk(true)}
         title="Command palette"
       >
-        <span className="icon">⌕</span> Search actions…
+        <Icon name="search" /> Search actions…
         <span className="fvd-shortcut">⌘K</span>
       </button>
     </nav>

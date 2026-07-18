@@ -35,7 +35,9 @@ describe("StatusBar image cycler", () => {
   it("shows prev/next around the N / M counter with >1 image", () => {
     render(<StatusBar />);
     expect(screen.getByText("1 / 3")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Previous image" })).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Previous image" }).querySelector("svg.fvd-icon"),
+    ).not.toBeNull();
     expect(screen.getByRole("button", { name: "Next image" })).toBeVisible();
   });
 

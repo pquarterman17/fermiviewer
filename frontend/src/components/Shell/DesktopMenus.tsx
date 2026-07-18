@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
+import Icon from "../icons/Icon";
+
 export interface MenuEntry {
   label?: string;
   shortcut?: string;
@@ -195,7 +197,7 @@ export default function DesktopMenus({
                       >
                         <span>{entry.label}</span>
                         {entry.submenu ? (
-                          <span className="fvd-submenu-arrow" aria-hidden="true">›</span>
+                          <Icon name="chevron-right" size={14} className="fvd-submenu-arrow" />
                         ) : (
                           entry.shortcut && (
                             <span className="fvd-shortcut">{entry.shortcut}</span>
