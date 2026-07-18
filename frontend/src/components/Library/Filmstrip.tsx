@@ -38,6 +38,7 @@ export default function Filmstrip() {
   const [ctx, setCtx] = useState<CtxMenu | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const dragId = useRef<string | null>(null);
+  const cardRefs = useRef<Array<HTMLDivElement | null>>([]);
 
   useEffect(() => {
     if (!ctx) return;
@@ -61,6 +62,42 @@ export default function Filmstrip() {
   };
 
   const compareIds = selected.length >= 2 ? selected : null;
+
+  const focusCard = (index: number) => {
+    requestAnimationFrame(() => cardRefs.current[index]?.focus());
+  };
+
+  const onCardKeyDown = (
+    e: React.KeyboardEvent,
+    id: string,
+    index: number,
+  ) => {
+    let nextIndex: number | undefined;
+    if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+      nextIndex = (index + 1) % order.length;
+    } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+      nextIndex = (index - 1 + order.length) % order.length;
+    } else if (e.key === "Home") {
+      nextIndex = 0;
+    } else if (e.key === "End") {
+      nextIndex = order.length - 1;
+    } else if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      select(
+        id,
+        e.shiftKey ? "range" : e.metaKey || e.ctrlKey ? "toggle" : "single",
+      );
+      return;
+    } else {
+      return;
+    }
+    e.preventDefault();
+    const nextId = nextIndex == null ? undefined : order[nextIndex];
+    if (nextId && nextIndex != null) {
+      select(nextId, "single");
+      focusCard(nextIndex);
+    }
+  };
 
   return (
     <aside className="fvd-filmstrip">
@@ -130,7 +167,13 @@ export default function Filmstrip() {
         </div>
       )}
 
-      {order.map((id) => {
+      <div
+        className="fvd-film-list"
+        role="listbox"
+        aria-label="Open images"
+        aria-multiselectable="true"
+      >
+      {order.map((id, index) => {
         const meta = images[id];
         if (!meta) return null;
         const isSel = selected.includes(id);
@@ -146,10 +189,17 @@ export default function Filmstrip() {
         return (
           <div
             key={id}
+            ref={(node) => {
+              cardRefs.current[index] = node;
+            }}
             className={cls}
             title={meta.name}
+            role="option"
+            aria-selected={isSel}
+            tabIndex={id === activeId ? 0 : -1}
             draggable
             onClick={(e) => select(id, gesture(e))}
+            onKeyDown={(e) => onCardKeyDown(e, id, index)}
             onContextMenu={(e) => onContextMenu(e, id)}
             onDragStart={(e) => {
               dragId.current = id;
@@ -187,6 +237,7 @@ export default function Filmstrip() {
           </div>
         );
       })}
+      </div>
 
       {ctx && (
         <ContextMenu
