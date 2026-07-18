@@ -11,6 +11,7 @@ import { applyFilter, type ImageMeta } from "../../lib/api";
 import type { ParamField } from "../../lib/params";
 import { BATCH_FILTERS } from "../../lib/transformTools";
 import { useViewer } from "../../store/viewer";
+import ModalDialog from "./ModalDialog";
 import { askParams } from "./ParamDialog";
 
 interface RecipeStep {
@@ -116,11 +117,7 @@ export default function BatchDialog() {
   };
 
   return (
-    <div className="fvd-overlay-backdrop" onMouseDown={close}>
-      <div
-        className="fvd-glass fvd-batch"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
+    <ModalDialog ariaLabel="Batch recipe" className="fvd-batch" onClose={close}>
         <h2>Batch recipe</h2>
         <p className="fvd-batch-sub">
           {targets.length} image{targets.length === 1 ? "" : "s"}
@@ -214,7 +211,6 @@ export default function BatchDialog() {
             {running ? "Running…" : `Run batch (${targets.length})`}
           </button>
         </div>
-      </div>
-    </div>
+    </ModalDialog>
   );
 }

@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { supportedExtensions } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
+import ModalDialog from "./ModalDialog";
 
 export default function FolderOpenDialog() {
   const open = useViewer((s) => s.folderOpen);
@@ -34,16 +35,6 @@ export default function FolderOpenDialog() {
       .then((exts) => setAccept(exts.join(",")))
       .catch(() => undefined);
   }, []);
-
-  // Esc closes
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, setOpen]);
 
   if (!open) return null;
 
@@ -72,14 +63,11 @@ export default function FolderOpenDialog() {
   };
 
   return (
-    <div className="fvd-overlay-backdrop" onMouseDown={() => setOpen(false)}>
-      <div
-        className="fvd-glass fvd-folder"
-        onMouseDown={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Open from folder"
-      >
+    <ModalDialog
+      ariaLabel="Open from folder"
+      className="fvd-folder"
+      onClose={() => setOpen(false)}
+    >
         <h2>Open from folder</h2>
         {ctx?.dir && <div className="fvd-folder-path">{ctx.dir}</div>}
 
@@ -137,7 +125,6 @@ export default function FolderOpenDialog() {
             Open {sel.size > 0 ? `(${sel.size})` : ""}
           </button>
         </div>
-      </div>
-    </div>
+    </ModalDialog>
   );
 }

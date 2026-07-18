@@ -10,6 +10,7 @@ import {
   type CalibrationEntry,
 } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
+import ModalDialog from "./ModalDialog";
 
 export default function CalibrationManager() {
   const open = useViewer((s) => s.calibOpen);
@@ -60,11 +61,11 @@ export default function CalibrationManager() {
   };
 
   return (
-    <div className="fvd-overlay-backdrop" onMouseDown={() => setOpen(false)}>
-      <div
-        className="fvd-glass fvd-export"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
+    <ModalDialog
+      ariaLabel="Calibrations"
+      className="fvd-export"
+      onClose={() => setOpen(false)}
+    >
         <h2>Calibrations</h2>
         {keys.length === 0 ? (
           <div className="fvd-ws-empty">
@@ -121,7 +122,6 @@ export default function CalibrationManager() {
             Close
           </button>
         </div>
-      </div>
-    </div>
+    </ModalDialog>
   );
 }

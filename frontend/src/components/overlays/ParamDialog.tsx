@@ -10,6 +10,7 @@ import {
   type ParamField,
   type ParamValues,
 } from "../../lib/params";
+import ModalDialog from "./ModalDialog";
 import { ParamFieldRow } from "./ParamFields";
 
 // Param types now live in lib/params (framework-agnostic, so lib/ tool
@@ -70,18 +71,24 @@ export default function ParamDialog() {
   };
 
   const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") finish(values);
-    if (e.key === "Escape") finish(null);
+    if (e.key === "Enter") {
+      e.preventDefault();
+      finish(coerceParams(values, fields));
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      finish(null);
+    }
     e.stopPropagation();
   };
 
   return (
-    <div className="fvd-overlay-backdrop" onMouseDown={() => finish(null)}>
-      <div
-        className="fvd-glass fvd-export fvd-param-dialog"
-        onMouseDown={(e) => e.stopPropagation()}
-        onKeyDown={onKey}
-      >
+    <ModalDialog
+      ariaLabel={title}
+      className="fvd-export fvd-param-dialog"
+      onClose={() => finish(null)}
+      onKeyDown={onKey}
+    >
         <h2>{title}</h2>
         {fields.map((f, i) => (
           <ParamFieldRow
@@ -108,7 +115,6 @@ export default function ParamDialog() {
             Run
           </button>
         </div>
-      </div>
-    </div>
+    </ModalDialog>
   );
 }
