@@ -38,7 +38,7 @@ FRONTEND_MAX_MODULE_LINES = 500
 FRONTEND_LEGACY_CAPS = {
     "App.tsx": 679,
     "components/Inspector/MeasurePanel.tsx": 755,
-    "components/Shell/MenuBar.tsx": 1698,
+    "components/Shell/MenuBar.tsx": 1591,
     "components/Stage/MeasureOverlay.tsx": 783,
     "components/Stage/Stage.tsx": 1236,
     "components/overlays/PrefsWindow.tsx": 511,

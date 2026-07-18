@@ -78,7 +78,20 @@ body {
   z-index: 30;
 }
 
+.fvd-desktop-menus {
+  display: contents;
+}
+
+.fvd-menu-root,
+.fvd-menu-entry-wrap {
+  position: relative;
+}
+
 .fvd-menu-item {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  font: inherit;
   padding: 3px 9px;
   border-radius: var(--radius-sm);
   color: var(--text-dim);
@@ -105,6 +118,12 @@ body {
 }
 
 .fvd-menu-entry {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   display: flex;
   justify-content: space-between;
   gap: 16px;
@@ -120,9 +139,14 @@ body {
   color: var(--accent-text);
 }
 
-.fvd-menu-entry.disabled {
+.fvd-menu-entry:disabled {
   color: var(--text-faint);
-  pointer-events: none;
+}
+
+.fvd-menu-item:focus-visible,
+.fvd-menu-entry:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .fvd-menu-sep {
