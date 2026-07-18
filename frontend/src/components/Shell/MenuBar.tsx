@@ -1653,7 +1653,7 @@ export default function MenuBar({
       )}
       <span style={{ flex: 1 }} />
       <button
-        className="fvd-icon-btn"
+        className="fvd-icon-btn" aria-label="Keyboard shortcuts"
         data-tip="Keyboard shortcuts"
         data-tip-key="?"
         onClick={() => store.setShorts(true)}
@@ -1661,7 +1661,7 @@ export default function MenuBar({
         ⌨
       </button>
       <button
-        className="fvd-icon-btn"
+        className="fvd-icon-btn" aria-label="Dark theme" aria-pressed={store.theme === "dark"}
         data-tip="Toggle theme"
         data-tip-key="⌘⇧L"
         onClick={store.toggleTheme}
@@ -1669,7 +1669,7 @@ export default function MenuBar({
         {store.theme === "dark" ? "☾" : "☀"}
       </button>
       <button
-        className="fvd-icon-btn"
+        className="fvd-icon-btn" aria-label="Library panel" aria-pressed={!store.leftCol}
         data-tip="Toggle library"
         data-tip-key="⌘["
         onClick={store.toggleLeft}
@@ -1677,7 +1677,7 @@ export default function MenuBar({
         ◧
       </button>
       <button
-        className="fvd-icon-btn"
+        className="fvd-icon-btn" aria-label="Inspector panel" aria-pressed={!store.rightCol}
         data-tip="Toggle inspector"
         data-tip-key="⌘]"
         onClick={store.toggleRight}
@@ -1686,7 +1686,7 @@ export default function MenuBar({
       </button>
       <WorkspaceSwitcher />
       <button
-        className="fvd-search-box"
+        className="fvd-search-box" aria-label="Open command palette"
         onClick={() => store.setCmdk(true)}
         title="Command palette"
       >

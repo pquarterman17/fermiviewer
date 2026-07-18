@@ -20,7 +20,7 @@
 
   --text: oklch(0.93 0.005 280);
   --text-dim: oklch(0.72 0.008 280);
-  --text-faint: oklch(0.55 0.01 280);
+  --text-faint: oklch(0.62 0.01 280);
 
   /* violet — user-chosen; swappable */
   --accent: oklch(0.7 0.17 295);
@@ -63,7 +63,7 @@
 
   --text: oklch(0.22 0.01 280);
   --text-dim: oklch(0.42 0.01 280);
-  --text-faint: oklch(0.58 0.01 280);
+  --text-faint: oklch(0.49 0.01 280);
 
   --accent: oklch(0.55 0.18 295);
   --accent-soft: oklch(0.55 0.18 295 / 0.14);
@@ -235,7 +235,7 @@
   --weight-bold: 700;
 
   /* fixed type-role sizes */
-  --type-label: 11px; /* uppercase card titles, section labels */
+  --type-label: 12px; /* uppercase card titles, section labels */
   --type-micro: 10px; /* tiny tick labels, captions */
   --type-nano: 9px; /* step badges, key caps, count chips */
   --type-title: 14px; /* dialog / window titles */

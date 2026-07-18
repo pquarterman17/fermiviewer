@@ -34,7 +34,6 @@ import {
 } from "../../lib/geometry";
 import { loadPrefs } from "../../lib/prefs";
 import { applyFilter } from "../../lib/api";
-import { applyGeometry, cropToRoi } from "../../lib/stageOps";
 import { useScribble } from "../../store/scribble";
 import { rasterValue, useStageInfo } from "../../store/stage";
 import {
@@ -46,6 +45,7 @@ import {
 import CaptureBanner from "./CaptureBanner";
 import DockPlot from "./DockPlot";
 import EmptyStage from "./EmptyStage";
+import { FloatTools, ZoomChip } from "./FloatTools";
 import LayersOverlay from "./LayersOverlay";
 import MeasureOverlay from "./MeasureOverlay";
 import Minimap from "./Minimap";
@@ -1071,153 +1071,6 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
 
 export default Stage;
 
-function FloatTools() {
-  const activeId = useViewer((s) => s.activeId);
-  const captureMode = useViewer((s) => s.captureMode);
-  const setCaptureMode = useViewer((s) => s.setCaptureMode);
-  const panTool = useViewer((s) => s.panTool);
-  const setPanTool = useViewer((s) => s.setPanTool);
-  const deleteLastAnnotation = useViewer((s) => s.deleteLastAnnotation);
-  const resetToOriginal = useViewer((s) => s.resetToOriginal);
-  const startSideBySide = useViewer((s) => s.startSideBySide);
-  // side-by-side compare needs at least two images loaded
-  const canCompare = useViewer((s) => s.order.length >= 2);
-  // show delete-last only when there are annotations/measures to delete
-  const hasMeasures = useViewer((s) =>
-    activeId ? (s.measures[activeId] ?? []).length > 0 : false,
-  );
-  // show reset-to-original only when the active image is derived
-  const isDerived = useViewer((s) =>
-    activeId
-      ? typeof s.images[activeId]?.meta["derived_from"] === "string"
-      : false,
-  );
-
-  const mode = (m: typeof captureMode) => () =>
-    setCaptureMode(captureMode === m ? "none" : m);
-
-  // prototype toolbar groups: transforms · capture/zoom · crop
-  const transforms: [string, string, () => void][] = [
-    ["⟲", "Rotate 90° CCW", () => applyGeometry("rotate270")],
-    ["⟳", "Rotate 90° CW", () => applyGeometry("rotate90")],
-    ["⬌", "Flip horizontal", () => applyGeometry("fliph")],
-    ["⬍", "Flip vertical", () => applyGeometry("flipv")],
-  ];
-  const tools: [string, string, boolean, () => void][] = [
-    ["✥", "Hand tool  H", panTool, () => setPanTool(!panTool)],
-    ["⬚", "Box zoom  Z", captureMode === "zoom", mode("zoom")],
-    [
-      "⊞",
-      "Fixed Size Zoom  F",
-      captureMode === "fixed-zoom",
-      mode("fixed-zoom"),
-    ],
-    ["↔", "Distance  D", captureMode === "distance", mode("distance")],
-    ["∿", "Line profile  L", captureMode === "profile", mode("profile")],
-    [
-      "⧈",
-      "Box profile (integrated)  B",
-      captureMode === "box-profile",
-      mode("box-profile"),
-    ],
-    ["⌇", "Polyline  P", captureMode === "polyline", mode("polyline")],
-    ["∠", "Angle  G", captureMode === "angle", mode("angle")],
-    ["▭", "ROI stats  R", captureMode === "roi", mode("roi")],
-    ["📏", "Calibrate scale", captureMode === "calibrate", mode("calibrate")],
-  ];
-
-  // split a "Label  KEY" toolbar title into [label, shortcut] for the hover
-  // tooltip (titles without a trailing 2-space + token return [title, null])
-  const splitTip = (s: string): [string, string | null] => {
-    const m = /^(.*?)\s{2,}(\S.*)$/.exec(s);
-    return m ? [m[1], m[2]] : [s, null];
-  };
-
-  return (
-    <div
-      className="fvd-glass fvd-float-tools"
-      onPointerDown={(e) => e.stopPropagation()}
-    >
-      {transforms.map(([glyph, title, onClick]) => {
-        const [label, hint] = splitTip(title);
-        return (
-          <button
-            key={title}
-            className="fvd-tool-btn"
-            data-tip={label}
-            data-tip-key={hint ?? undefined}
-            onClick={onClick}
-          >
-            {glyph}
-          </button>
-        );
-      })}
-      <span className="fvd-tool-sep" />
-      {tools.map(([glyph, title, active, onClick]) => {
-        const [label, hint] = splitTip(title);
-        return (
-          <button
-            key={title}
-            className={`fvd-tool-btn${active ? " active" : ""}`}
-            data-tip={label}
-            data-tip-key={hint ?? undefined}
-            onClick={onClick}
-          >
-            {glyph}
-          </button>
-        );
-      })}
-      <span className="fvd-tool-sep" />
-      <button
-        className="fvd-tool-btn"
-        data-tip="Crop to ROI"
-        onClick={() => cropToRoi()}
-      >
-        ✂
-      </button>
-      <button
-        className={`fvd-tool-btn${captureMode === "crop-save" ? " active" : ""}`}
-        data-tip="Save Cropped Region"
-        onClick={mode("crop-save")}
-      >
-        ⊡
-      </button>
-      <span className="fvd-tool-sep" />
-      <button
-        className="fvd-tool-btn"
-        data-tip="Side-by-side compare"
-        disabled={!canCompare}
-        onClick={() => startSideBySide()}
-      >
-        ◫
-      </button>
-      <span className="fvd-tool-sep" />
-      {hasMeasures && (
-        <button
-          className="fvd-tool-btn"
-          data-tip="Delete last annotation"
-          onClick={() => {
-            if (activeId) deleteLastAnnotation(activeId);
-          }}
-        >
-          ⌫
-        </button>
-      )}
-      {isDerived && (
-        <button
-          className="fvd-tool-btn"
-          data-tip="Reset to original pixels"
-          onClick={() => {
-            if (activeId) resetToOriginal(activeId);
-          }}
-        >
-          ⟳₀
-        </button>
-      )}
-    </div>
-  );
-}
-
 function GrainEditBar({
   mode,
   setMode,
@@ -1244,6 +1097,7 @@ function GrainEditBar({
       <div className="fvd-seg">
         <button
           className={`fvd-seg-btn${mode === "merge" ? " active" : ""}`}
+          aria-pressed={mode === "merge"}
           title="Merge — click two grains"
           onClick={() => setMode(mode === "merge" ? "off" : "merge")}
         >
@@ -1251,6 +1105,7 @@ function GrainEditBar({
         </button>
         <button
           className={`fvd-seg-btn${mode === "split" ? " active" : ""}`}
+          aria-pressed={mode === "split"}
           title="Split — click a grain"
           onClick={() => setMode(mode === "split" ? "off" : "split")}
         >
@@ -1258,30 +1113,6 @@ function GrainEditBar({
         </button>
       </div>
       {hint && <span className="hint">{hint}</span>}
-    </div>
-  );
-}
-
-function ZoomChip({ onZoom }: { onZoom: (f: number) => void }) {
-  const zoom = useStageInfo((s) => s.zoom);
-  if (zoom === null) return null;
-  return (
-    <div className="fvd-glass fvd-zoom-chip">
-      <button
-        className="fvd-icon-btn"
-        data-tip="Zoom out"
-        onClick={() => onZoom(0.8)}
-      >
-        ⊖
-      </button>
-      <span>{Math.round(zoom * 100)} %</span>
-      <button
-        className="fvd-icon-btn"
-        data-tip="Zoom in"
-        onClick={() => onZoom(1.25)}
-      >
-        ⊕
-      </button>
     </div>
   );
 }
@@ -1348,6 +1179,7 @@ function FixedZoomBadge({ w, h }: { w: number; h: number }) {
       <span className="fvd-text-faint">px — click to place</span>
       <button
         className="fvd-icon-btn"
+        aria-label="Cancel fixed zoom"
         title="Cancel"
         onClick={() => setCaptureMode("none")}
       >
@@ -1374,6 +1206,7 @@ function StackStepper({
     <div className="fvd-glass fvd-stack-stepper">
       <button
         className="fvd-icon-btn"
+        aria-label="Previous frame"
         disabled={frame <= -1}
         onClick={(e) => {
           e.stopPropagation();
@@ -1388,6 +1221,7 @@ function StackStepper({
       </span>
       <button
         className="fvd-icon-btn"
+        aria-label="Next frame"
         disabled={frame >= total - 1}
         onClick={(e) => {
           e.stopPropagation();

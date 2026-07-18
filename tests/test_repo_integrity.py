@@ -40,7 +40,7 @@ FRONTEND_LEGACY_CAPS = {
     "components/Inspector/MeasurePanel.tsx": 755,
     "components/Shell/MenuBar.tsx": 1698,
     "components/Stage/MeasureOverlay.tsx": 783,
-    "components/Stage/Stage.tsx": 1403,
+    "components/Stage/Stage.tsx": 1236,
     "components/overlays/PrefsWindow.tsx": 511,
     "components/workshops/DiffractionWorkshop.tsx": 1090,
     "components/workshops/EdsSpectrumImage.tsx": 565,

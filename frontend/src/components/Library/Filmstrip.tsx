@@ -68,6 +68,8 @@ export default function Filmstrip() {
         <span className="count">{order.length}</span>
         <button
           className="fvd-icon-btn"
+          aria-label={listView === "thumbs" ? "Show image names" : "Show thumbnails"}
+          aria-pressed={listView === "names"}
           data-tip={listView === "thumbs" ? "Names view" : "Thumbnail view"}
           onClick={() =>
             setListView(listView === "thumbs" ? "names" : "thumbs")
@@ -281,6 +283,7 @@ function GroupsBar({
           </button>
           <button
             className="fvd-icon-btn"
+            aria-label={`Rename group ${g.name}`}
             title="Rename group"
             onClick={() => {
               const name = window.prompt("Rename group", g.name);
@@ -291,6 +294,7 @@ function GroupsBar({
           </button>
           <button
             className="fvd-icon-btn"
+            aria-label={`Delete group ${g.name}`}
             title="Delete group"
             onClick={() => onDelete(g.id)}
           >
