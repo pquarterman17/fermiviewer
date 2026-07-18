@@ -168,6 +168,29 @@ one, otherwise the native picker), drag-and-drop, or **File → Open by
 Path…** for large files already on the server's disk. Press **?** in the
 app for the full keyboard map, **⌘K** for the command palette.
 
+### Keyboard & accessibility
+
+The whole interface works without a mouse. **Tab** moves between the
+major regions — menu bar, library, stage, inspector — and each region is
+a single tab stop, so the **arrow keys** move within it:
+
+| Where | Keys |
+|---|---|
+| Menu bar | **← →** between menus · **↓ / Enter** to open · **↑ ↓ · Home/End** within · **→ / ←** into and out of submenus · **Esc** to close |
+| Image library | **↑ ↓ ← →** and **Home/End** to move · **Enter/Space** to select · **Ctrl/⌘+Enter/Space** to add · **Shift+Enter/Space** for a range · **Shift+F10** for the context menu |
+| Dialogs | **Tab / Shift+Tab** cycle inside the dialog · **Esc** closes · focus returns to whatever opened it |
+| Command palette | **⌘K / Ctrl-K** to open · **↑ ↓** to move · **Enter** to run |
+
+Unavailable menu items are skipped while arrowing, and app-wide
+shortcuts are suspended while a dialog is open. Controls carry the ARIA
+roles screen readers expect — menu bar, multi-selectable listbox, modal
+dialog, combobox — icon-only buttons carry text labels, and toggles
+report their pressed state. Dark, light, and system themes, five
+**Color scheme** accents, and three interface densities live in
+**Preferences → Appearance**.
+
+Full reference: **[Keyboard &amp; Accessibility](https://github.com/pquarterman17/fermiviewer/wiki/Keyboard-and-Accessibility)**.
+
 ---
 
 ## Documentation
@@ -181,6 +204,7 @@ Feature walkthroughs, screenshots, and how-tos live in the
 - **[Analysis Workshops](https://github.com/pquarterman17/fermiviewer/wiki/Analysis-Workshops)** — EELS, EDS, diffraction
 - **[Structure &amp; Grains](https://github.com/pquarterman17/fermiviewer/wiki/Structure-and-Grains)** — grain segmentation (incl. paint-to-train), cross-section layer &amp; interface-roughness analysis
 - **[AFM Support](https://github.com/pquarterman17/fermiviewer/wiki/AFM-Support)** — Bruker Nanoscope height maps + Z-scale color bar
+- **[Keyboard &amp; Accessibility](https://github.com/pquarterman17/fermiviewer/wiki/Keyboard-and-Accessibility)** — working without a mouse, screen-reader support, themes &amp; density
 - **[Supported Formats](https://github.com/pquarterman17/fermiviewer/wiki/Supported-Formats)**
 
 | Cross-section layer stack | Trained grain classifier |
