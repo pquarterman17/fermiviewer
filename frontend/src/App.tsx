@@ -152,6 +152,10 @@ export default function App() {
         t.isContentEditable
       )
         return;
+      // A modal is modal: these shortcuts act on the workspace behind it, and
+      // several are destructive (Backspace closes images). aria-modal="true"
+      // has to be backed by actually withholding the global map.
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       const s = useViewer.getState();
       const mod = e.metaKey || e.ctrlKey;
 

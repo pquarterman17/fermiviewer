@@ -87,7 +87,7 @@ def stop_server(server: subprocess.Popen[bytes] | None) -> None:
 
 
 def assert_workspace_fits(page: Any, label: str) -> dict[str, Any]:
-    metrics = page.evaluate(
+    metrics: dict[str, Any] = page.evaluate(
         """() => ({
           width: window.innerWidth,
           height: window.innerHeight,
@@ -205,7 +205,9 @@ def run() -> None:
     server = ensure_server(args.url, may_start=not args.no_start_server)
     try:
         try:
-            from playwright.sync_api import sync_playwright
+            # Optional, dev-only dependency: this harness is run on demand
+            # with `uv run --with playwright`, never as part of the gate.
+            from playwright.sync_api import sync_playwright  # type: ignore[import-not-found]
         except ImportError as exc:
             raise RuntimeError(
                 "Playwright is missing; run with `uv run --with playwright ...`"

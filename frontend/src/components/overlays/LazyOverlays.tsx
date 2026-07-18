@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { useShallow } from "zustand/react/shallow";
 
 import { useParamDialog } from "../../store/params";
@@ -30,17 +30,25 @@ export default function LazyOverlays() {
   );
   const params = useParamDialog((state) => state.title !== null);
 
+  // One boundary PER overlay, never a shared one. Overlays stack (BatchDialog
+  // awaits askParams -> ParamDialog), and a shared boundary re-suspends on the
+  // second chunk: React hides the already-committed dialog and tears down its
+  // effects, so the open dialog blanks and its focus state is lost.
   return (
-    <Suspense fallback={null}>
-      {open.batch && <BatchDialog />}
-      {open.calibrations && <CalibrationManager />}
-      {open.export && <ExportDialog />}
-      {open.folder && <FolderOpenDialog />}
-      {open.gallery && <GalleryGrid />}
-      {open.metadata && <MetadataDialog />}
-      {params && <ParamDialog />}
-      {open.preferences && <PrefsWindow />}
-      {open.shortcuts && <ShortcutsOverlay />}
-    </Suspense>
+    <>
+      <Boundary>{open.batch && <BatchDialog />}</Boundary>
+      <Boundary>{open.calibrations && <CalibrationManager />}</Boundary>
+      <Boundary>{open.export && <ExportDialog />}</Boundary>
+      <Boundary>{open.folder && <FolderOpenDialog />}</Boundary>
+      <Boundary>{open.gallery && <GalleryGrid />}</Boundary>
+      <Boundary>{open.metadata && <MetadataDialog />}</Boundary>
+      <Boundary>{params && <ParamDialog />}</Boundary>
+      <Boundary>{open.preferences && <PrefsWindow />}</Boundary>
+      <Boundary>{open.shortcuts && <ShortcutsOverlay />}</Boundary>
+    </>
   );
+}
+
+function Boundary({ children }: { children: ReactNode }) {
+  return <Suspense fallback={null}>{children}</Suspense>;
 }

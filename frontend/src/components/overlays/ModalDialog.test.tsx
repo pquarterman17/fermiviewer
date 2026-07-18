@@ -76,3 +76,20 @@ describe("ModalDialog", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 });
+
+describe("ModalDialog focus hygiene", () => {
+  it("skips hidden controls when choosing initial focus", async () => {
+    render(
+      <ModalDialog ariaLabel="Hidden first" className="t" onClose={() => undefined}>
+        <button style={{ display: "none" }}>Hidden</button>
+        <button>Real</button>
+      </ModalDialog>,
+    );
+    // focus() on a display:none control is a silent no-op, which would leave
+    // the dialog with nothing focused at all.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Real" })).toHaveFocus(),
+    );
+  });
+
+});

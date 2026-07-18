@@ -37,8 +37,18 @@ def test_every_density_defines_layout_tokens(density: str) -> None:
         assert f"{token}:" in block
 
 
+def _token(block: str, token: str) -> str:
+    """The declared value of `token`, so tests compare colors, not presence."""
+    match = re.search(rf"{re.escape(token)}\s*:\s*([^;]+);", block)
+    assert match is not None, f"missing token {token}"
+    return match.group(1).strip().lower()
+
+
 @pytest.mark.parametrize("theme", THEMES)
 def test_amber_keeps_capture_feedback_distinct(theme: str) -> None:
+    # Amber is the accent most likely to collide with the amber capture cue.
+    # Asserting only that the tokens EXIST would still pass if --capture were
+    # set to the accent color outright, which is the failure this guards.
     block = _block(f'[data-theme="{theme}"][data-accent="amber"]')
-    assert "--capture:" in block
-    assert "--capture-soft:" in block
+    assert _token(block, "--capture") != _token(block, "--accent")
+    assert _token(block, "--capture-soft") != _token(block, "--accent-soft")

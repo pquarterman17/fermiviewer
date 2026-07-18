@@ -347,6 +347,14 @@ textarea:disabled {
   visibility: visible;
 }
 
+/* Keyboard traversal steps between rows, so a row-scoped reveal leaves the
+   NEXT row's delete button visibility:hidden — and an unrendered element
+   cannot take focus, which dead-ends ArrowUp. Reveal every delete button
+   while focus is anywhere in the menu. */
+.fvd-workspace-menu:focus-within .fvd-workspace-del {
+  visibility: visible;
+}
+
 .fvd-workspace-del:hover {
   color: var(--danger);
   background: var(--surface-3);
