@@ -66,6 +66,58 @@ describe("DesktopMenus keyboard navigation", () => {
     expect(recent).toHaveFocus();
   });
 
+  it("still wraps to the last item after entries become disabled", async () => {
+    // Ref slots are keyed by enabled-entry position and never truncated, so a
+    // menu reopened with fewer enabled entries leaves stale null slots at the
+    // tail. End/ArrowUp used to wrap onto those and silently do nothing.
+    const wide: Record<string, MenuEntry[]> = {
+      View: [
+        { label: "Fit", action },
+        { label: "Actual", action },
+        { label: "Zoom", action },
+      ],
+    };
+    // One fewer enabled entry than "wide", so the stale slot at index 2
+    // outlives the shrink and End must land on "Zoom" rather than nothing.
+    const narrow: Record<string, MenuEntry[]> = {
+      View: [
+        { label: "Fit", action },
+        { label: "Actual", action, disabled: true },
+        { label: "Zoom", action },
+      ],
+    };
+
+    const { rerender } = render(<DesktopMenus menus={wide} />);
+    const view = screen.getByRole("menuitem", { name: "View" });
+    fireEvent.keyDown(view, { key: "ArrowDown" });
+    await waitFor(() =>
+      expect(screen.getByRole("menuitem", { name: "Fit" })).toHaveFocus(),
+    );
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: "Fit" }), {
+      key: "Escape",
+    });
+
+    rerender(<DesktopMenus menus={narrow} />);
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: "View" }), {
+      key: "ArrowDown",
+    });
+    const fit = await screen.findByRole("menuitem", { name: "Fit" });
+    await waitFor(() => expect(fit).toHaveFocus());
+    // "Zoom" is the last enabled entry; the stale third slot must not swallow
+    // End and strand focus on "Fit".
+    fireEvent.keyDown(fit, { key: "End" });
+    expect(screen.getByRole("menuitem", { name: "Zoom" })).toHaveFocus();
+  });
+
+  it("keeps menu -> menuitem ownership through the layout wrapper", () => {
+    render(<DesktopMenus menus={menus} />);
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: "File" }), {
+      key: "ArrowDown",
+    });
+    const open = screen.getByRole("menuitem", { name: "Open" });
+    expect(open.parentElement).toHaveAttribute("role", "presentation");
+  });
+
   it("switches top-level menus and restores focus on Escape", async () => {
     render(<DesktopMenus menus={menus} />);
     const file = screen.getByRole("menuitem", { name: "File" });

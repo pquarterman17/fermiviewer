@@ -102,9 +102,12 @@ def test_frontend_module_size_ratchet() -> None:
 
 def test_frontend_stylesheet_size_ratchet() -> None:
     """Theme modules stay reviewable instead of regrowing a single CSS giant."""
-    styles = FRONTEND_SRC / "styles" / "theme-web"
+    sheets = sorted(FRONTEND_SRC.rglob("*.css"))
+    # A ratchet that finds nothing passes vacuously. If a move or rename ever
+    # empties this sweep, fail loudly instead of silently guarding nothing.
+    assert sheets, f"No stylesheets found under {FRONTEND_SRC.relative_to(ROOT)}"
     offenders = []
-    for path in styles.glob("*.css"):
+    for path in sheets:
         lines = len(path.read_text(encoding="utf-8").splitlines())
         if lines > FRONTEND_MAX_STYLESHEET_LINES:
             offenders.append(f"{path.relative_to(ROOT)}: {lines} lines")

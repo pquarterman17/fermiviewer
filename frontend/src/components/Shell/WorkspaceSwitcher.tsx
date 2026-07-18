@@ -99,6 +99,9 @@ export default function WorkspaceSwitcher() {
             <div
               key={w.slug}
               className="fvd-menu-entry"
+              // The check glyph became an aria-hidden SVG, so the active
+              // workspace needs a non-visual marker of its own.
+              aria-current={w.slug === current?.slug ? "true" : undefined}
               onMouseDown={(ev) => {
                 ev.stopPropagation();
                 onSwitch(w);

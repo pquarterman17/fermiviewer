@@ -143,6 +143,13 @@ body {
   color: var(--text-faint);
 }
 
+/* Menus rendered as divs (Filmstrip context menu, workspace placeholder)
+   cannot use :disabled, so the class form stays supported. */
+.fvd-menu-entry.disabled {
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
 .fvd-menu-item:focus-visible,
 .fvd-menu-entry:focus-visible {
   outline: 2px solid var(--accent);

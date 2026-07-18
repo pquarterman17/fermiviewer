@@ -117,7 +117,7 @@ export default function CommandPalette({ actions }: { actions: Action[] }) {
               ) : null;
             lastGroup = a.group;
             return (
-              <div key={a.id}>
+              <div key={a.id} role="presentation">
                 {header}
                 <div
                   id={optionId(a.id)}

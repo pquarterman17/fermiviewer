@@ -197,7 +197,10 @@ export default function Filmstrip() {
             title={meta.name}
             role="option"
             aria-selected={isSel}
-            tabIndex={id === activeId ? 0 : -1}
+            // activeId can be null while images remain (e.g. undoing a derived
+            // image whose parent is gone). Fall back so the listbox always has
+            // exactly one tab stop instead of becoming keyboard-unreachable.
+            tabIndex={id === (activeId ?? order[0]) ? 0 : -1}
             draggable
             onClick={(e) => select(id, gesture(e))}
             onKeyDown={(e) => onCardKeyDown(e, id, index)}

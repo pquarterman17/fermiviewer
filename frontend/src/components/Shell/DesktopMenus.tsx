@@ -43,8 +43,16 @@ export default function DesktopMenus({
     topRefs.current.get(name)?.focus();
   };
 
+  // Ref slots are written by enabled-entry position and never truncated, so a
+  // menu that reopens with fewer enabled entries keeps null slots at the tail.
+  // Wrapping on the raw length would land on those and silently do nothing.
+  const liveItems = (name: string) =>
+    (itemRefs.current.get(name) ?? []).filter(
+      (node): node is HTMLButtonElement => node != null,
+    );
+
   const focusItem = (name: string, index: number) => {
-    const refs = itemRefs.current.get(name) ?? [];
+    const refs = liveItems(name);
     if (refs.length === 0) return;
     refs[(index + refs.length) % refs.length]?.focus();
   };
@@ -85,7 +93,7 @@ export default function DesktopMenus({
     index: number,
     entry: MenuEntry,
   ) => {
-    const refs = itemRefs.current.get(name) ?? [];
+    const refs = liveItems(name);
     if (e.key === "ArrowDown") focusItem(name, index + 1);
     else if (e.key === "ArrowUp") focusItem(name, index - 1);
     else if (e.key === "Home") focusItem(name, 0);
@@ -113,7 +121,10 @@ export default function DesktopMenus({
     parentIndex: number,
     index: number,
   ) => {
-    const refs = subRefs.current.get(subKey) ?? [];
+    const refs = (subRefs.current.get(subKey) ?? []).filter(
+      (node): node is HTMLButtonElement => node != null,
+    );
+    if (refs.length === 0) return;
     if (e.key === "ArrowDown") refs[(index + 1) % refs.length]?.focus();
     else if (e.key === "ArrowUp")
       refs[(index - 1 + refs.length) % refs.length]?.focus();
@@ -121,7 +132,7 @@ export default function DesktopMenus({
     else if (e.key === "End") refs[refs.length - 1]?.focus();
     else if (e.key === "Escape" || e.key === "ArrowLeft") {
       setOpenSub(null);
-      itemRefs.current.get(name)?.[parentIndex]?.focus();
+      liveItems(name)[parentIndex]?.focus();
     } else if (e.key === "ArrowRight") switchMenu(name, 1);
     else return;
     e.preventDefault();
@@ -177,6 +188,9 @@ export default function DesktopMenus({
                     <div
                       key={entryIndex}
                       className="fvd-menu-entry-wrap"
+                      // Keeps role="menu" -> role="menuitem" ownership intact
+                      // across this layout wrapper.
+                      role="presentation"
                       onMouseEnter={() => setOpenSub(entry.submenu ? subKey : null)}
                     >
                       <button

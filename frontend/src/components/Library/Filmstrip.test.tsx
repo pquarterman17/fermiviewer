@@ -87,4 +87,16 @@ describe("Filmstrip keyboard selection", () => {
     fireEvent.keyDown(options[2], { key: " ", ctrlKey: true });
     expect(useViewer.getState().selected).toEqual(["b", "c"]);
   });
+
+  it("keeps one tab stop when no image is active", () => {
+    // activeId can be null with images still open (undoing a derived image
+    // whose parent is gone). Without a fallback every card would be
+    // tabIndex=-1 and the listbox would drop out of the tab order entirely.
+    useViewer.setState({ activeId: null });
+    render(<Filmstrip />);
+    const tabbable = screen
+      .getAllByRole("option")
+      .filter((o) => o.getAttribute("tabindex") === "0");
+    expect(tabbable).toHaveLength(1);
+  });
 });
