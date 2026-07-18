@@ -35,7 +35,9 @@ describe("FloatTools accessibility", () => {
     expect(
       screen.getByRole("toolbar", { name: "Image and measurement tools" }),
     ).toBeVisible();
-    expect(screen.getByRole("button", { name: "Rotate 90° CCW" })).toBeVisible();
+    const rotate = screen.getByRole("button", { name: "Rotate 90° CCW" });
+    expect(rotate).toBeVisible();
+    expect(rotate.querySelector("svg.fvd-icon")).not.toBeNull();
 
     const hand = screen.getByRole("button", { name: "Hand tool" });
     expect(hand).toHaveAttribute("aria-pressed", "false");
@@ -47,7 +49,9 @@ describe("FloatTools accessibility", () => {
 
   it("gives the zoom controls useful names", () => {
     render(<ZoomChip onZoom={() => undefined} />);
-    expect(screen.getByRole("button", { name: "Zoom out" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Zoom in" })).toBeVisible();
+    const out = screen.getByRole("button", { name: "Zoom out" });
+    const inside = screen.getByRole("button", { name: "Zoom in" });
+    expect(out.querySelector("svg.fvd-icon")).not.toBeNull();
+    expect(inside.querySelector("svg.fvd-icon")).not.toBeNull();
   });
 });

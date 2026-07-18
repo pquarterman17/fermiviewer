@@ -13,6 +13,7 @@ Four invariants, checked forward so they never need retrofitting:
    Pure-library isolation is what keeps their tests server-free.
 4. FRONTEND MODULE RATCHET — new production TypeScript modules stay below
    500 lines; legacy giants may shrink but cannot grow before being split.
+5. STYLESHEET RATCHET — split theme modules stay at or below 500 lines.
 """
 
 from __future__ import annotations
@@ -32,13 +33,14 @@ FRONTEND_SRC = ROOT / "frontend" / "src"
 GPL_PACKAGES = {"rosettasciio", "rsciio", "hyperspy", "exspy", "holospy"}
 MAX_MODULE_LINES = 500
 FRONTEND_MAX_MODULE_LINES = 500
+FRONTEND_MAX_STYLESHEET_LINES = 500
 # Existing production modules above the default ceiling. These are debt, not
 # precedent: each cap is its current size, so a module may shrink but not grow.
 # Delete an entry as soon as that module is split below the default ceiling.
 FRONTEND_LEGACY_CAPS = {
-    "App.tsx": 679,
+    "App.tsx": 630,
     "components/Inspector/MeasurePanel.tsx": 755,
-    "components/Shell/MenuBar.tsx": 1698,
+    "components/Shell/MenuBar.tsx": 1591,
     "components/Stage/MeasureOverlay.tsx": 783,
     "components/Stage/Stage.tsx": 1236,
     "components/overlays/PrefsWindow.tsx": 511,
@@ -94,6 +96,23 @@ def test_frontend_module_size_ratchet() -> None:
             offenders.append(f"frontend/src/{relative}: {lines} lines (limit {limit})")
     assert not offenders, (
         "Frontend modules exceeded the size ratchet (split before adding more):\n  "
+        + "\n  ".join(offenders)
+    )
+
+
+def test_frontend_stylesheet_size_ratchet() -> None:
+    """Theme modules stay reviewable instead of regrowing a single CSS giant."""
+    sheets = sorted(FRONTEND_SRC.rglob("*.css"))
+    # A ratchet that finds nothing passes vacuously. If a move or rename ever
+    # empties this sweep, fail loudly instead of silently guarding nothing.
+    assert sheets, f"No stylesheets found under {FRONTEND_SRC.relative_to(ROOT)}"
+    offenders = []
+    for path in sheets:
+        lines = len(path.read_text(encoding="utf-8").splitlines())
+        if lines > FRONTEND_MAX_STYLESHEET_LINES:
+            offenders.append(f"{path.relative_to(ROOT)}: {lines} lines")
+    assert not offenders, (
+        f"Stylesheets over {FRONTEND_MAX_STYLESHEET_LINES} lines (split first):\n  "
         + "\n  ".join(offenders)
     )
 

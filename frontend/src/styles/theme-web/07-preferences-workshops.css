@@ -1,0 +1,324 @@
+/* ── preferences window (sectioned settings) ── */
+
+.fvd-prefs {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(680px, 94vw);
+  max-height: 88vh;
+  padding: var(--pad-lg) 18px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pad);
+}
+
+.fvd-prefs h2 {
+  margin: 2px 0 0;
+  font-size: var(--type-title);
+}
+
+.fvd-prefs-body {
+  display: flex;
+  gap: var(--pad-lg);
+  min-height: 320px;
+  max-height: 64vh;
+}
+
+.fvd-prefs-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 0 0 144px;
+  border-right: 1px solid var(--border-soft);
+  padding-right: var(--pad);
+}
+
+.fvd-prefs-navbtn {
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  cursor: default;
+}
+
+.fvd-prefs-navbtn:hover {
+  background: var(--surface-3);
+}
+
+.fvd-prefs-navbtn.active {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.fvd-prefs-pane {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 4px;
+}
+
+.fvd-prefs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-sm);
+}
+
+.fvd-prefs-row .k {
+  flex: 1 1 auto;
+  color: var(--text-dim);
+}
+
+.fvd-prefs-ctl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.fvd-prefs-dash {
+  color: var(--text-faint);
+}
+
+.fvd-prefs-subhead {
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  border-bottom: 1px solid var(--border-soft);
+  padding-bottom: 3px;
+  margin-top: 4px;
+}
+
+.fvd-prefs-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--border-soft);
+  padding-top: var(--pad);
+}
+
+.fvd-prefs-footer .fvd-btn {
+  flex: 0 0 auto;
+  padding: 4px 14px;
+}
+
+.fvd-prefs-footer-right {
+  display: flex;
+  gap: var(--pad);
+}
+
+/* compact, token-bordered colour well (matches the swatch language, not
+   the chunky ~44px UA default) */
+.fvd-prefs-ctl input[type="color"] {
+  width: 28px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  cursor: pointer;
+}
+
+/* keyboard focus ring (the app otherwise had none) — accent-keyed, shared
+   across the interactive atoms the Preferences window tabs through */
+.fvd-prefs-navbtn:focus-visible,
+.fvd-seg-btn:focus-visible,
+.fvd-btn:focus-visible,
+.fvd-radial-btn:focus-visible,
+.fvd-icon-btn:focus-visible,
+.fvd-tool-btn:focus-visible,
+.fvd-imgnav-btn:focus-visible,
+.fvd-search-box:focus-visible,
+.fvd-workspace-chip:focus-visible,
+.fvd-group-name:focus-visible,
+.fvd-compare-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── workshop tool windows ── */
+
+.fvd-tool-window {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  max-height: 75vh;
+}
+
+.fvd-tool-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-dim);
+  cursor: default;
+  user-select: none;
+  touch-action: none;
+}
+
+.fvd-tool-close {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-3);
+  cursor: default;
+  padding: 0;
+}
+
+.fvd-tool-close:hover {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.fvd-tool-body {
+  overflow-y: auto;
+  padding: var(--pad-lg);
+}
+
+.fvd-tool-loading {
+  display: grid;
+  min-height: 120px;
+  place-items: center;
+  color: var(--text-faint);
+  font-size: var(--font-size-sm);
+}
+
+.fvd-ws {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pad);
+}
+
+.fvd-ws-empty {
+  color: var(--text-faint);
+  font-size: var(--font-size-sm);
+  text-align: center;
+  padding: 18px 8px;
+}
+
+.fvd-ws-plot {
+  width: 100%;
+  min-height: 180px;
+}
+
+.fvd-ws-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+}
+
+.fvd-ws-row .k {
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.fvd-ws-hint {
+  color: var(--text-faint);
+  font-size: 10px;
+  font-style: italic;
+}
+
+.fvd-ws-row input,
+.fvd-ws-edge input {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  padding: 2px 5px;
+  width: 62px;
+  min-width: 0;
+}
+
+.fvd-ws-edge select,
+.fvd-ws-row select {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+}
+
+.fvd-ws-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--border-soft);
+  padding-top: var(--pad);
+  font-size: var(--font-size-sm);
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+}
+
+.fvd-ws-section .fvd-btn {
+  flex: 0 0 auto;
+  padding: 2px 9px;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.fvd-ws-edge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fvd-ws-note {
+  font-size: var(--font-size-sm);
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+}
+
+.fvd-ws-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+}
+
+.fvd-ws-table th {
+  text-align: left;
+  color: var(--text-faint);
+  font-weight: var(--weight-medium);
+  border-bottom: 1px solid var(--border-soft);
+  padding: 3px 6px;
+}
+
+.fvd-ws-table td {
+  padding: 3px 6px;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.fvd-ws-pattern {
+  position: relative;
+  background: var(--axes-bg);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  align-self: center;
+}
+
+.fvd-ws-pattern img {
+  display: block;
+}
+
+.fvd-ws-pattern svg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+

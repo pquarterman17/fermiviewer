@@ -1,0 +1,196 @@
+/* WS4d non-destructive edit-history card */
+.fvd-history {
+  list-style: none;
+  margin: 0;
+  padding: 2px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.fvd-history-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.fvd-history-step:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.fvd-history-step .dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--text-faint);
+}
+
+.fvd-history-step.current {
+  color: var(--text);
+  cursor: default;
+}
+
+.fvd-history-step.current .dot {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* steps "ahead" of the cursor (after a revert) read as not-yet-applied */
+.fvd-history-step.ahead {
+  color: var(--text-faint);
+}
+
+.fvd-history-step .lbl {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fvd-history-step .now {
+  font-size: var(--font-size-sm);
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+}
+
+.fvd-zoom-chip {
+  left: 10px;
+  right: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+}
+
+.fvd-readout {
+  left: auto;
+  right: 10px;
+}
+
+.fvd-adjust-top {
+  display: flex;
+  gap: 6px;
+  margin-bottom: var(--pad);
+}
+
+.fvd-adjust-top .fvd-btn {
+  flex: 0 0 auto;
+  padding: 4px 11px;
+}
+
+.fvd-adjust-top select {
+  flex: 1;
+  background: var(--surface-3);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+}
+
+.fvd-bw-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-sm);
+  padding: 2px 0;
+}
+
+.fvd-bw-row .k {
+  color: var(--text-faint);
+  min-width: 36px;
+}
+
+.fvd-bw-row .v {
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  min-width: 52px;
+  text-align: right;
+}
+
+.fvd-bw-row input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.fvd-chip-row {
+  display: flex;
+  gap: 6px;
+  padding-top: var(--pad);
+  align-items: center;
+}
+
+.fvd-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  padding: 2px 8px;
+  cursor: default;
+}
+
+.fvd-chip.active {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+.fvd-chip input[type="range"] {
+  width: 64px;
+  accent-color: var(--accent);
+}
+
+.fvd-cmd-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  padding: 5px 9px;
+}
+
+.fvd-cmd-search .ico {
+  color: var(--text-faint);
+}
+
+.fvd-cmd-search input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  outline: none;
+}
+
+.fvd-cmd-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 4px;
+}
+
+.fvd-cmd-group {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: var(--type-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-top: 4px;
+}
+

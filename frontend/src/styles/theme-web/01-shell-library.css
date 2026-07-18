@@ -1,0 +1,312 @@
+/* FermiViewer shell layout — authored from handoff §4/§5 (prototype
+   theme-web.css unavailable; class naming follows its .fvd-* convention). */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-ui);
+  font-size: var(--font-size);
+  color: var(--text);
+  background: var(--surface-0);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ── App grid: menubar / (filmstrip · stage · inspector) / status ──
+   The standalone title bar was removed (redundant brand + wasted row); its
+   doc title + panel-toggle icons moved into the menubar, which is a touch
+   taller to hold them. */
+
+.fvd-app {
+  display: grid;
+  grid-template-rows: 34px 1fr 24px;
+  height: 100%;
+}
+
+.fvd-main {
+  display: grid;
+  grid-template-columns: var(--left-w, 168px) 1fr var(--right-w, 280px);
+  min-height: 0;
+}
+
+.fvd-main.left-collapsed {
+  grid-template-columns: 0 1fr var(--right-w, 280px);
+}
+
+.fvd-main.right-collapsed {
+  grid-template-columns: var(--left-w, 168px) 1fr 0;
+}
+
+.fvd-main.left-collapsed.right-collapsed {
+  grid-template-columns: 0 1fr 0;
+}
+
+/* doc title + panel-toggle icons — now hosted in the menubar (the standalone
+   title bar was removed; see the app-grid note above) */
+
+.fvd-doc-title {
+  text-align: center;
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 32%; /* long filenames truncate instead of shoving the toolbar */
+  min-width: 0;
+}
+
+/* ── MenuBar ── */
+
+.fvd-menubar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--border-soft);
+  padding: 0 var(--pad);
+  position: relative;
+  z-index: 30;
+}
+
+.fvd-desktop-menus {
+  display: contents;
+}
+
+.fvd-menu-root,
+.fvd-menu-entry-wrap {
+  position: relative;
+}
+
+.fvd-menu-item {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  padding: 3px 9px;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: default;
+}
+
+.fvd-menu-item:hover,
+.fvd-menu-item.open {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.fvd-menu-dropdown {
+  position: absolute;
+  top: 100%;
+  min-width: 200px;
+  background: var(--glass);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 4px;
+  z-index: 40;
+}
+
+.fvd-menu-entry {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 5px 9px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  cursor: default;
+}
+
+.fvd-menu-entry:hover {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.fvd-menu-entry:disabled {
+  color: var(--text-faint);
+}
+
+/* Menus rendered as divs (Filmstrip context menu, workspace placeholder)
+   cannot use :disabled, so the class form stays supported. */
+.fvd-menu-entry.disabled {
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+.fvd-menu-item:focus-visible,
+.fvd-menu-entry:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.fvd-menu-sep {
+  height: 1px;
+  background: var(--border-soft);
+  margin: 4px 6px;
+}
+
+.fvd-shortcut {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--text-faint);
+}
+
+/* Submenu flyout (menu IA): a row with `has-sub` opens a nested dropdown to
+   its right on hover. The shared .fvd-menu-dropdown defaults to top:100%
+   (below the bar); override to sit beside the parent row instead. */
+.fvd-menu-entry.has-sub {
+  position: relative;
+}
+
+.fvd-submenu-arrow {
+  color: var(--text-faint);
+  font-size: var(--font-size-sm);
+}
+
+.fvd-menu-entry.has-sub:hover .fvd-submenu-arrow {
+  color: inherit;
+}
+
+.fvd-submenu {
+  top: -5px; /* align the first child with the parent row (4px dropdown pad) */
+  left: 100%;
+  margin-left: 3px;
+  z-index: 41;
+}
+
+/* UPPERCASE tracked group heading inside a dropdown (menu IA) */
+.fvd-menu-section {
+  font-size: var(--type-label);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-faint);
+  padding: 6px 9px 2px;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Hover tooltip — glass chip with the action name + its shortcut. Mounted
+   once at the document body and positioned from the hovered [data-tip]. */
+.fvd-tip {
+  position: fixed;
+  z-index: 2000;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: var(--glass);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.fvd-tip-key {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--text-faint);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
+/* ── Filmstrip (library) ── */
+
+.fvd-filmstrip {
+  background: var(--surface-1);
+  border-right: 1px solid var(--border-soft);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--pad);
+  display: flex;
+  flex-direction: column;
+  gap: var(--pad);
+}
+
+.fvd-film-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--pad);
+  min-height: 0;
+}
+
+.fvd-film-card {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  cursor: default;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.fvd-film-card.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.fvd-film-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.fvd-film-thumb {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  display: block;
+  background: var(--axes-bg);
+}
+
+.fvd-film-spectrum {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  font-size: 28px;
+  color: var(--text-faint);
+  background: var(--axes-bg);
+}
+
+.fvd-film-name {
+  padding: 4px 7px;
+  font-size: max(var(--font-size-sm), 12px);
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fvd-film-card.active .fvd-film-name {
+  color: var(--text);
+}
+
+.fvd-film-empty {
+  color: var(--text-faint);
+  font-size: var(--font-size-sm);
+  text-align: center;
+  padding: var(--pad-lg);
+  line-height: 1.5;
+}
+

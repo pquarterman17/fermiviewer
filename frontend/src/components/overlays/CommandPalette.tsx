@@ -21,13 +21,14 @@ export default function CommandPalette({ actions }: { actions: Action[] }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (open) {
-      setQuery("");
-      setCursor(0);
-      setMenuCmds(useCommands.getState().menuCommands);
-      // focus after mount
-      requestAnimationFrame(() => inputRef.current?.focus());
-    }
+    if (!open) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    setQuery("");
+    setCursor(0);
+    setMenuCmds(useCommands.getState().menuCommands);
+    // Focus after mount and restore the invoking control when dismissed.
+    requestAnimationFrame(() => inputRef.current?.focus());
+    return () => previousFocus?.focus();
   }, [open]);
 
   const allActions = useMemo(
@@ -55,7 +56,10 @@ export default function CommandPalette({ actions }: { actions: Action[] }) {
   };
 
   const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") {
+    if (e.key === "Tab") {
+      e.preventDefault();
+      inputRef.current?.focus();
+    } else if (e.key === "Escape") {
       setCmdk(false);
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -71,36 +75,55 @@ export default function CommandPalette({ actions }: { actions: Action[] }) {
 
   // group in match order, preserving rank
   let lastGroup = "";
+  const listId = "fvd-command-list";
+  const optionId = (id: string) =>
+    `fvd-command-${id.replace(/[^a-z0-9_-]/gi, "-")}`;
+  const activeDescendant = matches[cursor]
+    ? optionId(matches[cursor].a.id)
+    : undefined;
 
   return (
     <div className="fvd-overlay-backdrop" onMouseDown={() => setCmdk(false)}>
       <div
         className="fvd-glass fvd-cmdk"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <input
           ref={inputRef}
           className="fvd-cmdk-input"
+          role="combobox"
+          aria-expanded="true"
+          aria-autocomplete="list"
+          aria-controls={listId}
+          aria-activedescendant={activeDescendant}
           placeholder="Type a command…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKey}
         />
-        <div className="fvd-cmdk-list">
+        <div className="fvd-cmdk-list" id={listId} role="listbox">
           {matches.length === 0 && (
             <div className="fvd-cmdk-empty">No matching commands</div>
           )}
           {matches.map(({ a, m }, i) => {
             const header =
               a.group !== lastGroup ? (
-                <div className="fvd-cmdk-group">{a.group}</div>
+                <div className="fvd-cmdk-group" role="presentation">
+                  {a.group}
+                </div>
               ) : null;
             lastGroup = a.group;
             return (
-              <div key={a.id}>
+              <div key={a.id} role="presentation">
                 {header}
                 <div
+                  id={optionId(a.id)}
                   className={`fvd-cmdk-item${i === cursor ? " active" : ""}`}
+                  role="option"
+                  aria-selected={i === cursor}
                   onMouseEnter={() => setCursor(i)}
                   onMouseDown={() => run(a)}
                 >

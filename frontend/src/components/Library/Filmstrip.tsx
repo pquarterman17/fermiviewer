@@ -11,6 +11,7 @@ import {
   type ImageGroup,
   type SelectGesture,
 } from "../../store/viewer";
+import Icon from "../icons/Icon";
 
 interface CtxMenu {
   x: number;
@@ -38,6 +39,7 @@ export default function Filmstrip() {
   const [ctx, setCtx] = useState<CtxMenu | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const dragId = useRef<string | null>(null);
+  const cardRefs = useRef<Array<HTMLDivElement | null>>([]);
 
   useEffect(() => {
     if (!ctx) return;
@@ -62,6 +64,42 @@ export default function Filmstrip() {
 
   const compareIds = selected.length >= 2 ? selected : null;
 
+  const focusCard = (index: number) => {
+    requestAnimationFrame(() => cardRefs.current[index]?.focus());
+  };
+
+  const onCardKeyDown = (
+    e: React.KeyboardEvent,
+    id: string,
+    index: number,
+  ) => {
+    let nextIndex: number | undefined;
+    if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+      nextIndex = (index + 1) % order.length;
+    } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+      nextIndex = (index - 1 + order.length) % order.length;
+    } else if (e.key === "Home") {
+      nextIndex = 0;
+    } else if (e.key === "End") {
+      nextIndex = order.length - 1;
+    } else if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      select(
+        id,
+        e.shiftKey ? "range" : e.metaKey || e.ctrlKey ? "toggle" : "single",
+      );
+      return;
+    } else {
+      return;
+    }
+    e.preventDefault();
+    const nextId = nextIndex == null ? undefined : order[nextIndex];
+    if (nextId && nextIndex != null) {
+      select(nextId, "single");
+      focusCard(nextIndex);
+    }
+  };
+
   return (
     <aside className="fvd-filmstrip">
       <div className="fvd-film-head">
@@ -75,7 +113,7 @@ export default function Filmstrip() {
             setListView(listView === "thumbs" ? "names" : "thumbs")
           }
         >
-          {listView === "thumbs" ? "☰" : "▦"}
+          <Icon name={listView === "thumbs" ? "list" : "grid"} />
         </button>
       </div>
 
@@ -95,7 +133,7 @@ export default function Filmstrip() {
           data-tip="Build a recipe and apply it to the selected images"
           onClick={() => setBatchOpen(true)}
         >
-          ⚙ Batch {compareIds.length}
+          <Icon name="settings" /> Batch {compareIds.length}
         </button>
       )}
 
@@ -105,7 +143,7 @@ export default function Filmstrip() {
           data-tip="Save the selection as a named, reusable compare group"
           onClick={() => createGroup(compareIds)}
         >
-          ＋ Group {compareIds.length}
+          <Icon name="plus" /> Group {compareIds.length}
         </button>
       )}
 
@@ -130,7 +168,13 @@ export default function Filmstrip() {
         </div>
       )}
 
-      {order.map((id) => {
+      <div
+        className="fvd-film-list"
+        role="listbox"
+        aria-label="Open images"
+        aria-multiselectable="true"
+      >
+      {order.map((id, index) => {
         const meta = images[id];
         if (!meta) return null;
         const isSel = selected.includes(id);
@@ -146,10 +190,20 @@ export default function Filmstrip() {
         return (
           <div
             key={id}
+            ref={(node) => {
+              cardRefs.current[index] = node;
+            }}
             className={cls}
             title={meta.name}
+            role="option"
+            aria-selected={isSel}
+            // activeId can be null while images remain (e.g. undoing a derived
+            // image whose parent is gone). Fall back so the listbox always has
+            // exactly one tab stop instead of becoming keyboard-unreachable.
+            tabIndex={id === (activeId ?? order[0]) ? 0 : -1}
             draggable
             onClick={(e) => select(id, gesture(e))}
+            onKeyDown={(e) => onCardKeyDown(e, id, index)}
             onContextMenu={(e) => onContextMenu(e, id)}
             onDragStart={(e) => {
               dragId.current = id;
@@ -187,6 +241,7 @@ export default function Filmstrip() {
           </div>
         );
       })}
+      </div>
 
       {ctx && (
         <ContextMenu
@@ -290,7 +345,7 @@ function GroupsBar({
               if (name != null) onRename(g.id, name);
             }}
           >
-            ✎
+            <Icon name="edit" />
           </button>
           <button
             className="fvd-icon-btn"
@@ -298,7 +353,7 @@ function GroupsBar({
             title="Delete group"
             onClick={() => onDelete(g.id)}
           >
-            ✕
+            <Icon name="close" />
           </button>
         </div>
       ))}

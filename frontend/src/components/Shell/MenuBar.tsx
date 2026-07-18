@@ -1,6 +1,5 @@
 // Inline dropdown menu bar (handoff §4 "Menu bar"). Items run inline;
 // WINDOW-badged workshop items arrive with Phase 4 tool windows.
-
 import { useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 
@@ -53,6 +52,8 @@ import {
   type ParamField,
 } from "../overlays/ParamDialog";
 import { useResults } from "../overlays/ResultsWindow";
+import Icon from "../icons/Icon";
+import DesktopMenus, { type MenuEntry as Entry } from "./DesktopMenus";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
 
 const num = (
@@ -72,19 +73,6 @@ function recentPaths(): string[] {
   }
 }
 
-interface Entry {
-  label?: string;
-  shortcut?: string;
-  disabled?: boolean;
-  action?: () => void;
-  /** "section" = an uppercase group heading; "sep" = a hairline divider.
-   *  Omitted = a normal action row. */
-  kind?: "section" | "sep";
-  /** Nested flyout: when present this row opens a submenu of `submenu`
-   *  entries on hover (one level deep — submenus don't nest further). */
-  submenu?: Entry[];
-}
-
 export default function MenuBar({
   onFit,
   onActualSize,
@@ -92,8 +80,6 @@ export default function MenuBar({
   onFit: () => void;
   onActualSize: () => void;
 }) {
-  const [open, setOpen] = useState<string | null>(null);
-  const [openSub, setOpenSub] = useState<string | null>(null);
   const [accept, setAccept] = useState<string>("");
   const [macroRec, setMacroRec] = useState(isRecording());
   const profile = useStageInfo((s) => s.profile);
@@ -204,7 +190,6 @@ export default function MenuBar({
         .catch((e: Error) => store.setStatus(e.message));
     })();
   };
-  const barRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   // narrow selector: only the fields the menu STRUCTURE reads (labels,
   // disabled state, submenu content) + the stable action refs every
@@ -268,18 +253,6 @@ export default function MenuBar({
     : "";
   const docStem = docName.replace(/(\.[^.]+)$/, "");
   const docExt = docName.match(/\.[^.]+$/)?.[0] ?? "";
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => {
-      if (!barRef.current?.contains(e.target as Node)) setOpen(null);
-    };
-    window.addEventListener("mousedown", close);
-    return () => window.removeEventListener("mousedown", close);
-  }, [open]);
-
-  // collapse any open submenu when the top-level menu changes / closes
-  useEffect(() => setOpenSub(null), [open]);
 
   // accept filter from the backend's parser registry
   useEffect(() => {
@@ -1554,7 +1527,7 @@ export default function MenuBar({
   });
 
   return (
-    <nav className="fvd-menubar" ref={barRef}>
+    <nav className="fvd-menubar">
       <input
         ref={fileRef}
         type="file"
@@ -1563,87 +1536,7 @@ export default function MenuBar({
         style={{ display: "none" }}
         onChange={onFilesPicked}
       />
-      {Object.entries(menus).map(([name, entries]) => (
-        <div key={name} style={{ position: "relative" }}>
-          <div
-            className={`fvd-menu-item${open === name ? " open" : ""}`}
-            onMouseDown={() => setOpen(open === name ? null : name)}
-            onMouseEnter={() => open && setOpen(name)}
-          >
-            {name}
-          </div>
-          {open === name && (
-            <div className="fvd-menu-dropdown">
-              {entries.map((e, i) => {
-                if (e.kind === "sep")
-                  return <div key={i} className="fvd-menu-sep" />;
-                if (e.kind === "section")
-                  return (
-                    <div key={i} className="fvd-menu-section">
-                      {e.label}
-                    </div>
-                  );
-                if (e.submenu) {
-                  const subKey = `${name}:${e.label}`;
-                  return (
-                    <div
-                      key={i}
-                      className="fvd-menu-entry has-sub"
-                      onMouseEnter={() => setOpenSub(subKey)}
-                      onMouseLeave={() => setOpenSub(null)}
-                    >
-                      <span>{e.label}</span>
-                      <span className="fvd-submenu-arrow">›</span>
-                      {openSub === subKey && (
-                        <div className="fvd-menu-dropdown fvd-submenu">
-                          {e.submenu.map((se, j) =>
-                            se.kind === "sep" ? (
-                              <div key={j} className="fvd-menu-sep" />
-                            ) : (
-                              <div
-                                key={j}
-                                className={`fvd-menu-entry${se.disabled ? " disabled" : ""}`}
-                                onMouseDown={(ev) => {
-                                  ev.stopPropagation();
-                                  setOpen(null);
-                                  se.action?.();
-                                }}
-                              >
-                                <span>{se.label}</span>
-                                {se.shortcut && (
-                                  <span className="fvd-shortcut">
-                                    {se.shortcut}
-                                  </span>
-                                )}
-                              </div>
-                            ),
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
-                return (
-                  <div
-                    key={i}
-                    className={`fvd-menu-entry${e.disabled ? " disabled" : ""}`}
-                    onMouseDown={(ev) => {
-                      ev.stopPropagation();
-                      setOpen(null);
-                      e.action?.();
-                    }}
-                  >
-                    <span>{e.label}</span>
-                    {e.shortcut && (
-                      <span className="fvd-shortcut">{e.shortcut}</span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      ))}
+      <DesktopMenus menus={menus} />
       <span style={{ flex: 1 }} />
       {store.activeId && (
         <div className="fvd-doc-title">
@@ -1658,7 +1551,7 @@ export default function MenuBar({
         data-tip-key="?"
         onClick={() => store.setShorts(true)}
       >
-        ⌨
+        <Icon name="keyboard" />
       </button>
       <button
         className="fvd-icon-btn" aria-label="Dark theme" aria-pressed={store.theme === "dark"}
@@ -1666,7 +1559,7 @@ export default function MenuBar({
         data-tip-key="⌘⇧L"
         onClick={store.toggleTheme}
       >
-        {store.theme === "dark" ? "☾" : "☀"}
+        <Icon name={store.theme === "dark" ? "moon" : "sun"} />
       </button>
       <button
         className="fvd-icon-btn" aria-label="Library panel" aria-pressed={!store.leftCol}
@@ -1674,7 +1567,7 @@ export default function MenuBar({
         data-tip-key="⌘["
         onClick={store.toggleLeft}
       >
-        ◧
+        <Icon name="panel-left" />
       </button>
       <button
         className="fvd-icon-btn" aria-label="Inspector panel" aria-pressed={!store.rightCol}
@@ -1682,7 +1575,7 @@ export default function MenuBar({
         data-tip-key="⌘]"
         onClick={store.toggleRight}
       >
-        ◨
+        <Icon name="panel-right" />
       </button>
       <WorkspaceSwitcher />
       <button
@@ -1690,7 +1583,7 @@ export default function MenuBar({
         onClick={() => store.setCmdk(true)}
         title="Command palette"
       >
-        <span className="icon">⌕</span> Search actions…
+        <Icon name="search" /> Search actions…
         <span className="fvd-shortcut">⌘K</span>
       </button>
     </nav>

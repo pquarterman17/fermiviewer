@@ -1,6 +1,7 @@
 import { applyGeometry, cropToRoi } from "../../lib/stageOps";
 import { useStageInfo } from "../../store/stage";
 import { useViewer } from "../../store/viewer";
+import Icon, { type IconName } from "../icons/Icon";
 
 export function FloatTools() {
   const activeId = useViewer((s) => s.activeId);
@@ -24,23 +25,23 @@ export function FloatTools() {
   const mode = (m: typeof captureMode) => () =>
     setCaptureMode(captureMode === m ? "none" : m);
 
-  const transforms: [string, string, () => void][] = [
-    ["⟲", "Rotate 90° CCW", () => applyGeometry("rotate270")],
-    ["⟳", "Rotate 90° CW", () => applyGeometry("rotate90")],
-    ["⬌", "Flip horizontal", () => applyGeometry("fliph")],
-    ["⬍", "Flip vertical", () => applyGeometry("flipv")],
+  const transforms: [IconName, string, () => void][] = [
+    ["rotate-ccw", "Rotate 90° CCW", () => applyGeometry("rotate270")],
+    ["rotate-cw", "Rotate 90° CW", () => applyGeometry("rotate90")],
+    ["flip-horizontal", "Flip horizontal", () => applyGeometry("fliph")],
+    ["flip-vertical", "Flip vertical", () => applyGeometry("flipv")],
   ];
-  const tools: [string, string, boolean, () => void][] = [
-    ["✥", "Hand tool  H", panTool, () => setPanTool(!panTool)],
-    ["⬚", "Box zoom  Z", captureMode === "zoom", mode("zoom")],
-    ["⊞", "Fixed Size Zoom  F", captureMode === "fixed-zoom", mode("fixed-zoom")],
-    ["↔", "Distance  D", captureMode === "distance", mode("distance")],
-    ["∿", "Line profile  L", captureMode === "profile", mode("profile")],
-    ["⧈", "Box profile (integrated)  B", captureMode === "box-profile", mode("box-profile")],
-    ["⌇", "Polyline  P", captureMode === "polyline", mode("polyline")],
-    ["∠", "Angle  G", captureMode === "angle", mode("angle")],
-    ["▭", "ROI stats  R", captureMode === "roi", mode("roi")],
-    ["📏", "Calibrate scale", captureMode === "calibrate", mode("calibrate")],
+  const tools: [IconName, string, boolean, () => void][] = [
+    ["hand", "Hand tool  H", panTool, () => setPanTool(!panTool)],
+    ["box-zoom", "Box zoom  Z", captureMode === "zoom", mode("zoom")],
+    ["fixed-zoom", "Fixed Size Zoom  F", captureMode === "fixed-zoom", mode("fixed-zoom")],
+    ["distance", "Distance  D", captureMode === "distance", mode("distance")],
+    ["profile", "Line profile  L", captureMode === "profile", mode("profile")],
+    ["box-profile", "Box profile (integrated)  B", captureMode === "box-profile", mode("box-profile")],
+    ["polyline", "Polyline  P", captureMode === "polyline", mode("polyline")],
+    ["angle", "Angle  G", captureMode === "angle", mode("angle")],
+    ["roi", "ROI stats  R", captureMode === "roi", mode("roi")],
+    ["ruler", "Calibrate scale", captureMode === "calibrate", mode("calibrate")],
   ];
 
   const splitTip = (s: string): [string, string | null] => {
@@ -55,7 +56,7 @@ export function FloatTools() {
       aria-label="Image and measurement tools"
       onPointerDown={(e) => e.stopPropagation()}
     >
-      {transforms.map(([glyph, title, onClick]) => {
+      {transforms.map(([icon, title, onClick]) => {
         const [label, hint] = splitTip(title);
         return (
           <button
@@ -66,12 +67,12 @@ export function FloatTools() {
             data-tip-key={hint ?? undefined}
             onClick={onClick}
           >
-            {glyph}
+            <Icon name={icon} />
           </button>
         );
       })}
       <span className="fvd-tool-sep" aria-hidden="true" />
-      {tools.map(([glyph, title, active, onClick]) => {
+      {tools.map(([icon, title, active, onClick]) => {
         const [label, hint] = splitTip(title);
         return (
           <button
@@ -83,7 +84,7 @@ export function FloatTools() {
             data-tip-key={hint ?? undefined}
             onClick={onClick}
           >
-            {glyph}
+            <Icon name={icon} />
           </button>
         );
       })}
@@ -94,7 +95,7 @@ export function FloatTools() {
         data-tip="Crop to ROI"
         onClick={() => cropToRoi()}
       >
-        ✂
+        <Icon name="crop" />
       </button>
       <button
         className={`fvd-tool-btn${captureMode === "crop-save" ? " active" : ""}`}
@@ -103,7 +104,7 @@ export function FloatTools() {
         data-tip="Save Cropped Region"
         onClick={mode("crop-save")}
       >
-        ⊡
+        <Icon name="save-crop" />
       </button>
       <span className="fvd-tool-sep" aria-hidden="true" />
       <button
@@ -113,7 +114,7 @@ export function FloatTools() {
         disabled={!canCompare}
         onClick={() => startSideBySide()}
       >
-        ◫
+        <Icon name="compare" />
       </button>
       <span className="fvd-tool-sep" aria-hidden="true" />
       {hasMeasures && (
@@ -125,7 +126,7 @@ export function FloatTools() {
             if (activeId) deleteLastAnnotation(activeId);
           }}
         >
-          ⌫
+          <Icon name="delete" />
         </button>
       )}
       {isDerived && (
@@ -137,7 +138,7 @@ export function FloatTools() {
             if (activeId) resetToOriginal(activeId);
           }}
         >
-          ⟳₀
+          <Icon name="reset" />
         </button>
       )}
     </div>
@@ -155,7 +156,7 @@ export function ZoomChip({ onZoom }: { onZoom: (factor: number) => void }) {
         data-tip="Zoom out"
         onClick={() => onZoom(0.8)}
       >
-        ⊖
+        <Icon name="zoom-out" />
       </button>
       <span>{Math.round(zoom * 100)} %</span>
       <button
@@ -164,7 +165,7 @@ export function ZoomChip({ onZoom }: { onZoom: (factor: number) => void }) {
         data-tip="Zoom in"
         onClick={() => onZoom(1.25)}
       >
-        ⊕
+        <Icon name="zoom-in" />
       </button>
     </div>
   );

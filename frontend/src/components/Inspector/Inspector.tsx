@@ -1,13 +1,10 @@
 // Right inspector (handoff §4/§5). Phase 1 skeleton: scene-switched shell
 // with the Image metadata card. Phase 2 fills Adjust/Measure/OverlayStyle…
 
-import { useRef, useState } from "react";
+import { lazy, Suspense, useRef, useState } from "react";
 
 import type { ImageMeta } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
-import DiffractionWorkshop from "../workshops/DiffractionWorkshop";
-import EdsWorkshop from "../workshops/EdsWorkshop";
-import EelsWorkshop from "../workshops/EelsWorkshop";
 import AdjustPanel from "./AdjustPanel";
 import CalibrationCard from "./CalibrationCard";
 import Card from "./Card";
@@ -19,6 +16,10 @@ import RoiManagerCard from "./RoiManagerCard";
 import ScaleBarCard from "./ScaleBarCard";
 import ToolsBrowser from "./ToolsBrowser";
 import TransformPanel from "./TransformPanel";
+
+const DiffractionWorkshop = lazy(() => import("../workshops/DiffractionWorkshop"));
+const EdsWorkshop = lazy(() => import("../workshops/EdsWorkshop"));
+const EelsWorkshop = lazy(() => import("../workshops/EelsWorkshop"));
 
 const TABS = ["Image", "EELS", "EDS", "Diff"] as const;
 type Tab = (typeof TABS)[number];
@@ -142,21 +143,25 @@ export default function Inspector() {
           ))}
         </div>
       </div>
-      {tab === "EELS" && (
-        <Card title="EELS">
-          <EelsWorkshop />
-        </Card>
-      )}
-      {tab === "EDS" && (
-        <Card title="EDS">
-          <EdsWorkshop />
-        </Card>
-      )}
-      {tab === "Diff" && (
-        <Card title="Diffraction">
-          <DiffractionWorkshop />
-        </Card>
-      )}
+      <Suspense
+        fallback={<div className="fvd-inspector-loading" role="status">Loading analysis…</div>}
+      >
+        {tab === "EELS" && (
+          <Card title="EELS">
+            <EelsWorkshop />
+          </Card>
+        )}
+        {tab === "EDS" && (
+          <Card title="EDS">
+            <EdsWorkshop />
+          </Card>
+        )}
+        {tab === "Diff" && (
+          <Card title="Diffraction">
+            <DiffractionWorkshop />
+          </Card>
+        )}
+      </Suspense>
       {tab === "Image" && unified && <ToolsBrowser />}
       {tab === "Image" && !unified && <MeasurePanel />}
       {tab === "Image" && meta.kind !== "spectrum" && <RoiManagerCard />}

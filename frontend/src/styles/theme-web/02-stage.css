@@ -1,0 +1,377 @@
+/* ── Stage ── */
+
+/* middle grid cell: the image stage + an optional colorbar gutter beside it */
+.fvd-stage-cell {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  min-height: 0;
+}
+
+.fvd-stage {
+  position: relative;
+  flex: 1;
+  background: var(--axes-bg);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.fvd-stage canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.fvd-stage.pan-ready {
+  cursor: grab;
+}
+
+.fvd-stage.panning {
+  cursor: grabbing;
+}
+
+.fvd-stage.box-zoom {
+  /* High-visibility measurement reticle: a bright-yellow crosshair with a
+     black halo and a centre gap. The native `crosshair` is a thin grey/black
+     cross that vanishes on grey EM backgrounds; the halo keeps this readable
+     on dark, grey AND light images. Hotspot is the centre (12,12). */
+  cursor: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%3E%3Cpath%20d='M12%203V10M12%2014V21M3%2012H10M14%2012H21'%20stroke='%23000'%20stroke-width='4'%20fill='none'%20stroke-linecap='round'/%3E%3Cpath%20d='M12%203V10M12%2014V21M3%2012H10M14%2012H21'%20stroke='%23ffd400'%20stroke-width='2'%20fill='none'%20stroke-linecap='round'/%3E%3Ccircle%20cx='12'%20cy='12'%20r='1.6'%20fill='%23ffd400'%20stroke='%23000'%20stroke-width='1'/%3E%3C/svg%3E") 12 12, crosshair;
+}
+
+.fvd-marquee {
+  position: absolute;
+  border: 1px solid var(--capture);
+  background: var(--capture-soft);
+  pointer-events: none;
+}
+
+/* floating glass chrome over the stage */
+
+.fvd-glass {
+  position: absolute;
+  background: var(--glass);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.fvd-float-tools {
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 3px;
+  padding: 5px;
+}
+
+/* grain editor toolbar (shown over a grain-label map) */
+.fvd-grain-edit {
+  top: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  font-size: var(--font-size-sm);
+}
+
+.fvd-grain-edit .lbl {
+  color: var(--text-dim);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  font-size: 10px;
+}
+
+.fvd-grain-edit .hint {
+  color: var(--accent-text);
+}
+
+.fvd-grain-mark {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border: 2px solid var(--capture);
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.5);
+  z-index: 6;
+}
+
+/* specnav (#10): crosshair ring at the pixel feeding the EELS/EDS spectrum */
+.fvd-specnav-mark {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border: 2px solid var(--capture);
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.6),
+    inset 0 0 0 1px rgb(0 0 0 / 0.4);
+  z-index: 6;
+}
+
+.fvd-specnav-mark::before,
+.fvd-specnav-mark::after {
+  content: "";
+  position: absolute;
+  background: var(--capture);
+}
+
+/* horizontal + vertical crosshair ticks through the ring centre */
+.fvd-specnav-mark::before {
+  left: 50%;
+  top: -5px;
+  width: 1.5px;
+  height: 26px;
+  margin-left: -0.75px;
+}
+
+.fvd-specnav-mark::after {
+  top: 50%;
+  left: -5px;
+  height: 1.5px;
+  width: 26px;
+  margin-top: -0.75px;
+}
+
+.fvd-inspector-tabs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fvd-inspector-tabs .title {
+  font-size: 10px;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-dim);
+  font-weight: var(--weight-semibold);
+}
+
+.fvd-seg-label {
+  font-size: 9px;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+
+.fvd-conn {
+  font-size: 10px;
+  color: var(--danger);
+}
+
+.fvd-conn.on {
+  color: var(--ok);
+}
+
+.fvd-gallery {
+  max-width: 80vw;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.fvd-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.fvd-gallery-cell {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: default;
+}
+
+.fvd-gallery-cell.active {
+  border-color: var(--accent);
+}
+
+.fvd-gallery-cell img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+  background: black;
+  border-radius: 2px;
+}
+
+.fvd-gallery-cell .name {
+  font-size: 10px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fvd-gallery-spec {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  font-size: 28px;
+  color: var(--text-dim);
+}
+
+details.fvd-card > summary {
+  cursor: default;
+  list-style: none;
+  font-size: var(--type-label);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+  user-select: none;
+}
+
+details.fvd-card > summary::before {
+  content: "▾ ";
+  font-size: 9px;
+}
+
+details.fvd-card:not([open]) > summary::before {
+  content: "▸ ";
+}
+
+details.fvd-card:not([open]) > summary {
+  margin-bottom: 0;
+}
+
+.fvd-panel-grip {
+  position: absolute;
+  left: -3px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 50;
+}
+
+.fvd-panel-grip:hover {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.fvd-ctx-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+}
+
+.fvd-ctx-menu {
+  position: fixed;
+  z-index: 401;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  min-width: 150px;
+}
+
+.fvd-ctx-swatches {
+  display: flex;
+  gap: 4px;
+  padding: 2px 4px 6px;
+}
+
+.fvd-ctx-item {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  cursor: default;
+}
+
+.fvd-ctx-item:hover {
+  background: var(--surface-3);
+}
+
+.fvd-ctx-item.danger:hover {
+  background: color-mix(in srgb, var(--danger) 20%, transparent);
+  color: var(--danger);
+}
+
+.fvd-ctx-item:disabled {
+  color: var(--text-faint);
+  background: color-mix(in oklab, var(--surface-2) 72%, var(--surface-1));
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.fvd-ctx-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 3px 4px;
+}
+
+.fvd-ctx-label {
+  padding: 3px 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.5;
+  display: block;
+}
+
+.fvd-ctx-sym-row {
+  display: flex;
+  gap: 2px;
+  padding: 2px 6px 4px;
+}
+
+.fvd-ctx-sym {
+  flex: 1;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+  font-size: 14px;
+  padding: 3px 0;
+  cursor: pointer;
+}
+
+.fvd-ctx-sym.active {
+  background: var(--capture-soft);
+  border-color: var(--capture);
+  color: var(--capture);
+}
+
+.fvd-sb-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.fvd-sb-presets .fvd-seg-btn {
+  font-size: 10px;
+  padding: 2px 5px;
+}
+
+.fvd-sb-spin {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.fvd-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
