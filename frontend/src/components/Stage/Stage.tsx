@@ -45,6 +45,7 @@ import {
 } from "../../store/viewer";
 import CaptureBanner from "./CaptureBanner";
 import DockPlot from "./DockPlot";
+import EmptyStage from "./EmptyStage";
 import LayersOverlay from "./LayersOverlay";
 import MeasureOverlay from "./MeasureOverlay";
 import Minimap from "./Minimap";
@@ -958,9 +959,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
         />
       )}
 
-      {!activeId && (
-        <div className="fvd-stage-empty">Open an image — File → Open…</div>
-      )}
+      {!activeId && <EmptyStage />}
       {rasterless && (
         <div className="fvd-stage-empty">
           1-D spectrum — plot view arrives with the EELS workshop

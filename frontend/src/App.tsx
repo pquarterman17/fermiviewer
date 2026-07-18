@@ -7,15 +7,14 @@ import { useEffect, useMemo, useRef } from "react";
 import CompareInspector from "./components/Inspector/CompareInspector";
 import Inspector from "./components/Inspector/Inspector";
 import Filmstrip from "./components/Library/Filmstrip";
+import CompactLayout from "./components/Shell/CompactLayout";
 import MenuBar from "./components/Shell/MenuBar";
 import StatusBar from "./components/Shell/StatusBar";
 import ColorbarChip from "./components/Stage/ColorbarChip";
 import CompareStage from "./components/Stage/CompareStage";
 import SideBySideStage from "./components/Stage/SideBySideStage";
 import Stage, { type StageHandle } from "./components/Stage/Stage";
-import CommandPalette, {
-  type Action,
-} from "./components/overlays/CommandPalette";
+import CommandPalette, { type Action } from "./components/overlays/CommandPalette";
 import ExportDialog from "./components/overlays/ExportDialog";
 import ParamDialog from "./components/overlays/ParamDialog";
 import ResultsWindow from "./components/overlays/ResultsWindow";
@@ -599,6 +598,7 @@ export default function App() {
 
   return (
     <div className="fvd-app">
+      <CompactLayout />
       <MenuBar
         onFit={() => stageRef.current?.fit()}
         onActualSize={() => stageRef.current?.actualSize()}

@@ -171,6 +171,7 @@ def test_run_desktop_starts_and_stops_owned_server(monkeypatch) -> None:
     assert calls["webview_started"] is True
     assert calls["joined"] == 5
     assert instance.should_exit is True
+    assert calls["window_kwargs"]["min_size"] == (1024, 700)
 
 
 def test_run_dev_terminates_vite_when_backend_stops(monkeypatch) -> None:

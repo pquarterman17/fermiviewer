@@ -122,6 +122,7 @@ def _run_desktop() -> None:
             f"http://{_srv._HOST}:{_srv._PORT}",
             width=1440,
             height=920,
+            min_size=(1024, 700),
             background_color="#16141d",
         )
         webview.start()
