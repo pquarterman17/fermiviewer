@@ -10,7 +10,7 @@ vi.mock("../../lib/api", () => ({
   applyFilter: (...args: unknown[]) => applyFilter(...args),
 }));
 
-vi.mock("./ParamDialog", () => ({ askParams: vi.fn() }));
+vi.mock("../../store/params", () => ({ askParams: vi.fn() }));
 
 const state = {
   batchOpen: true,

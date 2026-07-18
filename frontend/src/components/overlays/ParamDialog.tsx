@@ -3,50 +3,14 @@
 // or null on cancel. One dialog instance lives in <App>.
 
 import { useEffect, useState } from "react";
-import { create } from "zustand";
 
 import {
   coerceParams,
-  type ParamField,
   type ParamValues,
 } from "../../lib/params";
+import { useParamDialog } from "../../store/params";
 import ModalDialog from "./ModalDialog";
 import { ParamFieldRow } from "./ParamFields";
-
-// Param types now live in lib/params (framework-agnostic, so lib/ tool
-// catalogues can describe their fields). Re-exported here for existing
-// importers (e.g. MenuBar) that pull the types from this module.
-export type { ParamField, ParamValues } from "../../lib/params";
-
-interface DialogState {
-  title: string | null;
-  fields: ParamField[];
-  resolve: ((v: ParamValues | null) => void) | null;
-  open: (
-    title: string,
-    fields: ParamField[],
-    resolve: (v: ParamValues | null) => void,
-  ) => void;
-  close: () => void;
-}
-
-const useParamDialog = create<DialogState>((set) => ({
-  title: null,
-  fields: [],
-  resolve: null,
-  open: (title, fields, resolve) => set({ title, fields, resolve }),
-  close: () => set({ title: null, fields: [], resolve: null }),
-}));
-
-/** Open the dialog; resolves with the values or null on cancel. */
-export function askParams(
-  title: string,
-  fields: ParamField[],
-): Promise<ParamValues | null> {
-  return new Promise((resolve) => {
-    useParamDialog.getState().open(title, fields, resolve);
-  });
-}
 
 export default function ParamDialog() {
   const title = useParamDialog((s) => s.title);
