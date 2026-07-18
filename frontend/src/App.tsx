@@ -27,16 +27,7 @@ import FolderOpenDialog from "./components/overlays/FolderOpenDialog";
 import BatchDialog from "./components/overlays/BatchDialog";
 import PrefsWindow from "./components/overlays/PrefsWindow";
 import TooltipLayer from "./components/overlays/TooltipLayer";
-import ToolWindow from "./components/overlays/ToolWindow";
-import DiffractionWorkshop from "./components/workshops/DiffractionWorkshop";
-import FftMaskWorkshop from "./components/workshops/FftMaskWorkshop";
-import PixelInspector from "./components/workshops/PixelInspector";
-import ColorOverlayWorkshop from "./components/workshops/ColorOverlayWorkshop";
-import LayersWorkshop from "./components/workshops/LayersWorkshop";
-import StructureWorkshop from "./components/workshops/StructureWorkshop";
-import SurfaceView from "./components/workshops/SurfaceView";
-import EdsWorkshop from "./components/workshops/EdsWorkshop";
-import EelsWorkshop from "./components/workshops/EelsWorkshop";
+import ToolWindows from "./components/overlays/ToolWindows";
 import { devSampleFiles, launchDir, listImages } from "./lib/api";
 import { COLORMAP_NAMES } from "./lib/colormaps";
 import { autoWindow } from "./lib/display";
@@ -47,7 +38,6 @@ import { installErrLog } from "./lib/errlog";
 import { undoLabel, useViewer, type CaptureMode } from "./store/viewer";
 
 installErrLog(); // module scope: catch errors from the very first render
-
 
 function applyAutoContrast(): void {
   const s = useViewer.getState();
@@ -66,7 +56,6 @@ export default function App() {
   const colorbarSide = useViewer((s) => s.colorbarSide);
   const comparing = useViewer((s) => s.compareSet !== null);
   const compareMode = useViewer((s) => s.compareMode);
-  const tools = useViewer((s) => s.tools);
 
   // restore any prior session (backend keeps images open across reloads)
   useEffect(() => {
@@ -635,45 +624,7 @@ export default function App() {
       <FolderOpenDialog />
       <ParamDialog />
       <ResultsWindow />
-      {tools.map((t) => (
-        <ToolWindow
-          key={t.kind}
-          kind={t.kind}
-          title={
-            {
-              eels: "EELS",
-              eds: "EDS",
-              diffraction: "Diffraction",
-              fftmask: "FFT Mask",
-              pixels: "Pixel Inspector",
-              structure: "Structure",
-              overlay: "Color Overlay",
-              surface: "Surface Plot",
-              layers: "Cross-section Layers",
-            }[t.kind]
-          }
-          x={t.x}
-          y={t.y}
-          z={t.z}
-          width={
-            t.kind === "diffraction" || t.kind === "fftmask"
-              ? 332
-              : t.kind === "pixels"
-                ? 300
-                : 360
-          }
-        >
-          {t.kind === "eels" && <EelsWorkshop />}
-          {t.kind === "eds" && <EdsWorkshop />}
-          {t.kind === "diffraction" && <DiffractionWorkshop />}
-          {t.kind === "fftmask" && <FftMaskWorkshop />}
-          {t.kind === "pixels" && <PixelInspector />}
-          {t.kind === "structure" && <StructureWorkshop />}
-          {t.kind === "overlay" && <ColorOverlayWorkshop />}
-          {t.kind === "surface" && <SurfaceView />}
-          {t.kind === "layers" && <LayersWorkshop />}
-        </ToolWindow>
-      ))}
+      <ToolWindows />
     </div>
   );
 }

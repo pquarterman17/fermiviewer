@@ -1,0 +1,347 @@
+/* ── measurement overlay ── */
+
+.fvd-measure-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.fvd-capture-banner {
+  top: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px 5px 12px;
+  color: var(--capture);
+  border-color: var(--capture);
+  background: color-mix(in oklab, var(--capture-soft), var(--glass) 55%);
+  white-space: nowrap;
+  z-index: 5;
+}
+
+.fvd-capture-banner .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--capture);
+  animation: fvd-capture-pulse 1.2s ease-in-out infinite;
+}
+
+.fvd-capture-banner .label {
+  font-weight: var(--weight-semibold);
+}
+
+.fvd-capture-banner .step {
+  font-family: var(--font-mono);
+  font-size: var(--type-nano);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--capture-soft);
+}
+
+.fvd-capture-banner .hint {
+  color: var(--text-dim);
+}
+
+.fvd-capture-banner kbd {
+  font-family: var(--font-mono);
+  font-size: var(--type-nano);
+  padding: 1px 5px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+}
+
+@keyframes fvd-capture-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.7);
+  }
+}
+
+/* ── dock plot ── */
+
+.fvd-dock-plot {
+  left: 10px;
+  right: 10px;
+  bottom: 40px;
+  height: 180px;
+  display: flex;
+  flex-direction: column;
+  padding: var(--pad);
+}
+
+.fvd-dock-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+  padding-bottom: 4px;
+}
+
+.fvd-dock-body {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── inspector: adjust / measure / overlay style ── */
+
+.fvd-hist {
+  width: 100%;
+  display: block;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--axes-bg);
+  cursor: ew-resize;
+  touch-action: none;
+  margin-bottom: var(--pad);
+}
+
+.fvd-slider-row {
+  display: flex;
+  align-items: center;
+  gap: var(--pad);
+  padding: 3px 0;
+  font-size: var(--font-size-sm);
+}
+
+.fvd-slider-row .k {
+  color: var(--text-faint);
+  min-width: 32px;
+}
+
+.fvd-slider-row .v {
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+}
+
+.fvd-slider-row input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.fvd-slider-row select {
+  flex: 1;
+  background: var(--surface-3);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  font-size: var(--font-size-sm);
+}
+
+/* dark-theme number/text inputs + selects in panel rows — the ws-row
+   rule above only covered workshops; Scale Bar (.fvd-sb-spin /
+   .fvd-meta-row) and Measure width (.fvd-slider-row) clashed white */
+.fvd-slider-row input[type="number"],
+.fvd-slider-row input[type="text"],
+.fvd-meta-row input[type="number"],
+.fvd-meta-row input[type="text"],
+.fvd-meta-row input[type="date"],
+.fvd-prefs-ctl input[type="number"],
+.fvd-prefs-ctl input[type="text"],
+.fvd-sb-spin input {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  padding: 2px 5px;
+  min-width: 0;
+}
+
+.fvd-meta-row select,
+.fvd-prefs-ctl select,
+.fvd-sb-spin select {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  padding: 2px 4px;
+}
+
+.fvd-btn-row {
+  display: flex;
+  gap: var(--pad);
+  padding-top: var(--pad);
+}
+
+.fvd-btn {
+  flex: 1;
+  min-height: 28px;
+  padding: 4px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+  cursor: default;
+}
+
+.fvd-btn:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.fvd-measure-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 5px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  cursor: default;
+}
+
+.fvd-measure-row:hover {
+  background: var(--surface-3);
+}
+
+.fvd-measure-row.selected {
+  background: var(--accent-soft);
+}
+
+.fvd-measure-row .glyph {
+  color: var(--text-faint);
+}
+
+.fvd-measure-row .name {
+  flex: 1;
+  color: var(--text-dim);
+}
+
+.fvd-measure-row .val {
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+}
+
+.fvd-roi-stats {
+  border-top: 1px solid var(--border-soft);
+  margin-top: var(--pad);
+  padding-top: var(--pad);
+}
+
+/* Aggregate measurement statistics summary (displayMeasurementStats port) */
+.fvd-mstats-summary {
+  border-top: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-soft);
+  margin: var(--pad) 0;
+  padding: var(--pad) 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fvd-mstats-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.fvd-mstats-group + .fvd-mstats-group {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px dashed var(--border-soft);
+}
+
+.fvd-mstats-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding-bottom: 2px;
+}
+
+.fvd-mstats-n {
+  font-weight: var(--weight-regular);
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+}
+
+.fvd-mstats-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 1px 0;
+  font-size: var(--font-size-sm);
+}
+
+.fvd-mstats-row .k {
+  color: var(--text-faint);
+}
+
+.fvd-mstats-row .v {
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+}
+
+/* Profile-options sub-section in the Measure card */
+.fvd-profile-opts {
+  border-top: 1px solid var(--border-soft);
+  margin-top: var(--pad);
+  padding-top: var(--pad);
+}
+
+.fvd-profile-opts-label {
+  display: block;
+  font-size: var(--font-size-sm);
+  color: var(--text-faint);
+  margin-bottom: 2px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+
+.fvd-seg {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.fvd-seg-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  min-height: 24px;
+  padding: 3px 10px;
+  font-size: var(--font-size-sm);
+  cursor: default;
+}
+
+.fvd-seg-btn.active {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.fvd-swatches {
+  display: flex;
+  gap: 6px;
+}
+
+.fvd-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: default;
+}
+
+.fvd-swatch.active {
+  border-color: var(--accent);
+}
+

@@ -1,0 +1,341 @@
+/* ── Inspector ── */
+
+.fvd-inspector {
+  background: var(--surface-1);
+  border-left: 1px solid var(--border-soft);
+  overflow-y: auto;
+  padding: var(--pad);
+  display: flex;
+  flex-direction: column;
+  gap: var(--pad);
+}
+
+.fvd-inspector-loading {
+  padding: var(--pad-lg);
+  color: var(--text-faint);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+.fvd-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  padding: var(--pad-lg);
+}
+
+.fvd-card h3 {
+  margin: 0 0 var(--pad);
+  font-size: var(--type-label);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--text-faint);
+}
+
+.fvd-meta-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+  font-size: var(--font-size-sm);
+}
+
+.fvd-meta-row .k {
+  color: var(--text-faint);
+}
+
+.fvd-meta-row .v {
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── StatusBar ── */
+
+.fvd-statusbar {
+  display: flex;
+  align-items: center;
+  gap: var(--pad-lg);
+  background: var(--surface-1);
+  border-top: 1px solid var(--border-soft);
+  padding: 0 var(--pad-lg);
+  font-size: max(var(--font-size-sm), 12px);
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.fvd-statusbar .grow {
+  flex: 1;
+}
+
+/* ── status-bar image cycler: ‹ 3 / 12 › prev/next ── */
+.fvd-imgnav {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.fvd-imgnav-count {
+  min-width: 3.5em;
+  text-align: center;
+}
+
+.fvd-imgnav-btn {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: default;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.fvd-imgnav-btn:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+/* ── filmstrip phase 3: header, names mode, selection, ctx menu ── */
+
+.fvd-film-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px;
+  flex-shrink: 0;
+}
+
+.fvd-film-head .count {
+  font-size: var(--font-size-sm);
+  color: var(--text-faint);
+}
+
+.fvd-compare-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex-shrink: 0;
+  padding: 5px 0;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: var(--font-size-sm);
+  cursor: default;
+}
+
+.fvd-film-card.selected {
+  border-color: var(--border-strong);
+  background: var(--surface-3);
+}
+
+.fvd-film-card.active.selected {
+  border-color: var(--accent);
+}
+
+.fvd-film-card.drop-before {
+  box-shadow: 0 -2px 0 0 var(--accent);
+}
+
+.fvd-film-card.names {
+  display: flex;
+  align-items: center;
+}
+
+.fvd-film-card.names .fvd-film-name {
+  flex: 1;
+}
+
+.fvd-film-ctx {
+  position: fixed;
+  z-index: 60;
+}
+
+/* ── compare mode ── */
+
+.fvd-compare.split {
+  display: grid;
+  gap: 2px;
+}
+
+.fvd-compare-panel {
+  position: relative;
+  overflow: hidden;
+  background: var(--axes-bg);
+}
+
+.fvd-compare-panel canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.fvd-compare-panel.stacked {
+  position: absolute;
+  inset: 0;
+}
+
+.fvd-compare-panel.blend {
+  mix-blend-mode: difference;
+}
+
+.fvd-compare-panel.hidden {
+  visibility: hidden;
+}
+
+.fvd-panel-label {
+  top: 8px;
+  left: 8px;
+  padding: 2px 8px;
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+  max-width: calc(100% - 24px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fvd-compare-chip {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px 3px 12px;
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+  z-index: 5;
+}
+
+.fvd-seg-wide {
+  display: flex;
+  margin-bottom: var(--pad);
+}
+
+.fvd-seg-wide .fvd-seg-btn {
+  flex: 1;
+}
+
+.fvd-compare-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* ── side-by-side compare (MATLAB parity, generalized to an N-pane grid:
+   independently-scrollable panes, focus the one you want to scroll, freeze
+   the rest; grid-template-columns/rows come from sbsRows×sbsCols inline) ── */
+
+.fvd-compare.grid {
+  display: grid;
+  gap: 2px;
+}
+
+.fvd-compare.sidebyside {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+}
+
+.fvd-compare-panel.sbs {
+  display: flex;
+  flex-direction: column;
+}
+
+/* cyan focus border on the active pane — inset so it never shifts layout */
+.fvd-compare-panel.sbs.active {
+  box-shadow: inset 0 0 0 2px #22d3ee;
+}
+
+.fvd-sbs-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: var(--glass);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--glass-border);
+  z-index: 2;
+}
+
+.fvd-sbs-select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* the per-pane group binder sits left of the image dropdown; capped width so
+   the image picker keeps the lion's share of the bar */
+.fvd-sbs-group {
+  flex: 0 1 auto;
+  max-width: 38%;
+  min-width: 0;
+}
+
+.fvd-sbs-canvas-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  cursor: grab;
+}
+
+/* ── named compare groups bar (filmstrip) ── */
+
+.fvd-groups-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px 0 2px;
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
+}
+
+.fvd-groups-head {
+  font-size: var(--type-label);
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.fvd-group-chip {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.fvd-group-name {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  cursor: default;
+}
+
+.fvd-group-count {
+  color: var(--text-faint);
+}
+

@@ -1,0 +1,306 @@
+/* GUI v2 — collapsible group header (chevron + count); the header is a
+   <button> so the whole row toggles its group open/closed. */
+button.fvd-cmd-group {
+  cursor: pointer;
+  background: none;
+  border: none;
+  width: 100%;
+  padding: 3px 0;
+}
+
+button.fvd-cmd-group:hover {
+  color: var(--text-dim);
+}
+
+.fvd-cmd-group .lbl {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.fvd-cmd-group .chev {
+  font-size: 8px;
+  width: 8px;
+  text-align: center;
+}
+
+/* GUI v2 — unified tools browser: category pills + the Cards/Unified toggle */
+.fvd-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 2px 0;
+}
+
+.fvd-pill {
+  font-size: var(--font-size-sm);
+  padding: 3px 11px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-soft);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.fvd-pill:hover {
+  border-color: var(--border-strong);
+}
+
+.fvd-pill.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--surface-3);
+}
+
+.fvd-layout-toggle {
+  margin-bottom: 2px;
+}
+
+.fvd-cmd-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  padding: 8px 11px;
+  cursor: default;
+}
+
+.fvd-cmd-row:hover {
+  border-color: var(--border-strong);
+}
+
+.fvd-cmd-row.active {
+  border-color: var(--capture);
+  background: var(--capture-soft);
+  color: var(--capture);
+}
+
+.fvd-cmd-row .glyph {
+  font-size: 14px;
+  width: 16px;
+  text-align: center;
+}
+
+.fvd-cmd-row .label {
+  flex: 1;
+}
+
+.fvd-cmd-row .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--capture);
+  animation: fvd-capture-pulse 1.2s ease-in-out infinite;
+}
+
+.fvd-cmd-empty {
+  grid-column: 1 / -1;
+  color: var(--text-faint);
+  font-size: var(--font-size-sm);
+  padding: 6px 2px;
+}
+
+.fvd-card-count {
+  font-family: var(--font-mono);
+  font-size: var(--type-nano);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  color: var(--text-faint);
+  margin-left: 6px;
+}
+
+/* GUI v2 phase 4 — Tools panel: single-column tool list with inline
+   parameter expanders (the in-panel home for image filters/transforms). */
+.fvd-tool-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 4px;
+}
+
+.fvd-tool-list .fvd-cmd-row {
+  cursor: pointer;
+}
+
+.fvd-tool-list .fvd-cmd-row .chev {
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.fvd-tool-form {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 1px 0 5px;
+  padding: 9px 11px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+}
+
+/* duplicated from the capture banner (GUI v2 phase 1) — identical, so
+   harmless when both rules load after the phases merge together */
+@keyframes fvd-capture-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.7);
+  }
+}
+
+/* Batch recipe dialog (GUI-enhancements handoff §4a) */
+.fvd-batch {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(560px, 94vw);
+  max-height: 88vh;
+  padding: var(--pad-lg) 18px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pad);
+  overflow: auto;
+}
+
+.fvd-batch h2 {
+  margin: 2px 0 0;
+  font-size: var(--type-title);
+}
+
+.fvd-batch-sub {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+}
+
+.fvd-batch-pal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.fvd-batch-recipe {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 56px;
+  padding: 6px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+
+.fvd-batch-empty {
+  color: var(--text-faint);
+  font-size: var(--font-size-sm);
+  padding: 10px 6px;
+  text-align: center;
+}
+
+.fvd-batch-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.fvd-batch-step .n {
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+  width: 16px;
+  text-align: right;
+}
+
+.fvd-batch-step .lbl {
+  font-weight: var(--weight-semibold);
+}
+
+.fvd-batch-step .prm {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fvd-batch-step .mv,
+.fvd-batch-step .rm {
+  border: 1px solid var(--border);
+  background: var(--surface-3);
+  color: var(--text-dim);
+  border-radius: var(--radius-sm);
+  width: 22px;
+  height: 22px;
+  cursor: default;
+}
+
+.fvd-batch-step .mv:disabled,
+.fvd-batch-step .rm:disabled {
+  opacity: 1;
+  color: var(--text-faint);
+  background: var(--surface-2);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.fvd-batch-step .rm:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.fvd-batch-prog {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 180px;
+  overflow: auto;
+  font-size: var(--font-size-sm);
+}
+
+.fvd-batch-prog .row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fvd-batch-prog .nm {
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fvd-batch-prog .st {
+  width: 14px;
+  text-align: center;
+  font-family: var(--font-mono);
+}
+
+.fvd-batch-prog .st.done {
+  color: var(--ok);
+}
+
+.fvd-batch-prog .st.fail {
+  color: var(--danger);
+}
+
+.fvd-batch-prog .st.running {
+  color: var(--accent-text);
+}
