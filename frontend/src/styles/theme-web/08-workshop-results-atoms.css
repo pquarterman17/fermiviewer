@@ -319,14 +319,31 @@ textarea:disabled {
   gap: 4px;
 }
 
+.fvd-workspace-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 26px;
+  align-items: center;
+}
+
+.fvd-workspace-open {
+  min-width: 0;
+}
+
 .fvd-workspace-del {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
   visibility: hidden;
-  padding: 0 3px;
+  padding: 0;
+  border: 0;
   border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--text-faint);
 }
 
-.fvd-menu-entry:hover .fvd-workspace-del {
+.fvd-workspace-row:hover .fvd-workspace-del,
+.fvd-workspace-row:focus-within .fvd-workspace-del {
   visibility: visible;
 }
 
@@ -338,4 +355,3 @@ textarea:disabled {
 .fvd-capture-hint {
   color: var(--capture);
 }
-

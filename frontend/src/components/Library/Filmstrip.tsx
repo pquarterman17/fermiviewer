@@ -17,6 +17,7 @@ interface CtxMenu {
   x: number;
   y: number;
   id: string;
+  returnFocus: HTMLDivElement | null;
 }
 
 export default function Filmstrip() {
@@ -59,7 +60,12 @@ export default function Filmstrip() {
     e.preventDefault();
     // right-click outside the selection moves selection (native idiom)
     if (!selected.includes(id)) select(id, "single");
-    setCtx({ x: e.clientX, y: e.clientY, id });
+    setCtx({
+      x: e.clientX,
+      y: e.clientY,
+      id,
+      returnFocus: e.currentTarget as HTMLDivElement,
+    });
   };
 
   const compareIds = selected.length >= 2 ? selected : null;
@@ -69,10 +75,22 @@ export default function Filmstrip() {
   };
 
   const onCardKeyDown = (
-    e: React.KeyboardEvent,
+    e: React.KeyboardEvent<HTMLDivElement>,
     id: string,
     index: number,
   ) => {
+    if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+      e.preventDefault();
+      if (!selected.includes(id)) select(id, "single");
+      const rect = e.currentTarget.getBoundingClientRect();
+      setCtx({
+        x: rect.left + Math.min(24, rect.width / 2),
+        y: rect.top + Math.min(24, rect.height / 2),
+        id,
+        returnFocus: e.currentTarget,
+      });
+      return;
+    }
     let nextIndex: number | undefined;
     if (e.key === "ArrowDown" || e.key === "ArrowRight") {
       nextIndex = (index + 1) % order.length;
@@ -255,7 +273,10 @@ export default function Filmstrip() {
               void closeImage(id);
             }
           }}
-          dismiss={() => setCtx(null)}
+          dismiss={(restoreFocus = false) => {
+            setCtx(null);
+            if (restoreFocus) ctx.returnFocus?.focus();
+          }}
         />
       )}
     </aside>
@@ -277,32 +298,74 @@ function ContextMenu({
   onCompare: () => void;
   onRename: () => void;
   onClose: () => void;
-  dismiss: () => void;
+  dismiss: (restoreFocus?: boolean) => void;
 }) {
-  const item = (label: string, run: () => void, disabled = false) => (
-    <div
-      className={`fvd-menu-entry${disabled ? " disabled" : ""}`}
-      onMouseDown={(e) => {
-        e.stopPropagation();
-        dismiss();
-        run();
-      }}
-    >
-      <span>{label}</span>
-    </div>
-  );
+  const refs = useRef<Array<HTMLButtonElement | null>>([]);
+  const liveItems = () =>
+    refs.current.filter((node): node is HTMLButtonElement => node != null);
+
+  useEffect(() => {
+    requestAnimationFrame(() => liveItems()[0]?.focus());
+  }, []);
+
+  const focusItem = (index: number) => {
+    const items = liveItems();
+    if (items.length === 0) return;
+    items[(index + items.length) % items.length]?.focus();
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const items = liveItems();
+    const index = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (e.key === "ArrowDown") focusItem(index + 1);
+    else if (e.key === "ArrowUp") focusItem(index - 1);
+    else if (e.key === "Home") focusItem(0);
+    else if (e.key === "End") focusItem(items.length - 1);
+    else if (e.key === "Escape") dismiss(true);
+    else return;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const items = [
+    { label: "Show in stage", run: onShow },
+    { label: "Compare selected", run: onCompare, disabled: !canCompare },
+    { label: "Rename…  F2", run: onRename },
+    { label: "Close", run: onClose, separator: true },
+  ];
+  let focusIndex = 0;
 
   return (
     <div
       className="fvd-menu-dropdown fvd-film-ctx"
       style={{ left: at.x, top: at.y }}
       onMouseDown={(e) => e.stopPropagation()}
+      onKeyDown={onKeyDown}
+      role="menu"
+      aria-label="Image actions"
     >
-      {item("Show in stage", onShow)}
-      {item("Compare selected", onCompare, !canCompare)}
-      {item("Rename…  F2", onRename)}
-      <div className="fvd-menu-sep" />
-      {item("Close", onClose)}
+      {items.map((item) => {
+        const index = item.disabled ? -1 : focusIndex++;
+        return (
+          <div key={item.label} role="presentation">
+            {item.separator && <div className="fvd-menu-sep" role="separator" />}
+            <button
+              ref={(node) => {
+                if (index >= 0) refs.current[index] = node;
+              }}
+              className="fvd-menu-entry"
+              role="menuitem"
+              disabled={item.disabled}
+              onClick={() => {
+                dismiss(true);
+                item.run();
+              }}
+            >
+              <span>{item.label}</span>
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }
