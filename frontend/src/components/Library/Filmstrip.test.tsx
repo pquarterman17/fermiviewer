@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import type { ImageMeta } from "../../lib/api";
@@ -98,5 +98,23 @@ describe("Filmstrip keyboard selection", () => {
       .getAllByRole("option")
       .filter((o) => o.getAttribute("tabindex") === "0");
     expect(tabbable).toHaveLength(1);
+  });
+
+  it("opens and navigates the image context menu from the keyboard", async () => {
+    render(<Filmstrip />);
+    const option = screen.getAllByRole("option")[0];
+    option.focus();
+    fireEvent.keyDown(option, { key: "F10", shiftKey: true });
+
+    expect(screen.getByRole("menu", { name: "Image actions" })).toBeVisible();
+    const show = screen.getByRole("menuitem", { name: "Show in stage" });
+    await waitFor(() => expect(show).toHaveFocus());
+    expect(screen.getByRole("menuitem", { name: "Compare selected" })).toBeDisabled();
+
+    fireEvent.keyDown(show, { key: "ArrowDown" });
+    expect(screen.getByRole("menuitem", { name: "Rename… F2" })).toHaveFocus();
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(screen.queryByRole("menu", { name: "Image actions" })).toBeNull();
+    expect(option).toHaveFocus();
   });
 });
