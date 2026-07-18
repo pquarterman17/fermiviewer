@@ -40,6 +40,7 @@ export default function StatusBar() {
               <span className="fvd-imgnav">
                 <button
                   className="fvd-imgnav-btn"
+                  aria-label="Previous image"
                   data-tip="Previous image (←)"
                   onClick={() => cycleImage(-1)}
                 >
@@ -48,6 +49,7 @@ export default function StatusBar() {
                 <span className="fvd-imgnav-count">{nOfM}</span>
                 <button
                   className="fvd-imgnav-btn"
+                  aria-label="Next image"
                   data-tip="Next image (→)"
                   onClick={() => cycleImage(1)}
                 >

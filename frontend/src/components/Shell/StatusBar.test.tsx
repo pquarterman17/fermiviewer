@@ -35,17 +35,17 @@ describe("StatusBar image cycler", () => {
   it("shows prev/next around the N / M counter with >1 image", () => {
     render(<StatusBar />);
     expect(screen.getByText("1 / 3")).toBeInTheDocument();
-    expect(screen.getByText("‹")).toBeInTheDocument();
-    expect(screen.getByText("›")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Previous image" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Next image" })).toBeVisible();
   });
 
   it("steps the active image (next, prev, and wrap)", () => {
     render(<StatusBar />);
-    fireEvent.click(screen.getByText("›")); // a -> b
+    fireEvent.click(screen.getByRole("button", { name: "Next image" })); // a -> b
     expect(useViewer.getState().activeId).toBe("b");
-    fireEvent.click(screen.getByText("‹")); // b -> a
+    fireEvent.click(screen.getByRole("button", { name: "Previous image" })); // b -> a
     expect(useViewer.getState().activeId).toBe("a");
-    fireEvent.click(screen.getByText("‹")); // a -> c (wraps)
+    fireEvent.click(screen.getByRole("button", { name: "Previous image" })); // a -> c (wraps)
     expect(useViewer.getState().activeId).toBe("c");
   });
 
@@ -53,7 +53,7 @@ describe("StatusBar image cycler", () => {
     useViewer.setState({ order: ["a"], activeId: "a", images: { a: meta("a") } });
     render(<StatusBar />);
     expect(screen.getByText("1 / 1")).toBeInTheDocument();
-    expect(screen.queryByText("‹")).toBeNull();
-    expect(screen.queryByText("›")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Previous image" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Next image" })).toBeNull();
   });
 });
