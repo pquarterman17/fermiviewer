@@ -322,7 +322,12 @@ function ContextMenu({
     else if (e.key === "Home") focusItem(0);
     else if (e.key === "End") focusItem(items.length - 1);
     else if (e.key === "Escape") dismiss(true);
-    else return;
+    else if (e.key === "Tab") {
+      // APG: Tab closes the menu and continues the tab sequence. Without this
+      // focus walked out to the page while the menu stayed open on screen.
+      dismiss(false);
+      return;
+    } else return;
     e.preventDefault();
     e.stopPropagation();
   };
@@ -355,6 +360,9 @@ function ContextMenu({
               }}
               className="fvd-menu-entry"
               role="menuitem"
+              // ARIA menus manage focus themselves: every item stays out of
+              // the tab sequence and exactly one is focused programmatically.
+              tabIndex={-1}
               disabled={item.disabled}
               onClick={() => {
                 dismiss(true);

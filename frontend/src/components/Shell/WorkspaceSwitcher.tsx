@@ -104,6 +104,11 @@ export default function WorkspaceSwitcher() {
     else if (e.key === "Escape") {
       setOpen(false);
       triggerRef.current?.focus();
+    } else if (e.key === "Tab") {
+      // APG: Tab closes the menu and continues the tab sequence. Without this
+      // focus walked out to the page while the menu stayed open on screen.
+      setOpen(false);
+      return;
     } else return;
     e.preventDefault();
     e.stopPropagation();
@@ -150,6 +155,7 @@ export default function WorkspaceSwitcher() {
                 }}
                 className="fvd-menu-entry fvd-workspace-open"
                 role="menuitem"
+                tabIndex={-1}
                 aria-current={w.slug === current?.slug ? "true" : undefined}
                 onClick={() => onSwitch(w)}
                 onKeyDown={(e) => onMenuKeyDown(e, itemIndex * 2)}
@@ -165,6 +171,7 @@ export default function WorkspaceSwitcher() {
                 }}
                 className="fvd-workspace-del"
                 role="menuitem"
+                tabIndex={-1}
                 aria-label={`Delete workspace ${w.name}`}
                 onClick={() => onDelete(w)}
                 onKeyDown={(e) => onMenuKeyDown(e, itemIndex * 2 + 1)}
@@ -181,6 +188,7 @@ export default function WorkspaceSwitcher() {
             }}
             className="fvd-menu-entry"
             role="menuitem"
+            tabIndex={-1}
             onClick={onSave}
             onKeyDown={(e) => onMenuKeyDown(e, items.length * 2)}
           >

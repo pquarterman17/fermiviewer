@@ -118,6 +118,32 @@ describe("DesktopMenus keyboard navigation", () => {
     expect(open.parentElement).toHaveAttribute("role", "presentation");
   });
 
+
+  it("returns focus to the menubar trigger before running an action", () => {
+    // Dialogs opened from a menu capture document.activeElement as their
+    // focus-restore target. The clicked entry unmounts with the menu, so if
+    // focus is still on it the dialog restores to a detached node and focus
+    // silently falls to <body> on close.
+    let focusedWhenActionRan: string | null = null;
+    const menusWithProbe: Record<string, MenuEntry[]> = {
+      File: [
+        {
+          label: "Open",
+          action: () => {
+            const el = document.activeElement as HTMLElement | null;
+            focusedWhenActionRan = el ? el.textContent : null;
+          },
+        },
+      ],
+    };
+    render(<DesktopMenus menus={menusWithProbe} />);
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: "File" }), {
+      key: "ArrowDown",
+    });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
+    expect(focusedWhenActionRan).toBe("File");
+  });
+
   it("switches top-level menus and restores focus on Escape", async () => {
     render(<DesktopMenus menus={menus} />);
     const file = screen.getByRole("menuitem", { name: "File" });

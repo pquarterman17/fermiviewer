@@ -141,7 +141,13 @@ export default function DesktopMenus({
 
   const run = (entry: MenuEntry) => {
     if (entry.disabled || !entry.action) return;
+    // Return focus to the (persistent) menubar trigger BEFORE running the
+    // action. The clicked entry unmounts with the menu, so a dialog opened
+    // here would otherwise capture a detached node as its restore target and
+    // drop focus to <body> on close.
+    const trigger = open ? topRefs.current.get(open) : null;
     setOpen(null);
+    trigger?.focus();
     entry.action();
   };
 

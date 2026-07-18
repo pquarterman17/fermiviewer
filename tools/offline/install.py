@@ -49,7 +49,8 @@ def _load_info() -> dict:
         _die("bundle-info.json not found next to install.py -- run this script "
              "from inside the extracted fv-offline folder.")
     with open(p, encoding="utf-8") as f:
-        return json.load(f)
+        info: dict = json.load(f)
+    return info
 
 
 def _check_environment(info: dict) -> None:

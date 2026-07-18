@@ -33,10 +33,10 @@ jobs:
       # stub-version differences, not real issues.
       - name: Lint
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.13'
-        run: uv run ruff check src tests
+        run: uv run ruff check src tests tools
       - name: Type check
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.13'
-        run: uv run mypy src
+        run: uv run mypy src tools
       - name: Tests
         # realdata/oracle tests skip in CI (corpus + rsciio absent), which
         # costs ~3.6 pts vs a local run — CI coverage is ~85%, so the gate
