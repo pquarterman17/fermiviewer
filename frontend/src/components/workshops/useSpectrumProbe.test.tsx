@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchSpectrum, type Spectrum } from "../../lib/api";
 import {
   SPECTRUM_PROBE_DEBOUNCE_MS,
+  SPECTRUM_PROBE_MAX_WAIT_MS,
   useSpectrumProbe,
 } from "./useSpectrumProbe";
 
@@ -45,6 +46,37 @@ describe("useSpectrumProbe", () => {
       { signal: expect.any(AbortSignal) },
     );
     expect(onSpectrum).toHaveBeenCalledWith(spectrum, [5, 6, 5, 6]);
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+
+  it("keeps firing during a continuous drag instead of waiting for a pause", async () => {
+    // pointermove arrives ~every 16 ms, so a pure trailing debounce never
+    // elapses mid-drag and the "live" probe would show nothing until the
+    // pointer stopped. The max wait is what keeps it live.
+    const onSpectrum = vi.fn();
+    const onError = vi.fn();
+    const { rerender } = renderHook(
+      ({ pixel }: { pixel: [number, number] }) =>
+        useSpectrumProbe({
+          imageId: "cube",
+          pixel,
+          enabled: true,
+          onSpectrum,
+          onError,
+        }),
+      { initialProps: { pixel: [0, 0] as [number, number] } },
+    );
+
+    const moves = Math.ceil((SPECTRUM_PROBE_MAX_WAIT_MS * 2) / 16);
+    for (let i = 1; i <= moves; i++) {
+      rerender({ pixel: [i, i] });
+      await act(() => vi.advanceTimersByTimeAsync(16));
+    }
+
+    expect(fetchSpectrum).toHaveBeenCalled();
+    // …but nowhere near one request per move.
+    expect(vi.mocked(fetchSpectrum).mock.calls.length).toBeLessThan(moves / 4);
     expect(onError).not.toHaveBeenCalled();
   });
 
