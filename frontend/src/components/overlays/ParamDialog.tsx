@@ -13,25 +13,28 @@ import ModalDialog from "./ModalDialog";
 import { ParamFieldRow } from "./ParamFields";
 
 export default function ParamDialog() {
-  const title = useParamDialog((s) => s.title);
-  const fields = useParamDialog((s) => s.fields);
-  const resolve = useParamDialog((s) => s.resolve);
-  const close = useParamDialog((s) => s.close);
+  // ONE selector returning the queue head. Reading `queue[0]` hands back a
+  // stable object reference; deriving `title`/`fields` inside a selector would
+  // build a fresh value each call and re-render forever.
+  const active = useParamDialog((s) => s.queue[0]);
+  const submit = useParamDialog((s) => s.submit);
   const [values, setValues] = useState<ParamValues>({});
 
+  // Keyed on the request identity, not its title: two queued requests may share
+  // a title, and the next one still needs its own defaults.
   useEffect(() => {
-    if (title !== null) {
-      const init: ParamValues = {};
-      for (const f of fields) init[f.key] = f.default;
-      setValues(init);
-    }
-  }, [title, fields]);
+    if (!active) return;
+    const init: ParamValues = {};
+    for (const f of active.fields) init[f.key] = f.default;
+    setValues(init);
+  }, [active]);
 
-  if (title === null) return null;
+  if (!active) return null;
+
+  const { title, fields } = active;
 
   const finish = (v: ParamValues | null) => {
-    resolve?.(v);
-    close();
+    submit(v);
   };
 
   const onKey = (e: React.KeyboardEvent) => {
