@@ -134,7 +134,7 @@ body {
   cursor: default;
 }
 
-.fvd-menu-entry:hover {
+.fvd-menu-entry:not(:disabled):not(.disabled):hover {
   background: var(--accent-soft);
   color: var(--accent-text);
 }
@@ -309,4 +309,3 @@ body {
   padding: var(--pad-lg);
   line-height: 1.5;
 }
-

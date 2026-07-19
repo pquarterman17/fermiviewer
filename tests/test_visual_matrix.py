@@ -9,6 +9,9 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 THEME_CSS = (ROOT / "frontend" / "src" / "theme.css").read_text(encoding="utf-8")
+SHELL_CSS = (
+    ROOT / "frontend" / "src" / "styles" / "theme-web" / "01-shell-library.css"
+).read_text(encoding="utf-8")
 THEMES = ("dark", "light")
 ACCENTS = ("violet", "teal", "ocean", "amber", "rose")
 DENSITIES = ("compact", "regular", "comfy")
@@ -52,3 +55,9 @@ def test_amber_keeps_capture_feedback_distinct(theme: str) -> None:
     block = _block(f'[data-theme="{theme}"][data-accent="amber"]')
     assert _token(block, "--capture") != _token(block, "--accent")
     assert _token(block, "--capture-soft") != _token(block, "--accent-soft")
+
+
+def test_disabled_menu_entries_do_not_receive_hover_accent() -> None:
+    """Disabled native and class-based menu entries stay visually muted."""
+    assert ".fvd-menu-entry:not(:disabled):not(.disabled):hover" in SHELL_CSS
+    assert not re.search(r"(?m)^\.fvd-menu-entry:hover\s*\{", SHELL_CSS)

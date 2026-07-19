@@ -185,6 +185,22 @@ def capture_surfaces(page: Any, out: Path) -> list[dict[str, str]]:
         submenus = menu.locator('[role="menuitem"][aria-haspopup="menu"]').count()
         if sections + submenus == 0:
             raise AssertionError(f"{name} menu has no visual grouping")
+        if name == "Measure":
+            disabled = menu.get_by_role(
+                "menuitem", name="Calibrate from Measurement…", exact=True
+            )
+            before = disabled.evaluate(
+                "element => getComputedStyle(element).backgroundColor"
+            )
+            disabled.hover()
+            after = disabled.evaluate(
+                "element => getComputedStyle(element).backgroundColor"
+            )
+            if after != before:
+                raise AssertionError(
+                    "disabled Measure entry receives a hover background: "
+                    f"{before} -> {after}"
+                )
         filename = capture(page, out, f"menu-{name.lower()}")
         records.append({"surface": f"{name} menu", "file": filename})
         page.keyboard.press("Escape")
