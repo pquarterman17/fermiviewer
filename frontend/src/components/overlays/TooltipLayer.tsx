@@ -43,6 +43,10 @@ export default function TooltipLayer() {
       const rect = el.getBoundingClientRect();
       clear();
       timer = setTimeout(() => {
+        // The trigger can be gone by now (e.g. a button that removes itself on
+        // click). A removed node emits neither mouseout nor focusout, so a chip
+        // shown for one would strand on screen with nothing left to dismiss it.
+        if (!el.isConnected) return;
         // flip below the target when it sits near the top edge (title bar)
         const below = rect.top < 90;
         undescribe();
@@ -64,9 +68,15 @@ export default function TooltipLayer() {
       );
       if (el) show(el);
     };
+    // Which input last drove focus. Clicking a control focuses it, so without
+    // this the focusin below would re-arm the dwell timer that mousedown just
+    // cleared — every click on a [data-tip] button would pop its own tooltip
+    // back up 350 ms later.
+    let pointerModality = false;
     // WCAG 1.4.13 wants hover and focus parity. Keyboard users never trigger
     // mouseover, so without this the descriptions are unreachable for them.
     const onFocus = (e: FocusEvent) => {
+      if (pointerModality) return; // click-focus, not keyboard navigation
       const el = (e.target as HTMLElement | null)?.closest<HTMLElement>(
         "[data-tip]",
       );
@@ -77,13 +87,18 @@ export default function TooltipLayer() {
       undescribe();
       setTip(null);
     };
+    const onDown = () => {
+      pointerModality = true;
+      onOut();
+    };
     // …and dismissible without moving the pointer or focus.
     const onKey = (e: KeyboardEvent) => {
+      pointerModality = false; // Tab (or any key) hands control back to the keyboard
       if (e.key === "Escape") onOut();
     };
     document.addEventListener("mouseover", onOver);
     document.addEventListener("mouseout", onOut);
-    document.addEventListener("mousedown", onOut);
+    document.addEventListener("mousedown", onDown);
     document.addEventListener("focusin", onFocus);
     document.addEventListener("focusout", onOut);
     document.addEventListener("keydown", onKey);
@@ -92,7 +107,7 @@ export default function TooltipLayer() {
       undescribe();
       document.removeEventListener("mouseover", onOver);
       document.removeEventListener("mouseout", onOut);
-      document.removeEventListener("mousedown", onOut);
+      document.removeEventListener("mousedown", onDown);
       document.removeEventListener("focusin", onFocus);
       document.removeEventListener("focusout", onOut);
       document.removeEventListener("keydown", onKey);

@@ -231,6 +231,10 @@ body {
 
 .fvd-tip-label {
   font-weight: 600;
+  /* .fvd-tip sets nowrap for the single-line case. A label longer than the
+     280px .fvd-tip-copy cap can then neither wrap nor shrink, so it paints
+     past the chip's background and border as bare text. */
+  white-space: normal;
 }
 
 .fvd-tip-detail {

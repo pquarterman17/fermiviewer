@@ -32,7 +32,9 @@ export default function SpectrumNavigationControl({
           live, hence the plain span.) Only the armed/idle text announces. */}
       <div className="fvd-spectrum-probe-readout">
         {active && pixel ? (
-          <span>Row {pixel[0]} · Col {pixel[1]}</span>
+          <span className="fvd-spectrum-probe-pixel">
+            Row {pixel[0]} · Col {pixel[1]}
+          </span>
         ) : (
           <span aria-live="polite">
             {active
