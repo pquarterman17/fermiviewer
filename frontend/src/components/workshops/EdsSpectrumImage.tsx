@@ -23,6 +23,7 @@ import {
 import { useViewer } from "../../store/viewer";
 import RegionPicker, { type Rect1 } from "./RegionPicker";
 import SpectrumNavigationControl from "./SpectrumNavigationControl";
+import { useSpectrumProbe } from "./useSpectrumProbe";
 
 const HALF_WIN = 0.085; // keV, default half-window (matches MATLAB halfWin)
 
@@ -291,36 +292,17 @@ export default function EdsSpectrumImage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId, isCube]);
 
-  // #10 specnav: a pixel picked on the MAIN stage drives the spectrum (1×1 ROI)
-  useEffect(() => {
-    if (!isCube || !specnavPixel || !activeId) return;
-    let alive = true;
-    const [r, c] = specnavPixel;
-    const rect: Rect1 = [r, c, r, c];
-    fetchSpectrum(activeId, rect)
-      .then((s) => {
-        if (!alive) return;
-        setSpectrum(s);
-        setSpecLabel(`px [${r}, ${c}]`);
-        setRoi(rect);
-      })
-      .catch((e: Error) => {
-        if (alive) setStatus(`EDS spectrum: ${e.message}`);
-      });
-    return () => {
-      alive = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [specnavPixel, isCube, activeId]);
-
-  // turn specnav off when the workshop unmounts (don't leave the stage armed)
-  useEffect(
-    () => () => {
-      if (useViewer.getState().captureMode === "specnav")
-        useViewer.getState().setCaptureMode("none");
+  useSpectrumProbe({
+    imageId: activeId,
+    pixel: specnavPixel,
+    enabled: isCube && captureMode === "specnav",
+    onSpectrum: (next, rect) => {
+      setSpectrum(next);
+      setSpecLabel(`px [${rect[0]}, ${rect[1]}]`);
+      setRoi(rect);
     },
-    [],
-  );
+    onError: (e) => setStatus(`EDS spectrum: ${e.message}`),
+  });
 
   const handleElementChange = (sym: string) => {
     setSelElem(sym);

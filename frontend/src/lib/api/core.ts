@@ -268,9 +268,10 @@ export interface Spectrum {
 export async function fetchSpectrum(
   id: string,
   region?: [number, number, number, number], // (row0, col0, row1, col1) 1-based
+  options?: { signal?: AbortSignal },
 ): Promise<Spectrum> {
   const q = region
     ? `?row0=${region[0]}&col0=${region[1]}&row1=${region[2]}&col1=${region[3]}`
     : "";
-  return json(await fetch(`/api/image/${id}/spectrum${q}`));
+  return json(await fetch(`/api/image/${id}/spectrum${q}`, options));
 }

@@ -31,6 +31,7 @@ import {
 import EelsAdvanced from "./EelsAdvanced";
 import RegionPicker, { type Rect1 } from "./RegionPicker";
 import SpectrumNavigationControl from "./SpectrumNavigationControl";
+import { useSpectrumProbe } from "./useSpectrumProbe";
 
 interface EdgeRow extends EelsEdge {
   key: number;
@@ -105,11 +106,11 @@ export default function EelsWorkshop() {
 
   // load the spectrum whenever the active image / region changes
   useEffect(() => {
+    if (!activeId || !spectral || captureMode === "specnav") return;
     setSpectrum(null);
     setFit(null);
     setQuant(null);
     setFitResult(null);
-    if (!activeId || !spectral) return;
     let alive = true;
     fetchSpectrum(activeId, region ?? undefined)
       .then((s) => {
@@ -128,7 +129,7 @@ export default function EelsWorkshop() {
     return () => {
       alive = false;
     };
-  }, [activeId, spectral, region, setStatus]);
+  }, [activeId, spectral, region, captureMode, setStatus]);
 
   // reset the explorer region when switching images
   useEffect(() => {
@@ -137,22 +138,19 @@ export default function EelsWorkshop() {
     setPickMode("region");
   }, [activeId]);
 
-  // #10 specnav: a pixel picked on the MAIN stage drives the spectrum by
-  // feeding the same `region` the in-panel picker uses (1×1 rect).
-  useEffect(() => {
-    if (!isCube || !specnavPixel) return;
-    const [r, c] = specnavPixel;
-    setRegion([r, c, r, c]);
-  }, [specnavPixel, isCube]);
-
-  // turn specnav off when the workshop unmounts (don't leave the stage armed)
-  useEffect(
-    () => () => {
-      if (useViewer.getState().captureMode === "specnav")
-        useViewer.getState().setCaptureMode("none");
+  useSpectrumProbe({
+    imageId: activeId,
+    pixel: specnavPixel,
+    enabled: isCube && captureMode === "specnav",
+    onSpectrum: (next, rect) => {
+      setSpectrum(next);
+      setRegion(rect);
+      setFit(null);
+      setQuant(null);
+      setFitResult(null);
     },
-    [],
-  );
+    onError: (e) => setStatus(`EELS: ${e.message}`),
+  });
 
   // (re)build the plot when spectrum or fit changes
   useEffect(() => {
