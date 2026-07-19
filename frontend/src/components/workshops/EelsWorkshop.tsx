@@ -29,6 +29,7 @@ import {
   eelsQuantToCsv,
 } from "../../lib/eelsQuantCsv";
 import EelsAdvanced from "./EelsAdvanced";
+import { seedFitWindows } from "./eelsWindows";
 import RegionPicker, { type Rect1 } from "./RegionPicker";
 import SpectrumNavigationControl from "./SpectrumNavigationControl";
 import { useSpectrumProbe } from "./useSpectrumProbe";
@@ -104,9 +105,14 @@ export default function EelsWorkshop() {
   const spectral = meta !== null && meta.kind !== "image";
   const isCube = meta?.kind === "spectrum_image";
 
+  // Region the probe itself published: skip only that one here, so regions
+  // the in-panel picker sets while the probe is armed still load.
+  const probeRegion = useRef<string | null>(null);
+
   // load the spectrum whenever the active image / region changes
   useEffect(() => {
-    if (!activeId || !spectral || captureMode === "specnav") return;
+    if (!activeId || !spectral) return;
+    if (region && probeRegion.current === region.join(",")) return;
     setSpectrum(null);
     setFit(null);
     setQuant(null);
@@ -116,20 +122,17 @@ export default function EelsWorkshop() {
       .then((s) => {
         if (!alive) return;
         setSpectrum(s);
-        // seed sensible windows from the energy range
-        const e0 = s.energy[0];
-        const e1 = s.energy[s.energy.length - 1];
-        const span = e1 - e0;
-        setBgLo(fmtNum(e0 + 0.1 * span));
-        setBgHi(fmtNum(e0 + 0.3 * span));
-        setSigLo(fmtNum(e0 + 0.35 * span));
-        setSigHi(fmtNum(e0 + 0.6 * span));
+        const w = seedFitWindows(s.energy);
+        setBgLo(w.bgLo);
+        setBgHi(w.bgHi);
+        setSigLo(w.sigLo);
+        setSigHi(w.sigHi);
       })
       .catch((e: Error) => setStatus(`EELS: ${e.message}`));
     return () => {
       alive = false;
     };
-  }, [activeId, spectral, region, captureMode, setStatus]);
+  }, [activeId, spectral, region, setStatus]);
 
   // reset the explorer region when switching images
   useEffect(() => {
@@ -143,6 +146,7 @@ export default function EelsWorkshop() {
     pixel: specnavPixel,
     enabled: isCube && captureMode === "specnav",
     onSpectrum: (next, rect) => {
+      probeRegion.current = rect.join(",");
       setSpectrum(next);
       setRegion(rect);
       setFit(null);
@@ -799,8 +803,4 @@ function EdgeEditor({
       </button>
     </div>
   );
-}
-
-function fmtNum(v: number): string {
-  return Number(v.toPrecision(4)).toString();
 }
