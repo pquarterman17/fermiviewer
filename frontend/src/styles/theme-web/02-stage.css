@@ -141,6 +141,24 @@
   margin-top: -0.75px;
 }
 
+.fvd-specnav-label {
+  position: absolute;
+  left: 13px;
+  top: -19px;
+  min-width: max-content;
+  padding: 2px 5px;
+  border: 1px solid color-mix(in srgb, var(--capture) 60%, transparent);
+  border-radius: var(--radius-sm);
+  background: rgb(15 17 22 / 0.88);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.35);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: var(--weight-medium);
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+}
+
 .fvd-inspector-tabs {
   display: flex;
   align-items: center;
@@ -374,4 +392,3 @@ details.fvd-card:not([open]) > summary {
   gap: 4px;
   cursor: pointer;
 }
-

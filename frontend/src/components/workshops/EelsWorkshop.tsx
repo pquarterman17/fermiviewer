@@ -30,6 +30,7 @@ import {
 } from "../../lib/eelsQuantCsv";
 import EelsAdvanced from "./EelsAdvanced";
 import RegionPicker, { type Rect1 } from "./RegionPicker";
+import SpectrumNavigationControl from "./SpectrumNavigationControl";
 
 interface EdgeRow extends EelsEdge {
   key: number;
@@ -462,21 +463,6 @@ export default function EelsWorkshop() {
             Region explorer
           </label>
         )}
-        {isCube && (
-          <label
-            className="fvd-check"
-            title="click or drag the main image to read its spectrum here"
-          >
-            <input
-              type="checkbox"
-              checked={captureMode === "specnav"}
-              onChange={(e) =>
-                setCaptureMode(e.target.checked ? "specnav" : "none")
-              }
-            />
-            Navigate on image
-          </label>
-        )}
         {region && (
           <span className="k">
             {region[0] === region[2] && region[1] === region[3]
@@ -485,6 +471,15 @@ export default function EelsWorkshop() {
           </span>
         )}
       </div>
+      {isCube && (
+        <SpectrumNavigationControl
+          active={captureMode === "specnav"}
+          pixel={specnavPixel}
+          onToggle={() =>
+            setCaptureMode(captureMode === "specnav" ? "none" : "specnav")
+          }
+        />
+      )}
       {explore && isCube && (
         <div className="fvd-ws-row">
           <span className="k">pick</span>

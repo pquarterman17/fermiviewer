@@ -51,6 +51,7 @@ import MeasureOverlay from "./MeasureOverlay";
 import Minimap from "./Minimap";
 import ScaleBarOverlay from "./ScaleBarOverlay";
 import ScribbleOverlay from "./ScribbleOverlay";
+import SpectrumProbeMarker from "./SpectrumProbeMarker";
 import {
   ScaleBarCtxMenu,
   buildCtxTarget,
@@ -1005,11 +1006,8 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
               style={{ left: grainMarkPos.x, top: grainMarkPos.y }}
             />
           )}
-          {specnavMarkPos && (
-            <div
-              className="fvd-specnav-mark"
-              style={{ left: specnavMarkPos.x, top: specnavMarkPos.y }}
-            />
+          {specnavMarkPos && specnavPixel && (
+            <SpectrumProbeMarker position={specnavMarkPos} pixel={specnavPixel} />
           )}
           <Minimap
             imageId={activeId}
