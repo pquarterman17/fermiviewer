@@ -28,7 +28,7 @@ export default function LazyOverlays() {
       shortcuts: state.shorts,
     })),
   );
-  const params = useParamDialog((state) => state.title !== null);
+  const params = useParamDialog((state) => state.queue.length > 0);
 
   // One boundary PER overlay, never a shared one. Overlays stack (BatchDialog
   // awaits askParams -> ParamDialog), and a shared boundary re-suspends on the

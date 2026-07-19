@@ -48,7 +48,8 @@ import LazyOverlays from "./LazyOverlays";
 describe("LazyOverlays", () => {
   beforeEach(() => {
     useViewer.setState(Object.fromEntries(overlays.map(([key]) => [key, false])));
-    useParamDialog.getState().close();
+    // cancelAll, not close: close pops one request, this must clear the queue.
+    useParamDialog.getState().cancelAll();
   });
 
   it("mounts each overlay only while its state is open", async () => {
