@@ -35,6 +35,7 @@ import {
   grainsToCsv,
 } from "../../lib/grainsCsv";
 import { buildClassicGrainParams, grainSourceId } from "../../lib/grainWorkflow";
+import { assessGrainQuality } from "../../lib/analysisQuality";
 import { useAnalysisRoi } from "../../hooks/useAnalysisRoi";
 import AtomColumnPanel from "./AtomColumnPanel";
 import { SCRIBBLE_COLORS, useScribble } from "../../store/scribble";
@@ -46,6 +47,7 @@ import {
 } from "../../store/workshop";
 import { useResults } from "../overlays/ResultsWindow";
 import AnalysisRegionSelect from "./AnalysisRegionSelect";
+import { AnalysisQualityCard, GrainMetrics } from "./AnalysisQualityCard";
 
 const VIEW_W = 300;
 
@@ -601,30 +603,6 @@ function TrainedGrainControls({
   );
 }
 
-// Compact mono metric tiles summarizing a grain result (WS5b redesign) — a
-// visual upgrade of the old numeric status line, backed by the same
-// GrainResult fields. The full per-grain table still opens in the results
-// window.
-export function GrainMetrics({ r }: { r: GrainResult }) {
-  const tiles: { v: string; k: string }[] = [
-    { v: String(r.n_grains), k: "grains" },
-    { v: `${r.mean_diameter_px.toFixed(1)} px`, k: "mean ⌀" },
-  ];
-  if (r.astm_grain_size != null)
-    tiles.push({ v: `G ${r.astm_grain_size.toFixed(1)}`, k: "ASTM" });
-  tiles.push({ v: String(r.n_triple_junctions), k: "junctions" });
-  return (
-    <div className="fvd-metrics">
-      {tiles.map((t) => (
-        <div key={t.k} className="fvd-metric">
-          <span className="v">{t.v}</span>
-          <span className="k">{t.k}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export { grainSourceId } from "../../lib/grainWorkflow";
 function GrainsMode({ id }: { id: string }) {
   const setStatus = useViewer((s) => s.setStatus);
@@ -654,6 +632,7 @@ function GrainsMode({ id }: { id: string }) {
     GrainPreviewClass[] | null
   >(null);
   const [previewBusy, setPreviewBusy] = useState(false);
+  const [qualityAccepted, setQualityAccepted] = useState(false);
 
   // trained-mode scribble state (paint examples directly on the stage)
   const numClasses = useScribble((s) => s.numClasses);
@@ -671,6 +650,7 @@ function GrainsMode({ id }: { id: string }) {
     setGrainResult(null);
     setNote("");
     setPreviewClasses(null);
+    setQualityAccepted(false);
   }, [sourceId, roiKey]);
 
   // a fresh Clear (or a new image) wipes the strokes → drop the stale preview
@@ -693,6 +673,13 @@ function GrainsMode({ id }: { id: string }) {
     method === "kmeans" ? k : method === "rag" ? mergeThr : coarseness;
   const setKnob =
     method === "kmeans" ? setK : method === "rag" ? setMergeThr : setCoarseness;
+  const grainQuality = grainResult ? assessGrainQuality(
+    grainResult,
+    sourceMeta?.shape ?? [],
+    Number(minArea) || 25,
+    analysisRoi.roi,
+  ) : null;
+  const canUseResult = grainQuality?.rating !== "poor" || qualityAccepted;
 
   // optional preview: classify pixels from the current strokes and show the
   // per-class composition, committing nothing (no image, no grain labels)
@@ -752,6 +739,7 @@ function GrainsMode({ id }: { id: string }) {
         s.setActive(r.labels.id);
         setLabelsId(r.labels.id);
         setGrainResult(r);
+        setQualityAccepted(false);
         setStatus(`trained grains: ${r.n_grains} grains`);
         setNote("click a grain then another to merge · right-click to split");
         useResults.getState().show({
@@ -790,6 +778,7 @@ function GrainsMode({ id }: { id: string }) {
         ingestDerived([r.labels]);
         setLabelsId(r.labels.id);
         setGrainResult(r);
+        setQualityAccepted(false);
         // numbers now shown as metric tiles; keep the status line as the terse
         // one-line summary
         const bits = [
@@ -909,11 +898,19 @@ function GrainsMode({ id }: { id: string }) {
         </div>
       )}
       {grainResult && <GrainMetrics r={grainResult} />}
+      {grainQuality && (
+        <AnalysisQualityCard
+          value={grainQuality}
+          accepted={qualityAccepted}
+          onAccept={() => setQualityAccepted(true)}
+        />
+      )}
       {note && <div className="fvd-ws-note">{note}</div>}
       {grainResult && labelsId && (
         <div className="fvd-ws-row">
           <button
             className="fvd-btn"
+            disabled={!canUseResult}
             onClick={() => {
               const base = csvBaseName(sourceMeta?.name);
               downloadCsv(
@@ -931,6 +928,7 @@ function GrainsMode({ id }: { id: string }) {
           </button>
           <button
             className="fvd-btn"
+            disabled={!canUseResult}
             onClick={() => {
               const base = csvBaseName(sourceMeta?.name);
               downloadGrainsOverlayPng(

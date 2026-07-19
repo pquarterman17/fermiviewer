@@ -20,9 +20,16 @@ const image: ImageMeta = {
 };
 
 const result: LayersResult = {
-  axis: "y", layers_horizontal: true, tilt_deg: 0, coherence: 0.9,
+  axis: "y", layers_horizontal: true, tilt_deg: 0, coherence: 0.1,
   pixel_size: 1, unit: "px", depth_pos: [], depth_profile: [],
-  interfaces: [], layers: [],
+  interfaces: [{
+    position: 20, sigma_erf: 1, r_squared: 0.9, sigma_w: null,
+    trace: null, roughness: null,
+  }],
+  layers: [{
+    index: 0, top: 0, bottom: 20, thickness: 20,
+    thickness_std: null, conformality: null,
+  }],
 };
 
 afterEach(() => {
@@ -57,5 +64,8 @@ describe("LayersWorkshop ROI", () => {
       "src",
       expect.objectContaining({ roi: [21, 21, 80, 180] }),
     ));
+    expect(screen.getByText("Export CSV")).toBeDisabled();
+    fireEvent.click(screen.getByText("Use anyway"));
+    expect(screen.getByText("Export CSV")).not.toBeDisabled();
   });
 });

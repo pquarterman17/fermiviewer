@@ -116,8 +116,10 @@ describe("StructureWorkshop trained flow", () => {
     // the metric tiles, merge/split note, and export buttons all survive
     expect(screen.getByText("grains")).toBeInTheDocument();
     expect(screen.getByText(/merge/)).toBeInTheDocument();
-    expect(screen.getByText("CSV")).toBeInTheDocument();
+    expect(screen.getByText("CSV")).toBeDisabled();
     expect(screen.getByText("Overlay PNG")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Use anyway"));
+    expect(screen.getByText("CSV")).not.toBeDisabled();
     // and the active image is the produced grain map
     expect(useViewer.getState().activeId).toBe("grains1");
 

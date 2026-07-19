@@ -10,9 +10,11 @@
 
 - PR 1: implemented in [#78](https://github.com/pquarterman17/fermiviewer/pull/78);
   awaiting Claude review.
-- PR 2: ROI-scoped layer and grain analysis implemented in the current stacked
+- PR 2: implemented in [#79](https://github.com/pquarterman17/fermiviewer/pull/79);
+  awaiting Claude review after PR 1.
+- PR 3: detection-quality diagnostics implemented in the current stacked
   change; awaiting Claude review after publication.
-- PRs 3-5: pending.
+- PRs 4-5: pending.
 
 ## Outcome
 

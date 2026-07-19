@@ -20,6 +20,8 @@ import {
   type AnalysisRoi,
 } from "../../hooks/useAnalysisRoi";
 import { useViewer } from "../../store/viewer";
+import { assessLayerQuality } from "../../lib/analysisQuality";
+import { AnalysisQualityCard } from "./AnalysisQualityCard";
 import AnalysisRegionSelect from "./AnalysisRegionSelect";
 import DepthPlot from "./LayersDepthPlot";
 import LayersRoughnessDetail from "./LayersRoughnessDetail";
@@ -174,11 +176,16 @@ export default function LayersWorkshop() {
   const [selectedMaps, setSelectedMaps] = useState<string[]>([]);
   const [multi, setMulti] = useState<LayersMultiResult | null>(null);
   const [multiBusy, setMultiBusy] = useState(false);
+  const [qualityAccepted, setQualityAccepted] = useState(false);
   const analysisRoi = useAnalysisRoi(activeId, meta?.shape ?? []);
   const roiKey = analysisRoi.roi?.join(":") ?? "whole";
 
   const isImage = meta?.kind === "image";
   const mapIds = order.filter((id) => images[id]?.kind === "image");
+  const layerQuality = result
+    ? assessLayerQuality(result, Number(nLayers) || 0)
+    : null;
+  const canUseResult = layerQuality?.rating !== "poor" || qualityAccepted;
 
   const toggleMap = (id: string) =>
     setSelectedMaps((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
@@ -209,6 +216,8 @@ export default function LayersWorkshop() {
     roi: AnalysisRoi | null = analysisRoi.roi,
   ) => {
     setResult(r);
+    setQualityAccepted(false);
+    setLayersEdit(false);
     if (imageId) {
       const overlay = layerOverlayCoordinates(
         r.axis,
@@ -274,6 +283,7 @@ export default function LayersWorkshop() {
     setLayersEdit(false);
     setLayersEditReq(null);
     setDetailIdx(null);
+    setQualityAccepted(false);
   }, [activeId, roiKey, setLayersOverlay, setLayersEdit, setLayersEditReq]);
 
   // a stage click on an interface line focuses its roughness detail card
@@ -435,6 +445,13 @@ export default function LayersWorkshop() {
       </div>
 
       {result && (
+        <AnalysisQualityCard
+          value={layerQuality!}
+          accepted={qualityAccepted}
+          onAccept={() => setQualityAccepted(true)}
+        />
+      )}
+      {result && (
         <div className="fvd-ws-row">
           <span className="k" style={{ flex: 1 }}>
             {result.layers_horizontal ? "Horizontal" : "Vertical"} layers ({result.axis}-axis)
@@ -540,6 +557,7 @@ export default function LayersWorkshop() {
             <input
               type="checkbox"
               checked={layersEdit}
+              disabled={!canUseResult}
               onChange={(e) => setLayersEdit(e.target.checked)}
             />
             edit on stage
@@ -575,9 +593,9 @@ export default function LayersWorkshop() {
                 <button
                   className="fvd-icon-btn"
                   title="Remove this interface + recompute"
-                  disabled={busy}
+                  disabled={busy || !canUseResult}
                   onClick={() =>
-                    recompute(
+                    canUseResult && recompute(
                       result.interfaces.filter((_, j) => j !== k).map((it) => it.position),
                     )
                   }
@@ -593,13 +611,15 @@ export default function LayersWorkshop() {
               placeholder="depth px"
               style={{ width: 64 }}
               title="Add an interface at this depth (px) and recompute"
+              disabled={!canUseResult}
               onChange={(e) => setAddPos(e.target.value)}
             />
             <button
               className="fvd-btn"
               title="Add an interface at the entered depth and recompute"
-              disabled={busy || !addPos}
+              disabled={busy || !addPos || !canUseResult}
               onClick={() => {
+                if (!canUseResult) return;
                 const p = Number(addPos);
                 if (Number.isFinite(p)) {
                   recompute([...result.interfaces.map((it) => it.position), p]);
@@ -614,7 +634,7 @@ export default function LayersWorkshop() {
       )}
       {result && result.layers.length > 0 && (
         <div className="fvd-ws-row">
-          <button className="fvd-btn" onClick={() => exportCsv(result)} title="Export layers + interfaces as CSV">
+          <button className="fvd-btn" disabled={!canUseResult} onClick={() => exportCsv(result)} title="Export layers + interfaces as CSV">
             Export CSV
           </button>
         </div>

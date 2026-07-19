@@ -14,8 +14,8 @@ import type {
 } from "../../lib/api";
 import LayersRoughnessDetail from "./LayersRoughnessDetail";
 import { LayerStack } from "./LayersWorkshop";
+import { GrainMetrics } from "./AnalysisQualityCard";
 import {
-  GrainMetrics,
   paintedReadyCount,
   TrainedPreviewLegend,
 } from "./StructureWorkshop";
