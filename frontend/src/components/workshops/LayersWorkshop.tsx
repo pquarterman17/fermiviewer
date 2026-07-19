@@ -20,6 +20,7 @@ import {
   type AnalysisRoi,
 } from "../../hooks/useAnalysisRoi";
 import { useViewer } from "../../store/viewer";
+import { acceptCrossSectionLayers, useCrossSection } from "../../store/crossSection";
 import { assessLayerQuality } from "../../lib/analysisQuality";
 import { AnalysisQualityCard } from "./AnalysisQualityCard";
 import AnalysisRegionSelect from "./AnalysisRegionSelect";
@@ -229,6 +230,13 @@ export default function LayersWorkshop() {
         imageId,
         axis: r.axis,
         ...overlay,
+      });
+      useCrossSection.getState().setLayers({
+        sourceId: imageId,
+        regionLabel: analysisRoi.label,
+        roi,
+        result: r,
+        qualityAccepted: false,
       });
     }
     setStatus(
@@ -448,7 +456,10 @@ export default function LayersWorkshop() {
         <AnalysisQualityCard
           value={layerQuality!}
           accepted={qualityAccepted}
-          onAccept={() => setQualityAccepted(true)}
+          onAccept={() => {
+            setQualityAccepted(true);
+            acceptCrossSectionLayers();
+          }}
         />
       )}
       {result && (

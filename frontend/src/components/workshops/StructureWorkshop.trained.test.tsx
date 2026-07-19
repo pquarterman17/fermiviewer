@@ -9,6 +9,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { GrainResult, ImageMeta } from "../../lib/api";
+import { recordCrossSectionGrains, useCrossSection } from "../../store/crossSection";
 import { useScribble } from "../../store/scribble";
 import { useViewer } from "../../store/viewer";
 import { useWorkshop } from "../../store/workshop";
@@ -24,7 +25,7 @@ vi.mock("../../lib/api", async (importActual) => {
 });
 
 import { analyzeGrainsAsync, grainsTrainSegment, runJob } from "../../lib/api";
-import StructureWorkshop from "./StructureWorkshop";
+import StructureWorkshop, { GrainsMode } from "./StructureWorkshop";
 
 function imageMeta(id: string, extra: Partial<ImageMeta> = {}): ImageMeta {
   return {
@@ -75,9 +76,28 @@ afterEach(() => {
     images: {}, order: [], activeId: null, selected: [], savedRois: {},
   });
   useWorkshop.setState({ structureMode: "Atoms" });
+  useCrossSection.getState().clear();
 });
 
 describe("StructureWorkshop trained flow", () => {
+  it("restores a reviewed result when the guided workflow revisits the step", () => {
+    const result = grainResult("grains-restored");
+    useViewer.getState().ingest([imageMeta("src"), result.labels]);
+    useViewer.getState().setActive("src");
+    recordCrossSectionGrains("src", "Whole image", null, 25, result);
+
+    const first = render(<GrainsMode id="src" />);
+    expect(screen.getByText("34")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Use anyway"));
+    expect(screen.getByText("CSV")).not.toBeDisabled();
+    first.unmount();
+
+    render(<GrainsMode id="src" />);
+    expect(screen.getByText("34")).toBeInTheDocument();
+    expect(screen.queryByText("Use anyway")).toBeNull();
+    expect(screen.getByText("CSV")).not.toBeDisabled();
+  });
+
   it("keeps the result after training swaps the active image to the grain map", async () => {
     useViewer.getState().ingest([imageMeta("src")]);
     useViewer.getState().setActive("src");

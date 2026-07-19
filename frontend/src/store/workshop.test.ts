@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { openGrainWorkshop } from "../components/Shell/MenuBar";
+import { openCrossSectionGuide, openGrainWorkshop } from "../components/Shell/MenuBar";
 import { useViewer } from "./viewer";
 import { useWorkshop } from "./workshop";
 
@@ -16,6 +16,13 @@ describe("workshop navigation intent", () => {
     expect(useWorkshop.getState().structureMode).toBe("Grains");
     expect(useViewer.getState().tools).toEqual([
       expect.objectContaining({ kind: "structure" }),
+    ]);
+  });
+
+  it("opens the guided cross-section workflow", () => {
+    openCrossSectionGuide();
+    expect(useViewer.getState().tools).toEqual([
+      expect.objectContaining({ kind: "crosssection" }),
     ]);
   });
 });

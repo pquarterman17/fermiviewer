@@ -12,6 +12,7 @@ const StructureWorkshop = lazy(() => import("../workshops/StructureWorkshop"));
 const SurfaceView = lazy(() => import("../workshops/SurfaceView"));
 const EdsWorkshop = lazy(() => import("../workshops/EdsWorkshop"));
 const EelsWorkshop = lazy(() => import("../workshops/EelsWorkshop"));
+const CrossSectionGuide = lazy(() => import("../workshops/CrossSectionGuide"));
 
 const titles: Record<ToolKind, string> = {
   eels: "EELS",
@@ -23,6 +24,7 @@ const titles: Record<ToolKind, string> = {
   overlay: "Color Overlay",
   surface: "Surface Plot",
   layers: "Cross-section Layers",
+  crosssection: "Cross-section Assistant",
 };
 
 export default function ToolWindows() {
@@ -38,6 +40,8 @@ export default function ToolWindows() {
       width={
         tool.kind === "layers"
           ? 520
+          : tool.kind === "crosssection"
+            ? 640
           : tool.kind === "structure"
             ? 480
             : tool.kind === "diffraction" || tool.kind === "fftmask"
@@ -80,5 +84,7 @@ function Workshop({ kind }: { kind: ToolKind }) {
       return <SurfaceView />;
     case "layers":
       return <LayersWorkshop />;
+    case "crosssection":
+      return <CrossSectionGuide />;
   }
 }

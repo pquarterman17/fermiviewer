@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { useViewer, type Measure, type SavedRoi } from "../store/viewer";
+import { useWorkshop } from "../store/workshop";
 
 export type AnalysisRoi = [number, number, number, number];
 
@@ -75,9 +76,13 @@ export function useAnalysisRoi(imageId: string | null, shape: number[]) {
     imageId ? (s.savedRois[imageId] ?? NO_SAVED) : NO_SAVED,
   );
   const selectedId = useViewer((s) => s.selectedMeasure);
-  const [choice, setChoice] = useState("whole");
-
-  useEffect(() => setChoice("whole"), [imageId]);
+  const choice = useWorkshop((s) =>
+    imageId ? (s.analysisRegionChoices[imageId] ?? "whole") : "whole",
+  );
+  const setStoredChoice = useWorkshop((s) => s.setAnalysisRegionChoice);
+  const setChoice = (next: string) => {
+    if (imageId) setStoredChoice(imageId, next);
+  };
 
   const selected = measures.find(
     (m) => m.id === selectedId && (m.kind === "roi" || m.kind === "ellipse"),

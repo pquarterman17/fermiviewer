@@ -14,9 +14,10 @@
   awaiting Claude review after PR 1.
 - PR 3: implemented in [#80](https://github.com/pquarterman17/fermiviewer/pull/80);
   awaiting Claude review after PR 2.
-- PR 4: responsive workshop geometry and bounded result rendering implemented
-  in the current stacked change; awaiting Claude review after publication.
-- PR 5: pending.
+- PR 4: implemented in [#81](https://github.com/pquarterman17/fermiviewer/pull/81);
+  awaiting Claude review after PR 3.
+- PR 5: guided shared-ROI cross-section workflow implemented in the current
+  stacked change; awaiting Claude review after publication.
 
 ## Outcome
 
@@ -110,19 +111,32 @@ next action.
 Acceptance: a 2,000-row result does not create 2,000 live table rows, and the
 grain/layer controls remain usable at 1280 x 720 and the compact breakpoint.
 
-### PR 5 - Cross-section assistant
+### PR 5 - Cross-section assistant foundation
 
-- Add a guided entry point: choose modality/calibration and ROI, detect layers,
-  review/edit interfaces, choose film layers, then segment grains inside them.
-- Reuse the existing Layers and Grains APIs; do not duplicate physics.
+- Add a guided entry point that shares one ROI across the existing Layers and
+  Grains workflows without duplicating either analysis implementation.
+- Preserve reviewed results while moving among Region, Layers, Grains, and
+  Report steps, including explicit acceptance of poor-quality detections.
+- Export one provenance-rich report with source, calibration, ROI, layer, grain,
+  quality-acceptance, and current-limitation metadata.
+- State clearly that grain statistics currently cover the shared ROI and are
+  not yet partitioned by layer.
+
+Acceptance: a user can run and review both analyses in one assistant; report
+export remains blocked until poor results are acknowledged, and revisiting a
+step restores its result and review state.
+
+### PR 6 - Per-layer grain measurements
+
+- Let the user choose which detected bands are film layers rather than vacuum,
+  protective cap, or substrate.
+- Partition accepted grain labels by the reviewed layer interfaces.
 - Report per-layer lateral grain width, through-film height, aspect ratio,
   boundary orientation, count/density, and grain size versus depth.
-- Keep advanced controls available but collapsed behind the guided defaults.
-- Export one provenance-rich cross-section report.
+- Overlay the layer/grain assignment on the source for visual confirmation.
 
-Acceptance: a user can go from an opened TEM/STEM cross-section to reviewed
-layer and per-layer grain measurements without changing tools or analyzing the
-vacuum/substrate unintentionally.
+Acceptance: the report contains reviewed, spatially assigned grain metrics for
+the selected film layers without counting vacuum or substrate.
 
 ### Follow-up - Spatial trained confidence
 

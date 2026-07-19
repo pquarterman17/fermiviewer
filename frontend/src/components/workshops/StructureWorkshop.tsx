@@ -39,28 +39,20 @@ import { assessGrainQuality } from "../../lib/analysisQuality";
 import { useAnalysisRoi } from "../../hooks/useAnalysisRoi";
 import AtomColumnPanel from "./AtomColumnPanel";
 import { SCRIBBLE_COLORS, useScribble } from "../../store/scribble";
+import {
+  acceptCrossSectionGrains, matchesCrossSectionRegion, recordCrossSectionGrains, useCrossSection,
+} from "../../store/crossSection";
 import { useViewer, type Measure } from "../../store/viewer";
 import {
   STRUCTURE_MODES,
+  STRUCTURE_MODE_DESCRIPTIONS,
   useWorkshop,
-  type StructureMode,
 } from "../../store/workshop";
 import { useResults } from "../overlays/ResultsWindow";
 import AnalysisRegionSelect from "./AnalysisRegionSelect";
 import { AnalysisQualityCard, GrainMetrics } from "./AnalysisQualityCard";
 
 const VIEW_W = 300;
-
-const MODE_DESC: Record<StructureMode, string> = {
-  Atoms: "Atom-column detection, fitting & PPA strain",
-  Particles: "Threshold-based particle detection & counting",
-  Grains: "Grain segmentation & boundary metrology",
-  Template: "Template matching via a drawn ROI motif",
-  GPA: "Geometric phase analysis — strain from FFT g-vectors",
-  CTF: "Contrast transfer function fit (defocus, R²)",
-  Lattice: "Lattice spacing & unit cell from FFT spot picks",
-  Stitch: "Stitch multiple tiles into one mosaic",
-};
 
 const NO_MEASURES: Measure[] = [];
 
@@ -82,7 +74,7 @@ export default function StructureWorkshop() {
             key={m}
             className={`fvd-seg-btn${mode === m ? " active" : ""}`}
             onClick={() => setMode(m)}
-            title={MODE_DESC[m]}
+            title={STRUCTURE_MODE_DESCRIPTIONS[m]}
           >
             {m}
           </button>
@@ -604,7 +596,7 @@ function TrainedGrainControls({
 }
 
 export { grainSourceId } from "../../lib/grainWorkflow";
-function GrainsMode({ id }: { id: string }) {
+export function GrainsMode({ id }: { id: string }) {
   const setStatus = useViewer((s) => s.setStatus);
   const ingestDerived = useViewer((s) => s.ingestDerived);
   const images = useViewer((s) => s.images);
@@ -613,18 +605,20 @@ function GrainsMode({ id }: { id: string }) {
   const sourceMeta = images[sourceId] ?? null;
   const analysisRoi = useAnalysisRoi(sourceId, sourceMeta?.shape ?? []);
   const roiKey = analysisRoi.roi?.join(":") ?? "whole";
-  const [method, setMethod] = useState<GrainMethod>("gradient");
+  const latestGrains = useCrossSection.getState().grains;
+  const savedGrains = matchesCrossSectionRegion(latestGrains, sourceId, analysisRoi.roi) ? latestGrains : null;
+  const [method, setMethod] = useState<GrainMethod>((savedGrains?.result.method as GrainMethod) ?? "gradient");
   const [k, setK] = useState("3");
   const [coarseness, setCoarseness] = useState("0.05");
   const [mergeThr, setMergeThr] = useState("0.08");
-  const [minArea, setMinArea] = useState("25");
+  const [minArea, setMinArea] = useState(String(savedGrains?.minArea ?? 25));
   const [denoise, setDenoise] = useState("0");
   // trained-mode pixel classifier: forest (nonlinear, #8) is the default
   const [classifier, setClassifier] = useState<"softmax" | "forest">("forest");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
-  const [labelsId, setLabelsId] = useState<string | null>(null);
-  const [grainResult, setGrainResult] = useState<GrainResult | null>(null);
+  const [labelsId, setLabelsId] = useState<string | null>(savedGrains?.result.labels.id ?? null);
+  const [grainResult, setGrainResult] = useState<GrainResult | null>(savedGrains?.result ?? null);
   const [note, setNote] = useState("");
   // optional, non-committing preview of the trained classifier's per-class
   // pixel composition (does not register an image or segment grains)
@@ -632,7 +626,7 @@ function GrainsMode({ id }: { id: string }) {
     GrainPreviewClass[] | null
   >(null);
   const [previewBusy, setPreviewBusy] = useState(false);
-  const [qualityAccepted, setQualityAccepted] = useState(false);
+  const [qualityAccepted, setQualityAccepted] = useState(savedGrains?.qualityAccepted ?? false);
 
   // trained-mode scribble state (paint examples directly on the stage)
   const numClasses = useScribble((s) => s.numClasses);
@@ -643,14 +637,17 @@ function GrainsMode({ id }: { id: string }) {
   const scribbleBegin = useScribble((s) => s.begin);
   const scribbleEnd = useScribble((s) => s.end);
 
-  // A label map remains part of the same analysis as its grain_source. Reset
-  // only when that original source changes, not when a result becomes active.
+  // Restore only when the original source/ROI changes, not when its result becomes active.
   useEffect(() => {
-    setLabelsId(null);
-    setGrainResult(null);
+    const saved = useCrossSection.getState().grains;
+    const restored = saved?.sourceId === sourceId && (saved.roi?.join(":") ?? "whole") === roiKey ? saved : null;
+    setLabelsId(restored?.result.labels.id ?? null);
+    setGrainResult(restored?.result ?? null);
+    setMethod((restored?.result.method as GrainMethod) ?? "gradient");
+    setMinArea(String(restored?.minArea ?? 25));
     setNote("");
     setPreviewClasses(null);
-    setQualityAccepted(false);
+    setQualityAccepted(restored?.qualityAccepted ?? false);
   }, [sourceId, roiKey]);
 
   // a fresh Clear (or a new image) wipes the strokes → drop the stale preview
@@ -740,6 +737,7 @@ function GrainsMode({ id }: { id: string }) {
         setLabelsId(r.labels.id);
         setGrainResult(r);
         setQualityAccepted(false);
+        recordCrossSectionGrains(sourceId, analysisRoi.label, analysisRoi.roi, Number(minArea) || 25, r);
         setStatus(`trained grains: ${r.n_grains} grains`);
         setNote("click a grain then another to merge · right-click to split");
         useResults.getState().show({
@@ -779,6 +777,7 @@ function GrainsMode({ id }: { id: string }) {
         setLabelsId(r.labels.id);
         setGrainResult(r);
         setQualityAccepted(false);
+        recordCrossSectionGrains(sourceId, analysisRoi.label, analysisRoi.roi, Number(minArea) || 25, r);
         // numbers now shown as metric tiles; keep the status line as the terse
         // one-line summary
         const bits = [
@@ -902,7 +901,10 @@ function GrainsMode({ id }: { id: string }) {
         <AnalysisQualityCard
           value={grainQuality}
           accepted={qualityAccepted}
-          onAccept={() => setQualityAccepted(true)}
+          onAccept={() => {
+            setQualityAccepted(true);
+            acceptCrossSectionGrains();
+          }}
         />
       )}
       {note && <div className="fvd-ws-note">{note}</div>}

@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 interface RegionOption {
   value: string;
   label: string;
@@ -14,11 +16,12 @@ export default function AnalysisRegionSelect({
   disabled: boolean;
   onChange: (choice: string) => void;
 }) {
+  const id = useId();
   return (
     <div className="fvd-ws-row">
-      <label className="k" htmlFor="analysis-region">Region</label>
+      <label className="k" htmlFor={id}>Region</label>
       <select
-        id="analysis-region"
+        id={id}
         value={choice}
         disabled={disabled}
         style={{ flex: 1, minWidth: 0 }}

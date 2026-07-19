@@ -65,6 +65,10 @@ export function openGrainWorkshop(): void {
   useViewer.getState().openTool("structure");
 }
 
+export function openCrossSectionGuide(): void {
+  useViewer.getState().openTool("crosssection");
+}
+
 function recentPaths(): string[] {
   try {
     return (
@@ -1187,6 +1191,11 @@ export default function MenuBar({
       },
     ],
     Analysis: [
+      {
+        label: "Cross-section Assistant…",
+        disabled: !store.activeId,
+        action: openCrossSectionGuide,
+      },
       {
         label: "Particle Analysis…",
         disabled: !store.activeId,
