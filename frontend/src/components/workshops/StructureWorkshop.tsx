@@ -23,8 +23,7 @@ import {
   runJob,
   type CtfResult,
   type GrainMethod,
-  type GrainParams,
-  type GrainPreviewClass,
+  type GrainPreview,
   type GrainResult,
   type Raster16,
   type TrainStroke,
@@ -35,34 +34,28 @@ import {
   downloadGrainsOverlayPng,
   grainsToCsv,
 } from "../../lib/grainsCsv";
+import { buildClassicGrainParams, grainSourceId } from "../../lib/grainWorkflow";
+import { assessGrainQuality } from "../../lib/analysisQuality";
+import { useAnalysisRoi } from "../../hooks/useAnalysisRoi";
 import AtomColumnPanel from "./AtomColumnPanel";
 import { SCRIBBLE_COLORS, useScribble } from "../../store/scribble";
+import {
+  acceptCrossSectionGrains, matchesCrossSectionRegion, recordCrossSectionGrains, useCrossSection,
+} from "../../store/crossSection";
 import { useViewer, type Measure } from "../../store/viewer";
+import {
+  STRUCTURE_MODES,
+  STRUCTURE_MODE_DESCRIPTIONS,
+  useWorkshop,
+} from "../../store/workshop";
 import { useResults } from "../overlays/ResultsWindow";
+import AnalysisRegionSelect from "./AnalysisRegionSelect";
+import { AnalysisQualityCard, GrainMetrics } from "./AnalysisQualityCard";
+import { TrainedGrainPreview } from "./TrainedGrainPreview";
+
+export { TrainedPreviewLegend } from "./TrainedGrainPreview";
 
 const VIEW_W = 300;
-const MODES = [
-  "Atoms",
-  "Particles",
-  "Grains",
-  "Template",
-  "GPA",
-  "CTF",
-  "Lattice",
-  "Stitch",
-] as const;
-type Mode = (typeof MODES)[number];
-
-const MODE_DESC: Record<Mode, string> = {
-  Atoms: "Atom-column detection, fitting & PPA strain",
-  Particles: "Threshold-based particle detection & counting",
-  Grains: "Grain segmentation & boundary metrology",
-  Template: "Template matching via a drawn ROI motif",
-  GPA: "Geometric phase analysis — strain from FFT g-vectors",
-  CTF: "Contrast transfer function fit (defocus, R²)",
-  Lattice: "Lattice spacing & unit cell from FFT spot picks",
-  Stitch: "Stitch multiple tiles into one mosaic",
-};
 
 const NO_MEASURES: Measure[] = [];
 
@@ -71,19 +64,20 @@ export default function StructureWorkshop() {
   const meta = useViewer((s) =>
     s.activeId ? (s.images[s.activeId] ?? null) : null,
   );
-  const [mode, setMode] = useState<Mode>("Atoms");
+  const mode = useWorkshop((s) => s.structureMode);
+  const setMode = useWorkshop((s) => s.setStructureMode);
 
   const isImage = meta?.kind === "image";
 
   return (
     <div className="fvd-ws">
       <div className="fvd-seg">
-        {MODES.map((m) => (
+        {STRUCTURE_MODES.map((m) => (
           <button
             key={m}
             className={`fvd-seg-btn${mode === m ? " active" : ""}`}
             onClick={() => setMode(m)}
-            title={MODE_DESC[m]}
+            title={STRUCTURE_MODE_DESCRIPTIONS[m]}
           >
             {m}
           </button>
@@ -374,39 +368,6 @@ export function paintedReadyCount(
   return Array.from(painted).filter((c) => !boundary.includes(c)).length;
 }
 
-// Color-keyed legend of the trained classifier's per-class pixel composition
-// (the optional preview). Boundary (∅) classes show a dashed hollow chip.
-export function TrainedPreviewLegend({
-  classes,
-}: {
-  classes: GrainPreviewClass[];
-}) {
-  return (
-    <div className="fvd-legend">
-      {classes.map((c) => {
-        const col = SCRIBBLE_COLORS[(c.class_id - 1) % SCRIBBLE_COLORS.length];
-        return (
-          <div key={c.class_id} className="fvd-legend-item">
-            <span
-              className="fvd-legend-chip"
-              style={{
-                background: c.is_boundary ? "transparent" : col,
-                border: c.is_boundary ? "1px dashed var(--text-faint)" : "none",
-              }}
-            />
-            <span className="fvd-legend-label">
-              {c.is_boundary ? "∅ " : ""}Class {c.class_id}
-            </span>
-            <span className="fvd-legend-val">
-              {Math.round(c.fraction * 100)}%
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 // Trained-mode controls: pick a class, set the brush, paint examples on the
 // stage, then train+segment. A class can be flagged as boundary/background
 // (∅) so its pixels are excluded from grains.
@@ -425,7 +386,10 @@ function TrainedGrainControls({
   onRun,
   onPreview,
   previewBusy,
-  previewClasses,
+  preview,
+  activeId,
+  sourceId,
+  showPreview,
 }: {
   numClasses: number;
   classId: number;
@@ -441,7 +405,10 @@ function TrainedGrainControls({
   onRun: () => void;
   onPreview: () => void;
   previewBusy: boolean;
-  previewClasses: GrainPreviewClass[] | null;
+  preview: GrainPreview | null;
+  activeId: string;
+  sourceId: string;
+  showPreview: (id: string) => void;
 }) {
   const setClass = useScribble((s) => s.setClass);
   const setNumClasses = useScribble((s) => s.setNumClasses);
@@ -577,14 +544,13 @@ function TrainedGrainControls({
           {busy ? progress || "Training…" : "Train & segment"}
         </button>
       </div>
-      {previewClasses && (
-        <>
-          <div className="fvd-ws-note">
-            pixel classification preview — check the split, then train &amp;
-            segment
-          </div>
-          <TrainedPreviewLegend classes={previewClasses} />
-        </>
+      {preview && (
+        <TrainedGrainPreview
+          preview={preview}
+          activeId={activeId}
+          sourceId={sourceId}
+          show={showPreview}
+        />
       )}
       <div
         className="fvd-ws-note"
@@ -604,53 +570,36 @@ function TrainedGrainControls({
   );
 }
 
-// Compact mono metric tiles summarizing a grain result (WS5b redesign) — a
-// visual upgrade of the old numeric status line, backed by the same
-// GrainResult fields. The full per-grain table still opens in the results
-// window.
-export function GrainMetrics({ r }: { r: GrainResult }) {
-  const tiles: { v: string; k: string }[] = [
-    { v: String(r.n_grains), k: "grains" },
-    { v: `${r.mean_diameter_px.toFixed(1)} px`, k: "mean ⌀" },
-  ];
-  if (r.astm_grain_size != null)
-    tiles.push({ v: `G ${r.astm_grain_size.toFixed(1)}`, k: "ASTM" });
-  tiles.push({ v: String(r.n_triple_junctions), k: "junctions" });
-  return (
-    <div className="fvd-metrics">
-      {tiles.map((t) => (
-        <div key={t.k} className="fvd-metric">
-          <span className="v">{t.v}</span>
-          <span className="k">{t.k}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function GrainsMode({ id }: { id: string }) {
+export { grainSourceId } from "../../lib/grainWorkflow";
+export function GrainsMode({ id }: { id: string }) {
   const setStatus = useViewer((s) => s.setStatus);
   const ingestDerived = useViewer((s) => s.ingestDerived);
-  const meta = useViewer((s) => s.images[id] ?? null);
-  const [method, setMethod] = useState<GrainMethod>("gradient");
+  const images = useViewer((s) => s.images);
+  const meta = images[id] ?? null;
+  const sourceId = grainSourceId(id, images);
+  const sourceMeta = images[sourceId] ?? null;
+  const analysisRoi = useAnalysisRoi(sourceId, sourceMeta?.shape ?? []);
+  const roiKey = analysisRoi.roi?.join(":") ?? "whole";
+  const latestGrains = useCrossSection((s) => s.grains);
+  const savedGrains = matchesCrossSectionRegion(latestGrains, sourceId, analysisRoi.roi) ? latestGrains : null;
+  const [method, setMethod] = useState<GrainMethod>((savedGrains?.result.method as GrainMethod) ?? "gradient");
   const [k, setK] = useState("3");
   const [coarseness, setCoarseness] = useState("0.05");
   const [mergeThr, setMergeThr] = useState("0.08");
-  const [minArea, setMinArea] = useState("25");
+  const [minArea, setMinArea] = useState(String(savedGrains?.minArea ?? 25));
   const [denoise, setDenoise] = useState("0");
   // trained-mode pixel classifier: forest (nonlinear, #8) is the default
   const [classifier, setClassifier] = useState<"softmax" | "forest">("forest");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
-  const [labelsId, setLabelsId] = useState<string | null>(null);
-  const [grainResult, setGrainResult] = useState<GrainResult | null>(null);
+  const [labelsId, setLabelsId] = useState<string | null>(savedGrains?.result.labels.id ?? null);
+  const [grainResult, setGrainResult] = useState<GrainResult | null>(savedGrains?.result ?? null);
   const [note, setNote] = useState("");
   // optional, non-committing preview of the trained classifier's per-class
   // pixel composition (does not register an image or segment grains)
-  const [previewClasses, setPreviewClasses] = useState<
-    GrainPreviewClass[] | null
-  >(null);
+  const [preview, setPreview] = useState<GrainPreview | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
+  const [qualityAccepted, setQualityAccepted] = useState(savedGrains?.qualityAccepted ?? false);
 
   // trained-mode scribble state (paint examples directly on the stage)
   const numClasses = useScribble((s) => s.numClasses);
@@ -661,26 +610,31 @@ function GrainsMode({ id }: { id: string }) {
   const scribbleBegin = useScribble((s) => s.begin);
   const scribbleEnd = useScribble((s) => s.end);
 
-  // Training swaps the active image to the grain map it produced (so the stage
-  // merge/split editor can act on it). That self-initiated activeId change must
-  // NOT trip the image-switch reset below — which exists for *user* switches —
-  // or the just-computed results (tiles, note, export buttons) get wiped on the
-  // very next commit.
-  const selfSetActiveId = useRef<string | null>(null);
+  // Restore only when the original source/ROI changes, not when its result becomes active.
   useEffect(() => {
-    if (id === selfSetActiveId.current) {
-      selfSetActiveId.current = null;
-      return;
-    }
-    setLabelsId(null);
-    setGrainResult(null);
+    const saved = useCrossSection.getState().grains;
+    const restored = saved?.sourceId === sourceId && (saved.roi?.join(":") ?? "whole") === roiKey ? saved : null;
+    setLabelsId(restored?.result.labels.id ?? null);
+    setGrainResult(restored?.result ?? null);
+    setMethod((restored?.result.method as GrainMethod) ?? "gradient");
+    setMinArea(String(restored?.minArea ?? 25));
     setNote("");
-    setPreviewClasses(null);
-  }, [id]);
+    setPreview(null);
+    setQualityAccepted(restored?.qualityAccepted ?? false);
+  }, [sourceId, roiKey]);
+
+  // Adopt a stage merge/split's new label map — same source/ROI, so restore won't.
+  useEffect(() => {
+    if (!latestGrains || latestGrains.result.labels.id === labelsId) return;
+    if (!matchesCrossSectionRegion(latestGrains, sourceId, analysisRoi.roi)) return;
+    setLabelsId(latestGrains.result.labels.id);
+    setGrainResult(latestGrains.result);
+    setQualityAccepted(latestGrains.qualityAccepted);
+  }, [latestGrains, labelsId, sourceId, analysisRoi.roi]);
 
   // a fresh Clear (or a new image) wipes the strokes → drop the stale preview
   useEffect(() => {
-    if (nStrokes === 0) setPreviewClasses(null);
+    if (nStrokes === 0) setPreview(null);
   }, [nStrokes]);
 
   // open/close the stage paint overlay as the Trained method is selected.
@@ -689,18 +643,25 @@ function GrainsMode({ id }: { id: string }) {
   const sourceIsGrainMap = Boolean(meta?.meta?.["grain_labels"]);
   useEffect(() => {
     if (method !== "trained" || sourceIsGrainMap) return;
-    scribbleBegin(id);
+    scribbleBegin(sourceId);
     return () => scribbleEnd();
-  }, [method, id, sourceIsGrainMap, scribbleBegin, scribbleEnd]);
+  }, [method, sourceId, sourceIsGrainMap, scribbleBegin, scribbleEnd]);
 
   const knob = GRAIN_METHODS.find((m) => m.value === method)!.knob;
   const knobValue =
     method === "kmeans" ? k : method === "rag" ? mergeThr : coarseness;
   const setKnob =
     method === "kmeans" ? setK : method === "rag" ? setMergeThr : setCoarseness;
+  const grainQuality = grainResult ? assessGrainQuality(
+    grainResult,
+    sourceMeta?.shape ?? [],
+    Number(minArea) || 25,
+    analysisRoi.roi,
+  ) : null;
+  const canUseResult = grainQuality?.rating !== "poor" || qualityAccepted;
 
-  // optional preview: classify pixels from the current strokes and show the
-  // per-class composition, committing nothing (no image, no grain labels)
+  // Classify pixels without creating connected grain labels, then expose the
+  // spatial classes and confidence so training errors are visible.
   const previewRun = () => {
     const { strokes, boundary: bnd } = useScribble.getState();
     if (new Set(strokes.map((s) => s.classId)).size < 2) {
@@ -713,14 +674,35 @@ function GrainsMode({ id }: { id: string }) {
       radius: s.radius,
       points: s.points,
     }));
-    const reqId = id;
-    grainsTrainPreview(id, payload, { boundaryClass: bnd, classifier })
+    const reqId = sourceId;
+    grainsTrainPreview(sourceId, payload, {
+      roi: analysisRoi.roi,
+      boundaryClass: bnd,
+      classifier,
+    })
       .then((r) => {
         // ignore a response that arrives after the user switched images
-        if (useViewer.getState().activeId !== reqId) return;
-        setPreviewClasses(r.classes);
+        const state = useViewer.getState();
+        const active = state.activeId;
+        if (!active || grainSourceId(active, state.images) !== reqId) return;
+        const oldPreview = preview;
+        if (oldPreview) {
+          state.closeImage(oldPreview.class_map.id).catch(() => {});
+          state.closeImage(oldPreview.confidence_map.id).catch(() => {});
+        }
+        state.ingestDerived([r.class_map, r.confidence_map]);
+        state.setDisplay(r.class_map.id, { cmap: "label" }, { silent: true });
+        state.setDisplay(
+          r.confidence_map.id,
+          { cmap: "viridis" },
+          { silent: true },
+        );
+        state.setActive(r.class_map.id);
+        setPreview(r);
         const phases = r.classes.filter((c) => !c.is_boundary).length;
-        setStatus(`trained grains: preview — ${phases} phase(s) classified`);
+        setStatus(
+          `trained grains: preview — ${phases} phase(s), ${Math.round(r.mean_confidence * 100)}% mean confidence`,
+        );
       })
       .catch((e: Error) => setStatus(`trained grains preview: ${e.message}`))
       .finally(() => setPreviewBusy(false));
@@ -739,21 +721,20 @@ function GrainsMode({ id }: { id: string }) {
       radius: s.radius,
       points: s.points,
     }));
-    grainsTrainSegment(id, payload, {
+    grainsTrainSegment(sourceId, payload, {
+      roi: analysisRoi.roi,
       minArea: Number(minArea) || 25,
       boundaryClass: bnd,
       classifier,
     })
       .then((r) => {
         const s = useViewer.getState();
-        // mark this activeId change as self-initiated so the reset effect
-        // keeps the results we're about to set (both ingestDerived and
-        // setActive make the grain map active; see selfSetActiveId)
-        selfSetActiveId.current = r.labels.id;
         s.ingestDerived([r.labels]);
         s.setActive(r.labels.id);
         setLabelsId(r.labels.id);
         setGrainResult(r);
+        setQualityAccepted(false);
+        recordCrossSectionGrains(sourceId, analysisRoi.label, analysisRoi.roi, Number(minArea) || 25, r);
         setStatus(`trained grains: ${r.n_grains} grains`);
         setNote("click a grain then another to merge · right-click to split");
         useResults.getState().show({
@@ -777,32 +758,23 @@ function GrainsMode({ id }: { id: string }) {
   const run = () => {
     setBusy(true);
     setProgress("starting…");
-    const denoiseSigma = Number(denoise) || 0;
-    const params: GrainParams =
-      method === "kmeans"
-        ? { method, k: Number(k) || 3 }
-        : method === "rag"
-          ? {
-              method,
-              merge_threshold: Number(mergeThr) || 0.08,
-              denoise_sigma: denoiseSigma,
-            }
-          : {
-              method,
-              granularity: Number(coarseness) || 0.05,
-              denoise_sigma: denoiseSigma,
-            };
+    const params = buildClassicGrainParams(
+      method as Exclude<GrainMethod, "trained">,
+      analysisRoi.roi,
+      knobValue,
+      minArea,
+      denoise,
+    );
     runJob<GrainResult>(
-      () => analyzeGrainsAsync(id, params),
+      () => analyzeGrainsAsync(sourceId, params),
       (f, msg) => setProgress(`${Math.round(f * 100)}% ${msg}`),
     )
       .then((r) => {
-        // ingestDerived makes the new grain map the active image (via _ingest);
-        // mark that so the [id] reset effect keeps the results we set here
-        selfSetActiveId.current = r.labels.id;
         ingestDerived([r.labels]);
         setLabelsId(r.labels.id);
         setGrainResult(r);
+        setQualityAccepted(false);
+        recordCrossSectionGrains(sourceId, analysisRoi.label, analysisRoi.roi, Number(minArea) || 25, r);
         // numbers now shown as metric tiles; keep the status line as the terse
         // one-line summary
         const bits = [
@@ -837,11 +809,24 @@ function GrainsMode({ id }: { id: string }) {
       {labelsId ? (
         <Preview id={labelsId} markers={[]} color="var(--capture)" />
       ) : (
-        <Preview id={id} markers={[]} color="var(--capture)" />
+        <Preview id={sourceId} markers={[]} color="var(--capture)" />
+      )}
+      <div className="fvd-ws-note" title={sourceMeta?.name ?? sourceId}>
+        Source image: {sourceMeta?.name ?? sourceId}
+      </div>
+      <AnalysisRegionSelect
+        choice={analysisRoi.choice}
+        options={analysisRoi.options}
+        disabled={busy || previewBusy}
+        onChange={analysisRoi.setChoice}
+      />
+      {analysisRoi.roi && method === "trained" && (
+        <div className="fvd-ws-note">Only paint classes inside the selected ROI.</div>
       )}
       <div className="fvd-ws-row">
         <span className="k">method</span>
         <select
+          aria-label="Grain method"
           value={method}
           style={{ flex: 1 }}
           onChange={(e) => setMethod(e.target.value as GrainMethod)}
@@ -872,7 +857,10 @@ function GrainsMode({ id }: { id: string }) {
           onRun={trainRun}
           onPreview={previewRun}
           previewBusy={previewBusy}
-          previewClasses={previewClasses}
+          preview={preview}
+          activeId={id}
+          sourceId={sourceId}
+          showPreview={(previewId) => useViewer.getState().setActive(previewId)}
         />
       ) : (
         <div className="fvd-ws-row">
@@ -909,17 +897,28 @@ function GrainsMode({ id }: { id: string }) {
         </div>
       )}
       {grainResult && <GrainMetrics r={grainResult} />}
+      {grainQuality && (
+        <AnalysisQualityCard
+          value={grainQuality}
+          accepted={qualityAccepted}
+          onAccept={() => {
+            setQualityAccepted(true);
+            acceptCrossSectionGrains();
+          }}
+        />
+      )}
       {note && <div className="fvd-ws-note">{note}</div>}
       {grainResult && labelsId && (
         <div className="fvd-ws-row">
           <button
             className="fvd-btn"
+            disabled={!canUseResult}
             onClick={() => {
-              const base = csvBaseName(meta?.name);
+              const base = csvBaseName(sourceMeta?.name);
               downloadCsv(
                 `${base}_grains.csv`,
                 grainsToCsv(grainResult, {
-                  imageName: meta?.name ?? id,
+                  imageName: sourceMeta?.name ?? sourceId,
                   method: grainResult.method,
                 }),
               );
@@ -931,10 +930,11 @@ function GrainsMode({ id }: { id: string }) {
           </button>
           <button
             className="fvd-btn"
+            disabled={!canUseResult}
             onClick={() => {
-              const base = csvBaseName(meta?.name);
+              const base = csvBaseName(sourceMeta?.name);
               downloadGrainsOverlayPng(
-                id,
+                sourceId,
                 labelsId,
                 `${base}_grains_overlay.png`,
                 0.6,

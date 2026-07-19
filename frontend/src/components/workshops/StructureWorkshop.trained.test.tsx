@@ -8,17 +8,34 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { GrainResult, ImageMeta } from "../../lib/api";
+import type { GrainPreview, GrainResult, ImageMeta } from "../../lib/api";
+import {
+  recordCrossSectionGrains,
+  replaceCrossSectionGrainsAfterEdit,
+  useCrossSection,
+} from "../../store/crossSection";
 import { useScribble } from "../../store/scribble";
 import { useViewer } from "../../store/viewer";
+import { useWorkshop } from "../../store/workshop";
 
 vi.mock("../../lib/api", async (importActual) => {
   const actual = await importActual<typeof import("../../lib/api")>();
-  return { ...actual, grainsTrainSegment: vi.fn(), runJob: vi.fn() };
+  return {
+    ...actual,
+    analyzeGrainsAsync: vi.fn(),
+    grainsTrainPreview: vi.fn(),
+    grainsTrainSegment: vi.fn(),
+    runJob: vi.fn(),
+  };
 });
 
-import { grainsTrainSegment, runJob } from "../../lib/api";
-import StructureWorkshop from "./StructureWorkshop";
+import {
+  analyzeGrainsAsync,
+  grainsTrainPreview,
+  grainsTrainSegment,
+  runJob,
+} from "../../lib/api";
+import StructureWorkshop, { GrainsMode } from "./StructureWorkshop";
 
 function imageMeta(id: string, extra: Partial<ImageMeta> = {}): ImageMeta {
   return {
@@ -62,13 +79,117 @@ function grainResult(labelsId: string): GrainResult {
   };
 }
 
+function grainPreview(): GrainPreview {
+  return {
+    classes: [
+      { class_id: 1, fraction: 0.6, is_boundary: false },
+      { class_id: 2, fraction: 0.4, is_boundary: false },
+    ],
+    class_map: imageMeta("preview-classes", {
+      name: "grain classes(src)",
+      meta: { derived_from: "src", grain_source: "src", grain_preview: true },
+    }),
+    confidence_map: imageMeta("preview-confidence", {
+      name: "grain confidence(src)",
+      meta: { derived_from: "src", grain_source: "src", grain_preview: true },
+    }),
+    mean_confidence: 0.87,
+    low_confidence_fraction: 0.12,
+    confidence_threshold: 0.6,
+  };
+}
+
 afterEach(() => {
   vi.clearAllMocks();
   useScribble.getState().end();
-  useViewer.setState({ images: {}, order: [], activeId: null, selected: [] });
+  useViewer.setState({
+    images: {}, order: [], activeId: null, selected: [], savedRois: {},
+  });
+  useWorkshop.setState({ structureMode: "Atoms" });
+  useCrossSection.getState().clear();
 });
 
 describe("StructureWorkshop trained flow", () => {
+  it("shows spatial class and confidence views before committing grains", async () => {
+    useViewer.getState().ingest([imageMeta("src")]);
+    useViewer.getState().setActive("src");
+    vi.mocked(grainsTrainPreview).mockResolvedValue(grainPreview());
+
+    render(<StructureWorkshop />);
+    fireEvent.click(screen.getByText("Grains"));
+    fireEvent.change(screen.getByRole("combobox", { name: "Grain method" }), {
+      target: { value: "trained" },
+    });
+    act(() => {
+      useScribble.setState({
+        strokes: [
+          { classId: 1, radius: 4, points: [[10, 10]] },
+          { classId: 2, radius: 4, points: [[50, 50]] },
+        ],
+      });
+    });
+
+    fireEvent.click(screen.getByText("Preview"));
+    await waitFor(() => expect(screen.getByText("Classes")).toBeInTheDocument());
+
+    expect(grainsTrainPreview).toHaveBeenCalledWith(
+      "src",
+      expect.any(Array),
+      expect.objectContaining({ classifier: "forest" }),
+    );
+    expect(screen.getByText("mean confidence 87% · 12% below 60%")).toBeInTheDocument();
+    expect(screen.getByText(/no grains created yet/)).toBeInTheDocument();
+    expect(useViewer.getState().activeId).toBe("preview-classes");
+    expect(useViewer.getState().display["preview-classes"].cmap).toBe("label");
+    expect(useViewer.getState().display["preview-confidence"].cmap).toBe("viridis");
+
+    fireEvent.click(screen.getByText("Confidence"));
+    expect(useViewer.getState().activeId).toBe("preview-confidence");
+    fireEvent.click(screen.getByText("Source"));
+    expect(useViewer.getState().activeId).toBe("src");
+    expect(grainsTrainSegment).not.toHaveBeenCalled();
+  });
+
+  it("restores a reviewed result when the guided workflow revisits the step", () => {
+    const result = grainResult("grains-restored");
+    useViewer.getState().ingest([imageMeta("src"), result.labels]);
+    useViewer.getState().setActive("src");
+    recordCrossSectionGrains("src", "Whole image", null, 25, result);
+
+    const first = render(<GrainsMode id="src" />);
+    expect(screen.getByText("34")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Use anyway"));
+    expect(screen.getByText("CSV")).not.toBeDisabled();
+    first.unmount();
+
+    render(<GrainsMode id="src" />);
+    expect(screen.getByText("34")).toBeInTheDocument();
+    expect(screen.queryByText("Use anyway")).toBeNull();
+    expect(screen.getByText("CSV")).not.toBeDisabled();
+  });
+
+  it("adopts a stage merge/split that supersedes the shown label map", () => {
+    // A merge/split on the stage mints a new label map with the SAME source and
+    // ROI, so the [sourceId, roiKey] restore never re-fires. The panel must
+    // still swap in the edited result — otherwise its tiles, table, and CSV keep
+    // describing a label map that is no longer the one on screen.
+    const initial = grainResult("grains-initial");
+    const edited: GrainResult = { ...grainResult("grains-edited"), n_grains: 88 };
+    useViewer.getState().ingest([imageMeta("src"), initial.labels, edited.labels]);
+    useViewer.getState().setActive("src");
+    recordCrossSectionGrains("src", "Whole image", null, 25, initial);
+
+    render(<GrainsMode id="src" />);
+    expect(screen.getByText("34")).toBeInTheDocument();
+
+    act(() => {
+      replaceCrossSectionGrainsAfterEdit(edited);
+    });
+
+    expect(screen.getByText("88")).toBeInTheDocument();
+    expect(screen.queryByText("34")).toBeNull();
+  });
+
   it("keeps the result after training swaps the active image to the grain map", async () => {
     useViewer.getState().ingest([imageMeta("src")]);
     useViewer.getState().setActive("src");
@@ -77,7 +198,7 @@ describe("StructureWorkshop trained flow", () => {
     render(<StructureWorkshop />);
     fireEvent.click(screen.getByText("Grains"));
     // switch method → "trained" (this arms the paint overlay, clearing strokes)
-    fireEvent.change(screen.getByRole("combobox"), {
+    fireEvent.change(screen.getByRole("combobox", { name: "Grain method" }), {
       target: { value: "trained" },
     });
     // paint two classes, then the "Train & segment" button enables
@@ -99,11 +220,18 @@ describe("StructureWorkshop trained flow", () => {
       expect(screen.getByText("34")).toBeInTheDocument(),
     );
     expect(grainsTrainSegment).toHaveBeenCalledOnce();
+    expect(grainsTrainSegment).toHaveBeenCalledWith(
+      "src",
+      expect.any(Array),
+      expect.any(Object),
+    );
     // the metric tiles, merge/split note, and export buttons all survive
     expect(screen.getByText("grains")).toBeInTheDocument();
     expect(screen.getByText(/merge/)).toBeInTheDocument();
-    expect(screen.getByText("CSV")).toBeInTheDocument();
+    expect(screen.getByText("CSV")).toBeDisabled();
     expect(screen.getByText("Overlay PNG")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Use anyway"));
+    expect(screen.getByText("CSV")).not.toBeDisabled();
     // and the active image is the produced grain map
     expect(useViewer.getState().activeId).toBe("grains1");
 
@@ -115,12 +243,14 @@ describe("StructureWorkshop trained flow", () => {
     await waitFor(() => expect(screen.queryByText("34")).toBeNull());
   });
 
-  it("keeps the result after a classic method makes the grain map active", async () => {
+  it("reruns a classic method against the original source, not its label map", async () => {
     // classic methods never call setActive, but ingestDerived([labels]) makes
     // the derived grain map active via _ingest — the same reset race
     useViewer.getState().ingest([imageMeta("src")]);
     useViewer.getState().setActive("src");
-    vi.mocked(runJob).mockResolvedValue(grainResult("grains2"));
+    vi.mocked(runJob)
+      .mockResolvedValueOnce(grainResult("grains2"))
+      .mockResolvedValueOnce(grainResult("grains3"));
 
     render(<StructureWorkshop />);
     fireEvent.click(screen.getByText("Grains"));
@@ -129,8 +259,58 @@ describe("StructureWorkshop trained flow", () => {
 
     await waitFor(() => expect(screen.getByText("34")).toBeInTheDocument());
     expect(runJob).toHaveBeenCalledOnce();
+    expect(screen.getByText("Source image: src")).toBeInTheDocument();
     expect(screen.getByText("junctions")).toBeInTheDocument();
     expect(screen.getByText("CSV")).toBeInTheDocument();
     expect(useViewer.getState().activeId).toBe("grains2");
+
+    // runJob receives a deferred submitter. Execute each one just far enough
+    // to assert which image id the API would receive.
+    vi.mocked(runJob).mock.calls[0][0]();
+    expect(analyzeGrainsAsync).toHaveBeenLastCalledWith(
+      "src",
+      expect.any(Object),
+    );
+
+    // The active id is now the first label map. Retrying must still submit the
+    // original source and may replace the current result without resetting it.
+    fireEvent.click(screen.getByText("Identify grains"));
+    await waitFor(() => expect(runJob).toHaveBeenCalledTimes(2));
+    vi.mocked(runJob).mock.calls[1][0]();
+    expect(analyzeGrainsAsync).toHaveBeenLastCalledWith(
+      "src",
+      expect.any(Object),
+    );
+    await waitFor(() => expect(useViewer.getState().activeId).toBe("grains3"));
+  });
+
+  it("submits a named ROI in backend coordinates", async () => {
+    useViewer.getState().ingest([imageMeta("src")]);
+    useViewer.setState({
+      savedRois: {
+        src: [{
+          id: "film",
+          name: "Film only",
+          kind: "roi",
+          pts: [{ x: 0.25, y: 0.125 }, { x: 0.75, y: 0.875 }],
+          createdAt: "2026-07-19T00:00:00Z",
+        }],
+      },
+    });
+    vi.mocked(runJob).mockResolvedValue(grainResult("grains-roi"));
+
+    render(<StructureWorkshop />);
+    fireEvent.click(screen.getByText("Grains"));
+    fireEvent.change(screen.getByLabelText("Region"), {
+      target: { value: "saved:film" },
+    });
+    fireEvent.click(screen.getByText("Identify grains"));
+    await waitFor(() => expect(runJob).toHaveBeenCalledOnce());
+    vi.mocked(runJob).mock.calls[0][0]();
+
+    expect(analyzeGrainsAsync).toHaveBeenCalledWith(
+      "src",
+      expect.objectContaining({ roi: [9, 17, 56, 48] }),
+    );
   });
 });

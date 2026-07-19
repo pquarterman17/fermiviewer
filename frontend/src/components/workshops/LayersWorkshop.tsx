@@ -3,8 +3,7 @@
 // from a cross-sectional EM image. Depth-profile plot marks the detected
 // interfaces; the table reports thickness ± σ_erf with CSV export.
 
-import { Fragment, useEffect, useRef, useState } from "react";
-import uPlot from "uplot";
+import { Fragment, useEffect, useState } from "react";
 
 import {
   analyzeLayers,
@@ -14,74 +13,19 @@ import {
   type LayersMultiResult,
   type LayersResult,
 } from "../../lib/api";
+import {
+  layerOverlayCoordinates,
+  roiLocalDepths,
+  useAnalysisRoi,
+  type AnalysisRoi,
+} from "../../hooks/useAnalysisRoi";
 import { useViewer } from "../../store/viewer";
+import { acceptCrossSectionLayers, useCrossSection } from "../../store/crossSection";
+import { assessLayerQuality } from "../../lib/analysisQuality";
+import { AnalysisQualityCard } from "./AnalysisQualityCard";
+import AnalysisRegionSelect from "./AnalysisRegionSelect";
+import DepthPlot from "./LayersDepthPlot";
 import LayersRoughnessDetail from "./LayersRoughnessDetail";
-
-function DepthPlot({ r }: { r: LayersResult }) {
-  const hostRef = useRef<HTMLDivElement>(null);
-  const plotRef = useRef<uPlot | null>(null);
-
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host) return;
-    plotRef.current?.destroy();
-    const accent =
-      getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() ||
-      "#a78bfa";
-    const interfaces = r.interfaces.map((i) => i.position);
-    plotRef.current = new uPlot(
-      {
-        width: host.clientWidth || 300,
-        height: 160,
-        scales: { x: { time: false } }, // x is depth (px), not a timestamp
-        series: [
-          { label: "depth (px)" },
-          { label: "I", stroke: accent, width: 1.5, points: { show: false } },
-        ],
-        axes: [
-          { stroke: "#888", grid: { stroke: "rgba(128,128,128,0.15)" } },
-          { stroke: "#888", grid: { stroke: "rgba(128,128,128,0.15)" } },
-        ],
-        legend: { show: false },
-        cursor: { y: false },
-        hooks: {
-          draw: [
-            (u) => {
-              const ctx = u.ctx;
-              ctx.save();
-              ctx.strokeStyle = "#f59e0b";
-              ctx.setLineDash([4, 3]);
-              ctx.lineWidth = 1;
-              for (const p of interfaces) {
-                const x = u.valToPos(p, "x", true);
-                ctx.beginPath();
-                ctx.moveTo(x, u.bbox.top);
-                ctx.lineTo(x, u.bbox.top + u.bbox.height);
-                ctx.stroke();
-              }
-              ctx.restore();
-            },
-          ],
-        },
-      },
-      [r.depth_pos, r.depth_profile] as uPlot.AlignedData,
-      host,
-    );
-    const ro = new ResizeObserver(() => {
-      if (plotRef.current && host.clientWidth > 0) {
-        plotRef.current.setSize({ width: host.clientWidth, height: 160 });
-      }
-    });
-    ro.observe(host);
-    return () => {
-      ro.disconnect();
-      plotRef.current?.destroy();
-      plotRef.current = null;
-    };
-  }, [r]);
-
-  return <div ref={hostRef} className="fvd-ws-plot" />;
-}
 
 // Per-band band colors — data colors (like false-color overlays), not chrome.
 // Mirrors the design system's layer-stack palette (WS5b).
@@ -233,9 +177,16 @@ export default function LayersWorkshop() {
   const [selectedMaps, setSelectedMaps] = useState<string[]>([]);
   const [multi, setMulti] = useState<LayersMultiResult | null>(null);
   const [multiBusy, setMultiBusy] = useState(false);
+  const [qualityAccepted, setQualityAccepted] = useState(false);
+  const analysisRoi = useAnalysisRoi(activeId, meta?.shape ?? []);
+  const roiKey = analysisRoi.roi?.join(":") ?? "whole";
 
   const isImage = meta?.kind === "image";
   const mapIds = order.filter((id) => images[id]?.kind === "image");
+  const layerQuality = result
+    ? assessLayerQuality(result, Number(nLayers) || 0)
+    : null;
+  const canUseResult = layerQuality?.rating !== "poor" || qualityAccepted;
 
   const toggleMap = (id: string) =>
     setSelectedMaps((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
@@ -260,14 +211,32 @@ export default function LayersWorkshop() {
   };
 
   // set the result + stage overlay + status from any (analyze or edit) response
-  const applyResult = (r: LayersResult, imageId: string | null = activeId) => {
+  const applyResult = (
+    r: LayersResult,
+    imageId: string | null = activeId,
+    roi: AnalysisRoi | null = analysisRoi.roi,
+  ) => {
     setResult(r);
+    setQualityAccepted(false);
+    setLayersEdit(false);
     if (imageId) {
+      const overlay = layerOverlayCoordinates(
+        r.axis,
+        r.interfaces.map((i) => i.position),
+        r.interfaces.map((i) => i.trace),
+        roi,
+      );
       setLayersOverlay({
         imageId,
         axis: r.axis,
-        interfaces: r.interfaces.map((i) => i.position),
-        traces: r.interfaces.map((i) => i.trace),
+        ...overlay,
+      });
+      useCrossSection.getState().setLayers({
+        sourceId: imageId,
+        regionLabel: analysisRoi.label,
+        roi,
+        result: r,
+        qualityAccepted: false,
       });
     }
     setStatus(
@@ -293,7 +262,7 @@ export default function LayersWorkshop() {
           waviness,
           reduce: decurtain ? "median" : "mean",
           destripe: decurtain,
-        }).then((r) => applyResult(r, meta.id));
+        }).then((r) => applyResult(r, meta.id, null));
       })
       .catch((e: Error) => setStatus(`Level: ${e.message}`))
       .finally(() => setBusy(false));
@@ -304,6 +273,7 @@ export default function LayersWorkshop() {
     if (!activeId || !result) return;
     setBusy(true);
     editLayers(activeId, positions, {
+      roi: analysisRoi.roi,
       axis: result.axis === "x" ? "x" : "y",
       waviness,
       reduce: decurtain ? "median" : "mean",
@@ -321,7 +291,8 @@ export default function LayersWorkshop() {
     setLayersEdit(false);
     setLayersEditReq(null);
     setDetailIdx(null);
-  }, [activeId, setLayersOverlay, setLayersEdit, setLayersEditReq]);
+    setQualityAccepted(false);
+  }, [activeId, roiKey, setLayersOverlay, setLayersEdit, setLayersEditReq]);
 
   // a stage click on an interface line focuses its roughness detail card
   useEffect(() => {
@@ -342,7 +313,7 @@ export default function LayersWorkshop() {
   // a stage edit (drag / add / remove) published a new interface list → recompute
   useEffect(() => {
     if (layersEditReq && result) {
-      recompute(layersEditReq);
+      recompute(roiLocalDepths(result.axis, layersEditReq, analysisRoi.roi));
       setLayersEditReq(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -352,6 +323,7 @@ export default function LayersWorkshop() {
     if (!activeId) return;
     setBusy(true);
     analyzeLayers(activeId, {
+      roi: analysisRoi.roi,
       axis,
       modality,
       sensitivity: Number(sensitivity) || 0.3,
@@ -375,6 +347,12 @@ export default function LayersWorkshop() {
 
   return (
     <div className="fvd-ws">
+      <AnalysisRegionSelect
+        choice={analysisRoi.choice}
+        options={analysisRoi.options}
+        disabled={busy}
+        onChange={analysisRoi.setChoice}
+      />
       <div className="fvd-ws-row">
         <span className="k">Axis</span>
         <div className="fvd-seg">
@@ -474,6 +452,16 @@ export default function LayersWorkshop() {
         </span>
       </div>
 
+      {result && (
+        <AnalysisQualityCard
+          value={layerQuality!}
+          accepted={qualityAccepted}
+          onAccept={() => {
+            setQualityAccepted(true);
+            acceptCrossSectionLayers();
+          }}
+        />
+      )}
       {result && (
         <div className="fvd-ws-row">
           <span className="k" style={{ flex: 1 }}>
@@ -580,6 +568,7 @@ export default function LayersWorkshop() {
             <input
               type="checkbox"
               checked={layersEdit}
+              disabled={!canUseResult}
               onChange={(e) => setLayersEdit(e.target.checked)}
             />
             edit on stage
@@ -615,9 +604,9 @@ export default function LayersWorkshop() {
                 <button
                   className="fvd-icon-btn"
                   title="Remove this interface + recompute"
-                  disabled={busy}
+                  disabled={busy || !canUseResult}
                   onClick={() =>
-                    recompute(
+                    canUseResult && recompute(
                       result.interfaces.filter((_, j) => j !== k).map((it) => it.position),
                     )
                   }
@@ -633,13 +622,15 @@ export default function LayersWorkshop() {
               placeholder="depth px"
               style={{ width: 64 }}
               title="Add an interface at this depth (px) and recompute"
+              disabled={!canUseResult}
               onChange={(e) => setAddPos(e.target.value)}
             />
             <button
               className="fvd-btn"
               title="Add an interface at the entered depth and recompute"
-              disabled={busy || !addPos}
+              disabled={busy || !addPos || !canUseResult}
               onClick={() => {
+                if (!canUseResult) return;
                 const p = Number(addPos);
                 if (Number.isFinite(p)) {
                   recompute([...result.interfaces.map((it) => it.position), p]);
@@ -654,7 +645,7 @@ export default function LayersWorkshop() {
       )}
       {result && result.layers.length > 0 && (
         <div className="fvd-ws-row">
-          <button className="fvd-btn" onClick={() => exportCsv(result)} title="Export layers + interfaces as CSV">
+          <button className="fvd-btn" disabled={!canUseResult} onClick={() => exportCsv(result)} title="Export layers + interfaces as CSV">
             Export CSV
           </button>
         </div>

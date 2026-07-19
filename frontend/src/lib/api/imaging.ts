@@ -145,6 +145,7 @@ export type GrainMethod =
 
 export interface GrainParams {
   method: GrainMethod;
+  roi?: [number, number, number, number] | null;
   k?: number;
   granularity?: number;
   compactness?: number;
@@ -220,6 +221,7 @@ export interface TrainStroke {
 }
 
 export interface TrainSegmentOpts {
+  roi?: [number, number, number, number] | null;
   scales?: number[];
   gradientSigma?: number;
   minArea?: number;
@@ -238,6 +240,7 @@ export function grainsTrainSegment(
 ): Promise<GrainResult> {
   return post("/api/grains/train-segment", {
     image_id: id,
+    roi: opts.roi ?? null,
     strokes,
     scales: opts.scales ?? [2, 4],
     gradient_sigma: opts.gradientSigma ?? 0,
@@ -257,16 +260,22 @@ export interface GrainPreviewClass {
 
 export interface GrainPreview {
   classes: GrainPreviewClass[];
+  class_map: ImageMeta;
+  confidence_map: ImageMeta;
+  mean_confidence: number;
+  low_confidence_fraction: number;
+  confidence_threshold: number;
 }
 
 /** Optional, non-committing preview of the trained pixel classifier: fit on
- *  the painted strokes and report the per-class pixel composition, WITHOUT
- *  labelling grains or registering any image. Lets the user check the split
- *  before committing with grainsTrainSegment. */
+ *  the painted strokes and return spatial class/confidence maps, WITHOUT
+ *  labelling connected grains. Lets the user inspect the split before
+ *  committing with grainsTrainSegment. */
 export function grainsTrainPreview(
   id: string,
   strokes: TrainStroke[],
   opts: {
+    roi?: [number, number, number, number] | null;
     scales?: number[];
     gradientSigma?: number;
     boundaryClass?: number[];
@@ -275,6 +284,7 @@ export function grainsTrainPreview(
 ): Promise<GrainPreview> {
   return post("/api/grains/train-preview", {
     image_id: id,
+    roi: opts.roi ?? null,
     strokes,
     scales: opts.scales ?? [2, 4],
     gradient_sigma: opts.gradientSigma ?? 0,

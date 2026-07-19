@@ -9,14 +9,18 @@ frontend renders as a stage overlay (no derived image registered).
 from __future__ import annotations
 
 import math
+from dataclasses import asdict
+from typing import Literal
 
 import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from fermiviewer.calc.grain_layers import LayerBounds, measure_grains_by_layer
 from fermiviewer.calc.layers import LayerResult, analyze_layers, recompute_layers
 from fermiviewer.calc.trace_roughness import analyze_trace, conformality, sigma_chem
 from fermiviewer.datastruct import DataKind, DataStruct
+from fermiviewer.models import ImageMeta
 from fermiviewer.session import UnknownImageError, store
 
 router = APIRouter(prefix="/api")
@@ -184,6 +188,72 @@ def edit_layers_route(req: LayersEditRequest) -> dict:
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
     return _result_to_dict(res)
+
+
+class GrainLayerBoundsRequest(BaseModel):
+    index: int
+    top: float
+    bottom: float
+
+
+class GrainLayersRequest(BaseModel):
+    labels_id: str
+    axis: Literal["x", "y"]
+    layers: list[GrainLayerBoundsRequest]
+    selected_indices: list[int]
+    roi: tuple[int, int, int, int] | None = None
+    interface_traces: list[list[float] | None]
+
+
+@router.post("/analyze/layers/grains")
+def analyze_grains_by_layer_route(req: GrainLayersRequest) -> dict:
+    """Assign a grain-label map to reviewed cross-section layer bands."""
+    labels_ds = _get(req.labels_id)
+    if labels_ds.kind is not DataKind.IMAGE or not labels_ds.metadata.get("grain_labels"):
+        raise HTTPException(400, "labels_id must be an editable grain-label map")
+    source_id = labels_ds.metadata.get("grain_source")
+    if not isinstance(source_id, str):
+        raise HTTPException(422, "grain-label map is missing its source image")
+    source_ds = _get(source_id)
+    px, unit = source_ds.pixel_size, source_ds.pixel_unit
+    if not np.isfinite(px) or px <= 0:
+        px, unit = 1.0, "px"
+    try:
+        result = measure_grains_by_layer(
+            np.asarray(labels_ds.data),
+            [LayerBounds(item.index, item.top, item.bottom) for item in req.layers],
+            selected_indices=req.selected_indices, axis=req.axis, roi=req.roi,
+            interface_traces=[
+                None if trace is None else np.asarray(trace, dtype=np.float64)
+                for trace in req.interface_traces
+            ],
+            pixel_size=px, unit=unit,
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from None
+
+    name = f"layer grains({store.name(source_id)})"
+    derived = DataStruct(
+        data=np.ascontiguousarray(result.assignment, dtype=np.float64),
+        kind=DataKind.IMAGE, axes=source_ds.axes[:2],
+        metadata={
+            "source": name, "parser": "derived", "layer_assignment": True,
+            "grain_source": source_id,
+            "selected_layers": ",".join(map(str, req.selected_indices)),
+        },
+    )
+    assignment_id = store.add_derived(derived, name, source_id)
+    return {
+        "axis": result.axis, "pixel_size": result.pixel_size, "unit": result.unit,
+        "layers": [asdict(layer) for layer in result.layers],
+        "assignment": ImageMeta.from_datastruct(
+            assignment_id, name, derived,
+        ).model_dump(),
+        "limitations": [
+            "Shape angle is morphological, not crystallographic orientation.",
+            "Grains crossing a reviewed interface are clipped and reported in each layer.",
+        ],
+    }
 
 
 class LayersMultiRequest(BaseModel):

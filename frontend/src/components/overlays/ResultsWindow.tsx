@@ -1,7 +1,7 @@
 // Floating results table (particle/grain stats) with CSV download.
 // Generic: any analysis can push {title, columns, rows} to the store.
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { create } from "zustand";
 
 import {
@@ -33,13 +33,23 @@ export const useResults = create<ResultsState>((set) => ({
   close: () => set({ table: null }),
 }));
 
+export const RESULTS_PAGE_SIZE = 100;
+
 export default function ResultsWindow() {
   const table = useResults((s) => s.table);
   const close = useResults((s) => s.close);
   const [pos, setPos] = useState({ x: 220, y: 120 });
+  const [page, setPage] = useState(0);
   const dragRef = useRef<{ dx: number; dy: number } | null>(null);
 
+  useEffect(() => setPage(0), [table]);
+
   if (!table) return null;
+  const pages = Math.max(1, Math.ceil(table.rows.length / RESULTS_PAGE_SIZE));
+  const safePage = Math.min(page, pages - 1);
+  const first = safePage * RESULTS_PAGE_SIZE;
+  const visibleRows = table.rows.slice(first, first + RESULTS_PAGE_SIZE);
+  const firstShown = table.rows.length ? first + 1 : 0;
 
   const download = (format: "csv" | "json") => {
     const meta: ResultMeta = { analysis: table.title, ...table.meta };
@@ -111,8 +121,8 @@ export default function ResultsWindow() {
             </tr>
           </thead>
           <tbody>
-            {table.rows.map((r, i) => (
-              <tr key={i}>
+            {visibleRows.map((r, i) => (
+              <tr key={first + i}>
                 {r.map((v, j) => (
                   <td key={j}>
                     {typeof v === "number"
@@ -124,6 +134,12 @@ export default function ResultsWindow() {
             ))}
           </tbody>
         </table>
+      </div>
+      <div className="fvd-results-footer">
+        <span>{table.rows.length.toLocaleString()} rows · showing {firstShown}–{Math.min(first + RESULTS_PAGE_SIZE, table.rows.length)}</span>
+        <button className="fvd-btn" disabled={safePage === 0} onClick={() => setPage(safePage - 1)}>Previous</button>
+        <span>{safePage + 1} / {pages}</span>
+        <button className="fvd-btn" disabled={safePage + 1 >= pages} onClick={() => setPage(safePage + 1)}>Next</button>
       </div>
     </div>
   );

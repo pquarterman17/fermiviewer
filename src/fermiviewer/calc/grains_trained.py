@@ -135,6 +135,7 @@ class TrainedPreview:
     it is cheaper than `segment_trained` and never registers a label map."""
 
     class_map: np.ndarray  # (H, W) predicted class per pixel
+    max_prob: np.ndarray  # (H, W) probability of the winning class
     classes: np.ndarray  # sorted unique class ids the model knows
     fractions: dict[int, float]  # class id → fraction of pixels (0..1)
 
@@ -158,10 +159,11 @@ def preview_trained(
     x = feats.reshape(h * w, f)
 
     if model.classifier == "forest":
-        cls, _ = forest_predict(model.model, x)  # type: ignore[arg-type]
+        cls, probs = forest_predict(model.model, x)  # type: ignore[arg-type]
     else:
-        cls, _ = softmax_predict(model.model, x)  # type: ignore[arg-type]
+        cls, probs = softmax_predict(model.model, x)  # type: ignore[arg-type]
     class_map = cls.reshape(h, w)
+    max_prob = probs.max(axis=1).reshape(h, w)
 
     total = float(class_map.size)
     fractions = {
@@ -170,6 +172,7 @@ def preview_trained(
     }
     return TrainedPreview(
         class_map=class_map,
+        max_prob=max_prob,
         classes=model.model.classes,
         fractions=fractions,
     )
