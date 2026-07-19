@@ -7,13 +7,10 @@ import {
   analyzeAlignStack,
   analyzeBackProject,
   analyzeGpa,
-  analyzeGrains,
-  analyzeGrainsAsync,
   analyzeImageMath,
   analyzeMip,
   analyzeMontage,
   analyzeParticles,
-  runJob,
   analyzeDefects,
   analyzeInterfaceWidth,
   analyzeNoise,
@@ -49,6 +46,7 @@ import { useCommands, type Action } from "../../store/commands";
 import { askParams } from "../../store/params";
 import { useStageInfo } from "../../store/stage";
 import { undoLabel, useViewer } from "../../store/viewer";
+import { useWorkshop } from "../../store/workshop";
 import { useResults } from "../overlays/ResultsWindow";
 import Icon from "../icons/Icon";
 import DesktopMenus, { type MenuEntry as Entry } from "./DesktopMenus";
@@ -61,6 +59,11 @@ const num = (
   dflt: number,
   hint?: string,
 ): ParamField => ({ key, label, type: "number", default: dflt, hint });
+
+export function openGrainWorkshop(): void {
+  useWorkshop.getState().setStructureMode("Grains");
+  useViewer.getState().openTool("structure");
+}
 
 function recentPaths(): string[] {
   try {
@@ -1237,38 +1240,10 @@ export default function MenuBar({
         label: "Grain Segmentation…",
         disabled: !store.activeId,
         action: () => {
-          void (async () => {
-            const v = await askParams("Grain Segmentation", [
-              num("k", "Texture classes K", 2),
-            ]);
-            const id = store.activeId;
-            if (!v || !id) return;
-            store.setStatus("segmenting grains…");
-            type GrainResult = Awaited<ReturnType<typeof analyzeGrains>>;
-            runJob<GrainResult>(
-              () =>
-                analyzeGrainsAsync(id, {
-                  method: "kmeans",
-                  k: v["k"] as number,
-                }),
-              (frac, msg) =>
-                store.setStatus(
-                  `grains: ${msg || "working"} ${(frac * 100).toFixed(0)}%`,
-                ),
-            )
-              .then((r) => {
-                store.ingest([r.labels]);
-                store.setStatus(
-                  `${r.n_grains} grains · mean d ${r.mean_diameter_px.toFixed(1)} px`,
-                );
-                useResults.getState().show({
-                  title: `Grains — ${r.n_grains} found`,
-                  columns: ["#", "area px"],
-                  rows: r.areas_px.map((a, i) => [i + 1, a]),
-                });
-              })
-              .catch((e: Error) => store.setStatus(e.message));
-          })();
+          // Select the complete, editable workflow before the lazy workshop
+          // mounts. The old K-means-only prompt made the obvious command the
+          // least capable way into grain analysis.
+          openGrainWorkshop();
         },
       },
       {

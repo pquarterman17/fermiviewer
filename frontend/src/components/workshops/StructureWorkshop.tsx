@@ -26,6 +26,7 @@ import {
   type GrainParams,
   type GrainPreviewClass,
   type GrainResult,
+  type ImageMeta,
   type Raster16,
   type TrainStroke,
 } from "../../lib/api";
@@ -38,22 +39,16 @@ import {
 import AtomColumnPanel from "./AtomColumnPanel";
 import { SCRIBBLE_COLORS, useScribble } from "../../store/scribble";
 import { useViewer, type Measure } from "../../store/viewer";
+import {
+  STRUCTURE_MODES,
+  useWorkshop,
+  type StructureMode,
+} from "../../store/workshop";
 import { useResults } from "../overlays/ResultsWindow";
 
 const VIEW_W = 300;
-const MODES = [
-  "Atoms",
-  "Particles",
-  "Grains",
-  "Template",
-  "GPA",
-  "CTF",
-  "Lattice",
-  "Stitch",
-] as const;
-type Mode = (typeof MODES)[number];
 
-const MODE_DESC: Record<Mode, string> = {
+const MODE_DESC: Record<StructureMode, string> = {
   Atoms: "Atom-column detection, fitting & PPA strain",
   Particles: "Threshold-based particle detection & counting",
   Grains: "Grain segmentation & boundary metrology",
@@ -71,14 +66,15 @@ export default function StructureWorkshop() {
   const meta = useViewer((s) =>
     s.activeId ? (s.images[s.activeId] ?? null) : null,
   );
-  const [mode, setMode] = useState<Mode>("Atoms");
+  const mode = useWorkshop((s) => s.structureMode);
+  const setMode = useWorkshop((s) => s.setStructureMode);
 
   const isImage = meta?.kind === "image";
 
   return (
     <div className="fvd-ws">
       <div className="fvd-seg">
-        {MODES.map((m) => (
+        {STRUCTURE_MODES.map((m) => (
           <button
             key={m}
             className={`fvd-seg-btn${mode === m ? " active" : ""}`}
@@ -628,10 +624,22 @@ export function GrainMetrics({ r }: { r: GrainResult }) {
   );
 }
 
+/** Follow an editable grain-label image back to its original raster. */
+export function grainSourceId(
+  id: string,
+  images: Record<string, ImageMeta>,
+): string {
+  const source = images[id]?.meta?.["grain_source"];
+  return typeof source === "string" && images[source] ? source : id;
+}
+
 function GrainsMode({ id }: { id: string }) {
   const setStatus = useViewer((s) => s.setStatus);
   const ingestDerived = useViewer((s) => s.ingestDerived);
-  const meta = useViewer((s) => s.images[id] ?? null);
+  const images = useViewer((s) => s.images);
+  const meta = images[id] ?? null;
+  const sourceId = grainSourceId(id, images);
+  const sourceMeta = images[sourceId] ?? null;
   const [method, setMethod] = useState<GrainMethod>("gradient");
   const [k, setK] = useState("3");
   const [coarseness, setCoarseness] = useState("0.05");
@@ -661,22 +669,14 @@ function GrainsMode({ id }: { id: string }) {
   const scribbleBegin = useScribble((s) => s.begin);
   const scribbleEnd = useScribble((s) => s.end);
 
-  // Training swaps the active image to the grain map it produced (so the stage
-  // merge/split editor can act on it). That self-initiated activeId change must
-  // NOT trip the image-switch reset below — which exists for *user* switches —
-  // or the just-computed results (tiles, note, export buttons) get wiped on the
-  // very next commit.
-  const selfSetActiveId = useRef<string | null>(null);
+  // A label map remains part of the same analysis as its grain_source. Reset
+  // only when that original source changes, not when a result becomes active.
   useEffect(() => {
-    if (id === selfSetActiveId.current) {
-      selfSetActiveId.current = null;
-      return;
-    }
     setLabelsId(null);
     setGrainResult(null);
     setNote("");
     setPreviewClasses(null);
-  }, [id]);
+  }, [sourceId]);
 
   // a fresh Clear (or a new image) wipes the strokes → drop the stale preview
   useEffect(() => {
@@ -689,9 +689,9 @@ function GrainsMode({ id }: { id: string }) {
   const sourceIsGrainMap = Boolean(meta?.meta?.["grain_labels"]);
   useEffect(() => {
     if (method !== "trained" || sourceIsGrainMap) return;
-    scribbleBegin(id);
+    scribbleBegin(sourceId);
     return () => scribbleEnd();
-  }, [method, id, sourceIsGrainMap, scribbleBegin, scribbleEnd]);
+  }, [method, sourceId, sourceIsGrainMap, scribbleBegin, scribbleEnd]);
 
   const knob = GRAIN_METHODS.find((m) => m.value === method)!.knob;
   const knobValue =
@@ -713,11 +713,13 @@ function GrainsMode({ id }: { id: string }) {
       radius: s.radius,
       points: s.points,
     }));
-    const reqId = id;
-    grainsTrainPreview(id, payload, { boundaryClass: bnd, classifier })
+    const reqId = sourceId;
+    grainsTrainPreview(sourceId, payload, { boundaryClass: bnd, classifier })
       .then((r) => {
         // ignore a response that arrives after the user switched images
-        if (useViewer.getState().activeId !== reqId) return;
+        const state = useViewer.getState();
+        const active = state.activeId;
+        if (!active || grainSourceId(active, state.images) !== reqId) return;
         setPreviewClasses(r.classes);
         const phases = r.classes.filter((c) => !c.is_boundary).length;
         setStatus(`trained grains: preview — ${phases} phase(s) classified`);
@@ -739,17 +741,13 @@ function GrainsMode({ id }: { id: string }) {
       radius: s.radius,
       points: s.points,
     }));
-    grainsTrainSegment(id, payload, {
+    grainsTrainSegment(sourceId, payload, {
       minArea: Number(minArea) || 25,
       boundaryClass: bnd,
       classifier,
     })
       .then((r) => {
         const s = useViewer.getState();
-        // mark this activeId change as self-initiated so the reset effect
-        // keeps the results we're about to set (both ingestDerived and
-        // setActive make the grain map active; see selfSetActiveId)
-        selfSetActiveId.current = r.labels.id;
         s.ingestDerived([r.labels]);
         s.setActive(r.labels.id);
         setLabelsId(r.labels.id);
@@ -793,13 +791,10 @@ function GrainsMode({ id }: { id: string }) {
               denoise_sigma: denoiseSigma,
             };
     runJob<GrainResult>(
-      () => analyzeGrainsAsync(id, params),
+      () => analyzeGrainsAsync(sourceId, params),
       (f, msg) => setProgress(`${Math.round(f * 100)}% ${msg}`),
     )
       .then((r) => {
-        // ingestDerived makes the new grain map the active image (via _ingest);
-        // mark that so the [id] reset effect keeps the results we set here
-        selfSetActiveId.current = r.labels.id;
         ingestDerived([r.labels]);
         setLabelsId(r.labels.id);
         setGrainResult(r);
@@ -837,8 +832,11 @@ function GrainsMode({ id }: { id: string }) {
       {labelsId ? (
         <Preview id={labelsId} markers={[]} color="var(--capture)" />
       ) : (
-        <Preview id={id} markers={[]} color="var(--capture)" />
+        <Preview id={sourceId} markers={[]} color="var(--capture)" />
       )}
+      <div className="fvd-ws-note" title={sourceMeta?.name ?? sourceId}>
+        Source image: {sourceMeta?.name ?? sourceId}
+      </div>
       <div className="fvd-ws-row">
         <span className="k">method</span>
         <select
@@ -915,11 +913,11 @@ function GrainsMode({ id }: { id: string }) {
           <button
             className="fvd-btn"
             onClick={() => {
-              const base = csvBaseName(meta?.name);
+              const base = csvBaseName(sourceMeta?.name);
               downloadCsv(
                 `${base}_grains.csv`,
                 grainsToCsv(grainResult, {
-                  imageName: meta?.name ?? id,
+                  imageName: sourceMeta?.name ?? sourceId,
                   method: grainResult.method,
                 }),
               );
@@ -932,9 +930,9 @@ function GrainsMode({ id }: { id: string }) {
           <button
             className="fvd-btn"
             onClick={() => {
-              const base = csvBaseName(meta?.name);
+              const base = csvBaseName(sourceMeta?.name);
               downloadGrainsOverlayPng(
-                id,
+                sourceId,
                 labelsId,
                 `${base}_grains_overlay.png`,
                 0.6,

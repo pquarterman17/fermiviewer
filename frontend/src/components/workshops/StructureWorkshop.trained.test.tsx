@@ -11,13 +11,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GrainResult, ImageMeta } from "../../lib/api";
 import { useScribble } from "../../store/scribble";
 import { useViewer } from "../../store/viewer";
+import { useWorkshop } from "../../store/workshop";
 
 vi.mock("../../lib/api", async (importActual) => {
   const actual = await importActual<typeof import("../../lib/api")>();
-  return { ...actual, grainsTrainSegment: vi.fn(), runJob: vi.fn() };
+  return {
+    ...actual,
+    analyzeGrainsAsync: vi.fn(),
+    grainsTrainSegment: vi.fn(),
+    runJob: vi.fn(),
+  };
 });
 
-import { grainsTrainSegment, runJob } from "../../lib/api";
+import { analyzeGrainsAsync, grainsTrainSegment, runJob } from "../../lib/api";
 import StructureWorkshop from "./StructureWorkshop";
 
 function imageMeta(id: string, extra: Partial<ImageMeta> = {}): ImageMeta {
@@ -66,6 +72,7 @@ afterEach(() => {
   vi.clearAllMocks();
   useScribble.getState().end();
   useViewer.setState({ images: {}, order: [], activeId: null, selected: [] });
+  useWorkshop.setState({ structureMode: "Atoms" });
 });
 
 describe("StructureWorkshop trained flow", () => {
@@ -99,6 +106,11 @@ describe("StructureWorkshop trained flow", () => {
       expect(screen.getByText("34")).toBeInTheDocument(),
     );
     expect(grainsTrainSegment).toHaveBeenCalledOnce();
+    expect(grainsTrainSegment).toHaveBeenCalledWith(
+      "src",
+      expect.any(Array),
+      expect.any(Object),
+    );
     // the metric tiles, merge/split note, and export buttons all survive
     expect(screen.getByText("grains")).toBeInTheDocument();
     expect(screen.getByText(/merge/)).toBeInTheDocument();
@@ -115,12 +127,14 @@ describe("StructureWorkshop trained flow", () => {
     await waitFor(() => expect(screen.queryByText("34")).toBeNull());
   });
 
-  it("keeps the result after a classic method makes the grain map active", async () => {
+  it("reruns a classic method against the original source, not its label map", async () => {
     // classic methods never call setActive, but ingestDerived([labels]) makes
     // the derived grain map active via _ingest — the same reset race
     useViewer.getState().ingest([imageMeta("src")]);
     useViewer.getState().setActive("src");
-    vi.mocked(runJob).mockResolvedValue(grainResult("grains2"));
+    vi.mocked(runJob)
+      .mockResolvedValueOnce(grainResult("grains2"))
+      .mockResolvedValueOnce(grainResult("grains3"));
 
     render(<StructureWorkshop />);
     fireEvent.click(screen.getByText("Grains"));
@@ -129,8 +143,28 @@ describe("StructureWorkshop trained flow", () => {
 
     await waitFor(() => expect(screen.getByText("34")).toBeInTheDocument());
     expect(runJob).toHaveBeenCalledOnce();
+    expect(screen.getByText("Source image: src")).toBeInTheDocument();
     expect(screen.getByText("junctions")).toBeInTheDocument();
     expect(screen.getByText("CSV")).toBeInTheDocument();
     expect(useViewer.getState().activeId).toBe("grains2");
+
+    // runJob receives a deferred submitter. Execute each one just far enough
+    // to assert which image id the API would receive.
+    vi.mocked(runJob).mock.calls[0][0]();
+    expect(analyzeGrainsAsync).toHaveBeenLastCalledWith(
+      "src",
+      expect.any(Object),
+    );
+
+    // The active id is now the first label map. Retrying must still submit the
+    // original source and may replace the current result without resetting it.
+    fireEvent.click(screen.getByText("Identify grains"));
+    await waitFor(() => expect(runJob).toHaveBeenCalledTimes(2));
+    vi.mocked(runJob).mock.calls[1][0]();
+    expect(analyzeGrainsAsync).toHaveBeenLastCalledWith(
+      "src",
+      expect.any(Object),
+    );
+    await waitFor(() => expect(useViewer.getState().activeId).toBe("grains3"));
   });
 });
