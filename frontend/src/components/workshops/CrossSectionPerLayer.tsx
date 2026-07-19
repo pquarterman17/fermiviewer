@@ -89,7 +89,7 @@ export default function CrossSectionPerLayer({
       {current && (
         <>
           <div className="fvd-layer-grain-table-wrap">
-            <table className="fvd-table fvd-layer-grain-table">
+            <table className="fvd-ws-table fvd-layer-grain-table">
               <thead><tr>
                 <th>Layer</th><th>grains</th><th>density</th><th>mean width</th><th>mean height</th>
                 <th>aspect</th><th>shape angle</th><th>crossing</th>

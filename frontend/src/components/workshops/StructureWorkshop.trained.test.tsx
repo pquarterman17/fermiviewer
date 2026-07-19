@@ -9,7 +9,11 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { GrainPreview, GrainResult, ImageMeta } from "../../lib/api";
-import { recordCrossSectionGrains, useCrossSection } from "../../store/crossSection";
+import {
+  recordCrossSectionGrains,
+  replaceCrossSectionGrainsAfterEdit,
+  useCrossSection,
+} from "../../store/crossSection";
 import { useScribble } from "../../store/scribble";
 import { useViewer } from "../../store/viewer";
 import { useWorkshop } from "../../store/workshop";
@@ -162,6 +166,28 @@ describe("StructureWorkshop trained flow", () => {
     expect(screen.getByText("34")).toBeInTheDocument();
     expect(screen.queryByText("Use anyway")).toBeNull();
     expect(screen.getByText("CSV")).not.toBeDisabled();
+  });
+
+  it("adopts a stage merge/split that supersedes the shown label map", () => {
+    // A merge/split on the stage mints a new label map with the SAME source and
+    // ROI, so the [sourceId, roiKey] restore never re-fires. The panel must
+    // still swap in the edited result — otherwise its tiles, table, and CSV keep
+    // describing a label map that is no longer the one on screen.
+    const initial = grainResult("grains-initial");
+    const edited: GrainResult = { ...grainResult("grains-edited"), n_grains: 88 };
+    useViewer.getState().ingest([imageMeta("src"), initial.labels, edited.labels]);
+    useViewer.getState().setActive("src");
+    recordCrossSectionGrains("src", "Whole image", null, 25, initial);
+
+    render(<GrainsMode id="src" />);
+    expect(screen.getByText("34")).toBeInTheDocument();
+
+    act(() => {
+      replaceCrossSectionGrainsAfterEdit(edited);
+    });
+
+    expect(screen.getByText("88")).toBeInTheDocument();
+    expect(screen.queryByText("34")).toBeNull();
   });
 
   it("keeps the result after training swaps the active image to the grain map", async () => {

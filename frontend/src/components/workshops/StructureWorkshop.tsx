@@ -580,7 +580,7 @@ export function GrainsMode({ id }: { id: string }) {
   const sourceMeta = images[sourceId] ?? null;
   const analysisRoi = useAnalysisRoi(sourceId, sourceMeta?.shape ?? []);
   const roiKey = analysisRoi.roi?.join(":") ?? "whole";
-  const latestGrains = useCrossSection.getState().grains;
+  const latestGrains = useCrossSection((s) => s.grains);
   const savedGrains = matchesCrossSectionRegion(latestGrains, sourceId, analysisRoi.roi) ? latestGrains : null;
   const [method, setMethod] = useState<GrainMethod>((savedGrains?.result.method as GrainMethod) ?? "gradient");
   const [k, setK] = useState("3");
@@ -622,6 +622,15 @@ export function GrainsMode({ id }: { id: string }) {
     setPreview(null);
     setQualityAccepted(restored?.qualityAccepted ?? false);
   }, [sourceId, roiKey]);
+
+  // Adopt a stage merge/split's new label map — same source/ROI, so restore won't.
+  useEffect(() => {
+    if (!latestGrains || latestGrains.result.labels.id === labelsId) return;
+    if (!matchesCrossSectionRegion(latestGrains, sourceId, analysisRoi.roi)) return;
+    setLabelsId(latestGrains.result.labels.id);
+    setGrainResult(latestGrains.result);
+    setQualityAccepted(latestGrains.qualityAccepted);
+  }, [latestGrains, labelsId, sourceId, analysisRoi.roi]);
 
   // a fresh Clear (or a new image) wipes the strokes → drop the stale preview
   useEffect(() => {
@@ -678,8 +687,8 @@ export function GrainsMode({ id }: { id: string }) {
         if (!active || grainSourceId(active, state.images) !== reqId) return;
         const oldPreview = preview;
         if (oldPreview) {
-          void state.closeImage(oldPreview.class_map.id);
-          void state.closeImage(oldPreview.confidence_map.id);
+          state.closeImage(oldPreview.class_map.id).catch(() => {});
+          state.closeImage(oldPreview.confidence_map.id).catch(() => {});
         }
         state.ingestDerived([r.class_map, r.confidence_map]);
         state.setDisplay(r.class_map.id, { cmap: "label" }, { silent: true });

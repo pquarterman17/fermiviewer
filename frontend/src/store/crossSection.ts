@@ -53,8 +53,8 @@ export function matchesCrossSectionRegion(
   roi: AnalysisRoi | null,
 ): boolean {
   return snapshot?.sourceId === sourceId
-    && snapshot.roi?.join(":") === roi?.join(":")
-    && Boolean(snapshot.roi) === Boolean(roi);
+    && snapshot?.roi?.join(":") === roi?.join(":")
+    && Boolean(snapshot?.roi) === Boolean(roi);
 }
 
 export function recordCrossSectionGrains(
