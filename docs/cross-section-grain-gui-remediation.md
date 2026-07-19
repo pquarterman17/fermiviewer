@@ -16,8 +16,10 @@
   awaiting Claude review after PR 2.
 - PR 4: implemented in [#81](https://github.com/pquarterman17/fermiviewer/pull/81);
   awaiting Claude review after PR 3.
-- PR 5: guided shared-ROI cross-section workflow implemented in the current
-  stacked change; awaiting Claude review after publication.
+- PR 5: implemented in [#82](https://github.com/pquarterman17/fermiviewer/pull/82);
+  awaiting Claude review after PR 4.
+- PR 6: per-layer grain selection and measurement implemented in the current
+  stacked change; awaiting verification and publication.
 
 ## Outcome
 
@@ -132,8 +134,9 @@ step restores its result and review state.
   protective cap, or substrate.
 - Partition accepted grain labels by the reviewed layer interfaces.
 - Report per-layer lateral grain width, through-film height, aspect ratio,
-  boundary orientation, count/density, and grain size versus depth.
-- Overlay the layer/grain assignment on the source for visual confirmation.
+  morphological shape angle, count/density, and grain size versus depth.
+- Generate a colour-coded assignment map for visual confirmation against the
+  source image; do not describe shape angle as crystallographic orientation.
 
 Acceptance: the report contains reviewed, spatially assigned grain metrics for
 the selected film layers without counting vacuum or substrate.

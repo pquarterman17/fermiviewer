@@ -292,6 +292,40 @@ def test_grains_roi_returns_full_size_editable_label_map(client, tmp_path) -> No
     assert edited.json()["labels"]["meta"]["grain_roi"] == "1,31,60,90"
 
 
+def test_grains_can_be_measured_in_reviewed_layers(client, tmp_path) -> None:
+    img = np.zeros((60, 90), dtype=np.float64)
+    img[:, :30] = 20.0
+    img[:, 30:60] = 60.0
+    img[:, 60:] = 100.0
+    img_id = _open(client, tmp_path, img)
+    segmented = client.post(
+        "/api/analyze/grains",
+        json={"image_id": img_id, "granularity": 0.05, "min_area": 50},
+    ).json()
+
+    response = client.post(
+        "/api/analyze/layers/grains",
+        json={
+            "labels_id": segmented["labels"]["id"], "axis": "y",
+            "layers": [
+                {"index": 0, "top": 0.0, "bottom": 30.0},
+                {"index": 1, "top": 30.0, "bottom": 60.0},
+            ],
+            "selected_indices": [0, 1], "roi": None, "interface_traces": [],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert [layer["n_grains"] for layer in body["layers"]] == [3, 3]
+    assert [layer["cross_layer_grains"] for layer in body["layers"]] == [3, 3]
+    assert body["assignment"]["meta"]["layer_assignment"] is True
+    assert body["assignment"]["meta"].get("grain_labels") is None
+    assert client.get(
+        f"/api/image/{body['assignment']['id']}/render"
+    ).status_code == 200
+
+
 def test_grains_robust_denoise_params_accepted(client, tmp_path) -> None:
     # a noisy 2-band field: denoise + robust stretch should still resolve it
     rng = np.random.default_rng(0)

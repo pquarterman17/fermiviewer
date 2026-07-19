@@ -328,6 +328,41 @@ textarea:disabled {
   border-radius: var(--radius-sm);
   font-size: var(--font-size-sm);
 }
+
+.fvd-per-layer {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.fvd-layer-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 5px;
+}
+
+.fvd-layer-choices label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.fvd-layer-choices label.selected {
+  border-color: var(--capture);
+  color: var(--text);
+  background: color-mix(in srgb, var(--capture) 10%, transparent);
+}
+
+.fvd-layer-choices label span { margin-left: auto; color: var(--text-dim); }
+.fvd-layer-grain-table-wrap { overflow-x: auto; }
+.fvd-layer-grain-table { min-width: 760px; }
 .fvd-guide-summary b { color: var(--text-faint); font-weight: var(--weight-medium); }
 
 @media (max-width: 520px) {

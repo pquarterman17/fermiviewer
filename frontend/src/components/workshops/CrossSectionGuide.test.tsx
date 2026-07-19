@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { GrainResult, ImageMeta, LayersResult } from "../../lib/api";
+import type { GrainLayersResult, GrainResult, ImageMeta, LayersResult } from "../../lib/api";
 import { useCrossSection } from "../../store/crossSection";
 import { useViewer } from "../../store/viewer";
 
@@ -59,6 +59,13 @@ describe("CrossSectionGuide", () => {
           perimeters_px: [100, 100], eccentricity: [0.2, 0.3],
         } as GrainResult,
         qualityAccepted: false,
+      },
+      perLayer: {
+        sourceId: "src", roi: null, selectedLayerIndices: [],
+        result: {
+          axis: "y", pixel_size: 0.5, unit: "nm", layers: [],
+          assignment: { id: "assignment" }, limitations: [],
+        } as unknown as GrainLayersResult,
       },
     }));
     fireEvent.click(screen.getByRole("button", { name: /Report/ }));

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useAnalysisRoi } from "../../hooks/useAnalysisRoi";
 import { assessGrainQuality, assessLayerQuality } from "../../lib/analysisQuality";
@@ -9,6 +9,7 @@ import { useViewer } from "../../store/viewer";
 import { grainSourceId } from "../../lib/grainWorkflow";
 import AnalysisRegionSelect from "./AnalysisRegionSelect";
 import { GrainMetrics } from "./AnalysisQualityCard";
+import CrossSectionPerLayer from "./CrossSectionPerLayer";
 import LayersWorkshop, { LayerStack } from "./LayersWorkshop";
 import { GrainsMode } from "./StructureWorkshop";
 
@@ -16,6 +17,7 @@ const STEPS = ["Region", "Layers", "Grains", "Report"] as const;
 
 export default function CrossSectionGuide() {
   const [step, setStep] = useState(0);
+  const [selectedLayers, setSelectedLayers] = useState<number[]>([]);
   const activeId = useViewer((s) => s.activeId);
   const images = useViewer((s) => s.images);
   const setActive = useViewer((s) => s.setActive);
@@ -26,8 +28,16 @@ export default function CrossSectionGuide() {
   const region = useAnalysisRoi(sourceId, source?.shape ?? []);
   const latestLayers = useCrossSection((s) => s.layers);
   const latestGrains = useCrossSection((s) => s.grains);
+  const latestPerLayer = useCrossSection((s) => s.perLayer);
   const layers = matchesCrossSectionRegion(latestLayers, sourceId, region.roi) ? latestLayers : null;
   const grains = matchesCrossSectionRegion(latestGrains, sourceId, region.roi) ? latestGrains : null;
+  const perLayer = matchesCrossSectionRegion(latestPerLayer, sourceId, region.roi)
+    && latestPerLayer?.selectedLayerIndices.join(":") === selectedLayers.join(":")
+    ? latestPerLayer : null;
+
+  useEffect(() => {
+    setSelectedLayers(layers?.result.layers.map((layer) => layer.index) ?? []);
+  }, [layers?.result]);
 
   if (!sourceId || !source || source.kind !== "image") {
     return <div className="fvd-ws-empty">Select a 2-D TEM/STEM image to begin.</div>;
@@ -38,7 +48,7 @@ export default function CrossSectionGuide() {
     setStep(next);
   };
   const exportReport = () => {
-    const report = buildCrossSectionReport(source, region.label, layers, grains);
+    const report = buildCrossSectionReport(source, region.label, layers, grains, perLayer);
     const name = `${exportBaseName(source.name)}_cross_section.json`;
     downloadJson(name, JSON.stringify(report, null, 2) + "\n");
     setStatus(`cross-section report: exported ${name}`);
@@ -51,6 +61,7 @@ export default function CrossSectionGuide() {
     (layerQuality?.rating === "poor" && !layers?.qualityAccepted) ||
     (grainQuality?.rating === "poor" && !grains?.qualityAccepted),
   );
+  const perLayerPending = Boolean(layers && grains && !perLayer);
 
   return (
     <div className="fvd-ws fvd-cross-guide">
@@ -126,14 +137,23 @@ export default function CrossSectionGuide() {
               <GrainMetrics r={grains.result} />
             </>
           )}
+          {layers && grains && sourceId && (
+            <CrossSectionPerLayer
+              sourceId={sourceId} roi={region.roi} layers={layers} grains={grains}
+              selected={selectedLayers} onSelected={setSelectedLayers}
+            />
+          )}
           {reportBlocked && (
             <div className="fvd-quality poor">A poor result must be acknowledged in its analysis step before combined export.</div>
           )}
-          <button className="fvd-btn primary" disabled={(!layers && !grains) || reportBlocked} onClick={exportReport}>
+          {perLayerPending && (
+            <div className="fvd-quality review">Measure the selected film layers to complete the combined report.</div>
+          )}
+          <button className="fvd-btn primary" disabled={(!layers && !grains) || reportBlocked || perLayerPending} onClick={exportReport}>
             Export combined JSON report
           </button>
           <div className="fvd-ws-note">
-            Grain statistics cover the selected region; per-layer partitioning is a documented follow-up.
+            Per-layer grains are clipped at reviewed interfaces; shape angles are morphological, not crystallographic.
           </div>
         </div>
       )}

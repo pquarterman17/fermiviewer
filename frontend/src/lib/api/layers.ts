@@ -1,5 +1,6 @@
 // Extracted from lib/api.ts; public imports remain stable via the barrel.
 import { post } from "./transport";
+import type { ImageMeta } from "./core";
 
 // ── Cross-section layers (PLAN_CROSS_SECTION_LAYERS) ─────────────────
 
@@ -125,5 +126,65 @@ export function editLayers(
     waviness: opts.waviness ?? false,
     reduce: opts.reduce ?? "mean",
     destripe: opts.destripe ?? false,
+  });
+}
+
+export interface GrainLayerSlice {
+  source_grain_id: number;
+  area_px: number;
+  lateral_width_px: number;
+  depth_height_px: number;
+  lateral_width: number;
+  depth_height: number;
+  aspect_ratio: number;
+  shape_angle_deg: number;
+  centroid_lateral_px: number;
+  centroid_depth_px: number;
+  fraction_of_source_grain: number;
+}
+
+export interface GrainLayerSummary {
+  index: number;
+  top_px: number;
+  bottom_px: number;
+  thickness_px: number;
+  thickness: number;
+  area_px: number;
+  area: number;
+  n_grains: number;
+  density_per_mpx: number;
+  density_per_unit2: number;
+  occupied_fraction: number;
+  mean_lateral_width: number;
+  median_lateral_width: number;
+  mean_depth_height: number;
+  mean_aspect_ratio: number;
+  mean_shape_angle_deg: number;
+  cross_layer_grains: number;
+  grains: GrainLayerSlice[];
+}
+
+export interface GrainLayersResult {
+  axis: "x" | "y";
+  pixel_size: number;
+  unit: string;
+  layers: GrainLayerSummary[];
+  assignment: ImageMeta;
+  limitations: string[];
+}
+
+export function analyzeGrainsByLayer(
+  labelsId: string,
+  layers: LayersResult,
+  selectedIndices: number[],
+  roi: [number, number, number, number] | null,
+): Promise<GrainLayersResult> {
+  return post("/api/analyze/layers/grains", {
+    labels_id: labelsId,
+    axis: layers.axis,
+    layers: layers.layers.map(({ index, top, bottom }) => ({ index, top, bottom })),
+    selected_indices: selectedIndices,
+    roi,
+    interface_traces: layers.interfaces.map((item) => item.trace),
   });
 }

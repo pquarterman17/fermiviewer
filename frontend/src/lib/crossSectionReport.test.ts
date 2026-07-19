@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { GrainResult, ImageMeta, LayersResult } from "./api";
+import type { GrainLayersResult, GrainResult, ImageMeta, LayersResult } from "./api";
 import { buildCrossSectionReport } from "./crossSectionReport";
 
 const image = {
@@ -23,6 +23,13 @@ describe("cross-section report", () => {
       "Film only",
       { sourceId: "src", regionLabel: "Film only", roi: [2, 3, 90, 180], result: layers, qualityAccepted: true },
       { sourceId: "src", regionLabel: "Film only", roi: [2, 3, 90, 180], minArea: 25, result: grains, qualityAccepted: false },
+      {
+        sourceId: "src", roi: [2, 3, 90, 180], selectedLayerIndices: [1],
+        result: {
+          axis: "y", pixel_size: 0.5, unit: "nm", layers: [{ index: 1 }],
+          assignment: { id: "assignment" }, limitations: ["shape only"],
+        } as GrainLayersResult,
+      },
       "2026-07-19T12:00:00Z",
     );
     expect(report.provenance).toMatchObject({
@@ -33,8 +40,8 @@ describe("cross-section report", () => {
     expect(report.grains?.areas_px).toEqual([10]);
     expect(report.layers?.axis).toBe("y");
     expect(report.layers?.poor_result_acknowledged).toBe(true);
-    expect(report.limitations).toContain(
-      "Grain statistics cover the selected region; they are not yet partitioned per detected layer.",
-    );
+    expect(report.per_layer_grains?.selected_layer_indices).toEqual([1]);
+    expect(report.per_layer_grains?.layers).toEqual([{ index: 1 }]);
+    expect(report.limitations).not.toContain("No reviewed per-layer grain assignment is included.");
   });
 });

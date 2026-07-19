@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import type { GrainResult, LayersResult } from "../lib/api";
+import type { GrainLayersResult, GrainResult, LayersResult } from "../lib/api";
 import type { AnalysisRoi } from "../hooks/useAnalysisRoi";
 
 export interface CrossSectionLayersSnapshot {
@@ -20,20 +20,31 @@ export interface CrossSectionGrainsSnapshot {
   qualityAccepted: boolean;
 }
 
+export interface CrossSectionPerLayerSnapshot {
+  sourceId: string;
+  roi: AnalysisRoi | null;
+  selectedLayerIndices: number[];
+  result: GrainLayersResult;
+}
+
 interface CrossSectionState {
   layers: CrossSectionLayersSnapshot | null;
   grains: CrossSectionGrainsSnapshot | null;
+  perLayer: CrossSectionPerLayerSnapshot | null;
   setLayers: (value: CrossSectionLayersSnapshot) => void;
   setGrains: (value: CrossSectionGrainsSnapshot) => void;
+  setPerLayer: (value: CrossSectionPerLayerSnapshot) => void;
   clear: () => void;
 }
 
 export const useCrossSection = create<CrossSectionState>((set) => ({
   layers: null,
   grains: null,
-  setLayers: (layers) => set({ layers }),
-  setGrains: (grains) => set({ grains }),
-  clear: () => set({ layers: null, grains: null }),
+  perLayer: null,
+  setLayers: (layers) => set({ layers, perLayer: null }),
+  setGrains: (grains) => set({ grains, perLayer: null }),
+  setPerLayer: (perLayer) => set({ perLayer }),
+  clear: () => set({ layers: null, grains: null, perLayer: null }),
 }));
 
 export function matchesCrossSectionRegion(
@@ -66,4 +77,13 @@ export function acceptCrossSectionLayers(): void {
 export function acceptCrossSectionGrains(): void {
   const current = useCrossSection.getState().grains;
   if (current) useCrossSection.setState({ grains: { ...current, qualityAccepted: true } });
+}
+
+export function replaceCrossSectionGrainsAfterEdit(result: GrainResult): void {
+  const current = useCrossSection.getState().grains;
+  if (!current || result.labels.meta?.["grain_source"] !== current.sourceId) return;
+  const resultRoi = typeof result.labels.meta?.["grain_roi"] === "string"
+    ? result.labels.meta["grain_roi"] : null;
+  if (resultRoi !== (current.roi?.join(",") ?? null)) return;
+  useCrossSection.getState().setGrains({ ...current, result, qualityAccepted: false });
 }

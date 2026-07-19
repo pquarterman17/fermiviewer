@@ -2,6 +2,7 @@ import type { ImageMeta } from "./api";
 import type {
   CrossSectionGrainsSnapshot,
   CrossSectionLayersSnapshot,
+  CrossSectionPerLayerSnapshot,
 } from "../store/crossSection";
 
 export function buildCrossSectionReport(
@@ -9,6 +10,7 @@ export function buildCrossSectionReport(
   regionLabel: string,
   layers: CrossSectionLayersSnapshot | null,
   grains: CrossSectionGrainsSnapshot | null,
+  perLayer: CrossSectionPerLayerSnapshot | null,
   exported = new Date().toISOString(),
 ) {
   return {
@@ -44,9 +46,20 @@ export function buildCrossSectionReport(
       perimeters_px: grains.result.perimeters_px,
       eccentricity: grains.result.eccentricity,
     } : null,
+    per_layer_grains: perLayer ? {
+      selected_layer_indices: perLayer.selectedLayerIndices,
+      axis: perLayer.result.axis,
+      pixel_size: perLayer.result.pixel_size,
+      unit: perLayer.result.unit,
+      assignment_image_id: perLayer.result.assignment.id,
+      layers: perLayer.result.layers,
+      limitations: perLayer.result.limitations,
+    } : null,
     limitations: [
       "Automatic quality checks are review aids, not scientific validation.",
-      "Grain statistics cover the selected region; they are not yet partitioned per detected layer.",
+      ...(perLayer ? [] : ["No reviewed per-layer grain assignment is included."]),
+      "Grains crossing a reviewed interface are clipped and reported in each intersected layer.",
+      "Shape angle is morphological and is not crystallographic orientation.",
       "Structure-tensor orientation is not equivalent to crystallographic orientation mapping.",
     ],
   };
