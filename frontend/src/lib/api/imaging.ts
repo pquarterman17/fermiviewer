@@ -260,12 +260,17 @@ export interface GrainPreviewClass {
 
 export interface GrainPreview {
   classes: GrainPreviewClass[];
+  class_map: ImageMeta;
+  confidence_map: ImageMeta;
+  mean_confidence: number;
+  low_confidence_fraction: number;
+  confidence_threshold: number;
 }
 
 /** Optional, non-committing preview of the trained pixel classifier: fit on
- *  the painted strokes and report the per-class pixel composition, WITHOUT
- *  labelling grains or registering any image. Lets the user check the split
- *  before committing with grainsTrainSegment. */
+ *  the painted strokes and return spatial class/confidence maps, WITHOUT
+ *  labelling connected grains. Lets the user inspect the split before
+ *  committing with grainsTrainSegment. */
 export function grainsTrainPreview(
   id: string,
   strokes: TrainStroke[],

@@ -22,7 +22,8 @@ from fermiviewer.calc.grains_trained import (
     train_from_scribbles,
 )
 from fermiviewer.calc.roi import embed_rect_roi, extract_rect_roi, roi_slices
-from fermiviewer.routes.structure import _grains_payload, _raster
+from fermiviewer.routes.structure import _grains_payload, _raster, _register
+from fermiviewer.session import store
 
 router = APIRouter(prefix="/api")
 
@@ -102,10 +103,10 @@ class TrainPreviewRequest(BaseModel):
 @router.post("/grains/train-preview")
 def grains_train_preview(req: TrainPreviewRequest) -> dict:
     """Optional, non-committing preview: fit the pixel classifier on the
-    painted strokes and report the per-class pixel composition, WITHOUT
-    labelling grains or registering any image. Lets the UI show how the paint
-    generalizes before the user commits with /grains/train-segment."""
-    _ds, raster = _raster(req.image_id)
+    painted strokes and return inspectable class/confidence rasters, WITHOUT
+    labelling connected grains. Lets the UI show where the paint generalizes
+    before the user commits with /grains/train-segment."""
+    ds, raster = _raster(req.image_id)
     h, w = raster.shape
 
     label_mask = rasterize_strokes(
@@ -128,6 +129,15 @@ def grains_train_preview(req: TrainPreviewRequest) -> dict:
         raise HTTPException(422, str(e)) from None
 
     boundary = {int(b) for b in req.boundary_class}
+    class_map = embed_rect_roi(prev.class_map, raster.shape, req.roi)
+    confidence_map = embed_rect_roi(prev.max_prob, raster.shape, req.roi)
+    roi_value = ",".join(str(v) for v in req.roi) if req.roi else "whole"
+    preview_meta = {
+        "grain_preview": True,
+        "grain_source": req.image_id,
+        "grain_roi": roi_value,
+    }
+    source_name = store.name(req.image_id)
     return {
         "classes": [
             {
@@ -137,4 +147,21 @@ def grains_train_preview(req: TrainPreviewRequest) -> dict:
             }
             for c in prev.classes
         ],
+        "class_map": _register(
+            class_map.astype(np.float64),
+            f"grain classes({source_name})",
+            ds,
+            req.image_id,
+            extra_meta={**preview_meta, "preview_kind": "classes"},
+        ),
+        "confidence_map": _register(
+            confidence_map,
+            f"grain confidence({source_name})",
+            ds,
+            req.image_id,
+            extra_meta={**preview_meta, "preview_kind": "confidence"},
+        ),
+        "mean_confidence": float(np.mean(prev.max_prob)),
+        "low_confidence_fraction": float(np.mean(prev.max_prob < 0.6)),
+        "confidence_threshold": 0.6,
     }

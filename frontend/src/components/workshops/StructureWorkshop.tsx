@@ -23,7 +23,7 @@ import {
   runJob,
   type CtfResult,
   type GrainMethod,
-  type GrainPreviewClass,
+  type GrainPreview,
   type GrainResult,
   type Raster16,
   type TrainStroke,
@@ -51,6 +51,9 @@ import {
 import { useResults } from "../overlays/ResultsWindow";
 import AnalysisRegionSelect from "./AnalysisRegionSelect";
 import { AnalysisQualityCard, GrainMetrics } from "./AnalysisQualityCard";
+import { TrainedGrainPreview } from "./TrainedGrainPreview";
+
+export { TrainedPreviewLegend } from "./TrainedGrainPreview";
 
 const VIEW_W = 300;
 
@@ -365,39 +368,6 @@ export function paintedReadyCount(
   return Array.from(painted).filter((c) => !boundary.includes(c)).length;
 }
 
-// Color-keyed legend of the trained classifier's per-class pixel composition
-// (the optional preview). Boundary (∅) classes show a dashed hollow chip.
-export function TrainedPreviewLegend({
-  classes,
-}: {
-  classes: GrainPreviewClass[];
-}) {
-  return (
-    <div className="fvd-legend">
-      {classes.map((c) => {
-        const col = SCRIBBLE_COLORS[(c.class_id - 1) % SCRIBBLE_COLORS.length];
-        return (
-          <div key={c.class_id} className="fvd-legend-item">
-            <span
-              className="fvd-legend-chip"
-              style={{
-                background: c.is_boundary ? "transparent" : col,
-                border: c.is_boundary ? "1px dashed var(--text-faint)" : "none",
-              }}
-            />
-            <span className="fvd-legend-label">
-              {c.is_boundary ? "∅ " : ""}Class {c.class_id}
-            </span>
-            <span className="fvd-legend-val">
-              {Math.round(c.fraction * 100)}%
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 // Trained-mode controls: pick a class, set the brush, paint examples on the
 // stage, then train+segment. A class can be flagged as boundary/background
 // (∅) so its pixels are excluded from grains.
@@ -416,7 +386,10 @@ function TrainedGrainControls({
   onRun,
   onPreview,
   previewBusy,
-  previewClasses,
+  preview,
+  activeId,
+  sourceId,
+  showPreview,
 }: {
   numClasses: number;
   classId: number;
@@ -432,7 +405,10 @@ function TrainedGrainControls({
   onRun: () => void;
   onPreview: () => void;
   previewBusy: boolean;
-  previewClasses: GrainPreviewClass[] | null;
+  preview: GrainPreview | null;
+  activeId: string;
+  sourceId: string;
+  showPreview: (id: string) => void;
 }) {
   const setClass = useScribble((s) => s.setClass);
   const setNumClasses = useScribble((s) => s.setNumClasses);
@@ -568,14 +544,13 @@ function TrainedGrainControls({
           {busy ? progress || "Training…" : "Train & segment"}
         </button>
       </div>
-      {previewClasses && (
-        <>
-          <div className="fvd-ws-note">
-            pixel classification preview — check the split, then train &amp;
-            segment
-          </div>
-          <TrainedPreviewLegend classes={previewClasses} />
-        </>
+      {preview && (
+        <TrainedGrainPreview
+          preview={preview}
+          activeId={activeId}
+          sourceId={sourceId}
+          show={showPreview}
+        />
       )}
       <div
         className="fvd-ws-note"
@@ -622,9 +597,7 @@ export function GrainsMode({ id }: { id: string }) {
   const [note, setNote] = useState("");
   // optional, non-committing preview of the trained classifier's per-class
   // pixel composition (does not register an image or segment grains)
-  const [previewClasses, setPreviewClasses] = useState<
-    GrainPreviewClass[] | null
-  >(null);
+  const [preview, setPreview] = useState<GrainPreview | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
   const [qualityAccepted, setQualityAccepted] = useState(savedGrains?.qualityAccepted ?? false);
 
@@ -646,13 +619,13 @@ export function GrainsMode({ id }: { id: string }) {
     setMethod((restored?.result.method as GrainMethod) ?? "gradient");
     setMinArea(String(restored?.minArea ?? 25));
     setNote("");
-    setPreviewClasses(null);
+    setPreview(null);
     setQualityAccepted(restored?.qualityAccepted ?? false);
   }, [sourceId, roiKey]);
 
   // a fresh Clear (or a new image) wipes the strokes → drop the stale preview
   useEffect(() => {
-    if (nStrokes === 0) setPreviewClasses(null);
+    if (nStrokes === 0) setPreview(null);
   }, [nStrokes]);
 
   // open/close the stage paint overlay as the Trained method is selected.
@@ -678,8 +651,8 @@ export function GrainsMode({ id }: { id: string }) {
   ) : null;
   const canUseResult = grainQuality?.rating !== "poor" || qualityAccepted;
 
-  // optional preview: classify pixels from the current strokes and show the
-  // per-class composition, committing nothing (no image, no grain labels)
+  // Classify pixels without creating connected grain labels, then expose the
+  // spatial classes and confidence so training errors are visible.
   const previewRun = () => {
     const { strokes, boundary: bnd } = useScribble.getState();
     if (new Set(strokes.map((s) => s.classId)).size < 2) {
@@ -703,9 +676,24 @@ export function GrainsMode({ id }: { id: string }) {
         const state = useViewer.getState();
         const active = state.activeId;
         if (!active || grainSourceId(active, state.images) !== reqId) return;
-        setPreviewClasses(r.classes);
+        const oldPreview = preview;
+        if (oldPreview) {
+          void state.closeImage(oldPreview.class_map.id);
+          void state.closeImage(oldPreview.confidence_map.id);
+        }
+        state.ingestDerived([r.class_map, r.confidence_map]);
+        state.setDisplay(r.class_map.id, { cmap: "label" }, { silent: true });
+        state.setDisplay(
+          r.confidence_map.id,
+          { cmap: "viridis" },
+          { silent: true },
+        );
+        state.setActive(r.class_map.id);
+        setPreview(r);
         const phases = r.classes.filter((c) => !c.is_boundary).length;
-        setStatus(`trained grains: preview — ${phases} phase(s) classified`);
+        setStatus(
+          `trained grains: preview — ${phases} phase(s), ${Math.round(r.mean_confidence * 100)}% mean confidence`,
+        );
       })
       .catch((e: Error) => setStatus(`trained grains preview: ${e.message}`))
       .finally(() => setPreviewBusy(false));
@@ -860,7 +848,10 @@ export function GrainsMode({ id }: { id: string }) {
           onRun={trainRun}
           onPreview={previewRun}
           previewBusy={previewBusy}
-          previewClasses={previewClasses}
+          preview={preview}
+          activeId={id}
+          sourceId={sourceId}
+          showPreview={(previewId) => useViewer.getState().setActive(previewId)}
         />
       ) : (
         <div className="fvd-ws-row">

@@ -8,7 +8,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { GrainResult, ImageMeta } from "../../lib/api";
+import type { GrainPreview, GrainResult, ImageMeta } from "../../lib/api";
 import { recordCrossSectionGrains, useCrossSection } from "../../store/crossSection";
 import { useScribble } from "../../store/scribble";
 import { useViewer } from "../../store/viewer";
@@ -19,12 +19,18 @@ vi.mock("../../lib/api", async (importActual) => {
   return {
     ...actual,
     analyzeGrainsAsync: vi.fn(),
+    grainsTrainPreview: vi.fn(),
     grainsTrainSegment: vi.fn(),
     runJob: vi.fn(),
   };
 });
 
-import { analyzeGrainsAsync, grainsTrainSegment, runJob } from "../../lib/api";
+import {
+  analyzeGrainsAsync,
+  grainsTrainPreview,
+  grainsTrainSegment,
+  runJob,
+} from "../../lib/api";
 import StructureWorkshop, { GrainsMode } from "./StructureWorkshop";
 
 function imageMeta(id: string, extra: Partial<ImageMeta> = {}): ImageMeta {
@@ -69,6 +75,26 @@ function grainResult(labelsId: string): GrainResult {
   };
 }
 
+function grainPreview(): GrainPreview {
+  return {
+    classes: [
+      { class_id: 1, fraction: 0.6, is_boundary: false },
+      { class_id: 2, fraction: 0.4, is_boundary: false },
+    ],
+    class_map: imageMeta("preview-classes", {
+      name: "grain classes(src)",
+      meta: { derived_from: "src", grain_source: "src", grain_preview: true },
+    }),
+    confidence_map: imageMeta("preview-confidence", {
+      name: "grain confidence(src)",
+      meta: { derived_from: "src", grain_source: "src", grain_preview: true },
+    }),
+    mean_confidence: 0.87,
+    low_confidence_fraction: 0.12,
+    confidence_threshold: 0.6,
+  };
+}
+
 afterEach(() => {
   vi.clearAllMocks();
   useScribble.getState().end();
@@ -80,6 +106,46 @@ afterEach(() => {
 });
 
 describe("StructureWorkshop trained flow", () => {
+  it("shows spatial class and confidence views before committing grains", async () => {
+    useViewer.getState().ingest([imageMeta("src")]);
+    useViewer.getState().setActive("src");
+    vi.mocked(grainsTrainPreview).mockResolvedValue(grainPreview());
+
+    render(<StructureWorkshop />);
+    fireEvent.click(screen.getByText("Grains"));
+    fireEvent.change(screen.getByRole("combobox", { name: "Grain method" }), {
+      target: { value: "trained" },
+    });
+    act(() => {
+      useScribble.setState({
+        strokes: [
+          { classId: 1, radius: 4, points: [[10, 10]] },
+          { classId: 2, radius: 4, points: [[50, 50]] },
+        ],
+      });
+    });
+
+    fireEvent.click(screen.getByText("Preview"));
+    await waitFor(() => expect(screen.getByText("Classes")).toBeInTheDocument());
+
+    expect(grainsTrainPreview).toHaveBeenCalledWith(
+      "src",
+      expect.any(Array),
+      expect.objectContaining({ classifier: "forest" }),
+    );
+    expect(screen.getByText("mean confidence 87% · 12% below 60%")).toBeInTheDocument();
+    expect(screen.getByText(/no grains created yet/)).toBeInTheDocument();
+    expect(useViewer.getState().activeId).toBe("preview-classes");
+    expect(useViewer.getState().display["preview-classes"].cmap).toBe("label");
+    expect(useViewer.getState().display["preview-confidence"].cmap).toBe("viridis");
+
+    fireEvent.click(screen.getByText("Confidence"));
+    expect(useViewer.getState().activeId).toBe("preview-confidence");
+    fireEvent.click(screen.getByText("Source"));
+    expect(useViewer.getState().activeId).toBe("src");
+    expect(grainsTrainSegment).not.toHaveBeenCalled();
+  });
+
   it("restores a reviewed result when the guided workflow revisits the step", () => {
     const result = grainResult("grains-restored");
     useViewer.getState().ingest([imageMeta("src"), result.labels]);

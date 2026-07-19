@@ -164,6 +164,8 @@ def test_preview_reports_class_composition() -> None:
     prev = preview_trained(img, model)
     assert list(prev.classes) == [1, 2]
     assert prev.class_map.shape == img.shape
+    assert prev.max_prob.shape == img.shape
+    assert np.all((prev.max_prob >= 0.5) & (prev.max_prob <= 1.0))
     assert sum(prev.fractions.values()) == pytest.approx(1.0)
     assert prev.fractions[1] == pytest.approx(0.5, abs=0.1)
     assert prev.fractions[2] == pytest.approx(0.5, abs=0.1)
@@ -309,7 +311,9 @@ def test_train_segment_unknown_image_is_404(client) -> None:
     assert r.status_code == 404
 
 
-def test_train_preview_endpoint_reports_classes(client, tmp_path) -> None:
+def test_train_preview_endpoint_returns_spatial_inspection_maps(
+    client, tmp_path
+) -> None:
     img_id = _open(client, tmp_path, _two_region_image())
     before = set(store.ids())
     r = client.post(
@@ -323,12 +327,24 @@ def test_train_preview_endpoint_reports_classes(client, tmp_path) -> None:
         },
     )
     assert r.status_code == 200, r.text
-    classes = r.json()["classes"]
+    body = r.json()
+    classes = body["classes"]
     assert [c["class_id"] for c in classes] == [1, 2]
     assert sum(c["fraction"] for c in classes) == pytest.approx(1.0)
     assert all(c["is_boundary"] is False for c in classes)
-    # non-committing: the preview must NOT register a derived image
-    assert set(store.ids()) == before
+    assert set(store.ids()) - before == {
+        body["class_map"]["id"], body["confidence_map"]["id"]
+    }
+    assert 0.5 <= body["mean_confidence"] <= 1.0
+    assert 0.0 <= body["low_confidence_fraction"] <= 1.0
+    assert body["confidence_threshold"] == 0.6
+    for key, kind in (("class_map", "classes"), ("confidence_map", "confidence")):
+        meta = body[key]["meta"]
+        assert meta["grain_preview"] is True
+        assert meta["grain_source"] == img_id
+        assert meta["preview_kind"] == kind
+        assert "grain_labels" not in meta
+        assert client.get(f"/api/image/{body[key]['id']}/render").status_code == 200
 
 
 def test_train_preview_marks_boundary_class(client, tmp_path) -> None:

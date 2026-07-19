@@ -141,11 +141,12 @@ step restores its result and review state.
 Acceptance: the report contains reviewed, spatially assigned grain metrics for
 the selected film layers without counting vacuum or substrate.
 
-### Follow-up - Spatial trained confidence
+### Follow-up - Spatial trained confidence (implemented)
 
-If it does not fit cleanly in PR 3, register/return the trained class and
-confidence rasters as non-committing previews, add a low-confidence overlay,
-and only create an editable grain-label image after acceptance.
+The trained preview now returns inspectable class and confidence rasters,
+reports mean/low confidence, and only creates an editable grain-label image
+after **Train & segment**. See `docs/trained-grain-spatial-preview.md` for the
+behavior, implementation boundaries, and focused review checklist.
 
 ## Scientific validation
 
