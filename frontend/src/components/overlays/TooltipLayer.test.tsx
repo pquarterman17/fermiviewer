@@ -77,4 +77,75 @@ describe("TooltipLayer", () => {
       "Drag a region to calculate summary statistics.",
     );
   });
+
+  it("does not re-show its own tooltip when a click focuses the button", () => {
+    // mousedown dismisses, then the browser focuses the clicked button. Without
+    // an input-modality guard, focusin re-armed the dwell timer and the tooltip
+    // reappeared 350 ms after every click.
+    render(
+      <>
+        <button data-tip="Measure distance">⤢</button>
+        <TooltipLayer />
+      </>,
+    );
+    const btn = screen.getByText("⤢");
+
+    act(() => {
+      btn.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    });
+    act(() => vi.advanceTimersByTime(400));
+    expect(screen.getByText("Measure distance")).toBeInTheDocument();
+
+    act(() => {
+      btn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      btn.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    });
+    act(() => vi.advanceTimersByTime(400));
+    expect(screen.queryByText("Measure distance")).toBeNull();
+  });
+
+  it("still shows on keyboard focus, so descriptions stay reachable", () => {
+    // The click guard must not cost WCAG 1.4.13 hover/focus parity.
+    render(
+      <>
+        <button data-tip="Measure distance">⤢</button>
+        <TooltipLayer />
+      </>,
+    );
+    const btn = screen.getByText("⤢");
+
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+      btn.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    });
+    act(() => vi.advanceTimersByTime(400));
+    expect(screen.getByText("Measure distance")).toBeInTheDocument();
+  });
+
+  it("does not strand a tooltip for a trigger removed during the dwell", () => {
+    // Buttons that unmount on click (delete-last-annotation) emit neither
+    // mouseout nor focusout, so a chip shown for one could never be dismissed.
+    // TooltipLayer must stay FIRST and mounted across the rerender: if it
+    // shifts position React unmounts it, and its cleanup clears the pending
+    // timer — the test would then pass without the guard under test.
+    const { rerender } = render(
+      <>
+        <TooltipLayer />
+        <button data-tip="Delete last annotation">✕</button>
+      </>,
+    );
+    act(() => {
+      screen
+        .getByText("✕")
+        .dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    });
+
+    rerender(
+      <>
+        <TooltipLayer />
+      </>,
+    );
+    act(() => vi.advanceTimersByTime(400));
+    expect(screen.queryByText("Delete last annotation")).toBeNull();
+  });
 });

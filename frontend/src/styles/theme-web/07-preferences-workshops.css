@@ -321,7 +321,11 @@
   line-height: 1.25;
 }
 
-.fvd-spectrum-probe-readout output {
+/* Was `… output`, which matched nothing once the <output> became a plain span
+   (it is implicitly a live region, which spams announcements during a drag).
+   Targets the coordinate readout only — the sibling status span must keep the
+   proportional UI font. Monospace stops the digits jittering as they change. */
+.fvd-spectrum-probe-pixel {
   color: var(--text);
   font-family: var(--font-mono);
 }
