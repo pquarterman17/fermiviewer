@@ -18,8 +18,8 @@
   awaiting Claude review after PR 3.
 - PR 5: implemented in [#82](https://github.com/pquarterman17/fermiviewer/pull/82);
   awaiting Claude review after PR 4.
-- PR 6: per-layer grain selection and measurement implemented in the current
-  stacked change; awaiting verification and publication.
+- PR 6: implemented in [#83](https://github.com/pquarterman17/fermiviewer/pull/83);
+  awaiting Claude review after PR 5.
 
 ## Outcome
 
