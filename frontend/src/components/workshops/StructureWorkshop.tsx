@@ -23,10 +23,8 @@ import {
   runJob,
   type CtfResult,
   type GrainMethod,
-  type GrainParams,
   type GrainPreviewClass,
   type GrainResult,
-  type ImageMeta,
   type Raster16,
   type TrainStroke,
 } from "../../lib/api";
@@ -36,6 +34,8 @@ import {
   downloadGrainsOverlayPng,
   grainsToCsv,
 } from "../../lib/grainsCsv";
+import { buildClassicGrainParams, grainSourceId } from "../../lib/grainWorkflow";
+import { useAnalysisRoi } from "../../hooks/useAnalysisRoi";
 import AtomColumnPanel from "./AtomColumnPanel";
 import { SCRIBBLE_COLORS, useScribble } from "../../store/scribble";
 import { useViewer, type Measure } from "../../store/viewer";
@@ -45,6 +45,7 @@ import {
   type StructureMode,
 } from "../../store/workshop";
 import { useResults } from "../overlays/ResultsWindow";
+import AnalysisRegionSelect from "./AnalysisRegionSelect";
 
 const VIEW_W = 300;
 
@@ -624,15 +625,7 @@ export function GrainMetrics({ r }: { r: GrainResult }) {
   );
 }
 
-/** Follow an editable grain-label image back to its original raster. */
-export function grainSourceId(
-  id: string,
-  images: Record<string, ImageMeta>,
-): string {
-  const source = images[id]?.meta?.["grain_source"];
-  return typeof source === "string" && images[source] ? source : id;
-}
-
+export { grainSourceId } from "../../lib/grainWorkflow";
 function GrainsMode({ id }: { id: string }) {
   const setStatus = useViewer((s) => s.setStatus);
   const ingestDerived = useViewer((s) => s.ingestDerived);
@@ -640,6 +633,8 @@ function GrainsMode({ id }: { id: string }) {
   const meta = images[id] ?? null;
   const sourceId = grainSourceId(id, images);
   const sourceMeta = images[sourceId] ?? null;
+  const analysisRoi = useAnalysisRoi(sourceId, sourceMeta?.shape ?? []);
+  const roiKey = analysisRoi.roi?.join(":") ?? "whole";
   const [method, setMethod] = useState<GrainMethod>("gradient");
   const [k, setK] = useState("3");
   const [coarseness, setCoarseness] = useState("0.05");
@@ -676,7 +671,7 @@ function GrainsMode({ id }: { id: string }) {
     setGrainResult(null);
     setNote("");
     setPreviewClasses(null);
-  }, [sourceId]);
+  }, [sourceId, roiKey]);
 
   // a fresh Clear (or a new image) wipes the strokes → drop the stale preview
   useEffect(() => {
@@ -714,7 +709,11 @@ function GrainsMode({ id }: { id: string }) {
       points: s.points,
     }));
     const reqId = sourceId;
-    grainsTrainPreview(sourceId, payload, { boundaryClass: bnd, classifier })
+    grainsTrainPreview(sourceId, payload, {
+      roi: analysisRoi.roi,
+      boundaryClass: bnd,
+      classifier,
+    })
       .then((r) => {
         // ignore a response that arrives after the user switched images
         const state = useViewer.getState();
@@ -742,6 +741,7 @@ function GrainsMode({ id }: { id: string }) {
       points: s.points,
     }));
     grainsTrainSegment(sourceId, payload, {
+      roi: analysisRoi.roi,
       minArea: Number(minArea) || 25,
       boundaryClass: bnd,
       classifier,
@@ -775,21 +775,13 @@ function GrainsMode({ id }: { id: string }) {
   const run = () => {
     setBusy(true);
     setProgress("starting…");
-    const denoiseSigma = Number(denoise) || 0;
-    const params: GrainParams =
-      method === "kmeans"
-        ? { method, k: Number(k) || 3 }
-        : method === "rag"
-          ? {
-              method,
-              merge_threshold: Number(mergeThr) || 0.08,
-              denoise_sigma: denoiseSigma,
-            }
-          : {
-              method,
-              granularity: Number(coarseness) || 0.05,
-              denoise_sigma: denoiseSigma,
-            };
+    const params = buildClassicGrainParams(
+      method as Exclude<GrainMethod, "trained">,
+      analysisRoi.roi,
+      knobValue,
+      minArea,
+      denoise,
+    );
     runJob<GrainResult>(
       () => analyzeGrainsAsync(sourceId, params),
       (f, msg) => setProgress(`${Math.round(f * 100)}% ${msg}`),
@@ -837,9 +829,19 @@ function GrainsMode({ id }: { id: string }) {
       <div className="fvd-ws-note" title={sourceMeta?.name ?? sourceId}>
         Source image: {sourceMeta?.name ?? sourceId}
       </div>
+      <AnalysisRegionSelect
+        choice={analysisRoi.choice}
+        options={analysisRoi.options}
+        disabled={busy || previewBusy}
+        onChange={analysisRoi.setChoice}
+      />
+      {analysisRoi.roi && method === "trained" && (
+        <div className="fvd-ws-note">Only paint classes inside the selected ROI.</div>
+      )}
       <div className="fvd-ws-row">
         <span className="k">method</span>
         <select
+          aria-label="Grain method"
           value={method}
           style={{ flex: 1 }}
           onChange={(e) => setMethod(e.target.value as GrainMethod)}

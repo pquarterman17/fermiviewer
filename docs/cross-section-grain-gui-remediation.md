@@ -6,6 +6,14 @@
 
 **Owner:** progressive Codex PR stack; each PR is held for Claude review before merge
 
+## Progress
+
+- PR 1: implemented in [#78](https://github.com/pquarterman17/fermiviewer/pull/78);
+  awaiting Claude review.
+- PR 2: ROI-scoped layer and grain analysis implemented in the current stacked
+  change; awaiting Claude review after publication.
+- PRs 3-5: pending.
+
 ## Outcome
 
 Turn the existing layer and grain analysis engines into a trustworthy

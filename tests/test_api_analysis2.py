@@ -260,6 +260,38 @@ def test_grains_gradient_method(client, tmp_path) -> None:
     assert body["boundary_network_px"] > 0
 
 
+def test_grains_roi_returns_full_size_editable_label_map(client, tmp_path) -> None:
+    img = np.zeros((60, 90), dtype=np.float64)
+    img[:, :30] = 20.0
+    img[:, 30:60] = 60.0
+    img[:, 60:] = 100.0
+    img_id = _open(client, tmp_path, img)
+    roi = [1, 31, 60, 90]
+    response = client.post(
+        "/api/analyze/grains",
+        json={"image_id": img_id, "roi": roi, "min_area": 50},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    labels = store.get(body["labels"]["id"])
+    assert labels.data.shape == img.shape
+    assert np.all(labels.data[:, :30] == 0)
+    assert np.all(labels.data[:, 30:] > 0)
+    assert body["labels"]["meta"]["grain_roi"] == "1,31,60,90"
+
+    # ROI provenance survives a later merge/split-derived label map.
+    edited = client.post(
+        "/api/grains/edit",
+        json={
+            "labels_id": body["labels"]["id"],
+            "op": "merge",
+            "points": [[40, 30], [70, 30]],
+        },
+    )
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["labels"]["meta"]["grain_roi"] == "1,31,60,90"
+
+
 def test_grains_robust_denoise_params_accepted(client, tmp_path) -> None:
     # a noisy 2-band field: denoise + robust stretch should still resolve it
     rng = np.random.default_rng(0)

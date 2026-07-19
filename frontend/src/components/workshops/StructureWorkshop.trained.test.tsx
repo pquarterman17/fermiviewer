@@ -71,7 +71,9 @@ function grainResult(labelsId: string): GrainResult {
 afterEach(() => {
   vi.clearAllMocks();
   useScribble.getState().end();
-  useViewer.setState({ images: {}, order: [], activeId: null, selected: [] });
+  useViewer.setState({
+    images: {}, order: [], activeId: null, selected: [], savedRois: {},
+  });
   useWorkshop.setState({ structureMode: "Atoms" });
 });
 
@@ -84,7 +86,7 @@ describe("StructureWorkshop trained flow", () => {
     render(<StructureWorkshop />);
     fireEvent.click(screen.getByText("Grains"));
     // switch method → "trained" (this arms the paint overlay, clearing strokes)
-    fireEvent.change(screen.getByRole("combobox"), {
+    fireEvent.change(screen.getByRole("combobox", { name: "Grain method" }), {
       target: { value: "trained" },
     });
     // paint two classes, then the "Train & segment" button enables
@@ -166,5 +168,35 @@ describe("StructureWorkshop trained flow", () => {
       expect.any(Object),
     );
     await waitFor(() => expect(useViewer.getState().activeId).toBe("grains3"));
+  });
+
+  it("submits a named ROI in backend coordinates", async () => {
+    useViewer.getState().ingest([imageMeta("src")]);
+    useViewer.setState({
+      savedRois: {
+        src: [{
+          id: "film",
+          name: "Film only",
+          kind: "roi",
+          pts: [{ x: 0.25, y: 0.125 }, { x: 0.75, y: 0.875 }],
+          createdAt: "2026-07-19T00:00:00Z",
+        }],
+      },
+    });
+    vi.mocked(runJob).mockResolvedValue(grainResult("grains-roi"));
+
+    render(<StructureWorkshop />);
+    fireEvent.click(screen.getByText("Grains"));
+    fireEvent.change(screen.getByLabelText("Region"), {
+      target: { value: "saved:film" },
+    });
+    fireEvent.click(screen.getByText("Identify grains"));
+    await waitFor(() => expect(runJob).toHaveBeenCalledOnce());
+    vi.mocked(runJob).mock.calls[0][0]();
+
+    expect(analyzeGrainsAsync).toHaveBeenCalledWith(
+      "src",
+      expect.objectContaining({ roi: [9, 17, 56, 48] }),
+    );
   });
 });

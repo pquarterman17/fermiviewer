@@ -21,6 +21,7 @@ from fermiviewer.calc.grains_trained import (
     segment_trained,
     train_from_scribbles,
 )
+from fermiviewer.calc.roi import embed_rect_roi, extract_rect_roi, roi_slices
 from fermiviewer.routes.structure import _grains_payload, _raster
 
 router = APIRouter(prefix="/api")
@@ -35,6 +36,7 @@ class Stroke(BaseModel):
 
 class TrainSegmentRequest(BaseModel):
     image_id: str
+    roi: tuple[int, int, int, int] | None = None
     strokes: list[Stroke]
     scales: list[float] = Field(default=[2.0, 4.0])
     gradient_sigma: float = Field(default=0.0, ge=0.0, le=10.0)
@@ -54,17 +56,20 @@ def grains_train_segment(req: TrainSegmentRequest) -> dict:
     label_mask = rasterize_strokes(
         (h, w), [s.model_dump() for s in req.strokes]
     )
+    rows, cols = roi_slices(raster.shape, req.roi)
+    analysis_raster = extract_rect_roi(raster, req.roi)
+    analysis_mask = label_mask[rows, cols]
     scales = tuple(float(s) for s in req.scales) or (2.0, 4.0)
     try:
         model = train_from_scribbles(
-            raster,
-            label_mask,
+            analysis_raster,
+            analysis_mask,
             scales=scales,
             gradient_sigma=req.gradient_sigma,
             classifier=req.classifier,
         )
         seg = segment_trained(
-            raster,
+            analysis_raster,
             model,
             boundary_class=tuple(req.boundary_class),
             min_area=req.min_area,
@@ -78,11 +83,13 @@ def grains_train_segment(req: TrainSegmentRequest) -> dict:
         )
 
     raster_f = np.asarray(raster, dtype=np.float64)
-    return _grains_payload(seg.labels, "trained", ds, raster_f, req.image_id)
+    labels = embed_rect_roi(seg.labels, raster.shape, req.roi)
+    return _grains_payload(labels, "trained", ds, raster_f, req.image_id, req.roi)
 
 
 class TrainPreviewRequest(BaseModel):
     image_id: str
+    roi: tuple[int, int, int, int] | None = None
     strokes: list[Stroke]
     scales: list[float] = Field(default=[2.0, 4.0])
     gradient_sigma: float = Field(default=0.0, ge=0.0, le=10.0)
@@ -104,16 +111,19 @@ def grains_train_preview(req: TrainPreviewRequest) -> dict:
     label_mask = rasterize_strokes(
         (h, w), [s.model_dump() for s in req.strokes]
     )
+    rows, cols = roi_slices(raster.shape, req.roi)
+    analysis_raster = extract_rect_roi(raster, req.roi)
+    analysis_mask = label_mask[rows, cols]
     scales = tuple(float(s) for s in req.scales) or (2.0, 4.0)
     try:
         model = train_from_scribbles(
-            raster,
-            label_mask,
+            analysis_raster,
+            analysis_mask,
             scales=scales,
             gradient_sigma=req.gradient_sigma,
             classifier=req.classifier,
         )
-        prev = preview_trained(raster, model)
+        prev = preview_trained(analysis_raster, model)
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
 

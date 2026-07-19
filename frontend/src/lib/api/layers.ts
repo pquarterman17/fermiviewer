@@ -110,6 +110,7 @@ export function editLayers(
   id: string,
   positions: number[],
   opts: {
+    roi?: [number, number, number, number] | null;
     axis?: "y" | "x";
     waviness?: boolean;
     reduce?: "mean" | "sum" | "median";
@@ -119,6 +120,7 @@ export function editLayers(
   return post("/api/analyze/layers/edit", {
     image_id: id,
     positions,
+    roi: opts.roi ?? null,
     axis: opts.axis ?? "y",
     waviness: opts.waviness ?? false,
     reduce: opts.reduce ?? "mean",

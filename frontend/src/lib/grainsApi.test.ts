@@ -37,6 +37,7 @@ describe("analyzeGrains request body", () => {
     globalThis.fetch = makeFetch({ n_grains: 3, method: "gradient" });
     await analyzeGrains("img1", {
       method: "gradient",
+      roi: [2, 3, 40, 50],
       granularity: 0.08,
       denoise_sigma: 1.5,
       robust: true,
@@ -44,6 +45,7 @@ describe("analyzeGrains request body", () => {
     const body = lastBody();
     expect(body.image_id).toBe("img1");
     expect(body.method).toBe("gradient");
+    expect(body.roi).toEqual([2, 3, 40, 50]);
     expect(body.granularity).toBe(0.08);
     expect(body.denoise_sigma).toBe(1.5);
     expect(body.robust).toBe(true);
@@ -65,12 +67,14 @@ describe("analyzeGrainsAsync request body", () => {
     globalThis.fetch = makeFetch({ job_id: "j1" });
     await analyzeGrainsAsync("img3", {
       method: "rag",
+      roi: [4, 5, 60, 70],
       merge_threshold: 0.2,
       denoise_sigma: 2,
     });
     const body = lastBody();
     expect(body.run_async).toBe(true);
     expect(body.method).toBe("rag");
+    expect(body.roi).toEqual([4, 5, 60, 70]);
     expect(body.merge_threshold).toBe(0.2);
     expect(body.denoise_sigma).toBe(2);
   });

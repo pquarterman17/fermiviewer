@@ -145,6 +145,7 @@ export type GrainMethod =
 
 export interface GrainParams {
   method: GrainMethod;
+  roi?: [number, number, number, number] | null;
   k?: number;
   granularity?: number;
   compactness?: number;
@@ -220,6 +221,7 @@ export interface TrainStroke {
 }
 
 export interface TrainSegmentOpts {
+  roi?: [number, number, number, number] | null;
   scales?: number[];
   gradientSigma?: number;
   minArea?: number;
@@ -238,6 +240,7 @@ export function grainsTrainSegment(
 ): Promise<GrainResult> {
   return post("/api/grains/train-segment", {
     image_id: id,
+    roi: opts.roi ?? null,
     strokes,
     scales: opts.scales ?? [2, 4],
     gradient_sigma: opts.gradientSigma ?? 0,
@@ -267,6 +270,7 @@ export function grainsTrainPreview(
   id: string,
   strokes: TrainStroke[],
   opts: {
+    roi?: [number, number, number, number] | null;
     scales?: number[];
     gradientSigma?: number;
     boundaryClass?: number[];
@@ -275,6 +279,7 @@ export function grainsTrainPreview(
 ): Promise<GrainPreview> {
   return post("/api/grains/train-preview", {
     image_id: id,
+    roi: opts.roi ?? null,
     strokes,
     scales: opts.scales ?? [2, 4],
     gradient_sigma: opts.gradientSigma ?? 0,

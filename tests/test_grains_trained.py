@@ -238,6 +238,31 @@ def test_train_segment_endpoint(client, tmp_path) -> None:
     ).status_code == 200
 
 
+def test_train_segment_roi_embeds_result_in_source_shape(client, tmp_path) -> None:
+    img_id = _open(client, tmp_path, _two_region_image())
+    roi = [11, 1, 50, 90]
+    response = client.post(
+        "/api/grains/train-segment",
+        json={
+            "image_id": img_id,
+            "roi": roi,
+            "strokes": [
+                {"class_id": 1, "radius": 3, "points": [[10, 20], [30, 40]]},
+                {"class_id": 2, "radius": 3, "points": [[65, 20], [80, 40]]},
+            ],
+            "min_area": 50,
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    labels = store.get(body["labels"]["id"])
+    assert labels.data.shape == (60, 90)
+    assert np.all(labels.data[:10] == 0)
+    assert np.all(labels.data[50:] == 0)
+    assert np.all(labels.data[10:50] > 0)
+    assert body["labels"]["meta"]["grain_roi"] == "11,1,50,90"
+
+
 def test_train_segment_forest_endpoint(client, tmp_path) -> None:
     img_id = _open(client, tmp_path, _two_region_image())
     r = client.post(

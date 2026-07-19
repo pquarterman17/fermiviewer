@@ -45,7 +45,10 @@ export default function LayersOverlay({
     return horizontal ? p.y : p.x;
   };
 
-  const commit = (next: number[]) => setLayersEditReq(next);
+  const clampDepth = (value: number) => overlay.depthRange
+    ? Math.min(overlay.depthRange[1], Math.max(overlay.depthRange[0], value))
+    : value;
+  const commit = (next: number[]) => setLayersEditReq(next.map(clampDepth));
 
   const onLineDown = (e: React.PointerEvent, k: number) => {
     if (!edit) return;
@@ -55,7 +58,7 @@ export default function LayersOverlay({
   };
   const onMove = (e: React.PointerEvent) => {
     if (!drag) return;
-    setDrag({ index: drag.index, pos: depthAt(e.clientX, e.clientY) });
+    setDrag({ index: drag.index, pos: clampDepth(depthAt(e.clientX, e.clientY)) });
   };
   const onUp = (e: React.PointerEvent) => {
     if (!drag) return;
@@ -92,20 +95,23 @@ export default function LayersOverlay({
       )}
       {positions.map((_pos, k) => {
         const pos = lineFor(k);
+        const lateral0 = overlay.lateralRange?.[0] ?? 0;
+        const lateral1 = overlay.lateralRange?.[1] ?? (horizontal ? img.w : img.h);
         const a = horizontal
-          ? imageToScreen(0, pos, view, img, vp)
-          : imageToScreen(pos, 0, view, img, vp);
+          ? imageToScreen(lateral0, pos, view, img, vp)
+          : imageToScreen(pos, lateral0, view, img, vp);
         const b = horizontal
-          ? imageToScreen(img.w, pos, view, img, vp)
-          : imageToScreen(pos, img.h, view, img, vp);
+          ? imageToScreen(lateral1, pos, view, img, vp)
+          : imageToScreen(pos, lateral1, view, img, vp);
         const trace = overlay.traces[k];
         const poly =
           trace && drag?.index !== k
             ? trace
                 .map((d, j) => {
+                  const lateral = j + (overlay.lateralOffset ?? 0);
                   const p = horizontal
-                    ? imageToScreen(j, d, view, img, vp)
-                    : imageToScreen(d, j, view, img, vp);
+                    ? imageToScreen(lateral, d, view, img, vp)
+                    : imageToScreen(d, lateral, view, img, vp);
                   return `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
                 })
                 .join(" ")

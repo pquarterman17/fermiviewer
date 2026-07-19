@@ -133,8 +133,7 @@ export type MeasureKind =
 
 export type EndSymbol = "bar" | "circle" | "cross" | "square" | "none";
 
-/** Points are normalized 0–1 image coords (handoff §6) so measures
- *  survive crops/derived images of the same aspect. */
+/** Normalized 0–1 image coords survive derived images of the same aspect. */
 export interface Measure {
   id: string;
   kind: MeasureKind;
@@ -148,11 +147,9 @@ export interface Measure {
   labelDy?: number;
   /** endpoint glyph override (falls back to overlay style default) */
   endSymbol?: EndSymbol;
-  /** ⊥ averaging width in image px (box-profile captures); falls back
-   *  to the global profileWidth when absent */
+  /** ⊥ averaging width in image px; falls back to global profileWidth. */
   width?: number;
-  /** per-annotation font size override in screen px; undefined → global
-   *  overlay size (audit #12).  Values outside [6, 120] are clamped. */
+  /** Per-annotation screen px; undefined uses global, clamped to [6, 120]. */
   fontSize?: number;
 }
 
@@ -243,7 +240,10 @@ export interface LayersOverlayState {
   imageId: string;
   axis: "y" | "x";
   interfaces: number[];              // depth positions (image pixels)
-  traces: (number[] | null)[];       // per-interface wavy edge depths (px)
+  traces: (number[] | null)[];
+  lateralOffset?: number;
+  lateralRange?: [number, number];
+  depthRange?: [number, number];
 }
 
 export type ToolKind =
