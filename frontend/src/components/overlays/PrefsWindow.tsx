@@ -102,7 +102,7 @@ export default function PrefsWindow() {
   const [section, setSection] = useState<Section>("Appearance");
   const [p, setP] = useState<Prefs>(loadPrefs());
   const [customCmap, setCustomCmap] = useState("");
-  const appearance = useAppearancePreview(open, setOpen, setP);
+  const appearance = useAppearancePreview(open, setOpen, p, setP);
 
   useEffect(() => {
     if (!open) return;

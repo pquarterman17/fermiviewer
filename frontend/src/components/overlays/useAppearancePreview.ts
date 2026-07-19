@@ -28,6 +28,7 @@ function applyAppearance(prefs: Appearance): void {
 export function useAppearancePreview(
   open: boolean,
   setOpen: (open: boolean) => void,
+  prefs: Prefs,
   setPrefs: Dispatch<SetStateAction<Prefs>>,
 ) {
   const original = useRef<Appearance | null>(null);
@@ -40,12 +41,13 @@ export function useAppearancePreview(
     };
   }, [open]);
 
+  // Compute, set, then apply — never touch the DOM inside a state updater.
+  // React double-invokes updaters in StrictMode and may replay them under
+  // concurrent rendering. previewAll below already has the right shape.
   const preview = <K extends AppearanceKey>(key: K, value: Appearance[K]) => {
-    setPrefs((current) => {
-      const next = { ...current, [key]: value };
-      applyAppearance(appearance(next));
-      return next;
-    });
+    const next = { ...prefs, [key]: value };
+    setPrefs(next);
+    applyAppearance(appearance(next));
   };
 
   const previewAll = (next: Prefs) => {
