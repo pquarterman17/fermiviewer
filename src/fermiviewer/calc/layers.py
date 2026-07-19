@@ -27,6 +27,7 @@ from fermiviewer.calc.layers_detect import (
     detect_interfaces_scale_space,
 )
 from fermiviewer.calc.profiles import box_integrate, fit_interface_width
+from fermiviewer.calc.roi import extract_rect_roi
 from fermiviewer.calc.texture import structure_tensor
 from fermiviewer.calc.trace_roughness import (
     robust_sigma,
@@ -118,13 +119,7 @@ def detect_growth_orientation(
 def _roi_subimage(arr: np.ndarray, roi: tuple[int, int, int, int] | None) -> np.ndarray:
     """The ROI sub-image, clamped exactly like ``box_integrate`` (1-based,
     inclusive) so trace indices line up with the depth profile."""
-    h, w = arr.shape
-    r1, c1, r2, c2 = roi if roi is not None else (1, 1, h, w)
-    r1, r2 = sorted((int(round(r1)), int(round(r2))))
-    c1, c2 = sorted((int(round(c1)), int(round(c2))))
-    r1, r2 = max(r1, 1), min(r2, h)
-    c1, c2 = max(c1, 1), min(c2, w)
-    return arr[r1 - 1 : r2, c1 - 1 : c2]
+    return extract_rect_roi(arr, roi)
 
 
 def cross_section_profile(

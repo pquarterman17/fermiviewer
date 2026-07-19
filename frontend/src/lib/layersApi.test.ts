@@ -89,6 +89,7 @@ describe("editLayers request body", () => {
       interfaces: [], layers: [],
     });
     await editLayers("img3", [30, 90], {
+      roi: [11, 21, 100, 200],
       axis: "y", waviness: true, reduce: "median", destripe: true,
     });
     const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
@@ -98,6 +99,7 @@ describe("editLayers request body", () => {
     expect(url).toBe("/api/analyze/layers/edit");
     const body = JSON.parse(init.body as string) as Record<string, unknown>;
     expect(body.positions).toEqual([30, 90]);
+    expect(body.roi).toEqual([11, 21, 100, 200]);
     expect(body.axis).toBe("y");
     expect(body.waviness).toBe(true);
     expect(body.reduce).toBe("median");

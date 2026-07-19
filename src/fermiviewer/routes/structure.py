@@ -29,6 +29,7 @@ from fermiviewer.calc.grains import (
     split_grain,
 )
 from fermiviewer.calc.particles import particle_analysis
+from fermiviewer.calc.roi import embed_rect_roi, extract_rect_roi, parse_rect_roi
 from fermiviewer.calc.stack import align_stack, image_math, mip
 from fermiviewer.calc.stitch import stitch_images
 from fermiviewer.calc.texture import template_match
@@ -58,11 +59,7 @@ def _register(
     arr: np.ndarray, name: str, parent: DataStruct, parent_id: str,
     keep_axes: bool = True, extra_meta: dict | None = None,
 ) -> dict:
-    axes = (
-        (parent.axes[0], parent.axes[1])
-        if keep_axes
-        else (AxisCal(), AxisCal())
-    )
+    axes = (parent.axes[0], parent.axes[1]) if keep_axes else (AxisCal(), AxisCal())
     metadata: dict = {"source": name, "parser": "derived"}
     if extra_meta:
         metadata.update(extra_meta)
@@ -143,6 +140,7 @@ def _nanmean_or_nan(values: np.ndarray) -> float:
 
 class GrainRequest(BaseModel):
     image_id: str
+    roi: tuple[int, int, int, int] | None = None  # 1-based, inclusive
     # "kmeans" is the ported MATLAB texture-clustering path (kept for parity);
     # the others are scikit-image methods chosen per EM image type
     method: Literal["kmeans", "gradient", "rag", "orientation"] = "gradient"
@@ -167,7 +165,7 @@ class GrainRequest(BaseModel):
 
 def _grains_payload(
     labels: np.ndarray, method: str, ds: DataStruct, raster: np.ndarray,
-    source_id: str,
+    source_id: str, roi: tuple[int, int, int, int] | None = None,
 ) -> dict:
     """Build the grain-analysis response (shared by initial segmentation and
     interactive merge/split). Registers the renumbered label map tagged so
@@ -187,7 +185,7 @@ def _grains_payload(
                 "grain_labels": True,
                 "grain_source": source_id,
                 "grain_method": method,
-            },
+            } | ({"grain_roi": ",".join(map(str, roi))} if roi is not None else {}),
         ),
         # legacy pixel-count kept; boundary_network is the true (border-
         # excluding) inter-grain network length
@@ -214,21 +212,23 @@ def _run_grains(
     progress: Callable[[float, str], None] | None = None,
 ) -> dict:
     ds, raster = _raster(req.image_id)
+    analysis_raster = extract_rect_roi(raster, req.roi)
     seg: GrainSegmentation | WatershedSegmentation
     if req.method == "kmeans":
         seg = segment_auto(
-            raster, k=req.k, min_area=req.min_area,
+            analysis_raster, k=req.k, min_area=req.min_area,
             seed=req.seed, replicates=req.replicates, progress=progress,
         )
     else:
         seg = segment_watershed(
-            raster, method=req.method, granularity=req.granularity,
+            analysis_raster, method=req.method, granularity=req.granularity,
             compactness=req.compactness, min_area=req.min_area,
             n_superpixels=req.n_superpixels, merge_threshold=req.merge_threshold,
             orientation_sigma=req.orientation_sigma,
             denoise_sigma=req.denoise_sigma, robust=req.robust, progress=progress,
         )
-    return _grains_payload(seg.labels, req.method, ds, raster, req.image_id)
+    labels = embed_rect_roi(seg.labels, raster.shape, req.roi)
+    return _grains_payload(labels, req.method, ds, raster, req.image_id, req.roi)
 
 
 class GrainEditRequest(BaseModel):
@@ -280,7 +280,9 @@ def grains_edit(req: GrainEditRequest) -> dict:
     # guarantee every grain is one connected region (a merge of non-adjacent
     # grains, or a split, must not leave a label spanning disconnected pieces)
     labels = enforce_connected_grains(labels)
-    return _grains_payload(labels, method, source_ds, raster, source_id)
+    roi_text = labels_ds.metadata.get("grain_roi")
+    roi = parse_rect_roi(roi_text)
+    return _grains_payload(labels, method, source_ds, raster, source_id, roi)
 
 
 @router.post("/analyze/grains")

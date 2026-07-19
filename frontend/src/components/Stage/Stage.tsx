@@ -14,6 +14,7 @@ import {
 
 import { GLRenderer } from "../../gl/render";
 import {
+  applyFilter,
   fetchData16,
   grainsEdit,
   measurePolyline,
@@ -33,7 +34,7 @@ import {
   type Size,
 } from "../../lib/geometry";
 import { loadPrefs } from "../../lib/prefs";
-import { applyFilter } from "../../lib/api";
+import { replaceCrossSectionGrainsAfterEdit } from "../../store/crossSection";
 import { useScribble } from "../../store/scribble";
 import { rasterValue, useStageInfo } from "../../store/stage";
 import {
@@ -622,8 +623,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       .then((r) => {
         const s = useViewer.getState();
         s.ingestDerived([r.labels]);
-        // only swap the view if the user is still on the map they edited —
-        // a slow edit must not yank them back after they navigate away
+        replaceCrossSectionGrainsAfterEdit(r);
         if (s.activeId === startId) s.setActive(r.labels.id);
         setStatus(
           `${r.n_grains} grains` +

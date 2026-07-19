@@ -160,7 +160,8 @@
   position: fixed;
   display: flex;
   flex-direction: column;
-  max-height: 75vh;
+  max-width: calc(100vw - 16px);
+  max-height: min(82vh, calc(100vh - 16px));
 }
 
 .fvd-tool-title {
@@ -193,7 +194,8 @@
 }
 
 .fvd-tool-body {
-  overflow-y: auto;
+  min-width: 0;
+  overflow: auto;
   padding: var(--pad-lg);
 }
 
