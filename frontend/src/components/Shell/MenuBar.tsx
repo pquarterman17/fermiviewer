@@ -52,6 +52,7 @@ import { undoLabel, useViewer } from "../../store/viewer";
 import { useResults } from "../overlays/ResultsWindow";
 import Icon from "../icons/Icon";
 import DesktopMenus, { type MenuEntry as Entry } from "./DesktopMenus";
+import ThemeToggle from "./ThemeToggle";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
 
 const num = (
@@ -1551,14 +1552,7 @@ export default function MenuBar({
       >
         <Icon name="keyboard" />
       </button>
-      <button
-        className="fvd-icon-btn" aria-label="Dark theme" aria-pressed={store.theme === "dark"}
-        data-tip="Toggle theme"
-        data-tip-key="⌘⇧L"
-        onClick={store.toggleTheme}
-      >
-        <Icon name={store.theme === "dark" ? "moon" : "sun"} />
-      </button>
+      <ThemeToggle />
       <button
         className="fvd-icon-btn" aria-label="Library panel" aria-pressed={!store.leftCol}
         data-tip="Toggle library"
