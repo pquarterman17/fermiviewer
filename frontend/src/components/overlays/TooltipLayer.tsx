@@ -17,21 +17,25 @@ interface Tip {
 }
 
 const DWELL_MS = 350;
+// The chip is a single shared node, so it needs a stable id: assistive tech
+// only announces a tooltip that its trigger points at via aria-describedby.
+const TIP_ID = "fvd-tooltip";
 
 export default function TooltipLayer() {
   const [tip, setTip] = useState<Tip | null>(null);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let described: HTMLElement | null = null;
     const clear = () => {
       if (timer) clearTimeout(timer);
       timer = undefined;
     };
-    const onOver = (e: MouseEvent) => {
-      const el = (e.target as HTMLElement | null)?.closest<HTMLElement>(
-        "[data-tip]",
-      );
-      if (!el) return;
+    const undescribe = () => {
+      described?.removeAttribute("aria-describedby");
+      described = null;
+    };
+    const show = (el: HTMLElement) => {
       const label = el.getAttribute("data-tip");
       if (!label) return;
       const detail = el.getAttribute("data-tip-detail");
@@ -41,6 +45,9 @@ export default function TooltipLayer() {
       timer = setTimeout(() => {
         // flip below the target when it sits near the top edge (title bar)
         const below = rect.top < 90;
+        undescribe();
+        el.setAttribute("aria-describedby", TIP_ID);
+        described = el;
         setTip({
           label,
           detail,
@@ -51,18 +58,44 @@ export default function TooltipLayer() {
         });
       }, DWELL_MS);
     };
+    const onOver = (e: MouseEvent) => {
+      const el = (e.target as HTMLElement | null)?.closest<HTMLElement>(
+        "[data-tip]",
+      );
+      if (el) show(el);
+    };
+    // WCAG 1.4.13 wants hover and focus parity. Keyboard users never trigger
+    // mouseover, so without this the descriptions are unreachable for them.
+    const onFocus = (e: FocusEvent) => {
+      const el = (e.target as HTMLElement | null)?.closest<HTMLElement>(
+        "[data-tip]",
+      );
+      if (el) show(el);
+    };
     const onOut = () => {
       clear();
+      undescribe();
       setTip(null);
+    };
+    // …and dismissible without moving the pointer or focus.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onOut();
     };
     document.addEventListener("mouseover", onOver);
     document.addEventListener("mouseout", onOut);
     document.addEventListener("mousedown", onOut);
+    document.addEventListener("focusin", onFocus);
+    document.addEventListener("focusout", onOut);
+    document.addEventListener("keydown", onKey);
     return () => {
       clear();
+      undescribe();
       document.removeEventListener("mouseover", onOver);
       document.removeEventListener("mouseout", onOut);
       document.removeEventListener("mousedown", onOut);
+      document.removeEventListener("focusin", onFocus);
+      document.removeEventListener("focusout", onOut);
+      document.removeEventListener("keydown", onKey);
     };
   }, []);
 
@@ -71,6 +104,7 @@ export default function TooltipLayer() {
     <div
       className="fvd-tip"
       role="tooltip"
+      id={TIP_ID}
       style={{
         left: tip.x,
         top: tip.y,

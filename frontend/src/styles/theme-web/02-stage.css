@@ -159,6 +159,17 @@
   letter-spacing: 0.02em;
 }
 
+/* The stage clips overflow, so flip the label inside when the probe sits
+   near the top or right edge. */
+.fvd-specnav-label.flip-down {
+  top: 9px;
+}
+
+.fvd-specnav-label.flip-left {
+  left: auto;
+  right: 13px;
+}
+
 .fvd-inspector-tabs {
   display: flex;
   align-items: center;

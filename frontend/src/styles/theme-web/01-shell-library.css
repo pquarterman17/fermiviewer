@@ -143,8 +143,8 @@ body {
   color: var(--text-faint);
 }
 
-/* Menus rendered as divs (Filmstrip context menu, workspace placeholder)
-   cannot use :disabled, so the class form stays supported. */
+/* The workspace "No saved workspaces" placeholder is a div and so cannot use
+   :disabled; the class form stays supported for it. */
 .fvd-menu-entry.disabled {
   color: var(--text-faint);
   pointer-events: none;
@@ -180,7 +180,7 @@ body {
   font-size: var(--font-size-sm);
 }
 
-.fvd-menu-entry.has-sub:hover .fvd-submenu-arrow {
+.fvd-menu-entry.has-sub:not(:disabled):not(.disabled):hover .fvd-submenu-arrow {
   color: inherit;
 }
 

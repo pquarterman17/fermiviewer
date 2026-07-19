@@ -1007,7 +1007,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
             />
           )}
           {specnavMarkPos && specnavPixel && (
-            <SpectrumProbeMarker position={specnavMarkPos} pixel={specnavPixel} />
+            <SpectrumProbeMarker position={specnavMarkPos} pixel={specnavPixel} viewport={vp} />
           )}
           <Minimap
             imageId={activeId}

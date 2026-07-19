@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import contextlib
 import json
 import os
 import subprocess
@@ -82,20 +83,30 @@ def stop_server(server: subprocess.Popen[bytes] | None) -> None:
     if os.name == "nt":
         # `fv --dev` owns a reloading backend plus Vite. Terminating only the
         # uv launcher or its direct child leaves those grandchildren running.
-        subprocess.run(  # noqa: S603
-            ["taskkill", "/PID", str(server.pid), "/T", "/F"],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        server.wait(timeout=5)
+        # Only kill a process we know is still ours: once the child has exited,
+        # Windows may have recycled the pid and /T /F would take down an
+        # unrelated tree.
+        if server.poll() is None:
+            subprocess.run(  # noqa: S603
+                ["taskkill", "/PID", str(server.pid), "/T", "/F"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        # stop_server runs from a finally: block, so a teardown timeout here
+        # would replace the real assertion that sent us there.
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            server.wait(timeout=5)
         return
     server.terminate()
     try:
         server.wait(timeout=10)
     except subprocess.TimeoutExpired:
         server.kill()
-        server.wait(timeout=5)
+        # Same reasoning as the Windows branch: never let teardown mask the
+        # failure that brought us into the finally: block.
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            server.wait(timeout=5)
 
 
 def assert_workspace_fits(page: Any, label: str) -> dict[str, Any]:
@@ -201,6 +212,15 @@ def capture_surfaces(page: Any, out: Path) -> list[dict[str, str]]:
             disabled = menu.get_by_role(
                 "menuitem", name="Calibrate from Measurement…", exact=True
             )
+            # The entry is only disabled while no image is loaded. Assert that
+            # premise instead of silently testing an enabled control, which
+            # would fail as a "hover changed the background" false positive.
+            if not disabled.is_disabled():
+                raise AssertionError(
+                    "expected 'Calibrate from Measurement…' to be disabled "
+                    "with no image loaded — the hover baseline needs a "
+                    "genuinely disabled entry"
+                )
             before = disabled.evaluate(
                 "element => getComputedStyle(element).backgroundColor"
             )

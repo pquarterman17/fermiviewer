@@ -26,11 +26,15 @@ export default function SpectrumNavigationControl({
         </span>
         <span>Live stage probe</span>
       </button>
-      <div className="fvd-spectrum-probe-readout" aria-live="polite">
+      {/* The pixel readout re-renders on every pointermove of a probe drag, so
+          it must NOT be a live region — a polite one queues an announcement
+          per frame and lags long past pointer-up. (<output> is implicitly
+          live, hence the plain span.) Only the armed/idle text announces. */}
+      <div className="fvd-spectrum-probe-readout">
         {active && pixel ? (
-          <output>Row {pixel[0]} · Col {pixel[1]}</output>
+          <span>Row {pixel[0]} · Col {pixel[1]}</span>
         ) : (
-          <span>
+          <span aria-live="polite">
             {active
               ? "Click or drag on the main image"
               : "Explore spectra from the main image"}
