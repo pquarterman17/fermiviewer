@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import os
 import subprocess
 import tempfile
 import time
@@ -77,6 +78,17 @@ def ensure_server(url: str, may_start: bool) -> subprocess.Popen[bytes] | None:
 
 def stop_server(server: subprocess.Popen[bytes] | None) -> None:
     if server is None:
+        return
+    if os.name == "nt":
+        # `fv --dev` owns a reloading backend plus Vite. Terminating only the
+        # uv launcher or its direct child leaves those grandchildren running.
+        subprocess.run(  # noqa: S603
+            ["taskkill", "/PID", str(server.pid), "/T", "/F"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        server.wait(timeout=5)
         return
     server.terminate()
     try:
@@ -205,9 +217,10 @@ def capture_surfaces(page: Any, out: Path) -> list[dict[str, str]]:
         records.append({"surface": f"{name} menu", "file": filename})
         page.keyboard.press("Escape")
 
-    target = page.locator('[data-tip="Zoom in"]')
+    target = page.locator('[data-tip="ROI stats"]')
     target.hover()
     page.locator(".fvd-tip").wait_for(state="visible", timeout=2_000)
+    page.locator(".fvd-tip-detail").wait_for(state="visible")
     records.append(
         {"surface": "hover tooltip", "file": capture(page, out, "tooltip")}
     )

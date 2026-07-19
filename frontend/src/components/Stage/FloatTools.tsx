@@ -3,6 +3,19 @@ import { useStageInfo } from "../../store/stage";
 import { useViewer } from "../../store/viewer";
 import Icon, { type IconName } from "../icons/Icon";
 
+const TOOL_DETAIL: Record<string, string> = {
+  "Hand tool": "Drag the image without changing pixels.",
+  "Box zoom": "Drag a rectangle to magnify that region.",
+  "Fixed Size Zoom": "Capture a region using the dimensions in Preferences.",
+  Distance: "Drag between two points to measure calibrated length.",
+  "Line profile": "Sample intensity along a line you place on the image.",
+  "Box profile (integrated)": "Integrate intensity across a rectangular selection.",
+  Polyline: "Click multiple points to measure a segmented path.",
+  Angle: "Click three points to measure the included angle.",
+  "ROI stats": "Drag a region to calculate statistics and a histogram.",
+  "Calibrate scale": "Draw over a known distance, then enter its physical length.",
+};
+
 export function FloatTools() {
   const activeId = useViewer((s) => s.activeId);
   const captureMode = useViewer((s) => s.captureMode);
@@ -64,6 +77,7 @@ export function FloatTools() {
             className="fvd-tool-btn"
             aria-label={label}
             data-tip={label}
+            data-tip-detail={TOOL_DETAIL[label]}
             data-tip-key={hint ?? undefined}
             onClick={onClick}
           >
@@ -81,6 +95,7 @@ export function FloatTools() {
             aria-label={label}
             aria-pressed={active}
             data-tip={label}
+            data-tip-detail={TOOL_DETAIL[label]}
             data-tip-key={hint ?? undefined}
             onClick={onClick}
           >
@@ -93,6 +108,7 @@ export function FloatTools() {
         className="fvd-tool-btn"
         aria-label="Crop to ROI"
         data-tip="Crop to ROI"
+        data-tip-detail="Create a derived image from the most recent ROI."
         onClick={() => cropToRoi()}
       >
         <Icon name="crop" />
@@ -102,6 +118,7 @@ export function FloatTools() {
         aria-label="Save cropped region"
         aria-pressed={captureMode === "crop-save"}
         data-tip="Save Cropped Region"
+        data-tip-detail="Drag a region and save it as a new derived image."
         onClick={mode("crop-save")}
       >
         <Icon name="save-crop" />
@@ -111,6 +128,7 @@ export function FloatTools() {
         className="fvd-tool-btn"
         aria-label="Side-by-side compare"
         data-tip="Side-by-side compare"
+        data-tip-detail="Open loaded images in linked panes for visual comparison."
         disabled={!canCompare}
         onClick={() => startSideBySide()}
       >

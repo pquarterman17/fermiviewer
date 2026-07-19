@@ -127,6 +127,7 @@ export default function Filmstrip() {
           aria-label={listView === "thumbs" ? "Show image names" : "Show thumbnails"}
           aria-pressed={listView === "names"}
           data-tip={listView === "thumbs" ? "Names view" : "Thumbnail view"}
+          data-tip-detail="Switch between image previews and a compact filename list."
           onClick={() =>
             setListView(listView === "thumbs" ? "names" : "thumbs")
           }
@@ -139,6 +140,7 @@ export default function Filmstrip() {
         <button
           className="fvd-compare-btn"
           data-tip="Compare the selected images"
+          data-tip-detail="Open the selection in linked panes for synchronized review."
           onClick={() => startCompare(compareIds)}
         >
           Compare {compareIds.length}
@@ -149,6 +151,7 @@ export default function Filmstrip() {
         <button
           className="fvd-compare-btn"
           data-tip="Build a recipe and apply it to the selected images"
+          data-tip-detail="Chain reusable operations across every selected image."
           onClick={() => setBatchOpen(true)}
         >
           <Icon name="settings" /> Batch {compareIds.length}
@@ -159,6 +162,7 @@ export default function Filmstrip() {
         <button
           className="fvd-compare-btn"
           data-tip="Save the selection as a named, reusable compare group"
+          data-tip-detail="Recall this exact set later without reselecting each image."
           onClick={() => createGroup(compareIds)}
         >
           <Icon name="plus" /> Group {compareIds.length}

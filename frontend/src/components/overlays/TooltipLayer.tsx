@@ -9,6 +9,7 @@ import { createPortal } from "react-dom";
 
 interface Tip {
   label: string;
+  detail: string | null;
   hint: string | null;
   x: number;
   y: number;
@@ -33,6 +34,7 @@ export default function TooltipLayer() {
       if (!el) return;
       const label = el.getAttribute("data-tip");
       if (!label) return;
+      const detail = el.getAttribute("data-tip-detail");
       const hint = el.getAttribute("data-tip-key");
       const rect = el.getBoundingClientRect();
       clear();
@@ -41,6 +43,7 @@ export default function TooltipLayer() {
         const below = rect.top < 90;
         setTip({
           label,
+          detail,
           hint,
           x: rect.left + rect.width / 2,
           y: below ? rect.bottom + 8 : rect.top - 8,
@@ -67,13 +70,17 @@ export default function TooltipLayer() {
   return createPortal(
     <div
       className="fvd-tip"
+      role="tooltip"
       style={{
         left: tip.x,
         top: tip.y,
         transform: tip.below ? "translate(-50%, 0)" : "translate(-50%, -100%)",
       }}
     >
-      <span>{tip.label}</span>
+      <span className="fvd-tip-copy">
+        <span className="fvd-tip-label">{tip.label}</span>
+        {tip.detail && <span className="fvd-tip-detail">{tip.detail}</span>}
+      </span>
       {tip.hint && <kbd className="fvd-tip-key">{tip.hint}</kbd>}
     </div>,
     document.body,
