@@ -1,6 +1,10 @@
 import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 
 import { loadPrefs, type Prefs } from "../../lib/prefs";
+import {
+  useAppearancePreviewState,
+  type AppearancePreview,
+} from "../../store/appearancePreview";
 
 type Appearance = Pick<Prefs, "theme" | "accent" | "density">;
 type AppearanceKey = keyof Appearance;
@@ -13,18 +17,28 @@ function appearance(prefs: Prefs): Appearance {
   };
 }
 
-function applyAppearance(prefs: Appearance): void {
+function resolveAppearance(prefs: Appearance): AppearancePreview {
   const theme = prefs.theme === "system"
     ? window.matchMedia?.("(prefers-color-scheme: light)").matches
       ? "light"
       : "dark"
     : prefs.theme;
-  document.documentElement.setAttribute("data-theme", theme);
-  document.documentElement.setAttribute("data-accent", prefs.accent);
-  document.documentElement.setAttribute("data-density", prefs.density);
+  return { theme, accent: prefs.accent, density: prefs.density };
 }
 
-/** Preview CSS-token appearance without persisting or mutating viewer state. */
+function applyAppearance(prefs: Appearance): void {
+  const resolved = resolveAppearance(prefs);
+  document.documentElement.setAttribute("data-theme", resolved.theme);
+  document.documentElement.setAttribute("data-accent", resolved.accent);
+  document.documentElement.setAttribute("data-density", resolved.density);
+  useAppearancePreviewState.getState().setPreview(resolved);
+}
+
+function clearPreview(): void {
+  useAppearancePreviewState.getState().setPreview(null);
+}
+
+/** Preview appearance through DOM tokens + an ephemeral, non-persisted store. */
 export function useAppearancePreview(
   open: boolean,
   setOpen: (open: boolean) => void,
@@ -35,9 +49,11 @@ export function useAppearancePreview(
 
   useEffect(() => {
     if (!open) return;
+    clearPreview();
     original.current = appearance(loadPrefs());
     return () => {
       if (original.current) applyAppearance(original.current);
+      clearPreview();
     };
   }, [open]);
 
@@ -58,11 +74,13 @@ export function useAppearancePreview(
   const cancel = () => {
     if (original.current) applyAppearance(original.current);
     original.current = null;
+    clearPreview();
     setOpen(false);
   };
 
   const commit = () => {
     original.current = null;
+    clearPreview();
   };
 
   return { preview, previewAll, cancel, commit };

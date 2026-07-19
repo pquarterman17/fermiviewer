@@ -9,6 +9,7 @@ import { useState } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { DEFAULTS, savePrefs, type Prefs } from "../../lib/prefs";
+import { useAppearancePreviewState } from "../../store/appearancePreview";
 import { useAppearancePreview } from "./useAppearancePreview";
 
 const look = () => ({
@@ -29,6 +30,7 @@ beforeEach(() => {
   savePrefs({ ...DEFAULTS, theme: "dark", accent: "violet" });
   document.documentElement.setAttribute("data-theme", "dark");
   document.documentElement.setAttribute("data-accent", "violet");
+  useAppearancePreviewState.getState().setPreview(null);
 });
 
 describe("useAppearancePreview", () => {
@@ -36,6 +38,10 @@ describe("useAppearancePreview", () => {
     render(<Harness open />);
     api.preview("accent", "rose");
     expect(look().accent).toBe("rose");
+    expect(useAppearancePreviewState.getState().value).toMatchObject({
+      accent: "rose",
+      theme: "dark",
+    });
     // the saved prefs must be untouched until commit
     expect(
       (JSON.parse(localStorage.getItem("fv_prefs") ?? "{}") as Prefs).accent,
@@ -48,6 +54,7 @@ describe("useAppearancePreview", () => {
     expect(look().accent).toBe("rose");
     unmount();
     expect(look().accent).toBe("violet");
+    expect(useAppearancePreviewState.getState().value).toBeNull();
   });
 
   it("does NOT revert a committed change when the dialog then unmounts", () => {
@@ -56,6 +63,7 @@ describe("useAppearancePreview", () => {
     const { unmount } = render(<Harness open />);
     api.preview("accent", "rose");
     api.commit();
+    expect(useAppearancePreviewState.getState().value).toBeNull();
     unmount();
     expect(look().accent).toBe("rose");
   });
