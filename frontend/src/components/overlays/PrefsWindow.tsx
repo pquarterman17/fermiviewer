@@ -10,7 +10,9 @@ import { useEffect, useState, type ReactNode } from "react";
 import { setCustomColormap } from "../../lib/colormaps";
 import { DEFAULTS, loadPrefs, savePrefs, type Prefs } from "../../lib/prefs";
 import { useViewer } from "../../store/viewer";
+import { AccentSwatches } from "./AppearanceControls";
 import ModalDialog from "./ModalDialog";
+import { useAppearancePreview } from "./useAppearancePreview";
 
 const SECTIONS = [
   "Appearance",
@@ -28,21 +30,6 @@ const THEME_OPTS: [Prefs["theme"], string][] = [
   ["light", "Light"],
   ["system", "System"],
 ];
-const ACCENT_OPTS: [Prefs["accent"], string][] = [
-  ["violet", "Violet"],
-  ["teal", "Teal"],
-  ["ocean", "Ocean"],
-  ["amber", "Amber"],
-  ["rose", "Rose"],
-];
-// representative hue per scheme (the dark-theme --accent) for the swatch dots
-const ACCENT_SWATCH: Record<Prefs["accent"], string> = {
-  violet: "oklch(0.7 0.17 295)",
-  teal: "oklch(0.74 0.13 185)",
-  ocean: "oklch(0.68 0.15 250)",
-  amber: "oklch(0.78 0.14 75)",
-  rose: "oklch(0.72 0.16 12)",
-};
 const DENSITY_OPTS: [Prefs["density"], string][] = [
   ["compact", "Compact"],
   ["regular", "Regular"],
@@ -115,6 +102,7 @@ export default function PrefsWindow() {
   const [section, setSection] = useState<Section>("Appearance");
   const [p, setP] = useState<Prefs>(loadPrefs());
   const [customCmap, setCustomCmap] = useState("");
+  const appearance = useAppearancePreview(open, setOpen, setP);
 
   useEffect(() => {
     if (!open) return;
@@ -183,12 +171,13 @@ export default function PrefsWindow() {
       msg = "prefs: custom colormap needs ≥2 hex stops — not saved";
     }
     setStatus(msg);
+    appearance.commit();
     setOpen(false);
   };
 
   const reset = () => {
     if (window.confirm("Reset all preferences to defaults?")) {
-      setP({ ...DEFAULTS });
+      appearance.previewAll({ ...DEFAULTS });
       setCustomCmap("");
     }
   };
@@ -197,7 +186,7 @@ export default function PrefsWindow() {
     <ModalDialog
       ariaLabel="Preferences"
       className="fvd-prefs"
-      onClose={() => setOpen(false)}
+      onClose={appearance.cancel}
     >
         <h2>Preferences</h2>
         <div className="fvd-prefs-body">
@@ -217,14 +206,17 @@ export default function PrefsWindow() {
           <div className="fvd-prefs-pane">
             {section === "Appearance" && (
               <>
+                <div className="fvd-prefs-preview-note" role="status">
+                  Previewing live · Save to keep appearance changes
+                </div>
                 <Row label="Theme">
-                  <Seg value={p.theme} options={THEME_OPTS} onChange={(v) => set("theme", v)} />
+                  <Seg value={p.theme} options={THEME_OPTS} onChange={(v) => appearance.preview("theme", v)} />
                 </Row>
                 <Row label="Color scheme" hint="accent tint; surfaces stay neutral">
-                  <AccentSwatches value={p.accent} onChange={(v) => set("accent", v)} />
+                  <AccentSwatches value={p.accent} onChange={(v) => appearance.preview("accent", v)} />
                 </Row>
                 <Row label="Density" hint="chrome spacing & row height">
-                  <Seg value={p.density} options={DENSITY_OPTS} onChange={(v) => set("density", v)} />
+                  <Seg value={p.density} options={DENSITY_OPTS} onChange={(v) => appearance.preview("density", v)} />
                 </Row>
                 <Row label="Default colormap" hint="LUT for newly opened images">
                   <select value={p.defaultCmap} onChange={(e) => set("defaultCmap", e.target.value)}>
@@ -355,7 +347,7 @@ export default function PrefsWindow() {
             <button
               className="fvd-btn"
               title="Discard changes and close (Esc)"
-              onClick={() => setOpen(false)}
+              onClick={appearance.cancel}
             >
               Cancel
             </button>
@@ -396,46 +388,6 @@ function Row({
 /** Light sub-group caption within a section (e.g. "Colorbar" in Appearance). */
 function SubHead({ children }: { children: ReactNode }) {
   return <div className="fvd-prefs-subhead">{children}</div>;
-}
-
-/** Round color-swatch picker for the accent scheme. The active ring uses a
- *  neutral text color (not the accent) so the *pending* selection reads even
- *  before Save applies it to the document. */
-function AccentSwatches({
-  value,
-  onChange,
-}: {
-  value: Prefs["accent"];
-  onChange: (v: Prefs["accent"]) => void;
-}) {
-  return (
-    <div style={{ display: "flex", gap: 6 }}>
-      {ACCENT_OPTS.map(([v, label]) => (
-        <button
-          key={v}
-          type="button"
-          title={label}
-          aria-label={label}
-          aria-pressed={value === v}
-          onClick={() => onChange(v)}
-          style={{
-            width: 20,
-            height: 20,
-            borderRadius: "50%",
-            padding: 0,
-            cursor: "pointer",
-            background: ACCENT_SWATCH[v],
-            border:
-              value === v
-                ? "2px solid var(--text)"
-                : "2px solid var(--border)",
-            boxShadow:
-              value === v ? "0 0 0 2px var(--surface-2) inset" : "none",
-          }}
-        />
-      ))}
-    </div>
-  );
 }
 
 function Seg<T extends string | number>({
