@@ -38,6 +38,9 @@ describe("PrefsWindow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    document.documentElement.setAttribute("data-theme", "dark");
+    document.documentElement.setAttribute("data-accent", "violet");
+    document.documentElement.setAttribute("data-density", "regular");
   });
 
   it("renders the 4-section nav and the Appearance pane by default", () => {
@@ -90,6 +93,25 @@ describe("PrefsWindow", () => {
     expect(loadPrefs().density).toBe("compact");
     expect(state.setAccent).toHaveBeenCalledWith("teal");
     expect(state.setDensity).toHaveBeenCalledWith("compact");
+  });
+
+  it("previews appearance immediately and Cancel restores the saved appearance", () => {
+    render(<PrefsWindow />);
+    fireEvent.click(screen.getByText("Light"));
+    fireEvent.click(screen.getByLabelText("Rose"));
+    fireEvent.click(screen.getByText("Compact"));
+
+    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+    expect(document.documentElement).toHaveAttribute("data-accent", "rose");
+    expect(document.documentElement).toHaveAttribute("data-density", "compact");
+    expect(loadPrefs().theme).toBe("system");
+    expect(state.setTheme).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText("Cancel"));
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    expect(document.documentElement).toHaveAttribute("data-accent", "violet");
+    expect(document.documentElement).toHaveAttribute("data-density", "regular");
+    expect(state.setPrefsOpen).toHaveBeenCalledWith(false);
   });
 
   it("renders nothing when closed", () => {
