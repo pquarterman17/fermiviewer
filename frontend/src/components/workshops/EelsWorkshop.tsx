@@ -15,7 +15,6 @@ import {
   eelsQuantifyMap,
   fetchSpectrum,
   type EelsBackgroundResult,
-  type EelsEdge,
   type EelsFitResult,
   type EelsQuantResult,
   type ElnesResult,
@@ -29,14 +28,12 @@ import {
   eelsQuantToCsv,
 } from "../../lib/eelsQuantCsv";
 import EelsAdvanced from "./EelsAdvanced";
+import { EdgeEditor, type EdgeRow } from "./EelsEdgeEditor";
 import { seedFitWindows } from "./eelsWindows";
 import RegionPicker, { type Rect1 } from "./RegionPicker";
 import SpectrumNavigationControl from "./SpectrumNavigationControl";
+import { useProbeRegionToken } from "./useProbeRegionToken";
 import { useSpectrumProbe } from "./useSpectrumProbe";
-
-interface EdgeRow extends EelsEdge {
-  key: number;
-}
 
 let edgeSeq = 0;
 
@@ -105,14 +102,13 @@ export default function EelsWorkshop() {
   const spectral = meta !== null && meta.kind !== "image";
   const isCube = meta?.kind === "spectrum_image";
 
-  // Region the probe itself published: skip only that one here, so regions
-  // the in-panel picker sets while the probe is armed still load.
-  const probeRegion = useRef<string | null>(null);
+  // The probe publishes its own spectrum, so skip exactly that one reload.
+  const probeRegion = useProbeRegionToken();
 
   // load the spectrum whenever the active image / region changes
   useEffect(() => {
     if (!activeId || !spectral) return;
-    if (region && probeRegion.current === region.join(",")) return;
+    if (probeRegion.consumeIfMatches(region)) return;
     setSpectrum(null);
     setFit(null);
     setQuant(null);
@@ -136,6 +132,7 @@ export default function EelsWorkshop() {
 
   // reset the explorer region when switching images
   useEffect(() => {
+    probeRegion.clear(); // a token from the previous image is meaningless
     setRegion(null);
     setExplore(false);
     setPickMode("region");
@@ -146,7 +143,7 @@ export default function EelsWorkshop() {
     pixel: specnavPixel,
     enabled: isCube && captureMode === "specnav",
     onSpectrum: (next, rect) => {
-      probeRegion.current = rect.join(",");
+      probeRegion.mark(rect);
       setSpectrum(next);
       setRegion(rect);
       setFit(null);
@@ -730,77 +727,6 @@ export default function EelsWorkshop() {
         isCube={isCube}
         units={spectrum?.units ?? "eV"}
       />
-    </div>
-  );
-}
-
-function EdgeEditor({
-  row,
-  onChange,
-  onRemove,
-}: {
-  row: EdgeRow;
-  onChange: (r: EdgeRow) => void;
-  onRemove: () => void;
-}) {
-  const num = (v: string) => Number(v) || 0;
-  return (
-    <div className="fvd-ws-edge">
-      <input
-        placeholder="El"
-        value={row.element}
-        style={{ width: 32 }}
-        onChange={(e) => onChange({ ...row, element: e.target.value })}
-      />
-      <input
-        placeholder="Z"
-        value={row.z || ""}
-        style={{ width: 32 }}
-        onChange={(e) => onChange({ ...row, z: num(e.target.value) })}
-      />
-      <select
-        value={row.shell}
-        onChange={(e) => onChange({ ...row, shell: e.target.value })}
-      >
-        {["K", "L", "M"].map((s) => (
-          <option key={s}>{s}</option>
-        ))}
-      </select>
-      <input
-        placeholder="onset"
-        value={row.onset_ev || ""}
-        style={{ width: 52 }}
-        onChange={(e) => onChange({ ...row, onset_ev: num(e.target.value) })}
-      />
-      <input
-        placeholder="sig lo"
-        value={row.signal_window[0] || ""}
-        style={{ width: 52 }}
-        onChange={(e) =>
-          onChange({
-            ...row,
-            signal_window: [num(e.target.value), row.signal_window[1]],
-          })
-        }
-      />
-      <input
-        placeholder="sig hi"
-        value={row.signal_window[1] || ""}
-        style={{ width: 52 }}
-        onChange={(e) =>
-          onChange({
-            ...row,
-            signal_window: [row.signal_window[0], num(e.target.value)],
-          })
-        }
-      />
-      <button
-        className="fvd-icon-btn"
-        onClick={onRemove}
-        title="Remove this edge row"
-      >
-        ✕
-      </button>
     </div>
   );
 }
