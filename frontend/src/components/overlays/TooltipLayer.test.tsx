@@ -53,4 +53,28 @@ describe("TooltipLayer", () => {
     act(() => vi.advanceTimersByTime(400));
     expect(screen.getByText("Thumbnail view")).toBeInTheDocument();
   });
+
+  it("adds an explanatory line only when data-tip-detail is provided", () => {
+    render(
+      <>
+        <button
+          data-tip="ROI statistics"
+          data-tip-detail="Drag a region to calculate summary statistics."
+        >
+          ROI
+        </button>
+        <TooltipLayer />
+      </>,
+    );
+    act(() => {
+      screen
+        .getByText("ROI")
+        .dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    });
+    act(() => vi.advanceTimersByTime(400));
+    expect(screen.getByRole("tooltip")).toHaveTextContent("ROI statistics");
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      "Drag a region to calculate summary statistics.",
+    );
+  });
 });

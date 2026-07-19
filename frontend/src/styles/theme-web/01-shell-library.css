@@ -223,6 +223,23 @@ body {
   pointer-events: none;
 }
 
+.fvd-tip-copy {
+  display: grid;
+  gap: 2px;
+  max-width: 280px;
+}
+
+.fvd-tip-label {
+  font-weight: 600;
+}
+
+.fvd-tip-detail {
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.35;
+  white-space: normal;
+}
+
 .fvd-tip-key {
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);

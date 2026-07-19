@@ -130,6 +130,7 @@ export default function WorkspaceSwitcher() {
         aria-haspopup="menu"
         aria-expanded={open}
         data-tip="Switch or save workspace"
+        data-tip-detail="Recall named layouts, or save the current open-image arrangement."
       >
         <Icon name="workspace" />
         <span className="name">{current?.name ?? "Default"}</span>
