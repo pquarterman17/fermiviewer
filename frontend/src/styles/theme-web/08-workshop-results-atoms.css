@@ -267,6 +267,19 @@ textarea:disabled {
   max-height: 50vh;
 }
 
+.fvd-results-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border-soft);
+  color: var(--text-faint);
+  font-size: var(--font-size-sm);
+}
+
+.fvd-results-footer > span:first-child { margin-right: auto; }
+
 /* ── design-alignment pass (prototype parity) ── */
 
 .fvd-doc-title .ext {

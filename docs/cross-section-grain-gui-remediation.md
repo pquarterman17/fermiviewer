@@ -12,9 +12,11 @@
   awaiting Claude review.
 - PR 2: implemented in [#79](https://github.com/pquarterman17/fermiviewer/pull/79);
   awaiting Claude review after PR 1.
-- PR 3: detection-quality diagnostics implemented in the current stacked
-  change; awaiting Claude review after publication.
-- PRs 4-5: pending.
+- PR 3: implemented in [#80](https://github.com/pquarterman17/fermiviewer/pull/80);
+  awaiting Claude review after PR 2.
+- PR 4: responsive workshop geometry and bounded result rendering implemented
+  in the current stacked change; awaiting Claude review after publication.
+- PR 5: pending.
 
 ## Outcome
 

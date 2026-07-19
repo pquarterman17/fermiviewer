@@ -36,11 +36,15 @@ export default function ToolWindows() {
       y={tool.y}
       z={tool.z}
       width={
-        tool.kind === "diffraction" || tool.kind === "fftmask"
-          ? 332
-          : tool.kind === "pixels"
-            ? 300
-            : 360
+        tool.kind === "layers"
+          ? 520
+          : tool.kind === "structure"
+            ? 480
+            : tool.kind === "diffraction" || tool.kind === "fftmask"
+              ? 332
+              : tool.kind === "pixels"
+                ? 300
+                : 360
       }
     >
       <Suspense
