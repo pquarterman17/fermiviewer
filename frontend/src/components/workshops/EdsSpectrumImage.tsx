@@ -22,6 +22,7 @@ import {
 } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
 import RegionPicker, { type Rect1 } from "./RegionPicker";
+import SpectrumNavigationControl from "./SpectrumNavigationControl";
 
 const HALF_WIN = 0.085; // keV, default half-window (matches MATLAB halfWin)
 
@@ -293,15 +294,22 @@ export default function EdsSpectrumImage() {
   // #10 specnav: a pixel picked on the MAIN stage drives the spectrum (1×1 ROI)
   useEffect(() => {
     if (!isCube || !specnavPixel || !activeId) return;
+    let alive = true;
     const [r, c] = specnavPixel;
     const rect: Rect1 = [r, c, r, c];
     fetchSpectrum(activeId, rect)
       .then((s) => {
+        if (!alive) return;
         setSpectrum(s);
         setSpecLabel(`px [${r}, ${c}]`);
         setRoi(rect);
       })
-      .catch((e: Error) => setStatus(`EDS spectrum: ${e.message}`));
+      .catch((e: Error) => {
+        if (alive) setStatus(`EDS spectrum: ${e.message}`);
+      });
+    return () => {
+      alive = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [specnavPixel, isCube, activeId]);
 
@@ -522,21 +530,13 @@ export default function EdsSpectrumImage() {
           </div>
           <RegionPicker id={activeId} onRegion={handleRoi} />
           {isCube && (
-            <div className="fvd-ws-row">
-              <label
-                className="fvd-check"
-                title="click or drag the main image to read its spectrum here"
-              >
-                <input
-                  type="checkbox"
-                  checked={captureMode === "specnav"}
-                  onChange={(e) =>
-                    setCaptureMode(e.target.checked ? "specnav" : "none")
-                  }
-                />
-                Navigate on main image
-              </label>
-            </div>
+            <SpectrumNavigationControl
+              active={captureMode === "specnav"}
+              pixel={specnavPixel}
+              onToggle={() =>
+                setCaptureMode(captureMode === "specnav" ? "none" : "specnav")
+              }
+            />
           )}
         </>
       )}

@@ -19,6 +19,7 @@ const BANNER_MODES: CaptureMode[] = [
   "arrow",
   "box",
   "circle",
+  "specnav",
 ];
 
 describe("CAPTURE_STEPS", () => {
@@ -54,6 +55,7 @@ describe("CAPTURE_STEPS", () => {
       "box-profile",
       "zoom",
       "polyline",
+      "specnav",
     ];
     for (const mode of single) {
       expect(CAPTURE_STEPS[mode]!.steps.length, mode).toBe(1);
