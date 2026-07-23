@@ -12,10 +12,15 @@ import {
   edsQuantify,
   type CompositionProfileResult,
   type EdsQuantResult,
+  type ImageMeta,
 } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
 import { formatPlusMinus } from "../../lib/formatUncertainty";
-import EdsComposite, { EDS_PALETTE, type Channel } from "./EdsComposite";
+import EdsComposite, {
+  EDS_PALETTE,
+  mergeCompositeChannel,
+  type Channel,
+} from "./EdsComposite";
 import EdsModelFit from "./EdsModelFit";
 import EdsSpectrumImage from "./EdsSpectrumImage";
 
@@ -132,6 +137,21 @@ export default function EdsWorkshop() {
       .finally(() => setCompBusy(false));
   };
 
+  // Direct-feed from the SI explorer's periodic-table picker: register the
+  // picker's element-window map in the library (same as a quantify map) and
+  // add it to the composite overlay — no full Cliff-Lorimer/ZAF pass needed.
+  const addCompositeChannel = (mapMeta: ImageMeta, el: string) => {
+    useViewer.setState((s) =>
+      mapMeta.id in s.images
+        ? {}
+        : {
+            images: { ...s.images, [mapMeta.id]: mapMeta },
+            order: [...s.order, mapMeta.id],
+          },
+    );
+    setChannels((prev) => mergeCompositeChannel(prev, mapMeta.id, el));
+  };
+
   const run = () => {
     if (!activeId) return;
     const els = elements
@@ -210,7 +230,7 @@ export default function EdsWorkshop() {
         >
           Spectrum-Image Explorer
         </summary>
-        <EdsSpectrumImage />
+        <EdsSpectrumImage onAddToComposite={addCompositeChannel} />
       </details>
       <hr
         style={{

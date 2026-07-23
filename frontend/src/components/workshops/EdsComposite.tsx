@@ -32,6 +32,33 @@ export const EDS_PALETTE = [
   "#ec4899", // pink
 ];
 
+/** Merge a picker-fed element map into the composite channel list.
+ *  A new element appends with the next palette colour; re-adding an element
+ *  already in the composite re-points its channel at the fresh map `id` while
+ *  preserving the user's colour / intensity / visibility / ramp choices. */
+export function mergeCompositeChannel(
+  prev: Channel[],
+  id: string,
+  el: string,
+): Channel[] {
+  const idx = prev.findIndex((c) => c.el === el);
+  if (idx >= 0) {
+    const next = [...prev];
+    next[idx] = { ...next[idx], id };
+    return next;
+  }
+  return [
+    ...prev,
+    {
+      id,
+      el,
+      color: EDS_PALETTE[prev.length % EDS_PALETTE.length],
+      intensity: 1,
+      visible: true,
+    },
+  ];
+}
+
 const VIEW_W = 300;
 
 export default function EdsComposite({

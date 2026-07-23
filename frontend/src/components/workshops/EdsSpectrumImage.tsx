@@ -17,9 +17,11 @@ import {
   edsLineEnergy,
   fetchSpectrum,
   type EdsElementMapResult,
+  type ImageMeta,
   type Spectrum,
 } from "../../lib/api";
 import { useEdsPeakMarkers } from "../../hooks/useEdsPeakMarkers";
+import { elementMapCsv, spectrumCsv } from "../../lib/edsExploreCsv";
 import { useViewer } from "../../store/viewer";
 import EdsElementPicker from "./EdsElementPicker";
 import MapCanvas from "./EdsElementMap";
@@ -46,7 +48,13 @@ function downloadCsv(content: string, filename: string) {
 
 // ── main component ────────────────────────────────────────────────────
 
-export default function EdsSpectrumImage() {
+export default function EdsSpectrumImage({
+  onAddToComposite,
+}: {
+  /** Feed the currently-shown element map straight into the workshop's
+   *  composite overlay (skips the full Cliff-Lorimer/ZAF quantify step). */
+  onAddToComposite?: (mapMeta: ImageMeta, el: string) => void;
+} = {}) {
   const activeId = useViewer((s) => s.activeId);
   const meta = useViewer((s) =>
     s.activeId ? (s.images[s.activeId] ?? null) : null,
@@ -76,6 +84,7 @@ export default function EdsSpectrumImage() {
   // map
   const [mapResult, setMapResult] = useState<EdsElementMapResult | null>(null);
   const [mapBusy, setMapBusy] = useState(false);
+  const [addBusy, setAddBusy] = useState(false);
 
   // ROI
   const [roi, setRoi] = useState<Rect1 | null>(null);
@@ -228,6 +237,30 @@ export default function EdsSpectrumImage() {
     recomputeMap(eLo, eHi, mode);
   };
 
+  // Feed the current element's window map straight into the composite overlay.
+  // Re-requests the map with save_derived so the backend registers it as a
+  // library image (its ImageMeta.id is what the composite fetches by), then
+  // hands that meta up to the workshop. Only enabled for a real element pick.
+  const handleAddToComposite = () => {
+    const id = activeId;
+    if (!id || !onAddToComposite || selElem === "(custom)") return;
+    setAddBusy(true);
+    edsElementMap(id, eLo, eHi, {
+      bg: bgMode,
+      e0Kev: bgMode === "bremsstrahlung" ? e0Kev : undefined,
+      saveDerived: true,
+    })
+      .then((r) => {
+        if (!stillOpen(id)) return; // image removed mid-request; drop result
+        if (r.map_meta) {
+          onAddToComposite(r.map_meta, selElem);
+          reportEds(id, `EDS composite: added ${selElem}`);
+        }
+      })
+      .catch((e: Error) => reportEds(id, `EDS composite: ${e.message}`))
+      .finally(() => setAddBusy(false));
+  };
+
   const handleRoi = (rect: Rect1 | null) => {
     setRoi(rect);
     const id = activeId;
@@ -259,21 +292,11 @@ export default function EdsSpectrumImage() {
   };
 
   const exportMapCsv = () => {
-    if (!mapResult) return;
-    const rows = mapResult.map
-      .map((row) => row.map((v) => v.toFixed(4)).join(","))
-      .join("\n");
-    const header = `# EDS element map ${mapResult.e_lo.toFixed(3)}-${mapResult.e_hi.toFixed(3)} keV (${mapResult.bg} bg)\n`;
-    downloadCsv(header + rows, "eds_map.csv");
+    if (mapResult) downloadCsv(elementMapCsv(mapResult), "eds_map.csv");
   };
 
   const exportSpectrumCsv = () => {
-    if (!spectrum) return;
-    const header = `energy_${spectrum.units},counts\n`;
-    const rows = spectrum.energy
-      .map((e, i) => `${e.toFixed(6)},${spectrum.counts[i].toFixed(6)}`)
-      .join("\n");
-    downloadCsv(header + rows, "eds_spectrum.csv");
+    if (spectrum) downloadCsv(spectrumCsv(spectrum), "eds_spectrum.csv");
   };
 
   if (!isCube) {
@@ -401,6 +424,21 @@ export default function EdsSpectrumImage() {
               ? `Map (${mapResult.e_lo.toFixed(3)}–${mapResult.e_hi.toFixed(3)} keV)`
               : "Map"}
         </span>
+        {onAddToComposite && mapResult && (
+          <button
+            className="fvd-btn"
+            style={{ marginLeft: "auto" }}
+            disabled={addBusy || selElem === "(custom)"}
+            title={
+              selElem === "(custom)"
+                ? "Pick an element to add its map to the composite overlay"
+                : `Add ${selElem}'s map to the composite overlay (colour assigned automatically)`
+            }
+            onClick={handleAddToComposite}
+          >
+            {addBusy ? "Adding…" : "+ Composite"}
+          </button>
+        )}
       </div>
       {mapResult && <MapCanvas result={mapResult} />}
 
