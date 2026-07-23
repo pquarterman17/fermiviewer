@@ -13,6 +13,18 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [0.1.20] - 2026-07-23
+
+Part 4 of the BCF/EDS element-navigation work: element maps that keep up with
+big cubes.
+
+### Performance
+- **~14× faster element maps on large cubes.** Switching an element used to
+  convert the entire spectrum-image cube to float64 before summing a narrow
+  energy window — an ~8 GB allocation per click on a 4 GB BCF cube. It now sums
+  only the channels the window needs; a typical line touches ~0.2% of the data.
+  Results are numerically unchanged.
+
 ## [0.1.19] - 2026-07-23
 
 Part 3 of the BCF/EDS element-navigation work: pick elements by name.
