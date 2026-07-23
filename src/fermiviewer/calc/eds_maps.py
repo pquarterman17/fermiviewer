@@ -103,11 +103,20 @@ def element_map(
     peak = (energy >= e_lo) & (energy <= e_hi)
     if not peak.any():
         return np.zeros((h, w))
-    cube_d = np.asarray(cube, dtype=np.float64)
-    peak_sum: np.ndarray = cube_d[:, :, peak].sum(axis=2)
+    # Sum only the channels each window needs, accumulating in float64.
+    # Converting the whole cube to float64 up front (the previous approach)
+    # allocated and copied the entire multi-GB cube on every element-map call;
+    # a narrow window touches a fraction of a percent of it. Numerically
+    # identical — float64 accumulation over the same channels.
+    def window_sum(mask: np.ndarray) -> np.ndarray:
+        return np.asarray(cube[:, :, mask].sum(axis=2, dtype=np.float64))
+
+    peak_sum: np.ndarray = window_sum(peak)
 
     bg_l = bg.lower()
     if bg_l == "bremsstrahlung":
+        # the Kramers continuum fit reads many channels — materialize here only
+        cube_d = np.asarray(cube, dtype=np.float64)
         return _kramers_bg_map(
             cube_d, energy, peak, peak_sum, e_lo, e_hi, e0_kev, bg_width, bg_gap
         )
@@ -118,13 +127,13 @@ def element_map(
     n_peak = int(peak.sum())
 
     if lo.any() and hi.any():
-        lo_rate = cube_d[:, :, lo].sum(axis=2) / lo.sum()
-        hi_rate = cube_d[:, :, hi].sum(axis=2) / hi.sum()
+        lo_rate = window_sum(lo) / lo.sum()
+        hi_rate = window_sum(hi) / hi.sum()
         out = peak_sum - 0.5 * (lo_rate + hi_rate) * n_peak
     elif lo.any():
-        out = peak_sum - cube_d[:, :, lo].sum(axis=2) / lo.sum() * n_peak
+        out = peak_sum - window_sum(lo) / lo.sum() * n_peak
     elif hi.any():
-        out = peak_sum - cube_d[:, :, hi].sum(axis=2) / hi.sum() * n_peak
+        out = peak_sum - window_sum(hi) / hi.sum() * n_peak
     else:
         out = peak_sum
     return np.asarray(np.maximum(out, 0.0))

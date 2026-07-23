@@ -139,3 +139,18 @@ def test_real_bcf_cube_self_consistency(ml_datasets) -> None:
     entries = extract_element_maps(cube, ds.energy_axis, elements)
     assert entries
     assert all(e.map.shape == cube.shape[:2] for e in entries)
+
+
+def test_element_map_dtype_agnostic_float64_accumulation() -> None:
+    # The perf change sums only the needed channels with float64 accumulation
+    # instead of converting the whole (multi-GB) cube to float64 first. An
+    # integer cube must give exactly the same result as its float64 copy —
+    # same channels, same float64 accumulator, no overflow.
+    energy = np.arange(64) * 0.1
+    rng = np.random.default_rng(0)
+    cube_u16 = rng.integers(0, 500, size=(6, 7, 64)).astype(np.uint16)
+    cube_f64 = cube_u16.astype(np.float64)
+    for bg in ("none", "linear"):
+        m_u16 = element_map(cube_u16, energy, 2.0, 3.0, bg=bg, bg_gap=0.2)
+        m_f64 = element_map(cube_f64, energy, 2.0, 3.0, bg=bg, bg_gap=0.2)
+        np.testing.assert_array_equal(m_u16, m_f64)
