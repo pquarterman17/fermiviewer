@@ -13,6 +13,19 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [0.1.18] - 2026-07-23
+
+Part 2 of the BCF/EDS element-navigation work: read peaks off the spectrum by
+name.
+
+### Added
+- **Characteristic X-ray peak labels on the spectrum.** Peaks are marked with
+  the element line they correspond to — auto-detected peaks (matched to K/L/M
+  lines) as dashed grey markers, plus the selected element's lines in solid
+  blue. A "Label peaks" toggle (on by default) hides them when the spectrum
+  gets busy. New `GET /eds/lines` returns the characteristic lines within an
+  energy window.
+
 ## [0.1.17] - 2026-07-23
 
 Part 1 of the BCF/EDS element-navigation work: making spectrum-image cubes
