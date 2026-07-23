@@ -20,6 +20,7 @@ import ResultsWindow from "./components/overlays/ResultsWindow";
 import RadialMenu from "./components/overlays/RadialMenu";
 import TooltipLayer from "./components/overlays/TooltipLayer";
 import ToolWindows from "./components/overlays/ToolWindows";
+import { useCubeAutoExplore } from "./hooks/useCubeAutoExplore";
 import { devSampleFiles, launchDir, listImages } from "./lib/api";
 import { COLORMAP_NAMES } from "./lib/colormaps";
 import { autoWindow } from "./lib/display";
@@ -48,6 +49,10 @@ export default function App() {
   const colorbarSide = useViewer((s) => s.colorbarSide);
   const comparing = useViewer((s) => s.compareSet !== null);
   const compareMode = useViewer((s) => s.compareMode);
+
+  // EDS cubes open straight into the Spectrum-Image Explorer (not a 4096-
+  // channel scroll); the raw channel stepper on the Stage stays available.
+  useCubeAutoExplore();
 
   // restore any prior session (backend keeps images open across reloads)
   useEffect(() => {
