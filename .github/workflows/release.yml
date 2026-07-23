@@ -261,7 +261,10 @@ jobs:
   release-notes:
     name: release notes
     needs: installers
-    if: startsWith(github.ref, 'refs/tags/')
+    # always(): a flaky artifact upload in one installer leg must not suppress
+    # the curated notes — the release already exists once any leg attaches, so
+    # `gh release edit` can still set the body.
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
