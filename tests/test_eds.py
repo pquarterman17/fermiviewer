@@ -9,6 +9,7 @@ from fermiviewer.calc.eds import (
     K_FACTORS_200KV,
     cliff_lorimer,
     line_energy,
+    lines_in_range,
     mass_absorption_coeff,
     zaf_correction,
 )
@@ -136,3 +137,24 @@ class TestGolden:
         np.testing.assert_allclose(
             res.atomic_pct_maps[0], np.array(g["atomicPctMaps"][0]), rtol=1e-9
         )
+
+
+# ── lines_in_range (peak labels) ─────────────────────────────────────
+
+
+def test_lines_in_range_filters_by_symbol_and_energy() -> None:
+    # Si Kα sits at 1.740 keV
+    assert lines_in_range(1.6, 1.8, ["Si"]) == [("Si", "K", 1.740)]
+    # Fe Kα (6.404) is outside a low window
+    assert lines_in_range(1.6, 1.8, ["Fe"]) == []
+
+
+def test_lines_in_range_all_symbols_sorted_by_energy() -> None:
+    hits = lines_in_range(6.3, 6.6)  # around Fe Kα 6.404
+    energies = [e for (_, _, e) in hits]
+    assert energies == sorted(energies)
+    assert ("Fe", "K", 6.404) in hits
+
+
+def test_lines_in_range_normalizes_reversed_bounds() -> None:
+    assert lines_in_range(1.8, 1.6, ["Si"]) == [("Si", "K", 1.740)]

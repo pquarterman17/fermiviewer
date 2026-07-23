@@ -269,3 +269,16 @@ def test_spectrum_roi_sums_correctly(client: TestClient, tmp_path) -> None:
     # all pixels are identical: roi(2×3=6) / total(4×5=20) ≈ 6/20
     ratio = roi_counts.sum() / sum_counts.sum()
     assert ratio == pytest.approx(6 / 20, rel=1e-6)
+
+
+def test_eds_lines_filtered_by_symbol(client: TestClient) -> None:
+    # pure line-table lookup — no open image needed
+    r = client.get("/api/eds/lines?e_lo=1.6&e_hi=1.8&symbols=Si")
+    assert r.status_code == 200
+    assert r.json()["lines"] == [{"symbol": "Si", "line": "K", "energy_kev": 1.74}]
+
+
+def test_eds_lines_all_in_range(client: TestClient) -> None:
+    r = client.get("/api/eds/lines?e_lo=6.3&e_hi=6.6")
+    assert r.status_code == 200
+    assert "Fe" in {ln["symbol"] for ln in r.json()["lines"]}  # Fe Kα 6.404

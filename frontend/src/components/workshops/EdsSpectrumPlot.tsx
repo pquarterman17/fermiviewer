@@ -7,6 +7,7 @@ import { useEffect, useRef } from "react";
 import uPlot from "uplot";
 
 import type { Spectrum } from "../../lib/api";
+import type { PeakMarker } from "../../lib/eds/peakMarkers";
 
 export default function SpectrumPlot({
   spec,
@@ -14,12 +15,14 @@ export default function SpectrumPlot({
   eLo,
   eHi,
   onDragWindow,
+  markers = [],
 }: {
   spec: Spectrum;
   label: string;
   eLo: number;
   eHi: number;
   onDragWindow: (lo: number, hi: number) => void;
+  markers?: PeakMarker[];
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
@@ -64,12 +67,7 @@ export default function SpectrumPlot({
               ctx.save();
               ctx.globalAlpha = 0.15;
               ctx.fillStyle = "#3b82f6";
-              ctx.fillRect(
-                x0 + u2.bbox.left,
-                y0,
-                x1 - x0,
-                y1 - y0,
-              );
+              ctx.fillRect(x0 + u2.bbox.left, y0, x1 - x0, y1 - y0);
               ctx.globalAlpha = 1;
               ctx.strokeStyle = "#2563eb";
               ctx.lineWidth = 1.5;
@@ -80,6 +78,30 @@ export default function SpectrumPlot({
               ctx.lineTo(x1 + u2.bbox.left, y1);
               ctx.stroke();
               ctx.restore();
+
+              // characteristic-line / peak labels (Si Kα, Fe Kα, …): selected
+              // elements solid blue, auto-detected peaks dashed grey
+              for (const m of markers) {
+                const mx = u2.valToPos(m.energyKev, "x") + u2.bbox.left;
+                if (mx < u2.bbox.left || mx > u2.bbox.left + u2.bbox.width)
+                  continue;
+                const accent = m.kind === "selected" ? "#2563eb" : "#9ca3af";
+                ctx.save();
+                ctx.strokeStyle = accent;
+                ctx.lineWidth = 1;
+                ctx.setLineDash(m.kind === "selected" ? [] : [3, 3]);
+                ctx.beginPath();
+                ctx.moveTo(mx, y0);
+                ctx.lineTo(mx, y1);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillStyle = m.kind === "selected" ? "#2563eb" : "#6b7280";
+                ctx.font = "9px sans-serif";
+                ctx.translate(mx + 2, y0 + 2);
+                ctx.rotate(Math.PI / 2);
+                ctx.fillText(m.label, 0, 0);
+                ctx.restore();
+              }
             },
           ],
         },
@@ -123,7 +145,7 @@ export default function SpectrumPlot({
       plotRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spec, label, eLo, eHi]);
+  }, [spec, label, eLo, eHi, markers]);
 
   return <div ref={hostRef} className="fvd-ws-plot" />;
 }

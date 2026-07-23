@@ -10,7 +10,7 @@
 //   Pixel-click / ROI-drag → spectrum (via RegionPicker)
 //   Element-map CSV export / spectrum CSV export
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   edsElementMap,
@@ -19,7 +19,9 @@ import {
   type EdsElementMapResult,
   type Spectrum,
 } from "../../lib/api";
+import { useEdsPeakMarkers } from "../../hooks/useEdsPeakMarkers";
 import { useViewer } from "../../store/viewer";
+import MapCanvas from "./EdsElementMap";
 import SpectrumPlot from "./EdsSpectrumPlot";
 import RegionPicker, { type Rect1 } from "./RegionPicker";
 import SpectrumNavigationControl from "./SpectrumNavigationControl";
@@ -28,56 +30,6 @@ import { useSpectrumProbe } from "./useSpectrumProbe";
 const HALF_WIN = 0.085; // keV, default half-window (matches MATLAB halfWin)
 
 type BgMode = "linear" | "none" | "bremsstrahlung";
-
-// ── element-map canvas ────────────────────────────────────────────────
-
-function MapCanvas({ result }: { result: EdsElementMapResult }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [h, w] = result.shape;
-  // iterative max — Math.max(...flat) spreads every element as a call
-  // argument and throws a RangeError once the map crosses ~65k px
-  const vmax = useMemo(() => {
-    let m = 1;
-    for (const row of result.map) {
-      for (const v of row) {
-        if (v > m) m = v;
-      }
-    }
-    return m;
-  }, [result.map]);
-
-  useEffect(() => {
-    const cv = canvasRef.current;
-    if (!cv) return;
-    cv.width = w;
-    cv.height = h;
-    const ctx = cv.getContext("2d");
-    if (!ctx) return;
-    const img = ctx.createImageData(w, h);
-    for (let i = 0; i < h * w; i++) {
-      const row = Math.floor(i / w);
-      const col = i % w;
-      const v = Math.min(255, Math.round((result.map[row][col] / vmax) * 255));
-      // hot colormap approximation: black→red→yellow→white
-      const r = Math.min(255, v * 3);
-      const g = Math.max(0, Math.min(255, v * 3 - 255));
-      const b = Math.max(0, Math.min(255, v * 3 - 510));
-      img.data[i * 4] = r;
-      img.data[i * 4 + 1] = g;
-      img.data[i * 4 + 2] = b;
-      img.data[i * 4 + 3] = 255;
-    }
-    ctx.putImageData(img, 0, 0);
-  }, [result, h, w, vmax]);
-
-  return (
-    <canvas
-      ref={canvasRef}
-      title={`${result.e_lo.toFixed(3)}–${result.e_hi.toFixed(3)} keV (${result.bg} bg)`}
-      style={{ width: "100%", imageRendering: "pixelated", display: "block" }}
-    />
-  );
-}
 
 // ── helpers ───────────────────────────────────────────────────────────
 
@@ -118,6 +70,7 @@ export default function EdsSpectrumImage() {
   // spectrum display
   const [spectrum, setSpectrum] = useState<Spectrum | null>(null);
   const [specLabel, setSpecLabel] = useState("Sum spectrum");
+  const [showPeaks, setShowPeaks] = useState(true);
 
   // map
   const [mapResult, setMapResult] = useState<EdsElementMapResult | null>(null);
@@ -226,6 +179,13 @@ export default function EdsSpectrumImage() {
     },
     onError: (e) => reportEds(activeId, `EDS spectrum: ${e.message}`),
   });
+
+  const peakMarkers = useEdsPeakMarkers(
+    activeId,
+    selElem,
+    spectrum?.energy ?? null,
+    showPeaks && isCube,
+  );
 
   const handleElementChange = (sym: string) => {
     setSelElem(sym);
@@ -400,9 +360,26 @@ export default function EdsSpectrumImage() {
             />
           </>
         )}
+        <label
+          className="k"
+          style={{
+            marginLeft: "auto",
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+          title="Label characteristic X-ray peaks on the spectrum (Si Kα, Fe Kα…)"
+        >
+          <input
+            type="checkbox"
+            checked={showPeaks}
+            onChange={(e) => setShowPeaks(e.target.checked)}
+          />
+          Label peaks
+        </label>
         <button
           className="fvd-btn"
-          style={{ marginLeft: "auto" }}
+          style={{ marginLeft: 8 }}
           onClick={handleShowSum}
           title="Show sum spectrum of the whole cube"
         >
@@ -418,6 +395,7 @@ export default function EdsSpectrumImage() {
           eLo={eLo}
           eHi={eHi}
           onDragWindow={handleWindowChange}
+          markers={peakMarkers}
         />
       )}
 

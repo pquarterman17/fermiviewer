@@ -25,6 +25,7 @@ __all__ = [
     "cliff_lorimer",
     "detect_peaks",
     "line_energy",
+    "lines_in_range",
     "mass_absorption_coeff",
     "zaf_correction",
 ]
@@ -442,3 +443,29 @@ def assign_elements(
         cands.sort(key=lambda c: c.delta_kev)
         result.append(PeakAssignment(float(pk), tuple(cands)))
     return result
+
+
+def lines_in_range(
+    e_lo: float, e_hi: float, symbols: list[str] | None = None
+) -> list[tuple[str, str, float]]:
+    """Characteristic K/L/M lines whose energy falls within [e_lo, e_hi] keV.
+
+    Optionally restricted to `symbols` (element symbols). Drives the EDS
+    spectrum's peak labels: mark where an element's line sits so a peak can
+    be read off by name. Returns (symbol, line, energy_kev) sorted by energy.
+
+    Examples
+    --------
+    >>> lines_in_range(1.6, 1.8, ["Si"])
+    [('Si', 'K', 1.74)]
+    """
+    if e_hi < e_lo:
+        e_lo, e_hi = e_hi, e_lo
+    want = {s.strip() for s in symbols} if symbols else None
+    hits = [
+        (sym, line, e)
+        for (sym, line, e) in _LINE_TABLE
+        if e_lo <= e <= e_hi and (want is None or sym in want)
+    ]
+    hits.sort(key=lambda t: t[2])
+    return hits

@@ -14,7 +14,12 @@ from pydantic import BaseModel
 
 from fermiviewer.calc import diffraction as diff
 from fermiviewer.calc.crystal import PHASES
-from fermiviewer.calc.eds import assign_elements, detect_peaks, line_energy
+from fermiviewer.calc.eds import (
+    assign_elements,
+    detect_peaks,
+    line_energy,
+    lines_in_range,
+)
 from fermiviewer.calc.eds_maps import composition_profile, element_map
 from fermiviewer.calc.eels_quant import elnes
 from fermiviewer.calc.phase_registry import registry
@@ -407,4 +412,19 @@ def eds_auto_assign(req: EdsAutoAssignRequest) -> dict:
             }
             for pa in assignments
         ],
+    }
+
+
+@router.get("/eds/lines")
+def eds_lines(e_lo: float, e_hi: float, symbols: str | None = None) -> dict:
+    """Characteristic K/L/M lines within [e_lo, e_hi] keV for the spectrum's
+    peak labels. `symbols` is an optional comma-separated element filter
+    (e.g. "Si,Fe,Al"); omit it for every known line in the range.
+    """
+    syms = [s for s in (symbols or "").split(",") if s.strip()] or None
+    return {
+        "lines": [
+            {"symbol": sym, "line": line, "energy_kev": e}
+            for (sym, line, e) in lines_in_range(e_lo, e_hi, syms)
+        ]
     }

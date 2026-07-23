@@ -234,7 +234,7 @@ export function edsArtifacts(
 export interface EdsRecalibrateResult {
   gain: number;
   offset: number;
-  anchors: [number, number][];   // [observed_keV, true_keV] pairs used
+  anchors: [number, number][]; // [observed_keV, true_keV] pairs used
   skipped: string[];
   applied: boolean;
   scale?: number;
@@ -281,11 +281,13 @@ export async function edsLineEnergy(
   beamKv?: number,
 ): Promise<EdsLineEnergyResult> {
   const q = beamKv != null ? `?beam_kv=${beamKv}` : "";
-  return json(await fetch(`/api/eds/line-energy/${encodeURIComponent(symbol)}${q}`));
+  return json(
+    await fetch(`/api/eds/line-energy/${encodeURIComponent(symbol)}${q}`),
+  );
 }
 
 export interface EdsElementMapResult {
-  map: number[][];        // H×W float, row-major
+  map: number[][]; // H×W float, row-major
   shape: [number, number];
   e_lo: number;
   e_hi: number;
@@ -319,4 +321,25 @@ export function edsElementMap(
     e0_kev: opts.e0Kev ?? NaN,
     save_derived: opts.saveDerived ?? false,
   });
+}
+
+export interface EdsLine {
+  symbol: string;
+  line: string; // "K" | "L" | "M"
+  energy_kev: number;
+}
+
+/** Characteristic K/L/M lines within [eLo, eHi] keV, optionally filtered to
+ *  specific element symbols. Drives the spectrum's peak labels. */
+export async function edsLines(
+  eLo: number,
+  eHi: number,
+  symbols?: string[],
+): Promise<EdsLine[]> {
+  const params = new URLSearchParams({ e_lo: String(eLo), e_hi: String(eHi) });
+  if (symbols && symbols.length) params.set("symbols", symbols.join(","));
+  const data = await json<{ lines: EdsLine[] }>(
+    await fetch(`/api/eds/lines?${params.toString()}`),
+  );
+  return data.lines;
 }
