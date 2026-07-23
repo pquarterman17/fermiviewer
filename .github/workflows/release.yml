@@ -5,6 +5,11 @@ name: release
 # sidecar, and attach the installer + a standalone server archive to the
 # GitHub Release. Repo stays binary-free — artifacts live on the Release only.
 #
+# Release notes: softprops seeds the Release with GitHub's auto-generated
+# commit list; the `release-notes` job then replaces it with the curated
+# CHANGELOG.md section for the tag (falling back to the auto list if there is
+# no matching section). Keep CHANGELOG.md updated in the release commit.
+#
 # Per-OS installer targets:
 #   windows-latest → NSIS .exe
 #   macos-latest   → .dmg   (unsigned; Gatekeeper right-click-open on first run)
@@ -248,6 +253,43 @@ jobs:
               platforms:{"windows-x86_64":{signature:$s,url:$u}}}' > latest.json
           echo "--- latest.json ---"; cat latest.json
           gh release upload "$TAG" latest.json --repo "$REPO" --clobber
+
+  # Replace the auto-generated commit list on the Release with the curated
+  # CHANGELOG.md section for this tag. Runs after installers so the Release
+  # already exists (softprops creates it). If CHANGELOG.md has no section
+  # matching the tag, the auto-generated notes are left in place as a fallback.
+  release-notes:
+    name: release notes
+    needs: installers
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set curated notes from CHANGELOG.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          # Print the CHANGELOG section for this version: everything after the
+          # `## [X.Y.Z]` header up to (not including) the next `## [` header.
+          # Match the header with index() (literal prefix) rather than a
+          # built-up regex — a dynamic "\\[" is parsed as a character class.
+          awk -v tag="$version" '
+            index($0, "## [" tag "]") == 1 { grab = 1; next }
+            grab && /^## \[/               { exit }
+            grab                            { print }
+          ' CHANGELOG.md > notes.md || true
+          # Drop leading blank lines so the body starts at the first heading.
+          sed -i -e '/./,$!d' notes.md
+          if [ -s notes.md ]; then
+            echo "Setting curated notes for $TAG:"; echo "---"; cat notes.md; echo "---"
+            gh release edit "$TAG" --repo "$REPO" --notes-file notes.md
+          else
+            echo "No CHANGELOG.md section for $version; keeping auto-generated notes."
+          fi
 
   # Publish the pure-Python wheel to PyPI so `pip install fermiviewer` /
   # `uv tool install fermiviewer` work. WHEEL-ONLY on purpose: the SPA is
