@@ -11,7 +11,6 @@
 //   Element-map CSV export / spectrum CSV export
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import uPlot from "uplot";
 
 import {
   edsElementMap,
@@ -21,6 +20,7 @@ import {
   type Spectrum,
 } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
+import SpectrumPlot from "./EdsSpectrumPlot";
 import RegionPicker, { type Rect1 } from "./RegionPicker";
 import SpectrumNavigationControl from "./SpectrumNavigationControl";
 import { useSpectrumProbe } from "./useSpectrumProbe";
@@ -28,128 +28,6 @@ import { useSpectrumProbe } from "./useSpectrumProbe";
 const HALF_WIN = 0.085; // keV, default half-window (matches MATLAB halfWin)
 
 type BgMode = "linear" | "none" | "bremsstrahlung";
-
-// ── spectrum uPlot ────────────────────────────────────────────────────
-
-function SpectrumPlot({
-  spec,
-  label,
-  eLo,
-  eHi,
-  onDragWindow,
-}: {
-  spec: Spectrum;
-  label: string;
-  eLo: number;
-  eHi: number;
-  onDragWindow: (lo: number, hi: number) => void;
-}) {
-  const hostRef = useRef<HTMLDivElement>(null);
-  const plotRef = useRef<uPlot | null>(null);
-  const dragRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host || spec.energy.length === 0) return;
-    plotRef.current?.destroy();
-
-    const u = new uPlot(
-      {
-        width: host.clientWidth || 320,
-        height: 160,
-        title: label,
-        // energy axis is keV, not a timestamp — uPlot defaults x to a time
-        // scale, which renders small keV values as clock/date labels
-        scales: { x: { time: false } },
-        series: [
-          { label: `E (${spec.units})` },
-          {
-            label: "Counts",
-            stroke: "#333",
-            width: 1,
-            points: { show: false },
-          },
-        ],
-        axes: [
-          { stroke: "#888", grid: { stroke: "rgba(128,128,128,0.15)" } },
-          { stroke: "#888", grid: { stroke: "rgba(128,128,128,0.15)" } },
-        ],
-        legend: { show: false },
-        cursor: { y: false },
-        hooks: {
-          draw: [
-            (u2) => {
-              const ctx = u2.ctx;
-              const x0 = u2.valToPos(eLo, "x");
-              const x1 = u2.valToPos(eHi, "x");
-              const y0 = u2.bbox.top;
-              const y1 = u2.bbox.top + u2.bbox.height;
-              ctx.save();
-              ctx.globalAlpha = 0.15;
-              ctx.fillStyle = "#3b82f6";
-              ctx.fillRect(
-                x0 + u2.bbox.left,
-                y0,
-                x1 - x0,
-                y1 - y0,
-              );
-              ctx.globalAlpha = 1;
-              ctx.strokeStyle = "#2563eb";
-              ctx.lineWidth = 1.5;
-              ctx.beginPath();
-              ctx.moveTo(x0 + u2.bbox.left, y0);
-              ctx.lineTo(x0 + u2.bbox.left, y1);
-              ctx.moveTo(x1 + u2.bbox.left, y0);
-              ctx.lineTo(x1 + u2.bbox.left, y1);
-              ctx.stroke();
-              ctx.restore();
-            },
-          ],
-        },
-      } satisfies uPlot.Options,
-      [
-        spec.energy as unknown as number[],
-        spec.counts as unknown as number[],
-      ] as uPlot.AlignedData,
-      host,
-    );
-    plotRef.current = u;
-
-    // drag-to-set-window on the over element — matches MATLAB onSpecDown/Up
-    const canvas = host.querySelector("canvas");
-    if (!canvas) return;
-
-    const onDown = (e: MouseEvent) => {
-      dragRef.current = u.posToVal(e.offsetX - u.bbox.left, "x");
-    };
-    const onUp = (e: MouseEvent) => {
-      if (dragRef.current == null) return;
-      const x1 = u.posToVal(e.offsetX - u.bbox.left, "x");
-      const lo = Math.min(dragRef.current, x1);
-      const hi = Math.max(dragRef.current, x1);
-      if (hi - lo > 1e-6) onDragWindow(lo, hi);
-      dragRef.current = null;
-    };
-    canvas.addEventListener("mousedown", onDown);
-    canvas.addEventListener("mouseup", onUp);
-
-    const ro = new ResizeObserver(() => {
-      if (u && host.clientWidth > 0)
-        u.setSize({ width: host.clientWidth, height: 160 });
-    });
-    ro.observe(host);
-    return () => {
-      ro.disconnect();
-      canvas.removeEventListener("mousedown", onDown);
-      canvas.removeEventListener("mouseup", onUp);
-      u.destroy();
-      plotRef.current = null;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spec, label, eLo, eHi]);
-
-  return <div ref={hostRef} className="fvd-ws-plot" />;
-}
 
 // ── element-map canvas ────────────────────────────────────────────────
 
@@ -250,45 +128,90 @@ export default function EdsSpectrumImage() {
 
   const isCube = meta?.kind === "spectrum_image";
 
+  // Only surface an EDS status/error for an image that is still open. A slow
+  // element-map or spectrum request over a big BCF cube can resolve or reject
+  // AFTER the user removed the file; without this guard its .then/.catch would
+  // strand a message in the global status bar that closeImage already cleared.
+  const stillOpen = useCallback(
+    (id: string | null): id is string =>
+      !!id && !!useViewer.getState().images[id],
+    [],
+  );
+  // Track the last status this explorer wrote so we can retract exactly it on
+  // teardown — never a message some other panel put in the bar.
+  const lastEdsStatus = useRef<string | null>(null);
+  const reportEds = useCallback(
+    (id: string | null, msg: string) => {
+      if (stillOpen(id)) {
+        lastEdsStatus.current = msg;
+        setStatus(msg);
+      }
+    },
+    [stillOpen, setStatus],
+  );
+
+  // When the active cube is removed or switched away, clear the status line if
+  // it still shows the message this explorer last wrote: an EDS error must not
+  // outlive the file it referred to (the reported "errors didn't clear" bug).
+  useEffect(() => {
+    return () => {
+      const st = useViewer.getState();
+      if (lastEdsStatus.current && st.status === lastEdsStatus.current) {
+        st.setStatus("ready");
+      }
+    };
+  }, [activeId]);
+
   // recompute map on window/bg change
   const recomputeMap = useCallback(
     (lo: number, hi: number, bg: BgMode) => {
-      if (!activeId) return;
+      const id = activeId;
+      if (!id) return;
       setMapBusy(true);
-      edsElementMap(activeId, lo, hi, {
+      edsElementMap(id, lo, hi, {
         bg,
         e0Kev: bg === "bremsstrahlung" ? e0Kev : undefined,
       })
         .then((r) => {
+          if (!stillOpen(id)) return; // image removed mid-request; drop result
           setMapResult(r);
-          setStatus(
+          reportEds(
+            id,
             `EDS map: ${lo.toFixed(3)}–${hi.toFixed(3)} keV (${bg}), ` +
               `${r.total_counts.toFixed(0)} counts`,
           );
         })
-        .catch((e: Error) => setStatus(`EDS map: ${e.message}`))
+        .catch((e: Error) => reportEds(id, `EDS map: ${e.message}`))
         .finally(() => setMapBusy(false));
     },
-    [activeId, setStatus, e0Kev],
+    [activeId, reportEds, stillOpen, e0Kev],
   );
 
   // fetch sum spectrum on mount / cube change
   useEffect(() => {
     if (!activeId || !isCube) return;
-    fetchSpectrum(activeId).then((s) => {
-      setSpectrum(s);
-      setSpecLabel("Sum spectrum");
-      // initialise window to first element or default
-      if (elements.length > 0) {
-        handleElementChange(elements[0]);
-      } else {
-        const lo = 0.5;
-        const hi = 1.5;
-        setELo(lo);
-        setEHi(hi);
-        recomputeMap(lo, hi, "linear");
-      }
-    });
+    const id = activeId;
+    let cancelled = false;
+    fetchSpectrum(id)
+      .then((s) => {
+        if (cancelled || !stillOpen(id)) return;
+        setSpectrum(s);
+        setSpecLabel("Sum spectrum");
+        // initialise window to first element or default
+        if (elements.length > 0) {
+          handleElementChange(elements[0]);
+        } else {
+          const lo = 0.5;
+          const hi = 1.5;
+          setELo(lo);
+          setEHi(hi);
+          recomputeMap(lo, hi, "linear");
+        }
+      })
+      .catch((e: Error) => reportEds(id, `EDS spectrum: ${e.message}`));
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId, isCube]);
 
@@ -301,22 +224,24 @@ export default function EdsSpectrumImage() {
       setSpecLabel(`px [${rect[0]}, ${rect[1]}]`);
       setRoi(rect);
     },
-    onError: (e) => setStatus(`EDS spectrum: ${e.message}`),
+    onError: (e) => reportEds(activeId, `EDS spectrum: ${e.message}`),
   });
 
   const handleElementChange = (sym: string) => {
     setSelElem(sym);
     if (sym === "(custom)") return;
+    const id = activeId;
     edsLineEnergy(sym)
       .then(({ energy_kev, line }) => {
+        if (!stillOpen(id)) return;
         const lo = energy_kev - HALF_WIN;
         const hi = energy_kev + HALF_WIN;
         setELo(lo);
         setEHi(hi);
         recomputeMap(lo, hi, bgMode);
-        setStatus(`EDS: ${sym} ${line}α at ${energy_kev.toFixed(3)} keV`);
+        reportEds(id, `EDS: ${sym} ${line}α at ${energy_kev.toFixed(3)} keV`);
       })
-      .catch((e: Error) => setStatus(`EDS line-energy: ${e.message}`));
+      .catch((e: Error) => reportEds(id, `EDS line-energy: ${e.message}`));
   };
 
   const handleWindowChange = (lo: number, hi: number) => {
@@ -327,11 +252,13 @@ export default function EdsSpectrumImage() {
     setSelElem("(custom)");
     recomputeMap(lo2, hi2, bgMode);
     // refresh window patch on spectrum
-    if (activeId) {
-      fetchSpectrum(
-        activeId,
-        roi ?? undefined,
-      ).then((s) => setSpectrum(s));
+    const id = activeId;
+    if (id) {
+      fetchSpectrum(id, roi ?? undefined)
+        .then((s) => {
+          if (stillOpen(id)) setSpectrum(s);
+        })
+        .catch((e: Error) => reportEds(id, `EDS spectrum: ${e.message}`));
     }
   };
 
@@ -342,9 +269,11 @@ export default function EdsSpectrumImage() {
 
   const handleRoi = (rect: Rect1 | null) => {
     setRoi(rect);
-    if (!activeId) return;
-    fetchSpectrum(activeId, rect ?? undefined)
+    const id = activeId;
+    if (!id) return;
+    fetchSpectrum(id, rect ?? undefined)
       .then((s) => {
+        if (!stillOpen(id)) return;
         setSpectrum(s);
         setSpecLabel(
           rect
@@ -352,18 +281,20 @@ export default function EdsSpectrumImage() {
             : "Sum spectrum",
         );
       })
-      .catch((e: Error) => setStatus(`EDS spectrum: ${e.message}`));
+      .catch((e: Error) => reportEds(id, `EDS spectrum: ${e.message}`));
   };
 
   const handleShowSum = () => {
-    if (!activeId) return;
+    const id = activeId;
+    if (!id) return;
     setRoi(null);
-    fetchSpectrum(activeId)
+    fetchSpectrum(id)
       .then((s) => {
+        if (!stillOpen(id)) return;
         setSpectrum(s);
         setSpecLabel("Sum spectrum");
       })
-      .catch((e: Error) => setStatus(`EDS sum: ${e.message}`));
+      .catch((e: Error) => reportEds(id, `EDS sum: ${e.message}`));
   };
 
   const exportMapCsv = () => {
