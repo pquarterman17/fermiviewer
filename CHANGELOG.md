@@ -13,6 +13,20 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [0.1.21] - 2026-07-23
+
+Follow-up to the BCF/EDS element-navigation work: build a colour composite
+straight from the periodic-table picker.
+
+### Added
+- **"+ Composite" in the Spectrum-Image Explorer.** After picking an element
+  in the periodic table, one click adds that element's window map to the
+  composite overlay with an auto-assigned colour — no full Cliff-Lorimer/ZAF
+  quantification pass required. Re-adding an element re-points its channel at
+  the fresh map while keeping the colour, intensity, visibility, and ramp you
+  set. This closes the last deferred item from the element-navigation series:
+  element colour no longer has to be routed through Quantify.
+
 ## [0.1.20] - 2026-07-23
 
 Part 4 of the BCF/EDS element-navigation work: element maps that keep up with
