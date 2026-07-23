@@ -21,6 +21,7 @@ import {
 } from "../../lib/api";
 import { useEdsPeakMarkers } from "../../hooks/useEdsPeakMarkers";
 import { useViewer } from "../../store/viewer";
+import EdsElementPicker from "./EdsElementPicker";
 import MapCanvas from "./EdsElementMap";
 import SpectrumPlot from "./EdsSpectrumPlot";
 import RegionPicker, { type Rect1 } from "./RegionPicker";
@@ -283,24 +284,16 @@ export default function EdsSpectrumImage() {
     );
   }
 
-  const ddItems = ["(custom)", ...elements];
-
   return (
     <div className="fvd-ws">
-      {/* Element picker */}
-      <div className="fvd-ws-row">
+      {/* Element picker — periodic table by default, dropdown via toggle */}
+      <div className="fvd-ws-row" style={{ alignItems: "flex-start" }}>
         <span className="k">Element</span>
-        <select
-          value={selElem}
-          style={{ flex: 1 }}
-          onChange={(e) => handleElementChange(e.target.value)}
-        >
-          {ddItems.map((el) => (
-            <option key={el} value={el}>
-              {el}
-            </option>
-          ))}
-        </select>
+        <EdsElementPicker
+          selected={selElem}
+          elements={elements}
+          onSelect={handleElementChange}
+        />
       </div>
 
       {/* Energy window */}
