@@ -11,4 +11,4 @@ io/ and calc/ must never import fastapi, pydantic, or anything from
 routes/ — that isolation is what keeps their tests server-free.
 """
 
-__version__ = "0.1.16"
+__version__ = "0.1.17"

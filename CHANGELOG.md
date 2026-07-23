@@ -13,6 +13,18 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [0.1.17] - 2026-07-23
+
+Part 1 of the BCF/EDS element-navigation work: making spectrum-image cubes
+easy to explore instead of scrolling thousands of raw energy channels.
+
+### Added
+- **EDS cubes open into the Spectrum-Image Explorer.** Loading a Bruker BCF
+  (or any EDS spectrum-image) now opens the Explorer automatically — landing
+  you on the sum spectrum and element maps instead of a ~4096-channel frame
+  stepper. It opens once per cube; the Stage's raw channel stepper stays
+  available for per-channel views.
+
 ## [0.1.16] - 2026-07-23
 
 A large usability release, pairing a ground-up keyboard-accessibility and
