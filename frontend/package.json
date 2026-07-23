@@ -13,8 +13,8 @@
   },
   "dependencies": {
     "clsx": "^2.1.1",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "uplot": "^1.6.31",
     "zustand": "^5.0.1"
   },
@@ -24,10 +24,10 @@
     "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
-    "@vitejs/plugin-react": "^6.0.3",
+    "@vitejs/plugin-react": "^6.0.4",
     "jsdom": "^29.1.1",
     "typescript": "~6.0.3",
-    "vite": "^8.1.4",
+    "vite": "^8.1.5",
     "vitest": "^4.1.10"
   },
   "engines": {
