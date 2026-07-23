@@ -13,6 +13,17 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [0.1.19] - 2026-07-23
+
+Part 3 of the BCF/EDS element-navigation work: pick elements by name.
+
+### Added
+- **Periodic-table element picker.** The EDS explorer's element selector is now
+  a periodic table by default — any element (Si, Fe, Al, …) is one click away
+  instead of being limited to the acquisition-header dropdown, with elements
+  present in the sample highlighted. A toggle switches to the compact dropdown,
+  and the preference is remembered across sessions.
+
 ## [0.1.18] - 2026-07-23
 
 Part 2 of the BCF/EDS element-navigation work: read peaks off the spectrum by
