@@ -14,6 +14,17 @@ def test_favicon_contains_cat_and_diffraction_motifs() -> None:
     assert svg.count("<circle") >= 8
 
 
+def test_readme_uses_accessible_logo_lockup() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    logo_path = ROOT / "docs" / "images" / "fermiviewer-logo.svg"
+    logo = logo_path.read_text(encoding="utf-8")
+
+    assert 'src="docs/images/fermiviewer-logo.svg"' in readme
+    assert 'alt="FermiViewer — electron microscopy image analysis"' in readme
+    assert "<title" in logo and "<desc" in logo
+    assert "FermiViewer" in logo
+
+
 def test_native_icon_dimensions_and_transparency() -> None:
     icons = ROOT / "src-tauri" / "icons"
     expected = {

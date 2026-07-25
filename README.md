@@ -1,6 +1,10 @@
-# fermiviewer
+<p align="center">
+  <img src="docs/images/fermiviewer-logo.svg" width="760" alt="FermiViewer — electron microscopy image analysis">
+</p>
 
-[![PyPI](https://img.shields.io/pypi/v/fermiviewer)](https://pypi.org/project/fermiviewer/)
+<p align="center">
+  <a href="https://pypi.org/project/fermiviewer/"><img src="https://img.shields.io/pypi/v/fermiviewer" alt="PyPI"></a>
+</p>
 
 Electron-microscopy image analysis: TEM/STEM image viewing, EELS / EDS /
 diffraction analysis, measurements, and image processing. Python (FastAPI)
