@@ -22,6 +22,22 @@ and spectrum requests and left two independent sets of controls on screen.
 The modes share element-map channels and element text within one mounted
 `EdsWorkshop`. Switching modes does not discard current results.
 
+### Spectrum sources and display
+
+Explore starts with the complete whole-cube spectrum. The source bar makes the
+three acquisition paths explicit:
+
+- **Whole cube** restores the spatially summed spectrum.
+- **Live stage pixel** arms the shared stage probe; moving on the main image
+  updates the pixel spectrum without hiding the current curve.
+- **Preview pixel / ROI** jumps to the spatial preview. Click selects one pixel;
+  drag selects an inclusive rectangular ROI.
+
+The source chip always names the displayed spectrum. Manual source requests show
+`Loading…` while retaining the previous plot. The plot supports linear counts or
+`log10(counts + 1)` and compact/expanded heights; characteristic-line labels and
+the draggable integration window remain available in either display mode.
+
 ## Window behavior
 
 EDS opens at 680 × 620 px rather than the generic 360 px workshop width. CSS

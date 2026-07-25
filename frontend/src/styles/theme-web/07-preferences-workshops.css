@@ -240,45 +240,6 @@
   gap: var(--pad);
 }
 
-.fvd-eds-workspace-tabs {
-  position: sticky;
-  top: calc(-1 * var(--pad-lg));
-  z-index: 3;
-  display: flex;
-  gap: 3px;
-  padding: var(--pad) 0;
-  background: var(--glass);
-  border-bottom: 1px solid var(--border-soft);
-}
-
-.fvd-eds-workspace-tab {
-  min-height: 28px;
-  padding: 4px 10px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-faint);
-  font: inherit;
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-}
-
-.fvd-eds-workspace-tab:hover {
-  color: var(--text);
-  background: var(--surface-3);
-}
-
-.fvd-eds-workspace-tab.active {
-  color: var(--text);
-  border-color: var(--border);
-  background: var(--surface-3);
-}
-
-.fvd-eds-workspace-tab:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
 .fvd-ws-empty {
   color: var(--text-faint);
   font-size: var(--font-size-sm);
