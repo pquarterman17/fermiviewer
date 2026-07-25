@@ -30,7 +30,8 @@ def raster_of(ds: DataStruct) -> np.ndarray:
         img: np.ndarray = np.asarray(ds.data, dtype=np.float64)
         return img
     if ds.kind is DataKind.SPECTRUM_IMAGE:
-        summed: np.ndarray = np.asarray(ds.data, dtype=np.float64).sum(axis=2)
+        # accumulate into float64 rather than casting the whole cube first
+        summed: np.ndarray = np.asarray(np.sum(ds.data, axis=2, dtype=np.float64))
         return summed
     raise ValueError("operation needs a 2D raster (got a 1D spectrum)")
 

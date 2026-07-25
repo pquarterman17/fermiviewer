@@ -12,6 +12,7 @@ import fermiviewer.ops as ops
 from fermiviewer.calc import filters
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.ops.base import ParamError
+from fermiviewer.ops.catalogue import raster_of
 
 pytestmark = pytest.mark.parser
 
@@ -108,3 +109,21 @@ def test_spectrum_input_is_rejected_by_raster_ops() -> None:
     )
     with pytest.raises(ValueError, match="raster"):
         ops.run("gaussian", spec)
+
+
+def test_si_raster_accumulates_into_float64_without_casting_the_cube() -> None:
+    """A cube's summed raster must be float64 for any input dtype.
+
+    raster_of used to cast the whole cube to float64 before summing; it now
+    accumulates into float64 instead, which must not change the raster (and
+    must not hand an integer raster to the float-only filter ops).
+    """
+    cube = np.arange(4 * 5 * 7, dtype=np.uint16).reshape(4, 5, 7)
+    si = DataStruct(
+        data=cube,
+        kind=DataKind.SPECTRUM_IMAGE,
+        axes=(AxisCal(0.5, 0.0, "nm"), AxisCal(0.5, 0.0, "nm"), AxisCal(1.0, 0.0, "eV")),
+    )
+    raster = raster_of(si)
+    assert raster.dtype == np.float64
+    np.testing.assert_array_equal(raster, cube.astype(np.float64).sum(axis=2))

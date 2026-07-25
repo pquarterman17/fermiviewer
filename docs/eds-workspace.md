@@ -90,3 +90,12 @@ Backend spectrum sums accumulate directly into a float64 output instead of
 casting the complete cube first. Pixel and ROI extraction slices the native
 array before float64 accumulation. Both changes bound temporary memory to the
 output spectrum or selected region rather than the entire multi-gigabyte cube.
+
+No spectrum-image read path materializes a float64 copy of the whole cube.
+That holds for element maps under every background model — the Kramers
+continuum fit slices its flanking windows rather than casting the cube —
+for `pixel_spectrum`, and for the summed rasters that image operations,
+scale-bar detection, and diffraction calibration derive from a cube.
+`tests/test_eds_maps.py` asserts this directly: numpy reports its data
+allocations to tracemalloc, so peak memory is measured against the size a
+full float64 copy would need.
