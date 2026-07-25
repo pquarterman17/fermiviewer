@@ -89,6 +89,8 @@ describe("edsElementMap request body", () => {
     expect(sent["e_hi"]).toBe(2.0);
     expect(sent["bg"]).toBe("linear");          // default
     expect(sent["save_derived"]).toBe(false);   // default
+    expect(sent).not.toHaveProperty("bg_width");
+    expect(sent).not.toHaveProperty("e0_kev");
     expect(r.map_meta).toBeNull();
   });
 
@@ -131,5 +133,22 @@ describe("edsElementMap request body", () => {
     const sent = JSON.parse(init.body as string) as Record<string, unknown>;
     expect(sent["bg"]).toBe("bremsstrahlung");
     expect(sent["e0_kev"]).toBe(18);
+  });
+
+  it("forwards an explicit background window without JSON null sentinels", async () => {
+    globalThis.fetch = makeFetch({
+      map: [[1]], shape: [1, 1], e_lo: 1, e_hi: 2,
+      bg: "linear", total_counts: 1, map_meta: null,
+    });
+    const { edsElementMap } = await import("./api");
+    await edsElementMap("img4", 1, 2, { bgWidth: 0.2 });
+    const [, init] =
+      (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+        string,
+        RequestInit,
+      ];
+    const sent = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(sent["bg_width"]).toBe(0.2);
+    expect(sent).not.toHaveProperty("e0_kev");
   });
 });

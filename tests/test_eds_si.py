@@ -139,6 +139,23 @@ def test_element_map_linear_bg(client: TestClient, tmp_path) -> None:
     assert total_lin <= total_none + 1e-6
 
 
+def test_element_map_accepts_json_null_optional_numbers(
+    client: TestClient, tmp_path
+) -> None:
+    """Browser JSON nulls remain backward-compatible while clients omit them."""
+    cube_id = _open_eds_cube(client, tmp_path)
+    r = client.post("/api/eds/element-map", json={
+        "image_id": cube_id,
+        "e_lo": 6.3,
+        "e_hi": 6.5,
+        "bg": "linear",
+        "bg_width": None,
+        "e0_kev": None,
+    })
+    assert r.status_code == 200
+    assert r.json()["shape"] == [4, 5]
+
+
 def test_element_map_bremsstrahlung_bg(client: TestClient, tmp_path) -> None:
     """bremsstrahlung bg subtracts a positive continuum (≤ raw sum)."""
     cube_id = _open_eds_cube(client, tmp_path)
