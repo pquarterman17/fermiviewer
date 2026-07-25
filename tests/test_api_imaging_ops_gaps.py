@@ -206,13 +206,17 @@ def test_defects_endpoint_default_sweep(client, tmp_path) -> None:
     assert r.status_code == 200, r.text
     body = r.json()
     for key in (
-        "intersections", "test_lines", "density", "density_unit", "enhanced",
+        "intersections", "test_lines", "total_line_length", "density",
+        "density_unit", "h_rows", "v_cols", "enhanced", "mask",
     ):
         assert key in body
     assert body["test_lines"] > 0
     assert body["density_unit"] == "lines/nm^2"
     assert client.get(
         f"/api/image/{body['enhanced']['id']}/render"
+    ).status_code == 200
+    assert client.get(
+        f"/api/image/{body['mask']['id']}/render"
     ).status_code == 200
 
 
@@ -223,6 +227,23 @@ def test_defects_endpoint_fixed_direction(client, tmp_path) -> None:
         "grid_spacing": 20,
     })
     assert r.status_code == 200, r.text
+
+
+def test_defects_endpoint_roi_and_foil_thickness(client, tmp_path) -> None:
+    img_id = _open(client, tmp_path, _synth_pattern())
+    r = client.post("/api/analyze/defects", json={
+        "image_id": img_id,
+        "roi": [10, 12, 60, 72],
+        "grid_spacing": 20,
+        "foil_thickness": 30,
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["roi"] == [10, 12, 60, 72]
+    assert body["density_unit"] == "lines/nm^3"
+    assert body["h_rows"] == [20, 40]
+    assert body["v_cols"] == [20, 40, 60]
+    assert body["enhanced"]["shape"] == body["mask"]["shape"]
 
 
 def test_defects_endpoint_unknown_id(client) -> None:

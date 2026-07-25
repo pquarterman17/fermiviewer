@@ -31,6 +31,9 @@ vi.mock("../workshops/NoiseWorkshop", () => ({
 vi.mock("../workshops/InterfaceWidthWorkshop", () => ({
   default: () => <div>Interface width workspace content</div>,
 }));
+vi.mock("../workshops/DefectWorkshop", () => ({
+  default: () => <div>Defect workspace content</div>,
+}));
 
 beforeEach(() => {
   useViewer.setState({ tools: [] });
@@ -114,6 +117,14 @@ describe("ToolWindows", () => {
     render(<ToolWindows />);
     const content = await screen.findByText("Interface width workspace content");
     expect(screen.getByText("Interface Width")).toBeVisible();
+    expect(content.closest(".fvd-tool-window")).toHaveStyle({ width: "620px" });
+  });
+
+  it("gives defect analysis room for its source-grid preview", async () => {
+    useViewer.setState({ tools: [{ kind: "defects", x: 10, y: 20, z: 1 }] });
+    render(<ToolWindows />);
+    const content = await screen.findByText("Defect workspace content");
+    expect(screen.getByText("Defect Analysis")).toBeVisible();
     expect(content.closest(".fvd-tool-window")).toHaveStyle({ width: "620px" });
   });
 

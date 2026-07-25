@@ -9,7 +9,6 @@ import {
   analyzeImageMath,
   analyzeMip,
   analyzeMontage,
-  analyzeDefects,
   analyzeRadial,
   measureProfile,
   analyzeVdf,
@@ -1272,24 +1271,9 @@ export default function MenuBar({
             action: () => store.openTool("noise"),
           },
           {
-            label: "Defect Count",
+            label: "Defect Analysis…",
             disabled: !store.activeId,
-            action: () => {
-              const id = store.activeId;
-              if (!id) return;
-              analyzeDefects(id)
-                .then((r) => {
-                  store.ingestDerived([r.enhanced]);
-                  store.setStatus(
-                    `defects: ${r.intersections} intercepts on ` +
-                      `${r.test_lines} lines · ρ ${r.density.toExponential(2)} ` +
-                      r.density_unit,
-                  );
-                })
-                .catch((e: Error) =>
-                  store.setStatus(`defects: ${e.message}`),
-                );
-            },
+            action: () => store.openTool("defects"),
           },
           {
             label: `Batch Profile (${store.selected.length} images)`,

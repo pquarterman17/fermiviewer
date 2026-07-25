@@ -255,7 +255,7 @@ export type ToolKind =
   | "structure"
   | "overlay"
   | "surface" | "roughness"
-  | "layers" | "crosssection" | "noise" | "interface-width";
+  | "layers" | "crosssection" | "noise" | "interface-width" | "defects";
 
 export interface ToolWindowState {
   kind: ToolKind;

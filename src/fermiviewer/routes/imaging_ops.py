@@ -41,13 +41,17 @@ def _raster(img_id: str) -> tuple[DataStruct, np.ndarray]:
 
 
 def _register(
-    arr: np.ndarray, name: str, parent: DataStruct, parent_id: str
+    arr: np.ndarray,
+    name: str,
+    parent: DataStruct,
+    parent_id: str,
+    metadata: dict[str, object] | None = None,
 ) -> dict:
     derived = DataStruct(
         data=np.ascontiguousarray(arr),
         kind=DataKind.IMAGE,
         axes=(parent.axes[0], parent.axes[1]),
-        metadata={"source": name, "parser": "derived"},
+        metadata={"source": name, "parser": "derived", **(metadata or {})},
     )
     new_id = store.add_derived(derived, name, parent_id)
     return ImageMeta.from_datastruct(new_id, name, derived).model_dump()
@@ -310,7 +314,7 @@ def analyze_ctf(req: CtfRequest) -> dict:
     }
 
 
-# ── noise estimate + defect count (checklist F closers) ─────────────
+# ── noise estimate (checklist F closer) ─────────────────────────────
 
 
 class NoiseRequest(BaseModel):
@@ -372,42 +376,6 @@ def analyze_noise(req: NoiseRequest) -> dict:
             res.regression_r_squared
             if np.isfinite(res.regression_r_squared)
             else None
-        ),
-    }
-
-
-class DefectsRequest(BaseModel):
-    image_id: str
-    direction: float | None = None
-    kernel_length: int = Field(15, ge=1)
-    # ge=1: a zero spacing reaches np.arange with step 0 in calc/defects
-    # (ZeroDivisionError, which the ValueError→422 guard can't catch)
-    grid_spacing: int = Field(50, ge=1)
-
-
-@router.post("/analyze/defects")
-def analyze_defects(req: DefectsRequest) -> dict:
-    from fermiviewer.calc.defects import count_defect_lines
-
-    ds, raster = _raster(req.image_id)
-    px = ds.pixel_size if np.isfinite(ds.pixel_size) else 1.0
-    try:
-        res = count_defect_lines(
-            raster, direction=req.direction,
-            kernel_length=req.kernel_length,
-            grid_spacing=req.grid_spacing,
-            pixel_size=px, pixel_unit=ds.pixel_unit or "px",
-        )
-    except ValueError as e:
-        raise HTTPException(422, str(e)) from None
-    name = store.name(req.image_id)
-    return {
-        "intersections": res.intersection_count,
-        "test_lines": res.num_test_lines,
-        "density": res.density,
-        "density_unit": res.density_unit,
-        "enhanced": _register(
-            res.enhanced, f"defects({name})", ds, req.image_id,
         ),
     }
 

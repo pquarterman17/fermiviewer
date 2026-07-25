@@ -76,12 +76,36 @@ export function analyzeNoise(
   });
 }
 
-export function analyzeDefects(id: string): Promise<{
+export interface DefectResult {
   intersections: number;
   test_lines: number;
+  total_line_length: number;
   density: number;
   density_unit: string;
+  pixel_unit: string;
+  roi: [number, number, number, number] | null;
+  h_rows: number[];
+  v_cols: number[];
   enhanced: ImageMeta;
-}> {
-  return post("/api/analyze/defects", { image_id: id });
+  mask: ImageMeta;
+}
+
+export function analyzeDefects(
+  id: string,
+  opts: {
+    direction?: number | null;
+    kernelLength?: number;
+    gridSpacing?: number;
+    roi?: [number, number, number, number] | null;
+    foilThickness?: number | null;
+  } = {},
+): Promise<DefectResult> {
+  return post("/api/analyze/defects", {
+    image_id: id,
+    direction: opts.direction ?? null,
+    kernel_length: opts.kernelLength ?? 15,
+    grid_spacing: opts.gridSpacing ?? 50,
+    roi: opts.roi ?? null,
+    foil_thickness: opts.foilThickness ?? null,
+  });
 }
