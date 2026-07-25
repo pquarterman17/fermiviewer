@@ -66,6 +66,29 @@ describe("DesktopMenus keyboard navigation", () => {
     expect(recent).toHaveFocus();
   });
 
+  it("runs a submenu child selected with the pointer", () => {
+    const submenuAction = vi.fn();
+    render(
+      <DesktopMenus
+        menus={{
+          Analysis: [
+            {
+              label: "Spectroscopy",
+              submenu: [{ label: "EELS Workspace", action: submenuAction }],
+            },
+          ],
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Analysis" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Spectroscopy" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "EELS Workspace" }));
+
+    expect(submenuAction).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("menu", { name: "Analysis" })).toBeNull();
+  });
+
   it("still wraps to the last item after entries become disabled", async () => {
     // Ref slots are keyed by enabled-entry position and never truncated, so a
     // menu reopened with fewer enabled entries leaves stale null slots at the

@@ -6,11 +6,9 @@ import { useShallow } from "zustand/react/shallow";
 import {
   analyzeAlignStack,
   analyzeBackProject,
-  analyzeGpa,
   analyzeImageMath,
   analyzeMip,
   analyzeMontage,
-  analyzeParticles,
   analyzeDefects,
   analyzeInterfaceWidth,
   analyzeNoise,
@@ -46,7 +44,10 @@ import { useCommands, type Action } from "../../store/commands";
 import { askParams } from "../../store/params";
 import { useStageInfo } from "../../store/stage";
 import { undoLabel, useViewer } from "../../store/viewer";
-import { useWorkshop } from "../../store/workshop";
+import {
+  openCrossSectionGuide,
+  openStructureWorkshop,
+} from "../../store/workshopNavigation";
 import { useResults } from "../overlays/ResultsWindow";
 import Icon from "../icons/Icon";
 import DesktopMenus, { type MenuEntry as Entry } from "./DesktopMenus";
@@ -59,15 +60,6 @@ const num = (
   dflt: number,
   hint?: string,
 ): ParamField => ({ key, label, type: "number", default: dflt, hint });
-
-export function openGrainWorkshop(): void {
-  useWorkshop.getState().setStructureMode("Grains");
-  useViewer.getState().openTool("structure");
-}
-
-export function openCrossSectionGuide(): void {
-  useViewer.getState().openTool("crosssection");
-}
 
 function recentPaths(): string[] {
   try {
@@ -1192,246 +1184,233 @@ export default function MenuBar({
     ],
     Analysis: [
       {
-        label: "Cross-section Assistant…",
-        disabled: !store.activeId,
-        action: openCrossSectionGuide,
+        label: "Spectroscopy",
+        submenu: [
+          { label: "EELS Workspace", action: () => store.openTool("eels") },
+          { label: "EDS Workspace", action: () => store.openTool("eds") },
+        ],
       },
       {
-        label: "Particle Analysis…",
-        disabled: !store.activeId,
-        action: () => {
-          void (async () => {
-            const v = await askParams("Particle Analysis", [
-              num("minArea", "Min area (px)", 10),
-              {
-                key: "polarity",
-                label: "Polarity",
-                type: "select",
-                default: "bright",
-                options: ["bright", "dark"],
-              },
-              {
-                key: "watershed",
-                label: "Watershed split",
-                type: "boolean",
-                default: false,
-              },
-            ]);
-            const id = store.activeId;
-            if (!v || !id) return;
-            analyzeParticles(id, {
-              minArea: v["minArea"] as number,
-              watershed: v["watershed"] as boolean,
-            })
-              .then((r) => {
-                store.ingest([r.labels]);
-                store.setStatus(
-                  `${r.n_particles} particles (threshold ${r.threshold.toPrecision(4)})`,
+        label: "Diffraction",
+        submenu: [
+          {
+            label: "Index & Simulate…",
+            action: () => store.openTool("diffraction"),
+          },
+        ],
+      },
+      {
+        label: "Structure & Defects",
+        submenu: [
+          {
+            label: "Atom Columns…",
+            disabled: !store.activeId,
+            action: () => openStructureWorkshop("Atoms"),
+          },
+          {
+            label: "Particles…",
+            disabled: !store.activeId,
+            action: () => openStructureWorkshop("Particles"),
+          },
+          {
+            label: "Grains…",
+            disabled: !store.activeId,
+            action: () => openStructureWorkshop("Grains"),
+          },
+          {
+            label: "Template Match…",
+            disabled: !store.activeId,
+            action: () => openStructureWorkshop("Template"),
+          },
+          {
+            label: "GPA Strain…",
+            disabled: !store.activeId,
+            action: () => openStructureWorkshop("GPA"),
+          },
+          {
+            label: "CTF Estimate…",
+            disabled: !store.activeId,
+            action: () => openStructureWorkshop("CTF"),
+          },
+          {
+            label: "Lattice Measurement…",
+            disabled: !store.activeId,
+            action: () => openStructureWorkshop("Lattice"),
+          },
+          {
+            label: "Stitch Images…",
+            disabled: store.selected.length < 2,
+            action: () => openStructureWorkshop("Stitch"),
+          },
+        ],
+      },
+      {
+        label: "Surfaces & Interfaces",
+        submenu: [
+          {
+            label: "Cross-section Assistant…",
+            disabled: !store.activeId,
+            action: openCrossSectionGuide,
+          },
+          {
+            label: "Layer Analysis…",
+            disabled: !store.activeId,
+            action: () => store.openTool("layers"),
+          },
+          {
+            label: "Surface Roughness",
+            disabled: !store.activeId,
+            action: () => {
+              const id = store.activeId;
+              if (!id) return;
+              analyzeRoughness(id)
+                .then((r) => {
+                  store.setStatus(
+                    `Ra ${(r["Ra"] as number).toPrecision(4)} · Rq ${(r["Rq"] as number).toPrecision(4)} ${r["unit"]} · SAR ${(r["SAR"] as number).toFixed(4)}`,
+                  );
+                })
+                .catch((e: Error) => store.setStatus(e.message));
+            },
+          },
+          {
+            label: "Interface Width (fit dock profile)",
+            disabled: !profile,
+            action: () => {
+              if (!profile) return;
+              analyzeInterfaceWidth(profile.dist, profile.intensity)
+                .then((r) =>
+                  store.setStatus(
+                    `interface: 10–90% width ${r.width_10_90.toPrecision(4)} ` +
+                      `${profile.unit} · σ ${r.sigma.toPrecision(4)} · ` +
+                      `R² ${r.r_squared.toFixed(3)}`,
+                  ),
+                )
+                .catch((e: Error) =>
+                  store.setStatus(`interface: ${e.message}`),
                 );
-                useResults.getState().show({
-                  title: `Particles — ${r.n_particles} found`,
-                  columns: [
-                    "#", "area px", "row", "col", "d eq px",
-                    "mean I", `area ${r.unit}²`, `d ${r.unit}`,
-                  ],
-                  rows: r.particles.map((p) => [
-                    p.id, p.area, p.centroid[0], p.centroid[1],
-                    p.equiv_diameter, p.mean_intensity,
-                    p.area_calibrated, p.diameter_calibrated,
-                  ]),
-                });
-              })
-              .catch((e: Error) => store.setStatus(e.message));
-          })();
-        },
+            },
+          },
+        ],
       },
       {
-        label: "Grain Segmentation…",
-        disabled: !store.activeId,
-        action: () => {
-          // Select the complete, editable workflow before the lazy workshop
-          // mounts. The old K-means-only prompt made the obvious command the
-          // least capable way into grain analysis.
-          openGrainWorkshop();
-        },
-      },
-      {
-        label: "GPA Strain…",
-        disabled: !store.activeId,
-        action: () => {
-          void (async () => {
-            const v = await askParams("GPA Strain", [
-              num("g1x", "g1 x (FFT px from centre)", 10),
-              num("g1y", "g1 y", 0),
-              num("g2x", "g2 x", 0),
-              num("g2y", "g2 y", 10),
-            ]);
-            const id = store.activeId;
-            if (!v || !id) return;
-            store.setStatus("GPA…");
-            analyzeGpa(
-              id,
-              [v["g1x"] as number, v["g1y"] as number],
-              [v["g2x"] as number, v["g2y"] as number],
-            )
-              .then((r) => {
-                store.ingest(r.maps);
-                store.setStatus(
-                  `GPA: exx ${r.mean["exx"].toExponential(2)} · eyy ${r.mean["eyy"].toExponential(2)}`,
+        label: "Image Statistics",
+        submenu: [
+          {
+            label: "Noise Estimate",
+            disabled: !store.activeId,
+            action: () => {
+              const id = store.activeId;
+              if (!id) return;
+              analyzeNoise(id)
+                .then((r) =>
+                  store.setStatus(
+                    `noise: σ ${r.sigma.toPrecision(4)} · ` +
+                      `SNR ${r.snr_db.toFixed(1)} dB (${r.noise_type}) → ` +
+                      `try ${r.recommendation}`,
+                  ),
+                )
+                .catch((e: Error) =>
+                  store.setStatus(`noise: ${e.message}`),
                 );
-              })
-              .catch((e: Error) => store.setStatus(e.message));
-          })();
-        },
+            },
+          },
+          {
+            label: "Defect Count",
+            disabled: !store.activeId,
+            action: () => {
+              const id = store.activeId;
+              if (!id) return;
+              analyzeDefects(id)
+                .then((r) => {
+                  store.ingestDerived([r.enhanced]);
+                  store.setStatus(
+                    `defects: ${r.intersections} intercepts on ` +
+                      `${r.test_lines} lines · ρ ${r.density.toExponential(2)} ` +
+                      r.density_unit,
+                  );
+                })
+                .catch((e: Error) =>
+                  store.setStatus(`defects: ${e.message}`),
+                );
+            },
+          },
+          {
+            label: `Batch Profile (${store.selected.length} images)`,
+            disabled: store.selected.length < 2 || !lastProfileMeasure(),
+            action: () => void runBatchProfile(),
+          },
+        ],
       },
       {
-        label: "Surface Roughness",
-        disabled: !store.activeId,
-        action: () => {
-          const id = store.activeId;
-          if (!id) return;
-          analyzeRoughness(id)
-            .then((r) => {
-              store.setStatus(
-                `Ra ${(r["Ra"] as number).toPrecision(4)} · Rq ${(r["Rq"] as number).toPrecision(4)} ${r["unit"]} · SAR ${(r["SAR"] as number).toFixed(4)}`,
-              );
-            })
-            .catch((e: Error) => store.setStatus(e.message));
-        },
-      },
-      {
-        label: "Interface Width (fit dock profile)",
-        disabled: !profile,
-        action: () => {
-          if (!profile) return;
-          analyzeInterfaceWidth(profile.dist, profile.intensity)
-            .then((r) =>
-              store.setStatus(
-                `interface: 10–90% width ${r.width_10_90.toPrecision(4)} ` +
-                  `${profile.unit} · σ ${r.sigma.toPrecision(4)} · ` +
-                  `R² ${r.r_squared.toFixed(3)}`,
-              ),
-            )
-            .catch((e: Error) => store.setStatus(`interface: ${e.message}`));
-        },
-      },
-      {
-        label: "Noise Estimate",
-        disabled: !store.activeId,
-        action: () => {
-          const id = store.activeId;
-          if (!id) return;
-          analyzeNoise(id)
-            .then((r) =>
-              store.setStatus(
-                `noise: σ ${r.sigma.toPrecision(4)} · ` +
-                  `SNR ${r.snr_db.toFixed(1)} dB (${r.noise_type}) → ` +
-                  `try ${r.recommendation}`,
-              ),
-            )
-            .catch((e: Error) => store.setStatus(`noise: ${e.message}`));
-        },
-      },
-      {
-        label: "Defect Count",
-        disabled: !store.activeId,
-        action: () => {
-          const id = store.activeId;
-          if (!id) return;
-          analyzeDefects(id)
-            .then((r) => {
-              store.ingestDerived([r.enhanced]);
-              store.setStatus(
-                `defects: ${r.intersections} intercepts on ` +
-                  `${r.test_lines} lines · ρ ${r.density.toExponential(2)} ` +
-                  r.density_unit,
-              );
-            })
-            .catch((e: Error) => store.setStatus(`defects: ${e.message}`));
-        },
-      },
-      {
-        label: `Batch Profile (${store.selected.length} images)`,
-        disabled: store.selected.length < 2 || !lastProfileMeasure(),
-        action: () => void runBatchProfile(),
-      },
-      {
-        label: "Back Project (FBP)…",
-        disabled: !store.activeId,
-        action: () => {
-          void (async () => {
-            const v = await askParams("Filtered Back-Projection", [
-              {
-                key: "filter",
-                label: "Filter",
-                type: "select",
-                default: "ramp",
-                options: ["ramp", "shepp-logan", "hamming", "none"],
-              },
-              num("output_size", "Output size (0 = auto)", 0),
-            ]);
-            const id = store.activeId;
-            if (!v || !id) return;
-            store.setStatus("back-project…");
-            analyzeBackProject(
-              id,
-              v["filter"] as "ramp" | "shepp-logan" | "hamming" | "none",
-              v["output_size"] as number,
-            )
-              .then((m) => {
-                store.ingestDerived([m]);
-                store.setStatus("back-project done");
-              })
-              .catch((e: Error) => store.setStatus(`back-project: ${e.message}`));
-          })();
-        },
+        label: "Reconstruction",
+        submenu: [
+          {
+            label: "Reconstruct Sinogram (FBP)…",
+            disabled: !store.activeId,
+            action: () => {
+              void (async () => {
+                const v = await askParams("Reconstruct Sinogram (FBP)", [
+                  {
+                    key: "filter",
+                    label: "Filter",
+                    type: "select",
+                    default: "ramp",
+                    options: ["ramp", "shepp-logan", "hamming", "none"],
+                  },
+                  num("output_size", "Output size (0 = auto)", 0),
+                ]);
+                const id = store.activeId;
+                if (!v || !id) return;
+                store.setStatus("reconstructing sinogram…");
+                analyzeBackProject(
+                  id,
+                  v["filter"] as "ramp" | "shepp-logan" | "hamming" | "none",
+                  v["output_size"] as number,
+                )
+                  .then((meta) => {
+                    store.ingestDerived([meta]);
+                    store.setStatus("sinogram reconstruction done");
+                  })
+                  .catch((e: Error) =>
+                    store.setStatus(`reconstruction: ${e.message}`),
+                  );
+              })();
+            },
+          },
+        ],
       },
     ],
     Window: [
       {
-        label: "EELS Workshop",
-        shortcut: "WINDOW",
-        action: () => store.openTool("eels"),
+        label: "Analysis Workspaces",
+        submenu: [
+          { label: "EELS Workspace", action: () => store.openTool("eels") },
+          { label: "EDS Workspace", action: () => store.openTool("eds") },
+          {
+            label: "Diffraction",
+            action: () => store.openTool("diffraction"),
+          },
+          {
+            label: "Structure",
+            action: () => store.openTool("structure"),
+          },
+          {
+            label: "Cross-section Layers",
+            action: () => store.openTool("layers"),
+          },
+        ],
       },
       {
-        label: "EDS Composite",
-        shortcut: "WINDOW",
-        action: () => store.openTool("eds"),
-      },
-      {
-        label: "Diffraction Indexing",
-        shortcut: "WINDOW",
-        action: () => store.openTool("diffraction"),
-      },
-      {
-        label: "FFT Mask Editor",
-        shortcut: "WINDOW",
-        action: () => store.openTool("fftmask"),
-      },
-      {
-        label: "Pixel Inspector",
-        shortcut: "WINDOW",
-        action: () => store.openTool("pixels"),
-      },
-      {
-        label: "Structure Workshop",
-        shortcut: "WINDOW",
-        action: () => store.openTool("structure"),
-      },
-      {
-        label: "Color Overlay",
-        shortcut: "WINDOW",
-        action: () => store.openTool("overlay"),
-      },
-      {
-        label: "Surface Plot",
-        shortcut: "WINDOW",
-        action: () => store.openTool("surface"),
-      },
-      {
-        label: "Cross-section Layers",
-        shortcut: "WINDOW",
-        action: () => store.openTool("layers"),
+        label: "Inspectors & Visualization",
+        submenu: [
+          {
+            label: "FFT Mask Editor",
+            action: () => store.openTool("fftmask"),
+          },
+          { label: "Pixel Inspector", action: () => store.openTool("pixels") },
+          { label: "Color Overlay", action: () => store.openTool("overlay") },
+          { label: "Surface Plot", action: () => store.openTool("surface") },
+        ],
       },
     ],
     Help: [
