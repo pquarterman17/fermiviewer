@@ -33,7 +33,7 @@ def _side_windows(
 
 
 def _kramers_bg_map(
-    cube_d: np.ndarray,
+    cube: np.ndarray,
     energy: np.ndarray,
     peak: np.ndarray,
     peak_sum: np.ndarray,
@@ -51,6 +51,11 @@ def _kramers_bg_map(
     background channels. Vectorised over all pixels — an O(pixels) linear
     solve, never a per-pixel curve fit — then the continuum integral over
     the peak window is subtracted from the window sum.
+
+    Only the flanking background channels are read, so ``cube`` is sliced at
+    its native dtype and promoted by the float64 ``c_side`` weights. Casting
+    the whole cube first (the previous approach) allocated a float64 copy of
+    the entire multi-GB SI to touch a few dozen channels.
     """
     if not np.isfinite(e0_kev):
         raise ValueError("bg='bremsstrahlung' requires a finite e0_kev (beam energy, keV)")
@@ -69,7 +74,7 @@ def _kramers_bg_map(
     denom = float(c_side @ c_side)
     if denom <= 0:
         return peak_sum
-    amp = (cube_d[:, :, side] * c_side).sum(axis=2) / denom   # (h, w)
+    amp = (cube[:, :, side] * c_side).sum(axis=2, dtype=np.float64) / denom  # (h, w)
     out = peak_sum - amp * float(c[peak].sum())
     return np.asarray(np.maximum(out, 0.0))
 
@@ -115,10 +120,9 @@ def element_map(
 
     bg_l = bg.lower()
     if bg_l == "bremsstrahlung":
-        # the Kramers continuum fit reads many channels — materialize here only
-        cube_d = np.asarray(cube, dtype=np.float64)
+        # reads only the flanking background channels — slices, never casts
         return _kramers_bg_map(
-            cube_d, energy, peak, peak_sum, e_lo, e_hi, e0_kev, bg_width, bg_gap
+            cube, energy, peak, peak_sum, e_lo, e_hi, e0_kev, bg_width, bg_gap
         )
     if bg_l != "linear":
         return peak_sum
@@ -151,13 +155,16 @@ def pixel_spectrum(
     """
     cube = np.asarray(cube)
     h, w, c = cube.shape
-    flat = np.asarray(cube, dtype=np.float64).reshape(h * w, c)
+    # Reshape at the native dtype and accumulate the selection in float64.
+    # Casting first allocated a float64 copy of the whole SI to read what is
+    # usually a single pixel — the same trap fixed in routes/images.py.
+    flat = cube.reshape(h * w, c)
 
     rows = np.asarray(rows)
     if rows.dtype == bool:
         if rows.shape != (h, w):
             raise ValueError(f"mask must be [{h} x {w}]")
-        out: np.ndarray = flat[rows.ravel()].sum(axis=0)
+        out: np.ndarray = flat[rows.ravel()].sum(axis=0, dtype=np.float64)
         return out
 
     if cols is None:
@@ -170,7 +177,7 @@ def pixel_spectrum(
     r, cc = r[keep], cc[keep]
     if r.size == 0:
         return np.zeros(c)
-    summed: np.ndarray = flat[(r - 1) * w + (cc - 1)].sum(axis=0)
+    summed: np.ndarray = flat[(r - 1) * w + (cc - 1)].sum(axis=0, dtype=np.float64)
     return summed
 
 

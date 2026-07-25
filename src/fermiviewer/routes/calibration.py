@@ -116,7 +116,8 @@ def calibration_detect_bar(req: CalibrationApplyRequest) -> dict[str, Any]:
     if ds.kind is DataKind.SPECTRUM:
         raise HTTPException(400, "1D spectra have no scale bar")
     raster = (
-        np.asarray(ds.data, dtype=np.float64).sum(axis=2)
+        # accumulate into float64 rather than casting the whole cube first
+        np.asarray(np.sum(ds.data, axis=2, dtype=np.float64))
         if ds.kind is DataKind.SPECTRUM_IMAGE
         else np.asarray(ds.data, dtype=np.float64)
     )

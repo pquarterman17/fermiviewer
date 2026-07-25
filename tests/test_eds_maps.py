@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import tracemalloc
+
 import numpy as np
 import pytest
 
@@ -146,11 +148,83 @@ def test_element_map_dtype_agnostic_float64_accumulation() -> None:
     # instead of converting the whole (multi-GB) cube to float64 first. An
     # integer cube must give exactly the same result as its float64 copy —
     # same channels, same float64 accumulator, no overflow.
+    # "bremsstrahlung" is covered here too: it used to cast the whole cube
+    # before fitting the continuum, and now slices the flanking windows.
     energy = np.arange(64) * 0.1
     rng = np.random.default_rng(0)
     cube_u16 = rng.integers(0, 500, size=(6, 7, 64)).astype(np.uint16)
     cube_f64 = cube_u16.astype(np.float64)
-    for bg in ("none", "linear"):
-        m_u16 = element_map(cube_u16, energy, 2.0, 3.0, bg=bg, bg_gap=0.2)
-        m_f64 = element_map(cube_f64, energy, 2.0, 3.0, bg=bg, bg_gap=0.2)
+    for bg in ("none", "linear", "bremsstrahlung"):
+        m_u16 = element_map(cube_u16, energy, 2.0, 3.0, bg=bg, bg_gap=0.2, e0_kev=15.0)
+        m_f64 = element_map(cube_f64, energy, 2.0, 3.0, bg=bg, bg_gap=0.2, e0_kev=15.0)
         np.testing.assert_array_equal(m_u16, m_f64)
+        assert m_u16.dtype == np.float64
+
+
+def test_pixel_spectrum_dtype_agnostic_float64_accumulation() -> None:
+    """Selecting pixels before the float64 cast must not change the result.
+
+    The integer path is the one that regresses silently: summing a uint16
+    selection without an explicit float64 accumulator returns an integer
+    spectrum (and can overflow), breaking every downstream consumer.
+    """
+    rng = np.random.default_rng(1)
+    cube_u16 = rng.integers(0, 500, size=(6, 7, 64)).astype(np.uint16)
+    cube_f64 = cube_u16.astype(np.float64)
+
+    mask = np.zeros(cube_u16.shape[:2], dtype=bool)
+    mask[2, 3] = True
+    for sel in (
+        (mask,),                                    # boolean mask
+        (np.array([3]), np.array([4])),             # 1-based index pair
+        (np.ones(cube_u16.shape[:2], dtype=bool),), # all-pixel oracle
+    ):
+        got = pixel_spectrum(cube_u16, *sel)
+        assert got.dtype == np.float64
+        np.testing.assert_array_equal(got, pixel_spectrum(cube_f64, *sel))
+
+
+def test_interactive_si_paths_do_not_materialize_the_cube() -> None:
+    """Peak allocation must scale with the selection, not the whole cube.
+
+    Guards the class of defect this repo keeps re-finding: casting a
+    multi-gigabyte spectrum image to float64 to read a narrow energy window
+    or a single pixel. numpy reports its data allocations to tracemalloc, so
+    a regression to a full-cube cast shows up directly as peak memory.
+    """
+    tracemalloc.start()
+    try:
+        probe = np.empty(2_000_000, dtype=np.float64)  # 16 MB
+        _, probe_peak = tracemalloc.get_traced_memory()
+        del probe
+        if probe_peak < 8_000_000:  # pragma: no cover - platform dependent
+            pytest.skip("tracemalloc does not observe numpy data allocations here")
+
+        energy = np.linspace(0.1, 12.0, 8192)
+        rng = np.random.default_rng(2)
+        cube = rng.integers(0, 500, size=(32, 32, 8192)).astype(np.uint16)
+        full_cast = cube.size * 8  # bytes a float64 copy of the cube would need
+        one_pixel = np.zeros(cube.shape[:2], dtype=bool)
+        one_pixel[5, 6] = True
+
+        for call in (
+            lambda: element_map(cube, energy, 6.3, 6.5, bg="linear", bg_gap=0.1),
+            lambda: element_map(
+                cube, energy, 6.3, 6.5, bg="bremsstrahlung", bg_gap=0.1, e0_kev=15.0
+            ),
+            lambda: pixel_spectrum(cube, one_pixel),
+        ):
+            # Measure the transient the call adds on top of the already-live
+            # cube: reset_peak() rebases peak to *current*, which counts the
+            # cube itself, so only the delta is the allocation under test.
+            tracemalloc.reset_peak()
+            baseline, _ = tracemalloc.get_traced_memory()
+            call()
+            _, peak = tracemalloc.get_traced_memory()
+            transient = peak - baseline
+            assert transient < full_cast // 4, (
+                f"call allocated {transient / 1e6:.1f} MB, approaching a full "
+                f"float64 cube copy ({full_cast / 1e6:.1f} MB) - the cast is back"
+            )
+    finally:
+        tracemalloc.stop()
