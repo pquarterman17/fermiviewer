@@ -21,7 +21,6 @@ import {
   type Spectrum,
 } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
-import { formatPlusMinus } from "../../lib/formatUncertainty";
 import {
   csvBaseName,
   downloadCsv,
@@ -29,6 +28,7 @@ import {
 } from "../../lib/eelsQuantCsv";
 import EelsAdvanced from "./EelsAdvanced";
 import { EdgeEditor, type EdgeRow } from "./EelsEdgeEditor";
+import { EelsFitResults, EelsQuantResults } from "./EelsResults";
 import { seedFitWindows } from "./eelsWindows";
 import RegionPicker, { type Rect1 } from "./RegionPicker";
 import SpectrumNavigationControl from "./SpectrumNavigationControl";
@@ -36,6 +36,8 @@ import { useProbeRegionToken } from "./useProbeRegionToken";
 import { useSpectrumProbe } from "./useSpectrumProbe";
 
 let edgeSeq = 0;
+type EelsTab = "Explore" | "Quantify" | "Model fit" | "Advanced";
+const EELS_TABS: EelsTab[] = ["Explore", "Quantify", "Model fit", "Advanced"];
 
 /** Common EELS edge onsets (eV) for the edge-ID overlay. */
 const KNOWN_EDGES: [string, number][] = [
@@ -96,6 +98,7 @@ export default function EelsWorkshop() {
   const [explore, setExplore] = useState(false);
   const [pickMode, setPickMode] = useState<"region" | "pixel">("region");
   const [region, setRegion] = useState<Rect1 | null>(null);
+  const [tab, setTab] = useState<EelsTab>("Explore");
   const plotHost = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
 
@@ -433,6 +436,21 @@ export default function EelsWorkshop() {
   return (
     <div className="fvd-ws">
       <div ref={plotHost} className="fvd-ws-plot" />
+      <div className="fvd-seg" role="tablist" aria-label="EELS workflow">
+        {EELS_TABS.map((name) => (
+          <button
+            key={name}
+            role="tab"
+            aria-selected={tab === name}
+            className={`fvd-seg-btn${tab === name ? " active" : ""}`}
+            onClick={() => setTab(name)}
+          >
+            {name}
+          </button>
+        ))}
+      </div>
+      {tab === "Explore" && (
+        <>
       <div className="fvd-ws-row">
         <label className="fvd-check">
           <input
@@ -544,7 +562,10 @@ export default function EelsWorkshop() {
           Map
         </button>
       </div>
-
+        </>
+      )}
+      {(tab === "Quantify" || tab === "Model fit") && (
+        <>
       <div className="fvd-ws-row">
         <span className="k">E₀ kV</span>
         <input
@@ -583,83 +604,58 @@ export default function EelsWorkshop() {
         >
           + edge
         </button>
-        <button
-          className="fvd-btn"
-          onClick={runQuantify}
-          disabled={edges.length === 0}
-          title="Quantify at% from the edge windows"
-        >
-          Quantify
-        </button>
-        <button
-          className="fvd-btn"
-          title="Per-pixel at% composition maps (SI cubes)"
-          onClick={runQuantifyMaps}
-          disabled={edges.length === 0 || !isCube}
-        >
-          Maps
-        </button>
-        <button
-          className="fvd-btn"
-          title="Model fit: background + all edges fitted jointly (separates overlapping edges; at% from amplitude ratios with 1σ)"
-          onClick={runModelFit}
-          disabled={edges.length === 0}
-        >
-          Model fit
-        </button>
-        <button
-          className="fvd-btn"
-          title="Per-pixel model-fit at% maps (SI cubes)"
-          onClick={runModelFitMaps}
-          disabled={edges.length === 0 || !isCube}
-        >
-          Fit maps
-        </button>
-        <button
-          className="fvd-btn"
-          title="ELNES fine-structure extraction (uses last edge row's onset + bg window)"
-          onClick={runElnes}
-          disabled={edges.length === 0}
-        >
-          ELNES
-        </button>
+        {tab === "Quantify" ? (
+          <>
+            <button
+              className="fvd-btn"
+              onClick={runQuantify}
+              disabled={edges.length === 0}
+              title="Quantify at% from the edge windows"
+            >
+              Quantify
+            </button>
+            <button
+              className="fvd-btn"
+              title="Per-pixel at% composition maps (SI cubes)"
+              onClick={runQuantifyMaps}
+              disabled={edges.length === 0 || !isCube}
+            >
+              Maps
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              className="fvd-btn"
+              title="Fit background and all edges simultaneously"
+              onClick={runModelFit}
+              disabled={edges.length === 0}
+            >
+              Fit spectrum
+            </button>
+            <button
+              className="fvd-btn"
+              title="Per-pixel model-fit at% maps (SI cubes)"
+              onClick={runModelFitMaps}
+              disabled={edges.length === 0 || !isCube}
+            >
+              Fit maps
+            </button>
+            <button
+              className="fvd-btn"
+              title="ELNES fine-structure extraction"
+              onClick={runElnes}
+              disabled={edges.length === 0}
+            >
+              ELNES
+            </button>
+          </>
+        )}
       </div>
-      {fitResult && (
-        <>
-          <div className="fvd-ws-note">
-            Model fit · χ²ᵣ {fitResult.reduced_chi2.toExponential(2)}
-            {fitResult.success ? "" : " · (not converged)"}
-          </div>
-          <table className="fvd-ws-table">
-            <thead>
-              <tr>
-                <th>Element</th>
-                <th>at% ± 1σ</th>
-                <th>amp ± 1σ</th>
-              </tr>
-            </thead>
-            <tbody>
-              {fitResult.edges.map((ed) => (
-                <tr key={`${ed.element}-${ed.shell}`}>
-                  <td>{ed.element}</td>
-                  <td>
-                    {formatPlusMinus(
-                      ed.atomic_percent,
-                      ed.atomic_percent_error,
-                      2,
-                    )}
-                  </td>
-                  <td>
-                    {ed.amplitude.toExponential(2)} ±{" "}
-                    {ed.amplitude_error.toExponential(1)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </>
+      {tab === "Model fit" && fitResult && (
+        <EelsFitResults result={fitResult} />
       )}
-      {elnes && (
+      {tab === "Model fit" && elnes && (
         <div className="fvd-ws-note">
           ELNES · edge jump {elnes.edge_jump.toExponential(2)} · onset{" "}
           {elnes.edge_onset.toFixed(1)} eV · {elnes.relative_energy.length} pts
@@ -675,58 +671,32 @@ export default function EelsWorkshop() {
           onRemove={() => setEdges((rows) => rows.filter((_, j) => j !== i))}
         />
       ))}
-      {quant && (
-        <>
-          <table className="fvd-ws-table">
-            <thead>
-              <tr>
-                <th>Element</th>
-                <th>at% ± 1σ</th>
-                <th>I</th>
-              </tr>
-            </thead>
-            <tbody>
-              {quant.elements.map((el, i) => (
-                <tr key={el}>
-                  <td>{el}</td>
-                  <td>
-                    {formatPlusMinus(
-                      quant.atomic_percent[i],
-                      quant.atomic_percent_error?.[i] ?? 0,
-                      2,
-                    )}
-                  </td>
-                  <td>{quant.intensity[i].toExponential(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="fvd-ws-row">
-            <button
-              className="fvd-btn"
-              onClick={() => {
-                const base = csvBaseName(meta?.name);
-                downloadCsv(
-                  `${base}_eels_quant.csv`,
-                  eelsQuantToCsv(quant, {
-                    imageName: meta?.name ?? activeId ?? "",
-                  }),
-                );
-                setStatus(`EELS: exported ${quant.elements.length} elements`);
-              }}
-              title="Download the EELS quantification table as CSV"
-            >
-              Export CSV
-            </button>
-          </div>
+      {tab === "Quantify" && quant && (
+        <EelsQuantResults
+          result={quant}
+          onExport={() => {
+            const base = csvBaseName(meta?.name);
+            downloadCsv(
+              `${base}_eels_quant.csv`,
+              eelsQuantToCsv(quant, {
+                imageName: meta?.name ?? activeId ?? "",
+              }),
+            );
+            setStatus(`EELS: exported ${quant.elements.length} elements`);
+          }}
+        />
+      )}
         </>
       )}
-
-      <EelsAdvanced
-        activeId={activeId}
-        isCube={isCube}
-        units={spectrum?.units ?? "eV"}
-      />
+      <div hidden={tab !== "Advanced"}>
+        <EelsAdvanced
+          activeId={activeId}
+          isCube={isCube}
+          units={spectrum?.units ?? "eV"}
+          tabbed
+          visible={tab === "Advanced"}
+        />
+      </div>
     </div>
   );
 }

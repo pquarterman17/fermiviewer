@@ -25,10 +25,14 @@ export default function EelsAdvanced({
   activeId,
   isCube,
   units,
+  tabbed = false,
+  visible = true,
 }: {
   activeId: string | null;
   isCube: boolean;
   units: string;
+  tabbed?: boolean;
+  visible?: boolean;
 }) {
   const ingestDerived = useViewer((s) => s.ingestDerived);
   const setStatus = useViewer((s) => s.setStatus);
@@ -59,7 +63,7 @@ export default function EelsAdvanced({
     const el = host.current;
     plotRef.current?.destroy();
     plotRef.current = null;
-    if (!el || !plot) return;
+    if (!visible || !el || !plot) return;
     const styles = getComputedStyle(document.documentElement);
     const accent = styles.getPropertyValue("--accent").trim() || "#a78bfa";
     let series: uPlot.Series[];
@@ -100,7 +104,7 @@ export default function EelsAdvanced({
       plotRef.current?.destroy();
       plotRef.current = null;
     };
-  }, [plot]);
+  }, [plot, visible]);
 
   if (!activeId) return null;
 
@@ -194,17 +198,19 @@ export default function EelsAdvanced({
 
   return (
     <>
-      <div className="fvd-ws-section">
-        <span>Advanced</span>
-        <button
-          className="fvd-btn"
-          onClick={() => setOpen(!open)}
-          title={`${open ? "Hide" : "Show"} advanced EELS tools`}
-        >
-          {open ? "Hide" : "Show"}
-        </button>
-      </div>
-      {open && (
+      {!tabbed && (
+        <div className="fvd-ws-section">
+          <span>Advanced</span>
+          <button
+            className="fvd-btn"
+            onClick={() => setOpen(!open)}
+            title={`${open ? "Hide" : "Show"} advanced EELS tools`}
+          >
+            {open ? "Hide" : "Show"}
+          </button>
+        </div>
+      )}
+      {(tabbed || open) && (
         <>
           <div className="fvd-ws-row">
             <span className="k">ZLP win</span>

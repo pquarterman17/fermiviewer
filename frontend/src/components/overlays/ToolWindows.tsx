@@ -34,7 +34,8 @@ const defaultWidths: Partial<Record<ToolKind, number>> = {
   crosssection: 640,
   structure: 480,
   eds: 680,
-  diffraction: 332,
+  eels: 680,
+  diffraction: 680,
   fftmask: 332,
   pixels: 300,
   roughness: 620,
@@ -51,7 +52,7 @@ export default function ToolWindows() {
       y={tool.y}
       z={tool.z}
       width={defaultWidths[tool.kind] ?? 360}
-      height={tool.kind === "eds" ? 620 : undefined}
+      height={["eds", "eels", "diffraction"].includes(tool.kind) ? 620 : undefined}
     >
       <Suspense
         fallback={

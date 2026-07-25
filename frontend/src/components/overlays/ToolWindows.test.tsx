@@ -16,6 +16,12 @@ vi.mock("../workshops/CrossSectionGuide", () => ({
 vi.mock("../workshops/EdsWorkshop", () => ({
   default: () => <div>EDS workspace content</div>,
 }));
+vi.mock("../workshops/EelsWorkshop", () => ({
+  default: () => <div>EELS workspace content</div>,
+}));
+vi.mock("../workshops/DiffractionWorkshop", () => ({
+  default: () => <div>Diffraction workspace content</div>,
+}));
 vi.mock("../workshops/RoughnessWorkshop", () => ({
   default: () => <div>Roughness workspace content</div>,
 }));
@@ -58,6 +64,19 @@ describe("ToolWindows", () => {
     useViewer.setState({ tools: [{ kind: "eds", x: 10, y: 20, z: 1 }] });
     render(<ToolWindows />);
     const content = await screen.findByText("EDS workspace content");
+    expect(content.closest(".fvd-tool-window")).toHaveStyle({
+      width: "680px",
+      height: "620px",
+    });
+  });
+
+  it.each([
+    ["eels", "EELS workspace content"],
+    ["diffraction", "Diffraction workspace content"],
+  ] as const)("gives %s a wide tabbed workspace", async (kind, text) => {
+    useViewer.setState({ tools: [{ kind, x: 10, y: 20, z: 1 }] });
+    render(<ToolWindows />);
+    const content = await screen.findByText(text);
     expect(content.closest(".fvd-tool-window")).toHaveStyle({
       width: "680px",
       height: "620px",
