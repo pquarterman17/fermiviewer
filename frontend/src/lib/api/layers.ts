@@ -88,7 +88,9 @@ export interface LayersMultiMap {
 export interface LayersMultiResult {
   axis: "y" | "x";
   unit: string;
+  reference_id: string;
   reference_positions: number[];
+  roi: [number, number, number, number] | null;
   maps: LayersMultiMap[];
 }
 
@@ -96,11 +98,23 @@ export interface LayersMultiResult {
  *  Detects interfaces on the reference map, re-measures them on each. */
 export function analyzeLayersMulti(
   imageIds: string[],
-  opts: { reference?: number; modality?: "haadf" | "eels" | "bf" | "df"; waviness?: boolean } = {},
+  opts: {
+    reference?: number;
+    roi?: [number, number, number, number] | null;
+    axis?: "auto" | "y" | "x";
+    sensitivity?: number;
+    nLayers?: number;
+    modality?: "haadf" | "eels" | "bf" | "df";
+    waviness?: boolean;
+  } = {},
 ): Promise<LayersMultiResult> {
   return post("/api/analyze/layers/multi", {
     image_ids: imageIds,
     reference: opts.reference ?? 0,
+    roi: opts.roi ?? null,
+    axis: opts.axis ?? "auto",
+    sensitivity: opts.sensitivity ?? 0.3,
+    n_layers: opts.nLayers ?? 0,
     modality: opts.modality ?? "haadf",
     waviness: opts.waviness ?? true,
   });

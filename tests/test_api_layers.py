@@ -160,7 +160,7 @@ def test_layers_roughness_block_and_conformality(client, tmp_path) -> None:
     assert body["layers"][0]["conformality"] > 0.9
 
 
-def _open_map(client, tmp_path, name: str, sig: float) -> str:
+def _open_map(client, tmp_path, name: str, sig: float, px: float = PX) -> str:
     """A layered image with interfaces at CENTERS but a given erf width."""
     y = np.arange(H, dtype=np.float64)
     prof = np.full(H, LEVELS[0])
@@ -170,8 +170,8 @@ def _open_map(client, tmp_path, name: str, sig: float) -> str:
     f = write_mini_dm4(
         tmp_path / f"{name}.dm4", dims=[W, H],
         data=img.ravel().astype(np.float32), data_type=2,
-        cal=[{"scale": PX, "origin": 0, "units": "nm"},
-             {"scale": PX, "origin": 0, "units": "nm"}],
+        cal=[{"scale": px, "origin": 0, "units": "nm"},
+             {"scale": px, "origin": 0, "units": "nm"}],
     )
     return client.post("/api/session/open", json={"paths": [str(f)]}).json()[0]["id"]
 
@@ -190,6 +190,35 @@ def test_layers_multi_per_element_sigma(client, tmp_path) -> None:
     sharp_sig = np.mean([i["sigma_erf"] for i in body["maps"][0]["interfaces"]])
     diffuse_sig = np.mean([i["sigma_erf"] for i in body["maps"][1]["interfaces"]])
     assert diffuse_sig > sharp_sig * 1.5
+
+
+def test_layers_multi_honors_roi_and_reports_reference(client, tmp_path) -> None:
+    sharp = _open_map(client, tmp_path, "sharp-roi", 2.0)
+    diffuse = _open_map(client, tmp_path, "diffuse-roi", 5.0)
+    roi = [10, 1, 110, W]
+    r = client.post("/api/analyze/layers/multi", json={
+        "image_ids": [diffuse, sharp],
+        "reference": 1,
+        "roi": roi,
+        "axis": "y",
+        "sensitivity": 0.25,
+        "n_layers": 4,
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["reference_id"] == sharp
+    assert body["roi"] == roi
+    assert len(body["reference_positions"]) == 3
+
+
+def test_layers_multi_calibration_mismatch_422(client, tmp_path) -> None:
+    reference = _open_map(client, tmp_path, "cal-ref", 2.0)
+    mismatched = _open_map(client, tmp_path, "cal-other", 2.0, px=PX * 2)
+    r = client.post("/api/analyze/layers/multi", json={
+        "image_ids": [reference, mismatched],
+    })
+    assert r.status_code == 422
+    assert "incompatible spatial calibration" in r.json()["detail"]
 
 
 def test_layers_multi_shape_mismatch_422(client, tmp_path, image_id) -> None:

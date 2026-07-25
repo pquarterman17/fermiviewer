@@ -259,6 +259,7 @@ def analyze_grains_by_layer_route(req: GrainLayersRequest) -> dict:
 class LayersMultiRequest(BaseModel):
     image_ids: list[str]              # element/score maps to compare
     reference: int = 0               # which map's detection defines the interfaces
+    roi: tuple[int, int, int, int] | None = None
     axis: str = "auto"
     sensitivity: float = 0.3
     n_layers: int = 0
@@ -291,11 +292,29 @@ def multi_layers_route(req: LayersMultiRequest) -> dict:
     ref = structs[ref_idx]
     px = ref.pixel_size if np.isfinite(ref.pixel_size) and ref.pixel_size > 0 else 1.0
     unit = ref.pixel_unit if ref.pixel_unit else "px"
+    ref_calibrated = bool(
+        np.isfinite(ref.pixel_size) and ref.pixel_size > 0 and ref.pixel_unit
+    )
+    for img_id, ds in zip(req.image_ids, structs, strict=True):
+        calibrated = bool(
+            np.isfinite(ds.pixel_size) and ds.pixel_size > 0 and ds.pixel_unit
+        )
+        if calibrated != ref_calibrated:
+            raise HTTPException(
+                422, f"{store.name(img_id)} has incompatible spatial calibration",
+            )
+        if calibrated and (
+            ds.pixel_unit != ref.pixel_unit
+            or not np.isclose(ds.pixel_size, ref.pixel_size, rtol=1e-6, atol=0)
+        ):
+            raise HTTPException(
+                422, f"{store.name(img_id)} has incompatible spatial calibration",
+            )
     try:
         ref_res = analyze_layers(
             ref.data, axis=req.axis, sensitivity=req.sensitivity,
             n_layers=req.n_layers, modality=req.modality, waviness=req.waviness,
-            pixel_size=px, unit=unit,
+            pixel_size=px, unit=unit, roi=req.roi,
         )
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
@@ -307,7 +326,8 @@ def multi_layers_route(req: LayersMultiRequest) -> dict:
         m_px = ds.pixel_size if np.isfinite(ds.pixel_size) and ds.pixel_size > 0 else px
         m_unit = ds.pixel_unit if ds.pixel_unit else unit
         res = recompute_layers(
-            ds.data, positions, axis=use_axis, pixel_size=m_px, unit=m_unit,
+            ds.data, positions, axis=use_axis, roi=req.roi,
+            pixel_size=m_px, unit=m_unit,
             waviness=req.waviness,
         )
         maps.append({
@@ -325,4 +345,11 @@ def multi_layers_route(req: LayersMultiRequest) -> dict:
             ],
         })
 
-    return {"axis": use_axis, "unit": unit, "reference_positions": positions, "maps": maps}
+    return {
+        "axis": use_axis,
+        "unit": unit,
+        "reference_id": req.image_ids[ref_idx],
+        "reference_positions": positions,
+        "roi": req.roi,
+        "maps": maps,
+    }

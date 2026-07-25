@@ -7,10 +7,8 @@ import { Fragment, useEffect, useState } from "react";
 
 import {
   analyzeLayers,
-  analyzeLayersMulti,
   applyFilter,
   editLayers,
-  type LayersMultiResult,
   type LayersResult,
 } from "../../lib/api";
 import {
@@ -26,6 +24,7 @@ import { AnalysisQualityCard } from "./AnalysisQualityCard";
 import AnalysisRegionSelect from "./AnalysisRegionSelect";
 import DepthPlot from "./LayersDepthPlot";
 import LayersRoughnessDetail from "./LayersRoughnessDetail";
+import LayersMultiCompare from "./LayersMultiCompare";
 
 // Per-band band colors — data colors (like false-color overlays), not chrome.
 // Mirrors the design system's layer-stack palette (WS5b).
@@ -170,13 +169,11 @@ export default function LayersWorkshop() {
   const [result, setResult] = useState<LayersResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [addPos, setAddPos] = useState("");
+  const [mode, setMode] = useState<"single" | "compare">("single");
   const layersFocusReq = useViewer((s) => s.layersFocusReq);
   const setLayersFocusReq = useViewer((s) => s.setLayersFocusReq);
   const images = useViewer((s) => s.images);
   const order = useViewer((s) => s.order);
-  const [selectedMaps, setSelectedMaps] = useState<string[]>([]);
-  const [multi, setMulti] = useState<LayersMultiResult | null>(null);
-  const [multiBusy, setMultiBusy] = useState(false);
   const [qualityAccepted, setQualityAccepted] = useState(false);
   const analysisRoi = useAnalysisRoi(activeId, meta?.shape ?? []);
   const roiKey = analysisRoi.roi?.join(":") ?? "whole";
@@ -187,28 +184,6 @@ export default function LayersWorkshop() {
     ? assessLayerQuality(result, Number(nLayers) || 0)
     : null;
   const canUseResult = layerQuality?.rating !== "poor" || qualityAccepted;
-
-  const toggleMap = (id: string) =>
-    setSelectedMaps((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
-
-  const runMulti = () => {
-    // the active image is the reference (first); add the other selected maps
-    const ids = [
-      ...(activeId ? [activeId] : []),
-      ...selectedMaps.filter((id) => id !== activeId),
-    ];
-    if (ids.length === 0) return;
-    setMultiBusy(true);
-    analyzeLayersMulti(ids, { reference: 0, modality, waviness: true })
-      .then(setMulti)
-      .catch((e: Error) => setStatus(`Layers multi: ${e.message}`))
-      .finally(() => setMultiBusy(false));
-  };
-
-  const mean = (xs: (number | null)[]): number | null => {
-    const v = xs.filter((x): x is number => x != null);
-    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
-  };
 
   // set the result + stage overlay + status from any (analyze or edit) response
   const applyResult = (
@@ -345,8 +320,30 @@ export default function LayersWorkshop() {
     );
   }
 
+  if (mode === "compare" && activeId) {
+    return (
+      <div className="fvd-ws">
+        <LayersMode value={mode} onChange={setMode} />
+        <AnalysisRegionSelect
+          choice={analysisRoi.choice}
+          options={analysisRoi.options}
+          disabled={false}
+          onChange={analysisRoi.setChoice}
+        />
+        <LayersMultiCompare
+          activeId={activeId}
+          mapIds={mapIds}
+          images={images}
+          roi={analysisRoi.roi}
+          regionLabel={analysisRoi.label}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="fvd-ws">
+      <LayersMode value={mode} onChange={setMode} />
       <AnalysisRegionSelect
         choice={analysisRoi.choice}
         options={analysisRoi.options}
@@ -651,67 +648,31 @@ export default function LayersWorkshop() {
         </div>
       )}
 
-      <details style={{ marginTop: 6 }}>
-        <summary style={{ cursor: "pointer", padding: "4px 0", fontWeight: 500 }}>
-          Per-element comparison (multi-map)
-        </summary>
-        <div className="fvd-ws-note" style={{ fontSize: 11 }}>
-          The active image is the reference; pick other element/score maps to
-          measure the same interfaces on (per-element σ_erf vs σ_w).
-        </div>
-        <div style={{ maxHeight: 110, overflowY: "auto", margin: "2px 0" }}>
-          {mapIds
-            .filter((id) => id !== activeId)
-            .map((id) => (
-              <label
-                key={id}
-                className="k"
-                style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedMaps.includes(id)}
-                  onChange={() => toggleMap(id)}
-                />
-                {images[id]?.name ?? id}
-              </label>
-            ))}
-        </div>
-        <div className="fvd-ws-row">
-          <button
-            className="fvd-btn"
-            title="Measure the same interfaces across the selected element maps"
-            disabled={multiBusy || !activeId}
-            onClick={runMulti}
-          >
-            {multiBusy ? "Comparing…" : "Compare"}
-          </button>
-        </div>
-        {multi && multi.maps.length > 0 && (
-          <table className="fvd-ws-table">
-            <thead>
-              <tr>
-                <th>Map</th>
-                <th>σ_erf ({multi.unit})</th>
-                <th>σ_w ({multi.unit})</th>
-              </tr>
-            </thead>
-            <tbody>
-              {multi.maps.map((m) => {
-                const se = mean(m.interfaces.map((i) => i.sigma_erf));
-                const sw = mean(m.interfaces.map((i) => i.sigma_w));
-                return (
-                  <tr key={m.image_id}>
-                    <td title={m.name}>{m.name.length > 18 ? `${m.name.slice(0, 17)}…` : m.name}</td>
-                    <td>{se == null ? "—" : se.toFixed(3)}</td>
-                    <td>{sw == null ? "—" : sw.toFixed(3)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </details>
+    </div>
+  );
+}
+
+function LayersMode({
+  value,
+  onChange,
+}: {
+  value: "single" | "compare";
+  onChange: (value: "single" | "compare") => void;
+}) {
+  return (
+    <div className="fvd-seg" aria-label="Layer analysis mode">
+      <button
+        className={`fvd-seg-btn${value === "single" ? " active" : ""}`}
+        onClick={() => onChange("single")}
+      >
+        Single map
+      </button>
+      <button
+        className={`fvd-seg-btn${value === "compare" ? " active" : ""}`}
+        onClick={() => onChange("compare")}
+      >
+        Compare maps
+      </button>
     </div>
   );
 }

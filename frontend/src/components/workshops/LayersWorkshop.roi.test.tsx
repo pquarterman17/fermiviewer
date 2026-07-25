@@ -41,6 +41,14 @@ afterEach(() => {
 });
 
 describe("LayersWorkshop ROI", () => {
+  it("promotes multi-map analysis to a dedicated comparison mode", () => {
+    useViewer.getState().ingest([image]);
+    render(<LayersWorkshop />);
+    fireEvent.click(screen.getByRole("button", { name: "Compare maps" }));
+    expect(screen.getByLabelText("Reference")).toBeVisible();
+    expect(screen.getByText(/Detect interfaces once on a reference/)).toBeVisible();
+  });
+
   it("passes the selected named ROI to layer detection", async () => {
     useViewer.getState().ingest([image]);
     useViewer.setState({

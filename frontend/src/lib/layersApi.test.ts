@@ -112,7 +112,15 @@ describe("analyzeLayersMulti request body", () => {
     globalThis.fetch = makeFetch({
       axis: "y", unit: "nm", reference_positions: [], maps: [],
     });
-    await analyzeLayersMulti(["a", "b", "c"], { reference: 1 });
+    await analyzeLayersMulti(["a", "b", "c"], {
+      reference: 1,
+      roi: [11, 21, 100, 200],
+      axis: "x",
+      sensitivity: 0.2,
+      nLayers: 4,
+      modality: "eels",
+      waviness: false,
+    });
     const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
       string,
       RequestInit,
@@ -121,6 +129,11 @@ describe("analyzeLayersMulti request body", () => {
     const body = JSON.parse(init.body as string) as Record<string, unknown>;
     expect(body.image_ids).toEqual(["a", "b", "c"]);
     expect(body.reference).toBe(1);
-    expect(body.waviness).toBe(true);
+    expect(body.roi).toEqual([11, 21, 100, 200]);
+    expect(body.axis).toBe("x");
+    expect(body.sensitivity).toBe(0.2);
+    expect(body.n_layers).toBe(4);
+    expect(body.modality).toBe("eels");
+    expect(body.waviness).toBe(false);
   });
 });
