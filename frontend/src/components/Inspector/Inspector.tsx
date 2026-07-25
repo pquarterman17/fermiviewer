@@ -18,7 +18,6 @@ import ToolsBrowser from "./ToolsBrowser";
 import TransformPanel from "./TransformPanel";
 
 const DiffractionWorkshop = lazy(() => import("../workshops/DiffractionWorkshop"));
-const EdsWorkshop = lazy(() => import("../workshops/EdsWorkshop"));
 const EelsWorkshop = lazy(() => import("../workshops/EelsWorkshop"));
 
 const TABS = ["Image", "EELS", "EDS", "Diff"] as const;
@@ -83,6 +82,35 @@ const KIND_LABEL: Record<ImageMeta["kind"], string> = {
   spectrum: "Spectrum",
   spectrum_image: "Spectrum image",
 };
+
+function EdsWorkspaceLauncher({ meta }: { meta: ImageMeta }) {
+  const openTool = useViewer((s) => s.openTool);
+  const isCube = meta.kind === "spectrum_image";
+  return (
+    <Card title="EDS">
+      <div className="fvd-meta-row">
+        <span className="k">Workspace</span>
+        <span className="v">Spectrum · maps · quantification</span>
+      </div>
+      <p className="fvd-ws-note">
+        EDS uses one resizable workspace so spectra, maps, composites, and
+        quantitative results do not compete inside the inspector.
+      </p>
+      <button
+        className="fvd-btn"
+        disabled={!isCube}
+        onClick={() => openTool("eds")}
+      >
+        Open EDS workspace
+      </button>
+      {!isCube && (
+        <div className="fvd-ws-note">
+          Select an EDS spectrum-image cube to explore it.
+        </div>
+      )}
+    </Card>
+  );
+}
 
 export default function Inspector() {
   const meta = useViewer((s) =>
@@ -152,9 +180,7 @@ export default function Inspector() {
           </Card>
         )}
         {tab === "EDS" && (
-          <Card title="EDS">
-            <EdsWorkshop />
-          </Card>
+          <EdsWorkspaceLauncher meta={meta} />
         )}
         {tab === "Diff" && (
           <Card title="Diffraction">

@@ -433,8 +433,10 @@ def image_spectrum(
         r1, c1 = min(r1, h), min(c1, w)
         if r0 > r1 or c0 > c1:
             raise HTTPException(422, "region is empty after clamping")
-        cube = np.asarray(ds.data, dtype=np.float64)
-        counts = cube[r0 - 1:r1, c0 - 1:c1, :].sum(axis=(0, 1))
+        # Slice before converting/accumulating so a one-pixel probe never
+        # materializes a float64 copy of the entire spectrum image.
+        region_data = ds.data[r0 - 1:r1, c0 - 1:c1, :]
+        counts = np.sum(region_data, axis=(0, 1), dtype=np.float64)
         region = [r0, c0, r1, c1]
     else:
         counts = ds.sum_spectrum()

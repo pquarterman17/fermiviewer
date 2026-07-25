@@ -309,18 +309,22 @@ export function edsElementMap(
     bgGap?: number;
     e0Kev?: number; // beam energy (keV) — required for bg="bremsstrahlung"
     saveDerived?: boolean;
+    signal?: AbortSignal;
   } = {},
 ): Promise<EdsElementMapResult> {
-  return post("/api/eds/element-map", {
+  const body: Record<string, unknown> = {
     image_id: id,
     e_lo: eLo,
     e_hi: eHi,
     bg: opts.bg ?? "linear",
-    bg_width: opts.bgWidth ?? NaN,
     bg_gap: opts.bgGap ?? 0,
-    e0_kev: opts.e0Kev ?? NaN,
     save_derived: opts.saveDerived ?? false,
-  });
+  };
+  // JSON.stringify converts NaN to null. Omit optional numeric fields instead
+  // so FastAPI applies its defaults and the request remains valid JSON.
+  if (opts.bgWidth != null) body.bg_width = opts.bgWidth;
+  if (opts.e0Kev != null) body.e0_kev = opts.e0Kev;
+  return post("/api/eds/element-map", body, { signal: opts.signal });
 }
 
 export interface EdsLine {

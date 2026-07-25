@@ -130,7 +130,10 @@ class DataStruct:
         if self.kind is DataKind.SPECTRUM:
             return np.array(self.data, dtype=np.float64)
         if self.kind is DataKind.SPECTRUM_IMAGE:
-            summed: np.ndarray = np.asarray(self.data, dtype=np.float64).sum(axis=(0, 1))
+            # Accumulate directly into a float64 output. Casting the full cube
+            # first temporarily duplicates multi-gigabyte SI datasets.
+            summed = np.empty(self.n_channels, dtype=np.float64)
+            np.sum(self.data, axis=(0, 1), dtype=np.float64, out=summed)
             return summed
         raise ValueError("images have no spectrum")
 

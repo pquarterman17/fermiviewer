@@ -1,5 +1,5 @@
-// Element selector for the EDS explorer: a periodic table by default, with a
-// toggle to the compact dropdown. The choice is persisted (localStorage), so
+// Element selector for the EDS explorer: a compact dropdown by default, with a
+// toggle to the full periodic table. The choice is persisted (localStorage), so
 // the picker preference sticks across sessions. Both modes call onSelect().
 
 import { useState } from "react";
@@ -18,7 +18,7 @@ export default function EdsElementPicker({
   onSelect: (symbol: string) => void;
 }) {
   const [mode, setMode] = useState<"periodic" | "dropdown">(() =>
-    localStorage.getItem(PICKER_KEY) === "dropdown" ? "dropdown" : "periodic",
+    localStorage.getItem(PICKER_KEY) === "periodic" ? "periodic" : "dropdown",
   );
   const toggle = () => {
     const next = mode === "periodic" ? "dropdown" : "periodic";

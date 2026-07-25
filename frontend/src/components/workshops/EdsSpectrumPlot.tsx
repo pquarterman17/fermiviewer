@@ -16,6 +16,8 @@ export default function SpectrumPlot({
   eHi,
   onDragWindow,
   markers = [],
+  height = 260,
+  logScale = false,
 }: {
   spec: Spectrum;
   label: string;
@@ -23,6 +25,8 @@ export default function SpectrumPlot({
   eHi: number;
   onDragWindow: (lo: number, hi: number) => void;
   markers?: PeakMarker[];
+  height?: number;
+  logScale?: boolean;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
@@ -36,7 +40,7 @@ export default function SpectrumPlot({
     const u = new uPlot(
       {
         width: host.clientWidth || 320,
-        height: 160,
+        height,
         title: label,
         // energy axis is keV, not a timestamp — uPlot defaults x to a time
         // scale, which renders small keV values as clock/date labels
@@ -44,8 +48,8 @@ export default function SpectrumPlot({
         series: [
           { label: `E (${spec.units})` },
           {
-            label: "Counts",
-            stroke: "#333",
+            label: logScale ? "log₁₀(counts + 1)" : "Counts",
+            stroke: "#8b5cf6",
             width: 1,
             points: { show: false },
           },
@@ -54,7 +58,7 @@ export default function SpectrumPlot({
           { stroke: "#888", grid: { stroke: "rgba(128,128,128,0.15)" } },
           { stroke: "#888", grid: { stroke: "rgba(128,128,128,0.15)" } },
         ],
-        legend: { show: false },
+        legend: { show: true },
         cursor: { y: false },
         hooks: {
           draw: [
@@ -108,7 +112,9 @@ export default function SpectrumPlot({
       } satisfies uPlot.Options,
       [
         spec.energy as unknown as number[],
-        spec.counts as unknown as number[],
+        (logScale
+          ? spec.counts.map((v) => Math.log10(Math.max(0, v) + 1))
+          : spec.counts) as unknown as number[],
       ] as uPlot.AlignedData,
       host,
     );
@@ -134,7 +140,7 @@ export default function SpectrumPlot({
 
     const ro = new ResizeObserver(() => {
       if (u && host.clientWidth > 0)
-        u.setSize({ width: host.clientWidth, height: 160 });
+        u.setSize({ width: host.clientWidth, height });
     });
     ro.observe(host);
     return () => {
@@ -145,7 +151,13 @@ export default function SpectrumPlot({
       plotRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spec, label, eLo, eHi, markers]);
+  }, [spec, label, eLo, eHi, markers, height, logScale]);
 
-  return <div ref={hostRef} className="fvd-ws-plot" />;
+  return (
+    <div
+      ref={hostRef}
+      className="fvd-ws-plot fvd-eds-spectrum-plot"
+      style={{ minHeight: height + 20 }}
+    />
+  );
 }

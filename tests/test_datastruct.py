@@ -47,6 +47,20 @@ def test_sum_spectrum_si_cube() -> None:
     assert ds.energy_axis[1] == pytest.approx(0.1)
 
 
+def test_sum_spectrum_float32_accumulates_into_float64() -> None:
+    cube = np.arange(24, dtype=np.float32).reshape(2, 3, 4)
+    ds = DataStruct(
+        cube, DataKind.SPECTRUM_IMAGE,
+        (AxisCal(), AxisCal(), AxisCal(scale=0.1, units="keV")),
+    )
+    summed = ds.sum_spectrum()
+    assert summed.dtype == np.float64
+    np.testing.assert_allclose(
+        summed,
+        np.sum(cube, axis=(0, 1), dtype=np.float64),
+    )
+
+
 @pytest.mark.parametrize(
     "kind, data",
     [

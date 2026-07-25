@@ -16,23 +16,23 @@ import {
   edsElementMap,
   edsLineEnergy,
   fetchSpectrum,
-  type EdsElementMapResult,
   type ImageMeta,
   type Spectrum,
 } from "../../lib/api";
 import { useEdsPeakMarkers } from "../../hooks/useEdsPeakMarkers";
+import type { ColormapName } from "../../lib/colormaps";
 import { elementMapCsv, spectrumCsv } from "../../lib/edsExploreCsv";
 import { useViewer } from "../../store/viewer";
 import EdsElementPicker from "./EdsElementPicker";
-import MapCanvas from "./EdsElementMap";
+import EdsElementMap from "./EdsElementMap";
+import EdsSpectrumPanel, { type EdsSpectrumSource } from "./EdsSpectrumPanel";
+import EdsSpectrumSourcePicker from "./EdsSpectrumSourcePicker";
 import SpectrumPlot from "./EdsSpectrumPlot";
-import RegionPicker, { type Rect1 } from "./RegionPicker";
-import SpectrumNavigationControl from "./SpectrumNavigationControl";
+import type { Rect1 } from "./RegionPicker";
+import { type EdsMapBackground, useEdsElementMap } from "./useEdsElementMap";
 import { useSpectrumProbe } from "./useSpectrumProbe";
 
 const HALF_WIN = 0.085; // keV, default half-window (matches MATLAB halfWin)
-
-type BgMode = "linear" | "none" | "bremsstrahlung";
 
 // ── helpers ───────────────────────────────────────────────────────────
 
@@ -67,7 +67,7 @@ export default function EdsSpectrumImage({
   // energy window state
   const [eLo, setELo] = useState(0.5);
   const [eHi, setEHi] = useState(1.5);
-  const [bgMode, setBgMode] = useState<BgMode>("linear");
+  const [bgMode, setBgMode] = useState<EdsMapBackground>("linear");
   const [e0Kev, setE0Kev] = useState(30); // beam energy for bremsstrahlung bg
 
   // element picker
@@ -79,15 +79,16 @@ export default function EdsSpectrumImage({
   // spectrum display
   const [spectrum, setSpectrum] = useState<Spectrum | null>(null);
   const [specLabel, setSpecLabel] = useState("Sum spectrum");
+  const [specSource, setSpecSource] = useState<EdsSpectrumSource>("sum");
+  const [specBusy, setSpecBusy] = useState(false);
+  const [logScale, setLogScale] = useState(false);
+  const [spectrumExpanded, setSpectrumExpanded] = useState(false);
   const [showPeaks, setShowPeaks] = useState(true);
+  const sumSpectrum = useRef<Spectrum | null>(null);
 
   // map
-  const [mapResult, setMapResult] = useState<EdsElementMapResult | null>(null);
-  const [mapBusy, setMapBusy] = useState(false);
   const [addBusy, setAddBusy] = useState(false);
-
-  // ROI
-  const [roi, setRoi] = useState<Rect1 | null>(null);
+  const [libraryBusy, setLibraryBusy] = useState(false);
 
   const isCube = meta?.kind === "spectrum_image";
 
@@ -112,6 +113,12 @@ export default function EdsSpectrumImage({
     },
     [stillOpen, setStatus],
   );
+  const { mapResult, mapBusy, recomputeMap } = useEdsElementMap({
+    imageId: activeId,
+    e0Kev,
+    isOpen: stillOpen,
+    onStatus: reportEds,
+  });
 
   // When the active cube is removed or switched away, clear the status line if
   // it still shows the message this explorer last wrote: an EDS error must not
@@ -125,41 +132,19 @@ export default function EdsSpectrumImage({
     };
   }, [activeId]);
 
-  // recompute map on window/bg change
-  const recomputeMap = useCallback(
-    (lo: number, hi: number, bg: BgMode) => {
-      const id = activeId;
-      if (!id) return;
-      setMapBusy(true);
-      edsElementMap(id, lo, hi, {
-        bg,
-        e0Kev: bg === "bremsstrahlung" ? e0Kev : undefined,
-      })
-        .then((r) => {
-          if (!stillOpen(id)) return; // image removed mid-request; drop result
-          setMapResult(r);
-          reportEds(
-            id,
-            `EDS map: ${lo.toFixed(3)}–${hi.toFixed(3)} keV (${bg}), ` +
-              `${r.total_counts.toFixed(0)} counts`,
-          );
-        })
-        .catch((e: Error) => reportEds(id, `EDS map: ${e.message}`))
-        .finally(() => setMapBusy(false));
-    },
-    [activeId, reportEds, stillOpen, e0Kev],
-  );
-
-  // fetch sum spectrum on mount / cube change
   useEffect(() => {
     if (!activeId || !isCube) return;
     const id = activeId;
     let cancelled = false;
+    sumSpectrum.current = null;
+    setSpecBusy(true);
     fetchSpectrum(id)
       .then((s) => {
         if (cancelled || !stillOpen(id)) return;
+        sumSpectrum.current = s;
         setSpectrum(s);
         setSpecLabel("Sum spectrum");
+        setSpecSource("sum");
         // initialise window to first element or default
         if (elements.length > 0) {
           handleElementChange(elements[0]);
@@ -171,7 +156,10 @@ export default function EdsSpectrumImage({
           recomputeMap(lo, hi, "linear");
         }
       })
-      .catch((e: Error) => reportEds(id, `EDS spectrum: ${e.message}`));
+      .catch((e: Error) => reportEds(id, `EDS spectrum: ${e.message}`))
+      .finally(() => {
+        if (!cancelled) setSpecBusy(false);
+      });
     return () => {
       cancelled = true;
     };
@@ -185,7 +173,7 @@ export default function EdsSpectrumImage({
     onSpectrum: (next, rect) => {
       setSpectrum(next);
       setSpecLabel(`px [${rect[0]}, ${rect[1]}]`);
-      setRoi(rect);
+      setSpecSource("live");
     },
     onError: (e) => reportEds(activeId, `EDS spectrum: ${e.message}`),
   });
@@ -221,18 +209,9 @@ export default function EdsSpectrumImage({
     setEHi(hi2);
     setSelElem("(custom)");
     recomputeMap(lo2, hi2, bgMode);
-    // refresh window patch on spectrum
-    const id = activeId;
-    if (id) {
-      fetchSpectrum(id, roi ?? undefined)
-        .then((s) => {
-          if (stillOpen(id)) setSpectrum(s);
-        })
-        .catch((e: Error) => reportEds(id, `EDS spectrum: ${e.message}`));
-    }
   };
 
-  const handleBgChange = (mode: BgMode) => {
+  const handleBgChange = (mode: EdsMapBackground) => {
     setBgMode(mode);
     recomputeMap(eLo, eHi, mode);
   };
@@ -261,34 +240,68 @@ export default function EdsSpectrumImage({
       .finally(() => setAddBusy(false));
   };
 
-  const handleRoi = (rect: Rect1 | null) => {
-    setRoi(rect);
+  const handleAddToLibrary = (cmap: ColormapName) => {
     const id = activeId;
     if (!id) return;
+    setLibraryBusy(true);
+    edsElementMap(id, eLo, eHi, {
+      bg: bgMode,
+      e0Kev: bgMode === "bremsstrahlung" ? e0Kev : undefined,
+      saveDerived: true,
+    })
+      .then((result) => {
+        if (!stillOpen(id) || !result.map_meta) return;
+        const store = useViewer.getState();
+        store.ingestDerived([result.map_meta]);
+        store.setDisplay(result.map_meta.id, { cmap }, { silent: true });
+        store.setActive(id);
+        reportEds(id, `EDS map added to library with ${cmap} colormap`);
+      })
+      .catch((e: Error) => reportEds(id, `EDS library: ${e.message}`))
+      .finally(() => setLibraryBusy(false));
+  };
+
+  const handleRoi = (rect: Rect1 | null) => {
+    const id = activeId;
+    if (!id) return;
+    setSpecBusy(true);
     fetchSpectrum(id, rect ?? undefined)
       .then((s) => {
         if (!stillOpen(id)) return;
         setSpectrum(s);
         setSpecLabel(
           rect
-            ? `ROI [${rect[0]}:${rect[2]}, ${rect[1]}:${rect[3]}]`
+            ? rect[0] === rect[2] && rect[1] === rect[3]
+              ? `Pixel [${rect[0]}, ${rect[1]}]`
+              : `ROI [${rect[0]}:${rect[2]}, ${rect[1]}:${rect[3]}]`
             : "Sum spectrum",
         );
+        setSpecSource(rect ? "picker" : "sum");
       })
-      .catch((e: Error) => reportEds(id, `EDS spectrum: ${e.message}`));
+      .catch((e: Error) => reportEds(id, `EDS spectrum: ${e.message}`))
+      .finally(() => setSpecBusy(false));
   };
 
   const handleShowSum = () => {
     const id = activeId;
     if (!id) return;
-    setRoi(null);
+    if (sumSpectrum.current) {
+      setSpectrum(sumSpectrum.current);
+      setSpecLabel("Sum spectrum");
+      setSpecSource("sum");
+      return;
+    }
+    setSpecBusy(true);
     fetchSpectrum(id)
       .then((s) => {
         if (!stillOpen(id)) return;
+        sumSpectrum.current = s;
         setSpectrum(s);
         setSpecLabel("Sum spectrum");
+        setSpecSource("sum");
       })
-      .catch((e: Error) => reportEds(id, `EDS sum: ${e.message}`));
+      .catch((e: Error) => reportEds(id, `EDS sum: ${e.message}`))
+      .finally(() => setSpecBusy(false));
   };
 
   const exportMapCsv = () => {
@@ -309,6 +322,39 @@ export default function EdsSpectrumImage({
 
   return (
     <div className="fvd-ws">
+      <EdsSpectrumPanel
+        source={specSource}
+        label={specLabel}
+        busy={specBusy}
+        liveActive={captureMode === "specnav"}
+        logScale={logScale}
+        expanded={spectrumExpanded}
+        onShowSum={handleShowSum}
+        onToggleLive={() =>
+          setCaptureMode(captureMode === "specnav" ? "none" : "specnav")
+        }
+        onShowPicker={() =>
+          document
+            .getElementById("eds-spectrum-picker")
+            ?.scrollIntoView({ block: "nearest" })
+        }
+        onToggleLog={() => setLogScale((on) => !on)}
+        onToggleExpanded={() => setSpectrumExpanded((on) => !on)}
+      >
+        {spectrum && (
+          <SpectrumPlot
+            spec={spectrum}
+            label={specLabel}
+            eLo={eLo}
+            eHi={eHi}
+            onDragWindow={handleWindowChange}
+            markers={peakMarkers}
+            height={spectrumExpanded ? 360 : 260}
+            logScale={logScale}
+          />
+        )}
+      </EdsSpectrumPanel>
+
       {/* Element picker — periodic table by default, dropdown via toggle */}
       <div className="fvd-ws-row" style={{ alignItems: "flex-start" }}>
         <span className="k">Element</span>
@@ -371,7 +417,7 @@ export default function EdsSpectrumImage({
               onChange={(e) => {
                 const v = Number(e.target.value) || 0;
                 setE0Kev(v);
-                if (v > eHi) recomputeMap(eLo, eHi, "bremsstrahlung");
+                if (v > eHi) recomputeMap(eLo, eHi, "bremsstrahlung", v);
               }}
             />
           </>
@@ -393,95 +439,35 @@ export default function EdsSpectrumImage({
           />
           Label peaks
         </label>
-        <button
-          className="fvd-btn"
-          style={{ marginLeft: 8 }}
-          onClick={handleShowSum}
-          title="Show sum spectrum of the whole cube"
-        >
-          Sum spectrum
-        </button>
       </div>
 
-      {/* Live spectrum plot (drag to set window) */}
-      {spectrum && (
-        <SpectrumPlot
-          spec={spectrum}
-          label={specLabel}
-          eLo={eLo}
-          eHi={eHi}
-          onDragWindow={handleWindowChange}
-          markers={peakMarkers}
+      {mapResult && (
+        <EdsElementMap
+          result={mapResult}
+          busy={mapBusy}
+          libraryBusy={libraryBusy}
+          compositeBusy={addBusy}
+          canAddToComposite={selElem !== "(custom)"}
+          onAddToLibrary={handleAddToLibrary}
+          onAddToComposite={onAddToComposite ? handleAddToComposite : undefined}
         />
       )}
 
-      {/* Element map canvas */}
-      <div className="fvd-ws-row">
-        <span className="k">
-          {mapBusy
-            ? "Computing…"
-            : mapResult
-              ? `Map (${mapResult.e_lo.toFixed(3)}–${mapResult.e_hi.toFixed(3)} keV)`
-              : "Map"}
-        </span>
-        {onAddToComposite && mapResult && (
-          <button
-            className="fvd-btn"
-            style={{ marginLeft: "auto" }}
-            disabled={addBusy || selElem === "(custom)"}
-            title={
-              selElem === "(custom)"
-                ? "Pick an element to add its map to the composite overlay"
-                : `Add ${selElem}'s map to the composite overlay (colour assigned automatically)`
-            }
-            onClick={handleAddToComposite}
-          >
-            {addBusy ? "Adding…" : "+ Composite"}
-          </button>
-        )}
-      </div>
-      {mapResult && <MapCanvas result={mapResult} />}
-
-      {/* ROI picker — drag on the element map preview */}
       {activeId && (
-        <>
-          <div className="fvd-ws-row">
-            <span className="k">
-              Click pixel / drag ROI on the preview to select spectrum source:
-            </span>
-          </div>
-          <RegionPicker id={activeId} onRegion={handleRoi} />
-          {isCube && (
-            <SpectrumNavigationControl
-              active={captureMode === "specnav"}
-              pixel={specnavPixel}
-              onToggle={() =>
-                setCaptureMode(captureMode === "specnav" ? "none" : "specnav")
-              }
-            />
-          )}
-        </>
+        <EdsSpectrumSourcePicker
+          imageId={activeId}
+          liveActive={isCube && captureMode === "specnav"}
+          livePixel={specnavPixel}
+          mapReady={!!mapResult}
+          spectrumReady={!!spectrum}
+          onRegion={handleRoi}
+          onToggleLive={() =>
+            setCaptureMode(captureMode === "specnav" ? "none" : "specnav")
+          }
+          onExportMap={exportMapCsv}
+          onExportSpectrum={exportSpectrumCsv}
+        />
       )}
-
-      {/* Export */}
-      <div className="fvd-ws-row">
-        <button
-          className="fvd-btn"
-          disabled={!mapResult}
-          onClick={exportMapCsv}
-          title="Export the current element map as CSV"
-        >
-          Export map CSV
-        </button>
-        <button
-          className="fvd-btn"
-          disabled={!spectrum}
-          onClick={exportSpectrumCsv}
-          title="Export the displayed spectrum as CSV"
-        >
-          Export spectrum CSV
-        </button>
-      </div>
     </div>
   );
 }
