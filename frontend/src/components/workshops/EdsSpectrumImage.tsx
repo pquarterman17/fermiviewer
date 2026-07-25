@@ -16,7 +16,6 @@ import {
   edsElementMap,
   edsLineEnergy,
   fetchSpectrum,
-  type EdsElementMapResult,
   type ImageMeta,
   type Spectrum,
 } from "../../lib/api";
@@ -30,11 +29,10 @@ import EdsSpectrumPanel, { type EdsSpectrumSource } from "./EdsSpectrumPanel";
 import EdsSpectrumSourcePicker from "./EdsSpectrumSourcePicker";
 import SpectrumPlot from "./EdsSpectrumPlot";
 import type { Rect1 } from "./RegionPicker";
+import { type EdsMapBackground, useEdsElementMap } from "./useEdsElementMap";
 import { useSpectrumProbe } from "./useSpectrumProbe";
 
 const HALF_WIN = 0.085; // keV, default half-window (matches MATLAB halfWin)
-
-type BgMode = "linear" | "none" | "bremsstrahlung";
 
 // ── helpers ───────────────────────────────────────────────────────────
 
@@ -69,7 +67,7 @@ export default function EdsSpectrumImage({
   // energy window state
   const [eLo, setELo] = useState(0.5);
   const [eHi, setEHi] = useState(1.5);
-  const [bgMode, setBgMode] = useState<BgMode>("linear");
+  const [bgMode, setBgMode] = useState<EdsMapBackground>("linear");
   const [e0Kev, setE0Kev] = useState(30); // beam energy for bremsstrahlung bg
 
   // element picker
@@ -86,14 +84,11 @@ export default function EdsSpectrumImage({
   const [logScale, setLogScale] = useState(false);
   const [spectrumExpanded, setSpectrumExpanded] = useState(false);
   const [showPeaks, setShowPeaks] = useState(true);
+  const sumSpectrum = useRef<Spectrum | null>(null);
 
   // map
-  const [mapResult, setMapResult] = useState<EdsElementMapResult | null>(null);
-  const [mapBusy, setMapBusy] = useState(false);
   const [addBusy, setAddBusy] = useState(false);
   const [libraryBusy, setLibraryBusy] = useState(false);
-
-  const [roi, setRoi] = useState<Rect1 | null>(null);
 
   const isCube = meta?.kind === "spectrum_image";
 
@@ -118,6 +113,12 @@ export default function EdsSpectrumImage({
     },
     [stillOpen, setStatus],
   );
+  const { mapResult, mapBusy, recomputeMap } = useEdsElementMap({
+    imageId: activeId,
+    e0Kev,
+    isOpen: stillOpen,
+    onStatus: reportEds,
+  });
 
   // When the active cube is removed or switched away, clear the status line if
   // it still shows the message this explorer last wrote: an EDS error must not
@@ -131,38 +132,16 @@ export default function EdsSpectrumImage({
     };
   }, [activeId]);
 
-  const recomputeMap = useCallback(
-    (lo: number, hi: number, bg: BgMode) => {
-      const id = activeId;
-      if (!id) return;
-      setMapBusy(true);
-      edsElementMap(id, lo, hi, {
-        bg,
-        e0Kev: bg === "bremsstrahlung" ? e0Kev : undefined,
-      })
-        .then((r) => {
-          if (!stillOpen(id)) return; // image removed mid-request; drop result
-          setMapResult(r);
-          reportEds(
-            id,
-            `EDS map: ${lo.toFixed(3)}–${hi.toFixed(3)} keV (${bg}), ` +
-              `${r.total_counts.toFixed(0)} counts`,
-          );
-        })
-        .catch((e: Error) => reportEds(id, `EDS map: ${e.message}`))
-        .finally(() => setMapBusy(false));
-    },
-    [activeId, reportEds, stillOpen, e0Kev],
-  );
-
   useEffect(() => {
     if (!activeId || !isCube) return;
     const id = activeId;
     let cancelled = false;
+    sumSpectrum.current = null;
     setSpecBusy(true);
     fetchSpectrum(id)
       .then((s) => {
         if (cancelled || !stillOpen(id)) return;
+        sumSpectrum.current = s;
         setSpectrum(s);
         setSpecLabel("Sum spectrum");
         setSpecSource("sum");
@@ -195,7 +174,6 @@ export default function EdsSpectrumImage({
       setSpectrum(next);
       setSpecLabel(`px [${rect[0]}, ${rect[1]}]`);
       setSpecSource("live");
-      setRoi(rect);
     },
     onError: (e) => reportEds(activeId, `EDS spectrum: ${e.message}`),
   });
@@ -231,18 +209,9 @@ export default function EdsSpectrumImage({
     setEHi(hi2);
     setSelElem("(custom)");
     recomputeMap(lo2, hi2, bgMode);
-    // refresh window patch on spectrum
-    const id = activeId;
-    if (id) {
-      fetchSpectrum(id, roi ?? undefined)
-        .then((s) => {
-          if (stillOpen(id)) setSpectrum(s);
-        })
-        .catch((e: Error) => reportEds(id, `EDS spectrum: ${e.message}`));
-    }
   };
 
-  const handleBgChange = (mode: BgMode) => {
+  const handleBgChange = (mode: EdsMapBackground) => {
     setBgMode(mode);
     recomputeMap(eLo, eHi, mode);
   };
@@ -293,7 +262,6 @@ export default function EdsSpectrumImage({
   };
 
   const handleRoi = (rect: Rect1 | null) => {
-    setRoi(rect);
     const id = activeId;
     if (!id) return;
     setSpecBusy(true);
@@ -317,11 +285,17 @@ export default function EdsSpectrumImage({
   const handleShowSum = () => {
     const id = activeId;
     if (!id) return;
-    setRoi(null);
+    if (sumSpectrum.current) {
+      setSpectrum(sumSpectrum.current);
+      setSpecLabel("Sum spectrum");
+      setSpecSource("sum");
+      return;
+    }
     setSpecBusy(true);
     fetchSpectrum(id)
       .then((s) => {
         if (!stillOpen(id)) return;
+        sumSpectrum.current = s;
         setSpectrum(s);
         setSpecLabel("Sum spectrum");
         setSpecSource("sum");
@@ -443,7 +417,7 @@ export default function EdsSpectrumImage({
               onChange={(e) => {
                 const v = Number(e.target.value) || 0;
                 setE0Kev(v);
-                if (v > eHi) recomputeMap(eLo, eHi, "bremsstrahlung");
+                if (v > eHi) recomputeMap(eLo, eHi, "bremsstrahlung", v);
               }}
             />
           </>

@@ -77,7 +77,16 @@ engine consume.
 
 ## Performance boundary
 
-Explore requests are interactive and must remain cancellable or ordered when
-controls change rapidly. Full-cube sum spectra and multi-element map extraction
-need special care for multi-gigabyte cubes; avoid converting an entire cube to
-float64 merely to accumulate a narrow energy window.
+Explore map requests use a 120 ms trailing debounce. A newer energy window or
+background selection aborts the request it supersedes, retains the current map
+while the replacement is loading, and ignores aborted failures. The live stage
+probe uses its separate bounded debounce so it continues updating during a drag.
+
+The mounted explorer caches its whole-cube spectrum, so returning from a pixel
+or ROI is immediate. Moving the integration window does not refetch a spectrum:
+the draggable patch is a view over the counts already held by the plot.
+
+Backend spectrum sums accumulate directly into a float64 output instead of
+casting the complete cube first. Pixel and ROI extraction slices the native
+array before float64 accumulation. Both changes bound temporary memory to the
+output spectrum or selected region rather than the entire multi-gigabyte cube.

@@ -36,7 +36,8 @@ describe("edsLineEnergy URL construction", () => {
     const { edsLineEnergy } = await import("./api");
     const r = await edsLineEnergy("Fe");
     expect(globalThis.fetch).toHaveBeenCalledOnce();
-    const [url] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string];
+    const [url] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[0] as [string];
     expect(url).toBe("/api/eds/line-energy/Fe");
     expect(r.energy_kev).toBe(6.404);
   });
@@ -46,7 +47,8 @@ describe("edsLineEnergy URL construction", () => {
     globalThis.fetch = makeFetch(body);
     const { edsLineEnergy } = await import("./api");
     await edsLineEnergy("Fe", 200);
-    const [url] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string];
+    const [url] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[0] as [string];
     expect(url).toContain("beam_kv=200");
   });
 });
@@ -67,7 +69,10 @@ describe("edsElementMap request body", () => {
 
   it("sends correct default options", async () => {
     const body = {
-      map: [[1, 2], [3, 4]],
+      map: [
+        [1, 2],
+        [3, 4],
+      ],
       shape: [2, 2],
       e_lo: 1.0,
       e_hi: 2.0,
@@ -78,17 +83,14 @@ describe("edsElementMap request body", () => {
     globalThis.fetch = makeFetch(body);
     const { edsElementMap } = await import("./api");
     const r = await edsElementMap("img1", 1.0, 2.0);
-    const [, init] =
-      (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
-        string,
-        RequestInit,
-      ];
+    const [, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[0] as [string, RequestInit];
     const sent = JSON.parse(init.body as string) as Record<string, unknown>;
     expect(sent["image_id"]).toBe("img1");
     expect(sent["e_lo"]).toBe(1.0);
     expect(sent["e_hi"]).toBe(2.0);
-    expect(sent["bg"]).toBe("linear");          // default
-    expect(sent["save_derived"]).toBe(false);   // default
+    expect(sent["bg"]).toBe("linear"); // default
+    expect(sent["save_derived"]).toBe(false); // default
     expect(sent).not.toHaveProperty("bg_width");
     expect(sent).not.toHaveProperty("e0_kev");
     expect(r.map_meta).toBeNull();
@@ -107,29 +109,47 @@ describe("edsElementMap request body", () => {
     globalThis.fetch = makeFetch(body);
     const { edsElementMap } = await import("./api");
     await edsElementMap("img2", 6.3, 6.5, { bg: "none", saveDerived: true });
-    const [, init] =
-      (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
-        string,
-        RequestInit,
-      ];
+    const [, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[0] as [string, RequestInit];
     const sent = JSON.parse(init.body as string) as Record<string, unknown>;
     expect(sent["bg"]).toBe("none");
     expect(sent["save_derived"]).toBe(true);
   });
 
+  it("forwards an AbortSignal without serializing it", async () => {
+    globalThis.fetch = makeFetch({
+      map: [[1]],
+      shape: [1, 1],
+      e_lo: 1,
+      e_hi: 2,
+      bg: "linear",
+      total_counts: 1,
+      map_meta: null,
+    });
+    const controller = new AbortController();
+    const { edsElementMap } = await import("./api");
+    await edsElementMap("img-signal", 1, 2, { signal: controller.signal });
+    const [, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[0] as [string, RequestInit];
+    expect(init.signal).toBe(controller.signal);
+    expect(JSON.parse(init.body as string)).not.toHaveProperty("signal");
+  });
+
   it("forwards bremsstrahlung bg + e0_kev", async () => {
     const body = {
-      map: [[1]], shape: [1, 1], e_lo: 6.3, e_hi: 6.5,
-      bg: "bremsstrahlung", total_counts: 1, map_meta: null,
+      map: [[1]],
+      shape: [1, 1],
+      e_lo: 6.3,
+      e_hi: 6.5,
+      bg: "bremsstrahlung",
+      total_counts: 1,
+      map_meta: null,
     };
     globalThis.fetch = makeFetch(body);
     const { edsElementMap } = await import("./api");
     await edsElementMap("img3", 6.3, 6.5, { bg: "bremsstrahlung", e0Kev: 18 });
-    const [, init] =
-      (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
-        string,
-        RequestInit,
-      ];
+    const [, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[0] as [string, RequestInit];
     const sent = JSON.parse(init.body as string) as Record<string, unknown>;
     expect(sent["bg"]).toBe("bremsstrahlung");
     expect(sent["e0_kev"]).toBe(18);
@@ -137,16 +157,18 @@ describe("edsElementMap request body", () => {
 
   it("forwards an explicit background window without JSON null sentinels", async () => {
     globalThis.fetch = makeFetch({
-      map: [[1]], shape: [1, 1], e_lo: 1, e_hi: 2,
-      bg: "linear", total_counts: 1, map_meta: null,
+      map: [[1]],
+      shape: [1, 1],
+      e_lo: 1,
+      e_hi: 2,
+      bg: "linear",
+      total_counts: 1,
+      map_meta: null,
     });
     const { edsElementMap } = await import("./api");
     await edsElementMap("img4", 1, 2, { bgWidth: 0.2 });
-    const [, init] =
-      (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
-        string,
-        RequestInit,
-      ];
+    const [, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[0] as [string, RequestInit];
     const sent = JSON.parse(init.body as string) as Record<string, unknown>;
     expect(sent["bg_width"]).toBe(0.2);
     expect(sent).not.toHaveProperty("e0_kev");

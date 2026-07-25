@@ -38,13 +38,18 @@ export async function json<T>(res: Response): Promise<T> {
 }
 
 /** JSON POST transport plus macro capture; intentionally not public. */
-export async function post<T>(url: string, body: unknown): Promise<T> {
+export async function post<T>(
+  url: string,
+  body: unknown,
+  options?: { signal?: AbortSignal },
+): Promise<T> {
   record(url, body as Record<string, unknown>); // no-op unless recording
   return json(
     await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal: options?.signal,
     }),
   );
 }

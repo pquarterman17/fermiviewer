@@ -309,6 +309,7 @@ export function edsElementMap(
     bgGap?: number;
     e0Kev?: number; // beam energy (keV) — required for bg="bremsstrahlung"
     saveDerived?: boolean;
+    signal?: AbortSignal;
   } = {},
 ): Promise<EdsElementMapResult> {
   const body: Record<string, unknown> = {
@@ -323,7 +324,7 @@ export function edsElementMap(
   // so FastAPI applies its defaults and the request remains valid JSON.
   if (opts.bgWidth != null) body.bg_width = opts.bgWidth;
   if (opts.e0Kev != null) body.e0_kev = opts.e0Kev;
-  return post("/api/eds/element-map", body);
+  return post("/api/eds/element-map", body, { signal: opts.signal });
 }
 
 export interface EdsLine {
