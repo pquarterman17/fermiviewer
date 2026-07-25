@@ -13,13 +13,37 @@ calls the endpoint under Vite dev).
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
-# git/fermi-viewer/+test_datasets, sibling to this repo — matches the
-# conftest ML_ROOT resolution (tests/conftest.py).
-_SAMPLE_ROOT = (
-    Path(__file__).resolve().parents[3] / "fermi-viewer" / "+test_datasets"
-)
+
+def corpus_root() -> Path:
+    """Locate the fermi-viewer MATLAB repo holding the committed corpus.
+
+    A plain sibling of this repo historically, but the checkouts are
+    migrating off OneDrive, so also try the user's git root. Set
+    ``FV_MATLAB_ROOT`` for any other layout.
+
+    This is the ONE place that answers "where is the corpus" —
+    tests/conftest.py imports it for its ``ml_datasets`` fixture rather
+    than repeating the walk, because when the two drifted apart every
+    ``realdata``/``golden`` test skipped and the suite still read green.
+    """
+    env = os.environ.get("FV_MATLAB_ROOT")
+    candidates = [Path(env)] if env else []
+    candidates += [
+        Path(__file__).resolve().parents[3] / "fermi-viewer",  # sibling checkout
+        Path.home() / "git" / "fermi-viewer",                  # post-migration
+    ]
+    for candidate in candidates:
+        if (candidate / "+test_datasets").is_dir():
+            return candidate
+    # Absent (CI / packaged install): return the conventional location so
+    # callers fall back to "no corpus" instead of raising.
+    return candidates[-1]
+
+
+_SAMPLE_ROOT = corpus_root() / "+test_datasets"
 
 # One nice 2D raster per extension so the inspector/measure/transform
 # tools all have something to act on. If a preferred file isn't present

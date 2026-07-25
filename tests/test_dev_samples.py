@@ -7,10 +7,23 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from fermiviewer.devsamples import DEFAULT_EXTS, find_sample_files
+from fermiviewer.devsamples import DEFAULT_EXTS, corpus_root, find_sample_files
 from fermiviewer.server import create_app
 
 pytestmark = pytest.mark.api
+
+
+def test_corpus_root_is_the_only_resolver(ml_datasets: Path) -> None:
+    """conftest's corpus fixture and devsamples must agree on the root.
+
+    They resolved the path independently until the checkouts moved off
+    OneDrive; devsamples then pointed at a directory that no longer
+    existed while the fixture found the corpus, so this test's sibling
+    failed while the rest of the realdata suite skipped silently. Pin
+    the agreement so a future move breaks one obvious assertion.
+    """
+    assert ml_datasets == corpus_root() / "+test_datasets"
+    assert ml_datasets.is_dir()
 
 
 def test_sample_files_endpoint_returns_list() -> None:
