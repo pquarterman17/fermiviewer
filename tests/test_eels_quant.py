@@ -191,6 +191,22 @@ def test_quantify_map_two_region_gradient() -> None:
     assert c_map[0, 0] > c_map[0, 5]
 
 
+def test_quantify_map_reports_each_completed_edge() -> None:
+    from fermiviewer.calc.eels_quant import quantify_map
+
+    energy = np.linspace(200, 700, 600)
+    cube = np.ones((2, 3, energy.size), dtype=np.float64)
+    updates: list[tuple[float, str]] = []
+
+    quantify_map(
+        cube, energy, _edges_co(), 200, 10,
+        progress=lambda fraction, message: updates.append((fraction, message)),
+    )
+
+    assert [fraction for fraction, _ in updates] == [0.5, 1.0]
+    assert updates[-1][1].endswith("(2/2)")
+
+
 def test_quantify_map_guards() -> None:
     from fermiviewer.calc.eels_quant import quantify_map
 

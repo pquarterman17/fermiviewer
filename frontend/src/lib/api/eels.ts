@@ -189,23 +189,44 @@ export function eelsQuantify(
 }
 
 /** Per-pixel SI composition maps (eelsQuantifyMap — upstream PR #25). */
+export interface EelsQuantMapResult {
+  elements: string[];
+  sigma: number[];
+  mean_atomic_percent: number[];
+  maps: ImageMeta[];
+}
+
 export function eelsQuantifyMap(
   id: string,
   edges: EelsEdge[],
   e0Kv = 200,
   betaMrad = 10,
   method = "powerlaw",
-): Promise<{
-  elements: string[];
-  mean_atomic_percent: number[];
-  maps: ImageMeta[];
-}> {
+): Promise<EelsQuantMapResult> {
   return post("/api/eels/quantify-map", {
     image_id: id,
     edges,
     e0_kv: e0Kv,
     beta_mrad: betaMrad,
     method,
+  });
+}
+
+/** Queue an EELS composition map and return immediately with its job id. */
+export function eelsQuantifyMapAsync(
+  id: string,
+  edges: EelsEdge[],
+  e0Kv = 200,
+  betaMrad = 10,
+  method = "powerlaw",
+): Promise<{ job_id: string }> {
+  return post("/api/eels/quantify-map", {
+    image_id: id,
+    edges,
+    e0_kv: e0Kv,
+    beta_mrad: betaMrad,
+    method,
+    run_async: true,
   });
 }
 

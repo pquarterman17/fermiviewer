@@ -44,7 +44,7 @@ FRONTEND_LEGACY_CAPS = {
     "components/Stage/MeasureOverlay.tsx": 783,
     "components/Stage/Stage.tsx": 1234,
     "components/workshops/DiffractionWorkshop.tsx": 784,
-    "components/workshops/EelsWorkshop.tsx": 702,
+    "components/workshops/EelsWorkshop.tsx": 685,
     "components/workshops/LayersWorkshop.tsx": 726,
     "components/workshops/StructureWorkshop.tsx": 1229,
     "store/viewer.ts": 1778,

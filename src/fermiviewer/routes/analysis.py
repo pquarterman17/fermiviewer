@@ -9,6 +9,8 @@ keep this module under the 500-line god-module ceiling.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -25,6 +27,7 @@ from fermiviewer.calc.eels_quant import ElementEdge, quantify, quantify_map
 from fermiviewer.calc.phase_registry import registry as _phase_registry
 from fermiviewer.calc.uncertainty import eels_atomic_sigma
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
+from fermiviewer.jobs import JobQueueFullError, jobs
 from fermiviewer.models import ImageMeta
 from fermiviewer.session import UnknownImageError, store
 
@@ -153,8 +156,14 @@ def eels_quantify(req: EelsQuantifyRequest) -> dict:
     }
 
 
-@router.post("/eels/quantify-map")
-def eels_quantify_map(req: EelsQuantifyRequest) -> dict:
+class EelsQuantifyMapRequest(EelsQuantifyRequest):
+    run_async: bool = False
+
+
+def _eels_quantify_map(
+    req: EelsQuantifyMapRequest,
+    progress: Callable[[float, str], None] | None = None,
+) -> dict:
     """Per-pixel SI composition maps (eelsQuantifyMap.m — upstream PR
     #25). Same request shape as /eels/quantify; needs a cube. The at%
     maps register as derived images."""
@@ -163,7 +172,7 @@ def eels_quantify_map(req: EelsQuantifyRequest) -> dict:
                          e.signal_window, e.bg_window) for e in req.edges]
     try:
         res = quantify_map(ds.data, ds.energy_axis, edges,
-                           req.e0_kv, req.beta_mrad, req.method)
+                           req.e0_kv, req.beta_mrad, req.method, progress)
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
     maps = [
@@ -180,6 +189,18 @@ def eels_quantify_map(req: EelsQuantifyRequest) -> dict:
         ],
         "maps": maps,
     }
+
+
+@router.post("/eels/quantify-map")
+def eels_quantify_map(req: EelsQuantifyMapRequest) -> dict:
+    """Run composition mapping synchronously or as a polled background job."""
+    if req.run_async:
+        _cube(req.image_id)  # keep unknown/wrong-kind failures synchronous
+        try:
+            return {"job_id": jobs.submit(lambda p: _eels_quantify_map(req, p))}
+        except JobQueueFullError as e:
+            raise HTTPException(429, str(e)) from None
+    return _eels_quantify_map(req)
 
 
 def _register_cube(arr: np.ndarray, name: str, parent: DataStruct,
