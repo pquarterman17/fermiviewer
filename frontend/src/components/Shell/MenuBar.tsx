@@ -14,7 +14,6 @@ import {
   analyzeNoise,
   analyzeRadial,
   measureProfile,
-  analyzeRoughness,
   analyzeVdf,
   applyCalibration,
   applyFilter,
@@ -1260,17 +1259,7 @@ export default function MenuBar({
           {
             label: "Surface Roughness",
             disabled: !store.activeId,
-            action: () => {
-              const id = store.activeId;
-              if (!id) return;
-              analyzeRoughness(id)
-                .then((r) => {
-                  store.setStatus(
-                    `Ra ${(r["Ra"] as number).toPrecision(4)} · Rq ${(r["Rq"] as number).toPrecision(4)} ${r["unit"]} · SAR ${(r["SAR"] as number).toFixed(4)}`,
-                  );
-                })
-                .catch((e: Error) => store.setStatus(e.message));
-            },
+            action: () => store.openTool("roughness"),
           },
           {
             label: "Interface Width (fit dock profile)",
@@ -1397,6 +1386,10 @@ export default function MenuBar({
           {
             label: "Cross-section Layers",
             action: () => store.openTool("layers"),
+          },
+          {
+            label: "Surface Roughness",
+            action: () => store.openTool("roughness"),
           },
         ],
       },

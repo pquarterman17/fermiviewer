@@ -16,6 +16,9 @@ vi.mock("../workshops/CrossSectionGuide", () => ({
 vi.mock("../workshops/EdsWorkshop", () => ({
   default: () => <div>EDS workspace content</div>,
 }));
+vi.mock("../workshops/RoughnessWorkshop", () => ({
+  default: () => <div>Roughness workspace content</div>,
+}));
 
 beforeEach(() => {
   useViewer.setState({ tools: [] });
@@ -58,6 +61,16 @@ describe("ToolWindows", () => {
     expect(content.closest(".fvd-tool-window")).toHaveStyle({
       width: "680px",
       height: "620px",
+    });
+  });
+
+  it("gives surface roughness room for metrics and its bearing curve", async () => {
+    useViewer.setState({ tools: [{ kind: "roughness", x: 10, y: 20, z: 1 }] });
+    render(<ToolWindows />);
+    const content = await screen.findByText("Roughness workspace content");
+    expect(screen.getByText("Surface Roughness")).toBeVisible();
+    expect(content.closest(".fvd-tool-window")).toHaveStyle({
+      width: "620px",
     });
   });
 

@@ -10,6 +10,7 @@ const ColorOverlayWorkshop = lazy(() => import("../workshops/ColorOverlayWorksho
 const LayersWorkshop = lazy(() => import("../workshops/LayersWorkshop"));
 const StructureWorkshop = lazy(() => import("../workshops/StructureWorkshop"));
 const SurfaceView = lazy(() => import("../workshops/SurfaceView"));
+const RoughnessWorkshop = lazy(() => import("../workshops/RoughnessWorkshop"));
 const EdsWorkshop = lazy(() => import("../workshops/EdsWorkshop"));
 const EelsWorkshop = lazy(() => import("../workshops/EelsWorkshop"));
 const CrossSectionGuide = lazy(() => import("../workshops/CrossSectionGuide"));
@@ -23,6 +24,7 @@ const titles: Record<ToolKind, string> = {
   structure: "Structure",
   overlay: "Color Overlay",
   surface: "Surface Plot",
+  roughness: "Surface Roughness",
   layers: "Cross-section Layers",
   crosssection: "Cross-section Assistant",
 };
@@ -35,6 +37,7 @@ const defaultWidths: Partial<Record<ToolKind, number>> = {
   diffraction: 332,
   fftmask: 332,
   pixels: 300,
+  roughness: 620,
 };
 
 export default function ToolWindows() {
@@ -81,6 +84,8 @@ function Workshop({ kind }: { kind: ToolKind }) {
       return <ColorOverlayWorkshop />;
     case "surface":
       return <SurfaceView />;
+    case "roughness":
+      return <RoughnessWorkshop />;
     case "layers":
       return <LayersWorkshop />;
     case "crosssection":
