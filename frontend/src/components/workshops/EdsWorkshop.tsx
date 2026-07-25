@@ -23,6 +23,7 @@ import EdsComposite, {
 } from "./EdsComposite";
 import EdsModelFit from "./EdsModelFit";
 import EdsSpectrumImage from "./EdsSpectrumImage";
+import PlotContextSurface from "./PlotContextSurface";
 
 /** Per-element at% line plot for the composition profile (#46/A4). */
 function CompProfilePlot({ r }: { r: CompositionProfileResult }) {
@@ -71,7 +72,15 @@ function CompProfilePlot({ r }: { r: CompositionProfileResult }) {
     };
   }, [r]);
 
-  return <div ref={hostRef} className="fvd-ws-plot" />;
+  return (
+    <PlotContextSurface
+      ref={hostRef}
+      plotRef={plotRef}
+      label="Composition profile"
+      filename="eds-composition-profile.png"
+      className="fvd-ws-plot"
+    />
+  );
 }
 
 export default function EdsWorkshop() {

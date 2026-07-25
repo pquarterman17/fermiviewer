@@ -358,6 +358,7 @@ export default function EdsSpectrumImage({
             markers={peakMarkers}
             height={spectrumExpanded ? 360 : 260}
             logScale={logScale}
+            onExportCsv={exportSpectrumCsv}
           />
         )}
       </EdsSpectrumPanel>

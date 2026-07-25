@@ -27,6 +27,7 @@ import { edsModelFitToCsv } from "../../lib/edsQuantCsv";
 import { formatPlusMinus } from "../../lib/formatUncertainty";
 import { useViewer } from "../../store/viewer";
 import { EDS_PALETTE } from "./EdsComposite";
+import PlotContextSurface from "./PlotContextSurface";
 
 type Background = "none" | "linear" | "bremsstrahlung";
 type QuantMethod = "cl" | "zeta";
@@ -140,7 +141,15 @@ function ModelFitPlot({
     };
   }, [cont, peakfit]);
 
-  return <div ref={hostRef} className="fvd-ws-plot" />;
+  return (
+    <PlotContextSurface
+      ref={hostRef}
+      plotRef={plotRef}
+      label="EDS model fit"
+      filename="eds-model-fit.png"
+      className="fvd-ws-plot"
+    />
+  );
 }
 
 export default function EdsModelFit({

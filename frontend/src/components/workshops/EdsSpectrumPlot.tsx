@@ -9,6 +9,7 @@ import uPlot from "uplot";
 import type { Spectrum } from "../../lib/api";
 import type { PeakMarker } from "../../lib/eds/peakMarkers";
 import { formatCountTick } from "../../lib/edsSpectrumDisplay";
+import PlotContextSurface from "./PlotContextSurface";
 
 export default function SpectrumPlot({
   spec,
@@ -19,6 +20,7 @@ export default function SpectrumPlot({
   markers = [],
   height = 260,
   logScale = false,
+  onExportCsv,
 }: {
   spec: Spectrum;
   label: string;
@@ -28,6 +30,7 @@ export default function SpectrumPlot({
   markers?: PeakMarker[];
   height?: number;
   logScale?: boolean;
+  onExportCsv?: () => void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
@@ -160,8 +163,13 @@ export default function SpectrumPlot({
   }, [spec, label, eLo, eHi, markers, height, logScale]);
 
   return (
-    <div
+    <PlotContextSurface
       ref={hostRef}
+      plotRef={plotRef}
+      label={label}
+      filename="eds-spectrum.png"
+      onExportData={onExportCsv}
+      exportLabel="Export spectrum CSV"
       className="fvd-ws-plot fvd-eds-spectrum-plot"
       style={{ minHeight: height + 20 }}
     />
