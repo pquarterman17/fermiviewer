@@ -18,7 +18,10 @@ CANVAS = 512
 
 
 def _box(values: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
-    return tuple(value * SCALE for value in values)
+    # Unpacked rather than tuple(... for ...), which is tuple[int, ...] to a
+    # type checker and loses the fixed 4-length the return type promises.
+    x0, y0, x1, y1 = values
+    return (x0 * SCALE, y0 * SCALE, x1 * SCALE, y1 * SCALE)
 
 
 def _points(values: list[tuple[int, int]]) -> list[tuple[int, int]]:
