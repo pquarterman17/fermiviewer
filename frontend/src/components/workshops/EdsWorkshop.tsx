@@ -93,6 +93,9 @@ export default function EdsWorkshop() {
   const [autoAssignBusy, setAutoAssignBusy] = useState(false);
   const [comp, setComp] = useState<CompositionProfileResult | null>(null);
   const [compBusy, setCompBusy] = useState(false);
+  const [workspaceTab, setWorkspaceTab] = useState<
+    "explore" | "quantify" | "composite" | "model"
+  >("explore");
 
   const isCube = meta?.kind === "spectrum_image";
 
@@ -222,185 +225,210 @@ export default function EdsWorkshop() {
   }
 
   return (
-    <div className="fvd-ws">
-      {/* SI explorer — always shown first for spectrum_image cubes */}
-      <details open>
-        <summary
-          style={{ cursor: "pointer", padding: "4px 0", fontWeight: 500 }}
-        >
-          Spectrum-Image Explorer
-        </summary>
-        <EdsSpectrumImage onAddToComposite={addCompositeChannel} />
-      </details>
-      <hr
-        style={{
-          margin: "6px 0",
-          border: "none",
-          borderTop: "1px solid var(--border)",
-        }}
-      />
-
-      <div className="fvd-ws-row">
-        <span className="k">Elements</span>
-        <input
-          value={elements}
-          style={{ flex: 1 }}
-          placeholder="Fe, O, Si"
-          onChange={(e) => setElements(e.target.value)}
-        />
-        <button
-          className="fvd-btn"
-          title="Auto-detect element lines from sum spectrum peaks (#44)"
-          disabled={autoAssignBusy || !activeId}
-          onClick={() => {
-            if (!activeId) return;
-            setAutoAssignBusy(true);
-            edsAutoAssign(activeId)
-              .then((r) => {
-                const syms = r.assignments
-                  .filter((a) => a.candidates.length > 0)
-                  .map((a) => a.candidates[0].symbol);
-                const unique = [...new Set(syms)];
-                if (unique.length > 0) {
-                  setElements(unique.join(", "));
-                  setStatus(`EDS auto-assign: ${unique.join(", ")}`);
-                } else {
-                  setStatus(
-                    "EDS auto-assign: no peaks detected above threshold",
-                  );
-                }
-              })
-              .catch((e: Error) => setStatus(`auto-assign: ${e.message}`))
-              .finally(() => setAutoAssignBusy(false));
-          }}
-        >
-          {autoAssignBusy ? "…" : "Auto-assign"}
-        </button>
-      </div>
-      <div className="fvd-ws-row">
-        <span className="k">Method</span>
-        <div className="fvd-seg">
-          {(["cliff-lorimer", "zaf"] as const).map((m) => (
-            <button
-              key={m}
-              className={`fvd-seg-btn${method === m ? " active" : ""}`}
-              onClick={() => setMethod(m)}
-              title={
-                m === "zaf"
-                  ? "ZAF matrix-corrected quantification"
-                  : "Cliff–Lorimer thin-film k-factor"
-              }
-            >
-              {m === "cliff-lorimer" ? "Cliff–Lorimer" : "ZAF"}
-            </button>
-          ))}
-        </div>
-      </div>
-      {method === "zaf" && (
-        <div className="fvd-ws-row">
-          <span className="k">t (nm)</span>
-          <input
-            value={thickness}
-            style={{ width: 56 }}
-            onChange={(e) => setThickness(e.target.value)}
-          />
-          <span className="k">take-off °</span>
-          <input
-            value={takeOff}
-            style={{ width: 48 }}
-            onChange={(e) => setTakeOff(e.target.value)}
-          />
-        </div>
-      )}
-      <div className="fvd-ws-row">
-        <button
-          className="fvd-btn"
-          onClick={run}
-          disabled={busy}
-          title="Quantify composition and derive at% element maps"
-        >
-          {busy ? "Quantifying…" : "Quantify"}
-        </button>
-      </div>
-
-      {result && (
-        <table className="fvd-ws-table">
-          <thead>
-            <tr>
-              <th>El</th>
-              <th>Line</th>
-              <th>at% ± 1σ</th>
-              <th>wt% ± 1σ</th>
-              <th>k</th>
-            </tr>
-          </thead>
-          <tbody>
-            {result.elements.map((el, i) => (
-              <tr key={el}>
-                <td>{el}</td>
-                <td>{result.lines[i]}</td>
-                <td>
-                  {formatPlusMinus(
-                    result.mean_atomic_pct[i],
-                    result.mean_atomic_pct_error?.[i] ?? 0,
-                    2,
-                  )}
-                </td>
-                <td>
-                  {formatPlusMinus(
-                    result.mean_weight_pct[i],
-                    result.mean_weight_pct_error?.[i] ?? 0,
-                    2,
-                  )}
-                </td>
-                <td>{result.k_factors[i].toFixed(3)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      {result &&
-        (() => {
-          const added = result.maps.filter(Boolean).length;
-          return (
-            <div className="fvd-ws-note">
-              {added} at% map{added === 1 ? "" : "s"} added to the library.
-            </div>
-          );
-        })()}
-      {channels.length > 0 && (
-        <div className="fvd-ws-row">
+    <div className="fvd-ws fvd-eds-workspace">
+      <div
+        className="fvd-eds-workspace-tabs"
+        role="tablist"
+        aria-label="EDS workspace"
+      >
+        {(
+          [
+            ["explore", "Explore"],
+            ["quantify", "Quantify"],
+            [
+              "composite",
+              `Composite${channels.length ? ` (${channels.length})` : ""}`,
+            ],
+            ["model", "Model fit"],
+          ] as const
+        ).map(([id, label]) => (
           <button
-            className="fvd-btn"
-            disabled={compBusy}
-            title="Element-fraction line profile across the at% maps, along the last Distance/Profile measure (A4)"
-            onClick={runCompProfile}
+            key={id}
+            role="tab"
+            aria-selected={workspaceTab === id}
+            className={`fvd-eds-workspace-tab${
+              workspaceTab === id ? " active" : ""
+            }`}
+            onClick={() => setWorkspaceTab(id)}
           >
-            {compBusy ? "Profiling…" : "Comp Profile"}
+            {label}
           </button>
-          {comp && (
-            <button
-              className="fvd-icon-btn"
-              title="Close composition profile"
-              onClick={() => setComp(null)}
-            >
-              ✕
-            </button>
-          )}
-        </div>
+        ))}
+      </div>
+
+      {workspaceTab === "explore" && (
+        <EdsSpectrumImage onAddToComposite={addCompositeChannel} />
       )}
-      {comp && <CompProfilePlot r={comp} />}
 
-      <details style={{ marginTop: 6 }}>
-        <summary
-          style={{ cursor: "pointer", padding: "4px 0", fontWeight: 500 }}
-        >
-          Model fit (continuum + peak deconvolution)
-        </summary>
+      {workspaceTab === "quantify" && (
+        <>
+          <div className="fvd-ws-row">
+            <span className="k">Elements</span>
+            <input
+              value={elements}
+              style={{ flex: 1 }}
+              placeholder="Fe, O, Si"
+              onChange={(e) => setElements(e.target.value)}
+            />
+            <button
+              className="fvd-btn"
+              title="Auto-detect element lines from sum spectrum peaks (#44)"
+              disabled={autoAssignBusy || !activeId}
+              onClick={() => {
+                if (!activeId) return;
+                setAutoAssignBusy(true);
+                edsAutoAssign(activeId)
+                  .then((r) => {
+                    const syms = r.assignments
+                      .filter((a) => a.candidates.length > 0)
+                      .map((a) => a.candidates[0].symbol);
+                    const unique = [...new Set(syms)];
+                    if (unique.length > 0) {
+                      setElements(unique.join(", "));
+                      setStatus(`EDS auto-assign: ${unique.join(", ")}`);
+                    } else {
+                      setStatus(
+                        "EDS auto-assign: no peaks detected above threshold",
+                      );
+                    }
+                  })
+                  .catch((e: Error) => setStatus(`auto-assign: ${e.message}`))
+                  .finally(() => setAutoAssignBusy(false));
+              }}
+            >
+              {autoAssignBusy ? "…" : "Auto-assign"}
+            </button>
+          </div>
+          <div className="fvd-ws-row">
+            <span className="k">Method</span>
+            <div className="fvd-seg">
+              {(["cliff-lorimer", "zaf"] as const).map((m) => (
+                <button
+                  key={m}
+                  className={`fvd-seg-btn${method === m ? " active" : ""}`}
+                  onClick={() => setMethod(m)}
+                  title={
+                    m === "zaf"
+                      ? "ZAF matrix-corrected quantification"
+                      : "Cliff–Lorimer thin-film k-factor"
+                  }
+                >
+                  {m === "cliff-lorimer" ? "Cliff–Lorimer" : "ZAF"}
+                </button>
+              ))}
+            </div>
+          </div>
+          {method === "zaf" && (
+            <div className="fvd-ws-row">
+              <span className="k">t (nm)</span>
+              <input
+                value={thickness}
+                style={{ width: 56 }}
+                onChange={(e) => setThickness(e.target.value)}
+              />
+              <span className="k">take-off °</span>
+              <input
+                value={takeOff}
+                style={{ width: 48 }}
+                onChange={(e) => setTakeOff(e.target.value)}
+              />
+            </div>
+          )}
+          <div className="fvd-ws-row">
+            <button
+              className="fvd-btn"
+              onClick={run}
+              disabled={busy}
+              title="Quantify composition and derive at% element maps"
+            >
+              {busy ? "Quantifying…" : "Quantify"}
+            </button>
+          </div>
+
+          {result && (
+            <table className="fvd-ws-table">
+              <thead>
+                <tr>
+                  <th>El</th>
+                  <th>Line</th>
+                  <th>at% ± 1σ</th>
+                  <th>wt% ± 1σ</th>
+                  <th>k</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.elements.map((el, i) => (
+                  <tr key={el}>
+                    <td>{el}</td>
+                    <td>{result.lines[i]}</td>
+                    <td>
+                      {formatPlusMinus(
+                        result.mean_atomic_pct[i],
+                        result.mean_atomic_pct_error?.[i] ?? 0,
+                        2,
+                      )}
+                    </td>
+                    <td>
+                      {formatPlusMinus(
+                        result.mean_weight_pct[i],
+                        result.mean_weight_pct_error?.[i] ?? 0,
+                        2,
+                      )}
+                    </td>
+                    <td>{result.k_factors[i].toFixed(3)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {result &&
+            (() => {
+              const added = result.maps.filter(Boolean).length;
+              return (
+                <div className="fvd-ws-note">
+                  {added} at% map{added === 1 ? "" : "s"} added to the library.
+                </div>
+              );
+            })()}
+          {channels.length > 0 && (
+            <div className="fvd-ws-row">
+              <button
+                className="fvd-btn"
+                disabled={compBusy}
+                title="Element-fraction line profile across the at% maps, along the last Distance/Profile measure (A4)"
+                onClick={runCompProfile}
+              >
+                {compBusy ? "Profiling…" : "Comp Profile"}
+              </button>
+              {comp && (
+                <button
+                  className="fvd-icon-btn"
+                  title="Close composition profile"
+                  onClick={() => setComp(null)}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          )}
+          {comp && <CompProfilePlot r={comp} />}
+
+        </>
+      )}
+
+      {workspaceTab === "composite" && (
+        channels.length > 0 ? (
+          <EdsComposite channels={channels} onChange={setChannels} />
+        ) : (
+          <div className="fvd-ws-empty">
+            Add element maps from Explore or run Quantify to build a composite.
+          </div>
+        )
+      )}
+
+      {workspaceTab === "model" && (
         <EdsModelFit activeId={activeId} elements={elements} />
-      </details>
-
-      <EdsComposite channels={channels} onChange={setChannels} />
+      )}
     </div>
   );
 }

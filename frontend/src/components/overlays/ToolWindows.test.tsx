@@ -13,6 +13,9 @@ vi.mock("../workshops/StructureWorkshop", () => ({
 vi.mock("../workshops/CrossSectionGuide", () => ({
   default: () => <div>Cross-section guide content</div>,
 }));
+vi.mock("../workshops/EdsWorkshop", () => ({
+  default: () => <div>EDS workspace content</div>,
+}));
 
 beforeEach(() => {
   useViewer.setState({ tools: [] });
@@ -46,5 +49,24 @@ describe("ToolWindows", () => {
     const content = await screen.findByText("Cross-section guide content");
     expect(screen.getByText("Cross-section Assistant")).toBeVisible();
     expect(content.closest(".fvd-tool-window")).toHaveStyle({ width: "640px" });
+  });
+
+  it("gives EDS a wide spectrum-and-map workspace", async () => {
+    useViewer.setState({ tools: [{ kind: "eds", x: 10, y: 20, z: 1 }] });
+    render(<ToolWindows />);
+    const content = await screen.findByText("EDS workspace content");
+    expect(content.closest(".fvd-tool-window")).toHaveStyle({
+      width: "680px",
+      height: "620px",
+    });
+  });
+
+  it("exposes an accessible resize grip", async () => {
+    useViewer.setState({ tools: [{ kind: "eds", x: 10, y: 20, z: 1 }] });
+    render(<ToolWindows />);
+    await screen.findByText("EDS workspace content");
+    expect(
+      screen.getByRole("separator", { name: "Resize EDS window" }),
+    ).toBeVisible();
   });
 });

@@ -27,6 +27,16 @@ const titles: Record<ToolKind, string> = {
   crosssection: "Cross-section Assistant",
 };
 
+const defaultWidths: Partial<Record<ToolKind, number>> = {
+  layers: 520,
+  crosssection: 640,
+  structure: 480,
+  eds: 680,
+  diffraction: 332,
+  fftmask: 332,
+  pixels: 300,
+};
+
 export default function ToolWindows() {
   const tools = useViewer((s) => s.tools);
   return tools.map((tool) => (
@@ -37,19 +47,8 @@ export default function ToolWindows() {
       x={tool.x}
       y={tool.y}
       z={tool.z}
-      width={
-        tool.kind === "layers"
-          ? 520
-          : tool.kind === "crosssection"
-            ? 640
-          : tool.kind === "structure"
-            ? 480
-            : tool.kind === "diffraction" || tool.kind === "fftmask"
-              ? 332
-              : tool.kind === "pixels"
-                ? 300
-                : 360
-      }
+      width={defaultWidths[tool.kind] ?? 360}
+      height={tool.kind === "eds" ? 620 : undefined}
     >
       <Suspense
         fallback={
