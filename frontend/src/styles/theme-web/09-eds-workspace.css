@@ -104,3 +104,103 @@
   padding-top: var(--pad);
   border-top: 1px solid var(--border-soft);
 }
+
+.fvd-eds-map-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pad);
+  padding: var(--pad-lg);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface-2) 82%, transparent);
+}
+
+.fvd-eds-map-header,
+.fvd-eds-map-toolbar,
+.fvd-eds-map-actions,
+.fvd-eds-map-toolbar label,
+.fvd-eds-map-colorbar > div,
+.fvd-eds-map-range {
+  display: flex;
+  align-items: center;
+}
+
+.fvd-eds-map-header {
+  justify-content: space-between;
+  gap: var(--pad-lg);
+}
+
+.fvd-eds-map-header > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fvd-eds-map-detail,
+.fvd-eds-map-range {
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.fvd-eds-map-toolbar {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fvd-eds-map-toolbar label {
+  gap: 5px;
+  color: var(--text-faint);
+  font-size: var(--font-size-sm);
+}
+
+.fvd-eds-map-toolbar select {
+  min-height: 26px;
+}
+
+.fvd-eds-map-actions {
+  gap: 5px;
+  margin-left: auto;
+}
+
+.fvd-eds-map-canvas-wrap {
+  display: grid;
+  height: min(360px, 45vh);
+  min-height: 260px;
+  overflow: hidden;
+  place-items: center;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background:
+    linear-gradient(45deg, var(--surface-3) 25%, transparent 25%) 0 0 / 12px 12px,
+    linear-gradient(45deg, transparent 75%, var(--surface-3) 75%) 0 0 / 12px 12px,
+    var(--surface-1);
+}
+
+.fvd-eds-map-canvas-wrap canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.fvd-eds-map-colorbar canvas {
+  width: 100%;
+  height: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 2px;
+}
+
+.fvd-eds-map-colorbar > div {
+  justify-content: space-between;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.fvd-eds-map-colorbar > div span:nth-child(2) {
+  font-family: var(--font-ui);
+}
+
+.fvd-eds-map-range {
+  justify-content: flex-end;
+}

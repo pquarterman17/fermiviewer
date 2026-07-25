@@ -21,13 +21,12 @@ import {
   type Spectrum,
 } from "../../lib/api";
 import { useEdsPeakMarkers } from "../../hooks/useEdsPeakMarkers";
+import type { ColormapName } from "../../lib/colormaps";
 import { elementMapCsv, spectrumCsv } from "../../lib/edsExploreCsv";
 import { useViewer } from "../../store/viewer";
 import EdsElementPicker from "./EdsElementPicker";
-import MapCanvas from "./EdsElementMap";
-import EdsSpectrumPanel, {
-  type EdsSpectrumSource,
-} from "./EdsSpectrumPanel";
+import EdsElementMap from "./EdsElementMap";
+import EdsSpectrumPanel, { type EdsSpectrumSource } from "./EdsSpectrumPanel";
 import EdsSpectrumSourcePicker from "./EdsSpectrumSourcePicker";
 import SpectrumPlot from "./EdsSpectrumPlot";
 import type { Rect1 } from "./RegionPicker";
@@ -92,8 +91,8 @@ export default function EdsSpectrumImage({
   const [mapResult, setMapResult] = useState<EdsElementMapResult | null>(null);
   const [mapBusy, setMapBusy] = useState(false);
   const [addBusy, setAddBusy] = useState(false);
+  const [libraryBusy, setLibraryBusy] = useState(false);
 
-  // ROI
   const [roi, setRoi] = useState<Rect1 | null>(null);
 
   const isCube = meta?.kind === "spectrum_image";
@@ -132,7 +131,6 @@ export default function EdsSpectrumImage({
     };
   }, [activeId]);
 
-  // recompute map on window/bg change
   const recomputeMap = useCallback(
     (lo: number, hi: number, bg: BgMode) => {
       const id = activeId;
@@ -157,7 +155,6 @@ export default function EdsSpectrumImage({
     [activeId, reportEds, stillOpen, e0Kev],
   );
 
-  // fetch sum spectrum on mount / cube change
   useEffect(() => {
     if (!activeId || !isCube) return;
     const id = activeId;
@@ -272,6 +269,27 @@ export default function EdsSpectrumImage({
       })
       .catch((e: Error) => reportEds(id, `EDS composite: ${e.message}`))
       .finally(() => setAddBusy(false));
+  };
+
+  const handleAddToLibrary = (cmap: ColormapName) => {
+    const id = activeId;
+    if (!id) return;
+    setLibraryBusy(true);
+    edsElementMap(id, eLo, eHi, {
+      bg: bgMode,
+      e0Kev: bgMode === "bremsstrahlung" ? e0Kev : undefined,
+      saveDerived: true,
+    })
+      .then((result) => {
+        if (!stillOpen(id) || !result.map_meta) return;
+        const store = useViewer.getState();
+        store.ingestDerived([result.map_meta]);
+        store.setDisplay(result.map_meta.id, { cmap }, { silent: true });
+        store.setActive(id);
+        reportEds(id, `EDS map added to library with ${cmap} colormap`);
+      })
+      .catch((e: Error) => reportEds(id, `EDS library: ${e.message}`))
+      .finally(() => setLibraryBusy(false));
   };
 
   const handleRoi = (rect: Rect1 | null) => {
@@ -449,32 +467,17 @@ export default function EdsSpectrumImage({
         </label>
       </div>
 
-      {/* Element map canvas */}
-      <div className="fvd-ws-row">
-        <span className="k">
-          {mapBusy
-            ? "Computing…"
-            : mapResult
-              ? `Map (${mapResult.e_lo.toFixed(3)}–${mapResult.e_hi.toFixed(3)} keV)`
-              : "Map"}
-        </span>
-        {onAddToComposite && mapResult && (
-          <button
-            className="fvd-btn"
-            style={{ marginLeft: "auto" }}
-            disabled={addBusy || selElem === "(custom)"}
-            title={
-              selElem === "(custom)"
-                ? "Pick an element to add its map to the composite overlay"
-                : `Add ${selElem}'s map to the composite overlay (colour assigned automatically)`
-            }
-            onClick={handleAddToComposite}
-          >
-            {addBusy ? "Adding…" : "+ Composite"}
-          </button>
-        )}
-      </div>
-      {mapResult && <MapCanvas result={mapResult} />}
+      {mapResult && (
+        <EdsElementMap
+          result={mapResult}
+          busy={mapBusy}
+          libraryBusy={libraryBusy}
+          compositeBusy={addBusy}
+          canAddToComposite={selElem !== "(custom)"}
+          onAddToLibrary={handleAddToLibrary}
+          onAddToComposite={onAddToComposite ? handleAddToComposite : undefined}
+        />
+      )}
 
       {activeId && (
         <EdsSpectrumSourcePicker

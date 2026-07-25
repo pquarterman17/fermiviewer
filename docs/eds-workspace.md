@@ -38,6 +38,24 @@ The source chip always names the displayed spectrum. Manual source requests show
 `log10(counts + 1)` and compact/expanded heights; characteristic-line labels and
 the draggable integration window remain available in either display mode.
 
+### Element-map display
+
+The selected energy window renders as a full-width map rather than a thumbnail.
+It uses the application's shared perceptual colormaps and defaults to a robust
+1st–99th percentile display window so isolated hot pixels do not flatten the
+rest of the signal. Full-range and higher-contrast presets are available. The
+colorbar reports the active display limits, while the footer preserves the true
+minimum and maximum—including negative background-subtracted values.
+
+The element control starts as a compact list so the map remains near the
+spectrum. **Table** expands the full periodic table for elements not declared in
+the acquisition metadata; that choice is remembered.
+
+**Add to library** registers the current map as a derived image without taking
+the user away from the EDS cube. The chosen colormap is applied to the derived
+image, which then appears in the filmstrip for full-stage inspection, comparison,
+and export. **+ Composite** remains available for named element windows.
+
 ## Window behavior
 
 EDS opens at 680 × 620 px rather than the generic 360 px workshop width. CSS

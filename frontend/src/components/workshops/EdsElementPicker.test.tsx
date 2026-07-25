@@ -6,7 +6,7 @@ import EdsElementPicker from "./EdsElementPicker";
 describe("EdsElementPicker", () => {
   beforeEach(() => localStorage.clear());
 
-  it("defaults to the periodic table and toggles to the dropdown (persisted)", () => {
+  it("defaults to the compact dropdown and persists the periodic-table choice", () => {
     render(
       <EdsElementPicker
         selected="(custom)"
@@ -14,10 +14,10 @@ describe("EdsElementPicker", () => {
         onSelect={() => {}}
       />,
     );
-    expect(screen.getByRole("grid")).toBeTruthy(); // periodic table shown
-    fireEvent.click(screen.getByRole("button", { name: /List/ }));
-    expect(localStorage.getItem("fv_eds_picker")).toBe("dropdown");
-    expect(screen.getByRole("combobox")).toBeTruthy(); // the <select>
+    expect(screen.getByRole("combobox")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Table/ }));
+    expect(localStorage.getItem("fv_eds_picker")).toBe("periodic");
+    expect(screen.getByRole("grid")).toBeTruthy();
   });
 
   it("selecting an element in the table fires onSelect", () => {
@@ -29,6 +29,7 @@ describe("EdsElementPicker", () => {
         onSelect={onSelect}
       />,
     );
+    fireEvent.click(screen.getByRole("button", { name: /Table/ }));
     fireEvent.click(screen.getByRole("button", { name: "Fe" }));
     expect(onSelect).toHaveBeenCalledWith("Fe");
   });
