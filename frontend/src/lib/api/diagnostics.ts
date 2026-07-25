@@ -5,7 +5,30 @@ export interface InterfaceWidthResult {
   center: number;
   sigma: number;
   width_10_90: number;
+  amplitude: number;
+  offset: number;
   r_squared: number;
+  x_fit: number[];
+  y_fit: number[];
+  model: "erf" | "sigmoid";
+}
+
+export function finiteProfilePairs(
+  x: number[],
+  y: (number | null)[],
+): { x: number[]; y: number[] } {
+  const paired = x
+    .map((value, index) => [value, y[index]] as const)
+    .filter(
+      (pair): pair is readonly [number, number] =>
+        Number.isFinite(pair[0]) &&
+        pair[1] != null &&
+        Number.isFinite(pair[1]),
+    );
+  return {
+    x: paired.map(([value]) => value),
+    y: paired.map(([, value]) => value),
+  };
 }
 
 export function analyzeInterfaceWidth(
@@ -13,9 +36,10 @@ export function analyzeInterfaceWidth(
   y: (number | null)[],
   model: "erf" | "sigmoid" = "erf",
 ): Promise<InterfaceWidthResult> {
+  const finite = finiteProfilePairs(x, y);
   return post("/api/analyze/interface-width", {
-    x,
-    y: y.map((value) => value ?? 0),
+    x: finite.x,
+    y: finite.y,
     model,
   });
 }

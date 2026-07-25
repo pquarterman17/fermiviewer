@@ -10,7 +10,6 @@ import {
   analyzeMip,
   analyzeMontage,
   analyzeDefects,
-  analyzeInterfaceWidth,
   analyzeRadial,
   measureProfile,
   analyzeVdf,
@@ -78,8 +77,6 @@ export default function MenuBar({
 }) {
   const [accept, setAccept] = useState<string>("");
   const [macroRec, setMacroRec] = useState(isRecording());
-  const profile = useStageInfo((s) => s.profile);
-
   // latest profile-like measure on the active image (batch profile)
   const lastProfileMeasure = () => {
     const id = store.activeId;
@@ -1261,22 +1258,8 @@ export default function MenuBar({
             action: () => store.openTool("roughness"),
           },
           {
-            label: "Interface Width (fit dock profile)",
-            disabled: !profile,
-            action: () => {
-              if (!profile) return;
-              analyzeInterfaceWidth(profile.dist, profile.intensity)
-                .then((r) =>
-                  store.setStatus(
-                    `interface: 10–90% width ${r.width_10_90.toPrecision(4)} ` +
-                      `${profile.unit} · σ ${r.sigma.toPrecision(4)} · ` +
-                      `R² ${r.r_squared.toFixed(3)}`,
-                  ),
-                )
-                .catch((e: Error) =>
-                  store.setStatus(`interface: ${e.message}`),
-                );
-            },
+            label: "Interface Width…",
+            action: () => store.openTool("interface-width"),
           },
         ],
       },

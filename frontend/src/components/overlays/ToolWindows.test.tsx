@@ -28,6 +28,9 @@ vi.mock("../workshops/RoughnessWorkshop", () => ({
 vi.mock("../workshops/NoiseWorkshop", () => ({
   default: () => <div>Noise workspace content</div>,
 }));
+vi.mock("../workshops/InterfaceWidthWorkshop", () => ({
+  default: () => <div>Interface width workspace content</div>,
+}));
 
 beforeEach(() => {
   useViewer.setState({ tools: [] });
@@ -101,6 +104,16 @@ describe("ToolWindows", () => {
     render(<ToolWindows />);
     const content = await screen.findByText("Noise workspace content");
     expect(screen.getByText("Noise Analysis")).toBeVisible();
+    expect(content.closest(".fvd-tool-window")).toHaveStyle({ width: "620px" });
+  });
+
+  it("gives interface fitting room for the profile plot", async () => {
+    useViewer.setState({
+      tools: [{ kind: "interface-width", x: 10, y: 20, z: 1 }],
+    });
+    render(<ToolWindows />);
+    const content = await screen.findByText("Interface width workspace content");
+    expect(screen.getByText("Interface Width")).toBeVisible();
     expect(content.closest(".fvd-tool-window")).toHaveStyle({ width: "620px" });
   });
 
