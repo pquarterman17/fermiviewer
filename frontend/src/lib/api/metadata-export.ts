@@ -51,10 +51,35 @@ export function batchAutofill(imageIds: string[]): Promise<BatchAutofillResult> 
   return post("/api/usermeta/batch-autofill", { image_ids: imageIds });
 }
 
+export interface RoughnessResult {
+  Ra: number;
+  Rq: number;
+  Rz: number;
+  Rsk: number;
+  Rku: number;
+  Rp: number;
+  Rv: number;
+  SAR: number;
+  unit: string;
+  n_pixels: number;
+  level: "none" | "plane" | "quadratic";
+  roi: [number, number, number, number] | null;
+  bearing_fraction: number[];
+  bearing_heights: number[];
+}
+
 export function analyzeRoughness(
   id: string,
-): Promise<Record<string, number | string>> {
-  return post("/api/analyze/roughness", { image_id: id });
+  options: {
+    level?: RoughnessResult["level"];
+    roi?: [number, number, number, number] | null;
+  } = {},
+): Promise<RoughnessResult> {
+  return post("/api/analyze/roughness", {
+    image_id: id,
+    level: options.level ?? "plane",
+    roi: options.roi ?? null,
+  });
 }
 
 export function applyCalibration(

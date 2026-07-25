@@ -106,6 +106,23 @@ def test_roughness_lattice_interface(client, lattice_id) -> None:
     )
     body = r.json()
     assert body["Ra"] > 0 and body["unit"] == "nm"
+    assert body["level"] == "quadratic"
+    assert body["roi"] is None
+    assert len(body["bearing_fraction"]) == len(body["bearing_heights"])
+    assert 1 < len(body["bearing_fraction"]) <= 512
+
+    roi_result = client.post(
+        "/api/analyze/roughness",
+        json={
+            "image_id": lattice_id,
+            "level": "plane",
+            "roi": [1, 1, 16, 24],
+        },
+    )
+    assert roi_result.status_code == 200
+    roi_body = roi_result.json()
+    assert roi_body["roi"] == [1, 1, 16, 24]
+    assert roi_body["n_pixels"] == 16 * 24
 
     r2 = client.post(
         "/api/analyze/lattice",
@@ -116,7 +133,10 @@ def test_roughness_lattice_interface(client, lattice_id) -> None:
         },
     )
     assert r2.status_code == 200
-    assert r2.json()["d_spacing1"] > 0
+    lattice = r2.json()
+    assert lattice["unit"] == "nm"
+    assert lattice["d_spacing1"] == pytest.approx(4.0)
+    assert lattice["d_spacing2"] == pytest.approx(3.2)
 
     from scipy.special import erf
 

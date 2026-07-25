@@ -8,6 +8,7 @@ the s-exponent and occupancy are per-shell constants — port verbatim.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
@@ -130,6 +131,7 @@ def quantify_map(
     e0_kv: float,
     beta_mrad: float,
     bg_method: str = "powerlaw",
+    progress: Callable[[float, str], None] | None = None,
 ) -> QuantMapResult:
     """Per-pixel SI at% maps (port of eelsQuantifyMap.m). Identical
     per-channel arithmetic to quantify() — a uniform cube reproduces the
@@ -207,6 +209,11 @@ def quantify_map(
         intensity[k] = i_x
         if s_x > 0:
             areal[k] = i_x / s_x
+        if progress is not None:
+            progress(
+                (k + 1) / max(m, 1),
+                f"quantified {el.element} ({k + 1}/{m})",
+            )
 
     total = areal.sum(axis=0)                              # [Np]
     at_pct = np.zeros((m, n_px))

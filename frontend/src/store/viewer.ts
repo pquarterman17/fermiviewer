@@ -254,7 +254,7 @@ export type ToolKind =
   | "pixels"
   | "structure"
   | "overlay"
-  | "surface"
+  | "surface" | "roughness"
   | "layers" | "crosssection";
 
 export interface ToolWindowState {

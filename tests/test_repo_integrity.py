@@ -40,13 +40,13 @@ FRONTEND_MAX_STYLESHEET_LINES = 500
 FRONTEND_LEGACY_CAPS = {
     "App.tsx": 630,
     "components/Inspector/MeasurePanel.tsx": 755,
-    "components/Shell/MenuBar.tsx": 1583,
+    "components/Shell/MenuBar.tsx": 1539,
     "components/Stage/MeasureOverlay.tsx": 783,
     "components/Stage/Stage.tsx": 1234,
-    "components/workshops/DiffractionWorkshop.tsx": 1090,
-    "components/workshops/EelsWorkshop.tsx": 732,
+    "components/workshops/DiffractionWorkshop.tsx": 784,
+    "components/workshops/EelsWorkshop.tsx": 685,
     "components/workshops/LayersWorkshop.tsx": 726,
-    "components/workshops/StructureWorkshop.tsx": 1353,
+    "components/workshops/StructureWorkshop.tsx": 1085,
     "store/viewer.ts": 1778,
 }
 PURE_LAYERS = ("io", "calc", "ops")

@@ -223,7 +223,7 @@ export function analyzeMontage(
 
 export function analyzeLattice(
   id: string,
-  spot1: [number, number], // (row, col) 1-based on the FFT image
+  spot1: [number, number], // (row, col) 1-based on the source image's FFT
   spot2: [number, number],
 ): Promise<{
   a: number;

@@ -17,6 +17,7 @@ from fermiviewer.calc.lattice import lattice_measure
 from fermiviewer.calc.montage import montage as calc_montage
 from fermiviewer.calc.profiles import fit_interface_width
 from fermiviewer.calc.radial import azimuthal_integrate, radial_profile
+from fermiviewer.calc.roi import extract_rect_roi
 from fermiviewer.calc.roughness import surface_roughness
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.models import ImageMeta
@@ -184,21 +185,37 @@ def analyze_radial(req: RadialRequest) -> dict:
 class RoughnessRequest(BaseModel):
     image_id: str
     level: str = "plane"
+    roi: tuple[int, int, int, int] | None = None  # 1-based, inclusive
 
 
 @router.post("/analyze/roughness")
 def analyze_roughness(req: RoughnessRequest) -> dict:
     ds, raster = _raster(req.image_id)
+    try:
+        raster = extract_rect_roi(raster, req.roi)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
     px = ds.pixel_size if np.isfinite(ds.pixel_size) else 1.0
     try:
         r = surface_roughness(raster, pixel_size=px, level=req.level)
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
+    # The full bearing curve has one point per pixel and can be millions of
+    # values. Preserve its shape while bounding the interactive response.
+    n_bearing = r.bearing_heights.size
+    if n_bearing > 512:
+        bearing_idx = np.linspace(0, n_bearing - 1, 512).round().astype(int)
+    else:
+        bearing_idx = np.arange(n_bearing)
     return {
         "Ra": r.ra, "Rq": r.rq, "Rz": r.rz, "Rsk": r.rsk, "Rku": r.rku,
         "Rp": r.rp, "Rv": r.rv, "SAR": r.sar,
         "unit": ds.pixel_unit or "px",
         "n_pixels": r.n_pixels,
+        "level": r.level,
+        "roi": list(req.roi) if req.roi is not None else None,
+        "bearing_fraction": r.bearing_fraction[bearing_idx].tolist(),
+        "bearing_heights": r.bearing_heights[bearing_idx].tolist(),
     }
 
 

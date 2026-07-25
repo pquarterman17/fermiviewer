@@ -105,6 +105,88 @@ def test_job_error_paths(client) -> None:
 # ── admission control: queued state, pending bound, cancel, shutdown ─
 
 
+def _eels_cube(client: TestClient, tmp_path) -> tuple[str, list[dict]]:
+    energy = np.linspace(200, 700, 500)
+    bg = 4e5 * energy**-2.2
+    spectrum = (
+        bg
+        + np.where(energy >= 284, 40.0, 0.0)
+        + np.where(energy >= 532, 20.0, 0.0)
+    )
+    cube = np.broadcast_to(spectrum[:, None, None], (500, 2, 3)).copy()
+    f = write_mini_dm4(
+        tmp_path / "async-eels.dm4",
+        dims=[3, 2, energy.size],
+        data=cube.ravel().astype(np.float32),
+        data_type=2,
+        cal=[{"scale": 1, "origin": 0, "units": "nm"}] * 2
+        + [{
+            "scale": float(energy[1] - energy[0]),
+            "origin": -float(energy[0] / (energy[1] - energy[0])),
+            "units": "eV",
+        }],
+    )
+    image_id = client.post(
+        "/api/session/open", json={"paths": [str(f)]}
+    ).json()[0]["id"]
+    edges = [
+        {
+            "element": "C", "shell": "K", "z": 6, "onset_ev": 284,
+            "signal_window": [284, 384], "bg_window": [230, 280],
+        },
+        {
+            "element": "O", "shell": "K", "z": 8, "onset_ev": 532,
+            "signal_window": [532, 632], "bg_window": [470, 525],
+        },
+    ]
+    return image_id, edges
+
+
+def test_async_eels_quantify_map_matches_sync(client, tmp_path) -> None:
+    image_id, edges = _eels_cube(client, tmp_path)
+    request = {"image_id": image_id, "edges": edges}
+    sync = client.post("/api/eels/quantify-map", json=request).json()
+
+    start = client.post(
+        "/api/eels/quantify-map", json={**request, "run_async": True}
+    )
+    assert start.status_code == 200
+    final = _poll(client, start.json()["job_id"])
+
+    assert final["status"] == "done"
+    assert final["progress"] == 1.0
+    assert final["message"].endswith("(2/2)")
+    assert final["result"]["elements"] == sync["elements"]
+    assert final["result"]["mean_atomic_percent"] == pytest.approx(
+        sync["mean_atomic_percent"]
+    )
+    for meta in final["result"]["maps"]:
+        assert client.get(f"/api/image/{meta['id']}/render").status_code == 200
+
+
+def test_async_eels_quantify_map_validates_and_bounds_queue(
+    client, tmp_path, monkeypatch
+) -> None:
+    from fermiviewer.routes import analysis as analysis_routes
+
+    assert client.post(
+        "/api/eels/quantify-map",
+        json={"image_id": "nope", "edges": [], "run_async": True},
+    ).status_code == 404
+
+    image_id, edges = _eels_cube(client, tmp_path)
+
+    def full(fn):
+        raise JobQueueFullError("32 jobs already queued — retry later")
+
+    monkeypatch.setattr(analysis_routes.jobs, "submit", full)
+    response = client.post(
+        "/api/eels/quantify-map",
+        json={"image_id": image_id, "edges": edges, "run_async": True},
+    )
+    assert response.status_code == 429
+
+
 def test_job_lifecycle_states_bound_and_cancel() -> None:
     store_ = JobStore(max_workers=1, max_pending=2)
     started = threading.Event()
