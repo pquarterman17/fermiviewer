@@ -116,7 +116,10 @@ def test_roughness_lattice_interface(client, lattice_id) -> None:
         },
     )
     assert r2.status_code == 200
-    assert r2.json()["d_spacing1"] > 0
+    lattice = r2.json()
+    assert lattice["unit"] == "nm"
+    assert lattice["d_spacing1"] == pytest.approx(4.0)
+    assert lattice["d_spacing2"] == pytest.approx(3.2)
 
     from scipy.special import erf
 

@@ -46,7 +46,7 @@ FRONTEND_LEGACY_CAPS = {
     "components/workshops/DiffractionWorkshop.tsx": 1090,
     "components/workshops/EelsWorkshop.tsx": 732,
     "components/workshops/LayersWorkshop.tsx": 726,
-    "components/workshops/StructureWorkshop.tsx": 1353,
+    "components/workshops/StructureWorkshop.tsx": 1229,
     "store/viewer.ts": 1778,
 }
 PURE_LAYERS = ("io", "calc", "ops")

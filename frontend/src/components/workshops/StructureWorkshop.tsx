@@ -11,7 +11,6 @@ import {
   analyzeCtf,
   analyzeGpa,
   analyzeGrainsAsync,
-  analyzeLattice,
   analyzeParticles,
   analyzeStitch,
   analyzeTemplate,
@@ -19,7 +18,6 @@ import {
   grainsTrainPreview,
   grainsTrainSegment,
   imageFft,
-  renderUrl,
   runJob,
   type CtfResult,
   type GrainMethod,
@@ -51,6 +49,8 @@ import {
 import { useResults } from "../overlays/ResultsWindow";
 import AnalysisRegionSelect from "./AnalysisRegionSelect";
 import { AnalysisQualityCard, GrainMetrics } from "./AnalysisQualityCard";
+import LatticeMode from "./LatticeMode";
+import Preview from "./StructurePreview";
 import { TrainedGrainPreview } from "./TrainedGrainPreview";
 
 export { TrainedPreviewLegend } from "./TrainedGrainPreview";
@@ -96,70 +96,6 @@ export default function StructureWorkshop() {
           {mode === "Lattice" && activeId && <LatticeMode id={activeId} />}
           {mode === "Stitch" && <StitchMode />}
         </>
-      )}
-    </div>
-  );
-}
-
-// ── shared preview with marker overlay ──────────────────────────────
-
-function Preview({
-  id,
-  markers,
-  color,
-  onClick,
-}: {
-  id: string;
-  markers: { x: number; y: number }[]; // 1-based image px
-  color: string;
-  onClick?: (rowCol: [number, number]) => void;
-}) {
-  const [nat, setNat] = useState<{ w: number; h: number } | null>(null);
-  const scale = nat ? VIEW_W / nat.w : 0;
-  const viewH = nat ? nat.h * scale : VIEW_W;
-  return (
-    <div
-      className="fvd-ws-pattern"
-      style={{
-        width: VIEW_W,
-        height: viewH,
-        cursor: onClick ? "crosshair" : undefined,
-      }}
-      onClick={(e) => {
-        if (!onClick || !nat) return;
-        const r = e.currentTarget.getBoundingClientRect();
-        onClick([
-          (e.clientY - r.top) / scale + 0.5,
-          (e.clientX - r.left) / scale + 0.5,
-        ]);
-      }}
-    >
-      <img
-        src={renderUrl(id)}
-        alt=""
-        width={VIEW_W}
-        draggable={false}
-        onLoad={(e) =>
-          setNat({
-            w: e.currentTarget.naturalWidth,
-            h: e.currentTarget.naturalHeight,
-          })
-        }
-      />
-      {nat && (
-        <svg width={VIEW_W} height={viewH} pointerEvents="none">
-          {markers.map((m, i) => (
-            <circle
-              key={i}
-              cx={(m.x - 0.5) * scale}
-              cy={(m.y - 0.5) * scale}
-              r={3}
-              fill="none"
-              stroke={color}
-              strokeWidth={1.2}
-            />
-          ))}
-        </svg>
       )}
     </div>
   );
@@ -1222,68 +1158,6 @@ function CtfMode({ id }: { id: string }) {
         </div>
       )}
       {res && <div ref={host} className="fvd-ws-plot" />}
-    </>
-  );
-}
-
-// ── Lattice (two clicks on an FFT) ───────────────────────────────────
-
-function LatticeMode({ id }: { id: string }) {
-  const setStatus = useViewer((s) => s.setStatus);
-  const [spots, setSpots] = useState<[number, number][]>([]);
-  const [table, setTable] = useState<Record<string, string> | null>(null);
-
-  useEffect(() => {
-    setSpots([]);
-    setTable(null);
-  }, [id]);
-
-  const onClick = (rc: [number, number]) => {
-    const next = [...spots, rc].slice(-2) as [number, number][];
-    setSpots(next);
-    setTable(null);
-    if (next.length === 2) {
-      analyzeLattice(id, next[0], next[1])
-        .then((r) =>
-          setTable({
-            a: `${r.a.toFixed(3)} ${r.unit}`,
-            b: `${r.b.toFixed(3)} ${r.unit}`,
-            γ: `${r.gamma_deg.toFixed(2)}°`,
-            "d₁": `${r.d_spacing1.toFixed(3)} ${r.unit}`,
-            "d₂": `${r.d_spacing2.toFixed(3)} ${r.unit}`,
-            A_cell: `${r.unit_cell_area.toFixed(4)} ${r.unit}²`,
-          }),
-        )
-        .catch((e: Error) => setStatus(`lattice: ${e.message}`));
-    }
-  };
-
-  return (
-    <>
-      <Preview
-        id={id}
-        markers={spots.map(([r, c]) => ({ x: c, y: r }))}
-        color="var(--capture)"
-        onClick={onClick}
-      />
-      <div className="fvd-ws-note">
-        {spots.length < 2
-          ? `Open the FFT of a lattice image, then click ${2 - spots.length}
-             more spot${spots.length === 1 ? "" : "s"}.`
-          : "Click again to restart."}
-      </div>
-      {table && (
-        <table className="fvd-ws-table">
-          <tbody>
-            {Object.entries(table).map(([k, v]) => (
-              <tr key={k}>
-                <td>{k}</td>
-                <td>{v}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
     </>
   );
 }
