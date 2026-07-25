@@ -25,6 +25,9 @@ vi.mock("../workshops/DiffractionWorkshop", () => ({
 vi.mock("../workshops/RoughnessWorkshop", () => ({
   default: () => <div>Roughness workspace content</div>,
 }));
+vi.mock("../workshops/NoiseWorkshop", () => ({
+  default: () => <div>Noise workspace content</div>,
+}));
 
 beforeEach(() => {
   useViewer.setState({ tools: [] });
@@ -91,6 +94,14 @@ describe("ToolWindows", () => {
     expect(content.closest(".fvd-tool-window")).toHaveStyle({
       width: "620px",
     });
+  });
+
+  it("gives noise diagnostics room for its evidence plot", async () => {
+    useViewer.setState({ tools: [{ kind: "noise", x: 10, y: 20, z: 1 }] });
+    render(<ToolWindows />);
+    const content = await screen.findByText("Noise workspace content");
+    expect(screen.getByText("Noise Analysis")).toBeVisible();
+    expect(content.closest(".fvd-tool-window")).toHaveStyle({ width: "620px" });
   });
 
   it("exposes an accessible resize grip", async () => {

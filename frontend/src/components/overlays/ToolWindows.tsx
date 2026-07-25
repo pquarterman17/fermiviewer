@@ -14,6 +14,7 @@ const RoughnessWorkshop = lazy(() => import("../workshops/RoughnessWorkshop"));
 const EdsWorkshop = lazy(() => import("../workshops/EdsWorkshop"));
 const EelsWorkshop = lazy(() => import("../workshops/EelsWorkshop"));
 const CrossSectionGuide = lazy(() => import("../workshops/CrossSectionGuide"));
+const NoiseWorkshop = lazy(() => import("../workshops/NoiseWorkshop"));
 
 const titles: Record<ToolKind, string> = {
   eels: "EELS",
@@ -27,6 +28,7 @@ const titles: Record<ToolKind, string> = {
   roughness: "Surface Roughness",
   layers: "Cross-section Layers",
   crosssection: "Cross-section Assistant",
+  noise: "Noise Analysis",
 };
 
 const defaultWidths: Partial<Record<ToolKind, number>> = {
@@ -39,6 +41,7 @@ const defaultWidths: Partial<Record<ToolKind, number>> = {
   fftmask: 332,
   pixels: 300,
   roughness: 620,
+  noise: 620,
 };
 
 export default function ToolWindows() {
@@ -91,5 +94,7 @@ function Workshop({ kind }: { kind: ToolKind }) {
       return <LayersWorkshop />;
     case "crosssection":
       return <CrossSectionGuide />;
+    case "noise":
+      return <NoiseWorkshop />;
   }
 }

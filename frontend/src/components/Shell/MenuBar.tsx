@@ -11,7 +11,6 @@ import {
   analyzeMontage,
   analyzeDefects,
   analyzeInterfaceWidth,
-  analyzeNoise,
   analyzeRadial,
   measureProfile,
   analyzeVdf,
@@ -1287,21 +1286,7 @@ export default function MenuBar({
           {
             label: "Noise Estimate",
             disabled: !store.activeId,
-            action: () => {
-              const id = store.activeId;
-              if (!id) return;
-              analyzeNoise(id)
-                .then((r) =>
-                  store.setStatus(
-                    `noise: σ ${r.sigma.toPrecision(4)} · ` +
-                      `SNR ${r.snr_db.toFixed(1)} dB (${r.noise_type}) → ` +
-                      `try ${r.recommendation}`,
-                  ),
-                )
-                .catch((e: Error) =>
-                  store.setStatus(`noise: ${e.message}`),
-                );
-            },
+            action: () => store.openTool("noise"),
           },
           {
             label: "Defect Count",

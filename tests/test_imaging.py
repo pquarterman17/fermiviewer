@@ -238,6 +238,11 @@ def test_noise_estimate(synth) -> None:
     assert mad.sigma == pytest.approx(g["sigmaMad"], rel=REL)
     assert mad.snr_db == pytest.approx(g["snrDb"], rel=REL)
     assert mad.noise_type == g["type"]
+    assert mad.block_means.shape == mad.block_variances.shape
+    assert mad.block_means.size > 0
+    assert np.isfinite(mad.regression_slope)
+    assert np.isfinite(mad.regression_intercept)
+    assert np.isfinite(mad.regression_r_squared)
     lv = noise_estimate(synth["noisy"], method="localvar")
     assert lv.sigma == pytest.approx(g["sigmaLocalVar"], rel=REL)
 

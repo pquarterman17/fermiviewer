@@ -153,6 +153,35 @@ def test_noise_endpoint_all_methods(client, tmp_path) -> None:
         )
         assert isinstance(body["recommendation"], str)
         assert body["recommendation"]
+        assert len(body["block_means"]) == len(body["block_variances"])
+        assert body["block_size"] == 16
+        assert body["n_blocks"] >= len(body["block_means"])
+        assert body["n_pixels"] > 0
+
+
+def test_noise_endpoint_honors_roi_and_exposes_fit(client, tmp_path) -> None:
+    img_id = _open(client, tmp_path, _synth_pattern())
+    r = client.post("/api/analyze/noise", json={
+        "image_id": img_id, "method": "both", "roi": [1, 1, 32, 48],
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["roi"] == [1, 1, 32, 48]
+    assert body["n_pixels"] == 32 * 48
+    assert len(body["block_means"]) == 6
+    for key in (
+        "regression_slope", "regression_intercept", "regression_r_squared",
+    ):
+        assert key in body
+
+
+def test_noise_endpoint_rejects_tiny_roi(client, tmp_path) -> None:
+    img_id = _open(client, tmp_path, _synth_pattern())
+    r = client.post("/api/analyze/noise", json={
+        "image_id": img_id, "roi": [1, 1, 2, 2],
+    })
+    assert r.status_code == 422
+    assert "at least 3" in r.json()["detail"]
 
 
 def test_noise_endpoint_bad_method(client, tmp_path) -> None:

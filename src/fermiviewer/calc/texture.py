@@ -83,6 +83,11 @@ class NoiseEstimate:
     snr_linear: float
     noise_type: str
     method: str
+    block_means: np.ndarray
+    block_variances: np.ndarray
+    regression_slope: float
+    regression_intercept: float
+    regression_r_squared: float
 
 
 _LAPLACIAN = np.array([[1, -2, 1], [-2, 4, -2], [1, -2, 1]], dtype=np.float64)
@@ -130,13 +135,15 @@ def _block_stats(d: np.ndarray) -> tuple[float, np.ndarray, np.ndarray]:
     return float(np.sqrt(max(noise_var, 0.0))), means, variances
 
 
-def _classify(means: np.ndarray, variances: np.ndarray) -> str:
-    """Poisson vs Gaussian via var-vs-mean regression (ported rules)."""
+def _classify(
+    means: np.ndarray, variances: np.ndarray
+) -> tuple[str, float, float, float]:
+    """Poisson vs Gaussian plus the var-vs-mean regression evidence."""
     if means.size < 4:
-        return "unknown"
+        return "unknown", np.nan, np.nan, np.nan
     valid = means > 0
     if valid.sum() < 4:
-        return "unknown"
+        return "unknown", np.nan, np.nan, np.nan
     x = means[valid]
     y = variances[valid]
     n = x.size
@@ -144,22 +151,24 @@ def _classify(means: np.ndarray, variances: np.ndarray) -> str:
     sxx, sxy = (x * x).sum(), (x * y).sum()
     denom = n * sxx - sx**2
     if abs(denom) < np.finfo(np.float64).eps:
-        return "unknown"
+        return "unknown", np.nan, np.nan, np.nan
     slope = (n * sxy - sx * sy) / denom
     intercept = (sy - slope * sx) / n
     y_fit = slope * x + intercept
     ss_tot = ((y - y.mean()) ** 2).sum()
     ss_res = ((y - y_fit) ** 2).sum()
     if ss_tot < np.finfo(np.float64).eps:
-        return "gaussian"
+        return "gaussian", float(slope), float(intercept), 1.0
     r2 = 1 - ss_res / ss_tot
     if r2 > 0.6 and slope > 0:
-        return "poisson"
-    if r2 < 0.4:
-        return "gaussian"
-    if 0.4 <= r2 <= 0.6:
-        return "mixed"
-    return "unknown"
+        kind = "poisson"
+    elif r2 < 0.4:
+        kind = "gaussian"
+    elif 0.4 <= r2 <= 0.6:
+        kind = "mixed"
+    else:
+        kind = "unknown"
+    return kind, float(slope), float(intercept), float(r2)
 
 
 def noise_estimate(img: np.ndarray, method: str = "mad") -> NoiseEstimate:
@@ -190,12 +199,18 @@ def noise_estimate(img: np.ndarray, method: str = "mad") -> NoiseEstimate:
         snr_linear = np.nan
         snr_db = np.nan
 
+    noise_type, slope, intercept, r_squared = _classify(means, variances)
     return NoiseEstimate(
         sigma=sigma,
         snr_db=float(snr_db),
         snr_linear=float(snr_linear),
-        noise_type=_classify(means, variances),
+        noise_type=noise_type,
         method=method,
+        block_means=means,
+        block_variances=variances,
+        regression_slope=slope,
+        regression_intercept=intercept,
+        regression_r_squared=r_squared,
     )
 
 

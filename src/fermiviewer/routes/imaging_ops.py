@@ -316,6 +316,7 @@ def analyze_ctf(req: CtfRequest) -> dict:
 class NoiseRequest(BaseModel):
     image_id: str
     method: str = "mad"
+    roi: tuple[int, int, int, int] | None = None
 
 
 @router.post("/analyze/noise")
@@ -324,7 +325,10 @@ def analyze_noise(req: NoiseRequest) -> dict:
 
     _, raster = _raster(req.image_id)
     try:
-        res = noise_estimate(raster, method=req.method)
+        analysis = extract_rect_roi(raster, req.roi)
+        if min(analysis.shape) < 3:
+            raise ValueError("noise analysis region must be at least 3×3 pixels")
+        res = noise_estimate(analysis, method=req.method)
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
     # filter recommendation mirrors the MATLAB heuristic: Poisson-like
@@ -335,13 +339,40 @@ def analyze_noise(req: NoiseRequest) -> dict:
         rec = "gaussian (sigma 2) — low SNR"
     else:
         rec = "gaussian (sigma 1)"
+    # Keep the diagnostic payload bounded for very large rasters while the
+    # regression itself continues to use every block in the pure calculation.
+    n_blocks = int(res.block_means.size)
+    if n_blocks > 512:
+        sample = np.linspace(0, n_blocks - 1, 512, dtype=np.int64)
+        block_means = res.block_means[sample]
+        block_variances = res.block_variances[sample]
+    else:
+        block_means = res.block_means
+        block_variances = res.block_variances
     return {
         "sigma": res.sigma,
-        "snr_db": res.snr_db,
-        "snr_linear": res.snr_linear,
+        "snr_db": res.snr_db if np.isfinite(res.snr_db) else None,
+        "snr_linear": res.snr_linear if np.isfinite(res.snr_linear) else None,
         "noise_type": res.noise_type,
         "method": res.method,
         "recommendation": rec,
+        "roi": req.roi,
+        "n_pixels": int(analysis.size),
+        "block_size": 16,
+        "n_blocks": n_blocks,
+        "block_means": block_means.tolist(),
+        "block_variances": block_variances.tolist(),
+        "regression_slope": (
+            res.regression_slope if np.isfinite(res.regression_slope) else None
+        ),
+        "regression_intercept": (
+            res.regression_intercept if np.isfinite(res.regression_intercept) else None
+        ),
+        "regression_r_squared": (
+            res.regression_r_squared
+            if np.isfinite(res.regression_r_squared)
+            else None
+        ),
     }
 
 
