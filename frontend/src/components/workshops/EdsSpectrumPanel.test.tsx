@@ -18,6 +18,7 @@ describe("EdsSpectrumPanel", () => {
         liveActive={false}
         logScale={false}
         expanded={false}
+        energyUnit="keV"
         onShowSum={onShowSum}
         onToggleLive={onToggleLive}
         onShowPicker={onShowPicker}
@@ -54,6 +55,7 @@ describe("EdsSpectrumPanel", () => {
         liveActive={false}
         logScale
         expanded
+        energyUnit="keV"
         onShowSum={() => {}}
         onToggleLive={() => {}}
         onShowPicker={() => {}}

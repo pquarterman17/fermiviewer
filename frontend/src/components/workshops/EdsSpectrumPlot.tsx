@@ -8,6 +8,7 @@ import uPlot from "uplot";
 
 import type { Spectrum } from "../../lib/api";
 import type { PeakMarker } from "../../lib/eds/peakMarkers";
+import { formatCountTick } from "../../lib/edsSpectrumDisplay";
 
 export default function SpectrumPlot({
   spec,
@@ -56,7 +57,12 @@ export default function SpectrumPlot({
         ],
         axes: [
           { stroke: "#888", grid: { stroke: "rgba(128,128,128,0.15)" } },
-          { stroke: "#888", grid: { stroke: "rgba(128,128,128,0.15)" } },
+          {
+            stroke: "#888",
+            grid: { stroke: "rgba(128,128,128,0.15)" },
+            size: 64,
+            values: (_u, ticks) => ticks.map(formatCountTick),
+          },
         ],
         legend: { show: true },
         cursor: { y: false },
