@@ -8,13 +8,17 @@ from pathlib import Path
 
 import pytest
 
+from fermiviewer.devsamples import corpus_root
 from fermiviewer.server import ALLOWED_HOSTS
 
 # Make tests/fixtures/ importable (synthetic file generators)
 sys.path.insert(0, str(Path(__file__).parent))
 
 GOLDEN_DIR = Path(__file__).parent / "golden"
-ML_ROOT = Path(__file__).resolve().parents[2] / "fermi-viewer"
+# Single source of truth for corpus discovery (see devsamples.corpus_root):
+# duplicating the walk here is what let the two drift when the checkouts
+# moved off OneDrive, silently skipping every realdata/golden test.
+ML_ROOT = corpus_root()
 
 # server.py's Host-header guard (DNS-rebinding defense) only allows this
 # app's own hostnames. FastAPI's TestClient sends `Host: testserver`, so
@@ -39,12 +43,18 @@ def golden():
 def ml_datasets() -> Path:
     """Path to the MATLAB repo's test datasets (committed corpus).
 
-    Skips the test when fermi-viewer is not checked out alongside this
-    repo (e.g. minimal CI checkout) — golden-only tests still run.
+    Skips the test when fermi-viewer is not checked out (e.g. minimal CI
+    checkout) — golden-only tests still run.
     """
     p = ML_ROOT / "+test_datasets"
     if not p.is_dir():
-        pytest.skip("fermi-viewer test datasets not present")
+        # Name the path. A bare "not present" is indistinguishable from
+        # "the corpus moved", which is how a whole realdata suite went
+        # quiet for a day without anyone noticing.
+        pytest.skip(
+            f"fermi-viewer test datasets not present at {p} "
+            f"(set FV_MATLAB_ROOT to override)"
+        )
     return p
 
 
