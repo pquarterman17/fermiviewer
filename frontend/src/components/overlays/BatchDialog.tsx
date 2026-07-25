@@ -1,24 +1,28 @@
-// Batch recipe processor (GUI-enhancements handoff §4a). Build an ordered
-// recipe of filter/transform steps from the shared catalogue, then run it
-// across the selected images (or all, if none selected). Each step's output
-// feeds the next (chained applyFilter), with per-image progress; only the final
-// image of each chain is registered in the library. Per-step parameters reuse
-// the existing askParams modal so there is one param-entry path.
+import { useEffect, useRef, useState } from "react";
 
-import { useRef, useState } from "react";
-
-import { applyFilter, type ImageMeta } from "../../lib/api";
+import {
+  fetchBatchOperations,
+  runBatchRecipe,
+  type BatchOperation,
+  type BatchRecipeStep,
+  type BatchRunResult,
+} from "../../lib/api";
 import type { ParamField } from "../../lib/params";
-import { BATCH_FILTERS } from "../../lib/transformTools";
+import {
+  downloadCsv,
+  downloadJson,
+  tableToCsv,
+  tableToJson,
+  type Cell,
+} from "../../lib/resultsExport";
 import { askParams } from "../../store/params";
 import { useViewer } from "../../store/viewer";
 import ModalDialog from "./ModalDialog";
 
-interface RecipeStep {
+interface RecipeStep extends BatchRecipeStep {
   uid: number;
-  kind: string;
   label: string;
-  params: Record<string, unknown>;
+  produces: BatchOperation["produces"];
 }
 
 type RunState = "pending" | "running" | "done" | "fail";
@@ -27,13 +31,94 @@ const GLYPH: Record<RunState, string> = {
   pending: "·",
   running: "…",
   done: "✓",
-  fail: "✗",
+  fail: "×",
 };
 
 function paramSummary(params: Record<string, unknown>): string {
   return Object.entries(params)
-    .map(([k, v]) => `${k}=${String(v)}`)
+    .map(([key, value]) => `${key}=${String(value)}`)
     .join(" · ");
+}
+
+function paramFields(operation: BatchOperation): ParamField[] {
+  return operation.params.map((param) => {
+    const fallback =
+      param.default ??
+      (param.type === "bool" ? false : param.type === "str" ? "" : 0);
+    if (param.choices) {
+      return {
+        key: param.name,
+        label: param.name.replaceAll("_", " "),
+        type: "select",
+        default: String(fallback),
+        options: param.choices.map(String),
+        hint: param.doc,
+      };
+    }
+    return {
+      key: param.name,
+      label: param.name.replaceAll("_", " "),
+      type:
+        param.type === "bool"
+          ? "boolean"
+          : param.type === "str"
+            ? "text"
+            : "number",
+      default: fallback as number | string | boolean,
+      hint: [
+        param.doc,
+        param.minimum != null ? `min ${param.minimum}` : "",
+        param.maximum != null ? `max ${param.maximum}` : "",
+      ].filter(Boolean).join(" · "),
+    };
+  });
+}
+
+function flatten(
+  value: Record<string, unknown>,
+  prefix: string,
+): Record<string, Cell> {
+  const out: Record<string, Cell> = {};
+  for (const [key, item] of Object.entries(value)) {
+    const column = `${prefix}.${key}`;
+    if (
+      item == null ||
+      typeof item === "string" ||
+      typeof item === "number"
+    ) {
+      out[column] = item as Cell;
+    } else {
+      out[column] = JSON.stringify(item);
+    }
+  }
+  return out;
+}
+
+export function batchResultTable(result: BatchRunResult): {
+  columns: string[];
+  rows: Cell[][];
+} {
+  const records = result.outputs.map((output) => {
+    const record: Record<string, Cell> = {
+      input: output.name,
+      status: output.status,
+      error: output.error ?? "",
+      derived: output.derived?.name ?? "",
+    };
+    for (const value of output.values) {
+      Object.assign(record, flatten(value.value, value.op));
+    }
+    return record;
+  });
+  const fixed = ["input", "status", "error", "derived"];
+  const extras = [...new Set(records.flatMap((record) => Object.keys(record)))]
+    .filter((key) => !fixed.includes(key))
+    .sort();
+  const columns = [...fixed, ...extras];
+  return {
+    columns,
+    rows: records.map((record) => columns.map((column) => record[column] ?? null)),
+  };
 }
 
 export default function BatchDialog() {
@@ -44,173 +129,301 @@ export default function BatchDialog() {
   const images = useViewer((s) => s.images);
   const ingestDerived = useViewer((s) => s.ingestDerived);
   const setStatus = useViewer((s) => s.setStatus);
-
+  const [operations, setOperations] = useState<BatchOperation[]>([]);
+  const [schemaError, setSchemaError] = useState("");
   const [steps, setSteps] = useState<RecipeStep[]>([]);
   const [progress, setProgress] = useState<Record<string, RunState>>({});
+  const [progressText, setProgressText] = useState("");
+  const [progressValue, setProgressValue] = useState(0);
+  const [result, setResult] = useState<BatchRunResult | null>(null);
   const [running, setRunning] = useState(false);
   const uid = useRef(0);
 
+  useEffect(() => {
+    if (!open || operations.length > 0) return;
+    fetchBatchOperations()
+      .then(setOperations)
+      .catch((error: Error) => setSchemaError(error.message));
+  }, [open, operations.length]);
+
   if (!open) return null;
-
-  // selection drives the target set; fall back to every open image
   const targets = selected.length > 0 ? selected : order;
+  const groups = operations.reduce<Record<string, BatchOperation[]>>(
+    (current, operation) => {
+      (current[operation.category] ??= []).push(operation);
+      return current;
+    },
+    {},
+  );
 
-  const addStep = async (
-    kind: string,
-    label: string,
-    fields?: ParamField[],
-  ) => {
-    const params =
-      fields && fields.length ? await askParams(label, fields) : {};
-    if (params === null) return; // user cancelled the param modal
-    setSteps((s) => [...s, { uid: uid.current++, kind, label, params }]);
+  const addStep = async (operation: BatchOperation) => {
+    const fields = paramFields(operation);
+    const params = fields.length
+      ? await askParams(operation.summary, fields)
+      : {};
+    if (params === null) return;
+    setSteps((current) => [
+      ...current,
+      {
+        uid: uid.current++,
+        op: operation.name,
+        label: operation.summary,
+        produces: operation.produces,
+        params,
+      },
+    ]);
   };
 
-  const removeStep = (u: number) =>
-    setSteps((s) => s.filter((x) => x.uid !== u));
-
-  const move = (i: number, d: -1 | 1) =>
-    setSteps((s) => {
-      const j = i + d;
-      if (j < 0 || j >= s.length) return s;
-      const next = s.slice();
-      [next[i], next[j]] = [next[j], next[i]];
+  const move = (index: number, direction: -1 | 1) =>
+    setSteps((current) => {
+      const destination = index + direction;
+      if (destination < 0 || destination >= current.length) return current;
+      const next = current.slice();
+      [next[index], next[destination]] = [next[destination], next[index]];
       return next;
     });
 
   const run = async () => {
     if (!steps.length || !targets.length || running) return;
-    setRunning(true);
-    const prog: Record<string, RunState> = {};
-    targets.forEach((id) => (prog[id] = "pending"));
-    setProgress({ ...prog });
-
-    const finals: ImageMeta[] = [];
-    for (const id of targets) {
-      prog[id] = "running";
-      setProgress({ ...prog });
-      try {
-        let curId = id;
-        let final: ImageMeta | null = null;
-        for (const step of steps) {
-          final = await applyFilter(curId, step.kind, step.params);
-          curId = final.id; // chain: feed this step's output to the next
-        }
-        if (final) finals.push(final);
-        prog[id] = "done";
-      } catch {
-        prog[id] = "fail";
-      }
-      setProgress({ ...prog });
-    }
-
-    if (finals.length) ingestDerived(finals);
-    setStatus(
-      `batch recipe: ${finals.length}/${targets.length} ok · ` +
-        `${steps.length} step${steps.length === 1 ? "" : "s"}`,
+    const states = Object.fromEntries(
+      targets.map((imageId) => [imageId, "pending" as RunState]),
     );
-    setRunning(false);
+    states[targets[0]] = "running";
+    setProgress(states);
+    setProgressValue(0);
+    setProgressText("Queued");
+    setResult(null);
+    setRunning(true);
+    try {
+      const next = await runBatchRecipe(
+        targets,
+        steps.map(({ op, params }) => ({ op, params })),
+        (fraction, message) => {
+          setProgressValue(fraction);
+          setProgressText(message);
+          const completeUnits = Math.floor(fraction * targets.length * steps.length);
+          const currentIndex = Math.min(
+            targets.length - 1,
+            Math.floor(completeUnits / steps.length),
+          );
+          setProgress((previous) =>
+            Object.fromEntries(
+              targets.map((id, index) => [
+                id,
+                index < currentIndex
+                  ? "done"
+                  : index === currentIndex
+                    ? "running"
+                    : previous[id] ?? "pending",
+              ]),
+            ),
+          );
+        },
+      );
+      setResult(next);
+      setProgress(
+        Object.fromEntries(
+          next.outputs.map((output) => [
+            output.image_id,
+            output.status === "done" ? "done" : "fail",
+          ]),
+        ),
+      );
+      const derived = next.outputs
+        .map((output) => output.derived)
+        .filter((meta) => meta !== null);
+      if (derived.length) ingestDerived(derived);
+      setProgressValue(1);
+      setProgressText(`${next.succeeded} succeeded · ${next.failed} failed`);
+      setStatus(
+        `batch recipe: ${next.succeeded}/${next.outputs.length} succeeded · ` +
+          `${steps.length} step${steps.length === 1 ? "" : "s"}`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setProgressText(message);
+      setStatus(`batch recipe: ${message}`);
+    } finally {
+      setRunning(false);
+    }
   };
 
-  const close = () => {
-    if (!running) setOpen(false);
+  const exportResult = (format: "csv" | "json") => {
+    if (!result) return;
+    const table = batchResultTable(result);
+    const provenance = {
+      analysis: "Batch recipe",
+      params: { version: result.version, steps: result.steps },
+    };
+    if (format === "csv") {
+      downloadCsv(
+        "fermiviewer_batch_results.csv",
+        tableToCsv(table.columns, table.rows, provenance),
+      );
+    } else {
+      downloadJson(
+        "fermiviewer_batch_results.json",
+        tableToJson(table.columns, table.rows, provenance),
+      );
+    }
   };
 
   return (
-    <ModalDialog ariaLabel="Batch recipe" className="fvd-batch" onClose={close}>
-        <h2>Batch recipe</h2>
-        <p className="fvd-batch-sub">
-          {targets.length} image{targets.length === 1 ? "" : "s"}
-          {selected.length > 0 ? " selected" : " (all open)"} · {steps.length}{" "}
-          step{steps.length === 1 ? "" : "s"}
-        </p>
+    <ModalDialog
+      ariaLabel="Batch recipe"
+      className="fvd-batch"
+      onClose={() => !running && setOpen(false)}
+    >
+      <h2>Batch recipe</h2>
+      <p className="fvd-batch-sub">
+        {targets.length} image{targets.length === 1 ? "" : "s"}
+        {selected.length > 0 ? " selected" : " (all open)"} · {steps.length}{" "}
+        step{steps.length === 1 ? "" : "s"}
+      </p>
 
-        <div className="fvd-batch-pal">
-          {BATCH_FILTERS.map((f) => (
-            <button
-              key={f.kind}
-              className="fvd-pill"
-              disabled={running}
-              onClick={() => void addStep(f.kind, f.label, f.fields)}
-              title={`Add "${f.label}" as a batch step`}
-            >
-              + {f.label}
-            </button>
-          ))}
-        </div>
+      {schemaError && <div className="fvd-batch-empty">{schemaError}</div>}
+      {Object.entries(groups).map(([category, entries]) => (
+        <section key={category}>
+          <div className="fvd-ws-note">{category}</div>
+          <div className="fvd-batch-pal">
+            {entries.map((operation) => (
+              <button
+                key={operation.name}
+                className="fvd-pill"
+                disabled={running}
+                onClick={() => void addStep(operation)}
+                title={`${operation.summary} · produces ${operation.produces}`}
+              >
+                + {operation.summary}
+              </button>
+            ))}
+          </div>
+        </section>
+      ))}
 
-        <div className="fvd-batch-recipe">
-          {steps.length === 0 ? (
-            <div className="fvd-batch-empty">
-              Add steps above — they run top-to-bottom on each image.
+      <div className="fvd-batch-recipe">
+        {steps.length === 0 ? (
+          <div className="fvd-batch-empty">
+            Add image or analysis steps — they run top-to-bottom on each input.
+          </div>
+        ) : (
+          steps.map((step, index) => (
+            <div key={step.uid} className="fvd-batch-step">
+              <span className="n">{index + 1}</span>
+              <span className="lbl">{step.label}</span>
+              <span className="prm">
+                {step.produces} {paramSummary(step.params)}
+              </span>
+              <button
+                className="mv"
+                disabled={running || index === 0}
+                onClick={() => move(index, -1)}
+                title="Move up"
+              >
+                ↑
+              </button>
+              <button
+                className="mv"
+                disabled={running || index === steps.length - 1}
+                onClick={() => move(index, 1)}
+                title="Move down"
+              >
+                ↓
+              </button>
+              <button
+                className="rm"
+                disabled={running}
+                onClick={() =>
+                  setSteps((current) =>
+                    current.filter((candidate) => candidate.uid !== step.uid),
+                  )
+                }
+                title="Remove step"
+              >
+                ×
+              </button>
             </div>
-          ) : (
-            steps.map((s, i) => (
-              <div key={s.uid} className="fvd-batch-step">
-                <span className="n">{i + 1}</span>
-                <span className="lbl">{s.label}</span>
-                <span className="prm">{paramSummary(s.params)}</span>
-                <button
-                  className="mv"
-                  disabled={running || i === 0}
-                  onClick={() => move(i, -1)}
-                  title="Move up"
-                >
-                  ↑
-                </button>
-                <button
-                  className="mv"
-                  disabled={running || i === steps.length - 1}
-                  onClick={() => move(i, 1)}
-                  title="Move down"
-                >
-                  ↓
-                </button>
-                <button
-                  className="rm"
-                  disabled={running}
-                  onClick={() => removeStep(s.uid)}
-                  title="Remove step"
-                >
-                  ✕
-                </button>
-              </div>
-            ))
-          )}
-        </div>
+          ))
+        )}
+      </div>
 
-        {Object.keys(progress).length > 0 && (
+      {Object.keys(progress).length > 0 && (
+        <>
+          <progress max="1" value={progressValue} style={{ width: "100%" }} />
+          <div className="fvd-ws-note" role="status">{progressText}</div>
           <div className="fvd-batch-prog">
             {targets.map((id) => {
-              const st = progress[id] ?? "pending";
+              const state = progress[id] ?? "pending";
+              const error = result?.outputs.find(
+                (output) => output.image_id === id,
+              )?.error;
               return (
-                <div key={id} className="row">
-                  <span className={`st ${st}`}>{GLYPH[st]}</span>
+                <div key={id} className="row" title={error}>
+                  <span className={`st ${state}`}>{GLYPH[state]}</span>
                   <span className="nm">{images[id]?.name ?? id}</span>
                 </div>
               );
             })}
           </div>
-        )}
+        </>
+      )}
 
+      {result && <BatchResults result={result} />}
+      {result && (
         <div className="fvd-btn-row">
-          <button
-            className="fvd-btn"
-            onClick={close}
-            disabled={running}
-            title="Close the batch dialog (Esc)"
-          >
-            Close
+          <button className="fvd-btn" onClick={() => exportResult("csv")}>
+            Export CSV
           </button>
-          <button
-            className="fvd-btn primary"
-            onClick={() => void run()}
-            disabled={running || steps.length === 0 || targets.length === 0}
-            title="Run the recipe on all target images"
-          >
-            {running ? "Running…" : `Run batch (${targets.length})`}
+          <button className="fvd-btn" onClick={() => exportResult("json")}>
+            Export JSON
           </button>
         </div>
+      )}
+
+      <div className="fvd-btn-row">
+        <button
+          className="fvd-btn"
+          onClick={() => setOpen(false)}
+          disabled={running}
+        >
+          Close
+        </button>
+        <button
+          className="fvd-btn primary"
+          onClick={() => void run()}
+          disabled={running || steps.length === 0 || targets.length === 0}
+        >
+          {running ? "Running…" : `Run batch (${targets.length})`}
+        </button>
+      </div>
     </ModalDialog>
+  );
+}
+
+function BatchResults({ result }: { result: BatchRunResult }) {
+  const table = batchResultTable(result);
+  return (
+    <div style={{ overflow: "auto", maxHeight: 230 }}>
+      <table className="fvd-ws-table">
+        <thead>
+          <tr>
+            {table.columns.map((column) => <th key={column}>{column}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {table.rows.map((row, index) => (
+            <tr key={result.outputs[index].image_id}>
+              {row.map((value, column) => (
+                <td key={table.columns[column]}>
+                  {typeof value === "number"
+                    ? Number(value.toPrecision(5))
+                    : (value ?? "—")}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

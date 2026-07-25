@@ -10,3 +10,4 @@ export * from "./api/structure";
 export * from "./api/workspace";
 export * from "./api/layers";
 export * from "./api/diagnostics";
+export * from "./api/batch";

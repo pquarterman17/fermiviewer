@@ -12,6 +12,7 @@ this with the jobs store; the public façade exposes it as ``Image.pipeline``.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -43,7 +44,11 @@ def validate_recipe(steps: list[dict[str, Any]]) -> None:
             raise ValueError(f"recipe step {i}: 'op' must be a string")
 
 
-def run_recipe(ds: DataStruct, steps: list[dict[str, Any]]) -> RecipeResult:
+def run_recipe(
+    ds: DataStruct,
+    steps: list[dict[str, Any]],
+    progress: Callable[[int, int, OpResult], None] | None = None,
+) -> RecipeResult:
     """Run an ordered recipe over ``ds``. Image steps chain; value steps run
     against the current chained image. Raises on a bad op/params (the caller
     decides per-input try/continue for multi-input batches)."""
@@ -51,11 +56,13 @@ def run_recipe(ds: DataStruct, steps: list[dict[str, Any]]) -> RecipeResult:
     results: list[OpResult] = []
     values: list[OpResult] = []
     current = ds
-    for step in steps:
+    for index, step in enumerate(steps):
         result = run(step["op"], current, step.get("params"))
         results.append(result)
         if result.produces_image and result.derived is not None:
             current = result.derived
         else:
             values.append(result)
+        if progress is not None:
+            progress(index + 1, len(steps), result)
     return RecipeResult(steps=results, final=current, values=values)

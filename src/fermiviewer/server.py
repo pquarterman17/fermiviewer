@@ -134,6 +134,7 @@ def create_app() -> FastAPI:
     """Build the FastAPI app. Routers attach here as they land (W5)."""
     from fermiviewer.routes.analysis import router as analysis_router
     from fermiviewer.routes.analysis_wireups import router as wireups_router
+    from fermiviewer.routes.batch_ops import router as batch_ops_router
     from fermiviewer.routes.calibration import router as calibration_router
     from fermiviewer.routes.defect_ops import router as defect_ops_router
     from fermiviewer.routes.dev import router as dev_router
@@ -176,7 +177,7 @@ def create_app() -> FastAPI:
         return await call_next(request)
 
     for _router in (
-        images_router, analysis_router, wireups_router, measure_router,
+        images_router, analysis_router, wireups_router, batch_ops_router, measure_router,
         filter_router, export_router, export_batch_router, session_io_router,
         imaging_ops_router, defect_ops_router, structure_router, grains_trained_router,
         jobs_router, calibration_router, dev_router, usermeta_router,

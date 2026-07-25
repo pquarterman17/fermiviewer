@@ -16,6 +16,9 @@ from typing import Any
 import numpy as np
 
 from fermiviewer.calc import filters
+from fermiviewer.calc.roughness import surface_roughness
+from fermiviewer.calc.segment import morph_op, multi_otsu
+from fermiviewer.calc.texture import noise_estimate
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.ops.base import OpParam, OpResult, OpSpec
 from fermiviewer.ops.registry import register
@@ -137,6 +140,41 @@ register(OpSpec(
         resamples=True,
     ),
 ))
+register(OpSpec(
+    name="plane_level", category="filter", summary="Remove a fitted plane",
+    params={"order": OpParam(int, 1, minimum=1, maximum=2)},
+    fn=_image_op(
+        "plane_level",
+        lambda d, p: filters.plane_level(d, order=p["order"]).leveled,
+    ),
+))
+register(OpSpec(
+    name="morph", category="filter", summary="Binary morphology at image mean",
+    params={
+        "operation": OpParam(
+            str, "open", choices=("erode", "dilate", "open", "close")
+        ),
+        "radius": OpParam(int, 1, minimum=1),
+        "shape": OpParam(str, "square", choices=("square", "disk")),
+    },
+    fn=_image_op(
+        "morph",
+        lambda d, p: morph_op(
+            d > d.mean(),
+            operation=p["operation"],
+            radius=p["radius"],
+            shape=p["shape"],
+        ).astype(float),
+    ),
+))
+register(OpSpec(
+    name="multiotsu", category="filter", summary="Multi-level Otsu labels",
+    params={"n_classes": OpParam(int, 3, minimum=2, maximum=5)},
+    fn=_image_op(
+        "multiotsu",
+        lambda d, p: multi_otsu(d, n_classes=p["n_classes"]).label_map.astype(float),
+    ),
+))
 
 # ── geometry ops (axis-aware) ────────────────────────────────────────
 
@@ -180,4 +218,63 @@ def _image_stats(ds: DataStruct, params: dict[str, Any]) -> OpResult:
 register(OpSpec(
     name="image_stats", category="analysis", summary="Raster mean/std/min/max",
     fn=_image_stats,
+))
+
+
+def _noise(ds: DataStruct, params: dict[str, Any]) -> OpResult:
+    result = noise_estimate(raster_of(ds), method=params["method"])
+
+    def finite(value: float) -> float | None:
+        return float(value) if np.isfinite(value) else None
+
+    value = {
+        "sigma": result.sigma,
+        "snr_db": finite(result.snr_db),
+        "snr_linear": finite(result.snr_linear),
+        "noise_type": result.noise_type,
+        "regression_slope": finite(result.regression_slope),
+        "regression_intercept": finite(result.regression_intercept),
+        "regression_r_squared": finite(result.regression_r_squared),
+    }
+    return OpResult(op="noise", params=params, label="noise estimate", value=value)
+
+
+register(OpSpec(
+    name="noise", category="analysis", summary="Noise, SNR, and type estimate",
+    params={
+        "method": OpParam(str, "mad", choices=("mad", "localvar", "both")),
+    },
+    fn=_noise,
+))
+
+
+def _roughness(ds: DataStruct, params: dict[str, Any]) -> OpResult:
+    raster = raster_of(ds)
+    px = ds.pixel_size if np.isfinite(ds.pixel_size) and ds.pixel_size > 0 else 1.0
+    result = surface_roughness(raster, pixel_size=px, level=params["level"])
+    value = {
+        "Ra": result.ra,
+        "Rq": result.rq,
+        "Rz": result.rz,
+        "Rsk": result.rsk,
+        "Rku": result.rku,
+        "Rp": result.rp,
+        "Rv": result.rv,
+        "SAR": result.sar,
+        "n_pixels": result.n_pixels,
+        "unit": ds.pixel_unit or "px",
+    }
+    return OpResult(
+        op="roughness", params=params, label="surface roughness", value=value,
+    )
+
+
+register(OpSpec(
+    name="roughness", category="analysis", summary="ISO-style surface roughness",
+    params={
+        "level": OpParam(
+            str, "plane", choices=("none", "plane", "quadratic")
+        ),
+    },
+    fn=_roughness,
 ))

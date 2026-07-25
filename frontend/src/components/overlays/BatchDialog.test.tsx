@@ -1,16 +1,30 @@
-// BatchDialog: build a recipe and run it across targets. Store + applyFilter
-// are mocked; we assert the chained execution (each step's output id feeds the
-// next) and that only the final image of each chain is ingested.
-
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const applyFilter = vi.fn();
+import type {
+  BatchOperation,
+  BatchRunResult,
+  ImageMeta,
+} from "../../lib/api";
+
+const fetchBatchOperations = vi.fn();
+const runBatchRecipe = vi.fn();
 vi.mock("../../lib/api", () => ({
-  applyFilter: (...args: unknown[]) => applyFilter(...args),
+  fetchBatchOperations: (...args: unknown[]) => fetchBatchOperations(...args),
+  runBatchRecipe: (...args: unknown[]) => runBatchRecipe(...args),
 }));
 
-vi.mock("../../store/params", () => ({ askParams: vi.fn() }));
+const askParams = vi.fn();
+vi.mock("../../store/params", () => ({
+  askParams: (...args: unknown[]) => askParams(...args),
+}));
+
+vi.mock("../../lib/resultsExport", () => ({
+  downloadCsv: vi.fn(),
+  downloadJson: vi.fn(),
+  tableToCsv: vi.fn(() => "csv"),
+  tableToJson: vi.fn(() => ({ rows: [] })),
+}));
 
 const state = {
   batchOpen: true,
@@ -22,56 +36,148 @@ const state = {
   setStatus: vi.fn(),
 };
 vi.mock("../../store/viewer", () => ({
-  useViewer: Object.assign((sel: (s: typeof state) => unknown) => sel(state), {
-    getState: () => state,
-  }),
+  useViewer: Object.assign((selector: (value: typeof state) => unknown) =>
+    selector(state), { getState: () => state }),
 }));
 
-import BatchDialog from "./BatchDialog";
+import BatchDialog, { batchResultTable } from "./BatchDialog";
+
+const operations: BatchOperation[] = [
+  {
+    name: "plane_level",
+    category: "filter",
+    summary: "Remove a fitted plane",
+    produces: "image",
+    params: [],
+  },
+  {
+    name: "noise",
+    category: "analysis",
+    summary: "Noise, SNR, and type estimate",
+    produces: "analysis",
+    params: [
+      {
+        name: "method",
+        type: "str",
+        default: "mad",
+        required: false,
+        minimum: null,
+        maximum: null,
+        choices: ["mad", "localvar", "both"],
+        doc: "",
+      },
+    ],
+  },
+];
+
+function derived(id: string): ImageMeta {
+  return {
+    id,
+    name: `batch(${id}.dm4)`,
+    kind: "image",
+    shape: [10, 10],
+    dtype: "float64",
+    pixel_size: 1,
+    pixel_unit: "px",
+    value_unit: "",
+    n_channels: null,
+    energy_first: null,
+    energy_last: null,
+    energy_units: "",
+    stage_tilt_deg: null,
+    meta: {},
+  };
+}
+
+const result: BatchRunResult = {
+  version: 1,
+  steps: [
+    { op: "plane_level", params: {} },
+    { op: "noise", params: { method: "both" } },
+  ],
+  outputs: [
+    {
+      image_id: "a",
+      name: "a.dm4",
+      status: "done",
+      derived: derived("a-result"),
+      values: [{
+        op: "noise",
+        label: "noise estimate",
+        params: { method: "both" },
+        value: { sigma: 1.25, noise_type: "gaussian" },
+      }],
+    },
+    {
+      image_id: "b",
+      name: "b.dm4",
+      status: "error",
+      error: "bad input",
+      derived: null,
+      values: [],
+    },
+  ],
+  succeeded: 1,
+  failed: 1,
+};
 
 describe("BatchDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // each filter returns a fresh derived id so chaining is observable
-    applyFilter.mockImplementation((id: string, kind: string) =>
-      Promise.resolve({ id: `${id}_${kind}`, name: `${id}.dm4` }),
+    fetchBatchOperations.mockResolvedValue(operations);
+    askParams.mockResolvedValue({ method: "both" });
+    runBatchRecipe.mockImplementation(
+      async (
+        _ids: string[],
+        _steps: unknown[],
+        progress: (fraction: number, message: string) => void,
+      ) => {
+        progress(0.5, "a.dm4: noise estimate (2/2)");
+        return result;
+      },
     );
   });
 
-  it("runs a single no-param step once per target and ingests the finals", async () => {
+  it("builds a server-schema recipe and retains partial results", async () => {
     render(<BatchDialog />);
-    fireEvent.click(screen.getByText("+ Plane Level"));
-    expect(screen.getByText("Plane Level")).toBeInTheDocument(); // step added
+    fireEvent.click(await screen.findByText("+ Remove a fitted plane"));
+    fireEvent.click(screen.getByText("+ Noise, SNR, and type estimate"));
+    await waitFor(() => expect(askParams).toHaveBeenCalled());
 
-    fireEvent.click(screen.getByText(/Run batch/));
-    await waitFor(() => expect(state.ingestDerived).toHaveBeenCalled());
-
-    expect(applyFilter).toHaveBeenCalledTimes(2); // one per target
-    expect(applyFilter).toHaveBeenCalledWith("a", "plane_level", {});
-    expect(applyFilter).toHaveBeenCalledWith("b", "plane_level", {});
-    expect(state.ingestDerived.mock.calls[0][0]).toHaveLength(2);
-    expect(state.setStatus).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Run batch (2)" }));
+    await waitFor(() => expect(runBatchRecipe).toHaveBeenCalled());
+    expect(runBatchRecipe.mock.calls[0][0]).toEqual(["a", "b"]);
+    expect(runBatchRecipe.mock.calls[0][1]).toEqual([
+      { op: "plane_level", params: {} },
+      { op: "noise", params: { method: "both" } },
+    ]);
+    expect(await screen.findByText("gaussian")).toBeVisible();
+    expect(screen.getByText("bad input")).toBeVisible();
+    expect(state.ingestDerived).toHaveBeenCalledWith([result.outputs[0].derived]);
+    expect(screen.getByRole("status")).toHaveTextContent("1 succeeded");
   });
 
-  it("chains steps: each step runs on the previous step's output", async () => {
+  it("removing a step drops it from the recipe", async () => {
     render(<BatchDialog />);
-    fireEvent.click(screen.getByText("+ Plane Level"));
-    fireEvent.click(screen.getByText("+ Rotate 90° CW"));
-
-    fireEvent.click(screen.getByText(/Run batch/));
-    await waitFor(() => expect(state.ingestDerived).toHaveBeenCalled());
-
-    expect(applyFilter).toHaveBeenCalledTimes(4); // 2 steps × 2 targets
-    // target "a": step 1 on "a", step 2 on step-1's output id
-    expect(applyFilter).toHaveBeenCalledWith("a", "plane_level", {});
-    expect(applyFilter).toHaveBeenCalledWith("a_plane_level", "rotate90", {});
-  });
-
-  it("removing a step drops it from the recipe", () => {
-    render(<BatchDialog />);
-    fireEvent.click(screen.getByText("+ Plane Level"));
-    expect(screen.getByText("Plane Level")).toBeInTheDocument();
+    fireEvent.click(await screen.findByText("+ Remove a fitted plane"));
+    expect(screen.getByText("Remove a fitted plane")).toBeVisible();
     fireEvent.click(screen.getByTitle("Remove step"));
-    expect(screen.queryByText("Plane Level")).toBeNull();
+    expect(screen.queryByText("Remove a fitted plane")).toBeNull();
+  });
+
+  it("flattens heterogeneous analysis values into export columns", () => {
+    expect(batchResultTable(result)).toEqual({
+      columns: [
+        "input", "status", "error", "derived",
+        "noise.noise_type", "noise.sigma",
+      ],
+      rows: [
+        [
+          "a.dm4", "done", "", "batch(a-result.dm4)",
+          "gaussian", 1.25,
+        ],
+        ["b.dm4", "error", "bad input", "", null, null],
+      ],
+    });
   });
 });
