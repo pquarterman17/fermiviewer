@@ -1,4 +1,4 @@
-"""Real Bruker NanoScope AFM files from the sibling corpus (../fv-example-data).
+"""Real Bruker NanoScope AFM files from the sibling corpus (../test-data).
 
 Covers the two calibration conventions plus the parser's error paths:
 
@@ -31,20 +31,20 @@ pytestmark = [pytest.mark.parser, pytest.mark.realdata]
 # height/ZSensor channel; ptp+std pin the calibrated *scale*, mean pins the
 # absolute z-offset where it also matched pySPM (legacy files).
 _MODERN = {
-    "topostats/minicircle.spm": dict(
+    "topostats_minicircle.spm": dict(
         n=8, primary="ZSensor", shape=(1024, 1024), px=505.859 / 1024,
         ptp=19.971, std=4.324,
     ),
-    "topostats/plasmids.spm": dict(
+    "topostats_plasmids.spm": dict(
         n=8, primary="ZSensor", shape=(512, 512), px=378.906 / 512,
         ptp=13.62, std=2.544,
     ),
 }
 _LEGACY = {
-    "topostats/old_bruker.002": dict(
+    "topostats_old_bruker.002": dict(
         shape=(256, 256), px=15000.0 / 256, ptp=704.79, std=135.53, mean=379.62,
     ),
-    "topostats/old_bruker.004": dict(
+    "topostats_old_bruker.004": dict(
         shape=(256, 256), px=15000.0 / 256, ptp=912.37, std=177.33, mean=-572.49,
     ),
 }
@@ -103,7 +103,7 @@ def test_legacy_nanoscope_iii_height(corpus: Path, stem: str) -> None:
 
 
 def test_legacy_routes_through_registry(corpus: Path) -> None:
-    ds = load_auto(corpus / "topostats" / "old_bruker.002")  # numeric-ext route
+    ds = load_auto(corpus / "topostats_old_bruker.002")  # numeric-ext route
     assert ds.metadata["parser"] == "nanoscope"
     assert ds.metadata["scan_size_nm"] == [15000.0, 15000.0]
 
@@ -113,10 +113,10 @@ def test_truncated_headers_fail_cleanly(corpus: Path, name: str) -> None:
     # header-only captures: the data block is absent, so the parser must
     # reject them with a clear error rather than reading past EOF.
     with pytest.raises(NanoscopeError):
-        load_nanoscope(corpus / "pyspm" / f"bruker_data_header.{name}")
+        load_nanoscope(corpus / f"pyspm_bruker_data_header.{name}")
 
 
 def test_ec_file_list_variant_rejected(corpus: Path) -> None:
     # `\*EC File list` is an electrochemistry variant the sniffer declines.
     with pytest.raises(NanoscopeError):
-        load_nanoscope(corpus / "pyspm" / "bruker_data_header.003")
+        load_nanoscope(corpus / "pyspm_bruker_data_header.003")

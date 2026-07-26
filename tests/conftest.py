@@ -67,41 +67,51 @@ def eels_corpus(ml_datasets: Path) -> Path:
     return p
 
 
-# Sibling example-dataset repo (../fv-example-data) — real BCF corpus for
-# TEM/SEM EDS, kept out of this repo (GPL data). See its README.
-EXAMPLE_DATA_ROOT = Path(__file__).resolve().parents[2] / "fv-example-data"
+# Sibling instrument corpus (../test-data), which absorbed fv-example-data on
+# 2026-07-25 — one private corpus repo instead of two. The split had started
+# leaking: both repos held Bruker NanoScope .spm parsed by the same reader.
+#
+# The corpus is organized <vendor>/<technique>/, and filenames carry a
+# "<source>_" prefix recording provenance (rosettasciio_, topostats_, pyspm_,
+# zenodo8403583_, internal_). Per-file licensing lives in each vendor's
+# MANIFEST.md — the corpus is mixed GPL-3.0 / CC-BY-4.0 / internal, which is
+# why it stays private.
+EXAMPLE_DATA_ROOT = Path(__file__).resolve().parents[2] / "test-data"
 
 
 @pytest.fixture(scope="session")
 def bcf_examples() -> Path:
-    """Path to ../fv-example-data/BCF; skips when the corpus isn't present."""
-    p = EXAMPLE_DATA_ROOT / "BCF"
-    if not (p / "SEM" / "Hitachi_TM3030Plus.bcf").is_file():
-        pytest.skip("fv-example-data BCF corpus absent (sibling repo)")
+    """Path to ../test-data/bruker/eds; skips when the corpus isn't present."""
+    p = EXAMPLE_DATA_ROOT / "bruker" / "eds"
+    if not (p / "Hitachi_TM3030Plus.bcf").is_file():
+        pytest.skip(f"test-data BCF corpus absent at {p} (sibling repo)")
     return p
 
 
 @pytest.fixture(scope="session")
 def afm_examples() -> Path:
-    """Path to ../fv-example-data/AFM; skips when the corpus isn't present.
+    """Path to ../test-data/bruker/afm; skips when the corpus isn't present.
 
-    Real Bruker NanoScope files (TopoStats + pySPM); see the corpus README.
+    Real Bruker NanoScope files (TopoStats + pySPM); see the corpus MANIFEST.
     """
-    p = EXAMPLE_DATA_ROOT / "AFM"
-    if not (p / "topostats" / "minicircle.spm").is_file():
-        pytest.skip("fv-example-data AFM corpus absent (sibling repo)")
+    p = EXAMPLE_DATA_ROOT / "bruker" / "afm"
+    if not (p / "topostats_minicircle.spm").is_file():
+        pytest.skip(f"test-data AFM corpus absent at {p} (sibling repo)")
     return p
 
 
 @pytest.fixture(scope="session")
 def rsciio_examples() -> Path:
-    """Path to ../fv-example-data/rsciio; skips when the corpus isn't present.
+    """Corpus root for the rosettasciio-derived TEM/STEM/EDS/EELS files.
 
-    Real TEM/STEM/EDS/EELS files (DM, TIA-SER, EMD, MRC, MSA, BCF) from the
-    rosettasciio test corpus, cross-validated against that oracle; see the
-    corpus README.
+    Returns the ``test-data`` root rather than one subdirectory: the former
+    ``rsciio/`` tree was redistributed across vendors during the merge
+    (``dm`` -> ``gatan``, ``tia`` -> ``fei``), plus vendor-neutral format
+    families (``emd``, ``mrc``, ``emsa``), so callers pass full
+    ``<vendor>/<technique>/<file>`` paths. Cross-validated against the
+    rosettasciio oracle; see each vendor's MANIFEST.md.
     """
-    p = EXAMPLE_DATA_ROOT / "rsciio"
-    if not (p / "dm" / "test_STEM_image.dm3").is_file():
-        pytest.skip("fv-example-data rsciio corpus absent (sibling repo)")
+    p = EXAMPLE_DATA_ROOT
+    if not (p / "gatan" / "microscopy" / "rosettasciio_test_STEM_image.dm3").is_file():
+        pytest.skip(f"test-data rsciio corpus absent at {p} (sibling repo)")
     return p
