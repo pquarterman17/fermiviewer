@@ -163,7 +163,7 @@ button.fvd-cmd-group:hover {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: min(560px, 94vw);
+  width: min(640px, 94vw);
   max-height: 88vh;
   padding: var(--pad-lg) 18px;
   display: flex;
@@ -182,6 +182,56 @@ button.fvd-cmd-group:hover {
   font-size: var(--font-size-sm);
   color: var(--text-dim);
   font-family: var(--font-mono);
+}
+
+.fvd-batch-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+
+.fvd-batch-preset-head,
+.fvd-batch-preset-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.fvd-batch-preset-head {
+  justify-content: space-between;
+  font-weight: var(--weight-semibold);
+}
+
+.fvd-batch-preset-row select,
+.fvd-batch-preset-row input[type="text"] {
+  flex: 1 1 180px;
+  min-width: 140px;
+}
+
+.fvd-batch-preset-row .danger:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.fvd-batch-preset-status {
+  min-height: 14px;
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+}
+
+.fvd-batch-presets .fvd-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
 }
 
 .fvd-batch-pal {
