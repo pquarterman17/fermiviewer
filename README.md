@@ -80,6 +80,11 @@ machine without it, use the ready-made offline bundle in **Option 5**,
 which skips Node and PyPI entirely. For the Tauri shell / installer
 build, see *Packaging* below.
 
+For one-click local testing, use `Run-FermiViewer.bat` on Windows or
+`Run-FermiViewer.command` on macOS. Both launch from the repository
+directory and accept the same optional flags as `uv run fv` when invoked
+from a terminal, for example `Run-FermiViewer.bat --dev`.
+
 > **OneDrive checkouts (Windows):** if the repo lives in a synced
 > folder, move the venv out of OneDrive's reach before the first sync:
 >
