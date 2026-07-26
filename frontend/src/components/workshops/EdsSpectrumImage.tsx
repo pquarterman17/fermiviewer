@@ -10,7 +10,7 @@
 //   Pixel-click / ROI-drag → spectrum (via RegionPicker)
 //   Element-map CSV export / spectrum CSV export
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   edsElementMap,
@@ -22,6 +22,7 @@ import {
 import { useEdsPeakMarkers } from "../../hooks/useEdsPeakMarkers";
 import type { ColormapName } from "../../lib/colormaps";
 import { elementMapCsv, spectrumCsv } from "../../lib/edsExploreCsv";
+import { normalizeEdsSpectrum } from "../../lib/edsSpectrumDisplay";
 import { useViewer } from "../../store/viewer";
 import EdsElementPicker from "./EdsElementPicker";
 import EdsElementMap from "./EdsElementMap";
@@ -178,10 +179,14 @@ export default function EdsSpectrumImage({
     onError: (e) => reportEds(activeId, `EDS spectrum: ${e.message}`),
   });
 
+  const displaySpectrum = useMemo(
+    () => (spectrum ? normalizeEdsSpectrum(spectrum) : null),
+    [spectrum],
+  );
   const peakMarkers = useEdsPeakMarkers(
     activeId,
     selElem,
-    spectrum?.energy ?? null,
+    displaySpectrum?.energy ?? null,
     showPeaks && isCube,
   );
 
@@ -309,7 +314,8 @@ export default function EdsSpectrumImage({
   };
 
   const exportSpectrumCsv = () => {
-    if (spectrum) downloadCsv(spectrumCsv(spectrum), "eds_spectrum.csv");
+    if (displaySpectrum)
+      downloadCsv(spectrumCsv(displaySpectrum), "eds_spectrum.csv");
   };
 
   if (!isCube) {
@@ -329,6 +335,7 @@ export default function EdsSpectrumImage({
         liveActive={captureMode === "specnav"}
         logScale={logScale}
         expanded={spectrumExpanded}
+        energyUnit={displaySpectrum?.units || "keV"}
         onShowSum={handleShowSum}
         onToggleLive={() =>
           setCaptureMode(captureMode === "specnav" ? "none" : "specnav")
@@ -341,9 +348,9 @@ export default function EdsSpectrumImage({
         onToggleLog={() => setLogScale((on) => !on)}
         onToggleExpanded={() => setSpectrumExpanded((on) => !on)}
       >
-        {spectrum && (
+        {displaySpectrum && (
           <SpectrumPlot
-            spec={spectrum}
+            spec={displaySpectrum}
             label={specLabel}
             eLo={eLo}
             eHi={eHi}
@@ -351,6 +358,7 @@ export default function EdsSpectrumImage({
             markers={peakMarkers}
             height={spectrumExpanded ? 360 : 260}
             logScale={logScale}
+            onExportCsv={exportSpectrumCsv}
           />
         )}
       </EdsSpectrumPanel>

@@ -9,6 +9,7 @@ export default function EdsSpectrumPanel({
   liveActive,
   logScale,
   expanded,
+  energyUnit,
   onShowSum,
   onToggleLive,
   onShowPicker,
@@ -22,6 +23,7 @@ export default function EdsSpectrumPanel({
   liveActive: boolean;
   logScale: boolean;
   expanded: boolean;
+  energyUnit: string;
   onShowSum: () => void;
   onToggleLive: () => void;
   onShowPicker: () => void;
@@ -88,7 +90,11 @@ export default function EdsSpectrumPanel({
 
       {children}
       <div className="fvd-eds-spectrum-axis-label">
-        Energy ({logScale ? "keV · log₁₀(counts + 1)" : "keV · counts"})
+        Energy (
+        {logScale
+          ? `${energyUnit} · log₁₀(counts + 1)`
+          : `${energyUnit} · counts`}
+        )
       </div>
     </section>
   );
