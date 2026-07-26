@@ -7,6 +7,7 @@ import {
   type BatchRecipeStep,
   type BatchRunResult,
 } from "../../lib/api";
+import type { BatchRecipePreset } from "../../lib/batchRecipePresets";
 import type { ParamField } from "../../lib/params";
 import {
   downloadCsv,
@@ -17,6 +18,7 @@ import {
 } from "../../lib/resultsExport";
 import { askParams } from "../../store/params";
 import { useViewer } from "../../store/viewer";
+import BatchPresetControls from "./BatchPresetControls";
 import ModalDialog from "./ModalDialog";
 
 interface RecipeStep extends BatchRecipeStep {
@@ -183,6 +185,31 @@ export default function BatchDialog() {
       return next;
     });
 
+  const loadPreset = (preset: BatchRecipePreset): string | void => {
+    const byName = new Map(
+      operations.map((operation) => [operation.name, operation]),
+    );
+    const missing = preset.steps
+      .map((step) => step.op)
+      .filter((name) => !byName.has(name));
+    if (missing.length) {
+      return `Unavailable operation${missing.length === 1 ? "" : "s"}: ${missing.join(", ")}`;
+    }
+    setSteps(
+      preset.steps.map((step) => {
+        const operation = byName.get(step.op)!;
+        return {
+          ...step,
+          uid: uid.current++,
+          label: operation.summary,
+          produces: operation.produces,
+        };
+      }),
+    );
+    setProgress({});
+    setResult(null);
+  };
+
   const run = async () => {
     if (!steps.length || !targets.length || running) return;
     const states = Object.fromEntries(
@@ -280,6 +307,12 @@ export default function BatchDialog() {
         {selected.length > 0 ? " selected" : " (all open)"} · {steps.length}{" "}
         step{steps.length === 1 ? "" : "s"}
       </p>
+
+      <BatchPresetControls
+        steps={steps.map(({ op, params }) => ({ op, params }))}
+        disabled={running || operations.length === 0}
+        onLoad={loadPreset}
+      />
 
       {schemaError && <div className="fvd-batch-empty">{schemaError}</div>}
       {Object.entries(groups).map(([category, entries]) => (

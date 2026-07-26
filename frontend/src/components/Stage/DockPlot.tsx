@@ -12,12 +12,34 @@ import {
 } from "../../lib/profileCsv";
 import { useStageInfo } from "../../store/stage";
 import { useViewer } from "../../store/viewer";
+import PlotContextSurface from "../plots/PlotContextSurface";
 
 export default function DockPlot() {
   const profile = useStageInfo((s) => s.profile);
   const setProfile = useStageInfo((s) => s.setProfile);
   const hostRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
+
+  const exportProfile = () => {
+    const s = useViewer.getState();
+    const id = s.activeId;
+    const meta = id ? s.images[id] : undefined;
+    const m = id
+      ? (s.measures[id] ?? []).find((x) => x.id === profile?.measureId)
+      : undefined;
+    const imgW = meta?.shape[1] ?? 1;
+    const imgH = meta?.shape[0] ?? 1;
+    if (!profile) return;
+    const csv = profileToCsv(profile, {
+      imageName: meta?.name ?? "image",
+      pixelSize: meta?.pixel_size ?? null,
+      pixelUnit: meta?.pixel_unit ?? "px",
+      kind: m?.kind ?? "profile",
+      width: m?.width,
+      endpointsPx: m?.pts.map((p) => ({ x: p.x * imgW, y: p.y * imgH })),
+    });
+    downloadCsv(`${csvBaseName(meta?.name)}_profile.csv`, csv);
+  };
 
   useEffect(() => {
     if (!profile || !hostRef.current) return;
@@ -89,25 +111,7 @@ export default function DockPlot() {
         <button
           className="fvd-icon-btn"
           title="Download profile as CSV (provenance header + calibrated x-axis)"
-          onClick={() => {
-            const s = useViewer.getState();
-            const id = s.activeId;
-            const meta = id ? s.images[id] : undefined;
-            const m = id
-              ? (s.measures[id] ?? []).find((x) => x.id === profile.measureId)
-              : undefined;
-            const imgW = meta?.shape[1] ?? 1;
-            const imgH = meta?.shape[0] ?? 1;
-            const csv = profileToCsv(profile, {
-              imageName: meta?.name ?? "image",
-              pixelSize: meta?.pixel_size ?? null,
-              pixelUnit: meta?.pixel_unit ?? "px",
-              kind: m?.kind ?? "profile",
-              width: m?.width,
-              endpointsPx: m?.pts.map((p) => ({ x: p.x * imgW, y: p.y * imgH })),
-            });
-            downloadCsv(`${csvBaseName(meta?.name)}_profile.csv`, csv);
-          }}
+          onClick={exportProfile}
         >
           ⤓
         </button>
@@ -119,7 +123,16 @@ export default function DockPlot() {
           ✕
         </button>
       </div>
-      <div ref={hostRef} className="fvd-dock-body" />
+      <PlotContextSurface
+        ref={hostRef}
+        plotRef={plotRef}
+        label="Line profile"
+        filename="line-profile.png"
+        shellClassName="fvd-dock-body"
+        style={{ width: "100%", height: "100%" }}
+        onExportData={exportProfile}
+        exportLabel="Export profile CSV"
+      />
     </div>
   );
 }

@@ -1,28 +1,63 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
+import type { ImageMeta } from "../lib/api";
+import {
+  resolveSpectralModality,
+  saveSpectralModality,
+  type SpectralModality,
+} from "../lib/spectralModality";
 import { useViewer } from "../store/viewer";
 
 /**
- * When an EDS spectrum-image cube first becomes the active image, open the EDS
- * Spectrum-Image Explorer automatically so the user lands on the spectrum +
- * element maps instead of scrolling thousands of raw energy channels.
+ * When a spectrum-image cube first becomes active, route it to the appropriate
+ * EELS or EDS workspace. Ambiguous cubes are returned to the app for an
+ * explicit choice instead of silently treating every spectral cube as EDS.
  *
  * Fires once per image (tracked by id) so re-selecting a cube the user has
  * since closed the explorer for doesn't force it back open. The raw channel
  * stepper on the Stage stays available — this only surfaces the explorer.
  */
-export function useCubeAutoExplore(): void {
+export interface CubeAutoExplore {
+  pending: ImageMeta | null;
+  choose: (modality: SpectralModality) => void;
+  dismiss: () => void;
+}
+
+export function useCubeAutoExplore(): CubeAutoExplore {
   const activeId = useViewer((s) => s.activeId);
-  const kind = useViewer((s) =>
-    s.activeId ? (s.images[s.activeId]?.kind ?? null) : null,
+  const meta = useViewer((s) =>
+    s.activeId ? (s.images[s.activeId] ?? null) : null,
   );
   const openTool = useViewer((s) => s.openTool);
   const explored = useRef<Set<string>>(new Set());
+  const [pending, setPending] = useState<ImageMeta | null>(null);
 
   useEffect(() => {
-    if (!activeId || kind !== "spectrum_image") return;
+    if (!activeId || meta?.kind !== "spectrum_image") {
+      setPending(null);
+      return;
+    }
     if (explored.current.has(activeId)) return;
     explored.current.add(activeId);
-    openTool("eds");
-  }, [activeId, kind, openTool]);
+    const classification = resolveSpectralModality(meta);
+    if (classification.modality) {
+      openTool(classification.modality);
+      setPending(null);
+    } else {
+      setPending(meta);
+    }
+  }, [activeId, meta, openTool]);
+
+  const choose = useCallback(
+    (modality: SpectralModality) => {
+      if (!pending) return;
+      saveSpectralModality(pending, modality);
+      openTool(modality);
+      setPending(null);
+    },
+    [openTool, pending],
+  );
+
+  const dismiss = useCallback(() => setPending(null), []);
+  return { pending, choose, dismiss };
 }

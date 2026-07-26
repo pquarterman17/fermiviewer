@@ -314,6 +314,41 @@
   min-width: 72px;
 }
 
+.fvd-spectral-dialog .fvd-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pad);
+}
+
+.fvd-spectral-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--pad);
+}
+
+.fvd-spectral-choice-grid .fvd-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-height: 82px;
+  padding: 10px;
+  text-align: left;
+  white-space: normal;
+}
+
+.fvd-spectral-choice-grid .fvd-btn span {
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+}
+
+@media (max-width: 520px) {
+  .fvd-spectral-choice-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .fvd-export-info {
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
@@ -343,4 +378,3 @@
   border-color: var(--accent);
   color: var(--accent-text);
 }
-

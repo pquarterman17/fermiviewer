@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import uPlot from "uplot";
 
 import type { LayersResult } from "../../lib/api";
+import PlotContextSurface from "../plots/PlotContextSurface";
 
 export default function LayersDepthPlot({ r }: { r: LayersResult }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -66,5 +67,13 @@ export default function LayersDepthPlot({ r }: { r: LayersResult }) {
     };
   }, [r]);
 
-  return <div ref={hostRef} className="fvd-ws-plot" />;
+  return (
+    <PlotContextSurface
+      ref={hostRef}
+      plotRef={plotRef}
+      label="Layer depth profile"
+      filename="layer-depth-profile.png"
+      className="fvd-ws-plot"
+    />
+  );
 }

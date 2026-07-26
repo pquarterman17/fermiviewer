@@ -19,6 +19,7 @@ interface PlotContextSurfaceProps {
   plotRef: React.RefObject<uPlot | null>;
   label: string;
   filename: string;
+  shellClassName?: string;
   className?: string;
   style?: React.CSSProperties;
   onExportData?: () => void;
@@ -42,6 +43,7 @@ const PlotContextSurface = forwardRef<
     plotRef,
     label,
     filename,
+    shellClassName,
     className,
     style,
     onExportData,
@@ -50,6 +52,7 @@ const PlotContextSurface = forwardRef<
   hostRef,
 ) {
   const shellRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const firstItemRef = useRef<HTMLButtonElement>(null);
   const [menu, setMenu] = useState<MenuPoint | null>(null);
 
@@ -79,6 +82,31 @@ const PlotContextSurface = forwardRef<
       event.preventDefault();
       setMenu(null);
       shellRef.current?.focus();
+    }
+  };
+
+  const onMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(
+      menuRef.current?.querySelectorAll<HTMLButtonElement>(
+        '[role="menuitem"]:not([disabled])',
+      ) ?? [],
+    );
+    const index = items.indexOf(document.activeElement as HTMLButtonElement);
+    let next: number | null = null;
+    if (event.key === "ArrowDown") next = index + 1;
+    else if (event.key === "ArrowUp") next = index - 1;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = items.length - 1;
+    else if (event.key === "Tab") {
+      setMenu(null);
+      return;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    if (items.length > 0 && next !== null) {
+      items[(next + items.length) % items.length]?.focus();
     }
   };
 
@@ -132,7 +160,7 @@ const PlotContextSurface = forwardRef<
   return (
     <div
       ref={shellRef}
-      className="fvd-plot-context-surface"
+      className={`fvd-plot-context-surface${shellClassName ? ` ${shellClassName}` : ""}`}
       tabIndex={0}
       aria-label={`${label} plot`}
       onContextMenu={onContextMenu}
@@ -150,10 +178,12 @@ const PlotContextSurface = forwardRef<
             }}
           />
           <div
+            ref={menuRef}
             className="fvd-ctx-menu fvd-glass"
             style={{ left: menu.x, top: menu.y }}
             role="menu"
             aria-label={`${label} plot actions`}
+            onKeyDown={onMenuKeyDown}
           >
             <button
               ref={firstItemRef}

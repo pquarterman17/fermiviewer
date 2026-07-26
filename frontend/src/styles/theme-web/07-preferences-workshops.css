@@ -448,3 +448,15 @@
   inset: 0;
   pointer-events: none;
 }
+
+/* Shared keyboard and context-menu shell for analytical uPlot surfaces. */
+.fvd-plot-context-surface {
+  position: relative;
+  width: 100%;
+  outline: none;
+}
+
+.fvd-plot-context-surface:focus-visible {
+  border-radius: var(--radius);
+  box-shadow: 0 0 0 2px var(--accent);
+}

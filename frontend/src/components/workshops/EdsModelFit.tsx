@@ -27,7 +27,7 @@ import { edsModelFitToCsv } from "../../lib/edsQuantCsv";
 import { formatPlusMinus } from "../../lib/formatUncertainty";
 import { useViewer } from "../../store/viewer";
 import { EDS_PALETTE } from "./EdsComposite";
-import PlotContextSurface from "./PlotContextSurface";
+import PlotContextSurface from "../plots/PlotContextSurface";
 
 type Background = "none" | "linear" | "bremsstrahlung";
 type QuantMethod = "cl" | "zeta";

@@ -22,6 +22,7 @@ vi.mock("../../store/params", () => ({
 vi.mock("../../lib/resultsExport", () => ({
   downloadCsv: vi.fn(),
   downloadJson: vi.fn(),
+  downloadText: vi.fn(),
   tableToCsv: vi.fn(() => "csv"),
   tableToJson: vi.fn(() => ({ rows: [] })),
 }));
@@ -124,6 +125,7 @@ const result: BatchRunResult = {
 describe("BatchDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     fetchBatchOperations.mockResolvedValue(operations);
     askParams.mockResolvedValue({ method: "both" });
     runBatchRecipe.mockImplementation(
@@ -163,6 +165,53 @@ describe("BatchDialog", () => {
     expect(screen.getByText("Remove a fitted plane")).toBeVisible();
     fireEvent.click(screen.getByTitle("Remove step"));
     expect(screen.queryByText("Remove a fitted plane")).toBeNull();
+  });
+
+  it("saves and restores the current recipe as a named preset", async () => {
+    render(<BatchDialog />);
+    fireEvent.click(await screen.findByText("+ Remove a fitted plane"));
+    fireEvent.change(screen.getByLabelText("Preset name"), {
+      target: { value: "Level first" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save new" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Saved “Level first”");
+
+    fireEvent.click(screen.getByTitle("Remove step"));
+    expect(screen.queryByText("Remove a fitted plane")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Load" }));
+    expect(screen.getByText("Remove a fitted plane")).toBeVisible();
+    expect(localStorage.getItem("fermiviewer.batchRecipePresets.v1")).toContain(
+      "Level first",
+    );
+  });
+
+  it("imports a portable preset and loads its server-backed operation", async () => {
+    render(<BatchDialog />);
+    await screen.findByText("+ Remove a fitted plane");
+    const file = {
+      name: "noise.fvbatch.json",
+      text: async () =>
+        JSON.stringify({
+          format: "fermiviewer-batch-preset",
+          version: 1,
+          preset: {
+            version: 1,
+            id: "elsewhere",
+            name: "Noise check",
+            steps: [{ op: "noise", params: { method: "both" } }],
+            createdAt: "2026-07-26T12:00:00Z",
+            updatedAt: "2026-07-26T12:00:00Z",
+          },
+        }),
+    } as File;
+    fireEvent.change(screen.getByLabelText("Import recipe preset file"), {
+      target: { files: [file] },
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Imported “Noise check”",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Load" }));
+    expect(screen.getByText("Noise, SNR, and type estimate")).toBeVisible();
   });
 
   it("flattens heterogeneous analysis values into export columns", () => {
