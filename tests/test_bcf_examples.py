@@ -1,4 +1,4 @@
-"""Real BCF corpus checks (../fv-example-data) — validates the EDS fixes
+"""Real BCF corpus checks (../test-data) — validates the EDS fixes
 from the 2026-07-02 email against genuine Bruker TEM + SEM data:
 
   * cube loads as a SPECTRUM_IMAGE with a real keV energy axis   (Bug A data)
@@ -25,13 +25,13 @@ from fermiviewer.session import store
 
 pytestmark = [pytest.mark.realdata, pytest.mark.api]
 
-# relative to the bcf_examples fixture (../fv-example-data/BCF)
+# relative to the bcf_examples fixture (../test-data/bruker/eds)
 CUBES = {
-    "TEM": "TEM/test_TEM.bcf",
-    "SEM_Hitachi": "SEM/Hitachi_TM3030Plus.bcf",
-    "SEM_P45": "SEM/P45_the_default_job.bcf",
+    "TEM": "test_TEM.bcf",
+    "SEM_Hitachi": "Hitachi_TM3030Plus.bcf",
+    "SEM_P45": "P45_the_default_job.bcf",
 }
-HITACHI = "SEM/Hitachi_TM3030Plus.bcf"
+HITACHI = "Hitachi_TM3030Plus.bcf"
 
 
 @pytest.fixture(autouse=True)

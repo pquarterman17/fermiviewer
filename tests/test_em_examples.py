@@ -1,4 +1,4 @@
-"""Real TEM/STEM/EDS/EELS files from the sibling corpus (../fv-example-data/rsciio).
+"""Real TEM/STEM/EDS/EELS files from the sibling corpus (../test-data).
 
 A stress test of every EM parser against genuine instrument output drawn from
 the rosettasciio test suite, spanning all four modalities and six formats:
@@ -41,7 +41,7 @@ def _load(corpus: Path, rel: str):
 # ── DM3/DM4 (Gatan) ──────────────────────────────────────────────────
 
 def test_dm_eels_spectrum(rsciio_examples: Path) -> None:
-    ds = _load(rsciio_examples, "dm/test-EELS_spectrum.dm3")
+    ds = _load(rsciio_examples, "gatan/eels/rosettasciio_test-EELS_spectrum.dm3")
     assert ds.kind is DataKind.SPECTRUM
     assert ds.data.shape == (2048,)
     assert float(np.asarray(ds.data, float).sum()) == pytest.approx(-7678.56, rel=1e-4)
@@ -51,7 +51,7 @@ def test_dm_eels_spectrum(rsciio_examples: Path) -> None:
 
 
 def test_dm_eds_spectrum(rsciio_examples: Path) -> None:
-    ds = _load(rsciio_examples, "dm/test-EDS_spectrum.dm3")
+    ds = _load(rsciio_examples, "gatan/microscopy/rosettasciio_test-EDS_spectrum.dm3")
     assert ds.kind is DataKind.SPECTRUM
     assert ds.data.shape == (4096,)
     assert int(np.asarray(ds.data, float).sum()) == 17051
@@ -60,7 +60,7 @@ def test_dm_eds_spectrum(rsciio_examples: Path) -> None:
 
 
 def test_dm_stem_image(rsciio_examples: Path) -> None:
-    ds = _load(rsciio_examples, "dm/test_STEM_image.dm3")
+    ds = _load(rsciio_examples, "gatan/microscopy/rosettasciio_test_STEM_image.dm3")
     assert ds.kind is DataKind.IMAGE
     assert ds.data.shape == (68, 68)
     assert float(np.asarray(ds.data, float).sum()) == pytest.approx(1.50999e8, rel=1e-4)
@@ -69,14 +69,14 @@ def test_dm_stem_image(rsciio_examples: Path) -> None:
 
 
 def test_dm_diffraction_pattern(rsciio_examples: Path) -> None:
-    ds = _load(rsciio_examples, "dm/test_diffraction_pattern.dm3")
+    ds = _load(rsciio_examples, "gatan/microscopy/rosettasciio_test_diffraction_pattern.dm3")
     assert ds.kind is DataKind.IMAGE
     assert ds.data.shape == (87, 87)
     assert ds.pixel_unit == "1/nm"  # reciprocal-space calibration
 
 
 def test_dm_eels_spectrum_image(rsciio_examples: Path) -> None:
-    ds = _load(rsciio_examples, "dm/EELS_SI.dm4")
+    ds = _load(rsciio_examples, "gatan/eels/rosettasciio_EELS_SI.dm4")
     assert ds.kind is DataKind.SPECTRUM_IMAGE
     assert ds.data.shape == (2, 2, 2048)  # (y, x, energy)
     assert float(np.asarray(ds.data, float).sum()) == pytest.approx(7.16907e6, rel=1e-4)
@@ -86,13 +86,13 @@ def test_dm_eels_spectrum_image(rsciio_examples: Path) -> None:
 def test_dm_complex_fft_limitation(rsciio_examples: Path) -> None:
     # packed-complex FFT (DM DataType 27) is not supported — must fail cleanly
     with pytest.raises(DMFormatError, match="27"):
-        _load(rsciio_examples, "dm/test_fft_packed_complex8.dm4")
+        _load(rsciio_examples, "gatan/microscopy/rosettasciio_test_fft_packed_complex8.dm4")
 
 
 # ── TIA SER (FEI) ────────────────────────────────────────────────────
 
 def test_ser_tem_image(rsciio_examples: Path) -> None:
-    ds = _load(rsciio_examples, "tia/64x64_TEM_images_acquire_1.ser")
+    ds = _load(rsciio_examples, "fei/microscopy/rosettasciio_64x64_TEM_images_acquire_1.ser")
     assert ds.kind is DataKind.IMAGE
     assert ds.data.shape == (64, 64)
     assert float(np.asarray(ds.data, float).sum()) == pytest.approx(1.65051e8, rel=1e-4)
@@ -101,8 +101,8 @@ def test_ser_tem_image(rsciio_examples: Path) -> None:
 
 
 def test_ser_stem_bf_df_separate_signals(rsciio_examples: Path) -> None:
-    bf = _load(rsciio_examples, "tia/16x16_STEM_BF_DF_acquire_1.ser")
-    df = _load(rsciio_examples, "tia/16x16_STEM_BF_DF_acquire_2.ser")
+    bf = _load(rsciio_examples, "fei/microscopy/rosettasciio_16x16_STEM_BF_DF_acquire_1.ser")
+    df = _load(rsciio_examples, "fei/microscopy/rosettasciio_16x16_STEM_BF_DF_acquire_2.ser")
     assert bf.data.shape == df.data.shape == (16, 16)
     assert int(np.asarray(bf.data, float).sum()) == 131
     assert int(np.asarray(df.data, float).sum()) == 686169
@@ -110,7 +110,7 @@ def test_ser_stem_bf_df_separate_signals(rsciio_examples: Path) -> None:
 
 def test_ser_eds_spectrum_image(rsciio_examples: Path) -> None:
     # 0x4120 spectrum image — an enhancement beyond the MATLAB SER parser
-    ds = _load(rsciio_examples, "tia/16x16-spectrum_image-5x5x1024_1.ser")
+    ds = _load(rsciio_examples, "fei/microscopy/rosettasciio_16x16-spectrum_image-5x5x1024_1.ser")
     assert ds.kind is DataKind.SPECTRUM_IMAGE
     assert ds.data.shape == (5, 5, 1024)
     assert int(np.asarray(ds.data, float).sum()) == 164488
@@ -119,8 +119,11 @@ def test_ser_eds_spectrum_image(rsciio_examples: Path) -> None:
     assert ds.energy_axis[0] == pytest.approx(-20.0, abs=1e-3)
 
 
+_LINE_PROFILE = "fei/microscopy/rosettasciio_16x16-line_profile_horizontal_5x128x128_EDS"
+
+
 def test_ser_eds_line_profile(rsciio_examples: Path) -> None:
-    ds = _load(rsciio_examples, "tia/16x16-line_profile_horizontal_5x128x128_EDS_1.ser")
+    ds = _load(rsciio_examples, f"{_LINE_PROFILE}_1.ser")
     assert ds.kind is DataKind.SPECTRUM_IMAGE
     assert ds.data.shape == (1, 5, 4000)  # line profile → (1, N, energy)
     assert int(np.asarray(ds.data, float).sum()) == 11
@@ -131,7 +134,7 @@ def test_ser_multiframe_stack_limitation(rsciio_examples: Path) -> None:
     # a 5-frame image series: only the first frame is returned, with a warning
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        ds = _load(rsciio_examples, "tia/16x16-line_profile_horizontal_5x128x128_EDS_2.ser")
+        ds = _load(rsciio_examples, f"{_LINE_PROFILE}_2.ser")
     assert ds.kind is DataKind.IMAGE
     assert ds.data.shape == (128, 128)
     assert ds.metadata["ser_frames_total"] == 5
@@ -141,7 +144,7 @@ def test_ser_multiframe_stack_limitation(rsciio_examples: Path) -> None:
 # ── EMD (Velox + NCEM) ───────────────────────────────────────────────
 
 def test_emd_ncem_image(rsciio_examples: Path) -> None:
-    ds = _load(rsciio_examples, "emd/example_image.emd")
+    ds = _load(rsciio_examples, "emd/microscopy/rosettasciio_example_image.emd")
     assert ds.kind is DataKind.IMAGE
     assert ds.data.shape == (3, 3)
     assert int(np.asarray(ds.data, float).sum()) == 36
@@ -150,7 +153,7 @@ def test_emd_ncem_image(rsciio_examples: Path) -> None:
 def test_emd_velox_stack_limitation(rsciio_examples: Path) -> None:
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        ds = _load(rsciio_examples, "emd/fei_example_tem_stack.emd")
+        ds = _load(rsciio_examples, "emd/microscopy/rosettasciio_fei_example_tem_stack.emd")
     assert ds.kind is DataKind.IMAGE
     assert ds.data.shape == (3, 3)  # first frame of the 2-frame stack
     assert ds.metadata["n_frames"] == 2
@@ -164,13 +167,13 @@ def test_emd_ncem_4d_sim_limitation(rsciio_examples: Path) -> None:
         pytest.warns(UserWarning, match="no Velox or NCEM EMD structure"),
         pytest.raises(EMDFormatError),
     ):
-        _load(rsciio_examples, "emd/Si100_3D.emd")
+        _load(rsciio_examples, "emd/microscopy/rosettasciio_Si100_3D.emd")
 
 
 # ── MRC ──────────────────────────────────────────────────────────────
 
 def test_mrc_haadf(rsciio_examples: Path) -> None:
-    ds = _load(rsciio_examples, "mrc/HAADFscan.mrc")
+    ds = _load(rsciio_examples, "mrc/microscopy/rosettasciio_HAADFscan.mrc")
     assert ds.kind is DataKind.IMAGE
     assert ds.data.shape == (16, 16)
     assert float(np.asarray(ds.data, float).sum()) == pytest.approx(1.55295e6, rel=1e-4)
@@ -180,7 +183,7 @@ def test_mrc_haadf(rsciio_examples: Path) -> None:
 
 def test_mrc_4dstem_degrades_to_first_frame_limitation(rsciio_examples: Path) -> None:
     # a 4D-STEM .mrc (deferred feature) loads as the first 2D frame, gracefully
-    ds = _load(rsciio_examples, "mrc/4DSTEMscan.mrc")
+    ds = _load(rsciio_examples, "mrc/microscopy/rosettasciio_4DSTEMscan.mrc")
     assert ds.kind is DataKind.IMAGE
     assert ds.data.ndim == 2
 
@@ -190,9 +193,9 @@ def test_mrc_4dstem_degrades_to_first_frame_limitation(rsciio_examples: Path) ->
 @pytest.mark.parametrize(
     "rel, n, total, scale",
     [
-        ("msa/example1.msa", 21, 104070, 3.1),
-        ("msa/example2.msa", 80, 21060.1, 10.0),
-        ("msa/ISO_22029_2022_compliance.msa", 21, 104070, 3.1),
+        ("emsa/eds/rosettasciio_example1.msa", 21, 104070, 3.1),
+        ("emsa/eds/rosettasciio_example2.msa", 80, 21060.1, 10.0),
+        ("emsa/eds/rosettasciio_ISO_22029_2022_compliance.msa", 21, 104070, 3.1),
     ],
 )
 def test_msa_spectrum(rsciio_examples: Path, rel: str, n: int, total: float, scale: float) -> None:
@@ -208,10 +211,10 @@ def test_msa_spectrum(rsciio_examples: Path, rel: str, n: int, total: float, sca
 @pytest.mark.parametrize(
     "rel, shape, total",
     [
-        ("bruker/bcf_v2_50x50px.bcf", (50, 50, 4096), 949769),
-        ("bruker/bcf-edx-ebsd.bcf", (87, 100, 4096), 36864),
-        ("bruker/over16bit.bcf", (3, 4, 4096), 176786251),
-        ("bruker/30x30_instructively_packed_16bit_compressed.bcf", (30, 30, 4096), 18621362),
+        ("bruker/eds/rosettasciio_bcf_v2_50x50px.bcf", (50, 50, 4096), 949769),
+        ("bruker/eds/rosettasciio_bcf-edx-ebsd.bcf", (87, 100, 4096), 36864),
+        ("bruker/eds/rosettasciio_over16bit.bcf", (3, 4, 4096), 176786251),
+        ("bruker/eds/rosettasciio_30x30_packed_16bit_compressed.bcf", (30, 30, 4096), 18621362),
     ],
 )
 def test_bcf_cube(rsciio_examples: Path, rel: str, shape: tuple, total: int) -> None:
@@ -225,7 +228,7 @@ def test_bcf_cube(rsciio_examples: Path, rel: str, shape: tuple, total: int) -> 
 def test_bcf_calibration_needs_sem_dx_limitation(rsciio_examples: Path) -> None:
     # this instructive packing-test file lacks the TRTSEMData/DX tag, so the
     # spatial axes stay uncalibrated (scale 1.0) — we don't invent a value
-    calibrated = _load(rsciio_examples, "bruker/bcf_v2_50x50px.bcf")
+    calibrated = _load(rsciio_examples, "bruker/eds/rosettasciio_bcf_v2_50x50px.bcf")
     assert calibrated.pixel_unit == "um"  # normal file: calibrated
-    uncal = _load(rsciio_examples, "bruker/30x30_instructively_packed_16bit_compressed.bcf")
+    uncal = _load(rsciio_examples, "bruker/eds/rosettasciio_30x30_packed_16bit_compressed.bcf")
     assert uncal.pixel_unit == ""  # no DX tag → uncalibrated, not wrong
