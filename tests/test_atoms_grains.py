@@ -157,7 +157,12 @@ def test_segment_auto_and_stats(grain_img) -> None:
     assert seg.inertia == pytest.approx(g["inertia"], rel=1e-2)
 
     gs = grain_stats(seg.labels, grain_img, pixel_size=0.4)
-    assert gs.boundary_length_px == pytest.approx(
+    # fermi-viewer a57c7d5 backported the Python fix (aeb76c5): grainStats
+    # boundaryLengthPx now counts each inter-grain edge once (dh+dv), the
+    # same quantity this port already exposes as boundary_network_px — the
+    # legacy boundary_length_px (both-sides mask sum) tracks MATLAB's OLD,
+    # now-superseded formula and is no longer what the golden represents.
+    assert gs.boundary_network_px == pytest.approx(
         g["boundaryLengthPx"], rel=0.1
     )
     assert gs.n_boundary_segments == g["numBoundarySegments"]
