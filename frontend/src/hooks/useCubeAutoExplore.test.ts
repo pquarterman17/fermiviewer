@@ -26,15 +26,53 @@ function meta(id: string, extra: Partial<ImageMeta> = {}): ImageMeta {
 
 const edsOpen = () =>
   useViewer.getState().tools.some((t) => t.kind === "eds");
+const eelsOpen = () =>
+  useViewer.getState().tools.some((t) => t.kind === "eels");
 
 describe("useCubeAutoExplore", () => {
   beforeEach(() => useViewer.setState(useViewer.getInitialState()));
 
   it("opens the EDS explorer when a spectrum-image cube becomes active", () => {
-    useViewer.getState().ingest([meta("cube", { kind: "spectrum_image" })]);
+    useViewer
+      .getState()
+      .ingest([
+        meta("cube", { kind: "spectrum_image", meta: { parser: "bcf" } }),
+      ]);
     renderHook(() => useCubeAutoExplore());
     act(() => useViewer.getState().setActive("cube"));
     expect(edsOpen()).toBe(true);
+  });
+
+  it("routes a core-loss cube to EELS instead of EDS", () => {
+    useViewer.getState().ingest([
+      meta("core-loss", {
+        kind: "spectrum_image",
+        energy_first: 490,
+        energy_last: 590,
+        energy_units: "eV",
+      }),
+    ]);
+    renderHook(() => useCubeAutoExplore());
+    act(() => useViewer.getState().setActive("core-loss"));
+    expect(eelsOpen()).toBe(true);
+    expect(edsOpen()).toBe(false);
+  });
+
+  it("asks for ambiguous cubes and remembers the selected workflow", () => {
+    useViewer.getState().ingest([
+      meta("ambiguous", {
+        kind: "spectrum_image",
+        energy_first: 0,
+        energy_last: 2000,
+        energy_units: "eV",
+      }),
+    ]);
+    const { result } = renderHook(() => useCubeAutoExplore());
+    act(() => useViewer.getState().setActive("ambiguous"));
+    expect(result.current.pending?.id).toBe("ambiguous");
+    act(() => result.current.choose("eds"));
+    expect(edsOpen()).toBe(true);
+    expect(result.current.pending).toBeNull();
   });
 
   it("does not open the explorer for a plain image", () => {
@@ -47,7 +85,10 @@ describe("useCubeAutoExplore", () => {
   it("does not force the explorer back open after the user closed it", () => {
     useViewer
       .getState()
-      .ingest([meta("cube", { kind: "spectrum_image" }), meta("img")]);
+      .ingest([
+        meta("cube", { kind: "spectrum_image", meta: { parser: "bcf" } }),
+        meta("img"),
+      ]);
     renderHook(() => useCubeAutoExplore());
     act(() => useViewer.getState().setActive("cube"));
     expect(edsOpen()).toBe(true); // auto-opened once

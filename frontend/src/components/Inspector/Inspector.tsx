@@ -4,6 +4,11 @@
 import { lazy, Suspense, useRef, useState } from "react";
 
 import type { ImageMeta } from "../../lib/api";
+import {
+  resolveSpectralModality,
+  saveSpectralModality,
+  type SpectralModality,
+} from "../../lib/spectralModality";
 import { useViewer } from "../../store/viewer";
 import AdjustPanel from "./AdjustPanel";
 import CalibrationCard from "./CalibrationCard";
@@ -112,6 +117,49 @@ function EdsWorkspaceLauncher({ meta }: { meta: ImageMeta }) {
   );
 }
 
+function SpectralWorkflowCard({ meta }: { meta: ImageMeta }) {
+  const openTool = useViewer((s) => s.openTool);
+  const [classification, setClassification] = useState(() =>
+    resolveSpectralModality(meta),
+  );
+  const choose = (modality: SpectralModality) => {
+    saveSpectralModality(meta, modality);
+    setClassification({ modality, reason: "saved choice" });
+    openTool(modality);
+  };
+  return (
+    <Card title="Spectrum workflow">
+      <div className="fvd-meta-row">
+        <span className="k">Current</span>
+        <span className="v">
+          {classification.modality?.toUpperCase() ?? "Ambiguous"} ·{" "}
+          {classification.reason}
+        </span>
+      </div>
+      <p className="fvd-ws-note">
+        Choose how this dataset should be interpreted. The choice is remembered
+        and overrides automatic routing.
+      </p>
+      <div className="fvd-btn-row">
+        <button
+          className={`fvd-btn${classification.modality === "eels" ? " active" : ""}`}
+          aria-pressed={classification.modality === "eels"}
+          onClick={() => choose("eels")}
+        >
+          Use EELS
+        </button>
+        <button
+          className={`fvd-btn${classification.modality === "eds" ? " active" : ""}`}
+          aria-pressed={classification.modality === "eds"}
+          onClick={() => choose("eds")}
+        >
+          Use EDS
+        </button>
+      </div>
+    </Card>
+  );
+}
+
 export default function Inspector() {
   const meta = useViewer((s) =>
     s.activeId ? (s.images[s.activeId] ?? null) : null,
@@ -200,6 +248,9 @@ export default function Inspector() {
       {tab === "Image" && <ScaleBarCard />}
       {tab === "Image" && meta.kind !== "spectrum" && <ExportCard />}
       {tab === "Image" && <CustomMetaCard />}
+      {tab === "Image" && meta.kind !== "image" && (
+        <SpectralWorkflowCard key={meta.id} meta={meta} />
+      )}
       {tab === "Image" && (
         <Card title="Image" defaultOpen={false}>
           {rows.map(([k, v]) => (
