@@ -13,6 +13,75 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [0.1.22] - 2026-07-26
+
+A large analysis-workflow release: four new workshop surfaces, a rebuilt EDS
+workspace, smarter routing of spectrum-image cubes, saved batch recipes, and
+consistent right-click actions on every analytical plot.
+
+### Added
+- **Noise diagnostics workspace.** Classifies the dominant noise regime
+  (Poisson / Gaussian / mixed) from variance-vs-mean evidence over a region,
+  with the fitted model, R², and CSV/JSON export.
+- **Interface width fit workspace.** Fits an erf profile across a chosen
+  interface and reports width with uncertainty.
+- **Visual defect analysis workspace.** Finds and catalogues defect candidates
+  with per-defect statistics.
+- **Roughness workspace.** Areal roughness metrics (Ra, Rq, Rz, Rsk, Rku, …)
+  with leveling options and a material-ratio bearing curve.
+- **Server-backed batch analysis recipes.** Ordered multi-step recipes now run
+  on the backend as bounded jobs with per-step progress and JSON-safe results.
+- **Saved batch recipe presets.** Name and save recipes on this device, reload
+  them in one click, and share them as portable `.fvbatch.json` files; imports
+  are validated against the live operation schema.
+- **EELS/EDS routing for spectrum-image cubes.** Opening a cube now classifies
+  it (metadata → filename → format → calibrated energy range) and lands in the
+  right workshop; ambiguous cubes ask once, remember the answer, and can be
+  re-routed from a new "Spectrum workflow" card in the inspector. Previously
+  every spectral cube opened as EDS.
+- **EELS composition maps run as jobs** with progress and cancellation instead
+  of blocking the interface.
+- **Context menus on every analytical plot.** Right-click (or Shift+F10) any
+  spectrum, fit, depth-profile, PSD, CTF, noise, bearing-curve, or line-profile
+  chart for Reset view, Copy plot, Save PNG, and CSV export where available —
+  with full keyboard navigation.
+- **Multi-map interface comparison** in the cross-section layer workshop:
+  compare an interface across per-element maps side by side.
+- **Reset all corrections.** A new "↺ Opened" button in the Adjust card
+  returns the display (window, gamma, colormap, invert) to the image as it
+  was opened — undoable from the History card.
+- **A face for the app.** FermiViewer now has a black-cat icon and repository
+  logo, drawn procedurally at build time.
+
+### Changed
+- **The EDS workspace was rebuilt around one resizable analysis surface**: a
+  first-class spectrum explorer with peak labels, a usable element-map viewer,
+  and clearer API error messages.
+- **Analysis navigation reorganized.** The Analysis and Window menus group
+  workshops by topic, and the spectroscopy workspaces share consistent
+  navigation.
+
+### Fixed
+- **EDS element maps could render blank for eV-calibrated cubes** (DM/SER
+  spectrum images): energy windows are keV throughout, but the axis was
+  compared in its native unit. All EDS routes now convert at the boundary;
+  recalibration converts back when writing.
+- **Element-map requests failed outright** after a NaN background width was
+  serialized as `null`; the API also returns readable validation errors now.
+- **Lattice calibration survives** structure-workshop reloads.
+- **Watershed splitting for touching particles** is available again from the
+  Particles mode.
+- **Spectrum energy units and axis gutters normalized** across the EDS plots.
+- **Tooltips**: chips near the window edge no longer clip off screen; screen
+  readers no longer announce control names twice; the four transform buttons
+  gained explanatory details; and a disabled Compare button now explains why
+  it is unavailable.
+
+### Performance
+- **Large-cube interactivity**: element-map and spectrum requests are bounded
+  and debounced, and the remaining full-cube float64 materializations were
+  eliminated — multi-GB spectrum images stay responsive while exploring.
+
 ## [0.1.21] - 2026-07-23
 
 Follow-up to the BCF/EDS element-navigation work: build a colour composite
