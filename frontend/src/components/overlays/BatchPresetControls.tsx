@@ -147,6 +147,7 @@ export default function BatchPresetControls({
       </div>
       <div className="fvd-batch-preset-row">
         <input
+          type="text"
           aria-label="Preset name"
           value={name}
           disabled={disabled}
