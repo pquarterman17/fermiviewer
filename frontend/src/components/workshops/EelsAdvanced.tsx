@@ -16,6 +16,7 @@ import {
   type KKResult,
 } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
+import PlotContextSurface from "../plots/PlotContextSurface";
 
 type AdvPlot =
   | { kind: "ssd"; energy: number[]; spectrum: number[]; ssd: number[] }
@@ -324,7 +325,15 @@ export default function EelsAdvanced({
             </button>
           </div>
           {note && <div className="fvd-ws-note">{note}</div>}
-          {plot && <div ref={host} className="fvd-ws-plot" />}
+          {plot && (
+            <PlotContextSurface
+              ref={host}
+              plotRef={plotRef}
+              label={plot.kind === "ssd" ? "EELS single-scattering distribution" : "EELS dielectric response"}
+              filename={plot.kind === "ssd" ? "eels-ssd.png" : "eels-dielectric.png"}
+              className="fvd-ws-plot"
+            />
+          )}
         </>
       )}
     </>

@@ -17,6 +17,7 @@ import {
 } from "../../lib/resultsExport";
 import { useViewer } from "../../store/viewer";
 import AnalysisRegionSelect from "./AnalysisRegionSelect";
+import PlotContextSurface from "../plots/PlotContextSurface";
 
 const NO_SHAPE: number[] = [];
 
@@ -161,7 +162,10 @@ export default function NoiseWorkshop() {
             <Metric label="type" value={result.noise_type} />
             <Metric label="fit R²" value={fmt(result.regression_r_squared)} />
           </div>
-          <NoiseEvidencePlot result={result} />
+          <NoiseEvidencePlot
+            result={result}
+            onExportCsv={() => exportResult("csv")}
+          />
           <div className="fvd-ws-note">
             {result.n_pixels.toLocaleString()} pixels · {region.label} ·{" "}
             {result.method} · {result.n_blocks.toLocaleString()}{" "}
@@ -196,8 +200,15 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function NoiseEvidencePlot({ result }: { result: NoiseResult }) {
+function NoiseEvidencePlot({
+  result,
+  onExportCsv,
+}: {
+  result: NoiseResult;
+  onExportCsv: () => void;
+}) {
   const host = useRef<HTMLDivElement>(null);
+  const plotRef = useRef<uPlot | null>(null);
 
   useEffect(() => {
     const element = host.current;
@@ -220,7 +231,7 @@ function NoiseEvidencePlot({ result }: { result: NoiseResult }) {
       getComputedStyle(document.documentElement)
         .getPropertyValue("--accent")
         .trim() || "#7c5ce7";
-    const plot = new uPlot(
+    plotRef.current = new uPlot(
       {
         width: element.clientWidth || 560,
         height: 220,
@@ -239,13 +250,24 @@ function NoiseEvidencePlot({ result }: { result: NoiseResult }) {
       [x, variance, fit],
       element,
     );
-    return () => plot.destroy();
+    return () => {
+      plotRef.current?.destroy();
+      plotRef.current = null;
+    };
   }, [result]);
 
   return (
     <section>
       <div className="fvd-ws-note">Classification evidence: variance vs mean</div>
-      <div ref={host} className="fvd-ws-plot" aria-label="Noise variance versus mean plot" />
+      <PlotContextSurface
+        ref={host}
+        plotRef={plotRef}
+        label="Noise variance versus mean"
+        filename="noise-variance-mean.png"
+        className="fvd-ws-plot"
+        onExportData={onExportCsv}
+        exportLabel="Export noise CSV"
+      />
     </section>
   );
 }

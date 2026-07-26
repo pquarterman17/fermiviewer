@@ -16,6 +16,7 @@ import {
 } from "../../lib/resultsExport";
 import { useViewer } from "../../store/viewer";
 import AnalysisRegionSelect from "./AnalysisRegionSelect";
+import PlotContextSurface from "../plots/PlotContextSurface";
 
 const NO_SHAPE: number[] = [];
 const METRICS = ["Ra", "Rq", "Rz", "Rp", "Rv", "Rsk", "Rku", "SAR"] as const;
@@ -123,7 +124,10 @@ export default function RoughnessWorkshop() {
       {result && (
         <>
           <RoughnessMetrics result={result} />
-          <BearingPlot result={result} />
+          <BearingPlot
+            result={result}
+            onExportCsv={() => exportResult("csv")}
+          />
           <div className="fvd-ws-note">
             {result.n_pixels.toLocaleString()} valid pixels · {region.label} ·{" "}
             {result.level} leveling
@@ -169,8 +173,15 @@ function formatMetric(
     : `${rendered} ${unit}`;
 }
 
-function BearingPlot({ result }: { result: RoughnessResult }) {
+function BearingPlot({
+  result,
+  onExportCsv,
+}: {
+  result: RoughnessResult;
+  onExportCsv: () => void;
+}) {
   const host = useRef<HTMLDivElement>(null);
+  const plotRef = useRef<uPlot | null>(null);
 
   useEffect(() => {
     const element = host.current;
@@ -179,7 +190,7 @@ function BearingPlot({ result }: { result: RoughnessResult }) {
       getComputedStyle(document.documentElement)
         .getPropertyValue("--accent")
         .trim() || "#7c5ce7";
-    const plot = new uPlot(
+    plotRef.current = new uPlot(
       {
         width: element.clientWidth || 560,
         height: 190,
@@ -198,13 +209,24 @@ function BearingPlot({ result }: { result: RoughnessResult }) {
       ],
       element,
     );
-    return () => plot.destroy();
+    return () => {
+      plotRef.current?.destroy();
+      plotRef.current = null;
+    };
   }, [result]);
 
   return (
     <section>
       <div className="fvd-ws-note">Material ratio / bearing curve</div>
-      <div ref={host} className="fvd-ws-plot" />
+      <PlotContextSurface
+        ref={host}
+        plotRef={plotRef}
+        label="Material ratio bearing curve"
+        filename="material-ratio-bearing-curve.png"
+        className="fvd-ws-plot"
+        onExportData={onExportCsv}
+        exportLabel="Export roughness CSV"
+      />
     </section>
   );
 }

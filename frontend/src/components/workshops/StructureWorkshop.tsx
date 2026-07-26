@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import uPlot from "uplot";
+import PlotContextSurface from "../plots/PlotContextSurface";
 import { useShallow } from "zustand/react/shallow";
 
 import {
@@ -1011,7 +1012,7 @@ function CtfMode({ id }: { id: string }) {
           · λ = {res.lambda_a.toFixed(4)} Å
         </div>
       )}
-      {res && <div ref={host} className="fvd-ws-plot" />}
+      {res && <PlotContextSurface ref={host} plotRef={plotRef} label="CTF radial fit" filename="ctf-radial-fit.png" className="fvd-ws-plot" />}
     </>
   );
 }

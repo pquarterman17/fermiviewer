@@ -9,7 +9,7 @@ import uPlot from "uplot";
 import type { Spectrum } from "../../lib/api";
 import type { PeakMarker } from "../../lib/eds/peakMarkers";
 import { formatCountTick } from "../../lib/edsSpectrumDisplay";
-import PlotContextSurface from "./PlotContextSurface";
+import PlotContextSurface from "../plots/PlotContextSurface";
 
 export default function SpectrumPlot({
   spec,

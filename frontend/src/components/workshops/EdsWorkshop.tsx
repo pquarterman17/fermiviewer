@@ -23,7 +23,7 @@ import EdsComposite, {
 } from "./EdsComposite";
 import EdsModelFit from "./EdsModelFit";
 import EdsSpectrumImage from "./EdsSpectrumImage";
-import PlotContextSurface from "./PlotContextSurface";
+import PlotContextSurface from "../plots/PlotContextSurface";
 
 /** Per-element at% line plot for the composition profile (#46/A4). */
 function CompProfilePlot({ r }: { r: CompositionProfileResult }) {

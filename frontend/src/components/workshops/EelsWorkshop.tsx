@@ -32,9 +32,9 @@ import { seedFitWindows } from "./eelsWindows";
 import RegionPicker, { type Rect1 } from "./RegionPicker";
 import SpectrumNavigationControl from "./SpectrumNavigationControl";
 import { useProbeRegionToken } from "./useProbeRegionToken";
+import PlotContextSurface from "../plots/PlotContextSurface";
 import { useSpectrumProbe } from "./useSpectrumProbe";
 import { useEelsQuantMapJob } from "./useEelsQuantMapJob";
-
 let edgeSeq = 0;
 type EelsTab = "Explore" | "Quantify" | "Model fit" | "Advanced";
 const EELS_TABS: EelsTab[] = ["Explore", "Quantify", "Model fit", "Advanced"];
@@ -413,7 +413,7 @@ export default function EelsWorkshop() {
 
   return (
     <div className="fvd-ws">
-      <div ref={plotHost} className="fvd-ws-plot" />
+      <PlotContextSurface ref={plotHost} plotRef={plotRef} label="EELS spectrum" filename="eels-spectrum.png" className="fvd-ws-plot" />
       <div className="fvd-seg" role="tablist" aria-label="EELS workflow">
         {EELS_TABS.map((name) => (
           <button

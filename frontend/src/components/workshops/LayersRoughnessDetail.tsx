@@ -9,6 +9,7 @@ import { useEffect, useRef } from "react";
 import uPlot from "uplot";
 
 import { type LayerInterface } from "../../lib/api";
+import PlotContextSurface from "../plots/PlotContextSurface";
 
 function PsdPlot({
   wavelength,
@@ -93,7 +94,15 @@ function PsdPlot({
     };
   }, [wavelength, power, unit, foilT]);
 
-  return <div ref={hostRef} className="fvd-ws-plot" />;
+  return (
+    <PlotContextSurface
+      ref={hostRef}
+      plotRef={plotRef}
+      label="Interface roughness spectrum"
+      filename="interface-roughness-spectrum.png"
+      className="fvd-ws-plot"
+    />
+  );
 }
 
 const fmt = (v: number | null | undefined, digits = 2) =>
