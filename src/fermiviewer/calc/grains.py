@@ -365,19 +365,14 @@ class GrainStats:
     grains: list[RegionStats]
     labels: np.ndarray
     boundary: np.ndarray
-    # legacy boundary length = boundary-pixel COUNT (kept for the MATLAB
-    # golden); prefer the Crofton fields below for a true Euclidean length
-    boundary_length_px: int
-    boundary_length_calibrated: float
     n_boundary_segments: int
     area_px: np.ndarray
     equiv_diameter_px: np.ndarray
     area_calibrated: np.ndarray
     diameter_calibrated: np.ndarray
-    # ── modern metrics (additive) ──
     # true grain-boundary NETWORK length = count of unit edges between
-    # adjacent grains (border-excluding); the legacy boundary_length_px
-    # above counts boundary PIXELS (both sides), so it is ~2× this.
+    # adjacent grains (border-excluding) — matches fermi-viewer's
+    # corrected dh+dv grainStats formula (a57c7d5).
     boundary_network_px: float
     boundary_network_calibrated: float
     perimeter_crofton_px: np.ndarray
@@ -408,15 +403,13 @@ def grain_stats(
     boundary[1:, :] |= dv
 
     _, n_segments = label_components(boundary, connectivity)
-    length_px = int(boundary.sum())
     # grain-boundary NETWORK length: one unit per inter-grain edge (each
     # boundary counted once, image border excluded) — the correct length,
     # unlike summing per-grain perimeters which double-counts + adds borders
     network_px = float(int(dh.sum()) + int(dv.sum()))
     has_cal = np.isfinite(pixel_size) and pixel_size > 0
 
-    # ── modern per-grain metrics (additive; legacy fields above are kept
-    #    pixel-count-based so the MATLAB golden stays stable) ──
+    # ── additional per-grain shape metrics ──
     if n > 0:
         rpt = measure.regionprops_table(
             lab,
@@ -437,10 +430,6 @@ def grain_stats(
         grains=grains,
         labels=lab,
         boundary=boundary,
-        boundary_length_px=length_px,
-        boundary_length_calibrated=(
-            length_px * pixel_size if has_cal else float("nan")
-        ),
         n_boundary_segments=n_segments,
         area_px=np.array([g.area for g in grains], dtype=np.float64),
         equiv_diameter_px=np.array(

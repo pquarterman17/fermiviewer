@@ -164,10 +164,9 @@ export interface GrainResult {
   method: GrainMethod;
   labels: ImageMeta;
   mean_diameter_px: number;
-  boundary_length_px: number;
   /** true grain-boundary network length (border-excluding inter-grain edges) */
   boundary_network_px: number;
-  boundary_length_calibrated: number | null;
+  boundary_network_calibrated: number | null;
   n_boundary_segments: number;
   n_triple_junctions: number;
   /** ASTM E112 grain-size number; null when uncalibrated */

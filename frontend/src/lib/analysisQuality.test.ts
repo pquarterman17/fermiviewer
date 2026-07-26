@@ -17,8 +17,8 @@ function layers(overrides: Partial<LayersResult> = {}): LayersResult {
 function grains(overrides: Partial<GrainResult> = {}): GrainResult {
   return {
     n_grains: 20, method: "gradient", labels: {} as GrainResult["labels"],
-    mean_diameter_px: 20, boundary_length_px: 1, boundary_network_px: 1,
-    boundary_length_calibrated: null, n_boundary_segments: 1,
+    mean_diameter_px: 20, boundary_network_px: 1,
+    boundary_network_calibrated: null, n_boundary_segments: 1,
     n_triple_junctions: 5, astm_grain_size: null,
     areas_px: Array(20).fill(1000), perimeters_px: [], eccentricity: [], unit: "px",
     ...overrides,

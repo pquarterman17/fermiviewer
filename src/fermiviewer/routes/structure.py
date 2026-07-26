@@ -187,11 +187,9 @@ def _grains_payload(
                 "grain_method": method,
             } | ({"grain_roi": ",".join(map(str, roi))} if roi is not None else {}),
         ),
-        # legacy pixel-count kept; boundary_network is the true (border-
-        # excluding) inter-grain network length
-        "boundary_length_px": stats.boundary_length_px,
+        # true (border-excluding) inter-grain network length
         "boundary_network_px": stats.boundary_network_px,
-        "boundary_length_calibrated": _nan_none(stats.boundary_network_calibrated),
+        "boundary_network_calibrated": _nan_none(stats.boundary_network_calibrated),
         "n_boundary_segments": stats.n_boundary_segments,
         "n_triple_junctions": stats.n_triple_junctions,
         "mean_diameter_px": (

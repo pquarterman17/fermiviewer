@@ -253,8 +253,6 @@ def test_grains_endpoint(client, tmp_path) -> None:
     body = rg.json()
     assert body["method"] == "kmeans"
     assert body["n_grains"] >= 2
-    assert body["boundary_length_px"] > 0
-    # modern metrics are present on every method's response
     assert body["boundary_network_px"] > 0
     assert "n_triple_junctions" in body
     assert len(body["eccentricity"]) == body["n_grains"]

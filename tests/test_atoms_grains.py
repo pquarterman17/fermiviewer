@@ -167,6 +167,6 @@ def test_segment_auto_and_stats(grain_img) -> None:
     )
     assert gs.n_boundary_segments == g["numBoundarySegments"]
     assert gs.area_px.sum() == pytest.approx(g["areaPxSum"], rel=1e-2)
-    assert gs.boundary_length_calibrated == pytest.approx(
-        gs.boundary_length_px * 0.4, rel=REL
+    assert gs.boundary_network_calibrated == pytest.approx(
+        gs.boundary_network_px * 0.4, rel=REL
     )
