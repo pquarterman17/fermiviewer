@@ -22,6 +22,7 @@ from fermiviewer.calc.eds import (
 )
 from fermiviewer.calc.eds_maps import composition_profile, element_map
 from fermiviewer.calc.eels_quant import elnes
+from fermiviewer.calc.energy_units import to_kev
 from fermiviewer.calc.phase_registry import registry
 from fermiviewer.calc.tomo import back_project
 from fermiviewer.datastruct import DataKind
@@ -332,7 +333,8 @@ def eds_element_map(req: EdsElementMapRequest) -> dict:
     }
     """
     ds = _cube(req.image_id)
-    energy = ds.energy_axis
+    # e_lo/e_hi are keV; the axis may be calibrated in eV (SER/DM cubes).
+    energy = to_kev(ds.energy_axis, ds.energy_cal.units)
     e_min, e_max = float(energy.min()), float(energy.max())
     lo, hi = sorted((req.e_lo, req.e_hi))
     if lo > e_max or hi < e_min:
@@ -388,7 +390,7 @@ def eds_auto_assign(req: EdsAutoAssignRequest) -> dict:
     The caller populates the element-symbols input and the user can edit.
     """
     ds = _spectral(req.image_id)
-    energy = ds.energy_axis            # keV (EDS axis)
+    energy = to_kev(ds.energy_axis, ds.energy_cal.units)   # keV (EDS axis)
     counts = ds.sum_spectrum()
     try:
         peak_kev = detect_peaks(energy, counts, threshold=req.threshold)

@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from fermiviewer.calc.eds import ClResult, ZafResult, cliff_lorimer, zaf_correction
 from fermiviewer.calc.eds_maps import extract_element_maps
+from fermiviewer.calc.energy_units import to_kev
 from fermiviewer.calc.uncertainty import (
     cliff_lorimer_uncertainty,
     integral_variance,
@@ -82,7 +83,9 @@ class EdsQuantifyRequest(BaseModel):
 @router.post("/eds/quantify")
 def eds_quantify(req: EdsQuantifyRequest) -> dict:
     ds = _cube(req.image_id)
-    entries = extract_element_maps(ds.data, ds.energy_axis, req.elements,
+    # half_window_kev and the line library are keV; the axis may be in eV.
+    energy_kev = to_kev(ds.energy_axis, ds.energy_cal.units)
+    entries = extract_element_maps(ds.data, energy_kev, req.elements,
                                    half_window=req.half_window_kev)
     if not entries:
         raise HTTPException(422, "no usable element lines in the energy range")
@@ -106,12 +109,12 @@ def eds_quantify(req: EdsQuantifyRequest) -> dict:
     # intensity per element is the field total; its Poisson variance comes
     # from the gross counts in the line window of the field-summed spectrum.
     field_sum = ds.data.reshape(-1, ds.data.shape[-1]).sum(axis=0)
-    energy = ds.energy_axis
+    # e.window comes back in keV, so mask against the converted axis.
     var_i = []
     for e in entries:
-        mask = (energy >= e.window[0]) & (energy <= e.window[1])
+        mask = (energy_kev >= e.window[0]) & (energy_kev <= e.window[1])
         var_i.append(
-            integral_variance(field_sum[mask], energy[mask])
+            integral_variance(field_sum[mask], energy_kev[mask])
             if mask.sum() >= 2 else float("nan")
         )
     unc = cliff_lorimer_uncertainty(
