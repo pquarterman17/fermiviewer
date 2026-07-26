@@ -25,6 +25,7 @@ from fermiviewer.calc.eds_calib import recalibrate as recalibrate_axis
 from fermiviewer.calc.eds_continuum import bremsstrahlung_component, fit_continuum
 from fermiviewer.calc.eds_peakfit import PeakFitResult, fit_peaks
 from fermiviewer.calc.eds_zeta import dose_electrons, zeta_from_k_factors, zeta_quantify
+from fermiviewer.calc.energy_units import kev_factor, to_kev
 from fermiviewer.calc.spectral_fit import Component, linear_background
 from fermiviewer.calc.uncertainty import cliff_lorimer_uncertainty
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
@@ -62,7 +63,7 @@ def eds_continuum(req: EdsContinuumRequest) -> dict:
     continuum through the gaps; returns the continuum curve for overlay.
     """
     ds = _spectral(req.image_id)
-    energy = ds.energy_axis
+    energy = to_kev(ds.energy_axis, ds.energy_cal.units)
     spectrum = ds.sum_spectrum()
     try:
         fit = fit_continuum(
@@ -194,7 +195,7 @@ def eds_peakfit(req: EdsPeakfitRequest) -> dict:
     pre-pass (#8) and refits on the corrected spectrum.
     """
     ds = _spectral(req.image_id)
-    energy = ds.energy_axis
+    energy = to_kev(ds.energy_axis, ds.energy_cal.units)
     spectrum = ds.sum_spectrum()
     pf, removal = _fit_summed_peaks(
         energy, spectrum, req.elements,
@@ -281,7 +282,7 @@ def eds_zeta(req: EdsZetaRequest) -> dict:
     table by one absolute ``zeta_si``.
     """
     ds = _spectral(req.image_id)
-    energy = ds.energy_axis
+    energy = to_kev(ds.energy_axis, ds.energy_cal.units)
     spectrum = ds.sum_spectrum()
 
     if req.zeta_factors is not None:
@@ -384,7 +385,7 @@ def eds_artifacts(req: EdsArtifactsRequest) -> dict:
     markers and the artifact-subtracted spectrum.
     """
     ds = _spectral(req.image_id)
-    energy = ds.energy_axis
+    energy = to_kev(ds.energy_axis, ds.energy_cal.units)
     spectrum = ds.sum_spectrum()
     try:
         pf = fit_peaks(
@@ -425,7 +426,7 @@ def eds_recalibrate(req: EdsRecalibrateRequest) -> dict:
     (``scale' = gain·scale``, ``origin' = origin − offset/scale'``).
     """
     ds = _spectral(req.image_id)
-    energy = ds.energy_axis
+    energy = to_kev(ds.energy_axis, ds.energy_cal.units)
     spectrum = ds.sum_spectrum()
 
     anchors: list[float | tuple[float, float]] = []
@@ -455,7 +456,10 @@ def eds_recalibrate(req: EdsRecalibrateRequest) -> dict:
         scale2 = res.gain * e_cal.scale
         if not np.isfinite(scale2) or scale2 == 0:
             raise HTTPException(422, "recalibration produced a degenerate energy scale")
-        origin2 = e_cal.origin - res.offset / scale2
+        # gain is a ratio (unit-free), but offset is additive and was fitted
+        # in keV — express it in the axis's own unit before folding it in.
+        offset_native = res.offset / kev_factor(e_cal.units)
+        origin2 = e_cal.origin - offset_native / scale2
         new_cal = AxisCal(scale=scale2, origin=origin2, units=e_cal.units)
         new_ds = DataStruct(
             data=ds.data, kind=ds.kind,
