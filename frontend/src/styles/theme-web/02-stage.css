@@ -67,6 +67,12 @@
   padding: 5px;
 }
 
+/* Tight hover shell around a button that can be disabled: disabled controls
+   swallow pointer events, so the wrapper is what the tooltip layer sees. */
+.fvd-tool-wrap {
+  display: inline-flex;
+}
+
 /* grain editor toolbar (shown over a grain-label map) */
 .fvd-grain-edit {
   top: 52px;

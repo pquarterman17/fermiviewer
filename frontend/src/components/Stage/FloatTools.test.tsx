@@ -54,4 +54,44 @@ describe("FloatTools accessibility", () => {
     expect(out.querySelector("svg.fvd-icon")).not.toBeNull();
     expect(inside.querySelector("svg.fvd-icon")).not.toBeNull();
   });
+
+  it("every tipped toolbar button carries an explanatory detail", () => {
+    // the old Record<string, string> lookup typed missing entries away — the
+    // transform buttons shipped without details for months
+    render(<FloatTools />);
+    const tipped = screen
+      .getAllByRole("button")
+      .filter((b) => b.hasAttribute("data-tip"));
+    expect(tipped.length).toBeGreaterThanOrEqual(16);
+    for (const b of tipped) {
+      expect(b).toHaveAttribute("data-tip-detail");
+    }
+  });
+
+  it("moves the compare tip to a hoverable wrapper while disabled, with the why", () => {
+    render(<FloatTools />); // default store: one image → compare unavailable
+    const btn = screen.getByRole("button", { name: "Side-by-side compare" });
+    expect(btn).toBeDisabled();
+    // a disabled control swallows pointer events, so the tip must NOT live on
+    // the button — the wrapper is what the browser lets the pointer reach
+    expect(btn).not.toHaveAttribute("data-tip");
+    expect(btn.parentElement).toHaveAttribute("data-tip", "Side-by-side compare");
+    expect(btn.parentElement).toHaveAttribute(
+      "data-tip-detail",
+      "Open at least two images to compare side-by-side.",
+    );
+  });
+
+  it("keeps the compare tip on the focusable button when enabled", () => {
+    useViewer.setState({ order: ["a", "b"] });
+    render(<FloatTools />);
+    const btn = screen.getByRole("button", { name: "Side-by-side compare" });
+    expect(btn).toBeEnabled();
+    expect(btn).toHaveAttribute("data-tip", "Side-by-side compare");
+    expect(btn).toHaveAttribute(
+      "data-tip-detail",
+      "Open loaded images in linked panes for visual comparison.",
+    );
+    expect(btn.parentElement).not.toHaveAttribute("data-tip");
+  });
 });

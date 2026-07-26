@@ -78,6 +78,77 @@ describe("TooltipLayer", () => {
     );
   });
 
+  it("describes only the detail and shortcut — never re-announcing the label", () => {
+    render(
+      <>
+        <button
+          data-tip="ROI statistics"
+          data-tip-detail="Drag a region to calculate summary statistics."
+          data-tip-key="R"
+        >
+          ROI
+        </button>
+        <TooltipLayer />
+      </>,
+    );
+    const btn = screen.getByText("ROI");
+    act(() => {
+      btn.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    });
+    act(() => vi.advanceTimersByTime(400));
+    // description points at the detail + shortcut nodes, NOT the whole chip
+    // (whose label would duplicate the accessible name)
+    expect(btn).toHaveAttribute(
+      "aria-describedby",
+      "fvd-tooltip-desc fvd-tooltip-key",
+    );
+    expect(document.getElementById("fvd-tooltip-desc")).toHaveTextContent(
+      "Drag a region to calculate summary statistics.",
+    );
+    expect(document.getElementById("fvd-tooltip-key")).toHaveTextContent("R");
+  });
+
+  it("sets no aria-describedby for a label-only tip", () => {
+    render(
+      <>
+        <button data-tip="Thumbnail view">▦</button>
+        <TooltipLayer />
+      </>,
+    );
+    const btn = screen.getByText("▦");
+    act(() => {
+      btn.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    });
+    act(() => vi.advanceTimersByTime(400));
+    expect(screen.getByText("Thumbnail view")).toBeInTheDocument(); // chip shows
+    expect(btn).not.toHaveAttribute("aria-describedby"); // name not repeated
+  });
+
+  it("clamps the chip inside the viewport near the left edge", () => {
+    // jsdom rects are all zeros, so the trigger centers the chip at x=0 —
+    // half of it would hang off screen. Mock a measured width and assert the
+    // clamp moves the centre to edge + half-width.
+    const widthSpy = vi
+      .spyOn(HTMLElement.prototype, "offsetWidth", "get")
+      .mockReturnValue(200);
+    render(
+      <>
+        <button data-tip="Rename" data-tip-detail="Rename this workspace entry.">
+          ✎
+        </button>
+        <TooltipLayer />
+      </>,
+    );
+    act(() => {
+      screen
+        .getByText("✎")
+        .dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    });
+    act(() => vi.advanceTimersByTime(400));
+    expect(screen.getByRole("tooltip").style.left).toBe("108px"); // 8 + 200/2
+    widthSpy.mockRestore();
+  });
+
   it("does not re-show its own tooltip when a click focuses the button", () => {
     // mousedown dismisses, then the browser focuses the clicked button. Without
     // an input-modality guard, focusin re-armed the dwell timer and the tooltip

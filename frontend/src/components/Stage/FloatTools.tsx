@@ -3,19 +3,6 @@ import { useStageInfo } from "../../store/stage";
 import { useViewer } from "../../store/viewer";
 import Icon, { type IconName } from "../icons/Icon";
 
-const TOOL_DETAIL: Record<string, string> = {
-  "Hand tool": "Drag the image without changing pixels.",
-  "Box zoom": "Drag a rectangle to magnify that region.",
-  "Fixed Size Zoom": "Capture a region using the dimensions in Preferences.",
-  Distance: "Drag between two points to measure calibrated length.",
-  "Line profile": "Sample intensity along a line you place on the image.",
-  "Box profile (integrated)": "Integrate intensity across a rectangular selection.",
-  Polyline: "Click multiple points to measure a segmented path.",
-  Angle: "Click three points to measure the included angle.",
-  "ROI stats": "Drag a region to calculate statistics and a histogram.",
-  "Calibrate scale": "Draw over a known distance, then enter its physical length.",
-};
-
 export function FloatTools() {
   const activeId = useViewer((s) => s.activeId);
   const captureMode = useViewer((s) => s.captureMode);
@@ -38,23 +25,25 @@ export function FloatTools() {
   const mode = (m: typeof captureMode) => () =>
     setCaptureMode(captureMode === m ? "none" : m);
 
-  const transforms: [IconName, string, () => void][] = [
-    ["rotate-ccw", "Rotate 90° CCW", () => applyGeometry("rotate270")],
-    ["rotate-cw", "Rotate 90° CW", () => applyGeometry("rotate90")],
-    ["flip-horizontal", "Flip horizontal", () => applyGeometry("fliph")],
-    ["flip-vertical", "Flip vertical", () => applyGeometry("flipv")],
+  // Every tuple carries its own tooltip detail: a lookup table typed
+  // Record<string, string> let missing entries slip through as undefined.
+  const transforms: [IconName, string, string, () => void][] = [
+    ["rotate-ccw", "Rotate 90° CCW", "Rotate a quarter turn counter-clockwise as a new derived image.", () => applyGeometry("rotate270")],
+    ["rotate-cw", "Rotate 90° CW", "Rotate a quarter turn clockwise as a new derived image.", () => applyGeometry("rotate90")],
+    ["flip-horizontal", "Flip horizontal", "Mirror left-to-right as a new derived image.", () => applyGeometry("fliph")],
+    ["flip-vertical", "Flip vertical", "Mirror top-to-bottom as a new derived image.", () => applyGeometry("flipv")],
   ];
-  const tools: [IconName, string, boolean, () => void][] = [
-    ["hand", "Hand tool  H", panTool, () => setPanTool(!panTool)],
-    ["box-zoom", "Box zoom  Z", captureMode === "zoom", mode("zoom")],
-    ["fixed-zoom", "Fixed Size Zoom  F", captureMode === "fixed-zoom", mode("fixed-zoom")],
-    ["distance", "Distance  D", captureMode === "distance", mode("distance")],
-    ["profile", "Line profile  L", captureMode === "profile", mode("profile")],
-    ["box-profile", "Box profile (integrated)  B", captureMode === "box-profile", mode("box-profile")],
-    ["polyline", "Polyline  P", captureMode === "polyline", mode("polyline")],
-    ["angle", "Angle  G", captureMode === "angle", mode("angle")],
-    ["roi", "ROI stats  R", captureMode === "roi", mode("roi")],
-    ["ruler", "Calibrate scale", captureMode === "calibrate", mode("calibrate")],
+  const tools: [IconName, string, string, boolean, () => void][] = [
+    ["hand", "Hand tool  H", "Drag the image without changing pixels.", panTool, () => setPanTool(!panTool)],
+    ["box-zoom", "Box zoom  Z", "Drag a rectangle to magnify that region.", captureMode === "zoom", mode("zoom")],
+    ["fixed-zoom", "Fixed Size Zoom  F", "Capture a region using the dimensions in Preferences.", captureMode === "fixed-zoom", mode("fixed-zoom")],
+    ["distance", "Distance  D", "Drag between two points to measure calibrated length.", captureMode === "distance", mode("distance")],
+    ["profile", "Line profile  L", "Sample intensity along a line you place on the image.", captureMode === "profile", mode("profile")],
+    ["box-profile", "Box profile (integrated)  B", "Integrate intensity across a rectangular selection.", captureMode === "box-profile", mode("box-profile")],
+    ["polyline", "Polyline  P", "Click multiple points to measure a segmented path.", captureMode === "polyline", mode("polyline")],
+    ["angle", "Angle  G", "Click three points to measure the included angle.", captureMode === "angle", mode("angle")],
+    ["roi", "ROI stats  R", "Drag a region to calculate statistics and a histogram.", captureMode === "roi", mode("roi")],
+    ["ruler", "Calibrate scale", "Draw over a known distance, then enter its physical length.", captureMode === "calibrate", mode("calibrate")],
   ];
 
   const splitTip = (s: string): [string, string | null] => {
@@ -69,7 +58,7 @@ export function FloatTools() {
       aria-label="Image and measurement tools"
       onPointerDown={(e) => e.stopPropagation()}
     >
-      {transforms.map(([icon, title, onClick]) => {
+      {transforms.map(([icon, title, detail, onClick]) => {
         const [label, hint] = splitTip(title);
         return (
           <button
@@ -77,7 +66,7 @@ export function FloatTools() {
             className="fvd-tool-btn"
             aria-label={label}
             data-tip={label}
-            data-tip-detail={TOOL_DETAIL[label]}
+            data-tip-detail={detail}
             data-tip-key={hint ?? undefined}
             onClick={onClick}
           >
@@ -86,7 +75,7 @@ export function FloatTools() {
         );
       })}
       <span className="fvd-tool-sep" aria-hidden="true" />
-      {tools.map(([icon, title, active, onClick]) => {
+      {tools.map(([icon, title, detail, active, onClick]) => {
         const [label, hint] = splitTip(title);
         return (
           <button
@@ -95,7 +84,7 @@ export function FloatTools() {
             aria-label={label}
             aria-pressed={active}
             data-tip={label}
-            data-tip-detail={TOOL_DETAIL[label]}
+            data-tip-detail={detail}
             data-tip-key={hint ?? undefined}
             onClick={onClick}
           >
@@ -124,16 +113,35 @@ export function FloatTools() {
         <Icon name="save-crop" />
       </button>
       <span className="fvd-tool-sep" aria-hidden="true" />
-      <button
-        className="fvd-tool-btn"
-        aria-label="Side-by-side compare"
-        data-tip="Side-by-side compare"
-        data-tip-detail="Open loaded images in linked panes for visual comparison."
-        disabled={!canCompare}
-        onClick={() => startSideBySide()}
+      {/* A disabled control swallows pointer events, so while compare is
+          unavailable the wrapper carries the tooltip — explaining WHY exactly
+          where the dead button invites the question. When enabled, the tip
+          lives on the button itself so aria-describedby attaches to the
+          focusable control. */}
+      <span
+        className="fvd-tool-wrap"
+        data-tip={canCompare ? undefined : "Side-by-side compare"}
+        data-tip-detail={
+          canCompare
+            ? undefined
+            : "Open at least two images to compare side-by-side."
+        }
       >
-        <Icon name="compare" />
-      </button>
+        <button
+          className="fvd-tool-btn"
+          aria-label="Side-by-side compare"
+          data-tip={canCompare ? "Side-by-side compare" : undefined}
+          data-tip-detail={
+            canCompare
+              ? "Open loaded images in linked panes for visual comparison."
+              : undefined
+          }
+          disabled={!canCompare}
+          onClick={() => startSideBySide()}
+        >
+          <Icon name="compare" />
+        </button>
+      </span>
       <span className="fvd-tool-sep" aria-hidden="true" />
       {hasMeasures && (
         <button

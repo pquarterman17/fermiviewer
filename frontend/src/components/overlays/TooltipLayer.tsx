@@ -4,7 +4,7 @@
 // [data-tip-key] keyboard shortcut. Mounted once at the app root; icon-only
 // controls opt in with `data-tip="Measure distance" data-tip-key="D"`.
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 interface Tip {
@@ -17,12 +17,34 @@ interface Tip {
 }
 
 const DWELL_MS = 350;
-// The chip is a single shared node, so it needs a stable id: assistive tech
+// The chip is a single shared node, so it needs stable ids: assistive tech
 // only announces a tooltip that its trigger points at via aria-describedby.
 const TIP_ID = "fvd-tooltip";
+// The trigger's aria-label already IS the tip label, so the description must
+// point only at the detail/shortcut nodes — describing the whole chip made
+// screen readers announce the name twice.
+const DESC_ID = "fvd-tooltip-desc";
+const KEY_ID = "fvd-tooltip-key";
+// Minimum gap kept between the chip and the viewport edges.
+const EDGE_PX = 8;
 
 export default function TooltipLayer() {
   const [tip, setTip] = useState<Tip | null>(null);
+  const chipRef = useRef<HTMLDivElement>(null);
+
+  // The chip centers on its trigger, so a trigger near a viewport edge (the
+  // 168px filmstrip column) could push half the chip off screen. Clamp after
+  // measuring the rendered width; runs before paint, so there is no jump.
+  useLayoutEffect(() => {
+    const node = chipRef.current;
+    if (!node || !tip) return;
+    const half = node.offsetWidth / 2;
+    const left = Math.min(
+      Math.max(tip.x, EDGE_PX + half),
+      window.innerWidth - EDGE_PX - half,
+    );
+    if (left !== tip.x) node.style.left = `${left}px`;
+  }, [tip]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -50,8 +72,13 @@ export default function TooltipLayer() {
         // flip below the target when it sits near the top edge (title bar)
         const below = rect.top < 90;
         undescribe();
-        el.setAttribute("aria-describedby", TIP_ID);
-        described = el;
+        // A label-only tip gets no aria-describedby at all: the label is the
+        // control's accessible name already.
+        const descIds = [detail && DESC_ID, hint && KEY_ID].filter(Boolean);
+        if (descIds.length) {
+          el.setAttribute("aria-describedby", descIds.join(" "));
+          described = el;
+        }
         setTip({
           label,
           detail,
@@ -117,6 +144,7 @@ export default function TooltipLayer() {
   if (!tip) return null;
   return createPortal(
     <div
+      ref={chipRef}
       className="fvd-tip"
       role="tooltip"
       id={TIP_ID}
@@ -128,9 +156,17 @@ export default function TooltipLayer() {
     >
       <span className="fvd-tip-copy">
         <span className="fvd-tip-label">{tip.label}</span>
-        {tip.detail && <span className="fvd-tip-detail">{tip.detail}</span>}
+        {tip.detail && (
+          <span className="fvd-tip-detail" id={DESC_ID}>
+            {tip.detail}
+          </span>
+        )}
       </span>
-      {tip.hint && <kbd className="fvd-tip-key">{tip.hint}</kbd>}
+      {tip.hint && (
+        <kbd className="fvd-tip-key" id={KEY_ID}>
+          {tip.hint}
+        </kbd>
+      )}
     </div>,
     document.body,
   );
