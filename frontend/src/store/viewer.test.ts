@@ -414,6 +414,27 @@ describe("edit history (WS4d)", () => {
     ]);
     expect(useViewer.getState().historyAt["a"]).toBe(2);
   });
+
+  it("revertHistory(id, 0) resets all corrections to the Opened snapshot (WS5a)", () => {
+    const s = useViewer.getState();
+    s.ingest([meta("a")]);
+    // the load-time window seed folds into "Opened" — a reset must return to
+    // the image as first shown, not to bare defaults
+    s.setDisplay("a", { lo: 0.1, hi: 0.9 }, { silent: true });
+    s.setDisplay("a", { cmap: "viridis" });
+    s.setDisplay("a", { gamma: 0.5 });
+    s.setDisplay("a", { invert: true });
+    useViewer.getState().revertHistory("a", 0);
+    const st = useViewer.getState();
+    expect(st.historyAt["a"]).toBe(0);
+    expect(st.display["a"]).toEqual(st.history["a"][0].display);
+    expect(st.display["a"].lo).toBe(0.1); // seed preserved
+    expect(st.display["a"].hi).toBe(0.9);
+    expect(st.display["a"].gamma).toBe(1);
+    expect(st.display["a"].invert).toBe(false);
+    // the corrected steps remain scrub-forwardable until the next edit
+    expect(st.history["a"].length).toBeGreaterThan(1);
+  });
 });
 
 describe("stack frames (#40)", () => {

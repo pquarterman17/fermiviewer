@@ -61,6 +61,14 @@ export default function AdjustPanel() {
   const toggleColorbar = useViewer((s) => s.toggleColorbar);
   const colorbarSide = useViewer((s) => s.colorbarSide);
   const setColorbarSide = useViewer((s) => s.setColorbarSide);
+  const revertHistory = useViewer((s) => s.revertHistory);
+  // WS5a: anything past the seeded "Opened" step means corrections exist.
+  const canRevertToOpened = useViewer((s) => {
+    if (!s.activeId) return false;
+    const steps = s.history[s.activeId];
+    const at = s.historyAt[s.activeId] ?? (steps ? steps.length - 1 : -1);
+    return at > 0;
+  });
   const raster = useStageInfo((s) => s.raster);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -210,6 +218,14 @@ export default function AdjustPanel() {
           title="Reset contrast window, gamma and invert to defaults"
         >
           Reset
+        </button>
+        <button
+          className="fvd-btn"
+          disabled={!canRevertToOpened}
+          onClick={() => revertHistory(activeId, 0)}
+          title="Reset all corrections — revert display (window, gamma, colormap, invert) to the image as opened; step forward again from the History card"
+        >
+          ↺ Opened
         </button>
         <select
           value={display.cmap}
