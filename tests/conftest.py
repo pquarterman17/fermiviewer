@@ -115,3 +115,17 @@ def rsciio_examples() -> Path:
     if not (p / "gatan" / "microscopy" / "rosettasciio_test_STEM_image.dm3").is_file():
         pytest.skip(f"test-data rsciio corpus absent at {p} (sibling repo)")
     return p
+
+
+@pytest.fixture(scope="session")
+def gatan_microscopy() -> Path:
+    """Path to ../test-data/gatan/microscopy; skips when absent.
+
+    Holds DM images that the golden manifest still keys by their original
+    MATLAB filename but that left fermi-viewer's committed corpus in the
+    2026-07-25 consolidation; see RELOCATED in test_dm_golden.py.
+    """
+    p = EXAMPLE_DATA_ROOT / "gatan" / "microscopy"
+    if not (p / "zenodo8403583_apatite_HAADF.dm4").is_file():
+        pytest.skip(f"test-data Gatan corpus absent at {p} (sibling repo)")
+    return p
