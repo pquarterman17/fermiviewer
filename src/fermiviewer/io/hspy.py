@@ -58,6 +58,31 @@ def _axis_meta(grp: h5py.Group) -> dict[int, dict[str, Any]]:
     return axes
 
 
+def _sample_elements(exp: h5py.Group) -> list[str]:
+    """Element symbols from HyperSpy's ``metadata/Sample/elements``.
+
+    HyperSpy writes short lists as an attribute on the ``Sample`` group and
+    longer ones as a dataset, so both are accepted. This is what lets the EDS
+    element picker highlight the species actually present in the acquisition;
+    without it a ``.hspy`` cube arrives with no declared elements.
+    """
+    node = exp.get("metadata/Sample")
+    if not isinstance(node, h5py.Group):
+        return []
+    raw: Any = node.attrs.get("elements")
+    if raw is None and isinstance(node.get("elements"), h5py.Dataset):
+        raw = node["elements"][()]
+    if raw is None:
+        return []
+    values = np.atleast_1d(np.asarray(raw)).ravel().tolist()
+    out: list[str] = []
+    for value in values:
+        text = (value.decode() if isinstance(value, bytes) else str(value)).strip()
+        if text and text not in out:
+            out.append(text)
+    return out
+
+
 def _is_energy(a: dict[str, Any]) -> bool:
     return a["units"].strip().lower() in ENERGY_UNITS or a["name"].strip().lower() in {
         "energy",
@@ -96,6 +121,12 @@ def load_hspy(path: str | Path) -> DataStruct:
             "parser": "hspy",
             "hspy_experiment": exp.name.rsplit("/", 1)[-1],
         }
+        elements = _sample_elements(exp)
+        if elements:
+            meta["elements"] = elements
+        title = attr_str(exp.get("metadata/General", exp), "title")
+        if title:
+            meta["title"] = title
         ndim = data.ndim
         if ndim >= 4:
             raise HspyFormatError(

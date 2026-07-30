@@ -16,6 +16,18 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Synthetic spectrum-image generator** (`tools/make_synthetic_si.py`). Writes
+  real `.hspy` cubes that open through the normal file path, with a
+  `.truth.json` sidecar recording the composition and geometry that produced
+  them. Four presets: `eds-layers` (200 kV cross-section), `eds-overlap`
+  (10 kV, where Ta M sits 0.030 keV from Si K), `eds-particles`, and
+  `eels-layers` (Si L23 / C K / Ti L23 / O K over a power-law background).
+  Peak and edge positions come from the app's own `line_energy` /
+  `EELS_EDGES` tables, so synthetic peaks cannot drift from the windows the
+  GUI snaps to.
+- `.hspy` files now expose `metadata/Sample/elements` and
+  `metadata/General/title`, so a HyperSpy cube's declared elements reach the
+  EDS element picker.
 - **EDS spectrum zoom.** Drag on the spectrum to zoom the energy axis, wheel to
   zoom about the cursor, double-click to reset. A zoom bar under the plot adds
   numeric view bounds, pan/zoom buttons and a Reset, and "Zoom to window"
