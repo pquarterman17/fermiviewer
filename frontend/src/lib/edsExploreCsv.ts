@@ -2,6 +2,7 @@
 // Kept out of the component so the formatting is unit-testable and the
 // explorer stays under the 500-line module ceiling.
 import type { EdsElementMapResult, Spectrum } from "./api";
+import type { IntegrationRegion } from "./eds/regions";
 
 /** Element-window map → CSV: a comment header (window + background mode)
  *  followed by the H×W counts grid, one map row per line. */
@@ -23,4 +24,33 @@ export function spectrumCsv(s: Spectrum): string {
     .map((e, i) => `${e.toFixed(6)},${s.counts[i].toFixed(6)}`)
     .join("\n");
   return header + rows;
+}
+
+/** Pinned integration regions → CSV. One row per region, carrying the spectrum
+ *  it was measured on so a file mixing whole-cube and ROI regions stays
+ *  interpretable outside the app. */
+export function integrationRegionsCsv(regions: IntegrationRegion[]): string {
+  const header =
+    "label,e_lo_kev,e_hi_kev,background,channels," +
+    "gross_counts,background_counts,net_counts,net_sigma,fraction_of_total,source\n";
+  return (
+    header +
+    regions
+      .map((r) =>
+        [
+          r.label,
+          r.eLo.toFixed(4),
+          r.eHi.toFixed(4),
+          r.bg,
+          r.channels,
+          r.gross.toFixed(4),
+          r.background.toFixed(4),
+          r.net.toFixed(4),
+          r.sigma.toFixed(4),
+          r.fraction.toFixed(6),
+          `"${r.source.replace(/"/g, '""')}"`,
+        ].join(","),
+      )
+      .join("\n")
+  );
 }

@@ -31,6 +31,7 @@ describe("EdsElementMap", () => {
     render(
       <EdsElementMap
         result={result}
+        element="Fe"
         busy={false}
         libraryBusy={false}
         compositeBusy={false}
@@ -41,6 +42,9 @@ describe("EdsElementMap", () => {
     );
 
     expect(screen.getByRole("region", { name: "Element map" })).toBeVisible();
+    // A named element defaults to its own colour tint, so the single-element
+    // map matches the colour it wears in the composite and on the spectrum.
+    expect(screen.getByLabelText("Colormap")).toHaveValue("element");
     expect(screen.getByLabelText("Contrast")).toHaveValue("1-99");
     expect(screen.getByText(/Data range 0–100/)).toBeVisible();
     expect(screen.getByText(/negative pixels are retained/)).toBeVisible();
@@ -51,6 +55,7 @@ describe("EdsElementMap", () => {
     render(
       <EdsElementMap
         result={result}
+        element="Fe"
         busy={false}
         libraryBusy={false}
         compositeBusy={false}

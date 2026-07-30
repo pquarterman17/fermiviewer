@@ -38,16 +38,18 @@ export function mapDisplayRange(
   return { dataMin, dataMax, lo, hi: rawHi > lo ? rawHi : lo + 1 };
 }
 
-/** Convert a numeric map to an RGBA raster using the shared application LUT. */
+/** Convert a numeric map to an RGBA raster. `cmap` is a shared application
+ *  colormap name, or a prebuilt 256×RGBA8 LUT for ramps that are generated per
+ *  render — the per-element colour tint being the one that needs it. */
 export function renderElementMap(
   map: number[][],
   width: number,
   height: number,
   range: MapDisplayRange,
-  cmap: ColormapName,
+  cmap: ColormapName | Uint8Array,
 ): Uint8ClampedArray {
   const rgba = new Uint8ClampedArray(width * height * 4);
-  const lut = buildLut(cmap);
+  const lut = cmap instanceof Uint8Array ? cmap : buildLut(cmap);
   const span = range.hi - range.lo || 1;
   for (let i = 0; i < width * height; i++) {
     const value = map[Math.floor(i / width)]?.[i % width];

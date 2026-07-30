@@ -1,32 +1,34 @@
 import { describe, expect, it } from "vitest";
 
-import { EDS_PALETTE, mergeCompositeChannel, type Channel } from "./EdsComposite";
+import { elementColor } from "../../lib/eds/elementColors";
+import { mergeCompositeChannel, type Channel } from "./EdsComposite";
 
 describe("mergeCompositeChannel (picker → composite direct-feed)", () => {
-  it("appends a new element with the next palette colour", () => {
+  it("appends a new element with no stored colour", () => {
+    // Colour is resolved from the element-colour registry at blend time, so a
+    // channel must not carry one — storing it is what made the same element
+    // change colour depending on the order it was added.
     const out = mergeCompositeChannel([], "img-fe", "Fe");
     expect(out).toEqual([
-      {
-        id: "img-fe",
-        el: "Fe",
-        color: EDS_PALETTE[0],
-        intensity: 1,
-        visible: true,
-      },
+      { id: "img-fe", el: "Fe", intensity: 1, visible: true },
     ]);
   });
 
-  it("assigns palette colours in add order", () => {
-    let chs: Channel[] = [];
-    chs = mergeCompositeChannel(chs, "img-fe", "Fe");
-    chs = mergeCompositeChannel(chs, "img-o", "O");
-    chs = mergeCompositeChannel(chs, "img-si", "Si");
-    expect(chs.map((c) => c.el)).toEqual(["Fe", "O", "Si"]);
-    expect(chs.map((c) => c.color)).toEqual([
-      EDS_PALETTE[0],
-      EDS_PALETTE[1],
-      EDS_PALETTE[2],
-    ]);
+  it("resolves a stable per-element colour regardless of add order", () => {
+    let forward: Channel[] = [];
+    forward = mergeCompositeChannel(forward, "img-fe", "Fe");
+    forward = mergeCompositeChannel(forward, "img-o", "O");
+    forward = mergeCompositeChannel(forward, "img-si", "Si");
+    expect(forward.map((c) => c.el)).toEqual(["Fe", "O", "Si"]);
+    expect(new Set(forward.map((c) => elementColor(c.el))).size).toBe(3);
+
+    let reversed: Channel[] = [];
+    reversed = mergeCompositeChannel(reversed, "img-si", "Si");
+    reversed = mergeCompositeChannel(reversed, "img-o", "O");
+    reversed = mergeCompositeChannel(reversed, "img-fe", "Fe");
+    expect(reversed.map((c) => elementColor(c.el))).toEqual(
+      ["Si", "O", "Fe"].map(elementColor),
+    );
   });
 
   it("re-adding an element re-points its map id but keeps user styling", () => {
@@ -34,7 +36,6 @@ describe("mergeCompositeChannel (picker → composite direct-feed)", () => {
       {
         id: "old-fe",
         el: "Fe",
-        color: "#123456", // user recoloured
         intensity: 1.7, // user tweaked
         visible: false, // user hid it
         cmap: "viridis", // user chose a ramp
@@ -45,7 +46,6 @@ describe("mergeCompositeChannel (picker → composite direct-feed)", () => {
     expect(out[0]).toEqual({
       id: "new-fe", // pointed at the fresh map
       el: "Fe",
-      color: "#123456",
       intensity: 1.7,
       visible: false,
       cmap: "viridis",

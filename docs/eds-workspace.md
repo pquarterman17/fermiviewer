@@ -36,7 +36,62 @@ three acquisition paths explicit:
 The source chip always names the displayed spectrum. Manual source requests show
 `Loading…` while retaining the previous plot. The plot supports linear counts or
 `log10(counts + 1)` and compact/expanded heights; characteristic-line labels and
-the draggable integration window remain available in either display mode.
+the energy window remain available in either display mode.
+
+### Zoom and the energy window
+
+Two gestures share the spectrum, so they are deliberately separated:
+
+| Gesture | Effect |
+|---|---|
+| Drag | Zoom the energy axis |
+| Shift + drag | Set the element-map energy window |
+| Wheel | Zoom about the energy under the cursor |
+| Double-click | Reset to the full range |
+
+None of those announce themselves, so the zoom bar under the plot carries the
+same operations explicitly: numeric view bounds, pan left/right, zoom in/out,
+and Reset. **Zoom to window** beside the window spinners frames the current
+window with context on both sides, and clicking a pinned integration region
+does the same for that region.
+
+The view is state owned by the explorer, not by uPlot: `null` means "show
+everything", which is what lets a Reset survive switching to a spectrum with a
+different energy range. Switching cubes clears the zoom.
+
+The window drag was previously bound to the `<canvas>` element. uPlot builds
+its wrapper as under → canvas → over, with `.u-over` absolutely positioned
+across the plot area, so pointer events inside the plot landed on `.u-over` and
+bubbled to the wrapper — never reaching the sibling canvas. The window drag
+therefore only fired in the axis gutters, where its `offsetX - bbox.left`
+arithmetic also mixed CSS pixels with uPlot's device-pixel `bbox`. The gesture
+now goes through `u.over` and uPlot's own select machinery, suppressing the
+native zoom for exactly the drag that began with shift held.
+
+### Integration readout
+
+Under the spectrum, a live line reports what the current energy window
+contains: channel count, gross counts, the background subtracted, net ± 1σ from
+counting statistics, and the net as a share of the whole spectrum. It is
+computed client-side from the displayed spectrum, so dragging the window costs
+no request — and it follows the source, answering "how much signal is in this
+window *on this pixel/ROI/whole cube*".
+
+The background models are a port of `calc/eds_maps.py` (`_side_windows`,
+`element_map`, `_kramers_bg_map`), so the readout describes the same quantity
+the element map integrates; `frontend/src/lib/eds/integrate.test.ts` pins the
+TypeScript against values produced by that Python. One difference is intentional: the map
+clamps each pixel's net to ≥ 0, while the readout reports a negative net as-is.
+A negative net means the window holds no peak above its background, and hiding
+that behind a clamp would misreport an empty window as zero signal.
+
+**+ Add region** pins the current integral to a table — element (or the energy
+range for an unnamed window), window, background model, net ± 1σ and percent.
+A pinned region is a snapshot of the spectrum it was measured on, not a live
+view; re-integrating it later against a different spectrum would silently
+rewrite a number the user already read. Clicking a region restores its window,
+background and element and frames it on the plot. The table exports to CSV,
+carrying the source spectrum per row.
 
 ### Element-map display
 
@@ -55,6 +110,37 @@ the acquisition metadata; that choice is remembered.
 the user away from the EDS cube. The chosen colormap is applied to the derived
 image, which then appears in the filmstrip for full-stage inspection, comparison,
 and export. **+ Composite** remains available for named element windows.
+
+## Element colours
+
+One registry (`lib/eds/elementColors.ts`, persisted to localStorage) decides
+what colour an element is drawn in, everywhere in the workspace:
+
+- composite channels
+- the single-element map tint and its colorbar
+- the spectrum's characteristic-line markers
+- the model-fit deconvolved peak curves
+- the composition-profile lines
+- the swatch beside each pinned integration region
+
+Set it from the swatch under the element picker — a colour input, the eight
+palette presets, and **Default** to drop the override — or from a composite
+channel's colour input, which writes to the same registry. Resolution order per
+symbol is override → curated colour → a golden-angle hue keyed on the element's
+position in the periodic table, so even uncurated elements get distinct,
+stable colours.
+
+This replaced an index-into-a-palette assignment, under which a channel's
+colour depended on the order elements were added: the same element could be red
+in a Quantify run and green after an Explore pick, and the composite disagreed
+with the spectrum markers. `Channel` therefore stores no colour at all — it is
+resolved at blend time.
+
+**Add to library** can carry the element tint onto the derived image. The tint
+is generated per element rather than being one of the shared named colormaps,
+so it is published through the application's single `custom` colormap slot; the
+button's tooltip says so, because that slot is shared with the user's own
+custom colormap.
 
 ## Window behavior
 

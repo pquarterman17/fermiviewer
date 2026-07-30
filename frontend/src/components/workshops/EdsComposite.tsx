@@ -1,16 +1,21 @@
 // EDS composite mode (prototype "EDS Composite" — the #1 ranked design
 // gap): per-element channel list with colour / intensity / visibility,
 // additively blended on a canvas from the at% maps' raw data16 rasters.
+//
+// Channel colour is NOT stored on the channel: it is resolved from the shared
+// element-colour registry at blend time. Storing it per channel made the same
+// element land on different colours depending on the order it was added, and
+// left the composite disagreeing with the map tint and the spectrum markers.
 
 import { useEffect, useRef, useState } from "react";
 
 import { fetchData16, type Raster16 } from "../../lib/api";
 import { compositeChannels } from "../../lib/composite";
+import { setElementColor, useElementColors } from "../../lib/eds/elementColors";
 
 export interface Channel {
   id: string; // derived at%-map image id
   el: string;
-  color: string;
   intensity: number; // 0–2
   visible: boolean;
   /** per-channel colour ramp (#6): undefined/"solid" → flat colour tint */
@@ -20,22 +25,9 @@ export interface Channel {
 // per-channel ramp options: flat colour, or a named LUT (tint like Velox/GMS)
 const CHANNEL_CMAPS = ["solid", "gray", "viridis", "inferno", "fire", "ice"];
 
-/** Classic EDS overlay palette, assigned in element order. */
-export const EDS_PALETTE = [
-  "#f43f5e", // red
-  "#22c55e", // green
-  "#3b82f6", // blue
-  "#eab308", // yellow
-  "#a855f7", // purple
-  "#06b6d4", // cyan
-  "#f97316", // orange
-  "#ec4899", // pink
-];
-
 /** Merge a picker-fed element map into the composite channel list.
- *  A new element appends with the next palette colour; re-adding an element
- *  already in the composite re-points its channel at the fresh map `id` while
- *  preserving the user's colour / intensity / visibility / ramp choices. */
+ *  Re-adding an element already in the composite re-points its channel at the
+ *  fresh map `id` while preserving the user's intensity / visibility / ramp. */
 export function mergeCompositeChannel(
   prev: Channel[],
   id: string,
@@ -47,16 +39,7 @@ export function mergeCompositeChannel(
     next[idx] = { ...next[idx], id };
     return next;
   }
-  return [
-    ...prev,
-    {
-      id,
-      el,
-      color: EDS_PALETTE[prev.length % EDS_PALETTE.length],
-      intensity: 1,
-      visible: true,
-    },
-  ];
+  return [...prev, { id, el, intensity: 1, visible: true }];
 }
 
 const VIEW_W = 300;
@@ -73,6 +56,7 @@ export default function EdsComposite({
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
   const [blend, setBlend] = useState<"add" | "max">("add");
   const [err, setErr] = useState<string | null>(null);
+  const colors = useElementColors();
 
   useEffect(() => {
     if (channels.length === 0) return;
@@ -90,7 +74,11 @@ export default function EdsComposite({
           }),
         );
         if (stale) return;
-        const { w, h, rgba } = compositeChannels(rasters, channels, blend);
+        const { w, h, rgba } = compositeChannels(
+          rasters,
+          channels.map((c) => ({ ...c, color: colors(c.el) })),
+          blend,
+        );
         const cv = canvasRef.current;
         if (!cv) return;
         cv.width = w;
@@ -107,7 +95,7 @@ export default function EdsComposite({
     return () => {
       stale = true;
     };
-  }, [channels, blend]);
+  }, [channels, blend, colors]);
 
   if (channels.length === 0) return null;
 
@@ -181,11 +169,12 @@ export default function EdsComposite({
           />
           <input
             type="color"
-            value={c.color}
-            title="channel colour (solid ramp)"
+            value={colors(c.el)}
+            title={`${c.el} colour — applies everywhere this element is drawn`}
+            aria-label={`Display colour for ${c.el}`}
             disabled={!!c.cmap && c.cmap !== "solid"}
             style={{ width: 28, height: 20, padding: 0, border: "none" }}
-            onChange={(e) => set(i, { color: e.target.value })}
+            onChange={(e) => setElementColor(c.el, e.target.value)}
           />
           <select
             value={c.cmap ?? "solid"}

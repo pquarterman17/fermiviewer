@@ -3,6 +3,9 @@ import type { EdsAutoAssignResult, EdsLine } from "../api";
 export interface PeakMarker {
   energyKev: number;
   label: string; // e.g. "Fe Kα"
+  /** Element symbol, so the plot can draw the marker in that element's
+   *  registry colour rather than a generic accent. */
+  symbol: string;
   kind: "selected" | "auto";
 }
 
@@ -25,7 +28,7 @@ export function buildPeakMarkers(
   ) => {
     const key = `${symbol}:${line}`;
     if (kind === "auto" && byKey.has(key)) return; // keep the selected marker
-    byKey.set(key, { energyKev, label: `${symbol} ${line}α`, kind });
+    byKey.set(key, { energyKev, label: `${symbol} ${line}α`, symbol, kind });
   };
 
   for (const ln of selected) put(ln.symbol, ln.line, ln.energy_kev, "selected");

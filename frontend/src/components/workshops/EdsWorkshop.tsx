@@ -16,8 +16,8 @@ import {
 } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
 import { formatPlusMinus } from "../../lib/formatUncertainty";
+import { useElementColors } from "../../lib/eds/elementColors";
 import EdsComposite, {
-  EDS_PALETTE,
   mergeCompositeChannel,
   type Channel,
 } from "./EdsComposite";
@@ -29,6 +29,7 @@ import PlotContextSurface from "../plots/PlotContextSurface";
 function CompProfilePlot({ r }: { r: CompositionProfileResult }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
+  const colors = useElementColors();
 
   useEffect(() => {
     const host = hostRef.current;
@@ -36,9 +37,9 @@ function CompProfilePlot({ r }: { r: CompositionProfileResult }) {
     plotRef.current?.destroy();
     const series: uPlot.Series[] = [
       { label: `d (${r.unit})` },
-      ...r.elements.map((el, i) => ({
+      ...r.elements.map((el) => ({
         label: el,
-        stroke: EDS_PALETTE[i % EDS_PALETTE.length],
+        stroke: colors(el),
         width: 1.5,
         points: { show: false },
       })),
@@ -70,7 +71,7 @@ function CompProfilePlot({ r }: { r: CompositionProfileResult }) {
       plotRef.current?.destroy();
       plotRef.current = null;
     };
-  }, [r]);
+  }, [r, colors]);
 
   return (
     <PlotContextSurface
@@ -205,10 +206,9 @@ export default function EdsWorkshop() {
           return { images, order };
         });
         setChannels(
-          kept.map(({ m, el, i }) => ({
+          kept.map(({ m, el }) => ({
             id: m.id,
             el,
-            color: EDS_PALETTE[i % EDS_PALETTE.length],
             intensity: 1,
             visible: true,
           })),

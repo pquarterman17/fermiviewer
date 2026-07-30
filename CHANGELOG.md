@@ -13,6 +13,38 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **EDS spectrum zoom.** Drag on the spectrum to zoom the energy axis, wheel to
+  zoom about the cursor, double-click to reset. A zoom bar under the plot adds
+  numeric view bounds, pan/zoom buttons and a Reset, and "Zoom to window"
+  frames the current energy window.
+- **Per-element colours.** Pick an element and set its colour once — from the
+  element picker or a composite channel row — and it applies to composite
+  channels, the single-element map tint, the spectrum's characteristic-line
+  markers, the model-fit peak curves and the composition profile. Colours
+  persist across sessions; each element also has a distinct default.
+- **Spectrum integration.** A live readout under the spectrum reports the
+  current window's gross, background, net ± 1σ and share of the spectrum,
+  under the same background model the element map uses. Windows can be pinned
+  to a region table (click to restore and frame, with CSV export).
+
+### Changed
+- **The EDS energy window is now set with shift+drag**, freeing a plain drag
+  for zoom.
+- Element-map "Add to library" can carry the element's colour onto the derived
+  image, published through the shared `custom` colormap slot.
+
+### Fixed
+- **The EDS energy-window drag never worked inside the plot.** Its handlers
+  were bound to the `<canvas>`, but uPlot's `.u-over` sits above the canvas and
+  absorbs every pointer event in the plot area, so the drag only fired in the
+  axis gutters — where its coordinate math also mixed CSS pixels with uPlot's
+  device-pixel `bbox`.
+- Moving the EDS energy window or recolouring an element no longer destroys and
+  rebuilds the spectrum plot on every frame; the overlay redraws in place.
+
 ## [0.1.22] - 2026-07-26
 
 A large analysis-workflow release: four new workshop surfaces, a rebuilt EDS

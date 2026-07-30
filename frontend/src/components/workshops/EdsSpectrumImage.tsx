@@ -1,39 +1,48 @@
 // EDS Spectrum-Image explorer — UI parity with
 // fermi-viewer/+fermiViewer/+spectrumImage/openSpectrumImageWorkshop.m
 //
-// Controls (left-to-right, MATLAB order):
-//   Element dropdown → snaps energy window to the element's principal line
-//   Window lo/hi spinners (keV)
-//   Background-mode toggle (linear / none)
-//   Live spectrum plot (uPlot) with draggable window patch
-//   Sum spectrum button
-//   Pixel-click / ROI-drag → spectrum (via RegionPicker)
-//   Element-map CSV export / spectrum CSV export
+// Layout, top to bottom:
+//   Spectrum panel (source bar + uPlot) with zoom bar and integration readout
+//   Element picker (periodic table / dropdown) with that element's colour
+//   Window lo/hi spinners (keV) and the background-mode toggle
+//   Element map, tinted by the element's colour
+//   Pixel / ROI picker and CSV exports
+//
+// Spectrum acquisition lives in useEdsSpectrumSource; the energy window,
+// background model, map extraction and integration stay here because they are
+// all views over whichever spectrum that hook has resolved.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import {
-  edsElementMap,
-  edsLineEnergy,
-  fetchSpectrum,
-  type ImageMeta,
-  type Spectrum,
-} from "../../lib/api";
+import { edsLineEnergy, type ImageMeta, type Spectrum } from "../../lib/api";
 import { useEdsPeakMarkers } from "../../hooks/useEdsPeakMarkers";
-import type { ColormapName } from "../../lib/colormaps";
-import { elementMapCsv, spectrumCsv } from "../../lib/edsExploreCsv";
-import { normalizeEdsSpectrum } from "../../lib/edsSpectrumDisplay";
+import { integrateWindow } from "../../lib/eds/integrate";
+import {
+  makeRegion,
+  upsertRegion,
+  type IntegrationRegion,
+} from "../../lib/eds/regions";
+import { frameWindow, type XRange } from "../../lib/eds/zoomRange";
+import {
+  elementMapCsv,
+  integrationRegionsCsv,
+  spectrumCsv,
+} from "../../lib/edsExploreCsv";
 import { useViewer } from "../../store/viewer";
 import EdsElementPicker from "./EdsElementPicker";
 import EdsElementMap from "./EdsElementMap";
-import EdsSpectrumPanel, { type EdsSpectrumSource } from "./EdsSpectrumPanel";
+import EdsIntegrationPanel from "./EdsIntegrationPanel";
+import EdsSpectrumPanel from "./EdsSpectrumPanel";
 import EdsSpectrumSourcePicker from "./EdsSpectrumSourcePicker";
 import SpectrumPlot from "./EdsSpectrumPlot";
+import EdsSpectrumZoomBar from "./EdsSpectrumZoomBar";
 import type { Rect1 } from "./RegionPicker";
+import { useEdsDerivedMap } from "./useEdsDerivedMap";
 import { type EdsMapBackground, useEdsElementMap } from "./useEdsElementMap";
-import { useSpectrumProbe } from "./useSpectrumProbe";
+import { useEdsSpectrumSource } from "./useEdsSpectrumSource";
 
 const HALF_WIN = 0.085; // keV, default half-window (matches MATLAB halfWin)
+const MIN_ZOOM_CHANNELS = 6; // narrowest view the wheel / buttons may reach
 
 // ── helpers ───────────────────────────────────────────────────────────
 
@@ -45,6 +54,17 @@ function downloadCsv(content: string, filename: string) {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+/** Full energy extent and channel width of a spectrum, for the zoom limits. */
+function energyBounds(spec: Spectrum | null) {
+  const n = spec?.energy.length ?? 0;
+  if (!spec || n < 2) return { bounds: [0, 1] as XRange, minSpan: 0 };
+  const bounds: XRange = [spec.energy[0], spec.energy[n - 1]];
+  return {
+    bounds,
+    minSpan: ((bounds[1] - bounds[0]) / (n - 1)) * MIN_ZOOM_CHANNELS,
+  };
 }
 
 // ── main component ────────────────────────────────────────────────────
@@ -78,18 +98,11 @@ export default function EdsSpectrumImage({
   const [selElem, setSelElem] = useState("(custom)");
 
   // spectrum display
-  const [spectrum, setSpectrum] = useState<Spectrum | null>(null);
-  const [specLabel, setSpecLabel] = useState("Sum spectrum");
-  const [specSource, setSpecSource] = useState<EdsSpectrumSource>("sum");
-  const [specBusy, setSpecBusy] = useState(false);
   const [logScale, setLogScale] = useState(false);
   const [spectrumExpanded, setSpectrumExpanded] = useState(false);
   const [showPeaks, setShowPeaks] = useState(true);
-  const sumSpectrum = useRef<Spectrum | null>(null);
-
-  // map
-  const [addBusy, setAddBusy] = useState(false);
-  const [libraryBusy, setLibraryBusy] = useState(false);
+  const [xRange, setXRange] = useState<XRange | null>(null);
+  const [regions, setRegions] = useState<IntegrationRegion[]>([]);
 
   const isCube = meta?.kind === "spectrum_image";
 
@@ -133,56 +146,57 @@ export default function EdsSpectrumImage({
     };
   }, [activeId]);
 
+  // A new cube brings a new energy axis and new pixels: neither the previous
+  // zoom nor the previous integrations describe it.
   useEffect(() => {
-    if (!activeId || !isCube) return;
-    const id = activeId;
-    let cancelled = false;
-    sumSpectrum.current = null;
-    setSpecBusy(true);
-    fetchSpectrum(id)
-      .then((s) => {
-        if (cancelled || !stillOpen(id)) return;
-        sumSpectrum.current = s;
-        setSpectrum(s);
-        setSpecLabel("Sum spectrum");
-        setSpecSource("sum");
-        // initialise window to first element or default
-        if (elements.length > 0) {
-          handleElementChange(elements[0]);
-        } else {
-          const lo = 0.5;
-          const hi = 1.5;
+    setXRange(null);
+    setRegions([]);
+  }, [activeId]);
+
+  const handleElementChange = useCallback(
+    (sym: string) => {
+      setSelElem(sym);
+      if (sym === "(custom)") return;
+      const id = activeId;
+      edsLineEnergy(sym)
+        .then(({ energy_kev, line }) => {
+          if (!stillOpen(id)) return;
+          const lo = energy_kev - HALF_WIN;
+          const hi = energy_kev + HALF_WIN;
           setELo(lo);
           setEHi(hi);
-          recomputeMap(lo, hi, "linear");
-        }
-      })
-      .catch((e: Error) => reportEds(id, `EDS spectrum: ${e.message}`))
-      .finally(() => {
-        if (!cancelled) setSpecBusy(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId, isCube]);
-
-  useSpectrumProbe({
-    imageId: activeId,
-    pixel: specnavPixel,
-    enabled: isCube && captureMode === "specnav",
-    onSpectrum: (next, rect) => {
-      setSpectrum(next);
-      setSpecLabel(`px [${rect[0]}, ${rect[1]}]`);
-      setSpecSource("live");
+          recomputeMap(lo, hi, bgMode);
+          reportEds(id, `EDS: ${sym} ${line}α at ${energy_kev.toFixed(3)} keV`);
+        })
+        .catch((e: Error) => reportEds(id, `EDS line-energy: ${e.message}`));
     },
-    onError: (e) => reportEds(activeId, `EDS spectrum: ${e.message}`),
-  });
-
-  const displaySpectrum = useMemo(
-    () => (spectrum ? normalizeEdsSpectrum(spectrum) : null),
-    [spectrum],
+    [activeId, bgMode, recomputeMap, reportEds, stillOpen],
   );
+
+  const onSpectrumLoaded = useCallback(() => {
+    if (elements.length > 0) {
+      handleElementChange(elements[0]);
+    } else {
+      setELo(0.5);
+      setEHi(1.5);
+      recomputeMap(0.5, 1.5, "linear");
+    }
+    // `elements` is derived fresh each render from meta; keying on its content
+    // keeps this from re-running the window init on unrelated re-renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [elements.join(","), handleElementChange, recomputeMap]);
+
+  const { displaySpectrum, label, source, busy, showSum, showRegion } =
+    useEdsSpectrumSource({
+      imageId: activeId,
+      enabled: isCube,
+      probePixel: specnavPixel,
+      probeActive: captureMode === "specnav",
+      isOpen: stillOpen,
+      onStatus: reportEds,
+      onLoaded: onSpectrumLoaded,
+    });
+
   const peakMarkers = useEdsPeakMarkers(
     activeId,
     selElem,
@@ -190,22 +204,21 @@ export default function EdsSpectrumImage({
     showPeaks && isCube,
   );
 
-  const handleElementChange = (sym: string) => {
-    setSelElem(sym);
-    if (sym === "(custom)") return;
-    const id = activeId;
-    edsLineEnergy(sym)
-      .then(({ energy_kev, line }) => {
-        if (!stillOpen(id)) return;
-        const lo = energy_kev - HALF_WIN;
-        const hi = energy_kev + HALF_WIN;
-        setELo(lo);
-        setEHi(hi);
-        recomputeMap(lo, hi, bgMode);
-        reportEds(id, `EDS: ${sym} ${line}α at ${energy_kev.toFixed(3)} keV`);
-      })
-      .catch((e: Error) => reportEds(id, `EDS line-energy: ${e.message}`));
-  };
+  const { bounds, minSpan } = useMemo(
+    () => energyBounds(displaySpectrum),
+    [displaySpectrum],
+  );
+
+  // The integral of whatever spectrum is displayed, under the same background
+  // model the element map uses — recomputed locally so dragging the window
+  // never costs a request.
+  const integration = useMemo(
+    () =>
+      displaySpectrum
+        ? integrateWindow(displaySpectrum, eLo, eHi, bgMode, { e0Kev })
+        : null,
+    [displaySpectrum, eLo, eHi, bgMode, e0Kev],
+  );
 
   const handleWindowChange = (lo: number, hi: number) => {
     const lo2 = Math.min(lo, hi);
@@ -221,93 +234,38 @@ export default function EdsSpectrumImage({
     recomputeMap(eLo, eHi, mode);
   };
 
-  // Feed the current element's window map straight into the composite overlay.
-  // Re-requests the map with save_derived so the backend registers it as a
-  // library image (its ImageMeta.id is what the composite fetches by), then
-  // hands that meta up to the workshop. Only enabled for a real element pick.
-  const handleAddToComposite = () => {
-    const id = activeId;
-    if (!id || !onAddToComposite || selElem === "(custom)") return;
-    setAddBusy(true);
-    edsElementMap(id, eLo, eHi, {
+  const addRegion = () => {
+    if (!integration) return;
+    setRegions((prev) =>
+      upsertRegion(prev, makeRegion(integration, selElem, label)),
+    );
+  };
+
+  // Restoring a pinned region puts its window back and frames it, so the
+  // number in the table and the peak on screen are the same measurement.
+  const restoreRegion = (region: IntegrationRegion) => {
+    setELo(region.eLo);
+    setEHi(region.eHi);
+    setSelElem(region.label.match(/^[A-Z][a-z]?$/) ? region.label : "(custom)");
+    setBgMode(region.bg);
+    recomputeMap(region.eLo, region.eHi, region.bg);
+    setXRange(frameWindow(region.eLo, region.eHi, bounds, minSpan));
+  };
+
+  const { compositeBusy, libraryBusy, addToComposite, addToLibrary } =
+    useEdsDerivedMap({
+      imageId: activeId,
+      eLo,
+      eHi,
       bg: bgMode,
-      e0Kev: bgMode === "bremsstrahlung" ? e0Kev : undefined,
-      saveDerived: true,
-    })
-      .then((r) => {
-        if (!stillOpen(id)) return; // image removed mid-request; drop result
-        if (r.map_meta) {
-          onAddToComposite(r.map_meta, selElem);
-          reportEds(id, `EDS composite: added ${selElem}`);
-        }
-      })
-      .catch((e: Error) => reportEds(id, `EDS composite: ${e.message}`))
-      .finally(() => setAddBusy(false));
-  };
+      e0Kev,
+      element: selElem,
+      isOpen: stillOpen,
+      onStatus: reportEds,
+      onAddToComposite,
+    });
 
-  const handleAddToLibrary = (cmap: ColormapName) => {
-    const id = activeId;
-    if (!id) return;
-    setLibraryBusy(true);
-    edsElementMap(id, eLo, eHi, {
-      bg: bgMode,
-      e0Kev: bgMode === "bremsstrahlung" ? e0Kev : undefined,
-      saveDerived: true,
-    })
-      .then((result) => {
-        if (!stillOpen(id) || !result.map_meta) return;
-        const store = useViewer.getState();
-        store.ingestDerived([result.map_meta]);
-        store.setDisplay(result.map_meta.id, { cmap }, { silent: true });
-        store.setActive(id);
-        reportEds(id, `EDS map added to library with ${cmap} colormap`);
-      })
-      .catch((e: Error) => reportEds(id, `EDS library: ${e.message}`))
-      .finally(() => setLibraryBusy(false));
-  };
-
-  const handleRoi = (rect: Rect1 | null) => {
-    const id = activeId;
-    if (!id) return;
-    setSpecBusy(true);
-    fetchSpectrum(id, rect ?? undefined)
-      .then((s) => {
-        if (!stillOpen(id)) return;
-        setSpectrum(s);
-        setSpecLabel(
-          rect
-            ? rect[0] === rect[2] && rect[1] === rect[3]
-              ? `Pixel [${rect[0]}, ${rect[1]}]`
-              : `ROI [${rect[0]}:${rect[2]}, ${rect[1]}:${rect[3]}]`
-            : "Sum spectrum",
-        );
-        setSpecSource(rect ? "picker" : "sum");
-      })
-      .catch((e: Error) => reportEds(id, `EDS spectrum: ${e.message}`))
-      .finally(() => setSpecBusy(false));
-  };
-
-  const handleShowSum = () => {
-    const id = activeId;
-    if (!id) return;
-    if (sumSpectrum.current) {
-      setSpectrum(sumSpectrum.current);
-      setSpecLabel("Sum spectrum");
-      setSpecSource("sum");
-      return;
-    }
-    setSpecBusy(true);
-    fetchSpectrum(id)
-      .then((s) => {
-        if (!stillOpen(id)) return;
-        sumSpectrum.current = s;
-        setSpectrum(s);
-        setSpecLabel("Sum spectrum");
-        setSpecSource("sum");
-      })
-      .catch((e: Error) => reportEds(id, `EDS sum: ${e.message}`))
-      .finally(() => setSpecBusy(false));
-  };
+  const handleRoi = (rect: Rect1 | null) => showRegion(rect);
 
   const exportMapCsv = () => {
     if (mapResult) downloadCsv(elementMapCsv(mapResult), "eds_map.csv");
@@ -326,17 +284,19 @@ export default function EdsSpectrumImage({
     );
   }
 
+  const unit = displaySpectrum?.units || "keV";
+
   return (
     <div className="fvd-ws">
       <EdsSpectrumPanel
-        source={specSource}
-        label={specLabel}
-        busy={specBusy}
+        source={source}
+        label={label}
+        busy={busy}
         liveActive={captureMode === "specnav"}
         logScale={logScale}
         expanded={spectrumExpanded}
-        energyUnit={displaySpectrum?.units || "keV"}
-        onShowSum={handleShowSum}
+        energyUnit={unit}
+        onShowSum={showSum}
         onToggleLive={() =>
           setCaptureMode(captureMode === "specnav" ? "none" : "specnav")
         }
@@ -349,19 +309,46 @@ export default function EdsSpectrumImage({
         onToggleExpanded={() => setSpectrumExpanded((on) => !on)}
       >
         {displaySpectrum && (
-          <SpectrumPlot
-            spec={displaySpectrum}
-            label={specLabel}
-            eLo={eLo}
-            eHi={eHi}
-            onDragWindow={handleWindowChange}
-            markers={peakMarkers}
-            height={spectrumExpanded ? 360 : 260}
-            logScale={logScale}
-            onExportCsv={exportSpectrumCsv}
-          />
+          <>
+            <SpectrumPlot
+              spec={displaySpectrum}
+              label={label}
+              eLo={eLo}
+              eHi={eHi}
+              onDragWindow={handleWindowChange}
+              markers={peakMarkers}
+              height={spectrumExpanded ? 360 : 260}
+              logScale={logScale}
+              onExportCsv={exportSpectrumCsv}
+              xRange={xRange}
+              minSpan={minSpan}
+              onXRangeChange={setXRange}
+            />
+            <EdsSpectrumZoomBar
+              range={xRange}
+              bounds={bounds}
+              minSpan={minSpan}
+              unit={unit}
+              onChange={setXRange}
+            />
+          </>
         )}
       </EdsSpectrumPanel>
+
+      <EdsIntegrationPanel
+        current={integration}
+        element={selElem}
+        unit={unit}
+        source={label}
+        regions={regions}
+        onAdd={addRegion}
+        onRemove={(id) => setRegions((prev) => prev.filter((r) => r.id !== id))}
+        onClear={() => setRegions([])}
+        onSelect={restoreRegion}
+        onExport={() =>
+          downloadCsv(integrationRegionsCsv(regions), "eds_integrations.csv")
+        }
+      />
 
       {/* Element picker — periodic table by default, dropdown via toggle */}
       <div className="fvd-ws-row" style={{ alignItems: "flex-start" }}>
@@ -393,6 +380,13 @@ export default function EdsSpectrumImage({
           onChange={(e) => handleWindowChange(eLo, Number(e.target.value))}
           title="Energy window high (keV)"
         />
+        <button
+          className="fvd-btn"
+          title="Zoom the spectrum to the current energy window"
+          onClick={() => setXRange(frameWindow(eLo, eHi, bounds, minSpan))}
+        >
+          Zoom to window
+        </button>
       </div>
 
       {/* Background mode toggle */}
@@ -452,12 +446,13 @@ export default function EdsSpectrumImage({
       {mapResult && (
         <EdsElementMap
           result={mapResult}
+          element={selElem}
           busy={mapBusy}
           libraryBusy={libraryBusy}
-          compositeBusy={addBusy}
+          compositeBusy={compositeBusy}
           canAddToComposite={selElem !== "(custom)"}
-          onAddToLibrary={handleAddToLibrary}
-          onAddToComposite={onAddToComposite ? handleAddToComposite : undefined}
+          onAddToLibrary={addToLibrary}
+          onAddToComposite={onAddToComposite ? addToComposite : undefined}
         />
       )}
 
@@ -467,7 +462,7 @@ export default function EdsSpectrumImage({
           liveActive={isCube && captureMode === "specnav"}
           livePixel={specnavPixel}
           mapReady={!!mapResult}
-          spectrumReady={!!spectrum}
+          spectrumReady={!!displaySpectrum}
           onRegion={handleRoi}
           onToggleLive={() =>
             setCaptureMode(captureMode === "specnav" ? "none" : "specnav")

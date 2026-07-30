@@ -26,7 +26,7 @@ import { csvBaseName, downloadCsv } from "../../lib/eelsQuantCsv";
 import { edsModelFitToCsv } from "../../lib/edsQuantCsv";
 import { formatPlusMinus } from "../../lib/formatUncertainty";
 import { useViewer } from "../../store/viewer";
-import { EDS_PALETTE } from "./EdsComposite";
+import { useElementColors } from "../../lib/eds/elementColors";
 import PlotContextSurface from "../plots/PlotContextSurface";
 
 type Background = "none" | "linear" | "bremsstrahlung";
@@ -48,6 +48,7 @@ function ModelFitPlot({
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
+  const colors = useElementColors();
 
   useEffect(() => {
     const host = hostRef.current;
@@ -71,11 +72,11 @@ function ModelFitPlot({
     if (peakfit) {
       series.push({ label: "model", stroke: "#22d3ee", width: 1.5, dash: [4, 2], points: { show: false } });
       data.push(peakfit.model);
-      peakfit.elements.forEach((el, i) => {
+      peakfit.elements.forEach((el) => {
         if (!el.curve) return;
         series.push({
           label: el.symbol,
-          stroke: EDS_PALETTE[i % EDS_PALETTE.length],
+          stroke: colors(el.symbol),
           width: 1,
           points: { show: false },
         });
@@ -139,7 +140,7 @@ function ModelFitPlot({
       plotRef.current?.destroy();
       plotRef.current = null;
     };
-  }, [cont, peakfit]);
+  }, [cont, peakfit, colors]);
 
   return (
     <PlotContextSurface
