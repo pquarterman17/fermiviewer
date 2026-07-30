@@ -26,6 +26,13 @@ export interface CompositeRaster {
   data: Uint16Array | Int32Array | number[];
 }
 
+/** Greyscale image drawn beneath the element channels (survey / HAADF). */
+export interface Underlay {
+  raster: CompositeRaster;
+  /** 0–1 brightness; 0 is the plain black background. */
+  intensity: number;
+}
+
 function hexToRgb(hex: string): [number, number, number] {
   const c = hex.replace("#", "");
   return [
@@ -47,11 +54,29 @@ export function compositeChannels(
   rasters: CompositeRaster[],
   channels: CompositeChannel[],
   blend: "add" | "max" = "add",
+  underlay?: Underlay,
 ): { w: number; h: number; rgba: Uint8ClampedArray } {
   const { w, h } = rasters[0];
   const n = w * h;
   const acc = new Float32Array(n * 3);
   const isMax = blend === "max";
+
+  // The survey/HAADF underlay is seeded into the accumulator BEFORE the
+  // channels, so structure shows through wherever no element is mapped —
+  // the standard TEM presentation. It is deliberately part of the same
+  // accumulate/clamp pass rather than a separate alpha blend: blending
+  // afterwards would dim every element colour by the grey beneath it.
+  if (underlay && underlay.raster.data.length >= n) {
+    const { data } = underlay.raster;
+    const gain = 255 * Math.max(0, underlay.intensity);
+    for (let i = 0; i < n; i++) {
+      const t = data[i] / 65535;
+      const v = t * gain;
+      acc[i * 3] = v;
+      acc[i * 3 + 1] = v;
+      acc[i * 3 + 2] = v;
+    }
+  }
 
   channels.forEach((c, k) => {
     if (!c.visible || !rasters[k]) return;

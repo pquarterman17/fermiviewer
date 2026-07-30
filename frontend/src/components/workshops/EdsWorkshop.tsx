@@ -21,6 +21,7 @@ import EdsComposite, {
   mergeCompositeChannel,
   type Channel,
 } from "./EdsComposite";
+import EdsMapsTab from "./EdsMapsTab";
 import EdsModelFit from "./EdsModelFit";
 import EdsSpectrumImage from "./EdsSpectrumImage";
 import PlotContextSurface from "../plots/PlotContextSurface";
@@ -104,10 +105,18 @@ export default function EdsWorkshop() {
   const [comp, setComp] = useState<CompositionProfileResult | null>(null);
   const [compBusy, setCompBusy] = useState(false);
   const [workspaceTab, setWorkspaceTab] = useState<
-    "explore" | "quantify" | "composite" | "model"
-  >("explore");
+    "maps" | "explore" | "quantify" | "composite" | "model"
+  >("maps");
 
   const isCube = meta?.kind === "spectrum_image";
+
+  // Once Quantify has run, the Maps legend can carry at% instead of raw net
+  // counts — the same elements, now with numbers a reader can compare.
+  const quantBySymbol = result
+    ? Object.fromEntries(
+        result.elements.map((el, i) => [el, result.mean_atomic_pct[i]]),
+      )
+    : undefined;
 
   // #46 (A4): element-fraction line profile across the quantified maps,
   // along the most recent distance/profile measure drawn on the cube
@@ -242,6 +251,7 @@ export default function EdsWorkshop() {
       >
         {(
           [
+            ["maps", "Maps"],
             ["explore", "Explore"],
             ["quantify", "Quantify"],
             [
@@ -264,6 +274,14 @@ export default function EdsWorkshop() {
           </button>
         ))}
       </div>
+
+      {workspaceTab === "maps" && (
+        <EdsMapsTab
+          bg="linear"
+          e0Kev={30}
+          quantBySymbol={quantBySymbol}
+        />
+      )}
 
       {workspaceTab === "explore" && (
         <EdsSpectrumImage onAddToComposite={addCompositeChannel} />

@@ -17,6 +17,35 @@ from fermiviewer.io.metadata import get_stage_tilt
 __all__ = ["ImageMeta", "OpenRequest"]
 
 
+# Short lists of scalars are metadata a client can use (`elements`,
+# `element_z`); long ones are data dumps that would bloat every image record.
+_MAX_META_LIST = 256
+
+
+def _public_meta(metadata: dict[str, Any]) -> dict[str, Any]:
+    """Client-visible slice of a DataStruct's metadata.
+
+    Scalars pass through, plus short homogeneous lists of scalars. The list
+    case is not cosmetic: the EDS element picker highlights the species an
+    acquisition declares via ``meta['elements']``, and while this filter
+    allowed scalars only, that list was dropped for every parser that
+    supplied it — the picker has never had acquisition elements to show.
+    """
+    out: dict[str, Any] = {}
+    for key, value in metadata.items():
+        if key == "image_tags":
+            continue
+        if isinstance(value, (int, float, str, bool)):
+            out[key] = value
+        elif (
+            isinstance(value, list)
+            and 0 < len(value) <= _MAX_META_LIST
+            and all(isinstance(v, (int, float, str, bool)) for v in value)
+        ):
+            out[key] = value
+    return out
+
+
 class OpenRequest(BaseModel):
     paths: list[str]
 
@@ -60,9 +89,5 @@ class ImageMeta(BaseModel):
             energy_last=float(ax[-1]) if ax is not None else None,
             energy_units=ds.energy_cal.units if spectral else "",
             stage_tilt_deg=None if math.isnan(tilt_deg) else tilt_deg,
-            meta={
-                k: v
-                for k, v in ds.metadata.items()
-                if isinstance(v, (int, float, str, bool)) and k != "image_tags"
-            },
+            meta=_public_meta(ds.metadata),
         )

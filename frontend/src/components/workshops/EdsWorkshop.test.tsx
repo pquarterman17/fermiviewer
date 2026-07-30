@@ -8,6 +8,9 @@ import EdsWorkshop from "./EdsWorkshop";
 vi.mock("./EdsSpectrumImage", () => ({
   default: () => <div>Explore surface</div>,
 }));
+vi.mock("./EdsMapsTab", () => ({
+  default: () => <div>Maps surface</div>,
+}));
 vi.mock("./EdsModelFit", () => ({
   default: () => <div>Model-fit surface</div>,
 }));
@@ -38,8 +41,18 @@ beforeEach(() => {
 });
 
 describe("EdsWorkshop workspace modes", () => {
+  it("opens on Maps — the identify-then-map workflow, not a blank form", () => {
+    render(<EdsWorkshop />);
+    expect(screen.getByText("Maps surface")).toBeVisible();
+    expect(screen.getByRole("tab", { name: "Maps" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
   it("keeps routine exploration separate from advanced workflows", () => {
     render(<EdsWorkshop />);
+    fireEvent.click(screen.getByRole("tab", { name: "Explore" }));
     expect(screen.getByText("Explore surface")).toBeVisible();
 
     fireEvent.click(screen.getByRole("tab", { name: "Quantify" }));

@@ -119,6 +119,62 @@ def test_eels_preset_includes_its_lowest_edge(tmp_path) -> None:
     assert energy[0] < min(onsets.values())
 
 
+def _open_and_identify(client, path: Path) -> tuple[dict, set[str]]:
+    opened = client.post("/api/session/open", json={"paths": [str(path)]})
+    assert opened.status_code == 200, opened.text
+    payload = opened.json()
+    meta = payload[0] if isinstance(payload, list) else payload
+    auto = client.post("/api/eds/auto-assign", json={"image_id": meta["id"]})
+    assert auto.status_code == 200, auto.text
+    found = {
+        a["candidates"][0]["symbol"]
+        for a in auto.json()["assignments"]
+        if a["candidates"]
+    }
+    return meta, found
+
+
+@pytest.fixture()
+def client():
+    from fastapi.testclient import TestClient
+
+    from fermiviewer.server import create_app
+    from fermiviewer.session import store
+
+    store.clear()
+    yield TestClient(create_app(), base_url="http://127.0.0.1")
+    store.clear()
+
+
+def test_declared_elements_survive_the_api(client, tmp_path) -> None:
+    """`meta['elements']` is a list, and the ImageMeta filter used to drop
+    every non-scalar — so the EDS picker never received the acquisition's
+    declared elements from any parser."""
+    path, truth = gen.build(gen.PRESETS["eds-layers"], (20, 16), 4000.0, 0, tmp_path)
+    meta, _ = _open_and_identify(client, path)
+    assert meta["meta"]["elements"] == truth["elements"]
+
+
+def test_auto_id_recovers_the_planted_elements(client, tmp_path) -> None:
+    """End to end: what the generator planted is what auto-ID reports."""
+    path, truth = gen.build(gen.PRESETS["eds-layers"], (24, 20), 4000.0, 0, tmp_path)
+    _, found = _open_and_identify(client, path)
+    planted = set(truth["elements"])
+    assert found == planted, f"missed {planted - found}, spurious {found - planted}"
+
+
+def test_auto_id_cannot_separate_the_overlap_preset(client, tmp_path) -> None:
+    """Ta M is buried under Si K, so no peak finder can resolve it. That is
+    the point of the preset: it is the case where the user must add the
+    element by hand, and a regression here would mean the overlap stopped
+    being an overlap."""
+    path, truth = gen.build(gen.PRESETS["eds-overlap"], (24, 20), 4000.0, 0, tmp_path)
+    _, found = _open_and_identify(client, path)
+    planted = set(truth["elements"])
+    assert "Ta" not in found
+    assert planted - found == {"Ta"}, "only Ta should be unresolvable"
+
+
 def test_overlap_preset_really_overlaps() -> None:
     """The eds-overlap preset is only useful if the app's own line selection
     puts Ta on M next to Si K — assert the physics, not the intent."""

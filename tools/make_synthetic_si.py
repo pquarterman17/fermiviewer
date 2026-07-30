@@ -220,13 +220,23 @@ def _eds_cube(
 
     # Kramers continuum, one shape for the whole cube; only its amplitude
     # varies with how much material a pixel contains.
+    # Kramers goes as (E0 − E)/E, which diverges at E → 0. The denominator is
+    # floored at the detector's low-energy limit rather than at an epsilon:
+    # 1/1e-6 puts a spike ~10^8 in channel 0, and since the peak finder
+    # thresholds at a fraction of the spectrum maximum, that one bogus channel
+    # raised the floor above every real line and auto-ID stopped seeing Ta.
+    cutoff = 0.10
     with np.errstate(divide="ignore", invalid="ignore"):
         continuum = np.where(
             energy < e0,
-            np.maximum(e0 - energy, 0.0) / np.maximum(energy, 1e-6),
+            np.maximum(e0 - energy, 0.0) / np.maximum(energy, cutoff),
             0.0,
         )
-    continuum[energy < 0.15] = 0.0  # detector low-energy cutoff
+    # Detector low-energy roll-off. It has to be smooth: a hard
+    # `continuum[energy < 0.15] = 0` leaves a step whose edge the peak finder
+    # reads as a real line (it was confidently identifying boron at 0.16 keV
+    # in a cube containing none).
+    continuum *= 1.0 / (1.0 + np.exp(-(energy - 0.20) / 0.035))
     continuum /= continuum.sum() or 1.0
 
     signal = np.zeros((h, w, energy.size))

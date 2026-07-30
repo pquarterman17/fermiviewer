@@ -1,0 +1,243 @@
+/* EDS Maps workflow: identified-element list, map montage, combined
+   overlay and its colour legend. Split from 09-eds-workspace.css to stay
+   under the stylesheet size ratchet. */
+/* ── element list (auto-ID results) ────────────────────────────────── */
+
+.fvd-eds-maps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pad);
+}
+
+.fvd-eds-elements {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--pad-lg);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface-2) 82%, transparent);
+}
+
+.fvd-eds-elements-head {
+  display: flex;
+  align-items: center;
+  gap: var(--pad);
+}
+
+.fvd-eds-elements-head .k {
+  color: var(--text-faint);
+  font-size: var(--font-size-sm);
+}
+
+.fvd-eds-elements-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.fvd-eds-elements-add {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.fvd-eds-element-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fvd-eds-element-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  opacity: 0.55;
+}
+
+.fvd-eds-element-row.on {
+  opacity: 1;
+}
+
+.fvd-eds-element-row:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.fvd-eds-element-name {
+  min-width: 26px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: var(--weight-semibold);
+  text-align: left;
+  cursor: pointer;
+}
+
+.fvd-eds-element-line {
+  min-width: 24px;
+}
+
+.fvd-eds-element-energy,
+.fvd-eds-element-net {
+  min-width: 60px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  text-align: right;
+}
+
+.fvd-eds-strength {
+  flex: 1;
+  min-width: 40px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--surface-3) 70%, transparent);
+}
+
+.fvd-eds-strength > span {
+  display: block;
+  height: 100%;
+}
+
+.fvd-eds-conf {
+  min-width: 46px;
+  color: var(--text-faint);
+  font-size: 10px;
+  text-align: right;
+}
+
+.fvd-eds-conf.strong { color: var(--ok); }
+.fvd-eds-conf.weak { color: var(--warn); }
+.fvd-eds-conf.trace { color: var(--text-faint); font-style: italic; }
+
+/* ── map montage ──────────────────────────────────────────────────── */
+
+.fvd-eds-montage {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: var(--pad);
+}
+
+.fvd-eds-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+}
+
+.fvd-eds-tile-btn {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: #000;
+  cursor: pointer;
+}
+
+.fvd-eds-tile-btn canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+}
+
+.fvd-eds-tile figcaption {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.fvd-eds-tile figcaption .k {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-weight: var(--weight-regular);
+}
+
+/* ── overlay + legend ─────────────────────────────────────────────── */
+
+.fvd-eds-overlay {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pad);
+  padding: var(--pad-lg);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface-2) 82%, transparent);
+}
+
+.fvd-eds-overlay-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.fvd-eds-overlay-toolbar label.k {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-faint);
+  font-size: var(--font-size-sm);
+}
+
+.fvd-eds-overlay-canvas {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: #000;
+  place-items: center;
+}
+
+.fvd-eds-overlay-canvas canvas {
+  width: 100%;
+  height: auto;
+  max-height: 46vh;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.fvd-eds-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.fvd-eds-legend li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.fvd-eds-legend .k {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-weight: var(--weight-regular);
+}
+
+.fvd-eds-legend-swatch {
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 2px;
+}
+
+.fvd-eds-overlay-gains summary {
+  cursor: pointer;
+  color: var(--text-faint);
+  font-size: var(--font-size-sm);
+}
