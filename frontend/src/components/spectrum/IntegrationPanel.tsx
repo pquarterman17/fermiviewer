@@ -7,9 +7,9 @@
 // Net is reported unclamped: a negative net means the window holds no peak
 // above its background, which is exactly what the user needs to see.
 
-import { useElementColors } from "../../lib/eds/elementColors";
+import { useElementColors } from "../../lib/elemental/elementColors";
 import type { WindowIntegration } from "../../lib/eds/integrate";
-import type { IntegrationRegion } from "../../lib/eds/regions";
+import type { IntegrationRegion } from "../../lib/spectrum/regions";
 import { formatCountTick } from "../../lib/edsSpectrumDisplay";
 
 function pm(value: number, error: number): string {

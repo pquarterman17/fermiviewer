@@ -34,10 +34,7 @@ describe("EdsElementMap", () => {
         element="Fe"
         busy={false}
         libraryBusy={false}
-        compositeBusy={false}
-        canAddToComposite
         onAddToLibrary={() => {}}
-        onAddToComposite={() => {}}
       />,
     );
 
@@ -58,8 +55,6 @@ describe("EdsElementMap", () => {
         element="Fe"
         busy={false}
         libraryBusy={false}
-        compositeBusy={false}
-        canAddToComposite
         onAddToLibrary={onAddToLibrary}
       />,
     );

@@ -14,28 +14,28 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { edsLineEnergy, type ImageMeta, type Spectrum } from "../../lib/api";
+import { edsLineEnergy, type Spectrum } from "../../lib/api";
 import { useEdsPeakMarkers } from "../../hooks/useEdsPeakMarkers";
 import { integrateWindow } from "../../lib/eds/integrate";
 import {
   makeRegion,
   upsertRegion,
   type IntegrationRegion,
-} from "../../lib/eds/regions";
-import { frameWindow, type XRange } from "../../lib/eds/zoomRange";
+} from "../../lib/spectrum/regions";
+import { frameWindow, type XRange } from "../../lib/spectrum/zoomRange";
 import {
   elementMapCsv,
   integrationRegionsCsv,
   spectrumCsv,
 } from "../../lib/edsExploreCsv";
 import { useViewer } from "../../store/viewer";
-import EdsElementPicker from "./EdsElementPicker";
+import EdsElementPicker from "../elemental/ElementPicker";
 import EdsElementMap from "./EdsElementMap";
-import EdsIntegrationPanel from "./EdsIntegrationPanel";
-import EdsSpectrumPanel from "./EdsSpectrumPanel";
+import EdsIntegrationPanel from "../spectrum/IntegrationPanel";
+import EdsSpectrumPanel from "../spectrum/SpectrumPanel";
 import EdsSpectrumSourcePicker from "./EdsSpectrumSourcePicker";
-import SpectrumPlot from "./EdsSpectrumPlot";
-import EdsSpectrumZoomBar from "./EdsSpectrumZoomBar";
+import SpectrumPlot from "../spectrum/SpectrumPlot";
+import EdsSpectrumZoomBar from "../spectrum/SpectrumZoomBar";
 import type { Rect1 } from "./RegionPicker";
 import { useEdsDerivedMap } from "./useEdsDerivedMap";
 import { type EdsMapBackground, useEdsElementMap } from "./useEdsElementMap";
@@ -69,13 +69,7 @@ function energyBounds(spec: Spectrum | null) {
 
 // ── main component ────────────────────────────────────────────────────
 
-export default function EdsSpectrumImage({
-  onAddToComposite,
-}: {
-  /** Feed the currently-shown element map straight into the workshop's
-   *  composite overlay (skips the full Cliff-Lorimer/ZAF quantify step). */
-  onAddToComposite?: (mapMeta: ImageMeta, el: string) => void;
-} = {}) {
+export default function EdsSpectrumImage() {
   const activeId = useViewer((s) => s.activeId);
   const meta = useViewer((s) =>
     s.activeId ? (s.images[s.activeId] ?? null) : null,
@@ -252,18 +246,16 @@ export default function EdsSpectrumImage({
     setXRange(frameWindow(region.eLo, region.eHi, bounds, minSpan));
   };
 
-  const { compositeBusy, libraryBusy, addToComposite, addToLibrary } =
-    useEdsDerivedMap({
-      imageId: activeId,
-      eLo,
-      eHi,
-      bg: bgMode,
-      e0Kev,
-      element: selElem,
-      isOpen: stillOpen,
-      onStatus: reportEds,
-      onAddToComposite,
-    });
+  const { libraryBusy, addToLibrary } = useEdsDerivedMap({
+    imageId: activeId,
+    eLo,
+    eHi,
+    bg: bgMode,
+    e0Kev,
+    element: selElem,
+    isOpen: stillOpen,
+    onStatus: reportEds,
+  });
 
   const handleRoi = (rect: Rect1 | null) => showRegion(rect);
 
@@ -449,10 +441,7 @@ export default function EdsSpectrumImage({
           element={selElem}
           busy={mapBusy}
           libraryBusy={libraryBusy}
-          compositeBusy={compositeBusy}
-          canAddToComposite={selElem !== "(custom)"}
           onAddToLibrary={addToLibrary}
-          onAddToComposite={onAddToComposite ? addToComposite : undefined}
         />
       )}
 

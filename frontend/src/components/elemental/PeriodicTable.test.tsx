@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import PeriodicTable from "./PeriodicTable";
+import PeriodicTable from "../elemental/PeriodicTable";
 
 describe("PeriodicTable", () => {
   it("fires onSelect with the clicked element", () => {

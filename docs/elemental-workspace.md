@@ -1,10 +1,41 @@
-# EDS spectrum-image workspace
+# Elemental Analysis workspace
 
-The EDS workspace is the primary interface for spectrum-image cubes. It opens
+One workspace serves both EDS and EELS spectrum-image cubes. It opens
 automatically the first time a cube becomes active and can be reopened from the
-Inspector's **EDS** tab or the Analysis/Window menus. The Inspector deliberately
+Inspector's **Elemental** tab or the Analysis/Window menus. The Inspector
 contains only a launcher: mounting a second full workshop caused duplicate map
 and spectrum requests and left two independent sets of controls on screen.
+
+## Why one workspace
+
+EDS and EELS were separate workshop windows, and that is how EDS accumulated
+zoom, per-element colours, integration and the Maps workflow while EELS got
+none of them — and how the Inspector ended up launching a workspace for EDS
+but mounting a whole second workshop inline for EELS.
+
+Sharing a shell makes the divergence structural rather than a matter of
+remembering. Maps and Explore are the same components for both modalities;
+only Quantify and Model fit swap their internals, because only those are
+genuinely different physics (Cliff–Lorimer / ZAF / ζ and a Kramers continuum
+on one side, cross-sections and power-law backgrounds on the other).
+
+The modality is a property of the open cube, not of which menu item was used:
+`resolveSpectralModality` decides it from metadata → filename → format →
+energy range, and the badge in the tab strip shows both the answer and the
+reason. Changing it re-routes that dataset and is remembered.
+
+Code follows the same three-way split, because "which tier is this?" is the
+question that decides whether a feature can be shared:
+
+| tier | what belongs there | examples |
+|---|---|---|
+| `lib/spectrum/`, `components/spectrum/` | any spectrum, elements or not | zoom ranges, integration regions, the plot, the zoom bar |
+| `lib/elemental/`, `components/elemental/` | element-centric, modality-agnostic | element colours, the periodic table, identification, the element list, montage, overlay, figure export |
+| `lib/eds/`, EDS/EELS components | genuinely different physics | EDS background models (linear flanks, Kramers), K/L/M line markers |
+
+Naming everything "elemental" would be the same category error in the other
+direction: `zoomRange.ts` is axis arithmetic that would serve a diffraction
+profile with no elements in sight.
 
 ## Workspace modes
 
@@ -13,14 +44,20 @@ and spectrum requests and left two independent sets of controls on screen.
   and the current element map.
 - **Quantify** runs Cliff–Lorimer or ZAF quantification and registers nonblank
   atomic-percent maps in the image library.
-- **Composite** combines maps selected in Explore or produced by Quantify. Each
-  channel has independent visibility, color/ramp, and intensity.
+- **Maps** is the primary path: identify → confirm → colour-coded maps. It is
+  shared by both modalities.
 - **Model fit** contains the physical continuum, peak-deconvolution, artifact,
   and recalibration controls. It is intentionally separated from routine
   spectrum/map browsing.
 
-The modes share element-map channels and element text within one mounted
-`EdsWorkshop`. Switching modes does not discard current results.
+Switching modes does not discard current results.
+
+The generic multi-channel compositor that used to back the Composite tab still
+exists as `ChannelComposite`, but only for the colour-overlay tool, which
+blends arbitrary same-size library images. Its channels are filenames rather
+than elements, so it takes an explicit colour per channel — conflating it with
+the elemental overlay is what briefly made the colour-overlay tool resolve
+colours from the element registry keyed on truncated image names.
 
 ### Spectrum sources and display
 

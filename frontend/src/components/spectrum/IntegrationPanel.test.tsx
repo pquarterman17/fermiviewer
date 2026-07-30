@@ -3,8 +3,8 @@ import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { integrateWindow } from "../../lib/eds/integrate";
-import { makeRegion } from "../../lib/eds/regions";
-import EdsIntegrationPanel from "./EdsIntegrationPanel";
+import { makeRegion } from "../../lib/spectrum/regions";
+import EdsIntegrationPanel from "./IntegrationPanel";
 
 const spec = {
   energy: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],

@@ -8,9 +8,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { compositeChannels, type CompositeRaster } from "../../lib/composite";
-import { useElementColors } from "../../lib/eds/elementColors";
+import { useElementColors } from "../../lib/elemental/elementColors";
 import { formatCountTick } from "../../lib/edsSpectrumDisplay";
-import type { MapTile } from "./EdsMapMontage";
+import type { MapTile } from "./MapMontage";
 
 export type LegendValue = "none" | "net" | "atomic";
 

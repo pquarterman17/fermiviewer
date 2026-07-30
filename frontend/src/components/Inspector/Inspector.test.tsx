@@ -39,18 +39,27 @@ beforeEach(() => {
   });
 });
 
-describe("Inspector EDS launcher", () => {
+describe("Inspector Elemental launcher", () => {
   it("opens the authoritative workspace instead of mounting a duplicate", () => {
     render(<Inspector />);
-    fireEvent.click(screen.getByRole("button", { name: "EDS" }));
+    fireEvent.click(screen.getByRole("button", { name: "Elemental" }));
     fireEvent.click(
-      screen.getByRole("button", { name: "Open EDS workspace" }),
+      screen.getByRole("button", { name: "Open Elemental Analysis" }),
     );
     expect(useViewer.getState().tools).toEqual([
       expect.objectContaining({ kind: "eds" }),
     ]);
     expect(
-      screen.getByText(/EDS uses one resizable workspace/),
+      screen.getByText(/share one resizable\s+workspace/),
     ).toBeVisible();
+  });
+
+  it("launches rather than mounting for EELS too, which used to differ", () => {
+    // The EELS inspector tab mounted a full second workshop while EDS only
+    // launched one — the asymmetry the merged workspace removes.
+    render(<Inspector />);
+    fireEvent.click(screen.getByRole("button", { name: "Elemental" }));
+    expect(screen.queryByRole("tablist", { name: "EELS workflow" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "EELS" })).toBeNull();
   });
 });

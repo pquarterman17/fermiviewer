@@ -12,8 +12,8 @@
 // fall within the matching tolerance.
 
 import type { EdsAutoAssignResult, Spectrum } from "../api";
-import type { EdsBackground } from "./integrate";
-import { integrateWindow } from "./integrate";
+import type { EdsBackground } from "../eds/integrate";
+import { integrateWindow } from "../eds/integrate";
 
 export type Confidence = "strong" | "clear" | "weak" | "trace";
 

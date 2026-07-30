@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import EdsElementPicker from "./EdsElementPicker";
+import EdsElementPicker from "./ElementPicker";
 
 describe("EdsElementPicker", () => {
   beforeEach(() => localStorage.clear());

@@ -2,7 +2,7 @@
 //
 // Extracted from EdsSpectrumImage so the explorer stays under the module-size
 // ceiling. It owns the three acquisition paths documented in
-// docs/eds-workspace.md — whole-cube sum, live stage pixel, preview pixel/ROI —
+// docs/elemental-workspace.md — whole-cube sum, live stage pixel, preview pixel/ROI —
 // and the whole-cube cache that makes returning from a pixel instant. Energy
 // window, background model and map extraction stay in the explorer: they are
 // consumers of whatever spectrum this hook resolves.
@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { fetchSpectrum, type Spectrum } from "../../lib/api";
 import { normalizeEdsSpectrum } from "../../lib/edsSpectrumDisplay";
-import type { EdsSpectrumSource } from "./EdsSpectrumPanel";
+import type { EdsSpectrumSource } from "../spectrum/SpectrumPanel";
 import type { Rect1 } from "./RegionPicker";
 import { useSpectrumProbe } from "./useSpectrumProbe";
 

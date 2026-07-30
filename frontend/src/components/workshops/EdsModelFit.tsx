@@ -26,7 +26,7 @@ import { csvBaseName, downloadCsv } from "../../lib/eelsQuantCsv";
 import { edsModelFitToCsv } from "../../lib/edsQuantCsv";
 import { formatPlusMinus } from "../../lib/formatUncertainty";
 import { useViewer } from "../../store/viewer";
-import { useElementColors } from "../../lib/eds/elementColors";
+import { useElementColors } from "../../lib/elemental/elementColors";
 import PlotContextSurface from "../plots/PlotContextSurface";
 
 type Background = "none" | "linear" | "bremsstrahlung";

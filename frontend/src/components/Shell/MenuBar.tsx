@@ -1180,8 +1180,10 @@ export default function MenuBar({
       {
         label: "Spectroscopy",
         submenu: [
-          { label: "EELS Workspace", action: () => store.openTool("eels") },
-          { label: "EDS Workspace", action: () => store.openTool("eds") },
+          {
+            label: "Elemental Analysis",
+            action: () => store.openTool("eds"),
+          },
         ],
       },
       {
@@ -1325,8 +1327,10 @@ export default function MenuBar({
       {
         label: "Analysis Workspaces",
         submenu: [
-          { label: "EELS Workspace", action: () => store.openTool("eels") },
-          { label: "EDS Workspace", action: () => store.openTool("eds") },
+          {
+            label: "Elemental Analysis",
+            action: () => store.openTool("eds"),
+          },
           {
             label: "Diffraction",
             action: () => store.openTool("diffraction"),

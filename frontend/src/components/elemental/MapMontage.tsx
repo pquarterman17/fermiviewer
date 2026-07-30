@@ -7,7 +7,7 @@
 
 import { useEffect, useRef } from "react";
 
-import { buildElementLut, useElementColors } from "../../lib/eds/elementColors";
+import { buildElementLut, useElementColors } from "../../lib/elemental/elementColors";
 import { formatCountTick } from "../../lib/edsSpectrumDisplay";
 import { mapDisplayRange, renderElementMap } from "../../lib/edsMapDisplay";
 

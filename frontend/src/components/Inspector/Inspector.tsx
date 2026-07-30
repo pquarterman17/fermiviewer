@@ -23,9 +23,8 @@ import ToolsBrowser from "./ToolsBrowser";
 import TransformPanel from "./TransformPanel";
 
 const DiffractionWorkshop = lazy(() => import("../workshops/DiffractionWorkshop"));
-const EelsWorkshop = lazy(() => import("../workshops/EelsWorkshop"));
 
-const TABS = ["Image", "EELS", "EDS", "Diff"] as const;
+const TABS = ["Image", "Elemental", "Diff"] as const;
 type Tab = (typeof TABS)[number];
 
 /** Drag grip on the inspector's left edge — writes the grid's
@@ -88,29 +87,35 @@ const KIND_LABEL: Record<ImageMeta["kind"], string> = {
   spectrum_image: "Spectrum image",
 };
 
-function EdsWorkspaceLauncher({ meta }: { meta: ImageMeta }) {
+function ElementalWorkspaceLauncher({ meta }: { meta: ImageMeta }) {
   const openTool = useViewer((s) => s.openTool);
-  const isCube = meta.kind === "spectrum_image";
+  const spectral =
+    meta.kind === "spectrum_image" || meta.kind === "spectrum";
+  const { modality, reason } = resolveSpectralModality(meta);
+  const label = modality ? modality.toUpperCase() : "unclassified";
   return (
-    <Card title="EDS">
+    <Card title="Elemental Analysis">
       <div className="fvd-meta-row">
-        <span className="k">Workspace</span>
-        <span className="v">Spectrum · maps · quantification</span>
+        <span className="k">Modality</span>
+        <span className="v">
+          {label} · {reason}
+        </span>
       </div>
       <p className="fvd-ws-note">
-        EDS uses one resizable workspace so spectra, maps, composites, and
-        quantitative results do not compete inside the inspector.
+        Spectra, element maps, overlays and quantification share one resizable
+        workspace so they do not compete inside the inspector. Mounting a full
+        workshop here duplicated every map and spectrum request.
       </p>
       <button
         className="fvd-btn"
-        disabled={!isCube}
+        disabled={!spectral}
         onClick={() => openTool("eds")}
       >
-        Open EDS workspace
+        Open Elemental Analysis
       </button>
-      {!isCube && (
+      {!spectral && (
         <div className="fvd-ws-note">
-          Select an EDS spectrum-image cube to explore it.
+          Select a spectrum or spectrum-image to analyse it.
         </div>
       )}
     </Card>
@@ -222,14 +227,7 @@ export default function Inspector() {
       <Suspense
         fallback={<div className="fvd-inspector-loading" role="status">Loading analysis…</div>}
       >
-        {tab === "EELS" && (
-          <Card title="EELS">
-            <EelsWorkshop />
-          </Card>
-        )}
-        {tab === "EDS" && (
-          <EdsWorkspaceLauncher meta={meta} />
-        )}
+        {tab === "Elemental" && <ElementalWorkspaceLauncher meta={meta} />}
         {tab === "Diff" && (
           <Card title="Diffraction">
             <DiffractionWorkshop />

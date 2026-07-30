@@ -2,8 +2,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { IdentifiedElement } from "../../lib/eds/identify";
-import EdsElementList from "./EdsElementList";
+import type { IdentifiedElement } from "../../lib/elemental/identify";
+import EdsElementList from "./ElementList";
 
 function element(
   symbol: string,

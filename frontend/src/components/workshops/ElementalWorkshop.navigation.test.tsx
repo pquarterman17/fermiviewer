@@ -29,7 +29,7 @@ vi.mock("../../lib/api", async (importActual) => {
   };
 });
 
-import EelsWorkshop from "./EelsWorkshop";
+import ElementalWorkshop from "./ElementalWorkshop";
 
 function spectrumMeta(): ImageMeta {
   return {
@@ -54,14 +54,17 @@ afterEach(() => {
   useViewer.setState({ images: {}, order: [], activeId: null, selected: [] });
 });
 
-describe("EelsWorkshop navigation", () => {
+describe("EELS navigation through the Elemental Analysis shell", () => {
   it("keeps configured edges while moving between workflow tabs", async () => {
     useViewer.getState().ingest([spectrumMeta()]);
     useViewer.getState().setActive("eels");
-    render(<EelsWorkshop />);
+    render(<ElementalWorkshop />);
 
-    const tabs = screen.getByRole("tablist", { name: "EELS workflow" });
-    expect(tabs).toBeVisible();
+    // one strip, shared with EDS — the merge removed the nested EELS one
+    expect(
+      screen.getByRole("tablist", { name: "Elemental Analysis" }),
+    ).toBeVisible();
+    expect(screen.queryByRole("tablist", { name: "EELS workflow" })).toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: "Quantify" }));
     await waitFor(() => expect(screen.getByText("+ edge")).toBeVisible());
     fireEvent.click(screen.getByText("+ edge"));
@@ -104,7 +107,7 @@ describe("EelsWorkshop navigation", () => {
       });
     });
 
-    render(<EelsWorkshop />);
+    render(<ElementalWorkshop />);
     fireEvent.click(screen.getByRole("tab", { name: "Quantify" }));
     fireEvent.click(await screen.findByText("+ edge"));
     fireEvent.change(screen.getByPlaceholderText("El"), {

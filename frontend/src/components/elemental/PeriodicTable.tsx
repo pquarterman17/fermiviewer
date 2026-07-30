@@ -3,7 +3,7 @@
 // present in the sample (from the acquisition header) are highlighted so the
 // likely picks stand out, but any element can be chosen.
 
-import { PERIODIC_GRID } from "../../lib/eds/periodicTable";
+import { PERIODIC_GRID } from "../../lib/elemental/periodicTable";
 
 export default function PeriodicTable({
   selected,

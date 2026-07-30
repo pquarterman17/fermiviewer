@@ -2,7 +2,7 @@
 // Kept out of the component so the formatting is unit-testable and the
 // explorer stays under the 500-line module ceiling.
 import type { EdsElementMapResult, Spectrum } from "./api";
-import type { IntegrationRegion } from "./eds/regions";
+import type { IntegrationRegion } from "./spectrum/regions";
 
 /** Element-window map → CSV: a comment header (window + background mode)
  *  followed by the H×W counts grid, one map row per line. */

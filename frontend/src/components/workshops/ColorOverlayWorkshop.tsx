@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 
 import { useViewer } from "../../store/viewer";
-import EdsComposite, { type Channel } from "./EdsComposite";
+import ChannelComposite, { type Channel } from "./ChannelComposite";
 
 const OVERLAY_PALETTE = ["#f43f5e", "#06b6d4", "#22c55e", "#eab308"];
 
@@ -46,7 +46,7 @@ export default function ColorOverlayWorkshop() {
   }
   return (
     <div className="fvd-ws">
-      <EdsComposite channels={channels} onChange={setChannels} />
+      <ChannelComposite channels={channels} onChange={setChannels} />
     </div>
   );
 }

@@ -1,17 +1,15 @@
-// Publishing the current energy-window map: into the image library, or
-// straight into the workshop's composite overlay.
+// Publishing the current energy-window map into the image library.
 //
-// Both actions re-request the same map with `save_derived` — the inline map
-// the explorer previews is not registered anywhere, and `map_meta.id` is what
-// the library and the composite engine fetch by. Extracted from
-// EdsSpectrumImage so that shared request lives in one place and the explorer
-// stays under the module-size ceiling.
+// It re-requests the map with `save_derived`: the inline map the explorer
+// previews is not registered anywhere, and `map_meta.id` is what the library
+// fetches by. Extracted from EdsSpectrumImage so the explorer stays under the
+// module-size ceiling.
 
 import { useCallback, useState } from "react";
 
-import { edsElementMap, type ImageMeta } from "../../lib/api";
+import { edsElementMap } from "../../lib/api";
 import { setCustomColormap, type ColormapName } from "../../lib/colormaps";
-import { elementColor } from "../../lib/eds/elementColors";
+import { elementColor } from "../../lib/elemental/elementColors";
 import { useViewer } from "../../store/viewer";
 import type { MapPaint } from "./EdsElementMap";
 import type { EdsMapBackground } from "./useEdsElementMap";
@@ -26,7 +24,6 @@ interface Options {
   element: string;
   isOpen: (id: string | null) => id is string;
   onStatus: (id: string | null, message: string) => void;
-  onAddToComposite?: (mapMeta: ImageMeta, element: string) => void;
 }
 
 export function useEdsDerivedMap({
@@ -38,9 +35,7 @@ export function useEdsDerivedMap({
   element,
   isOpen,
   onStatus,
-  onAddToComposite,
 }: Options) {
-  const [compositeBusy, setCompositeBusy] = useState(false);
   const [libraryBusy, setLibraryBusy] = useState(false);
 
   const request = useCallback(
@@ -52,22 +47,6 @@ export function useEdsDerivedMap({
       }),
     [bg, e0Kev, eHi, eLo],
   );
-
-  const addToComposite = useCallback(() => {
-    const id = imageId;
-    if (!id || !onAddToComposite || element === "(custom)") return;
-    setCompositeBusy(true);
-    request(id)
-      .then((r) => {
-        if (!isOpen(id)) return; // image removed mid-request; drop result
-        if (r.map_meta) {
-          onAddToComposite(r.map_meta, element);
-          onStatus(id, `EDS composite: added ${element}`);
-        }
-      })
-      .catch((e: Error) => onStatus(id, `EDS composite: ${e.message}`))
-      .finally(() => setCompositeBusy(false));
-  }, [element, imageId, isOpen, onAddToComposite, onStatus, request]);
 
   const addToLibrary = useCallback(
     (paint: MapPaint) => {
@@ -101,5 +80,5 @@ export function useEdsDerivedMap({
     [element, imageId, isOpen, onStatus, request],
   );
 
-  return { compositeBusy, libraryBusy, addToComposite, addToLibrary };
+  return { libraryBusy, addToLibrary };
 }

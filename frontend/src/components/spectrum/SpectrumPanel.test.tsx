@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import EdsSpectrumPanel from "./EdsSpectrumPanel";
+import EdsSpectrumPanel from "./SpectrumPanel";
 
 describe("EdsSpectrumPanel", () => {
   it("exposes spectrum source and display controls", () => {

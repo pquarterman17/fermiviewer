@@ -13,11 +13,8 @@ vi.mock("../workshops/StructureWorkshop", () => ({
 vi.mock("../workshops/CrossSectionGuide", () => ({
   default: () => <div>Cross-section guide content</div>,
 }));
-vi.mock("../workshops/EdsWorkshop", () => ({
-  default: () => <div>EDS workspace content</div>,
-}));
-vi.mock("../workshops/EelsWorkshop", () => ({
-  default: () => <div>EELS workspace content</div>,
+vi.mock("../workshops/ElementalWorkshop", () => ({
+  default: () => <div>Elemental workspace content</div>,
 }));
 vi.mock("../workshops/DiffractionWorkshop", () => ({
   default: () => <div>Diffraction workspace content</div>,
@@ -72,7 +69,7 @@ describe("ToolWindows", () => {
   it("gives EDS a wide spectrum-and-map workspace", async () => {
     useViewer.setState({ tools: [{ kind: "eds", x: 10, y: 20, z: 1 }] });
     render(<ToolWindows />);
-    const content = await screen.findByText("EDS workspace content");
+    const content = await screen.findByText("Elemental workspace content");
     expect(content.closest(".fvd-tool-window")).toHaveStyle({
       width: "680px",
       height: "620px",
@@ -80,7 +77,7 @@ describe("ToolWindows", () => {
   });
 
   it.each([
-    ["eels", "EELS workspace content"],
+    ["eels", "Elemental workspace content"],
     ["diffraction", "Diffraction workspace content"],
   ] as const)("gives %s a wide tabbed workspace", async (kind, text) => {
     useViewer.setState({ tools: [{ kind, x: 10, y: 20, z: 1 }] });
@@ -131,9 +128,9 @@ describe("ToolWindows", () => {
   it("exposes an accessible resize grip", async () => {
     useViewer.setState({ tools: [{ kind: "eds", x: 10, y: 20, z: 1 }] });
     render(<ToolWindows />);
-    await screen.findByText("EDS workspace content");
+    await screen.findByText("Elemental workspace content");
     expect(
-      screen.getByRole("separator", { name: "Resize EDS window" }),
+      screen.getByRole("separator", { name: "Resize Elemental Analysis window" }),
     ).toBeVisible();
   });
 });

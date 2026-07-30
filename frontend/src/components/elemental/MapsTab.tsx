@@ -16,22 +16,22 @@ import {
   type Spectrum,
 } from "../../lib/api";
 import type { CompositeRaster } from "../../lib/composite";
-import { elementColor } from "../../lib/eds/elementColors";
-import { renderFigure, type FigureSource } from "../../lib/eds/figure";
+import { elementColor } from "../../lib/elemental/elementColors";
+import { renderFigure, type FigureSource } from "../../lib/elemental/figure";
 import {
   identifyElements,
   measureElement,
   type IdentifiedElement,
-} from "../../lib/eds/identify";
-import { buildElementLut } from "../../lib/eds/elementColors";
+} from "../../lib/elemental/identify";
+import { buildElementLut } from "../../lib/elemental/elementColors";
 import { normalizeEdsSpectrum } from "../../lib/edsSpectrumDisplay";
 import { mapDisplayRange, renderElementMap } from "../../lib/edsMapDisplay";
 import { useViewer } from "../../store/viewer";
-import EdsElementList from "./EdsElementList";
-import EdsMapMontage, { type MapTile } from "./EdsMapMontage";
-import EdsMapOverlay, { type LegendValue } from "./EdsMapOverlay";
-import type { EdsMapBackground } from "./useEdsElementMap";
-import { useEdsElementMaps } from "./useEdsElementMaps";
+import EdsElementList from "./ElementList";
+import EdsMapMontage, { type MapTile } from "./MapMontage";
+import EdsMapOverlay, { type LegendValue } from "./MapOverlay";
+import type { EdsMapBackground } from "../workshops/useEdsElementMap";
+import { useEdsElementMaps } from "./useElementMaps";
 
 type View = "both" | "montage" | "overlay";
 

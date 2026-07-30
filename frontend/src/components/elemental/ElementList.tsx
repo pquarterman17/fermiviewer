@@ -9,8 +9,8 @@
 
 import { useState } from "react";
 
-import { setElementColor, useElementColors } from "../../lib/eds/elementColors";
-import type { Confidence, IdentifiedElement } from "../../lib/eds/identify";
+import { setElementColor, useElementColors } from "../../lib/elemental/elementColors";
+import type { Confidence, IdentifiedElement } from "../../lib/elemental/identify";
 import { formatCountTick } from "../../lib/edsSpectrumDisplay";
 import PeriodicTable from "./PeriodicTable";
 

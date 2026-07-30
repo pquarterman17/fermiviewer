@@ -9,9 +9,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { edsElementMap } from "../../lib/api";
-import type { IdentifiedElement } from "../../lib/eds/identify";
-import type { MapTile } from "./EdsMapMontage";
-import type { EdsMapBackground } from "./useEdsElementMap";
+import type { IdentifiedElement } from "../../lib/elemental/identify";
+import type { MapTile } from "./MapMontage";
+import type { EdsMapBackground } from "../workshops/useEdsElementMap";
 
 function keyOf(
   element: IdentifiedElement,

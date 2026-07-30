@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from "react";
 
-import { panBy, zoomBy, clampRange, type XRange } from "../../lib/eds/zoomRange";
+import { panBy, zoomBy, clampRange, type XRange } from "../../lib/spectrum/zoomRange";
 
 const STEP = 1.6;
 

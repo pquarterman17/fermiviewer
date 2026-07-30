@@ -11,16 +11,19 @@ const LayersWorkshop = lazy(() => import("../workshops/LayersWorkshop"));
 const StructureWorkshop = lazy(() => import("../workshops/StructureWorkshop"));
 const SurfaceView = lazy(() => import("../workshops/SurfaceView"));
 const RoughnessWorkshop = lazy(() => import("../workshops/RoughnessWorkshop"));
-const EdsWorkshop = lazy(() => import("../workshops/EdsWorkshop"));
-const EelsWorkshop = lazy(() => import("../workshops/EelsWorkshop"));
+const ElementalWorkshop = lazy(
+  () => import("../workshops/ElementalWorkshop"),
+);
 const CrossSectionGuide = lazy(() => import("../workshops/CrossSectionGuide"));
 const NoiseWorkshop = lazy(() => import("../workshops/NoiseWorkshop"));
 const InterfaceWidthWorkshop = lazy(() => import("../workshops/InterfaceWidthWorkshop"));
 const DefectWorkshop = lazy(() => import("../workshops/DefectWorkshop"));
 
 const titles: Record<ToolKind, string> = {
-  eels: "EELS",
-  eds: "EDS",
+  // Both kinds open the one workspace; the title says so, and the
+  // modality badge inside says which physics the cube gets.
+  eels: "Elemental Analysis",
+  eds: "Elemental Analysis",
   diffraction: "Diffraction",
   fftmask: "FFT Mask",
   pixels: "Pixel Inspector",
@@ -78,10 +81,12 @@ export default function ToolWindows() {
 
 function Workshop({ kind }: { kind: ToolKind }) {
   switch (kind) {
+    // Both legacy kinds resolve to the one Elemental Analysis workspace; the
+    // modality comes from the cube, not from which menu item was used, so a
+    // restored session that saved kind "eels" still lands somewhere sensible.
     case "eels":
-      return <EelsWorkshop />;
     case "eds":
-      return <EdsWorkshop />;
+      return <ElementalWorkshop />;
     case "diffraction":
       return <DiffractionWorkshop />;
     case "fftmask":

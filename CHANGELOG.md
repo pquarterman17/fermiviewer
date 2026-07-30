@@ -15,6 +15,25 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **EDS and EELS are one workspace: Elemental Analysis.** They were separate
+  windows, which is how EDS accumulated zoom, per-element colours, integration
+  and the Maps workflow while EELS got none of them. Maps and Explore are now
+  the same components for both; only Quantify and Model fit swap their
+  internals. The modality comes from the cube (metadata → filename → format →
+  energy range) and is shown, with its reason, in a badge that can re-route an
+  ambiguous dataset.
+- Frontend code split three ways so "can this be shared?" has an answer:
+  `lib/spectrum/` + `components/spectrum/` (any spectrum), `lib/elemental/` +
+  `components/elemental/` (element-centric, modality-agnostic), and
+  `lib/eds/` (genuinely EDS physics). Most of what was in `lib/eds/` was never
+  EDS-specific.
+- The Inspector's EDS and EELS tabs became one **Elemental** tab. EELS mounted
+  a whole second workshop inline while EDS only launched one — the asymmetry
+  the merge removes.
+- The EDS Composite tab is gone; the Maps overlay supersedes it. The generic
+  compositor survives as `ChannelComposite` for the colour-overlay tool.
+
 ### Added
 - **Synthetic spectrum-image generator** (`tools/make_synthetic_si.py`). Writes
   real `.hspy` cubes that open through the normal file path, with a
@@ -49,6 +68,10 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   image, published through the shared `custom` colormap slot.
 
 ### Fixed
+- **The colour-overlay tool lost its palette.** Removing the stored colour from
+  a composite channel left it resolving colours from the element registry keyed
+  on truncated image names; TypeScript allowed the now-extraneous `color`
+  through `.map()` so nothing failed loudly.
 - **The EDS energy-window drag never worked inside the plot.** Its handlers
   were bound to the `<canvas>`, but uPlot's `.u-over` sits above the canvas and
   absorbs every pointer event in the plot area, so the drag only fired in the

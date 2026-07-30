@@ -24,9 +24,9 @@ import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import uPlot from "uplot";
 
 import type { Spectrum } from "../../lib/api";
-import { useElementColors } from "../../lib/eds/elementColors";
+import { useElementColors } from "../../lib/elemental/elementColors";
 import type { PeakMarker } from "../../lib/eds/peakMarkers";
-import { zoomAbout, type XRange } from "../../lib/eds/zoomRange";
+import { zoomAbout, type XRange } from "../../lib/spectrum/zoomRange";
 import { formatCountTick } from "../../lib/edsSpectrumDisplay";
 import PlotContextSurface from "../plots/PlotContextSurface";
 

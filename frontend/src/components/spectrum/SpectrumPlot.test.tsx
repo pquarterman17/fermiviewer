@@ -72,7 +72,7 @@ vi.mock("uplot", () => ({ default: mock.Plot }));
 const plot = () => mock.state.instance as MockPlot;
 const hooks = () => (mock.state.options.hooks ?? {}) as Hooks;
 
-import SpectrumPlot from "./EdsSpectrumPlot";
+import SpectrumPlot from "./SpectrumPlot";
 
 const WIDE: Spectrum = {
   energy: [0, 5, 10, 15, 20],

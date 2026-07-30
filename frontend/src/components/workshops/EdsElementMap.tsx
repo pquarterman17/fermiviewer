@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { EdsElementMapResult } from "../../lib/api";
 import { buildLut, type ColormapName } from "../../lib/colormaps";
-import { buildElementLut, useElementColors } from "../../lib/eds/elementColors";
+import { buildElementLut, useElementColors } from "../../lib/elemental/elementColors";
 import {
   formatMapValue,
   mapDisplayRange,
@@ -62,20 +62,14 @@ export default function EdsElementMap({
   element,
   busy,
   libraryBusy,
-  compositeBusy,
-  canAddToComposite,
   onAddToLibrary,
-  onAddToComposite,
 }: {
   result: EdsElementMapResult;
   /** "(custom)" or the selected element symbol — enables the element tint. */
   element: string;
   busy: boolean;
   libraryBusy: boolean;
-  compositeBusy: boolean;
-  canAddToComposite: boolean;
   onAddToLibrary: (paint: MapPaint) => void;
-  onAddToComposite?: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const colors = useElementColors();
@@ -168,15 +162,6 @@ export default function EdsElementMap({
           >
             {libraryBusy ? "Adding…" : "Add to library"}
           </button>
-          {onAddToComposite && (
-            <button
-              className="fvd-btn"
-              disabled={compositeBusy || !canAddToComposite}
-              onClick={onAddToComposite}
-            >
-              {compositeBusy ? "Adding…" : "+ Composite"}
-            </button>
-          )}
         </div>
       </div>
 

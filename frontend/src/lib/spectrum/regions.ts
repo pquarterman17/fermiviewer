@@ -5,7 +5,7 @@
 // measurement record, not a live view: re-integrating later against a
 // different spectrum would silently rewrite numbers the user already read.
 
-import type { WindowIntegration } from "./integrate";
+import type { WindowIntegration } from "../eds/integrate";
 
 export interface IntegrationRegion extends WindowIntegration {
   id: string;

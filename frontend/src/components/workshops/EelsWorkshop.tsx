@@ -37,7 +37,6 @@ import { useSpectrumProbe } from "./useSpectrumProbe";
 import { useEelsQuantMapJob } from "./useEelsQuantMapJob";
 let edgeSeq = 0;
 type EelsTab = "Explore" | "Quantify" | "Model fit" | "Advanced";
-const EELS_TABS: EelsTab[] = ["Explore", "Quantify", "Model fit", "Advanced"];
 
 /** Common EELS edge onsets (eV) for the edge-ID overlay. */
 const KNOWN_EDGES: [string, number][] = [
@@ -70,7 +69,14 @@ const KNOWN_EDGES: [string, number][] = [
   ["Gd-M4,5", 1185],
 ];
 
-export default function EelsWorkshop() {
+export default function EelsWorkshop({
+  tab,
+}: {
+  /** Navigation is owned by the Elemental Analysis shell, which renders the
+   *  single tab strip shared with EDS. This component deliberately holds no
+   *  tab state — two strips for one workspace is what the merge removed. */
+  tab: EelsTab;
+}) {
   const activeId = useViewer((s) => s.activeId);
   const meta = useViewer((s) =>
     s.activeId ? (s.images[s.activeId] ?? null) : null,
@@ -98,7 +104,6 @@ export default function EelsWorkshop() {
   const [explore, setExplore] = useState(false);
   const [pickMode, setPickMode] = useState<"region" | "pixel">("region");
   const [region, setRegion] = useState<Rect1 | null>(null);
-  const [tab, setTab] = useState<EelsTab>("Explore");
   const plotHost = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
 
@@ -414,19 +419,6 @@ export default function EelsWorkshop() {
   return (
     <div className="fvd-ws">
       <PlotContextSurface ref={plotHost} plotRef={plotRef} label="EELS spectrum" filename="eels-spectrum.png" className="fvd-ws-plot" />
-      <div className="fvd-seg" role="tablist" aria-label="EELS workflow">
-        {EELS_TABS.map((name) => (
-          <button
-            key={name}
-            role="tab"
-            aria-selected={tab === name}
-            className={`fvd-seg-btn${tab === name ? " active" : ""}`}
-            onClick={() => setTab(name)}
-          >
-            {name}
-          </button>
-        ))}
-      </div>
       {tab === "Explore" && (
         <>
       <div className="fvd-ws-row">

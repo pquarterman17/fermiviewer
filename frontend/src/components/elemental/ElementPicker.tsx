@@ -14,7 +14,7 @@ import {
   resetElementColor,
   setElementColor,
   useElementColors,
-} from "../../lib/eds/elementColors";
+} from "../../lib/elemental/elementColors";
 import PeriodicTable from "./PeriodicTable";
 
 const PICKER_KEY = "fv_eds_picker";
