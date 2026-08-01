@@ -20,7 +20,9 @@ from fermiviewer.io.mrc import load_mrc
 from fermiviewer.io.msa import load_msa
 from fermiviewer.io.nanoscope import is_nanoscope, load_nanoscope
 from fermiviewer.io.nexus import load_hdf5_auto
+from fermiviewer.io.rpl import load_rpl
 from fermiviewer.io.ser import load_ser
+from fermiviewer.io.spc_edax import load_spc_edax
 
 __all__ = ["UnsupportedFormatError", "load_auto", "supported_extensions"]
 
@@ -43,6 +45,8 @@ _LOADERS: dict[str, Callable[[Path], DataStruct]] = {
     ".ser": load_ser,
     ".msa": load_msa,  # EMSA/MAS single spectrum (EDS/EELS/WDS)
     ".mrc": load_mrc,
+    ".rpl": load_rpl,  # Lispix raw-parameter-list header; reads sibling .raw
+    ".spc": load_spc_edax,  # EDAX EDS spectrum (not GRAMS/Thermo Galactic .spc)
     ".tif": load_tiff,
     ".tiff": load_tiff,
     ".png": load_image,
@@ -50,7 +54,10 @@ _LOADERS: dict[str, Callable[[Path], DataStruct]] = {
     ".jpeg": load_image,
     ".bmp": load_image,
     ".gif": load_image,
-    # .raw/.bin need explicit geometry — use io.images.load_raw directly
+    # .raw/.bin need explicit geometry — use io.images.load_raw directly.
+    # A bare .raw is NEVER registered here even though load_rpl consumes one:
+    # the .raw alone carries no width/height/depth/dtype, only its .rpl
+    # sibling does — load_auto(".raw") would have nothing to go on.
 }
 
 
