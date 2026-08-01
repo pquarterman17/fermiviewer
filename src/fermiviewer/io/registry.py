@@ -17,6 +17,7 @@ from fermiviewer.io.dm5 import load_dm5
 from fermiviewer.io.emd import load_emd
 from fermiviewer.io.hspy import load_hspy
 from fermiviewer.io.images import load_image, load_tiff
+from fermiviewer.io.jeol import load_jeol_img, load_jeol_map, load_jeol_pts
 from fermiviewer.io.mrc import load_mrc
 from fermiviewer.io.msa import load_msa
 from fermiviewer.io.nanoscope import is_nanoscope, load_nanoscope
@@ -51,6 +52,11 @@ _LOADERS: dict[str, Callable[[Path], DataStruct]] = {
     ".spc": load_spc_edax,  # EDAX EDS spectrum (not GRAMS/Thermo Galactic .spc)
     ".tif": load_tiff,
     ".tiff": load_tiff,
+    # JEOL Analysis Station — nothing else in the registry claims .img/.pts;
+    # .map is JEOL-owned here too (not the unrelated Python .map() builtin).
+    ".img": load_jeol_img,
+    ".map": load_jeol_map,
+    ".pts": load_jeol_pts,
     ".png": load_image,
     ".jpg": load_image,
     ".jpeg": load_image,
