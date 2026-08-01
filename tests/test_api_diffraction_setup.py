@@ -147,3 +147,96 @@ def test_simulate_scattering_model_selector(client) -> None:
 def test_bad_cif_is_422(client) -> None:
     r = client.post("/api/diffraction/phases/import", json={"cif_text": "not a cif"})
     assert r.status_code == 422
+
+
+def test_calibrate_unknown_image_is_404(client) -> None:
+    r = client.post(
+        "/api/diffraction/calibrate", json={"image_id": "nope", "r_min": 5}
+    )
+    assert r.status_code == 404
+
+
+def test_calibrate_rejects_a_1d_spectrum(client) -> None:
+    from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
+
+    spec = DataStruct(
+        data=np.arange(32, dtype=np.float64),
+        kind=DataKind.SPECTRUM,
+        axes=(AxisCal(1.0, 0.0, "eV"),),
+    )
+    spec_id = store.add_parsed(spec, "spec.msa")
+    r = client.post("/api/diffraction/calibrate", json={"image_id": spec_id})
+    assert r.status_code == 400
+    assert "2D diffraction image" in r.json()["detail"]
+
+
+def test_calibrate_sums_a_spectrum_image_cube(client) -> None:
+    # SPECTRUM_IMAGE input takes the sum-over-energy path; a cube whose
+    # per-plane content is ring/4 must calibrate like the summed ring
+    from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
+
+    ring = _ring_image(radius=40.0)
+    cube = np.repeat(ring[:, :, None] / 4.0, 4, axis=2)
+    ds = DataStruct(
+        data=cube,
+        kind=DataKind.SPECTRUM_IMAGE,
+        axes=(AxisCal(1.0, units="nm"), AxisCal(1.0, units="nm"),
+              AxisCal(1.0, 0.0, "eV")),
+    )
+    cube_id = store.add_parsed(ds, "si_cube.dm4")
+    r = client.post(
+        "/api/diffraction/calibrate",
+        json={"image_id": cube_id, "r_min": 10, "r_max": 60},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["ellipse"]["mean_radius"] == pytest.approx(40.0, abs=1.5)
+
+
+def test_calibrate_too_few_ring_points_is_422(client, tmp_path) -> None:
+    # an image smaller than r_min detects zero ring points
+    img_id = _open(client, tmp_path, np.zeros((8, 8)))
+    r = client.post(
+        "/api/diffraction/calibrate", json={"image_id": img_id, "r_min": 5}
+    )
+    assert r.status_code == 422
+    assert "too few ring points" in r.json()["detail"]
+
+
+def test_calibrate_degenerate_ellipse_fit_is_422(
+    client, tmp_path, monkeypatch
+) -> None:
+    # the route must translate fit_ellipse's ValueError into a 422,
+    # not a 500 — degenerate point sets are a user-input condition
+    from fermiviewer.routes import diffraction_setup as mod
+
+    def _raise(pts):
+        raise ValueError("degenerate ellipse fit")
+
+    monkeypatch.setattr(mod.dcal, "fit_ellipse", _raise)
+    img_id = _open(client, tmp_path, _ring_image(radius=40.0))
+    r = client.post(
+        "/api/diffraction/calibrate",
+        json={"image_id": img_id, "r_min": 10, "r_max": 60},
+    )
+    assert r.status_code == 422
+    assert "degenerate" in r.json()["detail"]
+
+
+def test_calibrate_unknown_standard_phase_is_422(client, tmp_path) -> None:
+    img_id = _open(client, tmp_path, _ring_image(radius=40.0))
+    r = client.post(
+        "/api/diffraction/calibrate",
+        json={
+            "image_id": img_id,
+            "standard_phase": "Unobtainium",
+            "hkl": [1, 1, 1],
+            "r_min": 10,
+            "r_max": 60,
+        },
+    )
+    assert r.status_code == 422
+    assert "Unobtainium" in r.json()["detail"]
+
+
+def test_delete_unknown_custom_phase_is_404(client) -> None:
+    assert client.delete("/api/diffraction/phases/NoSuchPhase").status_code == 404

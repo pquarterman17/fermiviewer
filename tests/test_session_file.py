@@ -138,6 +138,77 @@ def test_install_failure_rolls_back_existing_pair(
     assert _transaction_files(tmp_path) == []
 
 
+def test_first_save_failure_leaves_no_partial_pair(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With NO pre-existing pair there is no backup to restore: a failure
+    installing the manifest must remove the already-installed NPZ, so a
+    reader can never find a sidecar without its commit-marker manifest."""
+    path = tmp_path / "work.json"
+    real_replace = os.replace
+
+    def fail_manifest_install(src: str | Path, dst: str | Path) -> None:
+        if Path(dst) == path:
+            raise OSError("simulated install failure")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(session_file.os, "replace", fail_manifest_install)
+    with pytest.raises(OSError, match="simulated install failure"):
+        session_file.save_session(path, _entries(1))
+
+    assert not path.exists()
+    assert not path.with_suffix(".npz").exists()
+    assert _transaction_files(tmp_path) == []
+
+
+def test_save_normalizes_a_non_json_suffix(tmp_path: Path) -> None:
+    json_path, npz_path = session_file.save_session(
+        tmp_path / "work.session", _entries(1)
+    )
+    assert json_path == tmp_path / "work.json"
+    assert npz_path == tmp_path / "work.npz"
+    _assert_value(json_path, 1)
+
+
+def test_load_rejects_sidecar_missing_pixels(tmp_path: Path) -> None:
+    path = tmp_path / "work.json"
+    session_file.save_session(path, _entries(1))
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest["images"].append(
+        {"id": "phantom", "name": "ghost.dm4", "kind": "image",
+         "axes": [], "metadata": {}}
+    )
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="missing pixels"):
+        session_file.load_session(path)
+
+
+def test_json_safe_metadata_conversions(tmp_path: Path) -> None:
+    # numpy scalars serialize as native values; ndarray values are dropped
+    # from dicts but held as None placeholders inside lists so element
+    # indices stay aligned with the source list
+    ds = DataStruct(
+        data=np.zeros((2, 2)),
+        kind=DataKind.IMAGE,
+        axes=(AxisCal(1.0, units="nm"), AxisCal(1.0, units="nm")),
+        metadata={
+            "count": np.int32(7),
+            "exposure": np.float64(0.25),
+            "matrix": np.eye(2),
+            "mixed": [1, np.float32(2.5), np.zeros(3)],
+        },
+    )
+    path = tmp_path / "meta.json"
+    session_file.save_session(path, [("id-1", "m.dm4", ds)])
+
+    meta = json.loads(path.read_text(encoding="utf-8"))["images"][0]["metadata"]
+    assert meta["count"] == 7
+    assert meta["exposure"] == 0.25
+    assert "matrix" not in meta
+    assert meta["mixed"] == [1, 2.5, None]
+
+
 def test_failed_restore_keeps_backup_for_recovery(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

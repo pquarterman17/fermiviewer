@@ -10,6 +10,7 @@ import pytest
 
 import fermiviewer.api as fv
 from fermiviewer.calc import filters
+from fermiviewer.datastruct import DataKind
 from fixtures.miniemd import write_ncem_emd
 
 pytestmark = pytest.mark.parser
@@ -23,6 +24,26 @@ def image_path(tmp_path) -> Path:
         img,
         [(np.arange(8) * 0.5, "y", "nm"), (np.arange(10) * 0.5, "x", "nm")],
     )
+
+
+@pytest.fixture()
+def spectrum_path(tmp_path) -> Path:
+    msa = "\n".join(
+        [
+            "#FORMAT : EMSA/MAS Spectral Data File",
+            "#NPOINTS : 8",
+            "#XPERCHAN : 10.0",
+            "#OFFSET : 100.0",
+            "#XUNITS : eV",
+            "#SPECTRUM :",
+            "1 2 3 4",
+            "5 6 7 8",
+            "#ENDOFDATA :",
+        ]
+    )
+    p = tmp_path / "edx.msa"
+    p.write_text(msa, encoding="latin-1")
+    return p
 
 
 def test_open_returns_an_image(image_path) -> None:
@@ -96,3 +117,46 @@ def test_api_package_never_imports_the_server_stack() -> None:
             s = line.strip()
             if s.startswith(("import ", "from ")):
                 assert not any(bad in s for bad in forbidden), f"{f.name}: {s}"
+
+
+def test_spectrum_image_surface(spectrum_path) -> None:
+    # SPECTRUM datasets have no lateral calibration: pixel_size/pixel_unit
+    # answer with NaN / "" instead of raising, and energy_axis is calibrated
+    spec = fv.open(spectrum_path)
+    assert spec.kind == "spectrum"
+    assert spec.name == "edx.msa"
+    assert np.isnan(spec.pixel_size)
+    assert spec.pixel_unit == ""
+    np.testing.assert_allclose(spec.energy_axis, 100.0 + 10.0 * np.arange(8))
+    assert spec.metadata["parser"] == "msa"
+    assert spec.datastruct.kind is DataKind.SPECTRUM
+    # spectra have no raster preview
+    assert spec._repr_png_() is None
+
+
+def test_image_display_surface(image_path) -> None:
+    img = fv.open(image_path)
+    assert img.name == "scan.emd"
+    assert isinstance(img.metadata, dict)
+    assert img.datastruct.kind is DataKind.IMAGE
+    # notebook reprs: html table carries the identity row; png is real PNG
+    assert "scan.emd" in img._repr_html_()
+    png = img._repr_png_()
+    assert isinstance(png, bytes) and png.startswith(b"\x89PNG")
+    # every registered op is discoverable via dir() for tab-completion
+    assert {"gaussian", "median"} <= set(dir(img))
+
+
+def test_result_display_surface(image_path) -> None:
+    img = fv.open(image_path)
+    derived = img.run("gaussian", sigma=1.0)
+    assert derived.op == "gaussian"
+    assert derived.to_image() is derived.image
+    assert "gaussian" in repr(derived)
+    assert derived._repr_html_() == derived.image._repr_html_()
+
+    stats = img.run("image_stats")
+    assert stats.op == "image_stats"
+    assert stats.to_image() is None
+    assert "image_stats" in repr(stats) and "value" in repr(stats)
+    assert "image_stats" in stats._repr_html_()
