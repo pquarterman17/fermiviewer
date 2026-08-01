@@ -16,16 +16,24 @@ Handles both TIA element kinds:
   images and line profiles load.
 
 Little-endian; version ≥ 0x0220 uses 64-bit offsets.
+
+A `.ser` carries no instrument metadata (HT, magnification, detector); the
+sibling `.emi` experiment file does. `load_ser` looks for it (see
+`io.emi.find_emi_sibling`), merges its metadata under `metadata["emi"]`, and
+fills axis calibration from it ONLY where the `.ser`'s own calibration is
+absent — a `.ser` with no `.emi` sibling loads exactly as before.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import warnings
 from pathlib import Path
 
 import numpy as np
 
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
+from fermiviewer.io import emi as _emi
 
 __all__ = ["load_ser"]
 
@@ -205,16 +213,53 @@ def _load_spectra(path: Path, buf: bytes, hdr: dict) -> DataStruct:
     )
 
 
+def _merge_emi_metadata(path: Path, ds: DataStruct) -> DataStruct:
+    """Pair a sibling `.emi` (if any) into `ds.metadata["emi"]`, filling
+    axis calibration from it only where the `.ser`'s own is uncalibrated."""
+    emi_path = _emi.find_emi_sibling(path)
+    if emi_path is None:
+        return ds
+    try:
+        emi_meta = _emi.load_emi_metadata(emi_path)
+    except OSError as exc:
+        warnings.warn(
+            f"{path.name}: could not read paired .emi {emi_path.name} ({exc}); "
+            "continuing without experiment metadata",
+            stacklevel=3,
+        )
+        return ds
+    if emi_meta is None:
+        return ds
+
+    metadata = {**ds.metadata, "emi": emi_meta, "emi_source": str(emi_path)}
+    axes = ds.axes
+    if ds.kind is DataKind.IMAGE:
+        if not axes[0].calibrated:
+            px = _emi.pixel_size_m(emi_meta)
+            if px:
+                cal = AxisCal(scale=px, units="m")
+                axes = (cal, cal)
+    else:  # SPECTRUM / SPECTRUM_IMAGE — energy axis is always last
+        if not axes[-1].calibrated:
+            dispersion = _emi.energy_dispersion_ev(emi_meta)
+            if dispersion:
+                energy = AxisCal(scale=dispersion, origin=axes[-1].origin, units="eV")
+                axes = (*axes[:-1], energy)
+    return dataclasses.replace(ds, metadata=metadata, axes=axes)
+
+
 def load_ser(path: str | Path) -> DataStruct:
     path = Path(path)
     buf = path.read_bytes()
     hdr = _parse_header(buf)
     tid = hdr["data_type_id"]
     if tid == _IMAGE_ID:
-        return _load_images(path, buf, hdr)
-    if tid == _SPECTRUM_ID:
-        return _load_spectra(path, buf, hdr)
-    raise ValueError(
-        f"unsupported SER DataTypeID 0x{tid:04X} "
-        f"(expected 0x4122 image or 0x4120 spectrum): {path}"
-    )
+        ds = _load_images(path, buf, hdr)
+    elif tid == _SPECTRUM_ID:
+        ds = _load_spectra(path, buf, hdr)
+    else:
+        raise ValueError(
+            f"unsupported SER DataTypeID 0x{tid:04X} "
+            f"(expected 0x4122 image or 0x4120 spectrum): {path}"
+        )
+    return _merge_emi_metadata(path, ds)
