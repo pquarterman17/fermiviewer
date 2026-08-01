@@ -129,3 +129,17 @@ def gatan_microscopy() -> Path:
     if not (p / "zenodo8403583_apatite_HAADF.dm4").is_file():
         pytest.skip(f"test-data Gatan corpus absent at {p} (sibling repo)")
     return p
+
+
+@pytest.fixture(scope="session")
+def jeol_examples() -> Path:
+    """Path to ../test-data/jeol/eds/rosettasciio; skips when absent.
+
+    Real JEOL Analysis Station .img/.map/.pts/.EDS files (rosettasciio's own
+    JEOL test corpus) plus an ``InvalidFrame/`` deliberately-truncated-frame
+    error case; see io/jeol.py's module docstring for the format.
+    """
+    p = EXAMPLE_DATA_ROOT / "jeol" / "eds" / "rosettasciio"
+    if not (p / "Sample" / "00_View000" / "View000_0000000.img").is_file():
+        pytest.skip(f"test-data JEOL corpus absent at {p} (sibling repo)")
+    return p
