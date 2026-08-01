@@ -74,18 +74,6 @@ export const GRAIN_METHODS: {
   },
 ];
 
-// Distinct non-boundary classes that have at least one painted stroke — the
-// pixel classifier needs ≥2 of these to train. A class flagged ∅ (boundary/
-// background) is excluded from the count even if painted, since it labels the
-// boundary rather than a grain phase.
-export function paintedReadyCount(
-  strokes: { classId: number }[],
-  boundary: number[],
-): number {
-  const painted = new Set(strokes.map((s) => s.classId));
-  return Array.from(painted).filter((c) => !boundary.includes(c)).length;
-}
-
 export function GrainsMode({ id }: { id: string }) {
   const setStatus = useViewer((s) => s.setStatus);
   const ingestDerived = useViewer((s) => s.ingestDerived);

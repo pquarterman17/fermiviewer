@@ -4,7 +4,19 @@
 import type { GrainPreview } from "../../../lib/api";
 import { SCRIBBLE_COLORS, useScribble } from "../../../store/scribble";
 import { TrainedGrainPreview } from "../TrainedGrainPreview";
-import { paintedReadyCount } from "./GrainsMode";
+
+// Distinct non-boundary classes that have at least one painted stroke — the
+// pixel classifier needs ≥2 of these to train. A class flagged ∅ (boundary/
+// background) is excluded from the count even if painted, since it labels the
+// boundary rather than a grain phase. Lives here (not GrainsMode) so the
+// dependency between the two modules points one way only.
+export function paintedReadyCount(
+  strokes: { classId: number }[],
+  boundary: number[],
+): number {
+  const painted = new Set(strokes.map((s) => s.classId));
+  return Array.from(painted).filter((c) => !boundary.includes(c)).length;
+}
 
 // Trained-mode controls: pick a class, set the brush, paint examples on the
 // stage, then train+segment. A class can be flagged as boundary/background

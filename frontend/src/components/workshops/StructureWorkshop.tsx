@@ -22,7 +22,8 @@ import { CtfMode, StitchMode } from "./structure/CtfStitchModes";
 
 export { TrainedPreviewLegend } from "./TrainedGrainPreview";
 export { grainSourceId } from "../../lib/grainWorkflow";
-export { paintedReadyCount, GrainsMode } from "./structure/GrainsMode";
+export { GrainsMode } from "./structure/GrainsMode";
+export { paintedReadyCount } from "./structure/TrainedGrainControls";
 
 export default function StructureWorkshop() {
   const activeId = useViewer((s) => s.activeId);
