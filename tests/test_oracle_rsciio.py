@@ -84,14 +84,19 @@ def test_rsciio_corpus_sums_vs_oracle(rsciio_examples: Path) -> None:
     our data sum must match the oracle's (best-matching signal, since some
     files carry several). Belt-and-suspenders over the pinned realdata tests
     in test_em_examples.py."""
+    # Post-merge layout (2026-07-25): the old flat rsciio/ tree was
+    # redistributed across <vendor>/<technique> — see the rsciio_examples
+    # fixture docstring. This sweep silently matched ZERO files until the
+    # oracle group was first installed locally on 2026-08-01.
     files: list[Path] = []
     for sub, pats in (
-        ("dm", ("*.dm3", "*.dm4")),
-        ("tia", ("*.ser",)),
-        ("emd", ("*.emd",)),
-        ("mrc", ("*.mrc",)),
-        ("msa", ("*.msa",)),
-        ("bruker", ("*.bcf",)),
+        ("gatan/microscopy", ("*.dm3", "*.dm4")),
+        ("gatan/eels", ("*.dm3", "*.dm4")),
+        ("fei/microscopy", ("*.ser",)),
+        ("emd/microscopy", ("*.emd",)),
+        ("mrc/microscopy", ("*.mrc",)),
+        ("emsa/eds", ("*.msa",)),
+        ("bruker/eds", ("*.bcf",)),
     ):
         for pat in pats:
             files.extend(sorted((rsciio_examples / sub).glob(pat)))
@@ -108,9 +113,10 @@ def test_rsciio_corpus_sums_vs_oracle(rsciio_examples: Path) -> None:
     # multi-frame stacks intentionally return only the first frame (no
     # image-stack DataKind); their partial sum is pinned in test_em_examples.
     partial = {
-        "16x16-line_profile_horizontal_5x128x128_EDS_2.ser",
-        "fei_example_tem_stack.emd",
-        "4DSTEMscan.mrc",  # 4D-STEM: we return the first 2D frame (deferred feature)
+        "rosettasciio_16x16-line_profile_horizontal_5x128x128_EDS_2.ser",
+        "rosettasciio_fei_example_tem_stack.emd",
+        # 4D-STEM: we return the first 2D frame (deferred feature)
+        "rosettasciio_4DSTEMscan.mrc",
     }
     compared = 0
     for f in files:
