@@ -40,7 +40,7 @@ FRONTEND_MAX_STYLESHEET_LINES = 500
 FRONTEND_LEGACY_CAPS = {
     "components/Stage/MeasureOverlay.tsx": 783,
     "components/Stage/Stage.tsx": 918,
-    "components/workshops/DiffractionWorkshop.tsx": 784,
+    "components/workshops/DiffractionWorkshop.tsx": 548,
     "store/viewer.ts": 575,
 }
 PURE_LAYERS = ("io", "calc", "ops")
