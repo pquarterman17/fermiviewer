@@ -1,6 +1,12 @@
 // Single Zustand store — port of the prototype's useFermiViewer() hook
 // (handoff §6). Phase 2: display pipeline, measurements, overlay style,
 // command-palette / shortcuts / radial chrome.
+//
+// Decomposed (repo-health #33): the types/constants live in
+// viewerTypes.ts, the ViewerState contract in viewerState.ts, and the
+// persistence + session-restore machinery in viewerSession.ts. This
+// module holds the store implementation and re-exports the public
+// surface so call sites keep importing from "store/viewer".
 
 import { create } from "zustand";
 
@@ -12,871 +18,49 @@ import {
   saveSession,
   saveWorkspaceNamed as apiSaveWorkspaceNamed,
   uploadFiles,
-  type ImageMeta,
-  type RoiStats,
-  type SessionClientState,
 } from "../lib/api";
-import type { ColormapName } from "../lib/colormaps";
 import { logStatus } from "../lib/errlog";
-import type { TiltSettings } from "../lib/geometry";
 import {
   groupMembers as groupMembersOf,
   resizePanes,
   stepWithin,
-  type ComparePane,
-  type ImageGroup,
 } from "../lib/groups";
+import type { ViewerState } from "./viewerState";
+import {
+  applyUndoEntry,
+  clientState,
+  ingestImages,
+  initialTheme,
+  loadJson,
+  nextGroupId,
+  nextHistoryId,
+  nextMeasureId,
+  OVERLAY_KEY,
+  paneCompareSet,
+  pref,
+  sessionSlice,
+  systemTheme,
+  THEME_KEY,
+  VIEWS_KEY,
+  writePref,
+} from "./viewerSession";
+import {
+  DEFAULT_DISPLAY,
+  describePatch,
+  UNDO_CAP,
+  type Accent,
+  type ColorbarSide,
+  type Density,
+  type OverlayStyle,
+  type SavedRoi,
+  type Theme,
+  type View,
+} from "./viewerTypes";
 
-export type { TiltSettings };
+export * from "./viewerTypes";
+export type { ViewerState } from "./viewerState";
+export type { TiltSettings } from "../lib/geometry";
 export type { ComparePane, ImageGroup } from "../lib/groups";
-
-/** Per-image view: z = screen px per image px (1 → 100 %),
- *  (px, py) = normalized image point under the viewport centre. */
-export interface View {
-  z: number;
-  px: number;
-  py: number;
-}
-
-/** Per-image display: lo/hi normalized [0,1] against image min/max. */
-export type DisplayTransform = "linear" | "log" | "equalize";
-
-export interface Display {
-  lo: number;
-  hi: number;
-  gamma: number;
-  cmap: ColormapName;
-  invert: boolean;
-  /** intensity transform applied to the texture before window/γ/LUT */
-  transform: DisplayTransform;
-  /** colorbar tick interval in real value units (nm for AFM); 0/undefined = auto */
-  tickStep?: number;
-  /** colorbar tick count (overrides tickStep when set and > 0) */
-  tickCount?: number;
-  /** colorbar tick-label font size in screen px; undefined = 11 (default) */
-  tickFontSize?: number;
-}
-
-export type ColorbarSide = "left" | "right" | "bottom";
-
-export const DEFAULT_DISPLAY: Display = {
-  lo: 0,
-  hi: 1,
-  gamma: 1,
-  cmap: "gray",
-  invert: false,
-  transform: "linear",
-};
-
-/** One entry in an image's non-destructive edit history (design WS4d).
- *  Each step snapshots the FULL display state after the change, so a
- *  revert is just restoring that snapshot. `field` groups consecutive
- *  edits of the same control (a gamma drag coalesces into one step). */
-export interface HistoryStep {
-  id: number;
-  label: string;
-  field: string;
-  display: Display;
-}
-
-let historySeq = 0;
-
-/** Human label + coalescing field for a display change. Single-field
- *  patches get a specific label; the auto-window {lo,hi} pair and the
- *  reset patch are recognised so the card reads like the design example
- *  (Opened → Colormap → Auto contrast → Gamma). */
-function describePatch(patch: Partial<Display>): { field: string; label: string } {
-  const keys = Object.keys(patch);
-  const has = (k: keyof Display) => k in patch;
-  if (keys.length === 2 && has("lo") && has("hi"))
-    return { field: "window", label: "Auto contrast" };
-  if (keys.length > 1) return { field: "reset", label: "Reset display" };
-  if (has("cmap")) return { field: "cmap", label: `Colormap → ${patch.cmap}` };
-  if (has("gamma"))
-    return { field: "gamma", label: `Gamma ${(patch.gamma ?? 1).toFixed(2)}` };
-  if (has("invert"))
-    return { field: "invert", label: `Invert ${patch.invert ? "on" : "off"}` };
-  if (has("transform"))
-    return { field: "transform", label: `Transform → ${patch.transform}` };
-  if (has("tickStep")) return { field: "tickStep", label: "Tick step" };
-  if (has("tickCount")) return { field: "tickCount", label: "Tick count" };
-  if (has("tickFontSize")) return { field: "tickFontSize", label: "Tick font" };
-  if (has("lo") || has("hi")) return { field: "window", label: "Contrast" };
-  return { field: "adjust", label: "Adjust" };
-}
-
-/** One entry in the named-ROI list (ROI Manager, audit Tier-2 #5).
- *  Geometry is stored as normalized pts (same as Measure.pts) + the
- *  original MeasureKind so recall can re-create either roi or ellipse. */
-export interface SavedRoi {
-  id: string;
-  name: string;
-  kind: "roi" | "ellipse";
-  pts: { x: number; y: number }[];
-  /** ISO timestamp — shown in the manager list for provenance */
-  createdAt: string;
-}
-
-export type MeasureKind =
-  | "distance"
-  | "profile"
-  | "angle"
-  | "roi"
-  | "ellipse"
-  | "polyline"
-  // annotations (checklist H) — ride the measure rails: overlay
-  // rendering, persistence, undo and export baking all come free
-  | "text"
-  | "arrow"
-  | "box"
-  | "circle";
-
-export type EndSymbol = "bar" | "circle" | "cross" | "square" | "none";
-
-/** Normalized 0–1 image coords survive derived images of the same aspect. */
-export interface Measure {
-  id: string;
-  kind: MeasureKind;
-  pts: { x: number; y: number }[];
-  /** annotation caption (text / arrow / box kinds) */
-  text?: string;
-  /** per-item colour override (falls back to the overlay style) */
-  color?: string;
-  /** dragged label offset in screen px (from the default anchor) */
-  labelDx?: number;
-  labelDy?: number;
-  /** endpoint glyph override (falls back to overlay style default) */
-  endSymbol?: EndSymbol;
-  /** ⊥ averaging width in image px; falls back to global profileWidth. */
-  width?: number;
-  /** Per-annotation screen px; undefined uses global, clamped to [6, 120]. */
-  fontSize?: number;
-}
-
-/** Undoable mutations (Edit menu / ⌘Z). Derived-image entries remove
- *  only the CLIENT registration — the server keeps the DataStruct for
- *  the session, which is what makes redo instant and lossless. */
-export type UndoEntry =
-  | { t: "measure-add"; imageId: string; measure: Measure }
-  | { t: "measure-del"; imageId: string; measure: Measure }
-  | {
-      t: "measure-move";
-      imageId: string;
-      measureId: string;
-      before: Measure["pts"];
-      after: Measure["pts"];
-    }
-  | { t: "derived"; meta: ImageMeta; parentId: string };
-
-export function undoLabel(e: UndoEntry): string {
-  switch (e.t) {
-    case "measure-add":
-      return `add ${e.measure.kind}`;
-    case "measure-del":
-      return `delete ${e.measure.kind}`;
-    case "measure-move":
-      return "move measure";
-    case "derived":
-      return e.meta.name;
-  }
-}
-
-const UNDO_CAP = 99;
-
-export interface OverlayStyle {
-  size: "XS" | "S" | "M" | "L" | "XL" | "XXL";
-  color: string;
-  /** Measurement/annotation line thickness in screen px (non-selected). */
-  lineWidth: number;
-  endSymbol: EndSymbol;
-}
-
-/** On-screen label px for each overlay size bucket. Shared by the
- *  MeasureOverlay renderer AND the export pipeline so burned-in labels
- *  match what's on the stage. */
-export const OVERLAY_FONT_PX: Record<OverlayStyle["size"], number> = {
-  XS: 10,
-  S: 13,
-  M: 16,
-  L: 20,
-  XL: 26,
-  XXL: 34,
-};
-
-/** Per-image scale bar display overrides.
- *  x/y are fractional positions 0–1 relative to the stage viewport
- *  (default bottom-left ≈ 0.02, 0.92).
- *  lengthPhys null means auto (nice-number); thickness/fontSize null = auto. */
-export interface ScaleBarState {
-  x: number;          // normalized stage x (0 = left, 1 = right)
-  y: number;          // normalized stage y (0 = top, 1 = bottom)
-  lengthPhys: number | null;  // physical length override (in pixel_unit)
-  thickness: number | null;   // bar thickness in screen px (null = auto)
-  fontSize: number | null;    // label font size in px (null = auto)
-  color: string | null;       // bar + label colour; null = "#ffffff" (audit #10)
-  unitOverride: string | null; // force a display unit; null = auto (audit #10)
-}
-
-export type CaptureMode =
-  | "none"
-  | "zoom"
-  | "fixed-zoom"
-  | "box-profile"
-  | "crop-save"
-  | "calibrate"
-  | "specnav" // click/drag the main image → drives the EELS/EDS spectrum
-  | MeasureKind;
-export type Theme = "dark" | "light";
-/** Swappable accent scheme (kept in sync with lib/prefs Accent; no import
- *  to avoid an init-time cycle, same as Theme vs ThemeChoice). */
-export type Accent = "violet" | "teal" | "ocean" | "amber" | "rose";
-/** UI density — drives the spacing/row-height/font-size token block. */
-export type Density = "compact" | "regular" | "comfy";
-export type ListView = "thumbs" | "names";
-export type CompareMode = "split" | "flicker" | "subtract" | "sidebyside";
-export type SelectGesture = "single" | "toggle" | "range";
-/** Detected layer interfaces, surfaced on the stage by LayersOverlay. */
-export interface LayersOverlayState {
-  imageId: string;
-  axis: "y" | "x";
-  interfaces: number[];              // depth positions (image pixels)
-  traces: (number[] | null)[];
-  lateralOffset?: number;
-  lateralRange?: [number, number];
-  depthRange?: [number, number];
-}
-
-export type ToolKind =
-  | "eels"
-  | "eds"
-  | "diffraction"
-  | "fftmask"
-  | "pixels"
-  | "structure"
-  | "overlay"
-  | "surface" | "roughness"
-  | "layers" | "crosssection" | "noise" | "interface-width" | "defects";
-
-export interface ToolWindowState {
-  kind: ToolKind;
-  x: number;
-  y: number;
-  z: number;
-}
-
-const VIEWS_KEY = "fv_views";
-const OVERLAY_KEY = "fv_overlay";
-const THEME_KEY = "fv_theme";
-
-/** Resolve the OS colour-scheme to a concrete theme. */
-function systemTheme(): Theme {
-  return window.matchMedia?.("(prefers-color-scheme: light)").matches
-    ? "light"
-    : "dark";
-}
-
-function initialTheme(): Theme {
-  // explicit persisted choice wins; "system"/absent follow the OS (checklist N)
-  const stored = localStorage.getItem(THEME_KEY);
-  if (stored === "dark" || stored === "light") return stored;
-  return systemTheme();
-}
-
-function loadJson<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-let measureSeq = 0;
-/** Monotonic counter for stable, collision-free group ids across a session. */
-let groupSeq = 0;
-
-/** The distinct, in-order image ids currently shown across the compare grid
- *  — used to keep compareSet (which drives Save/Copy of the comparison) in
- *  sync with the panes. */
-function paneCompareSet(panes: ComparePane[]): string[] {
-  const seen = new Set<string>();
-  const ids: string[] = [];
-  for (const p of panes) {
-    if (p.imageId && !seen.has(p.imageId)) {
-      seen.add(p.imageId);
-      ids.push(p.imageId);
-    }
-  }
-  return ids;
-}
-
-type SetState = (
-  fn: (s: {
-    images: Record<string, ImageMeta>;
-    order: string[];
-    activeId: string | null;
-    tilts: Record<string, TiltSettings>;
-    display: Record<string, Display>;
-    history: Record<string, HistoryStep[]>;
-    historyAt: Record<string, number>;
-  }) => object,
-) => void;
-
-/** Read one persisted preference with a fallback (lib/prefs.ts owns
- *  the dialog; this avoids an import cycle at store-init time). */
-function _pref<T>(key: string, fallback: T): T {
-  try {
-    const p = JSON.parse(localStorage.getItem("fv_prefs") ?? "{}") as Record<
-      string,
-      T
-    >;
-    return p[key] ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-/** Merge one key into the persisted fv_prefs blob (used by the live-apply
- *  store actions so a change made in the inspector sticks across reloads). */
-function writePref(key: string, value: unknown): void {
-  try {
-    const p = JSON.parse(localStorage.getItem("fv_prefs") ?? "{}") as Record<
-      string,
-      unknown
-    >;
-    localStorage.setItem("fv_prefs", JSON.stringify({ ...p, [key]: value }));
-  } catch {
-    /* ignore quota / serialization errors — non-persistence is non-fatal */
-  }
-}
-
-/** Merge newly opened images into the library (shared by path + upload). */
-function _ingest(set: SetState, metas: ImageMeta[]): void {
-  // preferences applied to images seen for the first time
-  let prefCmap = "gray";
-  let prefTransform: Display["transform"] = "linear";
-  let prefInvert = false;
-  let prefTiltGeom: "cross-section" | "surface" = "cross-section";
-  try {
-    const p = JSON.parse(localStorage.getItem("fv_prefs") ?? "{}") as {
-      defaultCmap?: string;
-      defaultTransform?: Display["transform"];
-      defaultInvert?: boolean;
-      tiltGeometry?: "cross-section" | "surface";
-    };
-    prefCmap = p.defaultCmap ?? "gray";
-    prefTransform = p.defaultTransform ?? "linear";
-    prefInvert = p.defaultInvert ?? false;
-    prefTiltGeom = p.tiltGeometry ?? "cross-section";
-  } catch {
-    /* defaults */
-  }
-  set((s) => {
-    const images = { ...s.images };
-    const order = [...s.order];
-    const tilts = { ...s.tilts };
-    const display = { ...s.display };
-    const history = { ...s.history };
-    const historyAt = { ...s.historyAt };
-    for (const m of metas) {
-      if (!(m.id in images)) {
-        order.push(m.id);
-        // seed display only when a default differs from the built-ins, so
-        // the common case leaves display[id] unset and Stage's DM-window
-        // seeding still runs on first load
-        if (
-          (prefCmap !== "gray" || prefTransform !== "linear" || prefInvert) &&
-          !(m.id in display)
-        ) {
-          display[m.id] = {
-            ...DEFAULT_DISPLAY,
-            cmap: prefCmap as Display["cmap"],
-            transform: prefTransform,
-            invert: prefInvert,
-          };
-        }
-        // WS4d: seed the origin history step (the image's birth). Derived
-        // images (filters/FFT) carry derived_from; everything else is Opened.
-        if (!(m.id in history)) {
-          history[m.id] = [
-            {
-              id: ++historySeq,
-              field: "open",
-              label: m.meta["derived_from"] ? "Derived" : "Opened",
-              display: display[m.id] ?? DEFAULT_DISPLAY,
-            },
-          ];
-          historyAt[m.id] = 0;
-        }
-        // #34: seed tilt from stage metadata; angle 0 keeps it off
-        // until the user enables it in the Tilt card
-        if (m.stage_tilt_deg != null && !(m.id in tilts)) {
-          tilts[m.id] = {
-            angle: 0,
-            seedAngle: m.stage_tilt_deg,
-            axis: "Y",
-            geometry: prefTiltGeom,
-          };
-        }
-      }
-      images[m.id] = m;
-    }
-    const last = metas[metas.length - 1];
-    return {
-      images,
-      order,
-      tilts,
-      display,
-      history,
-      historyAt,
-      activeId: last ? last.id : s.activeId,
-      status: `opened ${metas.length} file${metas.length === 1 ? "" : "s"}`,
-    };
-  });
-}
-
-type SetFull = (fn: (s: ViewerState) => Partial<ViewerState>) => void;
-
-/** Apply one undo entry in the given direction (pure state surgery —
- *  never calls the public actions, so no re-push loops). */
-function applyUndoEntry(set: SetFull, e: UndoEntry, dir: "undo" | "redo"): void {
-  const inverse = dir === "undo";
-  switch (e.t) {
-    case "measure-add":
-    case "measure-del": {
-      const doRemove = (e.t === "measure-add") === inverse;
-      if (doRemove) {
-        set((s) => ({
-          measures: {
-            ...s.measures,
-            [e.imageId]: (s.measures[e.imageId] ?? []).filter(
-              (m) => m.id !== e.measure.id,
-            ),
-          },
-          selectedMeasure:
-            s.selectedMeasure === e.measure.id ? null : s.selectedMeasure,
-        }));
-      } else {
-        set((s) => ({
-          measures: {
-            ...s.measures,
-            [e.imageId]: [...(s.measures[e.imageId] ?? []), e.measure],
-          },
-        }));
-      }
-      break;
-    }
-    case "measure-move":
-      set((s) => ({
-        measures: {
-          ...s.measures,
-          [e.imageId]: (s.measures[e.imageId] ?? []).map((m) =>
-            m.id === e.measureId
-              ? { ...m, pts: inverse ? e.before : e.after }
-              : m,
-          ),
-        },
-      }));
-      break;
-    case "derived":
-      if (inverse) {
-        set((s) => {
-          const images = { ...s.images };
-          delete images[e.meta.id];
-          return {
-            images,
-            order: s.order.filter((i) => i !== e.meta.id),
-            selected: s.selected.filter((i) => i !== e.meta.id),
-            activeId:
-              s.activeId === e.meta.id
-                ? e.parentId in images
-                  ? e.parentId
-                  : null
-                : s.activeId,
-          };
-        });
-      } else {
-        set((s) => ({
-          images: { ...s.images, [e.meta.id]: e.meta },
-          order: s.order.includes(e.meta.id)
-            ? s.order
-            : [...s.order, e.meta.id],
-          activeId: e.meta.id,
-        }));
-      }
-      break;
-  }
-}
-
-/** The named workspace currently loaded (null = an unsaved "Default"
- *  session). Drives the menu-bar workspace switcher (design WS4b). */
-export interface WorkspaceRef {
-  slug: string;
-  name: string;
-}
-
-interface ViewerState {
-  // library
-  order: string[];
-  activeId: string | null;
-  images: Record<string, ImageMeta>;
-  selected: string[];
-  listView: ListView;
-  compareSet: string[] | null;
-  compareMode: CompareMode;
-  /** Flicker interval in ms (default 600 = ~1.7 Hz, matches MATLAB).
-   *  Exposed as a user control (audit #15). */
-  compareFlickerMs: number;
-  /** Explicit A/B slot override: [indexA, indexB] into compareSet
-   *  (null = cycle the full set, original behaviour).  Audit #15. */
-  compareAB: [number, number] | null;
-  // ── side-by-side compare: an N-pane grid (compareMode "sidebyside") ──
-  /** Each grid cell: the image it shows + an optional bound group. Default
-   *  grid is 1×2, both panes unbound → original two-pane behaviour. */
-  sbsPanes: ComparePane[];
-  /** Grid shape; sbsPanes.length always equals sbsRows*sbsCols. */
-  sbsRows: number;
-  sbsCols: number;
-  /** Index into sbsPanes the ←/→ keys + ◀▶ buttons drive; others freeze. */
-  sbsActive: number;
-  /** Link zoom level across all panes (default true; toggle to unlink). */
-  sbsLinked: boolean;
-  // ── named image groups (reusable, persisted) ──
-  /** Ordered named groups built from multi-selections; bind one to a pane. */
-  imageGroups: ImageGroup[];
-  // monotonic counter bumped on every ingestDerived — a lineage signal that
-  // lets views like Live FFT re-fetch when a new derived image is produced
-  // without subscribing to the whole image map (Quick-Wins #7)
-  derivedTick: number;
-  // per-image view, persisted (localStorage "fv_views")
-  views: Record<string, View>;
-  // per-image display pipeline (window/gamma/colormap)
-  display: Record<string, Display>;
-  // WS4d: per-image non-destructive edit history + the current-step cursor
-  history: Record<string, HistoryStep[]>;
-  historyAt: Record<string, number>;
-  // measurements, per image; selection is a measure id
-  measures: Record<string, Measure[]>;
-  selectedMeasure: string | null;
-  roiStats: Record<string, RoiStats>;
-  // undo/redo (Edit menu)
-  undoStack: UndoEntry[];
-  redoStack: UndoEntry[];
-  // display chrome
-  theme: Theme;
-  accent: Accent;
-  density: Density;
-  overlay: OverlayStyle; // persisted "fv_overlay"
-  // per-image scale bar position/size overrides
-  scaleBars: Record<string, ScaleBarState>;
-  // per-image tilt-correction settings (#34); absent = off
-  tilts: Record<string, TiltSettings>;
-  // per-image stack frame index (0-based; only relevant for spectrum_image)
-  stackFrames: Record<string, number>;
-  /** Named saved ROIs per image — keyed by image id.  Persisted in session
-   *  client_state["savedRois"] so save/load round-trips them (Tier-2 #5). */
-  savedRois: Record<string, SavedRoi[]>;
-  /** fixed-zoom dimensions in image pixels (A2 capture mode) */
-  fixedZoomW: number;
-  fixedZoomH: number;
-  // tools
-  captureMode: CaptureMode;
-  // spectrum-navigation pixel (1-based [row, col]) picked on the main stage in
-  // specnav mode; the EELS/EDS workshops watch it to drive their spectrum (#10)
-  specnavPixel: [number, number] | null;
-  layersOverlay: LayersOverlayState | null;
-  layersEdit: boolean;                 // stage interface-editing mode
-  layersEditReq: number[] | null;      // positions requested by a stage edit
-  layersFocusReq: number | null;       // interface index clicked on the stage
-  panTool: boolean;
-  profileWidth: number;  // ⊥ averaging width (px) for profile captures
-  profileReduce: "mean" | "sum"; // box/profile reduction mode (item #49)
-  toolsLayout: "cards" | "unified"; // inspector tools layout (persisted pref)
-  // chrome
-  leftCol: boolean;
-  rightCol: boolean;
-  minimap: boolean;
-  colorbar: boolean;
-  colorbarSide: ColorbarSide; // persisted "colorbarSide" pref
-  scaleBarVisible: boolean;
-  cmdk: boolean;
-  shorts: boolean;
-  radial: { x: number; y: number } | null;
-  tools: ToolWindowState[]; // open workshop windows (handoff §6)
-  exportOpen: boolean;
-  batchOpen: boolean;
-  calibOpen: boolean;
-  metaOpen: boolean;
-  prefsOpen: boolean;
-  galleryOpen: boolean;
-  /** Whether the launch-folder Open dialog is showing. */
-  folderOpen: boolean;
-  /** The folder the app was launched from + its supported images, so the
-   *  Open dialog can default there. null until fetched / when none set. */
-  launchContext: { dir: string | null; files: { name: string; path: string }[] } | null;
-  status: string;
-  currentWorkspace: WorkspaceRef | null;
-
-  openPaths: (paths: string[]) => Promise<void>;
-  openFiles: (files: FileList | File[]) => Promise<void>;
-  ingest: (metas: ImageMeta[]) => void;
-  saveWorkspace: (path: string) => Promise<void>;
-  loadWorkspace: (path: string) => Promise<void>;
-  saveWorkspaceNamed: (name: string) => Promise<void>;
-  loadWorkspaceNamed: (slug: string) => Promise<void>;
-  setActive: (id: string) => void;
-  select: (id: string, gesture: SelectGesture) => void;
-  setListView: (v: ListView) => void;
-  reorder: (id: string, beforeId: string | null) => void;
-  startCompare: (ids: string[]) => void;
-  exitCompare: () => void;
-  setCompareMode: (m: CompareMode) => void;
-  setCompareFlickerMs: (ms: number) => void;
-  setCompareAB: (ab: [number, number] | null) => void;
-  /** Enter side-by-side compare seeded from the current image (pane 0 =
-   *  active, pane 1 = next in order). No pre-selection needed. */
-  startSideBySide: () => void;
-  /** Set a pane's image directly (e.g. dropdown pick) and focus it. */
-  setPaneImage: (idx: number, id: string) => void;
-  /** Bind a named group to a pane (null = unbound → steps all images);
-   *  snaps the pane's image to the group's first member if needed. */
-  setPaneGroup: (idx: number, groupId: string | null) => void;
-  /** Step a pane within its bound group's members by delta (wrapping);
-   *  snaps to the first member if the current image isn't in the group. */
-  stepPane: (idx: number, delta: 1 | -1) => void;
-  /** Focus a pane (the ←/→ keys + ◀▶ buttons drive the focused pane). */
-  setActivePane: (idx: number) => void;
-  /** Resize the compare grid, preserving existing pane bindings by index. */
-  setGrid: (rows: number, cols: number) => void;
-  setSbsLinked: (linked: boolean) => void;
-  // ── named image groups ──────────────────────────────────────────────
-  /** Create a named group from the given image ids; default name `Group N`. */
-  createGroup: (ids: string[], name?: string) => void;
-  renameGroup: (id: string, name: string) => void;
-  /** Delete a group and unbind it from any pane that referenced it. */
-  deleteGroup: (id: string) => void;
-  /** Replace a group's member list. */
-  setGroupMembers: (id: string, ids: string[]) => void;
-  cycleImage: (dir: 1 | -1) => void;
-  closeImage: (id: string) => Promise<void>;
-  setView: (id: string, view: View) => void;
-  setDisplay: (
-    id: string,
-    patch: Partial<Display>,
-    opts?: { silent?: boolean },
-  ) => void;
-  ingestDerived: (metas: ImageMeta[]) => void;
-  /** WS4d: jump the active image's display to a history step (revert or
-   *  step forward); moves the cursor without dropping steps. */
-  revertHistory: (id: string, index: number) => void;
-  pushUndo: (e: UndoEntry) => void;
-  undo: () => UndoEntry | null;
-  redo: () => UndoEntry | null;
-  addMeasure: (imageId: string, m: Omit<Measure, "id">) => string;
-  updateMeasure: (
-    imageId: string,
-    measureId: string,
-    pts: Measure["pts"],
-  ) => void;
-  removeMeasure: (imageId: string, measureId: string) => void;
-  /** Remove the most recently added annotation/measure (audit #11). */
-  deleteLastAnnotation: (imageId: string) => void;
-  /** Switch the active image to the root ancestor of a derived chain,
-   *  restoring the original un-filtered pixels (audit #11).  The server
-   *  already holds every ancestor DataStruct for the session; this only
-   *  updates the client's activeId pointer. */
-  resetToOriginal: (imageId: string) => void;
-  setMeasureText: (imageId: string, measureId: string, text: string) => void;
-  setMeasureStyle: (
-    imageId: string,
-    measureId: string,
-    patch: Partial<Pick<Measure, "color" | "labelDx" | "labelDy" | "endSymbol">>,
-  ) => void;
-  /** Set per-annotation font size override (audit #12); null clears it. */
-  setMeasureFontSize: (imageId: string, measureId: string, size: number | null) => void;
-  /** marquee multi-selection (shift-drag on the stage) */
-  selectedMulti: string[];
-  setSelectedMulti: (ids: string[]) => void;
-  /** Remove all measures (or only the given kinds), undoably. */
-  clearMeasures: (imageId: string, kinds: MeasureKind[] | null) => void;
-  setSelectedMeasure: (id: string | null) => void;
-  setRoiStats: (measureId: string, stats: RoiStats) => void;
-  setCaptureMode: (mode: CaptureMode) => void;
-  setSpecnavPixel: (p: [number, number] | null) => void;
-  setLayersOverlay: (o: LayersOverlayState | null) => void;
-  setLayersEdit: (b: boolean) => void;
-  setLayersEditReq: (p: number[] | null) => void;
-  setLayersFocusReq: (k: number | null) => void;
-  setPanTool: (on: boolean) => void;
-  setProfileWidth: (w: number) => void;
-  setProfileReduce: (r: "mean" | "sum") => void;
-  setToolsLayout: (v: "cards" | "unified") => void;
-  setOverlay: (patch: Partial<OverlayStyle>) => void;
-  setScaleBar: (imageId: string, patch: Partial<ScaleBarState>) => void;
-  /** Set or clear (null) the per-image tilt correction (#34). */
-  setTilt: (imageId: string, t: TiltSettings | null) => void;
-  setStackFrame: (imageId: string, frame: number) => void;
-  setFixedZoomDims: (w: number, h: number) => void;
-  setTheme: (choice: Theme | "system") => void;
-  toggleTheme: () => void;
-  setAccent: (accent: Accent) => void;
-  setDensity: (density: Density) => void;
-  setScaleBarVisible: (on: boolean) => void;
-  toggleLeft: () => void;
-  toggleRight: () => void;
-  toggleMinimap: () => void;
-  toggleColorbar: () => void;
-  setColorbarSide: (side: ColorbarSide) => void;
-  toggleScaleBar: () => void;
-  setCmdk: (open: boolean) => void;
-  setShorts: (open: boolean) => void;
-  setRadial: (at: { x: number; y: number } | null) => void;
-  openTool: (kind: ToolKind) => void;
-  closeTool: (kind: ToolKind) => void;
-  focusTool: (kind: ToolKind) => void;
-  moveTool: (kind: ToolKind, x: number, y: number) => void;
-  setExportOpen: (open: boolean) => void;
-  setBatchOpen: (open: boolean) => void;
-  setCalibOpen: (open: boolean) => void;
-  setMetaOpen: (open: boolean) => void;
-  setPrefsOpen: (open: boolean) => void;
-  setGalleryOpen: (open: boolean) => void;
-  setFolderOpen: (open: boolean) => void;
-  setLaunchContext: (
-    ctx: { dir: string | null; files: { name: string; path: string }[] } | null,
-  ) => void;
-  setStatus: (msg: string) => void;
-
-  // ── ROI Manager (Tier-2 #5) ─────────────────────────────────────────
-  /** Save the given measure (must be roi/ellipse kind) under `name` for
-   *  the specified image.  Replaces an existing entry with the same name. */
-  saveRoi: (imageId: string, name: string, roi: Pick<SavedRoi, "kind" | "pts">) => void;
-  /** Re-create a saved ROI as the active measure+selection for an image. */
-  recallRoi: (imageId: string, roiId: string) => void;
-  /** Remove one named ROI from the list. */
-  deleteRoi: (imageId: string, roiId: string) => void;
-  /** Bulk-replace the saved-ROI list — used on session load. */
-  seedSavedRois: (map: Record<string, SavedRoi[]>) => void;
-}
-
-/** The serializable slice of store state a saved session captures —
- *  shared by every save path (file + named workspace). */
-function _clientState(s: ViewerState): SessionClientState {
-  return {
-    order: s.order,
-    activeId: s.activeId,
-    views: s.views,
-    display: s.display,
-    measures: s.measures,
-    overlay: s.overlay,
-    savedRois: s.savedRois,
-    imageGroups: s.imageGroups,
-    sbsPanes: s.sbsPanes,
-    sbsRows: s.sbsRows,
-    sbsCols: s.sbsCols,
-  };
-}
-
-/** Bump `current` past every numeric suffix found in `ids` matching `re`
- *  (captured in group 1). Used to re-seed measureSeq/groupSeq on session
- *  restore so a subsequent addMeasure/createGroup can never mint an id
- *  that collides with one just restored (duplicate React keys, double
- *  drag/delete on the wrong element). */
-function reseedSeq(current: number, ids: Iterable<string>, re: RegExp): number {
-  let max = current;
-  for (const id of ids) {
-    const m = re.exec(id);
-    if (m) max = Math.max(max, Number(m[1]));
-  }
-  return max;
-}
-
-/** Build the store slice that a loaded session replaces — shared by
- *  loadWorkspace (arbitrary path) and loadWorkspaceNamed (config-dir
- *  workspace) so both restore identical state (status + currentWorkspace
- *  are added by each caller). */
-function sessionSlice(
-  r: { images: ImageMeta[]; client_state: SessionClientState | null },
-  fallbackOverlay: OverlayStyle,
-): Partial<ViewerState> {
-  const images: Record<string, ImageMeta> = {};
-  for (const m of r.images) images[m.id] = m;
-  const cs = r.client_state ?? {};
-  const savedOrder = cs.order as string[] | undefined;
-  const loadedIds = r.images.map((m) => m.id);
-  // saved order filtered to what actually loaded; append any newcomers
-  const order = (savedOrder?.filter((id) => id in images) ?? loadedIds).concat(
-    loadedIds.filter((id) => !savedOrder?.includes(id)),
-  );
-  const activeId =
-    typeof cs.activeId === "string" && cs.activeId in images
-      ? cs.activeId
-      : (order[0] ?? null);
-  // groups: prune member ids to what actually loaded; drop now-empty groups
-  const rawGroups = (cs.imageGroups as ImageGroup[] | undefined) ?? [];
-  const imageGroups: ImageGroup[] = rawGroups
-    .map((g) => ({
-      id: g.id,
-      name: g.name,
-      ids: (g.ids ?? []).filter((id) => id in images),
-    }))
-    .filter((g) => g.ids.length > 0);
-  const liveGroupIds = new Set(imageGroups.map((g) => g.id));
-  // grid: restore shape, then prune each pane's image + group binding
-  const sbsRows = Math.max(1, Math.round((cs.sbsRows as number) ?? 1));
-  const sbsCols = Math.max(1, Math.round((cs.sbsCols as number) ?? 2));
-  const rawPanes = (cs.sbsPanes as ComparePane[] | undefined) ?? [];
-  const sbsPanes = resizePanes(
-    rawPanes.map((p) => ({
-      imageId: p?.imageId && p.imageId in images ? p.imageId : null,
-      groupId: p?.groupId && liveGroupIds.has(p.groupId) ? p.groupId : null,
-    })),
-    sbsRows,
-    sbsCols,
-  );
-  const measures = (cs.measures as Record<string, Measure[]>) ?? {};
-  // re-seed the module id counters past whatever this session contains —
-  // see reseedSeq above for why.
-  measureSeq = reseedSeq(
-    measureSeq,
-    Object.values(measures).flatMap((list) => list.map((m) => m.id)),
-    /^m(\d+)$/,
-  );
-  groupSeq = reseedSeq(
-    groupSeq,
-    imageGroups.map((g) => g.id),
-    /^g(\d+)$/,
-  );
-  return {
-    images,
-    order,
-    activeId,
-    selected: activeId ? [activeId] : [],
-    compareSet: null,
-    selectedMeasure: null,
-    selectedMulti: [],
-    imageGroups,
-    sbsPanes,
-    sbsRows,
-    sbsCols,
-    sbsActive: 0,
-    views: (cs.views as Record<string, View>) ?? {},
-    display: (cs.display as Record<string, Display>) ?? {},
-    measures,
-    overlay: (cs.overlay as OverlayStyle) ?? fallbackOverlay,
-    savedRois: (cs.savedRois as Record<string, SavedRoi[]>) ?? {},
-    // a load is a fresh session: drop undo history + per-image state that
-    // isn't part of the saved payload so it doesn't bleed across loads
-    undoStack: [],
-    redoStack: [],
-    history: {},
-    historyAt: {},
-    scaleBars: {},
-    tilts: {},
-    stackFrames: {},
-    roiStats: {},
-  };
-}
 
 export const useViewer = create<ViewerState>((set, get) => ({
   order: [],
@@ -913,12 +97,12 @@ export const useViewer = create<ViewerState>((set, get) => ({
     return t;
   })(),
   accent: (() => {
-    const a = _pref<Accent>("accent", "violet");
+    const a = pref<Accent>("accent", "violet");
     document.documentElement.setAttribute("data-accent", a);
     return a;
   })(),
   density: (() => {
-    const d = _pref<Density>("density", "regular");
+    const d = pref<Density>("density", "regular");
     document.documentElement.setAttribute("data-density", d);
     return d;
   })(),
@@ -937,8 +121,8 @@ export const useViewer = create<ViewerState>((set, get) => ({
   tilts: {},
   stackFrames: {},
   savedRois: {},
-  fixedZoomW: _pref("fixedZoomW", 256),
-  fixedZoomH: _pref("fixedZoomH", 256),
+  fixedZoomW: pref("fixedZoomW", 256),
+  fixedZoomH: pref("fixedZoomH", 256),
   captureMode: "none",
   specnavPixel: null,
   layersOverlay: null,
@@ -946,17 +130,17 @@ export const useViewer = create<ViewerState>((set, get) => ({
   layersEditReq: null,
   layersFocusReq: null,
   panTool: false,
-  profileWidth: _pref("profileWidth", 1),
-  profileReduce: _pref<"mean" | "sum">("profileReduce", "mean"),
-  toolsLayout: _pref<"cards" | "unified">(
+  profileWidth: pref("profileWidth", 1),
+  profileReduce: pref<"mean" | "sum">("profileReduce", "mean"),
+  toolsLayout: pref<"cards" | "unified">(
     "toolsLayout",
     localStorage.getItem("fv_tools_layout") === "unified" ? "unified" : "cards",
   ),
   leftCol: false,
-  minimap: _pref("minimap", true),
-  colorbar: _pref("colorbarOnByDefault", false),
-  colorbarSide: _pref<ColorbarSide>("colorbarSide", "right"),
-  scaleBarVisible: _pref("scaleBarVisible", true),
+  minimap: pref("minimap", true),
+  colorbar: pref("colorbarOnByDefault", false),
+  colorbarSide: pref<ColorbarSide>("colorbarSide", "right"),
+  scaleBarVisible: pref("scaleBarVisible", true),
   rightCol: false,
   cmdk: false,
   shorts: false,
@@ -974,7 +158,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   currentWorkspace: null,
 
   openPaths: async (paths) => {
-    _ingest(set, await openSession(paths));
+    ingestImages(set, await openSession(paths));
     // recent-files list (checklist L) — successful path-opens only
     try {
       const prev = JSON.parse(
@@ -988,16 +172,16 @@ export const useViewer = create<ViewerState>((set, get) => ({
   },
 
   openFiles: async (files) => {
-    _ingest(set, await uploadFiles(files));
+    ingestImages(set, await uploadFiles(files));
   },
 
   /** Register derived/analysis result images in the library. */
-  ingest: (metas) => _ingest(set, metas),
+  ingest: (metas) => ingestImages(set, metas),
 
   /** Like ingest, but records each image on the undo stack (used by
    *  single-result operations: filters, transforms, FFT masks…). */
   ingestDerived: (metas) => {
-    _ingest(set, metas);
+    ingestImages(set, metas);
     set((s) => ({
       derivedTick: s.derivedTick + 1, // lineage signal (Live FFT, #7)
       undoStack: [
@@ -1043,7 +227,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   // current client state as the serializable session payload
   saveWorkspace: async (path) => {
     const s = get();
-    const r = await saveSession(path, _clientState(s));
+    const r = await saveSession(path, clientState(s));
     set({ status: `saved ${r.n_images} images → ${r.json_path}` });
   },
 
@@ -1058,7 +242,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   },
 
   saveWorkspaceNamed: async (name) => {
-    const r = await apiSaveWorkspaceNamed(name, _clientState(get()));
+    const r = await apiSaveWorkspaceNamed(name, clientState(get()));
     set({
       currentWorkspace: { slug: r.slug, name: r.name },
       status: `saved workspace “${r.name}” · ${r.n_images} images`,
@@ -1283,7 +467,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
       s.setStatus("select at least one image to make a group");
       return;
     }
-    const id = `g${++groupSeq}`;
+    const id = nextGroupId();
     const groupName = name?.trim() || `Group ${s.imageGroups.length + 1}`;
     set({
       imageGroups: [...s.imageGroups, { id, name: groupName, ids: members }],
@@ -1422,7 +606,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
         last && last.field === field && field !== "open"
           ? // coalesce consecutive edits of the same control into one step
             [...base.slice(0, -1), { ...last, label, display: next }]
-          : [...base, { id: ++historySeq, field, label, display: next }];
+          : [...base, { id: nextHistoryId(), field, label, display: next }];
       return {
         display,
         history: { ...s.history, [id]: log },
@@ -1441,7 +625,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
     }),
 
   addMeasure: (imageId, m) => {
-    const id = `m${++measureSeq}`;
+    const id = nextMeasureId();
     const measure = { ...m, id };
     set((s) => ({
       measures: {

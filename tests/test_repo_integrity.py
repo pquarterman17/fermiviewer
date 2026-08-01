@@ -47,7 +47,7 @@ FRONTEND_LEGACY_CAPS = {
     "components/workshops/EelsWorkshop.tsx": 677,
     "components/workshops/LayersWorkshop.tsx": 726,
     "components/workshops/StructureWorkshop.tsx": 1085,
-    "store/viewer.ts": 1778,
+    "store/viewer.ts": 962,
 }
 PURE_LAYERS = ("io", "calc", "ops")
 FORBIDDEN_IN_PURE = ("fastapi", "pydantic", "fermiviewer.routes", "starlette")
