@@ -4,12 +4,9 @@
 
 import { useRef, useState } from "react";
 
-import { measurePolyline, measureProfile, measureRoi } from "../../lib/api";
 import {
   imageToScreen,
-  physAngle,
   screenToImage,
-  tiltDist,
   type Size,
 } from "../../lib/geometry";
 import { useStageInfo } from "../../store/stage";
@@ -20,87 +17,8 @@ import {
   type Measure,
   type View,
 } from "../../store/viewer";
-
-const HANDLE_R = 5;
-
-/** SVG glyph for an endpoint handle. The hit-circle (transparent, R=8)
- *  is always rendered so draggability is consistent regardless of glyph.
- *  `angle` (radians) is the adjacent-segment direction — used by the
- *  "bar" glyph, a dimension-style tick drawn perpendicular to the line. */
-function EndpointGlyph({
-  cx,
-  cy,
-  sym,
-  stroke,
-  angle = 0,
-}: {
-  cx: number;
-  cy: number;
-  sym: EndSymbol;
-  stroke: string;
-  angle?: number;
-}) {
-  const r = HANDLE_R;
-  const bl = r + 2; // bar half-length
-  const px = -Math.sin(angle); // unit perpendicular
-  const py = Math.cos(angle);
-  const vis =
-    sym === "bar" ? (
-      <line
-        x1={cx + bl * px}
-        y1={cy + bl * py}
-        x2={cx - bl * px}
-        y2={cy - bl * py}
-        stroke={stroke}
-        strokeWidth={1.5}
-      />
-    ) : sym === "circle" ? (
-      <circle
-        cx={cx}
-        cy={cy}
-        r={r}
-        fill="var(--surface-0)"
-        stroke={stroke}
-        strokeWidth={1.5}
-      />
-    ) : sym === "square" ? (
-      <rect
-        x={cx - r}
-        y={cy - r}
-        width={r * 2}
-        height={r * 2}
-        fill="var(--surface-0)"
-        stroke={stroke}
-        strokeWidth={1.5}
-      />
-    ) : sym === "cross" ? (
-      <>
-        <line
-          x1={cx - r}
-          y1={cy - r}
-          x2={cx + r}
-          y2={cy + r}
-          stroke={stroke}
-          strokeWidth={1.5}
-        />
-        <line
-          x1={cx + r}
-          y1={cy - r}
-          x2={cx - r}
-          y2={cy + r}
-          stroke={stroke}
-          strokeWidth={1.5}
-        />
-      </>
-    ) : null; /* "none" → invisible; hit circle still captures events */
-  return (
-    <>
-      {vis}
-      {/* transparent hit target — always present for drag capture */}
-      <circle cx={cx} cy={cy} r={r + 3} fill="transparent" stroke="none" />
-    </>
-  );
-}
+import { EndpointGlyph, measureLabel } from "./measureGlyphs";
+import { useMeasureRefresh } from "./useMeasureRefresh";
 
 // stable empty result — a fresh [] per snapshot makes zustand's
 // useSyncExternalStore loop forever (React #185, the black-screen bug)
@@ -165,8 +83,6 @@ export default function MeasureOverlay({
 
   const toScreen = (p: { x: number; y: number }) =>
     imageToScreen(p.x * img.w, p.y * img.h, view, img, vp);
-  const toImagePx = (m: Measure) =>
-    m.pts.map((p) => ({ x: p.x * img.w, y: p.y * img.h }));
 
   const globalFont = OVERLAY_FONT_PX[overlay.size];
   const color = overlay.color;
@@ -176,31 +92,15 @@ export default function MeasureOverlay({
   const setMeasureFontSize = useViewer((s) => s.setMeasureFontSize);
   const defaultEndSymbol = overlay.endSymbol ?? "bar";
 
-  // ── post-edit analysis refresh (on handle release) ──
-  const refresh = (m: Measure) => {
-    const px = toImagePx(m);
-    // box-profile measures carry their own ⊥ width (the box's short axis)
-    const width = m.width ?? useViewer.getState().profileWidth;
-    const reduce = useViewer.getState().profileReduce;
-    if (m.kind === "profile") {
-      measureProfile(imageId, px[0], px[1], width, tilt, reduce)
-        .then((r) => setProfile({ ...r, measureId: m.id }))
-        .catch((e: Error) => setStatus(e.message));
-    } else if (m.kind === "polyline") {
-      measurePolyline(imageId, px, width, reduce)
-        .then((r) => setProfile({ ...r, measureId: m.id }))
-        .catch((e: Error) => setStatus(e.message));
-    } else if (m.kind === "roi" || m.kind === "ellipse") {
-      measureRoi(
-        imageId,
-        px[0],
-        px[1],
-        m.kind === "ellipse" ? "ellipse" : "rect",
-      )
-        .then((r) => setRoiStats(m.id, r))
-        .catch((e: Error) => setStatus(e.message));
-    }
-  };
+  // post-edit analysis refresh (on handle release)
+  const refresh = useMeasureRefresh({
+    imageId,
+    img,
+    tilt,
+    setProfile,
+    setStatus,
+    setRoiStats,
+  });
 
   const onHandleDown = (e: React.PointerEvent, mid: string, pt: number) => {
     e.stopPropagation();
@@ -261,46 +161,6 @@ export default function MeasureOverlay({
       });
     }
     refresh(m);
-  };
-
-  // #34: non-zero tilt corrects line-like labels; θ suffix flags it
-  const tiltOn = tilt != null && tilt.angle !== 0;
-  const theta = tiltOn ? " θ" : "";
-
-  const label = (m: Measure): string => {
-    const px = toImagePx(m);
-    switch (m.kind) {
-      case "distance":
-      case "profile": {
-        const d = tiltDist(px[0], px[1], pixelSize, tilt);
-        return d.unit === "cal"
-          ? `${fmt(d.value)} ${pixelUnit}${theta}`
-          : `${fmt(d.value)} px${theta}`;
-      }
-      case "polyline": {
-        let total = 0;
-        for (let i = 1; i < px.length; i++) {
-          total += tiltDist(px[i - 1], px[i], pixelSize, tilt).value;
-        }
-        return pixelSize != null
-          ? `${fmt(total)} ${pixelUnit}${theta}`
-          : `${fmt(total)} px${theta}`;
-      }
-      case "angle":
-        return px.length === 3
-          ? `${physAngle(px[1], px[0], px[2]).toFixed(1)}°`
-          : "";
-      case "roi":
-      case "ellipse": {
-        const s = roiStats[m.id];
-        return s ? `μ ${fmt(s.mean)} · σ ${fmt(s.std)}` : "…";
-      }
-      case "text":
-      case "arrow":
-      case "box":
-      case "circle":
-        return m.text ?? "";
-    }
   };
 
   const renderMeasure = (m: Measure, isPending = false) => {
@@ -588,7 +448,7 @@ export default function MeasureOverlay({
                   }
             }
           >
-            {label(m)}
+            {measureLabel(m, { img, pixelSize, pixelUnit, tilt, roiStats })}
           </text>
         )}
         {!isPending &&
@@ -773,11 +633,4 @@ export default function MeasureOverlay({
       )}
     </>
   );
-}
-
-function fmt(v: number): string {
-  if (!Number.isFinite(v)) return "—";
-  const a = Math.abs(v);
-  if (a !== 0 && (a < 0.01 || a >= 1e5)) return v.toExponential(2);
-  return Number(v.toPrecision(4)).toString();
 }

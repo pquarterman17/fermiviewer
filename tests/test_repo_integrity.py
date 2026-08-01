@@ -38,7 +38,7 @@ FRONTEND_MAX_STYLESHEET_LINES = 500
 # precedent: each cap is its current size, so a module may shrink but not grow.
 # Delete an entry as soon as that module is split below the default ceiling.
 FRONTEND_LEGACY_CAPS = {
-    "components/Stage/MeasureOverlay.tsx": 783,
+    "components/Stage/MeasureOverlay.tsx": 636,
     "components/Stage/Stage.tsx": 918,
     "components/workshops/DiffractionWorkshop.tsx": 784,
     "components/workshops/EelsWorkshop.tsx": 677,
