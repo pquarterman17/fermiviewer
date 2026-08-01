@@ -31,6 +31,7 @@ import DepthPlot from "./LayersDepthPlot";
 import LayersRoughnessDetail from "./LayersRoughnessDetail";
 import LayersMultiCompare from "./LayersMultiCompare";
 import { LayerStack, exportCsv } from "./layers/LayerStack";
+import { LayersControls } from "./layers/LayersControls";
 import { LayersMode } from "./layers/LayersMode";
 
 export { LayerStack } from "./layers/LayerStack";
@@ -239,104 +240,25 @@ export default function LayersWorkshop() {
         disabled={busy}
         onChange={analysisRoi.setChoice}
       />
-      <div className="fvd-ws-row">
-        <span className="k">Axis</span>
-        <div className="fvd-seg">
-          {(["auto", "y", "x"] as const).map((a) => (
-            <button
-              key={a}
-              className={`fvd-seg-btn${axis === a ? " active" : ""}`}
-              title={a === "auto" ? "auto-detect growth axis" : `layers stack along ${a}`}
-              onClick={() => setAxis(a)}
-            >
-              {a}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="fvd-ws-row">
-        <span className="k">Modality</span>
-        <div className="fvd-seg">
-          {(["haadf", "eels", "bf", "df"] as const).map((m) => (
-            <button
-              key={m}
-              className={`fvd-seg-btn${modality === m ? " active" : ""}`}
-              title={
-                m === "bf" || m === "df"
-                  ? "scale-space interface detection (rejects thickness fringes)"
-                  : `${m} (intensity-step detection)`
-              }
-              onClick={() => setModality(m)}
-            >
-              {m.toUpperCase()}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="fvd-ws-row">
-        <span className="k">Sensitivity</span>
-        <input
-          value={sensitivity}
-          style={{ width: 48 }}
-          title="Interface peak threshold (fraction of max gradient) — lower finds more"
-          onChange={(e) => setSensitivity(e.target.value)}
-        />
-        <span className="k"># layers</span>
-        <input
-          value={nLayers}
-          placeholder="auto"
-          style={{ width: 44 }}
-          title="Optional hint: keep only the (n−1) strongest interfaces"
-          onChange={(e) => setNLayers(e.target.value)}
-        />
-        <button
-          className="fvd-btn"
-          title="Detect layers & interface sharpness (σ_erf)"
-          onClick={run}
-          disabled={busy || !activeId}
-        >
-          {busy ? "Analyzing…" : "Analyze"}
-        </button>
-      </div>
-      <div className="fvd-ws-row">
-        <label className="k" style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <input
-            type="checkbox"
-            checked={waviness}
-            onChange={(e) => setWaviness(e.target.checked)}
-          />
-          waviness (σ_w)
-        </label>
-        <span className="k" style={{ fontSize: 10, opacity: 0.7 }}>
-          per-column trace → detrended robust roughness ±CI, spectrum, conformality
-        </span>
-      </div>
-      <div className="fvd-ws-row">
-        <label className="k" style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <input
-            type="checkbox"
-            checked={decurtain}
-            onChange={(e) => setDecurtain(e.target.checked)}
-          />
-          de-curtain (FIB)
-        </label>
-        <span className="k" style={{ fontSize: 10, opacity: 0.7 }}>
-          robust median collapse + FFT notch — suppresses FIB milling streaks
-        </span>
-      </div>
-      <div className="fvd-ws-row">
-        <span className="k">≈ foil t</span>
-        <input
-          value={foilT}
-          placeholder="optional"
-          style={{ width: 56 }}
-          title="Approximate TEM foil thickness (same units as the calibration). Roughness at lateral wavelengths shorter than the foil is projection-smeared — the PSD marks that region and σ_w reads as a lower bound."
-          onChange={(e) => setFoilT(e.target.value)}
-        />
-        <span className="k" style={{ fontSize: 10, opacity: 0.7 }}>
-          marks projection-limited wavelengths in the roughness spectrum
-        </span>
-      </div>
+      <LayersControls
+        axis={axis}
+        onAxisChange={setAxis}
+        modality={modality}
+        onModalityChange={setModality}
+        sensitivity={sensitivity}
+        onSensitivityChange={setSensitivity}
+        nLayers={nLayers}
+        onNLayersChange={setNLayers}
+        busy={busy}
+        activeId={activeId}
+        onRun={run}
+        waviness={waviness}
+        onWavinessChange={setWaviness}
+        decurtain={decurtain}
+        onDecurtainChange={setDecurtain}
+        foilT={foilT}
+        onFoilTChange={setFoilT}
+      />
 
       {result && (
         <AnalysisQualityCard
