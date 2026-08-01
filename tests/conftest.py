@@ -118,6 +118,28 @@ def rsciio_examples() -> Path:
 
 
 @pytest.fixture(scope="session")
+def edax_examples() -> Path:
+    """Path to ../test-data/edax/eds; skips when the corpus isn't present."""
+    p = EXAMPLE_DATA_ROOT / "edax" / "eds"
+    if not (p / "single_spect.spc").is_file():
+        pytest.skip(f"test-data EDAX corpus absent at {p} (sibling repo)")
+    return p
+
+
+@pytest.fixture(scope="session")
+def ripple_examples() -> Path:
+    """Path to ../test-data/ripple/microscopy; skips when the corpus isn't present.
+
+    The full rosettasciio ripple test matrix: every dtype x sdim x ndim
+    combination, with and without the optional `_meta` calibration keys.
+    """
+    p = EXAMPLE_DATA_ROOT / "ripple" / "microscopy"
+    if not (p / "test_ripple_sdim-1_ndim-0_float32.rpl").is_file():
+        pytest.skip(f"test-data ripple corpus absent at {p} (sibling repo)")
+    return p
+
+
+@pytest.fixture(scope="session")
 def gatan_microscopy() -> Path:
     """Path to ../test-data/gatan/microscopy; skips when absent.
 
