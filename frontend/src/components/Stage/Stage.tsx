@@ -17,15 +17,11 @@ import {
   applyFilter,
   fetchData16,
   grainsEdit,
-  measurePolyline,
-  measureProfile,
-  measureRoi,
   type Raster16,
 } from "../../lib/api";
 import { buildLabelLut, buildLut } from "../../lib/colormaps";
 import { autoWindow } from "../../lib/display";
 import {
-  boxProfileLine,
   fitView,
   imageToScreen,
   screenToImage,
@@ -36,7 +32,7 @@ import {
 import { loadPrefs } from "../../lib/prefs";
 import { replaceCrossSectionGrainsAfterEdit } from "../../store/crossSection";
 import { useScribble } from "../../store/scribble";
-import { rasterValue, useStageInfo } from "../../store/stage";
+import { useStageInfo } from "../../store/stage";
 import {
   DEFAULT_DISPLAY,
   useViewer,
@@ -58,75 +54,25 @@ import {
   buildCtxTarget,
   type CtxTarget,
 } from "./StageCtxMenu";
+import {
+  FixedZoomBadge,
+  GrainEditBar,
+  Readout,
+  StackStepper,
+} from "./StageChrome";
+import {
+  makeFinalizeBoxProfile,
+  makeFinalizeCalibration,
+  makeFinalizeMeasure,
+  type FinalizerCtx,
+} from "./stageFinalizers";
+import { CLICKS, snapHV, transformU16, WHEEL_K, type Pt } from "./stageUtils";
 
 export interface StageHandle {
   fit: () => void;
   actualSize: () => void;
   zoomBy: (factor: number) => void;
   nudge: (dx: number, dy: number) => void;
-}
-
-interface Pt {
-  x: number;
-  y: number;
-}
-
-const WHEEL_K = 0.0015;
-/** Apply a display intensity transform to a normalized-u16 raster
- *  (log: log1p rescale; equalize: 4096-bin CDF mapping). */
-function transformU16(
-  data: Uint16Array,
-  mode: "linear" | "log" | "equalize",
-): Uint16Array {
-  if (mode === "linear") return data;
-  const out = new Uint16Array(data.length);
-  if (mode === "log") {
-    const k = 65535 / Math.log1p(65535);
-    for (let i = 0; i < data.length; i++) {
-      out[i] = Math.round(Math.log1p(data[i]) * k);
-    }
-    return out;
-  }
-  // equalize: histogram → CDF → remap
-  const BINS = 4096;
-  const hist = new Float64Array(BINS);
-  for (let i = 0; i < data.length; i++) hist[data[i] >> 4]++;
-  const cdf = new Float64Array(BINS);
-  let acc = 0;
-  for (let b = 0; b < BINS; b++) {
-    acc += hist[b];
-    cdf[b] = acc;
-  }
-  const lo = cdf.find((v) => v > 0) ?? 0;
-  const span = acc - lo || 1;
-  const lut = new Uint16Array(BINS);
-  for (let b = 0; b < BINS; b++) {
-    lut[b] = Math.round(((cdf[b] - lo) / span) * 65535);
-  }
-  for (let i = 0; i < data.length; i++) out[i] = lut[data[i] >> 4];
-  return out;
-}
-
-const CLICKS: Record<string, number> = {
-  distance: 2,
-  profile: 2,
-  angle: 3,
-  polyline: Infinity, // vertices accumulate; double-click finishes
-  text: 1,
-  arrow: 2,
-  box: 2,
-  circle: 2,
-  calibrate: 2, // two-click line (snaps H/V) used to set the pixel size
-};
-
-/** Snap point b to a horizontal/vertical line through a (whichever axis the
- *  drag favours); `free` (Shift held) returns b unchanged. Used by the
- *  calibration line so a flat baked scale bar is easy to trace precisely. */
-function snapHV(a: Pt, b: Pt, free: boolean): Pt {
-  if (free) return b;
-  return Math.abs(b.x - a.x) >= Math.abs(b.y - a.y)
-    ? { x: b.x, y: a.y }
-    : { x: a.x, y: b.y };
 }
 
 const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
@@ -504,116 +450,18 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     Math.min(imgSize!.w, Math.max(1, Math.floor(ip.x) + 1)),
   ];
 
-  const finalizeMeasure = (kind: Measure["kind"], ptsImg: Pt[]) => {
-    if (!activeId || !imgSize) return;
-    const pts = ptsImg.map((p) => ({ x: p.x / imgSize.w, y: p.y / imgSize.h }));
-    let text: string | undefined;
-    if (
-      kind === "text" ||
-      kind === "arrow" ||
-      kind === "box" ||
-      kind === "circle"
-    ) {
-      text =
-        window.prompt(
-          kind === "text" ? "Annotation text:" : "Label (optional):",
-        ) ?? undefined;
-      if (kind === "text" && !text) {
-        setCaptureMode("none");
-        return; // text annotation without text is nothing
-      }
-    }
-    const mid = addMeasure(activeId, { kind, pts, text });
-    setCaptureMode("none");
-    // a slow response must not overwrite the dock plot/ROI stats once the
-    // user has navigated to a different image (matches runGrainEdit below)
-    const startId = activeId;
-    const width = useViewer.getState().profileWidth;
-    const reduce = useViewer.getState().profileReduce;
-    if (kind === "profile") {
-      measureProfile(activeId, ptsImg[0], ptsImg[1], width, null, reduce)
-        .then((r) => {
-          if (useViewer.getState().activeId === startId)
-            setProfile({ ...r, measureId: mid });
-        })
-        .catch((e: Error) => setStatus(e.message));
-    } else if (kind === "polyline") {
-      measurePolyline(activeId, ptsImg, width, reduce)
-        .then((r) => {
-          if (useViewer.getState().activeId === startId)
-            setProfile({ ...r, measureId: mid });
-        })
-        .catch((e: Error) => setStatus(e.message));
-    } else if (kind === "roi" || kind === "ellipse") {
-      measureRoi(
-        activeId,
-        ptsImg[0],
-        ptsImg[1],
-        kind === "ellipse" ? "ellipse" : "rect",
-      )
-        .then((r) => {
-          if (useViewer.getState().activeId === startId) setRoiStats(mid, r);
-        })
-        .catch((e: Error) => setStatus(e.message));
-    }
+  const finalizerCtx: FinalizerCtx = {
+    activeId,
+    imgSize,
+    setCaptureMode,
+    addMeasure,
+    setProfile,
+    setStatus,
+    setRoiStats,
   };
-
-  /** Calibration line: a plain distance measure, drawn with H/V snap and
-   *  left SELECTED so the inspector's Calibration card can turn it into a
-   *  pixel size. It vanishes once the user sets its real length there. */
-  const finalizeCalibration = (ptsImg: Pt[]) => {
-    if (!activeId || !imgSize) {
-      setCaptureMode("none");
-      return;
-    }
-    // reject a zero/near-zero line (same-pixel clicks, or H/V snap collapse)
-    // so we never leave an invisible, un-calibratable phantom measure
-    if (Math.hypot(ptsImg[1].x - ptsImg[0].x, ptsImg[1].y - ptsImg[0].y) < 1) {
-      setStatus("calibration line too short — click two distinct points");
-      setCaptureMode("none");
-      return;
-    }
-    const pts = ptsImg.map((p) => ({ x: p.x / imgSize.w, y: p.y / imgSize.h }));
-    const mid = addMeasure(activeId, { kind: "distance", pts });
-    setCaptureMode("none");
-    useViewer.getState().setSelectedMeasure(mid);
-    setStatus(
-      "calibration line drawn — set its real length in the Calibration card",
-    );
-  };
-
-  /** Box profile (user request 2026-06-09): drag a box → profile runs
-   *  along its LONG axis, ⊥-averaged across the short axis for more
-   *  signal. Stored as a profile measure with a per-measure width. */
-  const finalizeBoxProfile = (a: Pt, b: Pt) => {
-    if (!activeId || !imgSize) {
-      setCaptureMode("none");
-      return;
-    }
-    const line = boxProfileLine(a, b);
-    if (!line) {
-      setCaptureMode("none");
-      return;
-    }
-    const { p0, p1, width } = line;
-    const pts = [p0, p1].map((p) => ({
-      x: p.x / imgSize.w,
-      y: p.y / imgSize.h,
-    }));
-    const mid = addMeasure(activeId, { kind: "profile", pts, width });
-    setCaptureMode("none");
-    // don't apply a slow response after the user has switched images
-    const startId = activeId;
-    const tilt = useViewer.getState().tilts[activeId] ?? null;
-    const reduce = useViewer.getState().profileReduce;
-    measureProfile(activeId, p0, p1, width, tilt, reduce)
-      .then((r) => {
-        if (useViewer.getState().activeId !== startId) return;
-        setProfile({ ...r, measureId: mid });
-        setStatus(`profile integrated over ${width} px`);
-      })
-      .catch((e: Error) => setStatus(e.message));
-  };
+  const finalizeMeasure = makeFinalizeMeasure(finalizerCtx);
+  const finalizeCalibration = makeFinalizeCalibration(finalizerCtx);
+  const finalizeBoxProfile = makeFinalizeBoxProfile(finalizerCtx);
 
   const runGrainEdit = (op: "merge" | "split", points: [number, number][]) => {
     if (!activeId) return;
@@ -1068,167 +916,3 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
 });
 
 export default Stage;
-
-function GrainEditBar({
-  mode,
-  setMode,
-  pending,
-}: {
-  mode: "off" | "merge" | "split";
-  setMode: (m: "off" | "merge" | "split") => void;
-  pending: Pt | null;
-}) {
-  const hint =
-    mode === "merge"
-      ? pending
-        ? "click the 2nd grain"
-        : "click the 1st grain"
-      : mode === "split"
-        ? "click a grain to split"
-        : "";
-  return (
-    <div
-      className="fvd-glass fvd-grain-edit"
-      onPointerDown={(e) => e.stopPropagation()}
-    >
-      <span className="lbl">Grains</span>
-      <div className="fvd-seg">
-        <button
-          className={`fvd-seg-btn${mode === "merge" ? " active" : ""}`}
-          aria-pressed={mode === "merge"}
-          title="Merge — click two grains"
-          onClick={() => setMode(mode === "merge" ? "off" : "merge")}
-        >
-          Merge
-        </button>
-        <button
-          className={`fvd-seg-btn${mode === "split" ? " active" : ""}`}
-          aria-pressed={mode === "split"}
-          title="Split — click a grain"
-          onClick={() => setMode(mode === "split" ? "off" : "split")}
-        >
-          Split
-        </button>
-      </div>
-      {hint && <span className="hint">{hint}</span>}
-    </div>
-  );
-}
-
-function Readout() {
-  const cursor = useStageInfo((s) => s.cursor);
-  const raster = useStageInfo((s) => s.raster);
-  if (!cursor) return null;
-  const v = rasterValue(raster, cursor.x, cursor.y);
-  return (
-    <div className="fvd-glass fvd-readout">
-      {Math.floor(cursor.x)}, {Math.floor(cursor.y)}
-      {v !== null && ` · ${Number(v.toPrecision(5))}`}
-    </div>
-  );
-}
-
-// ── Fixed-size zoom badge (item #41 A2) ──────────────────────────────
-
-function FixedZoomBadge({ w, h }: { w: number; h: number }) {
-  const setFixedZoomDims = useViewer((s) => s.setFixedZoomDims);
-  const setCaptureMode = useViewer((s) => s.setCaptureMode);
-  const [wStr, setWStr] = useState(String(w));
-  const [hStr, setHStr] = useState(String(h));
-
-  const apply = () => {
-    const nw = Math.max(1, parseInt(wStr) || w);
-    const nh = Math.max(1, parseInt(hStr) || h);
-    setFixedZoomDims(nw, nh);
-  };
-
-  return (
-    <div className="fvd-glass fvd-fixed-zoom-badge">
-      <span>Fixed Zoom</span>
-      <input
-        value={wStr}
-        style={{ width: 44 }}
-        onChange={(e) => setWStr(e.target.value)}
-        onBlur={apply}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            apply();
-            e.stopPropagation();
-          }
-        }}
-        placeholder="W"
-        aria-label="Width in pixels"
-      />
-      <span>×</span>
-      <input
-        value={hStr}
-        style={{ width: 44 }}
-        onChange={(e) => setHStr(e.target.value)}
-        onBlur={apply}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            apply();
-            e.stopPropagation();
-          }
-        }}
-        placeholder="H"
-        aria-label="Height in pixels"
-      />
-      <span className="fvd-text-faint">px — click to place</span>
-      <button
-        className="fvd-icon-btn"
-        aria-label="Cancel fixed zoom"
-        title="Cancel"
-        onClick={() => setCaptureMode("none")}
-      >
-        ✕
-      </button>
-    </div>
-  );
-}
-
-// ── Stack frame stepper overlay (item #40 / D11) ─────────────────────
-
-function StackStepper({
-  imageId: _imageId,
-  frame,
-  total,
-  onStep,
-}: {
-  imageId: string;
-  frame: number;
-  total: number;
-  onStep: (delta: number) => void;
-}) {
-  return (
-    <div className="fvd-glass fvd-stack-stepper">
-      <button
-        className="fvd-icon-btn"
-        aria-label="Previous frame"
-        disabled={frame <= -1}
-        onClick={(e) => {
-          e.stopPropagation();
-          onStep(-1);
-        }}
-        title="Previous frame  ,"
-      >
-        ◀
-      </button>
-      <span className="fvd-stack-label">
-        {frame < 0 ? `Σ / ${total}` : `${frame + 1} / ${total}`}
-      </span>
-      <button
-        className="fvd-icon-btn"
-        aria-label="Next frame"
-        disabled={frame >= total - 1}
-        onClick={(e) => {
-          e.stopPropagation();
-          onStep(1);
-        }}
-        title="Next frame  ."
-      >
-        ▶
-      </button>
-    </div>
-  );
-}
