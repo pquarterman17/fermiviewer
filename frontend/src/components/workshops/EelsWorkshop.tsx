@@ -6,12 +6,6 @@ import { useEffect, useRef, useState } from "react";
 import uPlot from "uplot";
 
 import {
-  analyzeElnes,
-  eelsBackground,
-  eelsFit,
-  eelsFitMap,
-  eelsMap,
-  eelsQuantify,
   fetchSpectrum,
   type EelsBackgroundResult,
   type EelsFitResult,
@@ -20,14 +14,20 @@ import {
   type Spectrum,
 } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
-import {
-  csvBaseName,
-  downloadCsv,
-  eelsQuantToCsv,
-} from "../../lib/eelsQuantCsv";
 import EelsAdvanced from "./EelsAdvanced";
-import { EdgeEditor, type EdgeRow } from "./EelsEdgeEditor";
-import { EelsFitResults, EelsQuantResults } from "./EelsResults";
+import { type EdgeRow } from "./EelsEdgeEditor";
+import { KNOWN_EDGES, type EelsTab } from "./eels/eelsEdges";
+import EelsQuantifyPanel from "./eels/EelsQuantifyPanel";
+import {
+  makeAddEdge,
+  makeRunElnes,
+  makeRunFit,
+  makeRunMap,
+  makeRunModelFit,
+  makeRunModelFitMaps,
+  makeRunQuantify,
+  type EelsRunnersCtx,
+} from "./eels/eelsRunners";
 import { seedFitWindows } from "./eelsWindows";
 import RegionPicker, { type Rect1 } from "./RegionPicker";
 import SpectrumNavigationControl from "./SpectrumNavigationControl";
@@ -35,39 +35,6 @@ import { useProbeRegionToken } from "./useProbeRegionToken";
 import PlotContextSurface from "../plots/PlotContextSurface";
 import { useSpectrumProbe } from "./useSpectrumProbe";
 import { useEelsQuantMapJob } from "./useEelsQuantMapJob";
-let edgeSeq = 0;
-type EelsTab = "Explore" | "Quantify" | "Model fit" | "Advanced";
-
-/** Common EELS edge onsets (eV) for the edge-ID overlay. */
-const KNOWN_EDGES: [string, number][] = [
-  ["Li-K", 55],
-  ["B-K", 188],
-  ["C-K", 284],
-  ["N-K", 401],
-  ["O-K", 532],
-  ["F-K", 685],
-  ["Na-K", 1072],
-  ["Mg-K", 1305],
-  ["Al-K", 1560],
-  ["Si-K", 1839],
-  ["Si-L2,3", 99],
-  ["P-L2,3", 132],
-  ["S-L2,3", 165],
-  ["Ca-L2,3", 346],
-  ["Ti-L2,3", 456],
-  ["V-L2,3", 513],
-  ["Cr-L2,3", 575],
-  ["Mn-L2,3", 640],
-  ["Fe-L2,3", 708],
-  ["Co-L2,3", 779],
-  ["Ni-L2,3", 855],
-  ["Cu-L2,3", 931],
-  ["Zn-L2,3", 1020],
-  ["Sr-L2,3", 1940],
-  ["La-M4,5", 832],
-  ["Ce-M4,5", 883],
-  ["Gd-M4,5", 1185],
-];
 
 export default function EelsWorkshop({
   tab,
@@ -257,156 +224,37 @@ export default function EelsWorkshop({
     };
   }, [spectrum, fit, fitResult, showEdges, elementFilter]);
 
-  const runFit = () => {
-    if (!activeId) return;
-    const startId = activeId;
-    eelsBackground(activeId, [Number(bgLo), Number(bgHi)])
-      .then((r) => {
-        if (useViewer.getState().activeId === startId) setFit(r);
-      })
-      .catch((e: Error) => setStatus(`EELS fit: ${e.message}`));
+  // built fresh each render (these were already plain non-memoized consts,
+  // so the factory call sites below are semantically unchanged)
+  const runnersCtx: EelsRunnersCtx = {
+    activeId,
+    spectrum,
+    bgLo,
+    bgHi,
+    sigLo,
+    sigHi,
+    edges,
+    e0Kv,
+    betaMrad,
+    quantMethod,
+    setFit,
+    setQuant,
+    setFitResult,
+    setElnes,
+    setEdges,
+    setStatus,
   };
-
-  const runMap = () => {
-    if (!activeId) return;
-    eelsMap(
-      activeId,
-      [Number(sigLo), Number(sigHi)],
-      bgLo && bgHi ? [Number(bgLo), Number(bgHi)] : null,
-    )
-      .then((m) => {
-        // ingestDerived (not a raw setState) seeds history/undo/displayPrefs
-        // and bumps derivedTick, same as every other workshop's derived image
-        useViewer.getState().ingestDerived([m]);
-        setStatus(`map registered: ${m.name}`);
-      })
-      .catch((e: Error) => setStatus(`EELS map: ${e.message}`));
-  };
-
-  const addEdge = () =>
-    setEdges((rows) => [
-      ...rows,
-      {
-        key: ++edgeSeq,
-        element: "",
-        shell: "K",
-        z: 0,
-        onset_ev: 0,
-        signal_window: [0, 0],
-        bg_window: [Number(bgLo) || 0, Number(bgHi) || 0],
-      },
-    ]);
-
-  const runQuantify = () => {
-    if (!activeId) return;
-    const clean = edges.filter((e) => e.element && e.z > 0);
-    if (clean.length === 0) {
-      setStatus("EELS quantify: add at least one edge row");
-      return;
-    }
-    const startId = activeId;
-    eelsQuantify(
-      activeId,
-      clean.map(({ key: _key, ...e }) => e),
-      e0Kv,
-      betaMrad,
-      quantMethod,
-    )
-      .then((r) => {
-        if (useViewer.getState().activeId === startId) setQuant(r);
-      })
-      .catch((e: Error) => setStatus(`EELS quantify: ${e.message}`));
-  };
+  const runFit = makeRunFit(runnersCtx);
+  const runMap = makeRunMap(runnersCtx);
+  const addEdge = makeAddEdge(runnersCtx);
+  const runQuantify = makeRunQuantify(runnersCtx);
+  const runModelFit = makeRunModelFit(runnersCtx);
+  const runModelFitMaps = makeRunModelFitMaps(runnersCtx);
+  const runElnes = makeRunElnes(runnersCtx);
 
   const quantMapJob = useEelsQuantMapJob({
     activeId, edges, e0Kv, betaMrad, method: quantMethod,
   });
-
-  // model-based simultaneous fit (#2): background + all edges in one fit,
-  // at% from the fitted amplitude ratios (separates overlapping edges)
-  const runModelFit = () => {
-    if (!activeId) return;
-    const clean = edges.filter((e) => e.element && e.z > 0);
-    if (clean.length === 0) {
-      setStatus("EELS fit: add at least one edge row");
-      return;
-    }
-    const fitRange: [number, number] | null =
-      bgLo && spectrum
-        ? [Number(bgLo), spectrum.energy[spectrum.energy.length - 1]]
-        : null;
-    const startId = activeId;
-    eelsFit(
-      activeId,
-      clean.map(({ key: _key, ...e }) => e),
-      e0Kv,
-      betaMrad,
-      fitRange,
-    )
-      .then((r) => {
-        if (useViewer.getState().activeId !== startId) return;
-        setFitResult(r);
-        setStatus(
-          `EELS fit · χ²ᵣ ${r.reduced_chi2.toExponential(2)} · ` +
-            r.edges
-              .map((ed) => `${ed.element} ${ed.atomic_percent.toFixed(1)}%`)
-              .join(" · "),
-        );
-      })
-      .catch((e: Error) => setStatus(`EELS fit: ${e.message}`));
-  };
-
-  const runModelFitMaps = () => {
-    if (!activeId) return;
-    const clean = edges.filter((e) => e.element && e.z > 0);
-    if (clean.length === 0) {
-      setStatus("EELS fit maps: add at least one edge row");
-      return;
-    }
-    eelsFitMap(
-      activeId,
-      clean.map(({ key: _key, ...e }) => e),
-      e0Kv,
-      betaMrad,
-    )
-      .then((r) => {
-        useViewer.getState().ingestDerived(r.maps);
-        setStatus(
-          `EELS fit maps · ` +
-            r.elements
-              .map((el, i) => `${el} ${r.mean_atomic_percent[i].toFixed(1)}%`)
-              .join(" · "),
-        );
-      })
-      .catch((e: Error) => setStatus(`EELS fit maps: ${e.message}`));
-  };
-
-  const runElnes = () => {
-    if (!activeId || edges.length === 0) {
-      setStatus("ELNES: add an edge row first to define edge_onset");
-      return;
-    }
-    const edge = edges[edges.length - 1];
-    const onset = edge.onset_ev || 0;
-    if (onset <= 0) {
-      setStatus("ELNES: set edge onset (eV) in the edge row first");
-      return;
-    }
-    const fitWin: [number, number] = [
-      edge.bg_window[0] || onset - 100,
-      edge.bg_window[1] || onset - 10,
-    ];
-    const startId = activeId;
-    analyzeElnes(activeId, onset, fitWin)
-      .then((r) => {
-        if (useViewer.getState().activeId !== startId) return;
-        setElnes(r);
-        setStatus(
-          `ELNES: jump ${r.edge_jump.toExponential(2)} · onset ${r.edge_onset.toFixed(1)} eV`,
-        );
-      })
-      .catch((e: Error) => setStatus(`ELNES: ${e.message}`));
-  };
 
   if (!spectral) {
     return (
@@ -535,133 +383,30 @@ export default function EelsWorkshop({
         </>
       )}
       {(tab === "Quantify" || tab === "Model fit") && (
-        <>
-      <div className="fvd-ws-row">
-        <span className="k">E₀ kV</span>
-        <input
-          type="number"
-          value={e0Kv}
-          min={60}
-          max={1000}
-          step={10}
-          style={{ width: 52 }}
-          onChange={(e) => setE0Kv(Number(e.target.value) || 200)}
+        <EelsQuantifyPanel
+          tab={tab}
+          isCube={isCube}
+          e0Kv={e0Kv}
+          setE0Kv={setE0Kv}
+          betaMrad={betaMrad}
+          setBetaMrad={setBetaMrad}
+          quantMethod={quantMethod}
+          setQuantMethod={setQuantMethod}
+          addEdge={addEdge}
+          edges={edges}
+          setEdges={setEdges}
+          runQuantify={runQuantify}
+          quantMapJob={quantMapJob}
+          runModelFit={runModelFit}
+          runModelFitMaps={runModelFitMaps}
+          runElnes={runElnes}
+          fitResult={fitResult}
+          elnes={elnes}
+          quant={quant}
+          meta={meta}
+          activeId={activeId}
+          setStatus={setStatus}
         />
-        <span className="k">β mrad</span>
-        <input
-          type="number"
-          value={betaMrad}
-          min={1}
-          max={100}
-          step={1}
-          style={{ width: 44 }}
-          onChange={(e) => setBetaMrad(Number(e.target.value) || 10)}
-        />
-        <select
-          value={quantMethod}
-          onChange={(e) => setQuantMethod(e.target.value)}
-        >
-          <option value="powerlaw">power-law</option>
-          <option value="exponential">exponential</option>
-        </select>
-      </div>
-      <div className="fvd-ws-section">
-        <span>Edges</span>
-        <button
-          className="fvd-btn"
-          onClick={addEdge}
-          title="Add an edge row to quantify"
-        >
-          + edge
-        </button>
-        {tab === "Quantify" ? (
-          <>
-            <button
-              className="fvd-btn"
-              onClick={runQuantify}
-              disabled={edges.length === 0}
-              title="Quantify at% from the edge windows"
-            >
-              Quantify
-            </button>
-            <button
-              className="fvd-btn"
-              title="Per-pixel at% composition maps (SI cubes)"
-              onClick={quantMapJob.run}
-              disabled={edges.length === 0 || !isCube || quantMapJob.busy}
-            >
-              {quantMapJob.busy ? "Mapping…" : "Maps"}
-            </button>
-            {quantMapJob.progress && (
-              <span className="fvd-ws-note" role="status">
-                {quantMapJob.progress}
-              </span>
-            )}
-          </>
-        ) : (
-          <>
-            <button
-              className="fvd-btn"
-              title="Fit background and all edges simultaneously"
-              onClick={runModelFit}
-              disabled={edges.length === 0}
-            >
-              Fit spectrum
-            </button>
-            <button
-              className="fvd-btn"
-              title="Per-pixel model-fit at% maps (SI cubes)"
-              onClick={runModelFitMaps}
-              disabled={edges.length === 0 || !isCube}
-            >
-              Fit maps
-            </button>
-            <button
-              className="fvd-btn"
-              title="ELNES fine-structure extraction"
-              onClick={runElnes}
-              disabled={edges.length === 0}
-            >
-              ELNES
-            </button>
-          </>
-        )}
-      </div>
-      {tab === "Model fit" && fitResult && (
-        <EelsFitResults result={fitResult} />
-      )}
-      {tab === "Model fit" && elnes && (
-        <div className="fvd-ws-note">
-          ELNES · edge jump {elnes.edge_jump.toExponential(2)} · onset{" "}
-          {elnes.edge_onset.toFixed(1)} eV · {elnes.relative_energy.length} pts
-        </div>
-      )}
-      {edges.map((row, i) => (
-        <EdgeEditor
-          key={row.key}
-          row={row}
-          onChange={(r) =>
-            setEdges((rows) => rows.map((x, j) => (j === i ? r : x)))
-          }
-          onRemove={() => setEdges((rows) => rows.filter((_, j) => j !== i))}
-        />
-      ))}
-      {tab === "Quantify" && quant && (
-        <EelsQuantResults
-          result={quant}
-          onExport={() => {
-            const base = csvBaseName(meta?.name);
-            downloadCsv(
-              `${base}_eels_quant.csv`,
-              eelsQuantToCsv(quant, {
-                imageName: meta?.name ?? activeId ?? "",
-              }),
-            );
-            setStatus(`EELS: exported ${quant.elements.length} elements`);
-          }}
-        />
-      )}
-        </>
       )}
       <div hidden={tab !== "Advanced"}>
         <EelsAdvanced
