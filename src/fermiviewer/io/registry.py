@@ -13,6 +13,7 @@ from pathlib import Path
 from fermiviewer.datastruct import DataStruct
 from fermiviewer.io.bcf import load_bcf
 from fermiviewer.io.dm import load_dm
+from fermiviewer.io.dm5 import load_dm5
 from fermiviewer.io.emd import load_emd
 from fermiviewer.io.hspy import load_hspy
 from fermiviewer.io.images import load_image, load_tiff
@@ -32,6 +33,7 @@ class UnsupportedFormatError(ValueError):
 _LOADERS: dict[str, Callable[[Path], DataStruct]] = {
     ".dm3": load_dm,
     ".dm4": load_dm,
+    ".dm5": load_dm5,  # GMS 3.5+ HDF5 successor to DM3/DM4
     ".emd": load_emd,  # Velox + NCEM EMD (HDF5)
     ".hspy": load_hspy,  # HyperSpy native signal (HDF5)
     # shared HDF5 extensions — the sniffer hub routes EMD/hspy/NeXus/generic
