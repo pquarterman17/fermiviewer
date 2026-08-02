@@ -13,28 +13,55 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
-
-### Changed
-- **EDS and EELS are one workspace: Elemental Analysis.** They were separate
-  windows, which is how EDS accumulated zoom, per-element colours, integration
-  and the Maps workflow while EELS got none of them. Maps and Explore are now
-  the same components for both; only Quantify and Model fit swap their
-  internals. The modality comes from the cube (metadata → filename → format →
-  energy range) and is shown, with its reason, in a badge that can re-route an
-  ambiguous dataset.
-- Frontend code split three ways so "can this be shared?" has an answer:
-  `lib/spectrum/` + `components/spectrum/` (any spectrum), `lib/elemental/` +
-  `components/elemental/` (element-centric, modality-agnostic), and
-  `lib/eds/` (genuinely EDS physics). Most of what was in `lib/eds/` was never
-  EDS-specific.
-- The Inspector's EDS and EELS tabs became one **Elemental** tab. EELS mounted
-  a whole second workshop inline while EDS only launched one — the asymmetry
-  the merge removes.
-- The EDS Composite tab is gone; the Maps overlay supersedes it. The generic
-  compositor survives as `ChannelComposite` for the colour-overlay tool.
+## [0.1.23] - 2026-08-02
 
 ### Added
+- **4D-STEM support (Phase 1).** Open pixelated-detector datasets — Quantum
+  Detectors Merlin `.mib` (a from-scratch RAW reader whose quad-chip
+  descramble is validated byte-exact against decoded reference data) and 4D
+  HyperSpy `.hspy`/`.h5`/`.hdf5` cubes — through the normal Open flow. The
+  data model is lazy and memory-safe: the full cube is never loaded; a
+  navigation image and mean diffraction pattern are streamed at open. The new
+  **4D-STEM Viewer** (Analysis menu) links a real-space nav minimap to the
+  diffraction pattern at the probed position (click/drag to probe), with
+  BF / ABF / ADF / custom virtual-detector apertures — auto-centred on the
+  pattern's intensity centroid, previewed truthfully — and **Compute map**
+  produces the virtual-detector image as an ordinary image with the scan's
+  calibration, so measuring and exporting just work. Datasets can be closed
+  to release their file handles.
+- **Batch recipes now run spectral analysis**, not just filters: EELS
+  background-subtracted maps and core-loss quantification, EDS element maps
+  and Cliff-Lorimer/ZAF quantification, and radial intensity profiles are
+  all available as recipe steps (and to the Python API).
+- **Folder watch.** Pick a saved recipe and a directory in the Batch dialog;
+  new files dropped there are processed automatically as they land. An
+  active watch keeps the desktop app alive.
+- **Recorded macros are now batch recipes.** Recording captures analysis
+  operations (not raw requests), replays through the batch engine with
+  provenance, and converts to/from saved presets; steps with no batch
+  equivalent still record and replay, with the dialog reporting how many.
+- **Headless batch runs:** `fv --script recipe.json inputs... --out DIR`
+  runs a saved recipe (the exact `.fvbatch.json` the GUI exports) with no
+  server or browser — per input it writes the derived image (TIFF), every
+  value result (CSV + JSON) and a provenance log, with per-input failure
+  isolation and meaningful exit codes.
+- **Structured table export**: `POST /api/export/table` returns quant
+  tables as CSV/JSON matching the client exporter's conventions;
+  `Result.to_csv()` / `.to_json()` on the Python API.
+- **Scripting on-ramp:** worked examples in `examples/`, a README
+  *Scripting* section, and a generated API reference
+  (`docs/api-reference.md`) covering the whole public surface and every
+  batch operation's parameters.
+- **Custom Metadata, made legible.** The card now says exactly where values
+  go — naming the real sidecar file (e.g. `scan1.dm4.fvmeta.yaml`) — and
+  images with no file on disk (uploads, derived results) get a **Download
+  metadata file** button producing the identical sidecar to place next to
+  the original. An in-card *How this works* explains the config file, the
+  filename auto-fill pattern with a worked example, and the precedence
+  rule; the no-fields-yet state includes a copy-pasteable starter.
+- **File ▸ Recent Images** submenu — recents moved out of the top level of
+  the File menu, and all eight remembered files are listed (the flat list
+  capped at five).
 - **Synthetic spectrum-image generator** (`tools/make_synthetic_si.py`). Writes
   real `.hspy` cubes that open through the normal file path, with a
   `.truth.json` sidecar recording the composition and geometry that produced
@@ -61,13 +88,32 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   under the same background model the element map uses. Windows can be pinned
   to a region table (click to restore and frame, with CSV export).
 
-### Changed
-- **The EDS energy window is now set with shift+drag**, freeing a plain drag
-  for zoom.
-- Element-map "Add to library" can carry the element's colour onto the derived
-  image, published through the shared `custom` colormap slot.
-
 ### Fixed
+- **A single NaN detector pixel poisoned every virtual-detector map**, even
+  sitting far outside the aperture; masked-out pixels are now ignored.
+- **HDF5 files holding several signals could hide their 4D data** — if a
+  smaller 2D/3D signal sorted first the whole file went to the 2D loader.
+- 4D dataset lifecycle on Windows: closing now really releases file
+  handles (files are deletable), and use-after-close raises a clear error
+  instead of an opaque h5py one.
+- Non-finite energy calibration no longer produces JSON the frontend
+  cannot parse (the whole response used to fail, not just one field).
+- Long-running folder watches no longer grow memory for files that vanish
+  before stabilising; watch status now counts errors instead of showing
+  only the last one.
+- The CLI runner exits cleanly (code 2) on recipes that are not valid
+  UTF-8/JSON instead of tracebacking.
+- Aperture inputs are validated client-side — an invalid manual centre
+  used to serialise to *null* and silently become "auto-center".
+- JSON table export silently dropped all but the last of duplicate column
+  names; export filenames with non-Latin-1 characters no longer 500.
+- **Modal dialogs always stack above floating tool windows** (the Batch and
+  Export dialogs could open partly hidden behind the 4D viewer); the
+  z-layer ladder is now defined in one tested module.
+- The 4D nav minimap contains itself to the panel (a tall scan used to
+  push the workshop past the window height, hiding the pattern panel after
+  a compute), and the auto-centre aperture preview shows the centre that
+  will actually be used.
 - **The colour-overlay tool lost its palette.** Removing the stored colour from
   a composite channel left it resolving colours from the element registry keyed
   on truncated image names; TypeScript allowed the now-extraneous `color`
@@ -79,6 +125,29 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   device-pixel `bbox`.
 - Moving the EDS energy window or recolouring an element no longer destroys and
   rebuilds the spectrum plot on every frame; the overlay redraws in place.
+
+### Changed
+- **EDS and EELS are one workspace: Elemental Analysis.** They were separate
+  windows, which is how EDS accumulated zoom, per-element colours, integration
+  and the Maps workflow while EELS got none of them. Maps and Explore are now
+  the same components for both; only Quantify and Model fit swap their
+  internals. The modality comes from the cube (metadata → filename → format →
+  energy range) and is shown, with its reason, in a badge that can re-route an
+  ambiguous dataset.
+- Frontend code split three ways so "can this be shared?" has an answer:
+  `lib/spectrum/` + `components/spectrum/` (any spectrum), `lib/elemental/` +
+  `components/elemental/` (element-centric, modality-agnostic), and
+  `lib/eds/` (genuinely EDS physics). Most of what was in `lib/eds/` was never
+  EDS-specific.
+- The Inspector's EDS and EELS tabs became one **Elemental** tab. EELS mounted
+  a whole second workshop inline while EDS only launched one — the asymmetry
+  the merge removes.
+- The EDS Composite tab is gone; the Maps overlay supersedes it. The generic
+  compositor survives as `ChannelComposite` for the colour-overlay tool.
+- **The EDS energy window is now set with shift+drag**, freeing a plain drag
+  for zoom.
+- Element-map "Add to library" can carry the element's colour onto the derived
+  image, published through the shared `custom` colormap slot.
 
 ## [0.1.22] - 2026-07-26
 
