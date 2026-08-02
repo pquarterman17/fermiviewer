@@ -48,7 +48,13 @@ class Hspy4DFormatError(ValueError):
     """Raised for unreadable / non-4D-HyperSpy files."""
 
 
-def _first_experiment(f: h5py.File) -> h5py.Group | None:
+def _any_experiment(f: h5py.File) -> h5py.Group | None:
+    """First experiment group with any data array, regardless of ndim.
+
+    Used only as a fallback to build a clear "N-D signal is not 4D-STEM"
+    error message when the file has no 4D experiment at all — never to
+    decide 4D-ness itself (see `_first_experiment`).
+    """
     exps = f.get("Experiments")
     if not isinstance(exps, h5py.Group):
         return None
@@ -59,11 +65,38 @@ def _first_experiment(f: h5py.File) -> h5py.Group | None:
     return None
 
 
+def _first_experiment(f: h5py.File) -> h5py.Group | None:
+    """First experiment group whose data array is 4D, by iteration order.
+
+    A single ``.hspy``/``.h5`` file can hold more than one HyperSpy signal
+    under ``Experiments/``, and nothing requires the 4D-STEM one to be the
+    first (or only) one present. Checking ndim HERE — not after picking
+    "the first experiment with any data", as an earlier version did — is
+    what makes a mixed file (e.g. a <=3D experiment sorted before a 4D one)
+    resolve deterministically to its 4D signal instead of silently handing
+    the whole file to the <=3D loader and losing the 4D signal entirely.
+    Two 4D signals in one file resolve to the first by iteration order
+    (h5py's default group ordering is alphabetical by name).
+    """
+    exps = f.get("Experiments")
+    if not isinstance(exps, h5py.Group):
+        return None
+    for key in exps:
+        node = exps[key]
+        if isinstance(node, h5py.Group) and isinstance(node.get("data"), h5py.Dataset):
+            if node["data"].ndim == 4:
+                return node
+    return None
+
+
 def is_fourd_hdf5(path: str | Path) -> bool:
     """True if ``path`` is an HDF5 file holding a 4D HyperSpy signal.
 
-    Never raises: an unreadable file, or one with no matching layout, is
-    simply "not 4D" (the registry falls back to the existing <=3D loaders).
+    True as soon as ANY experiment in the file is 4D, regardless of how
+    many other (non-4D) experiments it also holds or what order they're
+    stored in — see `_first_experiment`. Never raises: an unreadable file,
+    or one with no matching layout, is simply "not 4D" (the registry falls
+    back to the existing <=3D loaders).
     """
     p = Path(path)
     try:
@@ -71,11 +104,7 @@ def is_fourd_hdf5(path: str | Path) -> bool:
             if not is_hdf5(fh.read(8)):
                 return False
         with h5py.File(p, "r") as f:
-            exp = _first_experiment(f)
-            if exp is None:
-                return False
-            data = exp["data"]
-            return isinstance(data, h5py.Dataset) and data.ndim == 4
+            return _first_experiment(f) is not None
     except OSError:
         return False
 
@@ -112,12 +141,19 @@ def load_hspy4d(path: str | Path) -> FourDDataset:
     try:
         exp = _first_experiment(f)
         if exp is None:
-            raise Hspy4DFormatError(f"{p.name}: no experiment with a data array")
-        data = exp["data"]
-        if data.ndim != 4:
+            # No 4D experiment anywhere in the file — `_any_experiment` picks
+            # whichever one DOES exist (if any) purely so the error message
+            # can report its actual dimensionality instead of a generic
+            # "no data array" that would be misleading for, say, a plain 2D
+            # HyperSpy image.
+            any_exp = _any_experiment(f)
+            if any_exp is None:
+                raise Hspy4DFormatError(f"{p.name}: no experiment with a data array")
+            data = any_exp["data"]
             raise Hspy4DFormatError(
                 f"{p.name}: {data.ndim}-D signal {data.shape} is not 4D-STEM"
             )
+        data = exp["data"]  # guaranteed 4D by `_first_experiment`
 
         axis_groups: dict[int, h5py.Group] = {}
         for key in exp:

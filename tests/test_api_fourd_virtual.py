@@ -313,6 +313,43 @@ def test_virtual_detector_center_at_exact_boundary_is_valid(client: TestClient) 
         assert r.status_code == 200, r.text
 
 
+def test_virtual_detector_outer_r_larger_than_detector_diagonal_covers_everything(
+    client: TestClient,
+) -> None:
+    """outer_r bigger than the corner-to-corner detector diagonal is a
+    valid (if wasteful) request — the mask just covers every pixel."""
+    fourd_id, disk, ring = _register_disk_ring_dataset()
+    r = client.post(
+        f"/api/fourd/{fourd_id}/virtual-detector",
+        json={
+            "center_ky": 5.0, "center_kx": 5.0,
+            "inner_r": 0.0, "outer_r": 1000.0,  # >> the 11x11 grid's diagonal
+            "shape": "circle", "name": None,
+        },
+    )
+    assert r.status_code == 200, r.text
+    arr = np.asarray(image_store.get(r.json()["id"]).data)
+    expected = np.array([[disk.sum(), ring.sum()], [disk.sum(), ring.sum()]])
+    np.testing.assert_array_equal(arr, expected)
+
+
+def test_virtual_detector_huge_but_finite_outer_r_does_not_overflow(
+    client: TestClient,
+) -> None:
+    fourd_id, _disk, _ring = _register_disk_ring_dataset()
+    r = client.post(
+        f"/api/fourd/{fourd_id}/virtual-detector",
+        json={
+            "center_ky": 5.0, "center_kx": 5.0,
+            "inner_r": 0.0, "outer_r": 1e18,
+            "shape": "circle", "name": None,
+        },
+    )
+    assert r.status_code == 200, r.text
+    arr = np.asarray(image_store.get(r.json()["id"]).data)
+    assert np.all(np.isfinite(arr))
+
+
 # ════════════════════════════════════════════════════════════════════
 # realdata — real HyperSpy-4D file through the real /session/open path
 # ════════════════════════════════════════════════════════════════════

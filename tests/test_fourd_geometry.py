@@ -164,6 +164,15 @@ def test_radial_coverage_default_n_bins_resolves_positive() -> None:
     assert counts.sum() == 100
 
 
+def test_radial_coverage_1x1_detector_degenerate_max_radius() -> None:
+    """A 1x1 detector centered on its only pixel has max_radius == 0 — the
+    explicit degenerate branch, not a division by zero."""
+    radii, counts = radial_coverage((1, 1), (0.0, 0.0))
+    assert counts.sum() == 1
+    assert counts[0] == 1
+    assert np.all(np.isfinite(radii))
+
+
 # ════════════════════════════════════════════════════════════════════
 # virtual_detector — streaming vs dense, block-size invariance
 # ════════════════════════════════════════════════════════════════════
@@ -207,6 +216,55 @@ def test_virtual_detector_out_dtype() -> None:
     result = virtual_detector([(0, cube)], mask, out_dtype=np.float32)
     assert result.dtype == np.float32
     np.testing.assert_allclose(result, 9.0)
+
+
+def test_virtual_detector_ignores_nan_outside_the_mask() -> None:
+    """Bug-hunt regression: a dead/masked detector pixel with NaN sitting
+    OUTSIDE the aperture (mask weight exactly 0 there) must never poison
+    the result via IEEE 754's `0 * nan == nan` — only a non-finite pixel
+    genuinely inside the mask should ever propagate."""
+    det_shape = (11, 11)
+    center = (5.0, 5.0)
+    mask = aperture_mask(det_shape, center, 0.0, 1.0, shape="circle")
+    assert not mask[0, 0]  # corner is well outside the small center disk
+
+    pattern = np.full(det_shape, 10.0)
+    pattern[0, 0] = np.nan
+    cube = pattern[None, None, :, :]
+
+    result = virtual_detector([(0, cube)], mask)
+    expected = pattern[mask].sum()  # NaN corner pixel excluded by the mask
+    np.testing.assert_allclose(result, [[expected]])
+    assert np.isfinite(result).all()
+
+
+def test_virtual_detector_still_propagates_nan_inside_the_mask() -> None:
+    """The flip side of the fix above: a non-finite pixel that IS inside
+    the aperture must still poison that scan position's result — this
+    isn't nansum, it's specifically "zero weight can't matter"."""
+    det_shape = (11, 11)
+    center = (5.0, 5.0)
+    mask = aperture_mask(det_shape, center, 0.0, 1.0, shape="circle")
+    assert mask[5, 5]  # dead center is inside the disk
+
+    pattern = np.full(det_shape, 10.0)
+    pattern[5, 5] = np.nan
+    cube = pattern[None, None, :, :]
+
+    result = virtual_detector([(0, cube)], mask)
+    assert np.isnan(result[0, 0])
+
+
+def test_virtual_detector_soft_mask_zero_weight_ignores_nan() -> None:
+    """Same guarantee for a non-boolean (soft-edged) mask: exact 0.0 weight
+    pixels are excluded regardless of value, per the module's documented
+    "used as-is as per-pixel weights" contract for float masks."""
+    soft_mask = np.array([[0.0, 0.5], [0.0, 1.0]])
+    pattern = np.array([[np.nan, 2.0], [np.nan, 4.0]])
+    cube = pattern[None, None, :, :]
+    result = virtual_detector([(0, cube)], soft_mask)
+    expected = 0.5 * 2.0 + 1.0 * 4.0
+    np.testing.assert_allclose(result, [[expected]])
 
 
 # ════════════════════════════════════════════════════════════════════

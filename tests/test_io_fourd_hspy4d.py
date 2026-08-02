@@ -119,6 +119,166 @@ def test_no_experiments_group_raises(tmp_path: Path) -> None:
     assert is_fourd_hdf5(fp) is False
 
 
+# ── multiple experiments in one file: bug-hunt pass ────────────────────
+#
+# A file can hold more than one HyperSpy signal under Experiments/. Which
+# one wins must be deterministic — and, critically, a non-4D experiment
+# sorting before a 4D one must never make the 4D signal invisible.
+
+
+def _write_multi_hspy(path: Path, experiments: dict[str, tuple[np.ndarray, list[dict]]]) -> Path:
+    with h5py.File(path, "w") as f:
+        for name, (data, axes) in experiments.items():
+            exp = f.create_group(f"Experiments/{name}")
+            exp.create_dataset("data", data=data)
+            for i, a in enumerate(axes):
+                g = exp.create_group(f"axis-{i}")
+                for k, v in a.items():
+                    g.attrs[k] = v
+    return path
+
+
+def test_non_4d_experiment_sorting_first_does_not_hide_a_4d_one(tmp_path: Path) -> None:
+    """The bug this pins: a 3D experiment named alphabetically before a 4D
+    one used to make `is_fourd_hdf5`/`load_hspy4d` pick the (wrong, non-4D)
+    first experiment and report "not 4D" — silently routing the WHOLE FILE
+    to the 3D loader and losing the 4D signal entirely, rather than
+    resolving to whichever experiment actually is 4D."""
+    data3d = np.zeros((4, 5, 6), dtype=np.float32)
+    data4d = np.arange(2 * 2 * 3 * 3, dtype=np.float32).reshape(2, 2, 3, 3)
+    fp = _write_multi_hspy(
+        tmp_path / "mixed.hspy",
+        {
+            "aaa_3d": (data3d, [_nav_axis("y"), _nav_axis("x"), _sig_axis("e", units="eV")]),
+            "zzz_4d": (data4d, [_nav_axis("y"), _nav_axis("x"), _sig_axis("ky"), _sig_axis("kx")]),
+        },
+    )
+    # sanity: h5py really does iterate "aaa_3d" before "zzz_4d" here
+    with h5py.File(fp, "r") as f:
+        assert list(f["Experiments"].keys()) == ["aaa_3d", "zzz_4d"]
+
+    assert is_fourd_hdf5(fp) is True
+    ds = load_hspy4d(fp)
+    try:
+        assert ds.scan_shape == (2, 2)
+        assert ds.det_shape == (3, 3)
+        np.testing.assert_array_equal(ds.pattern(0, 1), data4d[0, 1])
+    finally:
+        ds.close()
+
+
+def test_two_4d_experiments_resolves_to_first_by_iteration_order(tmp_path: Path) -> None:
+    """Deterministic, documented policy: when more than one experiment is
+    4D, the first by iteration order wins (h5py's default group ordering is
+    alphabetical by name)."""
+    first = np.zeros((2, 2, 3, 3), dtype=np.float32)
+    second = np.ones((2, 2, 3, 3), dtype=np.float32) * 99.0
+    fp = _write_multi_hspy(
+        tmp_path / "two4d.hspy",
+        {
+            "aaa": (first, [_nav_axis("y"), _nav_axis("x"), _sig_axis("ky"), _sig_axis("kx")]),
+            "zzz": (second, [_nav_axis("y"), _nav_axis("x"), _sig_axis("ky"), _sig_axis("kx")]),
+        },
+    )
+    ds = load_hspy4d(fp)
+    try:
+        np.testing.assert_array_equal(ds.pattern(0, 0), first[0, 0])
+        assert ds.metadata["hspy_experiment"] == "aaa"
+    finally:
+        ds.close()
+
+
+def test_no_4d_experiment_among_several_reports_actual_dimensionality(
+    tmp_path: Path,
+) -> None:
+    """When NO experiment is 4D, the error message should describe an
+    actual experiment's real shape (still a clear error), not a generic
+    "no data array" that would be misleading for a file that does have
+    signals, just none of them 4D."""
+    data2d = np.zeros((4, 5), dtype=np.float32)
+    data3d = np.zeros((4, 5, 6), dtype=np.float32)
+    fp = _write_multi_hspy(
+        tmp_path / "no4d.hspy",
+        {
+            "im": (data2d, [_nav_axis("y"), _nav_axis("x")]),
+            "cube": (data3d, [_nav_axis("y"), _nav_axis("x"), _sig_axis("e", units="eV")]),
+        },
+    )
+    assert is_fourd_hdf5(fp) is False
+    with pytest.raises(Hspy4DFormatError, match="not 4D-STEM"):
+        load_hspy4d(fp)
+
+
+# ── lifecycle: close(), held references, Windows file-handle release ──
+
+
+def test_closed_dataset_pattern_and_iter_scan_rows_raise_clear_errors(
+    tmp_path: Path,
+) -> None:
+    """Before this fix, accessing a closed hspy4d dataset raised an opaque
+    h5py RuntimeError ("Unable to synchronously get dataspace") instead of
+    a clear "dataset is closed" error."""
+    data = np.arange(2 * 3 * 4 * 5, dtype=np.float32).reshape(2, 3, 4, 5)
+    fp = _write_hspy(
+        tmp_path / "closeme.hspy", data,
+        [_nav_axis("y"), _nav_axis("x"), _sig_axis("ky"), _sig_axis("kx")],
+    )
+    ds = load_hspy4d(fp)
+    ds.close()
+    with pytest.raises(RuntimeError, match="closed"):
+        ds.pattern(0, 0)
+    with pytest.raises(RuntimeError, match="closed"):
+        next(ds.iter_scan_rows())
+
+
+def test_double_close_is_a_noop(tmp_path: Path) -> None:
+    data = np.zeros((2, 2, 3, 3), dtype=np.float32)
+    fp = _write_hspy(
+        tmp_path / "doubleclose.hspy", data,
+        [_nav_axis("y"), _nav_axis("x"), _sig_axis("ky"), _sig_axis("kx")],
+    )
+    ds = load_hspy4d(fp)
+    ds.close()
+    ds.close()  # must not raise
+
+
+def test_file_deletable_after_close_on_windows(tmp_path: Path) -> None:
+    """CRITICAL on Windows: the h5py.File handle must be fully released by
+    close() so the source file can be deleted/replaced afterward."""
+    import gc
+    import os
+
+    data = np.arange(2 * 2 * 3 * 3, dtype=np.float32).reshape(2, 2, 3, 3)
+    fp = _write_hspy(
+        tmp_path / "deleteme.hspy", data,
+        [_nav_axis("y"), _nav_axis("x"), _sig_axis("ky"), _sig_axis("kx")],
+    )
+    ds = load_hspy4d(fp)
+    held_pattern = ds.pattern(0, 0)
+    ds.close()
+    gc.collect()
+    os.remove(fp)  # must not raise PermissionError ([WinError 32])
+    np.testing.assert_array_equal(held_pattern, data[0, 0])
+
+
+def test_opening_the_same_file_twice_gives_independent_usable_datasets(
+    tmp_path: Path,
+) -> None:
+    data = np.arange(2 * 2 * 3 * 3, dtype=np.float32).reshape(2, 2, 3, 3)
+    fp = _write_hspy(
+        tmp_path / "dual.hspy", data,
+        [_nav_axis("y"), _nav_axis("x"), _sig_axis("ky"), _sig_axis("kx")],
+    )
+    ds_a = load_hspy4d(fp)
+    ds_b = load_hspy4d(fp)
+    np.testing.assert_array_equal(ds_a.pattern(0, 0), data[0, 0])
+    np.testing.assert_array_equal(ds_b.pattern(0, 0), data[0, 0])
+    ds_a.close()
+    # closing the first must not break the second
+    np.testing.assert_array_equal(ds_b.pattern(0, 1), data[0, 1])
+    ds_b.close()
+
+
 # ── sniffer: 2D/3D files are left to the existing loader ──────────────
 
 

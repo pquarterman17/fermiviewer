@@ -49,6 +49,14 @@ def virtual_detector(
     non-boolean mask is used as-is as per-pixel weights, which lets a
     soft-edged aperture be integrated the same way.
 
+    A detector pixel with exactly zero mask weight can never affect the
+    result, even if its raw value is non-finite (a dead/masked detector
+    pixel outside the aperture, common on real cameras): this is enforced
+    explicitly by zeroing those pixels before the reduction, because IEEE
+    754's ``0 * nan == nan`` would otherwise let a single such pixel poison
+    every aperture's map, everywhere in the scan, regardless of how far
+    outside the mask it sits.
+
     Peak memory is one block plus the small ``(rows, scan_x)`` reduction
     of it — the full cube is never resident. Each block's reduction
     (``np.tensordot`` contracting the two detector axes) is accumulated
@@ -60,6 +68,7 @@ def virtual_detector(
     in float64 internally regardless of the input dtype.
     """
     mask_f = np.asarray(mask, dtype=np.float64)
+    mask_nonzero = mask_f != 0.0
     pieces: list[tuple[int, np.ndarray]] = []
     scan_x: int | None = None
     max_row = 0
@@ -69,7 +78,8 @@ def virtual_detector(
         rows = block.shape[0]
         if scan_x is None:
             scan_x = block.shape[1]
-        reduced = np.tensordot(block, mask_f, axes=([2, 3], [0, 1]))
+        safe_block = np.where(mask_nonzero, block, 0.0)
+        reduced = np.tensordot(safe_block, mask_f, axes=([2, 3], [0, 1]))
         pieces.append((row_start, np.asarray(reduced, dtype=np.float64)))
         max_row = max(max_row, row_start + rows)
 

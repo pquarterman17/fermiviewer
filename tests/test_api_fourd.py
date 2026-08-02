@@ -117,6 +117,38 @@ def test_pattern_missing_query_params_is_422(client: TestClient) -> None:
     assert r.status_code == 422
 
 
+@pytest.mark.parametrize("bad_y", ["abc", "1.5", ""])
+def test_pattern_non_integer_y_is_422(client: TestClient, bad_y: str) -> None:
+    fourd_id, _cube = _register_dataset()
+    r = client.get(f"/api/fourd/{fourd_id}/pattern", params={"y": bad_y, "x": 0})
+    assert r.status_code == 422
+
+
+def test_requests_against_a_closed_dataset_are_404_not_500(client: TestClient) -> None:
+    """No route currently exposes closing a 4D dataset over HTTP, but the
+    store-level close() path (used internally, e.g. by session cleanup)
+    must leave every route 404ing cleanly afterward — never a 500 from a
+    stale reference somewhere."""
+    fourd_id, _cube = _register_dataset()
+    fourd_store.close(fourd_id)
+    assert client.get(f"/api/fourd/{fourd_id}/meta").status_code == 404
+    assert client.get(f"/api/fourd/{fourd_id}/nav").status_code == 404
+    assert client.get(f"/api/fourd/{fourd_id}/mean-pattern").status_code == 404
+    assert (
+        client.get(f"/api/fourd/{fourd_id}/pattern", params={"y": 0, "x": 0}).status_code
+        == 404
+    )
+    r = client.post(
+        f"/api/fourd/{fourd_id}/virtual-detector",
+        json={
+            "center_ky": 1.0, "center_kx": 1.0,
+            "inner_r": 0.0, "outer_r": 2.0,
+            "shape": "circle", "name": None,
+        },
+    )
+    assert r.status_code == 404
+
+
 def test_mean_pattern(client: TestClient) -> None:
     fourd_id, cube = _register_dataset()
     r = client.get(f"/api/fourd/{fourd_id}/mean-pattern")
@@ -213,3 +245,55 @@ def test_session_open_mixed_normal_and_fourd(client: TestClient, tmp_path: Path)
     assert is_fourd_flags == [False, True]
     assert len(client.get("/api/session/images").json()) == 1
     assert len(client.get("/api/fourd").json()) == 1
+
+
+def test_session_open_same_path_twice_registers_two_independent_datasets(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """Matches the normal (2D) image store's existing no-dedup policy
+    (SessionStore.open_paths never checks for an already-open path either)
+    — opening the same 4D path twice is allowed and gives two independently
+    usable, independently closeable entries, not a shared/reused one."""
+    mib_path = _write_minimal_mib(tmp_path / "dup.mib")
+    r1 = client.post("/api/session/open", json={"paths": [str(mib_path)]})
+    r2 = client.post("/api/session/open", json={"paths": [str(mib_path)]})
+    id1 = r1.json()[0]["id"]
+    id2 = r2.json()[0]["id"]
+    assert id1 != id2
+    assert len(client.get("/api/fourd").json()) == 2
+    assert client.get(f"/api/fourd/{id1}/pattern", params={"y": 0, "x": 0}).status_code == 200
+    assert client.get(f"/api/fourd/{id2}/pattern", params={"y": 0, "x": 0}).status_code == 200
+    fourd_store.close(id1)
+    # closing the first must not break the second
+    assert client.get(f"/api/fourd/{id2}/pattern", params={"y": 0, "x": 0}).status_code == 200
+    assert client.get(f"/api/fourd/{id1}/pattern", params={"y": 0, "x": 0}).status_code == 404
+
+
+# ── concurrency smoke ───────────────────────────────────────────────────
+
+
+def test_concurrent_pattern_and_virtual_detector_requests_do_not_crash(
+    client: TestClient,
+) -> None:
+    """FastAPI runs sync routes in a thread pool, so concurrent requests
+    against the same dataset are a real scenario, not a theoretical one."""
+    import threading
+
+    fourd_id, _cube = _register_dataset(rows=4, cols=4, det_h=6, det_w=6)
+    errors: list[tuple[str, int]] = []
+
+    def worker(i: int) -> None:
+        y, x = i % 4, (i * 3) % 4
+        r = client.get(f"/api/fourd/{fourd_id}/pattern", params={"y": y, "x": x})
+        if r.status_code != 200:
+            errors.append(("pattern", r.status_code))
+        r2 = client.get(f"/api/fourd/{fourd_id}/nav")
+        if r2.status_code != 200:
+            errors.append(("nav", r2.status_code))
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not errors

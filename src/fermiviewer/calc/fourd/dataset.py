@@ -115,10 +115,27 @@ class FourDDataset:
         self.block_rows = max(1, int(block_rows))
         self._nav_image: np.ndarray | None = None
         self._mean_pattern: np.ndarray | None = None
+        self._closed = False
+
+    def _check_open(self) -> None:
+        """Raise a clear error for any handle access after ``close()``.
+
+        Without this, a closed backend surfaces its own low-level failure
+        instead — a bare ``TypeError`` for MIB (its handle drops its memmap
+        reference to ``None`` on close) or an opaque h5py ``RuntimeError``
+        ("Unable to synchronously get dataspace") for HyperSpy-4D. Neither
+        tells a caller the dataset was closed.
+        """
+        if self._closed:
+            raise RuntimeError(
+                "I/O operation on a closed FourDDataset — call load_mib/"
+                "load_hspy4d again to reopen it"
+            )
 
     # ── single-pattern / block access ─────────────────────────────────
     def pattern(self, y: int, x: int) -> np.ndarray:
         """One diffraction pattern at scan position (y, x), shape det_shape."""
+        self._check_open()
         rows, cols = self.scan_shape
         if not (0 <= y < rows and 0 <= x < cols):
             raise IndexError(
@@ -135,6 +152,7 @@ class FourDDataset:
         ``n_rows <= block_rows`` (the last block may be shorter). Never
         materializes more than one block at a time.
         """
+        self._check_open()
         rows, _cols = self.scan_shape
         step = max(1, int(block_rows)) if block_rows is not None else self.block_rows
         for row0 in range(0, rows, step):
@@ -147,9 +165,11 @@ class FourDDataset:
         """Navigation image: detector-summed intensity per scan position.
 
         Computed once (streaming ``iter_scan_rows``) and cached; shape ==
-        scan_shape, dtype float64.
+        scan_shape, dtype float64. Once cached, remains readable even after
+        ``close()`` — no further handle access is needed to return it.
         """
         if self._nav_image is None:
+            self._check_open()
             self._nav_image = self._compute_nav_image()
         return self._nav_image
 
@@ -164,8 +184,12 @@ class FourDDataset:
 
     @property
     def mean_pattern(self) -> np.ndarray:
-        """Scan-averaged diffraction pattern; shape == det_shape, float64."""
+        """Scan-averaged diffraction pattern; shape == det_shape, float64.
+
+        Same close-then-still-readable-once-cached rule as ``nav_image``.
+        """
         if self._mean_pattern is None:
+            self._check_open()
             self._mean_pattern = self._compute_mean_pattern()
         return self._mean_pattern
 
@@ -179,7 +203,15 @@ class FourDDataset:
 
     # ── lifecycle ────────────────────────────────────────────────────
     def close(self) -> None:
-        """Release the underlying file handle (h5py.File.close / memmap)."""
+        """Release the underlying file handle (h5py.File.close / memmap).
+
+        Idempotent: a second call is a no-op (``_close_fn`` is invoked at
+        most once), regardless of whether the backend's own close is itself
+        safe to repeat.
+        """
+        if self._closed:
+            return
+        self._closed = True
         if self._close_fn is not None:
             self._close_fn()
 

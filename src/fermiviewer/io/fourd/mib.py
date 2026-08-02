@@ -103,6 +103,20 @@ def _parse_header(probe: bytes) -> _MibHeader:
         height = int(fields[5])
     except ValueError as e:
         raise MibFormatError(f"unparseable MQ1 header field: {e}") from None
+    # A negative/zero header_size is int()-parseable (e.g. a corrupted "-0001"
+    # field) but is never a valid byte offset — left unchecked, it silently
+    # slices with a negative start in `_frame` and only surfaces later as an
+    # opaque numpy reshape ValueError when a pattern is first decoded, not a
+    # clean MibFormatError at open time. Same reasoning for width/height <= 0
+    # (a MIB-specific message here beats FourDDataset's generic "det_shape
+    # must be positive" one, and it fires immediately rather than after the
+    # frame-size arithmetic below has already run on nonsense inputs).
+    if header_size <= 0:
+        raise MibFormatError(f"invalid header_size {header_size} (must be positive)")
+    if width <= 0 or height <= 0:
+        raise MibFormatError(
+            f"invalid image dimensions {width}x{height} (must be positive)"
+        )
     return _MibHeader(
         header_size=header_size,
         num_chips=num_chips,
@@ -180,7 +194,20 @@ class _MibHandle:
         row_bytes = np.asarray(self._raw[index, h.header_size : h.header_size + h.width * h.height])
         buf = row_bytes.reshape(h.height, h.width)
         fixed = _undo_raw_word_order(buf)
-        return _assemble_quad(fixed, h.num_chips)
+        frame = _assemble_quad(fixed, h.num_chips)
+        # Force an owned copy: for a single-chip acquisition whose width is
+        # exactly one 8-byte raw word (num_chips == 1, so `_assemble_quad`
+        # returns `fixed` unmodified), numpy's `.reshape()` after the
+        # word-order reversal can degrade to a VIEW still backed by the
+        # memmap (only 1 group means merging the group axis is stride-free).
+        # A caller holding onto that "one small pattern" — exactly what this
+        # lazy reader exists to make cheap — would then transitively keep the
+        # whole file memory-mapped open even after `close()`, which on
+        # Windows blocks deleting/replacing the file. Every other path here
+        # (multi-chip via np.concatenate, multi-word-group via the
+        # unavoidable copying reshape) already returns an owned array; this
+        # makes that guarantee unconditional.
+        return frame.copy()
 
     def __getitem__(self, key: Any) -> np.ndarray:
         if isinstance(key, tuple) and len(key) == 2:
