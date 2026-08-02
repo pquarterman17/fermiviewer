@@ -14,23 +14,38 @@ import { num } from "./menuTypes";
 
 function recentPaths(): string[] {
   try {
+    // The store persists up to 8 (viewer.ts fv_recent); the old flat listing
+    // showed only 5 to keep the File menu short — the submenu removes that
+    // constraint, so show everything persisted.
     return (
       JSON.parse(localStorage.getItem("fv_recent") ?? "[]") as string[]
-    ).slice(0, 5);
+    ).slice(0, 8);
   } catch {
     return [];
   }
+}
+
+/** "Recent Images" submenu entry: filenames only (the submenu heading says
+ *  what they are); disabled placeholder — no submenu key, so it can't
+ *  expand into an empty box — when nothing has been opened yet. */
+export function recentImagesEntry(store: MenuCtx["store"]): Entry {
+  const recents = recentPaths();
+  if (!recents.length) return { label: "Recent Images", disabled: true };
+  return {
+    label: "Recent Images",
+    submenu: recents.map((p) => ({
+      label: p.split(/[\\/]/).pop() ?? p,
+      action: () =>
+        store.openPaths([p]).catch((e: Error) => store.setStatus(e.message)),
+    })),
+  };
 }
 
 export function buildFileMenu(ctx: MenuCtx): Entry[] {
   const { store, openFiles } = ctx;
   return [
     { label: "Open…", shortcut: "⌘O", action: openFiles },
-    ...recentPaths().map((p) => ({
-      label: `↻ ${p.split(/[\\/]/).pop()}`,
-      action: () =>
-        store.openPaths([p]).catch((e: Error) => store.setStatus(e.message)),
-    })),
+    recentImagesEntry(store),
     {
       label: `Batch Export… (${store.selected.length})`,
       disabled: store.selected.length < 2,
