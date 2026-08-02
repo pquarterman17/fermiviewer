@@ -1,7 +1,9 @@
-"""4D-STEM endpoints: list metadata, navigation image, single/mean pattern.
+"""4D-STEM endpoints: list metadata, navigation image, single/mean pattern,
+virtual-detector imaging.
 
 Thin adapters only — all real work (streamed reductions, lazy access) lives
-in `calc/fourd/dataset.py`. Worst-case RAM per route:
+in `calc/fourd/dataset.py` and `calc/fourd/virtual.py`/`geometry.py`.
+Worst-case RAM per route:
 
   * `GET /api/fourd`             — metadata only, negligible.
   * `GET /api/fourd/{id}/meta`   — metadata only, negligible.
@@ -12,16 +14,35 @@ in `calc/fourd/dataset.py`. Worst-case RAM per route:
   * `GET /api/fourd/{id}/pattern`      — one det_shape array, negligible.
   * `GET /api/fourd/{id}/mean-pattern` — streams row-blocks into one
     det_shape float64 accumulator; same per-block cost as `/nav`.
+  * `POST /api/fourd/{id}/virtual-detector` — streams row-blocks (capped at
+    ~64 MB per in-flight block, see `_virtual_detector_block_rows`) into a
+    reciprocal-space-aperture reduction, then registers the resulting
+    scan-shaped map the same way `/nav` does. A null center additionally
+    streams the whole cube ONCE MORE via `ds4.mean_pattern` (cached after
+    first use) to seed an auto center — same per-block cost, an extra pass.
+
+NOTE naming: `routes/imaging_ops.py` has an UNRELATED `/analyze/vdf`
+endpoint (2D FFT-aperture masking of a single already-2D image). This
+module's virtual-detector endpoint is a completely different operation
+(reciprocal-space aperture integrated over every probe position of a 4D
+scan) and is deliberately never abbreviated "vdf" anywhere in its route
+path, calc functions, or tests, to avoid colliding with that name.
 """
 
 from __future__ import annotations
 
+from typing import Literal
+
 import numpy as np
 from fastapi import APIRouter, HTTPException, Response
+from pydantic import BaseModel
 
 from fermiviewer.calc.fourd.dataset import FourDDataset
+from fermiviewer.calc.fourd.geometry import aperture_mask, pattern_center
+from fermiviewer.calc.fourd.virtual import virtual_detector
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.models import FourDMeta, ImageMeta
+from fermiviewer.routes._arrays import value_error_as_422
 from fermiviewer.routes.images import encode_raster_u16
 from fermiviewer.session import UnknownImageError
 from fermiviewer.session import store as image_store
@@ -106,3 +127,124 @@ def fourd_mean_pattern(fourd_id: str) -> Response:
     """The scan-averaged diffraction pattern, uint16-encoded like `/pattern`."""
     ds4 = _get(fourd_id)
     return encode_raster_u16(np.asarray(ds4.mean_pattern, dtype=np.float64))
+
+
+# ── virtual-detector imaging (PLAN_4DSTEM #5) ──────────────────────────
+
+# One in-flight (rows, scan_x, det_ky, det_kx) block capped at ~64 MB,
+# computed per-dataset from det_shape/scan_x/dtype rather than a fixed row
+# count — a 4k direct-electron detector needs far fewer rows per block than
+# a small Merlin frame does for the same memory ceiling. (This is a
+# route-layer choice independent of FourDDataset's own default block_rows,
+# which is sized for its *unweighted* nav_image/mean_pattern reductions.)
+_VD_BLOCK_BYTES_CAP = 64 * 1024 * 1024
+
+
+def _virtual_detector_block_rows(ds4: FourDDataset) -> int:
+    scan_x = ds4.scan_shape[1]
+    det_ky, det_kx = ds4.det_shape
+    bytes_per_row = scan_x * det_ky * det_kx * ds4.dtype.itemsize
+    if bytes_per_row <= 0:
+        return ds4.scan_shape[0]
+    return max(1, _VD_BLOCK_BYTES_CAP // bytes_per_row)
+
+
+class VirtualDetectorRequest(BaseModel):
+    """Reciprocal-space aperture over ``det_shape``, ``center`` in 0-based
+    ``(ky, kx)`` float pixels (see `calc/fourd/geometry.py`). A null
+    ``center_ky``/``center_kx`` pair auto-seeds from
+    ``pattern_center(mean_pattern)``. ``inner_r`` is accepted but ignored
+    for ``shape="circle"`` (matching `geometry.aperture_mask`'s own
+    signature), so a client need not special-case it."""
+
+    center_ky: float | None = None
+    center_kx: float | None = None
+    inner_r: float
+    outer_r: float
+    shape: Literal["circle", "annulus"]
+    name: str | None = None
+
+
+def _validate_virtual_detector_request(
+    req: VirtualDetectorRequest, det_shape: tuple[int, int]
+) -> None:
+    if req.outer_r <= 0:
+        raise HTTPException(422, "outer_r must be > 0")
+    if req.shape == "annulus" and not (0 <= req.inner_r < req.outer_r):
+        raise HTTPException(422, "annulus requires 0 <= inner_r < outer_r")
+    has_center = (req.center_ky is not None, req.center_kx is not None)
+    if has_center[0] != has_center[1]:
+        raise HTTPException(
+            422,
+            "center_ky and center_kx must both be given, or both omitted "
+            "for auto-center",
+        )
+    if all(has_center):
+        assert req.center_ky is not None and req.center_kx is not None
+        if not (0 <= req.center_ky <= det_shape[0] - 1):
+            raise HTTPException(
+                422,
+                f"center_ky {req.center_ky} outside detector bounds "
+                f"[0, {det_shape[0] - 1}]",
+            )
+        if not (0 <= req.center_kx <= det_shape[1] - 1):
+            raise HTTPException(
+                422,
+                f"center_kx {req.center_kx} outside detector bounds "
+                f"[0, {det_shape[1] - 1}]",
+            )
+
+
+@router.post("/fourd/{fourd_id}/virtual-detector")
+def fourd_virtual_detector(fourd_id: str, req: VirtualDetectorRequest) -> ImageMeta:
+    """Integrate a reciprocal-space aperture over every probe position,
+    producing an ordinary 2D scan-shaped image (BF/ADF/ABF-style virtual
+    detector imaging) registered as a normal derived image — same
+    idempotent-free, always-register convention as `/nav` (repeat calls
+    with different parameters are different analyses, so each gets its own
+    derived image; unlike `/nav` there is no single canonical result to
+    de-duplicate against).
+
+    See the module docstring for the RAM budget and the `/analyze/vdf`
+    naming-collision note (this endpoint is NEVER abbreviated "vdf").
+    """
+    ds4 = _get(fourd_id)
+    _validate_virtual_detector_request(req, ds4.det_shape)
+
+    if req.center_ky is None or req.center_kx is None:
+        cy, cx = pattern_center(ds4.mean_pattern)
+    else:
+        cy, cx = req.center_ky, req.center_kx
+
+    # inner_r is documented as ignored for "circle", but aperture_mask
+    # validates radii >= 0 unconditionally — force a safe value rather than
+    # let an out-of-range-but-unused inner_r 422 a circle request.
+    mask_inner_r = 0.0 if req.shape == "circle" else req.inner_r
+    with value_error_as_422():
+        mask = aperture_mask(
+            ds4.det_shape, (cy, cx), mask_inner_r, req.outer_r, shape=req.shape
+        )
+
+    block_rows = _virtual_detector_block_rows(ds4)
+    map_arr = virtual_detector(ds4.iter_scan_rows(block_rows=block_rows), mask)
+
+    base_name = fourd_store.name(fourd_id)
+    name = req.name or f"vd({base_name}, r={req.inner_r:g}-{req.outer_r:g})"
+    struct = DataStruct(
+        data=np.ascontiguousarray(map_arr),
+        kind=DataKind.IMAGE,
+        axes=(ds4.scan_axes[0], ds4.scan_axes[1]),
+        metadata={
+            "source": name,
+            "parser": "fourd-virtual-detector",
+            "analysis": "virtual_detector",
+            "fourd_id": fourd_id,
+            "center_ky": float(cy),
+            "center_kx": float(cx),
+            "inner_r": float(req.inner_r),
+            "outer_r": float(req.outer_r),
+            "shape": req.shape,
+        },
+    )
+    img_id = image_store.add_derived(struct, name, fourd_id)
+    return ImageMeta.from_datastruct(img_id, image_store.name(img_id), struct)
