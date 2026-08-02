@@ -95,10 +95,16 @@ class OpSpec:
     dict and returns an ``OpResult``."""
 
     name: str
-    category: str  # "filter" | "analysis" | "geometry" | ...
+    category: str  # "filter" | "analysis" | "geometry" | "eels" | "eds" | ...
     fn: Callable[[DataStruct, dict[str, Any]], OpResult]
     params: dict[str, OpParam] = field(default_factory=dict)
     summary: str = ""
+    # Schema-time hint for /api/batch/operations: True for an op whose
+    # OpResult always carries `.value` (not a derived image), even when its
+    # `category` is a domain name (eels/eds/diffraction) rather than
+    # "analysis". category == "analysis" implies this without needing to set
+    # it explicitly (kept for the original filter/geometry/analysis set).
+    produces_value: bool = False
 
     def resolve_params(self, supplied: dict[str, Any] | None) -> dict[str, Any]:
         """Fill defaults, coerce/validate supplied values, reject unknowns."""
