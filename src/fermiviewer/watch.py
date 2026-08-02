@@ -77,6 +77,7 @@ class FolderWatcher:
         self._processed: set[str] = set()
         self._seen = 0
         self._handled = 0
+        self._errors = 0
         self._last_error: str | None = None
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -106,6 +107,7 @@ class FolderWatcher:
                 "dir": str(self.directory),
                 "seen": self._seen,
                 "processed": self._handled,
+                "errors": self._errors,
                 "last_error": self._last_error,
             }
 
@@ -118,6 +120,18 @@ class FolderWatcher:
             with self._lock:
                 self._last_error = str(exc)
             return
+        # A candidate whose path no longer shows up in this scan (deleted,
+        # renamed, or replaced mid-copy before it ever went stable) would
+        # otherwise sit in _candidates forever — unlike _processed, which is
+        # deliberately unbounded for the life of the watch (a path that DID
+        # fire must never be reconsidered), a never-stabilized file has no
+        # reason to be remembered once it's gone. Bounds _candidates to the
+        # files actually present in any one poll, for a watch that runs
+        # indefinitely over a directory that sees a lot of aborted/renamed
+        # writes (editor swap files, failed transfers, ...).
+        current = {entry.path for entry in entries if entry.is_file()}
+        for stale in self._candidates.keys() - current:
+            del self._candidates[stale]
         for entry in entries:
             self._consider(entry)
 
@@ -146,6 +160,13 @@ class FolderWatcher:
             self._on_file(path)
         except Exception as exc:  # noqa: BLE001 — surfaced via status(), never kills the loop
             with self._lock:
+                # last_error alone is a single overwritten string — a burst
+                # of failures (e.g. hundreds of files landing at once and
+                # tripping the shared job queue's admission bound) would
+                # otherwise show only its most recent message, silently
+                # losing the count of everything before it. errors is the
+                # cumulative counter status() exposes for that.
+                self._errors += 1
                 self._last_error = f"{path.name}: {exc}"
             return
         with self._lock:

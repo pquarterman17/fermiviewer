@@ -137,6 +137,85 @@ def test_units_length_mismatch_rejected() -> None:
         table_to_csv_bytes(["a", "b"], [[1, 2]], units=["only-one"])
 
 
+def test_units_longer_than_columns_also_rejected() -> None:
+    """The mismatch check must catch BOTH directions, not just too-few."""
+    with pytest.raises(TableShapeError):
+        table_to_csv_bytes(["a"], [[1]], units=["u1", "u2", "u3"])
+
+
+def test_duplicate_column_names_rejected() -> None:
+    """CSV can hold two same-named columns positionally, but to_json_bytes
+    keys each row by name — a repeated column would silently drop all but
+    the last cell under that name. Rejected in both formats so the same
+    table always means the same thing regardless of export format."""
+    with pytest.raises(TableShapeError, match="duplicate column"):
+        table_to_csv_bytes(["a", "b", "a"], [[1, 2, 3]])
+    with pytest.raises(TableShapeError, match="duplicate column"):
+        table_to_json_bytes(["a", "b", "a"], [[1, 2, 3]])
+
+
+def test_zero_rows() -> None:
+    csv_bytes = table_to_csv_bytes(["a", "b"], [])
+    assert csv_bytes.decode("utf-8").splitlines() == ["a,b"]
+    payload = json.loads(table_to_json_bytes(["a", "b"], []).decode("utf-8"))
+    assert payload == {"columns": ["a", "b"], "rows": []}
+
+
+def test_zero_columns() -> None:
+    csv_bytes = table_to_csv_bytes([], [])
+    assert csv_bytes.decode("utf-8") == "\n"
+    payload = json.loads(table_to_json_bytes([], []).decode("utf-8"))
+    assert payload == {"columns": [], "rows": []}
+
+
+def test_single_column() -> None:
+    csv_bytes = table_to_csv_bytes(["x"], [[1], [2]])
+    assert csv_bytes.decode("utf-8").splitlines() == ["x", "1", "2"]
+
+
+def test_mixed_cell_types_bool_str_none_in_one_row() -> None:
+    """bool must not be formatted as a number (Python's bool IS an int
+    subclass) — it should render as True/False text, not 1/0."""
+    csv_bytes = table_to_csv_bytes(
+        ["flag", "label", "missing", "count"], [[True, "note", None, 5]]
+    )
+    lines = csv_bytes.decode("utf-8").splitlines()
+    assert lines[1] == "True,note,,5"
+    payload = json.loads(
+        table_to_json_bytes(
+            ["flag", "label", "missing", "count"], [[True, "note", None, 5]]
+        ).decode("utf-8")
+    )
+    row = payload["rows"][0]
+    assert row["flag"] is True
+    assert row["missing"] is None
+
+
+def test_extreme_float_values_do_not_crash() -> None:
+    values = [-0.0, 1e308, 5e-320]  # negative zero, near-overflow, subnormal
+    csv_bytes = table_to_csv_bytes(["a", "b", "c"], [values])
+    assert len(csv_bytes.decode("utf-8").splitlines()) == 2  # header + 1 row
+    payload = json.loads(table_to_json_bytes(["a", "b", "c"], [values]).decode("utf-8"))
+    row = payload["rows"][0]
+    assert math.isclose(row["b"], 1e308)
+    assert row["c"] > 0  # subnormal preserved, not flushed to 0 or null
+
+
+def test_large_table_no_quadratic_blowup() -> None:
+    """100k-row timing sanity, not a benchmark: catches an accidental
+    O(n^2) regression (e.g. string-concatenating rows) without pinning a
+    tight time budget that would make the suite flaky on a slow runner."""
+    import time
+
+    rows = [[i, i * 0.5, f"row{i}"] for i in range(100_000)]
+    start = time.perf_counter()
+    csv_bytes = table_to_csv_bytes(["idx", "val", "label"], rows)
+    table_to_json_bytes(["idx", "val", "label"], rows)
+    elapsed = time.perf_counter() - start
+    assert csv_bytes.count(b"\n") == 100_001  # header + 100k rows
+    assert elapsed < 10.0
+
+
 def test_flatten_value_dict_scalar_and_list_fields() -> None:
     value = {"mean": 1.5, "std": 0.25, "shape": [12, 16]}
     columns, rows = flatten_value_dict(value)
@@ -256,6 +335,86 @@ def test_route_bad_format_is_422(client: TestClient) -> None:
         "columns": COLS, "rows": ROWS, "format": "xml",
     })
     assert r.status_code == 422
+
+
+def test_route_duplicate_columns_is_422(client: TestClient) -> None:
+    r = client.post("/api/export/table", json={
+        "columns": ["a", "a"], "rows": [[1, 2]], "format": "csv",
+    })
+    assert r.status_code == 422
+
+
+def test_route_units_longer_than_columns_is_422(client: TestClient) -> None:
+    r = client.post("/api/export/table", json={
+        "columns": ["a"], "rows": [[1]], "units": ["u1", "u2"], "format": "csv",
+    })
+    assert r.status_code == 422
+
+
+def test_route_filename_with_only_non_latin1_unicode_falls_back_gracefully(
+    client: TestClient,
+) -> None:
+    """A filename with no ASCII characters at all (e.g. CJK) must not crash
+    building the response — Starlette encodes header values as latin-1, so
+    an unfiltered CJK filename raises UnicodeEncodeError constructing the
+    Response rather than degrading gracefully."""
+    r = client.post("/api/export/table", json={
+        "columns": COLS, "rows": ROWS, "format": "csv",
+        "filename": "文件名",
+    })
+    assert r.status_code == 200
+    assert r.headers["content-disposition"].endswith('.csv"')
+
+
+def test_route_filename_with_mixed_ascii_and_unicode_keeps_the_ascii_part(
+    client: TestClient,
+) -> None:
+    r = client.post("/api/export/table", json={
+        "columns": COLS, "rows": ROWS, "format": "csv",
+        "filename": "sample Å⁻¹ data.csv",
+    })
+    assert r.status_code == 200
+    cd = r.headers["content-disposition"]
+    assert "sample" in cd
+    assert cd.endswith('.csv"')
+
+
+def test_route_filename_semicolon_does_not_inject_a_second_header_param(
+    client: TestClient,
+) -> None:
+    """A semicolon in the filename stays INSIDE the quoted value — it must
+    not be interpreted as starting a new Content-Disposition parameter."""
+    r = client.post("/api/export/table", json={
+        "columns": COLS, "rows": ROWS, "format": "csv",
+        "filename": 'evil"; injected=yes; foo="bar.csv',
+    })
+    assert r.status_code == 200
+    cd = r.headers["content-disposition"]
+    assert cd.count('"') == 2  # exactly one opening + one closing quote
+    assert "injected=yes" not in cd or cd.index('"') < cd.index("injected=yes")
+
+
+def test_route_filename_reserved_windows_device_name_does_not_crash(
+    client: TestClient,
+) -> None:
+    """CON/NUL/etc are only unsafe if THIS server writes the file to a
+    Windows path directly — this route only ever suggests a download name
+    to the client, so the reasonable bar is "does not crash", not
+    renaming it. Pins current behavior rather than mandating a rename."""
+    r = client.post("/api/export/table", json={
+        "columns": COLS, "rows": ROWS, "format": "csv", "filename": "CON",
+    })
+    assert r.status_code == 200
+    assert r.headers["content-disposition"].endswith('.csv"')
+
+
+def test_route_very_long_filename_does_not_crash(client: TestClient) -> None:
+    r = client.post("/api/export/table", json={
+        "columns": COLS, "rows": ROWS, "format": "csv",
+        "filename": "a" * 400,
+    })
+    assert r.status_code == 200
+    assert r.headers["content-disposition"].endswith('.csv"')
 
 
 def test_route_dict_rows_accepted(client: TestClient) -> None:

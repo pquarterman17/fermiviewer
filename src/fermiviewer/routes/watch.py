@@ -57,7 +57,7 @@ _lock = threading.Lock()
 _watcher: FolderWatcher | None = None
 _job_ids: list[str] = []
 _last_status: dict[str, Any] = {
-    "dir": None, "seen": 0, "processed": 0, "last_error": None,
+    "dir": None, "seen": 0, "processed": 0, "errors": 0, "last_error": None,
 }
 
 

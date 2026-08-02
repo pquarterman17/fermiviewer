@@ -170,6 +170,55 @@ def test_no_matching_inputs_exits_2(tmp_path: Path) -> None:
     assert not out_dir.exists()
 
 
+def test_directory_with_zero_openable_files_exits_2(tmp_path: Path) -> None:
+    """Distinct from a glob matching nothing: a real, existing directory
+    whose files are all non-openable extensions must still trip the
+    upfront "nothing matched" failure, not silently proceed with 0/0."""
+    in_dir = tmp_path / "in"
+    in_dir.mkdir()
+    (in_dir / "notes.txt").write_text("not an image", encoding="utf-8")
+    recipe_path = _bare_recipe(
+        tmp_path / "recipe.json", [{"op": "image_stats", "params": {}}]
+    )
+    out_dir = tmp_path / "out"
+
+    code = run_script(recipe_path, [str(in_dir)], out_dir)
+
+    assert code == 2
+    assert not out_dir.exists()
+
+
+def test_empty_steps_array_exits_2(tmp_path: Path) -> None:
+    recipe_path = _bare_recipe(tmp_path / "recipe.json", [])
+    img_path = _write_png(tmp_path / "sample.png")
+    out_dir = tmp_path / "out"
+    buf = io.StringIO()
+
+    code = run_script(recipe_path, [str(img_path)], out_dir, stdout=buf)
+
+    assert code == 2
+    assert not out_dir.exists()
+    assert "non-empty array" in buf.getvalue()
+
+
+def test_recipe_file_with_invalid_utf8_exits_2_not_a_traceback(tmp_path: Path) -> None:
+    """A recipe file that isn't valid UTF-8 must fail the same documented
+    "exit 2, nothing touched" way a missing file or bad JSON does —
+    UnicodeDecodeError is a ValueError subclass, not an OSError, so
+    load_recipe's file-read guard has to catch it explicitly too."""
+    recipe_path = tmp_path / "recipe.json"
+    recipe_path.write_bytes(b"\xff\xfe{\"steps\": [{\"op\": \"image_stats\"}]}")
+    img_path = _write_png(tmp_path / "sample.png")
+    out_dir = tmp_path / "out"
+    buf = io.StringIO()
+
+    code = run_script(recipe_path, [str(img_path)], out_dir, stdout=buf)
+
+    assert code == 2
+    assert not out_dir.exists()
+    assert "error:" in buf.getvalue()
+
+
 # ── directory input expansion ───────────────────────────────────────────
 
 
@@ -197,6 +246,84 @@ def test_directory_input_expands_to_openable_files(tmp_path: Path) -> None:
     # the provenance log is still written even with no image steps
     assert (out_dir / "a.provenance.json").is_file()
     assert "2/2 succeeded, 0 failed" in buf.getvalue()
+
+
+# ── --out / input-path edge cases ───────────────────────────────────────
+
+
+def test_out_path_colliding_with_an_existing_file_exits_2(tmp_path: Path) -> None:
+    """--out can't become a directory because a plain file already sits at
+    that path — a clear exit 2, never a raw OSError traceback."""
+    recipe_path = _bare_recipe(
+        tmp_path / "recipe.json", [{"op": "image_stats", "params": {}}]
+    )
+    img_path = _write_png(tmp_path / "sample.png")
+    out_as_file = tmp_path / "out"
+    out_as_file.write_text("I'm a file, not a directory", encoding="utf-8")
+    buf = io.StringIO()
+
+    code = run_script(recipe_path, [str(img_path)], out_as_file, stdout=buf)
+
+    assert code == 2
+    assert "error:" in buf.getvalue()
+    assert out_as_file.read_text(encoding="utf-8") == "I'm a file, not a directory"
+
+
+def test_out_dir_same_as_input_dir_does_not_reprocess_its_own_output(
+    tmp_path: Path,
+) -> None:
+    """Inputs are expanded ONCE, upfront, before any output is written —
+    so writing outputs directly into the same directory being scanned
+    must not pick up freshly-written files as more inputs for this run."""
+    in_dir = tmp_path / "data"
+    in_dir.mkdir()
+    _write_png(in_dir / "a.png", value=9)
+    recipe_path = _bare_recipe(
+        tmp_path / "recipe.json", [{"op": "image_stats", "params": {}}]
+    )
+    buf = io.StringIO()
+
+    code = run_script(recipe_path, [str(in_dir)], in_dir, stdout=buf)
+
+    assert code == 0
+    assert "1/1 succeeded, 0 failed" in buf.getvalue()
+    assert (in_dir / "a.image_stats.csv").is_file()
+
+
+def test_duplicate_input_listed_twice_is_deduped_to_one_run(tmp_path: Path) -> None:
+    """The same file passed twice (e.g. one literal path + a glob that
+    also matches it) must run once, not twice — pinning the resolve()
+    -based dedupe in _expand_inputs."""
+    img_path = _write_png(tmp_path / "sample.png")
+    recipe_path = _bare_recipe(
+        tmp_path / "recipe.json", [{"op": "image_stats", "params": {}}]
+    )
+    out_dir = tmp_path / "out"
+    buf = io.StringIO()
+
+    code = run_script(
+        recipe_path, [str(img_path), str(img_path)], out_dir, stdout=buf
+    )
+
+    assert code == 0
+    assert "1/1 succeeded, 0 failed" in buf.getvalue()
+
+
+def test_unicode_and_spaces_in_paths_round_trip(tmp_path: Path) -> None:
+    in_dir = tmp_path / "uni dir Å⁻¹"
+    in_dir.mkdir()
+    _write_png(in_dir / "sämple ünïcode.png")
+    recipe_path = _bare_recipe(
+        tmp_path / "recipe.json", [{"op": "image_stats", "params": {}}]
+    )
+    out_dir = tmp_path / "out ünï"
+    buf = io.StringIO()
+
+    code = run_script(recipe_path, [str(in_dir)], out_dir, stdout=buf)
+
+    assert code == 0, buf.getvalue()
+    assert "1/1 succeeded, 0 failed" in buf.getvalue()
+    assert (out_dir / "sämple ünïcode.image_stats.csv").is_file()
 
 
 # ── per-input failure isolation ─────────────────────────────────────────

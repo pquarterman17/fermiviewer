@@ -224,3 +224,70 @@ def test_batch_queue_saturation_is_429(client, monkeypatch) -> None:
     })
     assert response.status_code == 429
     assert response.json()["detail"] == "queue full"
+
+
+# ── json_safe: shared batch-result JSON coercion ────────────────────────
+
+
+def test_json_safe_handles_datetime_timedelta_complex_and_bytes() -> None:
+    """These types don't currently flow out of any registered op's
+    OpResult.value, but json_safe is the ONE choke point every op's value
+    passes through before a job result is considered done — passing one
+    of them through unchanged (the old fallback behavior) doesn't fail
+    here, it fails much later at actual JSON-response-encoding time with a
+    bare "Object of type X is not JSON serializable", far from this
+    function and easy to miss in review."""
+    import datetime
+    import json as jsonlib
+
+    from fermiviewer.routes.batch_ops import json_safe
+
+    assert json_safe(np.datetime64("2020-01-01")) == "2020-01-01"
+    assert json_safe(np.timedelta64(5, "D")) == "5 days"
+    assert json_safe(datetime.date(2021, 6, 1)) == "2021-06-01"
+    assert json_safe(datetime.timedelta(seconds=90)) == 90.0
+    assert json_safe(3 + 4j) == {"real": 3.0, "imag": 4.0}
+    assert json_safe(np.complex128(1 + 2j)) == {"real": 1.0, "imag": 2.0}
+    assert json_safe(b"hello") == "hello"
+    assert json_safe(np.bytes_(b"hi")) == "hi"
+
+    nested = {"t": np.datetime64("2021-06-01"), "vals": [1 + 2j, b"x", float("nan")]}
+    # every value above must survive an ACTUAL json.dumps, not just
+    # json_safe's own return value
+    encoded = jsonlib.dumps(json_safe(nested))
+    assert jsonlib.loads(encoded) == {
+        "t": "2021-06-01", "vals": [{"real": 1.0, "imag": 2.0}, "x", None],
+    }
+
+
+# ── register_final_image: NaN-axis-cal guard ────────────────────────────
+
+
+def test_register_final_image_with_nan_axis_origin_nulls_energy_bounds() -> None:
+    """AxisCal.calibrated only requires a finite, non-zero scale — a NaN
+    ORIGIN (finite scale notwithstanding) still produces a NaN-filled
+    axis. Left unguarded, energy_first/energy_last would carry that NaN
+    into the JSON response as a literal `NaN` token: valid to Python's own
+    json.dumps (allow_nan defaults True) but a SyntaxError to the
+    frontend's JSON.parse, which fails the ENTIRE response, not just this
+    field."""
+    import json as jsonlib
+
+    from fermiviewer.routes.batch_ops import register_final_image
+
+    src = DataStruct(
+        data=np.ones((2, 2)), kind=DataKind.IMAGE, axes=(AxisCal(), AxisCal()),
+    )
+    image_id = store.add_parsed(src, "source.png")
+    final = DataStruct(
+        data=np.ones((2, 2, 5)), kind=DataKind.SPECTRUM_IMAGE,
+        axes=(
+            AxisCal(1.0, 0.0, "nm"), AxisCal(1.0, 0.0, "nm"),
+            AxisCal(1.0, float("nan"), "eV"),  # finite scale, NaN origin
+        ),
+    )
+    out = register_final_image(image_id, "source.png", final, [])
+
+    assert out["energy_first"] is None
+    assert out["energy_last"] is None
+    assert "NaN" not in jsonlib.dumps(out)
