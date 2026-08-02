@@ -141,6 +141,37 @@ describe("macro record/replay", () => {
     await expect(replayMacro("a", () => {})).rejects.toThrow("boom");
   });
 
+  it("replay with zero recorded steps is a no-op that resolves immediately", async () => {
+    expect(loadMacro()).toEqual([]);
+    const seen: unknown[] = [];
+    await expect(replayMacro("a", (m) => seen.push(m))).resolves.toBe(0);
+    expect(seen).toEqual([]);
+  });
+
+  it("replay stops (fail-fast) when a legacy step's endpoint 404s — same policy as an op-step failure", async () => {
+    localStorage.setItem(
+      "fv_macro",
+      JSON.stringify([
+        { kind: "legacy", path: "/api/image/{id}/fft", body: {} },
+        { kind: "legacy", path: "/api/image/{id}/never-reached", body: {} },
+      ]),
+    );
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({ detail: "Not Found" }),
+    } as Response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(replayMacro("a", () => {})).rejects.toThrow(
+      "step 1 (/api/image/{id}/fft): Not Found",
+    );
+    // the second (renamed/removed-endpoint) step is never attempted —
+    // replay does not "mark failed and continue"
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+
   it("replays a legacy step through its original wire call", async () => {
     localStorage.setItem(
       "fv_macro",
@@ -184,6 +215,46 @@ describe("macro record/replay", () => {
     expect(loadMacro()).toEqual([]);
   });
 
+  it("tolerates a non-array top-level JSON value (e.g. a stray {})", () => {
+    localStorage.setItem("fv_macro", JSON.stringify({ not: "an array" }));
+    expect(loadMacro()).toEqual([]);
+  });
+
+  it("stopRecording surfaces a localStorage quota error instead of throwing", () => {
+    startRecording();
+    record("/api/filter", { image_id: "a", kind: "gaussian", params: { sigma: 2 } });
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("quota exceeded", "QuotaExceededError");
+    });
+
+    try {
+      let result: { total: number; legacy: number; persisted: boolean } | undefined;
+      expect(() => { result = stopRecording(); }).not.toThrow();
+
+      expect(result).toEqual({ total: 1, legacy: 0, persisted: false });
+      expect(isRecording()).toBe(false); // still stops recording even if the save failed
+    } finally {
+      setItem.mockRestore();
+    }
+  });
+
+  it("setMacroFromRecipe surfaces a localStorage quota error instead of throwing", () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("quota exceeded", "QuotaExceededError");
+    });
+
+    try {
+      let result: { n: number; persisted: boolean } | undefined;
+      expect(() => {
+        result = setMacroFromRecipe([{ op: "gaussian", params: { sigma: 2 } }]);
+      }).not.toThrow();
+
+      expect(result).toEqual({ n: 1, persisted: false });
+    } finally {
+      setItem.mockRestore();
+    }
+  });
+
   it("setMacroFromRecipe makes a saved preset replayable as a macro", () => {
     const saved = saveBatchRecipePreset(
       [], "Blur then flip",
@@ -195,9 +266,10 @@ describe("macro record/replay", () => {
     storeBatchRecipePresets([saved]);
 
     const preset = loadBatchRecipePresets()[0];
-    const n = setMacroFromRecipe(preset.steps);
+    const { n, persisted } = setMacroFromRecipe(preset.steps);
 
     expect(n).toBe(2);
+    expect(persisted).toBe(true);
     expect(loadMacro()).toEqual([
       { kind: "op", op: "gaussian", params: { sigma: 2 } },
       { kind: "op", op: "flipv", params: {} },

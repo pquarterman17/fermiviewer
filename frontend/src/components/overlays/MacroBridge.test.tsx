@@ -52,7 +52,7 @@ describe("MacroBridge", () => {
   });
 
   it("saves the current dialog steps as the recorded macro", () => {
-    setMacroFromRecipe.mockReturnValue(2);
+    setMacroFromRecipe.mockReturnValue({ n: 2, persisted: true });
     const steps = [
       { op: "gaussian", params: { sigma: 2 } },
       { op: "flipv", params: {} },
@@ -63,6 +63,18 @@ describe("MacroBridge", () => {
 
     expect(setMacroFromRecipe).toHaveBeenCalledWith(steps);
     expect(screen.getByText(/Saved 2 steps as the recorded macro/)).toBeVisible();
+  });
+
+  it("reports when saving the macro fails to persist (e.g. storage full)", () => {
+    setMacroFromRecipe.mockReturnValue({ n: 2, persisted: false });
+    const steps = [{ op: "gaussian", params: { sigma: 2 } }];
+    render(<MacroBridge steps={steps} disabled={false} onLoad={vi.fn()} />);
+
+    fireEvent.click(screen.getByText("Save Steps as Macro"));
+
+    expect(
+      screen.getByText("Could not save the macro (storage full or unavailable)"),
+    ).toBeVisible();
   });
 
   it("disables save when there are no steps", () => {

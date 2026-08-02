@@ -132,6 +132,19 @@ describe("ingest", () => {
     expect(s.images["a"].name).toBe("a.dm4");
   });
 
+  it("drops FourD-flagged entries from a mixed open-result instead of crashing, even when malformed", () => {
+    // a real 4D-STEM open result carries no `shape`/`kind`/`dtype` at all
+    // (see lib/api/core.ts's FourDMeta doc comment) — ingestImages must
+    // never try to treat one as an ImageMeta, whether or not the rest of
+    // its FourD-specific fields (scan_axes etc.) are even present.
+    const malformedFourD = { id: "d1", name: "d1.mib", is_fourd: true } as unknown as ImageMeta;
+    useViewer.getState().ingest([meta("a"), malformedFourD]);
+    const s = useViewer.getState();
+    expect(s.order).toEqual(["a"]);
+    expect(s.images["d1"]).toBeUndefined();
+    expect(s.activeId).toBe("a");
+  });
+
   it("re-ingesting an id updates meta without duplicating order", () => {
     const { ingest } = useViewer.getState();
     ingest([meta("a")]);

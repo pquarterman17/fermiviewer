@@ -37,10 +37,12 @@ export default function MacroBridge({ steps, disabled, onLoad }: MacroBridgeProp
   };
 
   const saveAsMacro = () => {
-    const n = setMacroFromRecipe(steps);
+    const { n, persisted } = setMacroFromRecipe(steps);
     setMessage(
-      `Saved ${n} step${n === 1 ? "" : "s"} as the recorded macro — ` +
-        "replay via Image ▸ Batch & Macro ▸ Replay Macro",
+      persisted
+        ? `Saved ${n} step${n === 1 ? "" : "s"} as the recorded macro — ` +
+            "replay via Image ▸ Batch & Macro ▸ Replay Macro"
+        : "Could not save the macro (storage full or unavailable)",
     );
   };
 

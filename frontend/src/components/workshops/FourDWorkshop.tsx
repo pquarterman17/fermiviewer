@@ -33,6 +33,7 @@ export default function FourDWorkshop() {
   const selectedId = useFourD((s) => s.selectedId);
   const busyList = useFourD((s) => s.busyList);
   const busyNav = useFourD((s) => s.busyNav);
+  const status = useFourD((s) => s.status);
   const fetchDatasets = useFourD((s) => s.fetchDatasets);
   const selectDataset = useFourD((s) => s.selectDataset);
   const showNavImage = useFourD((s) => s.showNavImage);
@@ -51,6 +52,11 @@ export default function FourDWorkshop() {
       <div className="fvd-ws-empty">
         {busyList ? (
           "Loading 4D-STEM datasets…"
+        ) : status ? (
+          // a failed /api/fourd list fetch (network error, 500, …) — surface
+          // it instead of silently falling through to the generic empty
+          // hint, which would otherwise read as "there's nothing to open"
+          <p className="fvd-ws-note">{status}</p>
         ) : (
           <>
             <p>

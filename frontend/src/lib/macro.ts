@@ -40,13 +40,31 @@ export function startRecording(): void {
   steps = [];
 }
 
-/** Stop + persist; returns the total captured steps and how many of those
+/** Stop + persist; returns the total captured steps, how many of those
  *  have no server-op equivalent (recorded verbatim, replayable, but not
- *  batchable as a recipe/preset). */
-export function stopRecording(): { total: number; legacy: number } {
+ *  batchable as a recipe/preset), and whether the save actually persisted
+ *  (false on a localStorage quota/serialization error — the caller should
+ *  tell the user rather than let this throw out of a menu action). */
+export function stopRecording(): { total: number; legacy: number; persisted: boolean } {
   recording = false;
-  localStorage.setItem(KEY, JSON.stringify(steps));
-  return { total: steps.length, legacy: steps.filter((s) => s.kind === "legacy").length };
+  const persisted = trySetItem(KEY, JSON.stringify(steps));
+  return {
+    total: steps.length,
+    legacy: steps.filter((s) => s.kind === "legacy").length,
+    persisted,
+  };
+}
+
+/** localStorage.setItem can throw (quota exceeded, private-browsing
+ *  restrictions, serialization edge cases) — callers here run inside menu
+ *  actions with no surrounding try/catch, so this must never propagate. */
+function trySetItem(key: string, value: string): boolean {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Called by the api layer on every POST. No-op unless recording. */
@@ -112,11 +130,14 @@ export function macroLegacyCount(macro: MacroStep[] = loadMacro()): number {
 }
 
 /** Overwrite the persisted macro with a plain op recipe (e.g. a loaded
- *  preset) so it becomes replayable via `replayMacro`. Returns the step count. */
-export function setMacroFromRecipe(recipeSteps: BatchRecipeStep[]): number {
+ *  preset) so it becomes replayable via `replayMacro`. Returns the step
+ *  count and whether the save actually persisted (see `trySetItem`). */
+export function setMacroFromRecipe(
+  recipeSteps: BatchRecipeStep[],
+): { n: number; persisted: boolean } {
   const next: MacroStep[] = recipeSteps.map(({ op, params }) => ({ kind: "op", op, params }));
-  localStorage.setItem(KEY, JSON.stringify(next));
-  return next.length;
+  const persisted = trySetItem(KEY, JSON.stringify(next));
+  return { n: next.length, persisted };
 }
 
 /** Replay the stored macro starting from `startId`. Every produced image is
