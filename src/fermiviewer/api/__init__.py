@@ -95,6 +95,26 @@ class Result:
             return self._image._repr_html_()
         return f"<b>{self._r.op}</b><pre>{self._r.value}</pre>"
 
+    def to_csv(self) -> bytes:
+        """A dict-shaped ``.value`` (image_stats/noise/roughness/...) as a
+        one-row CSV — delegates to calc/table_export.py's flatten+serialize
+        helpers (Scripting #4)."""
+        from fermiviewer.calc.table_export import flatten_value_dict, table_to_csv_bytes
+
+        if not isinstance(self._r.value, dict):
+            raise TypeError("to_csv() requires a dict-shaped .value result")
+        columns, rows = flatten_value_dict(self._r.value)
+        return table_to_csv_bytes(columns, rows)
+
+    def to_json(self) -> bytes:
+        """A dict-shaped ``.value`` as one-row-table JSON (see ``to_csv``)."""
+        from fermiviewer.calc.table_export import flatten_value_dict, table_to_json_bytes
+
+        if not isinstance(self._r.value, dict):
+            raise TypeError("to_json() requires a dict-shaped .value result")
+        columns, rows = flatten_value_dict(self._r.value)
+        return table_to_json_bytes(columns, rows)
+
 
 class Image:
     """A loaded dataset: a thin, notebook-friendly wrapper over a
