@@ -18,6 +18,7 @@ const CrossSectionGuide = lazy(() => import("../workshops/CrossSectionGuide"));
 const NoiseWorkshop = lazy(() => import("../workshops/NoiseWorkshop"));
 const InterfaceWidthWorkshop = lazy(() => import("../workshops/InterfaceWidthWorkshop"));
 const DefectWorkshop = lazy(() => import("../workshops/DefectWorkshop"));
+const FourDWorkshop = lazy(() => import("../workshops/FourDWorkshop"));
 
 const titles: Record<ToolKind, string> = {
   // Both kinds open the one workspace; the title says so, and the
@@ -36,6 +37,7 @@ const titles: Record<ToolKind, string> = {
   noise: "Noise Analysis",
   "interface-width": "Interface Width",
   defects: "Defect Analysis",
+  fourd: "4D-STEM Viewer",
 };
 
 const defaultWidths: Partial<Record<ToolKind, number>> = {
@@ -51,6 +53,7 @@ const defaultWidths: Partial<Record<ToolKind, number>> = {
   noise: 620,
   "interface-width": 620,
   defects: 620,
+  fourd: 640,
 };
 
 export default function ToolWindows() {
@@ -64,7 +67,7 @@ export default function ToolWindows() {
       y={tool.y}
       z={tool.z}
       width={defaultWidths[tool.kind] ?? 360}
-      height={["eds", "eels", "diffraction"].includes(tool.kind) ? 620 : undefined}
+      height={["eds", "eels", "diffraction", "fourd"].includes(tool.kind) ? 620 : undefined}
     >
       <Suspense
         fallback={
@@ -111,5 +114,7 @@ function Workshop({ kind }: { kind: ToolKind }) {
       return <InterfaceWidthWorkshop />;
     case "defects":
       return <DefectWorkshop />;
+    case "fourd":
+      return <FourDWorkshop />;
   }
 }

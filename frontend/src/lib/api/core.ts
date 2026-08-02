@@ -27,6 +27,19 @@ export interface Histogram {
   counts: number[];
 }
 
+/** Wire form of `fermiviewer.datastruct.AxisCal` (models.py's AxisCalOut).
+ *  value = (index − origin) × scale; calibrated iff scale is finite/nonzero
+ *  AND units is non-empty (mirrors AxisCal.calibrated). */
+export interface AxisCalOut {
+  scale: number;
+  origin: number;
+  units: string;
+}
+
+export function isAxisCalibrated(a: AxisCalOut): boolean {
+  return Number.isFinite(a.scale) && a.scale !== 0 && a.units !== "";
+}
+
 /** A 4D-STEM dataset (PLAN_4DSTEM) — deliberately NOT an ImageMeta shape
  *  (no `kind`/`shape` raster fields): it isn't a normal image and has no
  *  render pipeline yet. `is_fourd` discriminates it in a mixed open-result
@@ -39,6 +52,8 @@ export interface FourDMeta {
   scan_shape: number[];
   det_shape: number[];
   dtype: string;
+  scan_axes: AxisCalOut[];
+  det_axes: AxisCalOut[];
   nav_available: boolean;
 }
 
@@ -120,13 +135,10 @@ export interface Raster16 {
   nFrames: number | null;
 }
 
-/** Raw normalized-uint16 raster for the WebGL LUT shader.
- *  For spectrum_image (stack) sources, pass `frame` (0-based) to select a
- *  specific channel; omit to get the energy-summed view. */
-export async function fetchData16(id: string, frame?: number): Promise<Raster16> {
-  const q = frame != null ? `?frame=${frame}` : "";
-  const res = await fetch(`/api/image/${id}/data16${q}`);
-  if (!res.ok) throw new Error(`data16 failed: ${res.status}`);
+/** Decode a `encode_raster_u16` response (routes/images.py) shared by
+ *  `/image/{id}/data16` and the 4D-STEM pattern/nav routes (lib/api/fourd.ts)
+ *  — both send pixels the same way, so both decode them the same way. */
+export async function decodeRaster16(res: Response): Promise<Raster16> {
   const [h, w] = (res.headers.get("X-Shape") ?? "0,0")
     .split(",")
     .map(Number);
@@ -136,6 +148,16 @@ export async function fetchData16(id: string, frame?: number): Promise<Raster16>
   const nFrames = nFramesHeader ? Number(nFramesHeader) : null;
   const buf = await res.arrayBuffer();
   return { data: new Uint16Array(buf), w, h, vmin, vmax, nFrames };
+}
+
+/** Raw normalized-uint16 raster for the WebGL LUT shader.
+ *  For spectrum_image (stack) sources, pass `frame` (0-based) to select a
+ *  specific channel; omit to get the energy-summed view. */
+export async function fetchData16(id: string, frame?: number): Promise<Raster16> {
+  const q = frame != null ? `?frame=${frame}` : "";
+  const res = await fetch(`/api/image/${id}/data16${q}`);
+  if (!res.ok) throw new Error(`data16 failed: ${res.status}`);
+  return decodeRaster16(res);
 }
 
 export type ProfileReduce = "mean" | "sum";

@@ -31,6 +31,15 @@ export function buildAnalysisMenu(ctx: MenuCtx): Entry[] {
       ],
     },
     {
+      label: "4D-STEM",
+      submenu: [
+        {
+          label: "Nav / Pattern Viewer…",
+          action: () => store.openTool("fourd"),
+        },
+      ],
+    },
+    {
       label: "Structure & Defects",
       submenu: [
         {
