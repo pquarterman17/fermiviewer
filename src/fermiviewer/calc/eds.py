@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -122,6 +123,20 @@ def line_energy(
     return float("nan"), ""
 
 
+def _nanmean_or_nan(arr: np.ndarray, axis: int | None = None) -> Any:
+    """``np.nanmean``, but a zero-length input (every pixel masked out —
+    an all-NaN/all-zero cube, or a mask_threshold nothing clears) returns
+    NaN directly instead of letting numpy warn "Mean of empty slice". That
+    warning is indistinguishable from a real bug to any caller running
+    under strict warning filters (this repo's own pytest config included),
+    for an input that is entirely expected here (a fully-masked map)."""
+    if arr.size == 0:
+        if axis is None:
+            return float("nan")
+        return np.full(tuple(s for i, s in enumerate(arr.shape) if i != axis), np.nan)
+    return np.nanmean(arr, axis=axis)
+
+
 def mass_absorption_coeff(emitter: str, absorber: str) -> float:
     """μ/ρ (cm²/g) for the emitter's Kα in the absorber.
 
@@ -212,8 +227,8 @@ def cliff_lorimer(
     valid = mask.ravel()
     at_maps = [at[:, :, i] * 100 for i in range(n)]
     w_maps = [w[:, :, i] * 100 for i in range(n)]
-    mean_at = np.array([np.nanmean(m.ravel()[valid]) for m in at_maps])
-    mean_wt = np.array([np.nanmean(m.ravel()[valid]) for m in w_maps])
+    mean_at = np.array([_nanmean_or_nan(m.ravel()[valid]) for m in at_maps])
+    mean_wt = np.array([_nanmean_or_nan(m.ravel()[valid]) for m in w_maps])
 
     return ClResult(at_maps, w_maps, list(elements), k, mask, mean_at, mean_wt)
 
@@ -309,7 +324,7 @@ def zaf_correction(
         w_cube[~mask] = np.nan
 
         w_flat = w_cube.reshape(-1, n)[valid]
-        w_mean = np.nanmean(w_flat, axis=0)
+        w_mean = _nanmean_or_nan(w_flat, axis=0)
         s = np.nansum(w_mean)
         if s > 0:
             w_mean = w_mean / s
@@ -322,8 +337,8 @@ def zaf_correction(
 
     at_maps = [at[:, :, i] * 100 for i in range(n)]
     w_maps = [w_cube[:, :, i] * 100 for i in range(n)]
-    mean_at = np.array([np.nanmean(m.ravel()[valid]) for m in at_maps])
-    mean_wt = np.array([np.nanmean(m.ravel()[valid]) for m in w_maps])
+    mean_at = np.array([_nanmean_or_nan(m.ravel()[valid]) for m in at_maps])
+    mean_wt = np.array([_nanmean_or_nan(m.ravel()[valid]) for m in w_maps])
 
     return ZafResult(
         at_maps, w_maps, list(elements), cl.k_factors, mask,

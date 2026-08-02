@@ -126,6 +126,46 @@ def test_eels_map_rejects_a_plain_image() -> None:
         ops.run("eels_map", img, {"signal_lo": 1.0, "signal_hi": 2.0})
 
 
+def test_eels_map_rejects_a_1d_spectrum() -> None:
+    """A bare 1-D spectrum has no spatial dims to make a MAP from — distinct
+    from (and previously untested alongside) the plain-2D-image rejection."""
+    spec = DataStruct(
+        data=np.ones(10), kind=DataKind.SPECTRUM, axes=(AxisCal(1.0, 0.0, "eV"),),
+    )
+    with pytest.raises(ValueError, match="spectrum-image"):
+        ops.run("eels_map", spec, {"signal_lo": 1.0, "signal_hi": 2.0})
+
+
+def test_eels_map_signal_window_entirely_outside_the_energy_axis_raises() -> None:
+    ds = _eels_cube()  # energy axis spans 300..1098 eV
+    with pytest.raises(ValueError, match="no channels"):
+        ops.run("eels_map", ds, {"signal_lo": 5000.0, "signal_hi": 5100.0})
+
+
+def test_eels_map_inverted_bg_window_raises_clear_error() -> None:
+    """bg_lo > bg_hi leaves the fit-window mask empty (never auto-swapped,
+    unlike EDS's element_map) — pinning that EELS's policy is "raise",
+    not "silently swap the bounds"."""
+    ds = _eels_cube()
+    with pytest.raises(ValueError, match="< 2 channels"):
+        ops.run("eels_map", ds, {
+            "signal_lo": 532.0, "signal_hi": 572.0,
+            "bg_lo": 522.0, "bg_hi": 462.0,  # inverted
+        })
+
+
+def test_eels_map_single_energy_channel_direct_sum_still_works() -> None:
+    """No background window -> a straight window sum, which needs no
+    fit and so works even with a single-channel cube."""
+    cube = np.full((3, 4, 1), 5.0)
+    ds = DataStruct(
+        data=cube, kind=DataKind.SPECTRUM_IMAGE,
+        axes=(AxisCal(1.0, 0.0, "nm"), AxisCal(1.0, 0.0, "nm"), AxisCal(1.0, 0.0, "eV")),
+    )
+    result = ops.run("eels_map", ds, {"signal_lo": -1.0, "signal_hi": 1.0})
+    np.testing.assert_allclose(result.derived.data, 5.0)
+
+
 def test_eels_quantify_op_matches_direct_calc_call() -> None:
     ds = _eels_cube()
     edges = [
@@ -173,6 +213,34 @@ def test_eels_quantify_rejects_a_plain_image() -> None:
         })
 
 
+def test_eels_quantify_accepts_a_bare_1d_spectrum() -> None:
+    """Unlike eels_map/eds_*, eels_quantify's onset-window math only needs
+    the energy axis + a spectrum — a 1-D SPECTRUM (no spatial dims) is
+    deliberately valid input here, not just a SPECTRUM_IMAGE cube."""
+    ds = _eels_cube()
+    spec = DataStruct(
+        data=ds.sum_spectrum(), kind=DataKind.SPECTRUM, axes=(ds.axes[-1],),
+    )
+    result = ops.run("eels_quantify", spec, {
+        "elements": "O", "shells": "K", "z": "8", "onset_ev": "532",
+        "signal_windows": "532:572", "bg_windows": "462:522",
+    })
+    assert not result.produces_image
+    assert result.value["elements"] == ["O"]
+
+
+@pytest.mark.parametrize("bad_window", ["708:758:900", "abc:def", ":", "708"])
+def test_eels_quantify_malformed_window_string_raises_clear_valueerror(
+    bad_window: str,
+) -> None:
+    ds = _eels_cube()
+    with pytest.raises(ValueError):
+        ops.run("eels_quantify", ds, {
+            "elements": "Fe", "shells": "L", "z": "26", "onset_ev": "708",
+            "signal_windows": bad_window, "bg_windows": "632:698",
+        })
+
+
 # ── EDS ──────────────────────────────────────────────────────────────
 
 def test_eds_element_map_op_matches_direct_calc_call() -> None:
@@ -195,6 +263,25 @@ def test_eds_element_map_rejects_a_plain_image() -> None:
     )
     with pytest.raises(ValueError, match="spectrum-image"):
         ops.run("eds_element_map", img, {"e_lo": 1.0, "e_hi": 2.0})
+
+
+def test_eds_element_map_rejects_a_1d_spectrum() -> None:
+    spec = DataStruct(
+        data=np.ones(10), kind=DataKind.SPECTRUM, axes=(AxisCal(1.0, 0.0, "keV"),),
+    )
+    with pytest.raises(ValueError, match="spectrum-image"):
+        ops.run("eds_element_map", spec, {"e_lo": 1.0, "e_hi": 2.0})
+
+
+def test_eds_element_map_window_outside_axis_returns_a_zero_map_not_an_error() -> None:
+    """Deliberately pinning the divergence from EELS's eels_map: EDS's
+    element_map returns an all-zero map for a window with no overlapping
+    channels rather than raising — this test documents that as the actual,
+    intentional calc/ behavior rather than leaving it unverified."""
+    ds, _fe_e, _si_e = _eds_cube()
+    result = ops.run("eds_element_map", ds, {"e_lo": 900.0, "e_hi": 901.0})
+    assert result.produces_image
+    np.testing.assert_array_equal(result.derived.data, 0.0)
 
 
 def test_eds_quantify_op_matches_direct_calc_call() -> None:
@@ -225,6 +312,92 @@ def test_eds_quantify_requires_at_least_one_element() -> None:
     ds, _, _ = _eds_cube()
     with pytest.raises(ValueError, match="at least one symbol"):
         ops.run("eds_quantify", ds, {"elements": " , "})
+
+
+def test_eds_quantify_rejects_a_1d_spectrum() -> None:
+    spec = DataStruct(
+        data=np.ones(10), kind=DataKind.SPECTRUM, axes=(AxisCal(1.0, 0.0, "keV"),),
+    )
+    with pytest.raises(ValueError, match="spectrum-image"):
+        ops.run("eds_quantify", spec, {"elements": "Fe"})
+
+
+def test_eds_quantify_elements_with_whitespace_and_blank_entries() -> None:
+    """"Fe, ,O" -> ["Fe", "O"], blank/whitespace-only entries dropped —
+    exercised through the op, not just _split_csv in isolation."""
+    ds, fe_e, si_e = _eds_cube()
+    result = ops.run("eds_quantify", ds, {"elements": " Fe ,  , Si "})
+    assert result.value["elements"] == ["Fe", "Si"]
+
+
+def test_eds_quantify_unknown_element_only_warns_then_raises() -> None:
+    ds, _, _ = _eds_cube()
+    with pytest.warns(UserWarning, match="no known line"):
+        with pytest.raises(ValueError, match="no usable element lines"):
+            ops.run("eds_quantify", ds, {"elements": "Xx"})
+
+
+def test_eds_quantify_unknown_element_mixed_with_known_skips_and_continues() -> None:
+    ds, fe_e, _ = _eds_cube()
+    with pytest.warns(UserWarning, match="no known line"):
+        result = ops.run("eds_quantify", ds, {"elements": "Fe,Xx"})
+    assert result.value["elements"] == ["Fe"]
+
+
+def test_eds_quantify_duplicate_elements_does_not_crash() -> None:
+    """Not a crash, just a redundant/misleading 50/50 split between two
+    identical maps — pinned as documented current behavior, not "fixed"
+    into deduplication, since it's a caller input-quality issue, not a
+    code-correctness one."""
+    ds, fe_e, _ = _eds_cube()
+    result = ops.run("eds_quantify", ds, {"elements": "Fe,Fe"})
+    assert result.value["elements"] == ["Fe", "Fe"]
+    np.testing.assert_allclose(result.value["mean_atomic_pct"], [50.0, 50.0])
+
+
+def test_eds_quantify_known_line_without_a_builtin_k_factor_warns() -> None:
+    """Rb has a tabulated K-line but no Cliff-Lorimer k-factor — an
+    intentional diagnostic warning (falls back to k=1.00), asserted here
+    with pytest.warns() rather than left as an untested path that would
+    otherwise only surface as a surprise CI failure the day someone's
+    recipe/test finally exercises it under this repo's strict warning
+    filter."""
+    h, w = 4, 5
+    scale, n = 0.02, 1200  # up to 24 keV, covers Rb Ka (13.395 keV)
+    energy_kev = scale * np.arange(n)
+    fe_e, _ = line_energy("Fe", beam_kv=200.0)
+    rb_e, _ = line_energy("Rb", beam_kv=200.0)
+    spectrum = (
+        np.full(n, 2.0)
+        + 60.0 * np.exp(-((energy_kev - fe_e) ** 2) / (2 * 0.03**2))
+        + 40.0 * np.exp(-((energy_kev - rb_e) ** 2) / (2 * 0.03**2))
+    )
+    cube = np.tile(spectrum, (h, w, 1))
+    ds = DataStruct(
+        data=cube, kind=DataKind.SPECTRUM_IMAGE,
+        axes=(AxisCal(1.0, 0.0, "nm"), AxisCal(1.0, 0.0, "nm"), AxisCal(scale, 0.0, "keV")),
+    )
+    with pytest.warns(UserWarning, match="no built-in k-factor"):
+        result = ops.run("eds_quantify", ds, {"elements": "Fe,Rb"})
+    assert result.value["elements"] == ["Fe", "Rb"]
+
+
+@pytest.mark.parametrize("method", ["cliff-lorimer", "zaf"])
+def test_eds_quantify_on_an_all_nan_cube_raises_no_warning(method: str) -> None:
+    """Regression: an all-masked-out map (every pixel's total intensity
+    at or below mask_threshold — an all-NaN or all-zero cube being the
+    simplest trigger) used to call np.nanmean on a zero-length array,
+    emitting "RuntimeWarning: Mean of empty slice" — indistinguishable
+    from a real bug under this repo's filterwarnings=error, and a
+    needless warning for legitimate callers otherwise."""
+    h, w, n = 4, 5, 1200
+    cube = np.full((h, w, n), np.nan)
+    ds = DataStruct(
+        data=cube, kind=DataKind.SPECTRUM_IMAGE,
+        axes=(AxisCal(1.0, 0.0, "nm"), AxisCal(1.0, 0.0, "nm"), AxisCal(0.01, 0.0, "keV")),
+    )
+    result = ops.run("eds_quantify", ds, {"elements": "Fe,Si", "method": method})
+    assert np.all(np.isnan(result.value["mean_atomic_pct"]))
 
 
 # ── diffraction ──────────────────────────────────────────────────────

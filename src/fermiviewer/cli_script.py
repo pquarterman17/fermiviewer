@@ -83,7 +83,12 @@ def _named(value: dict[str, Any]) -> str | None:
 def _read_json_object(path: Path) -> dict[str, Any]:
     try:
         text = path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
+        # UnicodeDecodeError (not an OSError subclass) is just as much a
+        # malformed-recipe-file condition as a bad path or invalid JSON —
+        # without this, a non-UTF-8 recipe file would crash with a raw
+        # traceback instead of the documented "exit 2, nothing touched"
+        # contract every other load_recipe() failure honors.
         raise RecipeError(f"cannot read recipe file '{path}': {exc}") from None
     try:
         data = json.loads(text)

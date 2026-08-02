@@ -78,6 +78,18 @@ class ImageMeta(BaseModel):
             px, unit = ds.pixel_cal.scale, ds.pixel_cal.units
         ax = ds.energy_axis if spectral else None
         tilt_deg, _ = get_stage_tilt(ds.metadata)
+
+        def _finite_or_none(value: float | None) -> float | None:
+            # AxisCal.calibrated only requires a finite, non-zero `scale` —
+            # a NaN `origin` (finite scale notwithstanding, e.g. a recipe
+            # step that derives an axis from a bad fit) still produces a
+            # NaN-filled axis. Left unguarded, that NaN survives into the
+            # JSON response as a literal `NaN` token (Python's json.dumps
+            # allows it, JS's JSON.parse does not), breaking the *entire*
+            # response for the client — same class of bug as
+            # stage_tilt_deg below, applied to the energy bounds too.
+            return None if value is not None and math.isnan(value) else value
+
         return cls(
             id=img_id,
             name=name,
@@ -88,8 +100,8 @@ class ImageMeta(BaseModel):
             pixel_unit=unit,
             value_unit=str(ds.metadata.get("value_unit", "")),
             n_channels=ds.n_channels if spectral else None,
-            energy_first=float(ax[0]) if ax is not None else None,
-            energy_last=float(ax[-1]) if ax is not None else None,
+            energy_first=_finite_or_none(float(ax[0]) if ax is not None else None),
+            energy_last=_finite_or_none(float(ax[-1]) if ax is not None else None),
             energy_units=ds.energy_cal.units if spectral else "",
             stage_tilt_deg=None if math.isnan(tilt_deg) else tilt_deg,
             meta=_public_meta(ds.metadata),

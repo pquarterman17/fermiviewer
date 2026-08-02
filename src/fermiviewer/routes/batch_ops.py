@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as _dt
 from typing import Any
 
 import numpy as np
@@ -30,9 +31,31 @@ class BatchRunRequest(BaseModel):
 
 def json_safe(value: Any) -> Any:
     """NaN/Inf-safe, numpy-scalar-safe JSON coercion — shared with
-    routes/watch.py's single-file recipe job result."""
+    routes/watch.py's single-file recipe job result.
+
+    No op in this repo currently emits datetime64/timedelta64/complex/bytes
+    as an OpResult.value, but this is the ONE choke point every op's value
+    passes through before a job result is considered JSON-safe — silently
+    passing an unhandled type through here (the old behavior, the `dict`/
+    `list` branches would just recurse into it unchanged) doesn't fail
+    here, it fails later at actual response-encoding time with a bare
+    "Object of type X is not JSON serializable", far from this function.
+    Handled explicitly instead of "clearly rejected": a op author adding a
+    timestamp or complex-valued result later shouldn't have to rediscover
+    this.
+    """
     if isinstance(value, float):
         return value if np.isfinite(value) else None
+    if isinstance(value, complex):  # incl. np.complexfloating (subclasses complex)
+        return {"real": json_safe(value.real), "imag": json_safe(value.imag)}
+    if isinstance(value, (bytes, bytearray)):
+        return value.decode("utf-8", errors="replace")
+    if isinstance(value, (np.datetime64, np.timedelta64)):
+        return str(value)
+    if isinstance(value, _dt.timedelta):
+        return value.total_seconds()
+    if isinstance(value, _dt.date):  # covers datetime.datetime too
+        return value.isoformat()
     if isinstance(value, np.generic):
         return json_safe(value.item())
     if isinstance(value, np.ndarray):

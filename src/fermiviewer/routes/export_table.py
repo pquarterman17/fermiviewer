@@ -38,11 +38,19 @@ def _safe_filename(filename: str | None, fmt: str) -> str:
     """Server-derived filename (mirrors the `stem` pattern in
     routes/export.py): strip any path components and quote/CRLF characters
     from a caller-supplied name before it reaches the Content-Disposition
-    header, then force the extension matching `fmt`."""
+    header, then force the extension matching `fmt`.
+
+    Restricted to printable ASCII (0x20-0x7e): Starlette encodes header
+    values as latin-1, so a filename with e.g. CJK characters would raise
+    an uncaught UnicodeEncodeError building the Response (a 500, not a
+    graceful fallback) rather than just rendering oddly in a download
+    dialog. This also drops the quote char (already excluded) and any
+    stray control byte below 0x20 (CR/LF included) in one pass.
+    """
     if not filename:
         return f"results.{fmt}"
     name = filename.replace("\\", "/").rsplit("/", 1)[-1]
-    name = "".join(ch for ch in name if ch not in '"\r\n')
+    name = "".join(ch for ch in name if 0x20 <= ord(ch) <= 0x7E and ch != '"')
     stem = name.rsplit(".", 1)[0] if "." in name else name
     return f"{stem or 'results'}.{fmt}"
 

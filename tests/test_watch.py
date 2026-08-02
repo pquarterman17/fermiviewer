@@ -102,6 +102,93 @@ def test_on_file_error_is_recorded_but_does_not_stop_the_loop(tmp_path: Path) ->
     assert "recipe blew up" in status["last_error"]
 
 
+def test_on_file_error_count_accumulates_not_just_the_last_message(
+    tmp_path: Path,
+) -> None:
+    """A burst of on_file failures (e.g. hundreds of files tripping the
+    shared job queue's admission bound) must be visible as a COUNT, not
+    just the single most-recently-overwritten last_error string — the
+    caller has no other way to tell "3 files failed" from "300 files
+    failed" if only the last message survives."""
+    watcher = FolderWatcher(
+        tmp_path, on_file=lambda p: (_ for _ in ()).throw(RuntimeError("boom")),
+        interval=999,
+    )
+    for i in range(3):
+        (tmp_path / f"f{i}.png").write_bytes(_png_bytes())
+    watcher.poll_once()  # first sighting of all three — candidates only
+    watcher.poll_once()  # stable now — all three fire on_file and fail
+    status = watcher.status()
+    assert status["seen"] == 3
+    assert status["processed"] == 0
+    assert status["errors"] == 3
+    assert "boom" in status["last_error"]
+
+
+def test_stale_candidate_is_pruned_not_leaked(tmp_path: Path) -> None:
+    """A file that never stabilizes because it's deleted/renamed away
+    first (an aborted transfer, an editor swap file) must not sit in the
+    pending-fingerprint map forever — only _processed (paths that DID
+    fire) is meant to grow unbounded for the watch's lifetime."""
+    target = tmp_path / "aborted.png"
+    target.write_bytes(_png_bytes()[:20])
+    watcher = FolderWatcher(tmp_path, on_file=lambda p: None, interval=999)
+
+    watcher.poll_once()  # first sighting — recorded as a candidate
+    assert str(target) in watcher._candidates
+
+    target.unlink()
+    watcher.poll_once()  # gone from this scan — its candidate entry must go too
+    assert watcher._candidates == {}
+
+
+def test_replaced_file_same_name_and_size_is_never_reprocessed(
+    tmp_path: Path,
+) -> None:
+    """Pinning the documented policy: _processed tracks PATHS, not content
+    fingerprints, so a file overwritten in place after it already fired —
+    even with an identical size but a new mtime — does not fire again."""
+    target = tmp_path / "sample.png"
+    target.write_bytes(_png_bytes(value=1))
+    processed: list[Path] = []
+    watcher = FolderWatcher(tmp_path, on_file=processed.append, interval=999)
+
+    watcher.poll_once()
+    watcher.poll_once()
+    assert processed == [target]
+
+    time.sleep(0.01)
+    target.write_bytes(_png_bytes(value=2))  # same name+size, new content/mtime
+    watcher.poll_once()
+    watcher.poll_once()
+    assert processed == [target]  # NOT re-fired
+
+
+def test_stop_when_never_started_is_a_noop(tmp_path: Path) -> None:
+    watcher = FolderWatcher(tmp_path, on_file=lambda p: None, interval=999)
+    watcher.stop()  # must not raise even though start() was never called
+    assert watcher._thread is None
+
+
+def test_watched_directory_removed_mid_poll_surfaces_error_not_crash(
+    tmp_path: Path,
+) -> None:
+    watch_dir = tmp_path / "incoming"
+    watch_dir.mkdir()
+    watcher = FolderWatcher(watch_dir, on_file=lambda p: None, interval=999)
+    watcher.poll_once()
+    assert watcher.status()["last_error"] is None
+
+    watch_dir.rmdir()
+    watcher.poll_once()  # os.scandir raises OSError — must not raise here
+    status = watcher.status()
+    assert status["last_error"] is not None
+
+    watch_dir.mkdir()
+    watcher.poll_once()  # directory is back — resumes cleanly, no crash/spin
+    assert watcher.status()["seen"] == 0
+
+
 def test_default_is_openable_matches_io_registry(tmp_path: Path) -> None:
     assert default_is_openable(tmp_path / "a.png") is True
     assert default_is_openable(tmp_path / "a.dm4") is True
@@ -207,6 +294,35 @@ def test_watch_start_rejects_bad_recipe(client: TestClient, tmp_path: Path) -> N
 
 
 @pytest.mark.api
+@pytest.mark.parametrize("interval", [0, -1, -0.5])
+def test_watch_start_rejects_non_positive_interval(
+    client: TestClient, tmp_path: Path, interval: float
+) -> None:
+    r = client.post("/api/watch/start", json={
+        "dir": str(tmp_path), "steps": _gaussian_recipe(), "interval": interval,
+    })
+    assert r.status_code == 422
+
+
+@pytest.mark.api
+def test_watch_start_accepts_a_relative_directory(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A relative --dir resolves against the server process's cwd rather
+    than crashing — exercised since only the pure FolderWatcher's own
+    tests otherwise ever pass it an absolute tmp_path."""
+    watch_dir = tmp_path / "incoming"
+    watch_dir.mkdir()
+    monkeypatch.chdir(tmp_path)
+    r = client.post("/api/watch/start", json={
+        "dir": "incoming", "steps": _gaussian_recipe(),
+    })
+    assert r.status_code == 200, r.text
+    status = client.get("/api/watch/status").json()
+    assert status["watching"] is True
+
+
+@pytest.mark.api
 def test_watch_second_start_is_409(client: TestClient, tmp_path: Path) -> None:
     body = {"dir": str(tmp_path), "steps": _gaussian_recipe()}
     assert client.post("/api/watch/start", json=body).status_code == 200
@@ -278,6 +394,65 @@ def test_watch_ignores_a_non_openable_file_dropped_alongside(
     status = client.get("/api/watch/status").json()
     assert status["seen"] >= 2  # both files stabilized...
     assert status["processed"] == 1  # ...only the PNG ran a recipe
+
+
+@pytest.mark.api
+def test_recipe_output_never_lands_back_in_the_watched_directory(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """The recursion trap: a derived image from a recipe run on a dropped
+    file must never be written to disk INTO the watched directory itself
+    (it's only ever registered into the in-memory session store), or a
+    watch over its own output directory would re-trigger itself forever.
+    Pinned by asserting the directory holds exactly the one file dropped
+    into it, after the job that processed it has finished."""
+    watch_dir = tmp_path / "incoming"
+    watch_dir.mkdir()
+    client.post("/api/watch/start", json={
+        "dir": str(watch_dir), "steps": _gaussian_recipe(), "interval": 0.02,
+    })
+    (watch_dir / "drop.png").write_bytes(_png_bytes())
+    job_id = _wait_for_job(client)
+    final = _poll_job(client, job_id)
+    assert final["status"] == "done"
+
+    assert [p.name for p in watch_dir.iterdir()] == ["drop.png"]
+
+
+@pytest.mark.api
+def test_job_queue_backpressure_is_visible_in_status_not_silently_lost(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When the shared job queue is saturated (thousands of files landing
+    at once, say), FolderWatcher.on_file's JobQueueFullError must not just
+    vanish into a single overwritten last_error string — status must show
+    HOW MANY files were dropped, not just the most recent one."""
+    from fermiviewer.jobs import JobQueueFullError, jobs
+
+    def full(_fn):
+        raise JobQueueFullError("queue full")
+
+    monkeypatch.setattr(jobs, "submit", full)
+
+    watch_dir = tmp_path / "incoming"
+    watch_dir.mkdir()
+    r = client.post("/api/watch/start", json={
+        "dir": str(watch_dir), "steps": _gaussian_recipe(), "interval": 60,
+    })
+    assert r.status_code == 200
+
+    from fermiviewer.routes import watch as watch_routes
+
+    for i in range(3):
+        (watch_dir / f"f{i}.png").write_bytes(_png_bytes())
+    watch_routes._watcher.poll_once()  # candidates only
+    watch_routes._watcher.poll_once()  # stable — all 3 hit the full queue
+
+    status = client.get("/api/watch/status").json()
+    assert status["seen"] == 3
+    assert status["processed"] == 0
+    assert status["errors"] == 3
+    assert "queue full" in status["last_error"]
 
 
 @pytest.mark.api

@@ -97,6 +97,15 @@ class ExportTable:
             raise TableShapeError(
                 f"units has {len(units)} entries, columns has {len(columns)}"
             )
+        if len(set(columns)) != len(columns):
+            # CSV can represent duplicate headers positionally (both cells
+            # survive), but to_json_bytes keys each row by column name —
+            # `dict(zip(columns, row))` silently keeps only the LAST cell
+            # under a repeated name and drops the rest. Rejecting here
+            # keeps both formats representing the same table rather than
+            # one of them quietly losing data.
+            dupes = sorted({c for c in columns if columns.count(c) > 1})
+            raise TableShapeError(f"duplicate column name(s): {dupes}")
         validated = [_row_to_list(row, columns, i) for i, row in enumerate(rows)]
         return cls(
             columns=columns,
