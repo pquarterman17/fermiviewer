@@ -1,0 +1,17 @@
+/* FourD workshop (PLAN_4DSTEM #4): dual nav/pattern viewer + aperture
+   controls. Layout only — the panels themselves reuse the shared
+   .fvd-ws-pattern / .fvd-ws-row / .fvd-seg / .fvd-btn / .fvd-check
+   vocabulary from 07-preferences-workshops.css and 06-overlays-export.css. */
+
+.fvd-fourd-panels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pad);
+}
+
+.fvd-ws-fourd-nav,
+.fvd-ws-fourd-pattern {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}

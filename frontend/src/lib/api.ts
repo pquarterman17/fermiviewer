@@ -12,3 +12,4 @@ export * from "./api/layers";
 export * from "./api/diagnostics";
 export * from "./api/batch";
 export * from "./api/watch";
+export * from "./api/fourd";

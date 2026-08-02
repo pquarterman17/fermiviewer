@@ -82,6 +82,10 @@ export function buildWindowMenu(ctx: MenuCtx): Entry[] {
           label: "Surface Roughness",
           action: () => store.openTool("roughness"),
         },
+        {
+          label: "4D-STEM Viewer",
+          action: () => store.openTool("fourd"),
+        },
       ],
     },
     {
