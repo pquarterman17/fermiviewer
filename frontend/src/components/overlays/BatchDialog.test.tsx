@@ -9,9 +9,17 @@ import type {
 
 const fetchBatchOperations = vi.fn();
 const runBatchRecipe = vi.fn();
+const fetchWatchStatus = vi.fn();
+const fetchWatchJob = vi.fn();
+const startWatch = vi.fn();
+const stopWatch = vi.fn();
 vi.mock("../../lib/api", () => ({
   fetchBatchOperations: (...args: unknown[]) => fetchBatchOperations(...args),
   runBatchRecipe: (...args: unknown[]) => runBatchRecipe(...args),
+  fetchWatchStatus: (...args: unknown[]) => fetchWatchStatus(...args),
+  fetchWatchJob: (...args: unknown[]) => fetchWatchJob(...args),
+  startWatch: (...args: unknown[]) => startWatch(...args),
+  stopWatch: (...args: unknown[]) => stopWatch(...args),
 }));
 
 const askParams = vi.fn();
@@ -127,6 +135,10 @@ describe("BatchDialog", () => {
     vi.clearAllMocks();
     localStorage.clear();
     fetchBatchOperations.mockResolvedValue(operations);
+    fetchWatchStatus.mockResolvedValue({
+      watching: false, dir: null, seen: 0, processed: 0,
+      last_error: null, job_ids: [],
+    });
     askParams.mockResolvedValue({ method: "both" });
     runBatchRecipe.mockImplementation(
       async (
@@ -212,6 +224,40 @@ describe("BatchDialog", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Load" }));
     expect(screen.getByText("Noise, SNR, and type estimate")).toBeVisible();
+  });
+
+  it("renders the watch-folder controls and reports status once mounted", async () => {
+    render(<BatchDialog />);
+    expect(await screen.findByLabelText("Folder to watch")).toBeVisible();
+    await waitFor(() => expect(fetchWatchStatus).toHaveBeenCalled());
+  });
+
+  it("starting a folder watch posts the selected preset and directory", async () => {
+    localStorage.setItem(
+      "fermiviewer.batchRecipePresets.v1",
+      JSON.stringify([{
+        version: 1, id: "p1", name: "Level first",
+        steps: [{ op: "plane_level", params: {} }],
+        createdAt: "2026-07-26T12:00:00Z", updatedAt: "2026-07-26T12:00:00Z",
+      }]),
+    );
+    startWatch.mockResolvedValue({ status: "watching" });
+
+    render(<BatchDialog />);
+    fireEvent.change(await screen.findByLabelText("Recipe to watch with"), {
+      target: { value: "p1" },
+    });
+    fireEvent.change(screen.getByLabelText("Folder to watch"), {
+      target: { value: "C:\\incoming" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+
+    await waitFor(() =>
+      expect(startWatch).toHaveBeenCalledWith(
+        "C:\\incoming",
+        [{ op: "plane_level", params: {} }],
+      ),
+    );
   });
 
   it("flattens heterogeneous analysis values into export columns", () => {

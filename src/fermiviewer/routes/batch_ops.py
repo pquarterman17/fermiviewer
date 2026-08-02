@@ -28,17 +28,19 @@ class BatchRunRequest(BaseModel):
     steps: list[BatchStepRequest] = Field(min_length=1, max_length=30)
 
 
-def _json_safe(value: Any) -> Any:
+def json_safe(value: Any) -> Any:
+    """NaN/Inf-safe, numpy-scalar-safe JSON coercion — shared with
+    routes/watch.py's single-file recipe job result."""
     if isinstance(value, float):
         return value if np.isfinite(value) else None
     if isinstance(value, np.generic):
-        return _json_safe(value.item())
+        return json_safe(value.item())
     if isinstance(value, np.ndarray):
-        return _json_safe(value.tolist())
+        return json_safe(value.tolist())
     if isinstance(value, dict):
-        return {str(key): _json_safe(item) for key, item in value.items()}
+        return {str(key): json_safe(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
-        return [_json_safe(item) for item in value]
+        return [json_safe(item) for item in value]
     return value
 
 
@@ -78,8 +80,11 @@ def batch_operations() -> dict[str, Any]:
     }
 
 
-def _validated_steps(req: BatchRunRequest) -> list[dict[str, Any]]:
-    steps = [step.model_dump() for step in req.steps]
+def validate_recipe_steps(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Structural + per-op param validation, shared by ``/batch/run`` and
+    the folder-watch route (``routes/watch.py``): raises HTTPException(422)
+    on the first bad step so a queued job can never start with a recipe
+    that would fail on every input."""
     try:
         validate_recipe(steps)
         for step in steps:
@@ -88,6 +93,10 @@ def _validated_steps(req: BatchRunRequest) -> list[dict[str, Any]]:
     except (ValueError, KeyError) as exc:
         raise HTTPException(422, str(exc)) from None
     return steps
+
+
+def _validated_steps(req: BatchRunRequest) -> list[dict[str, Any]]:
+    return validate_recipe_steps([step.model_dump() for step in req.steps])
 
 
 def _validate_images(image_ids: list[str]) -> None:
@@ -101,12 +110,15 @@ def _validate_images(image_ids: list[str]) -> None:
         raise HTTPException(404, f"unknown image id(s): {missing}")
 
 
-def _register_final(
+def register_final_image(
     image_id: str,
     source_name: str,
     final: DataStruct,
     steps: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    """Register a recipe's final chained image as a derived image with
+    lineage + the recipe in its metadata. Shared with the folder-watch
+    route's single-file job (``routes/watch.py``)."""
     derived = DataStruct(
         data=np.asarray(final.data),
         kind=final.kind,
@@ -156,7 +168,7 @@ def _run_batch(
             recipe = run_recipe(source, steps, progress=step_progress)
             has_image = any(step.produces_image for step in recipe.steps)
             derived = (
-                _register_final(image_id, source_name, recipe.final, steps)
+                register_final_image(image_id, source_name, recipe.final, steps)
                 if has_image
                 else None
             )
@@ -170,7 +182,7 @@ def _run_batch(
                         "op": result.op,
                         "label": result.label,
                         "params": result.params,
-                        "value": _json_safe(result.value),
+                        "value": json_safe(result.value),
                     }
                     for result in recipe.values
                 ],
