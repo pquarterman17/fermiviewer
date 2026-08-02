@@ -5,6 +5,12 @@ One-command launch: when frontend/dist exists it is mounted at `/`, so
 browser. `uv run fv --dev` runs the Vite dev server (HMR, :5173) and a
 reloading uvicorn side by side in a single terminal.
 
+`uv run fv --script recipe.json inputs...` (Scripting #10) is a fourth,
+fully headless mode: it never reaches any of the server/browser code
+below at all, delegating straight to `cli_script.run_script` and exiting
+with its return code — see that module for the recipe format and output
+layout.
+
 Desktop-style lifecycle: the SPA holds a WebSocket open; when the last
 tab disconnects (and stays gone past a refresh-safe grace period) the
 server exits instead of lingering in the terminal. Armed only by
@@ -341,7 +347,38 @@ def main() -> None:
         action="store_true",
         help="run as a desktop app in a native window (pywebview)",
     )
+    parser.add_argument(
+        "--script",
+        metavar="RECIPE",
+        help="run RECIPE (.fvbatch.json preset export, or a bare "
+        "{'steps': [...]} recipe) headlessly over the given inputs, "
+        "then exit — no server, no browser. The 'dir' positional above "
+        "and 'inputs' below are both taken as inputs in this mode "
+        "(files, directories, or glob patterns); see --out",
+    )
+    parser.add_argument(
+        "inputs",
+        nargs="*",
+        default=[],
+        help="with --script: additional files/directories/glob patterns "
+        "to process (ignored otherwise)",
+    )
+    parser.add_argument(
+        "--out",
+        default="fv-script-out",
+        metavar="DIR",
+        help="with --script: output directory for derived images (TIFF), "
+        "value tables (CSV/JSON), and provenance (default: ./fv-script-out)",
+    )
     args = parser.parse_args()
+
+    if args.script:
+        import sys
+
+        from fermiviewer.cli_script import run_script
+
+        script_inputs = ([args.dir] if args.dir else []) + args.inputs
+        sys.exit(run_script(args.script, script_inputs, args.out))
 
     # the Open dialog defaults here; an explicit dir always wins, otherwise
     # the launch cwd (but not for the headless sidecar, which runs
