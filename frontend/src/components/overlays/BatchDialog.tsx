@@ -19,6 +19,7 @@ import {
 import { askParams } from "../../store/params";
 import { useViewer } from "../../store/viewer";
 import BatchPresetControls from "./BatchPresetControls";
+import MacroBridge from "./MacroBridge";
 import ModalDialog from "./ModalDialog";
 import WatchFolderSection from "./WatchFolderSection";
 
@@ -313,6 +314,17 @@ export default function BatchDialog() {
         steps={steps.map(({ op, params }) => ({ op, params }))}
         disabled={running || operations.length === 0}
         onLoad={loadPreset}
+      />
+
+      <MacroBridge
+        steps={steps.map(({ op, params }) => ({ op, params }))}
+        disabled={running || operations.length === 0}
+        onLoad={(macroSteps) =>
+          loadPreset({
+            version: 1, id: "macro", name: "Recorded macro",
+            steps: macroSteps, createdAt: "", updatedAt: "",
+          })
+        }
       />
 
       <WatchFolderSection onDerived={ingestDerived} />

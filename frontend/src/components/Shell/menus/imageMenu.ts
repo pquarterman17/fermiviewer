@@ -236,9 +236,12 @@ export function buildImageMenu(ctx: MenuCtx): Entry[] {
       label: macroRec ? "Stop Macro Recording" : "Record Macro",
       action: () => {
         if (macroRec) {
-          const n = stopRecording();
+          const { total, legacy } = stopRecording();
           setMacroRec(false);
-          store.setStatus(`macro saved: ${n} step${n === 1 ? "" : "s"}`);
+          store.setStatus(
+            `macro saved: ${total} step${total === 1 ? "" : "s"}` +
+              (legacy ? ` (${legacy} not batchable)` : ""),
+          );
         } else {
           startRecording();
           setMacroRec(true);
