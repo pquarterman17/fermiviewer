@@ -15,18 +15,22 @@ Ground-up port of [fermi-viewer](https://github.com/pquarterman17/fermi-viewer)
 
 ![FermiViewer — multi-format image viewer with EELS/EDS/diffraction analysis and a measurement suite](docs/images/overview.png)
 
-**Formats:** DM3/DM4 (Gatan), EMD (Velox/NCEM), BCF (Bruker), SER (TIA),
+**Formats:** DM3/DM4/DM5 (Gatan), EMD (Velox/NCEM), BCF (Bruker), SER (TIA),
 MRC, HDF5 family (.hspy, NeXus .nxs/.nx5, generic .h5/.hdf5), MSA/EMSA spectra,
-TIFF, PNG/JPEG/BMP/GIF, headerless RAW, Bruker Nanoscope AFM (.spm/.000).
+JEOL Analysis Station (.img/.map/.pts), EDAX .spc, Lispix .rpl/.raw, TIFF,
+PNG/JPEG/BMP/GIF, headerless RAW, Bruker Nanoscope AFM (.spm/.000), 4D-STEM
+(Merlin .mib, 4D HyperSpy).
 **Analysis:** EELS (background, maps, quantification ± σ, thickness,
 Kramers–Kronig, Fourier-log, model-based peak fitting, SVD), EDS
 (Cliff–Lorimer / ZAF / ζ-factor composition with mass-thickness ± σ, maps,
-artifacts, peak fitting, composite overlays), diffraction (camera-length &
+artifacts, peak fitting, composite overlays), 4D-STEM virtual-detector
+imaging (BF/ABF/ADF/custom apertures), diffraction (camera-length &
 ellipse calibration, CIF phase import, spot detection, phase indexing,
 d-spacings), GPA strain, CTF estimation, atom columns, particles, grains
 (k-means / watershed / paint-to-train classifier), cross-section layer &
-interface-roughness analysis, FFT filtering, drift alignment, Python
-scripting API, and a full measurement/annotation suite.
+interface-roughness analysis, FFT filtering, drift alignment, batch recipes
+with folder watch and macro record/replay, Python scripting API, and a full
+measurement/annotation suite.
 
 ---
 
@@ -60,8 +64,8 @@ auto-open).
 ### Option 3 — from source
 
 Requirements: [uv](https://docs.astral.sh/uv/) (a suitable Python is
-fetched automatically) and Node 20+ for the frontend. Get the code with
-`git clone`, or download *Source code (zip)* from any
+fetched automatically) and Node 22+ for the frontend (see `.nvmrc`). Get
+the code with `git clone`, or download *Source code (zip)* from any
 [release](../../releases/latest) and extract it — no git needed.
 
 ```bash
@@ -210,8 +214,10 @@ Feature walkthroughs, screenshots, and how-tos live in the
 - **[Getting Started](https://github.com/pquarterman17/fermiviewer/wiki/Getting-Started)** — install and your first image
 - **[Viewing &amp; Display](https://github.com/pquarterman17/fermiviewer/wiki/Viewing-and-Display)** — colormaps, the calibrated color scale, scale bar
 - **[Measurements](https://github.com/pquarterman17/fermiviewer/wiki/Measurements)** — line/box profiles, distances, ROIs, annotations
-- **[Analysis Workshops](https://github.com/pquarterman17/fermiviewer/wiki/Analysis-Workshops)** — EELS, EDS, diffraction
+- **[Analysis Workshops](https://github.com/pquarterman17/fermiviewer/wiki/Analysis-Workshops)** — Elemental Analysis (EELS+EDS), diffraction, 4D-STEM
 - **[Structure &amp; Grains](https://github.com/pquarterman17/fermiviewer/wiki/Structure-and-Grains)** — grain segmentation (incl. paint-to-train), cross-section layer &amp; interface-roughness analysis
+- **[4D-STEM](https://github.com/pquarterman17/fermiviewer/wiki/4D-STEM)** — pixelated-detector datasets, probing, virtual-detector imaging
+- **[Scripting &amp; Automation](https://github.com/pquarterman17/fermiviewer/wiki/Scripting-and-Automation)** — Python API, headless `fv --script`, batch/watch/macro
 - **[AFM Support](https://github.com/pquarterman17/fermiviewer/wiki/AFM-Support)** — Bruker Nanoscope height maps + Z-scale color bar
 - **[Keyboard &amp; Accessibility](https://github.com/pquarterman17/fermiviewer/wiki/Keyboard-and-Accessibility)** — working without a mouse, screen-reader support, themes &amp; density
 - **[Supported Formats](https://github.com/pquarterman17/fermiviewer/wiki/Supported-Formats)**

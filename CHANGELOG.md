@@ -13,6 +13,30 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [0.1.24] - 2026-08-02
+
+### Changed
+- **CI/toolchain: Node 22.** Node 20 is EOL; `.nvmrc` (repo root) is now the
+  single source of truth for the Node version and every workflow reads it
+  via `node-version-file` instead of a hardcoded version — a repo-integrity
+  test now guards against that drifting apart again.
+- Dev dependencies: `jsdom` 30 and `@testing-library/jest-dom` 7.
+
+### Fixed
+- The generated API reference (`docs/api-reference.md`) no longer embeds
+  the release version. Embedding it meant every `chore(release)` version
+  bump staled the file against its own drift-guard test.
+
+### Docs
+- New wiki page **[4D-STEM](https://github.com/pquarterman17/fermiviewer/wiki/4D-STEM)** —
+  a practical walkthrough of opening `.mib`/HyperSpy-4D datasets, probing,
+  BF/ABF/ADF/custom virtual detectors, and current limits.
+- Wiki: **Supported Formats**, **Analysis Workshops**, and **Home** refreshed
+  for the merged Elemental Analysis workspace, 4D-STEM support, and the
+  JEOL/EDAX/Lispix/DM5 parsers that had shipped undocumented.
+- README: format and feature enumeration synced to include 4D-STEM and the
+  newer parsers; corrected the Node version requirement (22+, not 20+).
+
 ## [0.1.23] - 2026-08-02
 
 ### Added
