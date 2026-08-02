@@ -15,11 +15,14 @@ from fermiviewer.calc.render import histogram, to_display, to_uint16_norm
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.io.registry import (
     UnsupportedFormatError,
+    is_fourd_path,
     load_auto,
+    load_fourd_auto,
     supported_extensions,
 )
-from fermiviewer.models import ImageMeta, OpenRequest
+from fermiviewer.models import FourDMeta, ImageMeta, OpenRequest
 from fermiviewer.session import UnknownImageError, store
+from fermiviewer.session_fourd import fourd_store
 
 router = APIRouter(prefix="/api")
 
@@ -45,9 +48,37 @@ def _raster(ds: DataStruct) -> np.ndarray:
 
 
 @router.post("/session/open")
-def session_open(req: OpenRequest) -> list[ImageMeta]:
+def session_open(req: OpenRequest) -> list[ImageMeta | FourDMeta]:
+    """Open one or more files by server-side path.
+
+    4D-STEM files (Merlin .mib, 4D HyperSpy .hspy/.h5/.hdf5 — sniffed by
+    `is_fourd_path`) are split out BEFORE the normal image loader ever
+    sees them: they register in the separate FourD store and come back as
+    `FourDMeta` entries (the `is_fourd` discriminator marks them so a
+    frontend that doesn't yet know about 4D datasets can filter them out
+    instead of mis-treating one as a normal image — see store/viewer.ts's
+    `openPaths`). Everything else goes through the unchanged 2D/3D path.
+    """
+    fourd_metas: list[FourDMeta] = []
+    remaining: list[str] = []
+    for raw_path in req.paths:
+        if not is_fourd_path(raw_path):
+            remaining.append(raw_path)
+            continue
+        try:
+            ds4 = load_fourd_auto(raw_path)
+        except FileNotFoundError as e:
+            raise HTTPException(404, str(e)) from None
+        except UnsupportedFormatError as e:
+            raise HTTPException(415, str(e)) from None
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from None
+        name = Path(raw_path).name
+        fourd_id = fourd_store.add(ds4, name, source_path=raw_path)
+        fourd_metas.append(FourDMeta.from_dataset(fourd_id, name, ds4))
+
     try:
-        opened = store.open_paths(req.paths)
+        opened = store.open_paths(remaining)
     except FileNotFoundError as e:
         raise HTTPException(404, str(e)) from None
     except UnsupportedFormatError as e:
@@ -58,10 +89,11 @@ def session_open(req: OpenRequest) -> list[ImageMeta]:
 
     for i, ds in opened:
         auto_apply_calibration(i, ds)
-    return [
+    image_metas = [
         ImageMeta.from_datastruct(i, store.name(i), store.get(i))
         for i, _ in opened
     ]
+    return [*image_metas, *fourd_metas]
 
 
 @router.post("/session/upload")
@@ -286,12 +318,33 @@ def image_render(
     return Response(content=png.getvalue(), media_type="image/png")
 
 
-@router.get("/image/{img_id}/data16")
-def image_data16(img_id: str, frame: int | None = None) -> Response:
-    """Full-range-normalized uint16 raster, little-endian, row-major.
+def encode_raster_u16(
+    raster: np.ndarray, extra_headers: dict[str, str] | None = None
+) -> Response:
+    """Full-range-normalized uint16 raster response, little-endian, row-major.
 
     Feeds the client-side WebGL window/level/gamma/LUT shader (handoff
     section-13 render path). Real values reconstruct from X-Min/X-Max.
+    Shared by `/image/{id}/data16` and the 4D-STEM pattern/nav routes
+    (routes/fourd.py) so both send pixels the same way the frontend already
+    knows how to decode.
+    """
+    u16, vmin, vmax = to_uint16_norm(raster)
+    return Response(
+        content=u16.astype("<u2").tobytes(),
+        media_type="application/octet-stream",
+        headers={
+            "X-Shape": f"{raster.shape[0]},{raster.shape[1]}",
+            "X-Min": repr(vmin),
+            "X-Max": repr(vmax),
+            **(extra_headers or {}),
+        },
+    )
+
+
+@router.get("/image/{img_id}/data16")
+def image_data16(img_id: str, frame: int | None = None) -> Response:
+    """Full-range-normalized uint16 raster, little-endian, row-major.
 
     For spectrum_image (3D stack) kinds, the optional `frame` query param
     selects a channel (0-based). Without frame, falls back to the energy sum.
@@ -311,20 +364,8 @@ def image_data16(img_id: str, frame: int | None = None) -> Response:
             raster = np.asarray(ds.data, dtype=np.float64).sum(axis=2)
     else:
         raster = _raster(ds)
-    u16, vmin, vmax = to_uint16_norm(raster)
-    extra: dict[str, str] = {}
-    if n_frames is not None:
-        extra["X-N-Frames"] = str(n_frames)
-    return Response(
-        content=u16.astype("<u2").tobytes(),
-        media_type="application/octet-stream",
-        headers={
-            "X-Shape": f"{raster.shape[0]},{raster.shape[1]}",
-            "X-Min": repr(vmin),
-            "X-Max": repr(vmax),
-            **extra,
-        },
-    )
+    extra = {"X-N-Frames": str(n_frames)} if n_frames is not None else None
+    return encode_raster_u16(raster, extra)
 
 
 _TILE_SIZE = 256

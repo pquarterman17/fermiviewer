@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -76,7 +77,17 @@ def eels_corpus(ml_datasets: Path) -> Path:
 # zenodo8403583_, internal_). Per-file licensing lives in each vendor's
 # MANIFEST.md — the corpus is mixed GPL-3.0 / CC-BY-4.0 / internal, which is
 # why it stays private.
-EXAMPLE_DATA_ROOT = Path(__file__).resolve().parents[2] / "test-data"
+#
+# The sibling-relative default (parents[2]) only resolves when this repo is
+# checked out directly under the git root (mirrors FV_MATLAB_ROOT's
+# corpus_root() idea) — a worktree checkout (.claude/worktrees/<name>/) sits
+# two directories deeper, so parents[2] lands inside .claude/worktrees
+# instead of alongside test-data. Set FV_TEST_DATA to override.
+EXAMPLE_DATA_ROOT = (
+    Path(os.environ["FV_TEST_DATA"])
+    if os.environ.get("FV_TEST_DATA")
+    else Path(__file__).resolve().parents[2] / "test-data"
+)
 
 
 @pytest.fixture(scope="session")
@@ -164,4 +175,19 @@ def jeol_examples() -> Path:
     p = EXAMPLE_DATA_ROOT / "jeol" / "eds" / "rosettasciio"
     if not (p / "Sample" / "00_View000" / "View000_0000000.img").is_file():
         pytest.skip(f"test-data JEOL corpus absent at {p} (sibling repo)")
+    return p
+
+
+@pytest.fixture(scope="session")
+def fourd_corpus() -> Path:
+    """Path to ../test-data/4dstem; skips when the corpus isn't present.
+
+    CC BY 4.0, Zenodo 10.5281/zenodo.15490547: a real Merlin .mib raw
+    acquisition + its decoded .h5 ground truth, plus two real 4D HyperSpy
+    files (see io/fourd/mib.py and io/fourd/hspy4d.py for what each is used
+    to validate).
+    """
+    p = EXAMPLE_DATA_ROOT / "4dstem"
+    if not (p / "test_data.mib").is_file():
+        pytest.skip(f"test-data 4D-STEM corpus absent at {p} (sibling repo)")
     return p

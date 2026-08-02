@@ -7,14 +7,17 @@ evolve with the frontend; the internal contract evolves with analysis.
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel
 
-from fermiviewer.datastruct import DataKind, DataStruct
+from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.io.metadata import get_stage_tilt
 
-__all__ = ["ImageMeta", "OpenRequest"]
+if TYPE_CHECKING:
+    from fermiviewer.calc.fourd.dataset import FourDDataset
+
+__all__ = ["AxisCalOut", "FourDMeta", "ImageMeta", "OpenRequest"]
 
 
 # Short lists of scalars are metadata a client can use (`elements`,
@@ -90,4 +93,52 @@ class ImageMeta(BaseModel):
             energy_units=ds.energy_cal.units if spectral else "",
             stage_tilt_deg=None if math.isnan(tilt_deg) else tilt_deg,
             meta=_public_meta(ds.metadata),
+        )
+
+
+class AxisCalOut(BaseModel):
+    """Wire form of `fermiviewer.datastruct.AxisCal` (never expose the
+    dataclass itself — same separation-of-concerns rationale as the module
+    docstring)."""
+
+    scale: float
+    origin: float
+    units: str
+
+    @classmethod
+    def from_axis_cal(cls, a: AxisCal) -> AxisCalOut:
+        return cls(scale=a.scale, origin=a.origin, units=a.units)
+
+
+class FourDMeta(BaseModel):
+    """4D-STEM dataset metadata (PLAN_4DSTEM). Deliberately NOT an ImageMeta
+    variant — a FourDDataset is not a DataStruct (see
+    docs/adr/0001-fourd-data-model.md) — but mirrors its shape so a client
+    can tell the two apart by the `is_fourd` discriminator without choking
+    on an unexpected `kind` value: this is never a normal image and must
+    never be treated as one (see routes/images.py's `/session/open`)."""
+
+    id: str
+    name: str
+    is_fourd: Literal[True] = True
+    source: str | None = None
+    scan_shape: list[int]
+    det_shape: list[int]
+    dtype: str
+    scan_axes: list[AxisCalOut]
+    det_axes: list[AxisCalOut]
+    nav_available: bool = True
+
+    @classmethod
+    def from_dataset(cls, fourd_id: str, name: str, ds: FourDDataset) -> FourDMeta:
+        source = ds.metadata.get("source")
+        return cls(
+            id=fourd_id,
+            name=name,
+            source=str(source) if source else None,
+            scan_shape=list(ds.scan_shape),
+            det_shape=list(ds.det_shape),
+            dtype=str(ds.dtype),
+            scan_axes=[AxisCalOut.from_axis_cal(a) for a in ds.scan_axes],
+            det_axes=[AxisCalOut.from_axis_cal(a) for a in ds.det_axes],
         )

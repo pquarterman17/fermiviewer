@@ -4,7 +4,7 @@
 // restored ids can never collide), image ingest, and the session slice
 // that save/load round-trips.
 
-import type { ImageMeta, SessionClientState } from "../lib/api";
+import { isFourDMeta, type FourDMeta, type ImageMeta, type SessionClientState } from "../lib/api";
 import type { TiltSettings } from "../lib/geometry";
 import { resizePanes, type ComparePane, type ImageGroup } from "../lib/groups";
 import type { ViewerState } from "./viewerState";
@@ -123,8 +123,17 @@ type SetState = (
   }) => object,
 ) => void;
 
-/** Merge newly opened images into the library (shared by path + upload). */
-export function ingestImages(set: SetState, metas: ImageMeta[]): void {
+/** Merge newly opened images into the library (shared by path + upload).
+ *
+ *  `metas` may include FourDMeta entries (a 4D-STEM file the server routed
+ *  into its separate FourD store — see routes/images.py's `/session/open`);
+ *  those are skipped here rather than added as a malformed image, since
+ *  there's no render/measure pipeline for them yet. */
+export function ingestImages(
+  set: SetState,
+  metas: (ImageMeta | FourDMeta)[],
+): void {
+  const images2D = metas.filter((m): m is ImageMeta => !isFourDMeta(m));
   // preferences applied to images seen for the first time
   let prefCmap = "gray";
   let prefTransform: Display["transform"] = "linear";
@@ -151,7 +160,7 @@ export function ingestImages(set: SetState, metas: ImageMeta[]): void {
     const display = { ...s.display };
     const history = { ...s.history };
     const historyAt = { ...s.historyAt };
-    for (const m of metas) {
+    for (const m of images2D) {
       if (!(m.id in images)) {
         order.push(m.id);
         // seed display only when a default differs from the built-ins, so
@@ -194,7 +203,7 @@ export function ingestImages(set: SetState, metas: ImageMeta[]): void {
       }
       images[m.id] = m;
     }
-    const last = metas[metas.length - 1];
+    const last = images2D[images2D.length - 1];
     return {
       images,
       order,

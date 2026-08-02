@@ -27,7 +27,28 @@ export interface Histogram {
   counts: number[];
 }
 
-export async function openSession(paths: string[]): Promise<ImageMeta[]> {
+/** A 4D-STEM dataset (PLAN_4DSTEM) — deliberately NOT an ImageMeta shape
+ *  (no `kind`/`shape` raster fields): it isn't a normal image and has no
+ *  render pipeline yet. `is_fourd` discriminates it in a mixed open-result
+ *  array; see `isFourDMeta` and store/viewerSession.ts's `ingestImages`. */
+export interface FourDMeta {
+  id: string;
+  name: string;
+  is_fourd: true;
+  source: string | null;
+  scan_shape: number[];
+  det_shape: number[];
+  dtype: string;
+  nav_available: boolean;
+}
+
+export function isFourDMeta(m: ImageMeta | FourDMeta): m is FourDMeta {
+  return (m as FourDMeta).is_fourd === true;
+}
+
+export async function openSession(
+  paths: string[],
+): Promise<(ImageMeta | FourDMeta)[]> {
   return json(
     await fetch("/api/session/open", {
       method: "POST",
