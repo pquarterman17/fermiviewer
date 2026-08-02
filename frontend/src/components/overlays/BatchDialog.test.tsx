@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -258,6 +258,97 @@ describe("BatchDialog", () => {
         [{ op: "plane_level", params: {} }],
       ),
     );
+  });
+
+  it("blocks Start client-side when the folder field is empty, even with a preset chosen", async () => {
+    localStorage.setItem(
+      "fermiviewer.batchRecipePresets.v1",
+      JSON.stringify([{
+        version: 1, id: "p1", name: "Level first",
+        steps: [{ op: "plane_level", params: {} }],
+        createdAt: "2026-07-26T12:00:00Z", updatedAt: "2026-07-26T12:00:00Z",
+      }]),
+    );
+
+    render(<BatchDialog />);
+    fireEvent.change(await screen.findByLabelText("Recipe to watch with"), {
+      target: { value: "p1" },
+    });
+    const startButton = screen.getByRole("button", { name: "Start" });
+    expect(startButton).toBeDisabled();
+
+    fireEvent.click(startButton); // disabled — must be inert
+    expect(startWatch).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a 409 (already watching) from Start as a visible message", async () => {
+    localStorage.setItem(
+      "fermiviewer.batchRecipePresets.v1",
+      JSON.stringify([{
+        version: 1, id: "p1", name: "Level first",
+        steps: [{ op: "plane_level", params: {} }],
+        createdAt: "2026-07-26T12:00:00Z", updatedAt: "2026-07-26T12:00:00Z",
+      }]),
+    );
+    startWatch.mockRejectedValue(new Error("already watching a folder"));
+
+    render(<BatchDialog />);
+    fireEvent.change(await screen.findByLabelText("Recipe to watch with"), {
+      target: { value: "p1" },
+    });
+    fireEvent.change(screen.getByLabelText("Folder to watch"), {
+      target: { value: "C:\\incoming" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+
+    expect(await screen.findByText("already watching a folder")).toBeVisible();
+  });
+
+  it("keeps polling status through transient fetch failures instead of stopping or spiraling", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      fetchWatchStatus
+        .mockResolvedValueOnce({
+          watching: true, dir: "C:\\incoming", seen: 1, processed: 0,
+          last_error: null, job_ids: [],
+        })
+        .mockRejectedValueOnce(new Error("network blip"))
+        .mockResolvedValueOnce({
+          watching: true, dir: "C:\\incoming", seen: 2, processed: 1,
+          last_error: null, job_ids: [],
+        });
+
+      render(<BatchDialog />);
+      await screen.findByLabelText("Folder to watch");
+      await act(() => vi.advanceTimersByTimeAsync(0)); // the immediate tick() on mount
+      expect(fetchWatchStatus).toHaveBeenCalledTimes(1);
+
+      await act(() => vi.advanceTimersByTimeAsync(1500)); // rejects — must not throw/stop
+      expect(fetchWatchStatus).toHaveBeenCalledTimes(2);
+
+      await act(() => vi.advanceTimersByTimeAsync(1500)); // resumes on the next tick
+      expect(fetchWatchStatus).toHaveBeenCalledTimes(3);
+      expect(screen.getByText(/2 seen/)).toBeVisible();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops polling once the dialog (and WatchFolderSection) unmounts — no leaked interval", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const { unmount } = render(<BatchDialog />);
+      await screen.findByLabelText("Folder to watch");
+      await act(() => vi.advanceTimersByTimeAsync(0));
+      const callsBeforeUnmount = fetchWatchStatus.mock.calls.length;
+
+      unmount();
+      await act(() => vi.advanceTimersByTimeAsync(1500 * 3));
+
+      expect(fetchWatchStatus.mock.calls.length).toBe(callsBeforeUnmount);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("flattens heterogeneous analysis values into export columns", () => {

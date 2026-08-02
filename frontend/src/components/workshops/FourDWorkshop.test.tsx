@@ -87,6 +87,15 @@ describe("FourDWorkshop", () => {
     expect(screen.getByText(/\.mib.*Merlin/)).toBeVisible();
   });
 
+  it("surfaces a dataset-list fetch failure instead of the generic empty hint", async () => {
+    vi.mocked(listFourD).mockRejectedValue(new Error("network error"));
+    render(<FourDWorkshop />);
+    expect(
+      await screen.findByText(/4D datasets: network error/),
+    ).toBeVisible();
+    expect(screen.queryByText("No 4D-STEM datasets are open.")).toBeNull();
+  });
+
   it("lists datasets and loads the mean pattern + nav minimap on selection", async () => {
     vi.mocked(listFourD).mockResolvedValue([fourdMeta()]);
     vi.mocked(fetchFourDMeanPattern).mockResolvedValue(raster(64, 64));

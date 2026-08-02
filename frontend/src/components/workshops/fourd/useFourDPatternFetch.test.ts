@@ -86,4 +86,51 @@ describe("useFourDPatternFetch", () => {
     expect(useFourD.getState().status).toBe("pattern: boom");
     expect(useFourD.getState().busyPattern).toBe(false);
   });
+
+  it("an older probe's response resolving AFTER a newer one's does not clobber the newer result", async () => {
+    // classic race: two debounced requests are both allowed to actually
+    // settle (mock fetch doesn't honor AbortSignal, matching a browser fetch
+    // that started before the abort landed) — the AbortController's own
+    // "aborted" flag must still be what protects the final state, since
+    // nothing else does.
+    let resolveFirst: (r: ReturnType<typeof raster>) => void = () => {};
+    let resolveSecond: (r: ReturnType<typeof raster>) => void = () => {};
+    vi.mocked(fetchFourDPattern)
+      .mockImplementationOnce(() => new Promise((r) => { resolveFirst = r; }))
+      .mockImplementationOnce(() => new Promise((r) => { resolveSecond = r; }));
+    renderHook(() => useFourDPatternFetch("ds1"));
+
+    act(() => useFourD.getState().setProbe({ y: 1, x: 1 }));
+    await act(() => vi.advanceTimersByTimeAsync(FOURD_PATTERN_DEBOUNCE_MS));
+    act(() => useFourD.getState().setProbe({ y: 2, x: 2 }));
+    await act(() => vi.advanceTimersByTimeAsync(FOURD_PATTERN_DEBOUNCE_MS));
+    expect(fetchFourDPattern).toHaveBeenCalledTimes(2);
+
+    const second = { data: new Uint16Array([9, 9, 9, 9]), w: 2, h: 2, vmin: 0, vmax: 10, nFrames: null };
+    // resolve the NEWER request first, then the stale/aborted older one late
+    await act(async () => resolveSecond(second));
+    await act(async () => resolveFirst(raster()));
+
+    expect(useFourD.getState().patternRaster).toEqual(second);
+  });
+
+  it("cancels the in-flight fetch on unmount instead of setting state afterwards", async () => {
+    let resolvePattern: (r: ReturnType<typeof raster>) => void = () => {};
+    vi.mocked(fetchFourDPattern).mockImplementation(
+      () => new Promise((r) => { resolvePattern = r; }),
+    );
+    const { unmount } = renderHook(() => useFourDPatternFetch("ds1"));
+
+    act(() => useFourD.getState().setProbe({ y: 4, x: 4 }));
+    await act(() => vi.advanceTimersByTimeAsync(FOURD_PATTERN_DEBOUNCE_MS));
+    expect(useFourD.getState().busyPattern).toBe(true);
+
+    unmount();
+    // the request resolves after the component (and hook) are gone
+    await act(async () => resolvePattern(raster()));
+
+    // unmount aborted the request, so its resolution must not be applied —
+    // busyPattern is left as-is rather than a post-unmount write racing in
+    expect(useFourD.getState().patternRaster).toBeNull();
+  });
 });

@@ -21,7 +21,7 @@ import {
   fetchFourDNav,
   listFourD,
 } from "../lib/api";
-import { apertureRadiiForMode, useFourD } from "./fourd";
+import { apertureError, apertureRadiiForMode, useFourD } from "./fourd";
 import { useViewer } from "./viewer";
 
 function fourdMeta(id = "d1", detShape: [number, number] = [640, 640]): FourDMeta {
@@ -109,6 +109,62 @@ describe("apertureRadiiForMode", () => {
   it("custom is a pass-through that never overwrites the current radii", () => {
     const current = { innerR: 12, outerR: 34, shape: "annulus" as const };
     expect(apertureRadiiForMode("custom", [640, 640], current)).toBe(current);
+  });
+
+  it("stays non-degenerate (no zero radii, no error) on a tiny 8x8 detector", () => {
+    const bf = apertureRadiiForMode("bf", [8, 8]);
+    expect(bf).toEqual({ innerR: 0, outerR: 1, shape: "circle" });
+    expect(apertureError({ ...bf, autoCenter: true, centerKy: null, centerKx: null }, [8, 8])).toBeNull();
+
+    const abf = apertureRadiiForMode("abf", [8, 8]);
+    expect(abf).toEqual({ innerR: 0.5, outerR: 1, shape: "annulus" });
+    expect(apertureError({ ...abf, autoCenter: true, centerKy: null, centerKx: null }, [8, 8])).toBeNull();
+  });
+});
+
+describe("apertureError", () => {
+  const base = { innerR: 0, outerR: 10, shape: "circle" as const, autoCenter: true, centerKy: null, centerKx: null };
+
+  it("accepts a valid auto-centered circle", () => {
+    expect(apertureError(base, [640, 640])).toBeNull();
+  });
+
+  it("rejects a non-positive outer radius", () => {
+    expect(apertureError({ ...base, outerR: 0 }, [640, 640])).toMatch(/outer radius/i);
+    expect(apertureError({ ...base, outerR: -5 }, [640, 640])).toMatch(/outer radius/i);
+  });
+
+  it("rejects a negative inner radius on an annulus", () => {
+    expect(
+      apertureError({ ...base, shape: "annulus", innerR: -1, outerR: 10 }, [640, 640]),
+    ).toMatch(/inner radius/i);
+  });
+
+  it("rejects inner >= outer on an annulus", () => {
+    expect(
+      apertureError({ ...base, shape: "annulus", innerR: 10, outerR: 10 }, [640, 640]),
+    ).toMatch(/inner radius/i);
+  });
+
+  it("rejects a NaN manual center", () => {
+    expect(
+      apertureError({ ...base, autoCenter: false, centerKy: NaN, centerKx: 3 }, [640, 640]),
+    ).toMatch(/center/i);
+  });
+
+  it("rejects a manual center outside the detector bounds", () => {
+    expect(
+      apertureError({ ...base, autoCenter: false, centerKy: -1, centerKx: 3 }, [640, 640]),
+    ).toMatch(/detector bounds/i);
+    expect(
+      apertureError({ ...base, autoCenter: false, centerKy: 640, centerKx: 3 }, [640, 640]),
+    ).toMatch(/detector bounds/i);
+  });
+
+  it("accepts a valid manual center", () => {
+    expect(
+      apertureError({ ...base, autoCenter: false, centerKy: 12.5, centerKx: 9 }, [640, 640]),
+    ).toBeNull();
   });
 });
 
@@ -232,5 +288,86 @@ describe("useFourD store", () => {
       shape: "annulus",
       name: "custom(d1.mib)",
     });
+  });
+
+  it("computeMap ignores a second call while the first is still in flight (double-submit guard)", async () => {
+    useFourD.setState({
+      datasets: [fourdMeta("d1")],
+      selectedId: "d1",
+      aperture: {
+        centerKy: null, centerKx: null, autoCenter: true,
+        mode: "bf", innerR: 0, outerR: 80, shape: "circle",
+      },
+    });
+    let resolveFetch: (m: ImageMeta) => void = () => {};
+    vi.mocked(computeVirtualDetector).mockReturnValue(
+      new Promise((resolve) => { resolveFetch = resolve; }),
+    );
+
+    const first = useFourD.getState().computeMap();
+    const second = useFourD.getState().computeMap(); // fired before the first settles
+    resolveFetch(imageMeta("map3"));
+    await act(async () => {
+      await Promise.all([first, second]);
+    });
+
+    expect(computeVirtualDetector).toHaveBeenCalledTimes(1);
+  });
+
+  it("computeMap refuses a non-finite/degenerate aperture instead of sending it to the server", async () => {
+    useFourD.setState({
+      datasets: [fourdMeta("d1")],
+      selectedId: "d1",
+      aperture: {
+        centerKy: NaN, centerKx: 9, autoCenter: false,
+        mode: "custom", innerR: 5, outerR: 20, shape: "annulus",
+      },
+    });
+
+    await act(() => useFourD.getState().computeMap());
+
+    expect(computeVirtualDetector).not.toHaveBeenCalled();
+    expect(useFourD.getState().status).toMatch(/center/i);
+  });
+
+  it("computeMap refuses a zero/negative outer radius", async () => {
+    useFourD.setState({
+      datasets: [fourdMeta("d1")],
+      selectedId: "d1",
+      aperture: {
+        centerKy: null, centerKx: null, autoCenter: true,
+        mode: "custom", innerR: 0, outerR: 0, shape: "circle",
+      },
+    });
+
+    await act(() => useFourD.getState().computeMap());
+
+    expect(computeVirtualDetector).not.toHaveBeenCalled();
+    expect(useFourD.getState().status).toMatch(/outer radius/i);
+  });
+
+  it("computeMap refuses an annulus whose inner radius is not smaller than the outer radius", async () => {
+    useFourD.setState({
+      datasets: [fourdMeta("d1")],
+      selectedId: "d1",
+      aperture: {
+        centerKy: null, centerKx: null, autoCenter: true,
+        mode: "custom", innerR: 40, outerR: 40, shape: "annulus",
+      },
+    });
+
+    await act(() => useFourD.getState().computeMap());
+
+    expect(computeVirtualDetector).not.toHaveBeenCalled();
+    expect(useFourD.getState().status).toMatch(/inner radius/i);
+  });
+
+  it("fetchDatasets drops a malformed dataset entry instead of letting it crash the picker", async () => {
+    const malformed = { ...fourdMeta("bad"), det_shape: undefined } as unknown as FourDMeta;
+    vi.mocked(listFourD).mockResolvedValue([fourdMeta("d1"), malformed]);
+
+    await useFourD.getState().fetchDatasets();
+
+    expect(useFourD.getState().datasets.map((d) => d.id)).toEqual(["d1"]);
   });
 });

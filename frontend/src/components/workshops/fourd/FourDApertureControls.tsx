@@ -1,8 +1,7 @@
 // Aperture controls: BF/ABF/ADF/custom mode presets, radii + center fields,
 // auto-center toggle, and the Compute map action (POST /virtual-detector).
 
-import type { ApertureMode } from "../../../store/fourd";
-import { useFourD } from "../../../store/fourd";
+import { apertureError, useFourD, type ApertureMode } from "../../../store/fourd";
 
 const MODES: { id: ApertureMode; label: string; title: string }[] = [
   { id: "bf", label: "BF", title: "Bright field — disk at the direct beam" },
@@ -26,6 +25,7 @@ export default function FourDApertureControls({
   const status = useFourD((s) => s.status);
 
   const maxR = Math.max(detShape[0], detShape[1]) / 2;
+  const error = apertureError(aperture, detShape);
 
   return (
     <>
@@ -112,13 +112,16 @@ export default function FourDApertureControls({
           <span className="k">center (ky, kx)</span>
           <input
             type="number"
-            value={aperture.centerKy ?? 0}
+            // a mid-edit NaN (e.g. a lone "-") must show as blank, not the
+            // literal string "NaN", in this controlled input — null (not
+            // yet edited) still defaults to 0 as before
+            value={aperture.centerKy == null ? 0 : Number.isNaN(aperture.centerKy) ? "" : aperture.centerKy}
             style={{ width: 62 }}
             onChange={(e) => setApertureField({ centerKy: Number(e.target.value) })}
           />
           <input
             type="number"
-            value={aperture.centerKx ?? 0}
+            value={aperture.centerKx == null ? 0 : Number.isNaN(aperture.centerKx) ? "" : aperture.centerKx}
             style={{ width: 62 }}
             onChange={(e) => setApertureField({ centerKx: Number(e.target.value) })}
           />
@@ -128,12 +131,14 @@ export default function FourDApertureControls({
       <div className="fvd-ws-row">
         <button
           className="fvd-btn primary"
-          disabled={!selectedId || busyCompute}
+          disabled={!selectedId || busyCompute || !!error}
+          title={error ?? undefined}
           onClick={() => void computeMap()}
         >
           {busyCompute ? "Computing…" : "Compute map"}
         </button>
       </div>
+      {error && <div className="fvd-ws-note">{error}</div>}
       {status && <div className="fvd-ws-note">{status}</div>}
     </>
   );

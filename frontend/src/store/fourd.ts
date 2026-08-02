@@ -79,6 +79,69 @@ function defaultAperture(detShape: readonly [number, number]): FourDAperture {
   };
 }
 
+/** Validate an aperture against what `/virtual-detector` will actually
+ *  accept (mirrors `_validate_virtual_detector_request` in
+ *  routes/fourd.py) — returns a user-facing reason, or null when the
+ *  aperture is safe to send. Checked BEFORE the request goes out so a
+ *  stray NaN (e.g. a manual center field mid-edit, which
+ *  `JSON.stringify` would otherwise silently collapse to `null` and have
+ *  the server reinterpret as "auto-center") or a negative/degenerate
+ *  radius never round-trips to the wire at all, rather than relying on
+ *  the server's 422 to catch it after the fact. */
+export function apertureError(
+  aperture: Pick<FourDAperture, "innerR" | "outerR" | "shape" | "autoCenter" | "centerKy" | "centerKx">,
+  detShape: readonly [number, number],
+): string | null {
+  if (!Number.isFinite(aperture.outerR) || aperture.outerR <= 0) {
+    return "outer radius must be greater than 0";
+  }
+  if (aperture.shape === "annulus") {
+    if (!Number.isFinite(aperture.innerR) || aperture.innerR < 0) {
+      return "inner radius must be 0 or greater";
+    }
+    if (aperture.innerR >= aperture.outerR) {
+      return "inner radius must be smaller than the outer radius";
+    }
+  }
+  if (!aperture.autoCenter) {
+    const { centerKy, centerKx } = aperture;
+    if (
+      centerKy == null || centerKx == null ||
+      !Number.isFinite(centerKy) || !Number.isFinite(centerKx)
+    ) {
+      return "center (ky, kx) must be set when auto-center is off";
+    }
+    if (
+      centerKy < 0 || centerKy > detShape[0] - 1 ||
+      centerKx < 0 || centerKx > detShape[1] - 1
+    ) {
+      return "center (ky, kx) must be within the detector bounds";
+    }
+  }
+  return null;
+}
+
+/** A stricter structural check than `isFourDMeta` (which only looks at the
+ *  `is_fourd` discriminator, by design — see lib/api/core.ts): this one
+ *  additionally verifies the array fields the workshop actually indexes
+ *  into (`det_shape`/`scan_shape`/`scan_axes`) are present with the right
+ *  shape, so one malformed `/api/fourd` entry can't crash the dataset
+ *  picker's render (`d.det_shape.join(...)`) or `probeLabel`'s
+ *  `scan_axes` destructure for every OTHER dataset in the list too. Kept
+ *  local to this store rather than sharpening `isFourDMeta` itself, since
+ *  `isFourDMeta` also discriminates `ingestImages`'s mixed
+ *  `ImageMeta | FourDMeta` array — tightening it there would flip a
+ *  malformed FourD entry into being treated as a (also-invalid)
+ *  ImageMeta instead of being dropped. */
+function isValidFourDMeta(m: FourDMeta): boolean {
+  return (
+    m.is_fourd === true &&
+    Array.isArray(m.det_shape) && m.det_shape.length === 2 &&
+    Array.isArray(m.scan_shape) && m.scan_shape.length === 2 &&
+    Array.isArray(m.scan_axes) && Array.isArray(m.det_axes)
+  );
+}
+
 interface FourDState {
   datasets: FourDMeta[];
   selectedId: string | null;
@@ -137,7 +200,7 @@ export const useFourD = create<FourDState>((set, get) => ({
   fetchDatasets: async () => {
     set({ busyList: true });
     try {
-      const datasets = await listFourD();
+      const datasets = (await listFourD()).filter(isValidFourDMeta);
       set({ datasets, status: null });
     } catch (e) {
       set({ status: `4D datasets: ${(e as Error).message}` });
@@ -236,8 +299,13 @@ export const useFourD = create<FourDState>((set, get) => ({
     set((s) => ({ aperture: { ...s.aperture, autoCenter } })),
 
   computeMap: async () => {
-    const { selectedId, aperture, datasets } = get();
-    if (!selectedId) return;
+    const { selectedId, aperture, datasets, busyCompute } = get();
+    if (!selectedId || busyCompute) return; // double-submit guard
+    const error = apertureError(aperture, detShapeOf(datasets, selectedId));
+    if (error) {
+      set({ status: `virtual-detector: ${error}` });
+      return;
+    }
     set({ busyCompute: true, status: "computing virtual-detector map…" });
     try {
       const dsName = datasets.find((d) => d.id === selectedId)?.name ?? selectedId;
