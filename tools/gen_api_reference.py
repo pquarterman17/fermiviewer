@@ -35,7 +35,6 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import fermiviewer.api as fvapi  # noqa: E402
 import fermiviewer.ops as fvops  # noqa: E402
-from fermiviewer import __version__  # noqa: E402
 from fermiviewer.ops.base import OpParam, OpSpec  # noqa: E402
 
 OUT_PATH = ROOT / "docs" / "api-reference.md"
@@ -246,10 +245,12 @@ def build_markdown() -> str:
 # fermiviewer.api reference
 
 Generated from the live `fermiviewer.api` module docstring and the ops
-registry — a signature or default shown here always matches fermiviewer
-{__version__}'s source. See `examples/` for complete worked scripts and the
-top-level `README.md`'s **Scripting** section for the quickstart and the
-`fv --script` recipe runner.
+registry — a signature or default shown here always matches the
+checked-out source. (Deliberately version-free: embedding the release
+number made every `chore(release)` version bump stale this file and fail
+the drift-guard test on CI — v0.1.23 hit exactly that.) See `examples/`
+for complete worked scripts and the top-level `README.md`'s **Scripting**
+section for the quickstart and the `fv --script` recipe runner.
 
 {_doc(fvapi)}
 

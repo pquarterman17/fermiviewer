@@ -4,10 +4,12 @@
 # fermiviewer.api reference
 
 Generated from the live `fermiviewer.api` module docstring and the ops
-registry — a signature or default shown here always matches fermiviewer
-0.1.22's source. See `examples/` for complete worked scripts and the
-top-level `README.md`'s **Scripting** section for the quickstart and the
-`fv --script` recipe runner.
+registry — a signature or default shown here always matches the
+checked-out source. (Deliberately version-free: embedding the release
+number made every `chore(release)` version bump stale this file and fail
+the drift-guard test on CI — v0.1.23 hit exactly that.) See `examples/`
+for complete worked scripts and the top-level `README.md`'s **Scripting**
+section for the quickstart and the `fv --script` recipe runner.
 
 ``fermiviewer.api`` — the documented public Python surface (Scripting #2).
 
