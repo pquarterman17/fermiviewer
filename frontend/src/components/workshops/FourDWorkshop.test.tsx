@@ -11,11 +11,13 @@ vi.mock("../../lib/api", async (importActual) => {
     fetchFourDPattern: vi.fn(),
     fetchData16: vi.fn(),
     computeVirtualDetector: vi.fn(),
+    closeFourD: vi.fn(),
   };
 });
 
 import type { FourDMeta, ImageMeta, Raster16 } from "../../lib/api";
 import {
+  closeFourD,
   computeVirtualDetector,
   fetchData16,
   fetchFourDMeanPattern,
@@ -177,6 +179,77 @@ describe("FourDWorkshop", () => {
       }),
     );
     await waitFor(() => expect(useViewer.getState().images.map1).toBeDefined());
+  });
+
+  it("disables Close until a dataset is selected", async () => {
+    vi.mocked(listFourD).mockResolvedValue([fourdMeta()]);
+    vi.mocked(fetchFourDMeanPattern).mockResolvedValue(raster(64, 64));
+    vi.mocked(fetchFourDNav).mockResolvedValue(imageMeta("nav1"));
+    vi.mocked(fetchData16).mockResolvedValue(raster(5, 4));
+
+    render(<FourDWorkshop />);
+    await screen.findByLabelText("4D-STEM dataset");
+    expect(screen.getByRole("button", { name: "Close" })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("4D-STEM dataset"), {
+      target: { value: "d1" },
+    });
+    await screen.findByText("mean pattern");
+    expect(screen.getByRole("button", { name: "Close" })).toBeEnabled();
+  });
+
+  it("Close releases the dataset, refreshes the list, and clears the selection — without touching a derived nav image", async () => {
+    vi.mocked(listFourD)
+      .mockResolvedValueOnce([fourdMeta()])
+      .mockResolvedValueOnce([]);
+    vi.mocked(fetchFourDMeanPattern).mockResolvedValue(raster(64, 64));
+    vi.mocked(fetchFourDNav).mockResolvedValue(imageMeta("nav1"));
+    vi.mocked(fetchData16).mockResolvedValue(raster(5, 4));
+    vi.mocked(closeFourD).mockResolvedValue(undefined);
+
+    render(<FourDWorkshop />);
+    fireEvent.change(await screen.findByLabelText("4D-STEM dataset"), {
+      target: { value: "d1" },
+    });
+    await screen.findByText("mean pattern");
+    // register the derived nav image in the main viewer store first, the
+    // same way a real session would before closing the 4D dataset
+    fireEvent.click(screen.getByRole("button", { name: "Show nav image" }));
+    await waitFor(() => expect(useViewer.getState().images.nav1).toBeDefined());
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    await waitFor(() => expect(closeFourD).toHaveBeenCalledWith("d1"));
+    await waitFor(() => expect(listFourD).toHaveBeenCalledTimes(2));
+    expect(
+      await screen.findByText("No 4D-STEM datasets are open."),
+    ).toBeVisible();
+    // the workshop's own 4D state (mean pattern, nav minimap, aperture) is
+    // gone, but the derived image in the main viewer store is untouched
+    expect(screen.queryByText("mean pattern")).toBeNull();
+    expect(useViewer.getState().images.nav1).toBeDefined();
+  });
+
+  it("surfaces a failed close instead of silently leaving the dataset selected", async () => {
+    vi.mocked(listFourD).mockResolvedValue([fourdMeta()]);
+    vi.mocked(fetchFourDMeanPattern).mockResolvedValue(raster(64, 64));
+    vi.mocked(fetchFourDNav).mockResolvedValue(imageMeta("nav1"));
+    vi.mocked(fetchData16).mockResolvedValue(raster(5, 4));
+    vi.mocked(closeFourD).mockRejectedValue(new Error("unknown 4D dataset id: d1"));
+
+    render(<FourDWorkshop />);
+    fireEvent.change(await screen.findByLabelText("4D-STEM dataset"), {
+      target: { value: "d1" },
+    });
+    await screen.findByText("mean pattern");
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    await waitFor(() => expect(closeFourD).toHaveBeenCalledWith("d1"));
+    // the failure is surfaced, not swallowed, and the selection is left
+    // alone rather than clearing state for a close that never happened
+    await screen.findByText(/close dataset: unknown 4D dataset id: d1/);
+    expect(screen.getByText("mean pattern")).toBeVisible();
   });
 
   it("Show nav image ingests the nav ImageMeta into the main viewer store", async () => {

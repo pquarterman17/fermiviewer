@@ -125,10 +125,11 @@ def test_pattern_non_integer_y_is_422(client: TestClient, bad_y: str) -> None:
 
 
 def test_requests_against_a_closed_dataset_are_404_not_500(client: TestClient) -> None:
-    """No route currently exposes closing a 4D dataset over HTTP, but the
-    store-level close() path (used internally, e.g. by session cleanup)
-    must leave every route 404ing cleanly afterward — never a 500 from a
-    stale reference somewhere."""
+    """DELETE /api/fourd/{id} (below) is the HTTP-facing way to close a
+    dataset; this test exercises the underlying store-level close() path
+    directly (as internal callers like session cleanup do) to confirm every
+    OTHER route 404s cleanly afterward — never a 500 from a stale
+    reference somewhere."""
     fourd_id, _cube = _register_dataset()
     fourd_store.close(fourd_id)
     assert client.get(f"/api/fourd/{fourd_id}/meta").status_code == 404
@@ -192,6 +193,71 @@ def test_nav_reregisters_after_the_image_is_closed(client: TestClient) -> None:
     second = client.get(f"/api/fourd/{fourd_id}/nav").json()
     assert second["id"] != first["id"]
     assert client.get(f"/api/image/{second['id']}/meta").status_code == 200
+
+
+# ── DELETE /api/fourd/{fourd_id} ────────────────────────────────────────
+
+
+def test_delete_fourd_closes_the_dataset(client: TestClient) -> None:
+    fourd_id, _cube = _register_dataset()
+    r = client.delete(f"/api/fourd/{fourd_id}")
+    assert r.status_code == 200
+    assert r.json() == {"status": "closed"}
+    assert client.get(f"/api/fourd/{fourd_id}/meta").status_code == 404
+    assert fourd_id not in [m["id"] for m in client.get("/api/fourd").json()]
+
+
+def test_delete_fourd_unknown_id_is_404(client: TestClient) -> None:
+    assert client.delete("/api/fourd/4d-999").status_code == 404
+
+
+def test_delete_fourd_twice_404s_the_second_time(client: TestClient) -> None:
+    """Mirrors routes.images.close_image: the same id can't be closed twice
+    — the second DELETE 404s rather than silently no-opping, exactly like
+    an unknown id would."""
+    fourd_id, _cube = _register_dataset()
+    assert client.delete(f"/api/fourd/{fourd_id}").status_code == 200
+    assert client.delete(f"/api/fourd/{fourd_id}").status_code == 404
+
+
+def test_delete_fourd_does_not_touch_a_derived_nav_image(client: TestClient) -> None:
+    """The nav image (and any virtual-detector map) is an ORDINARY image in
+    the separate image_store — closing the 4D dataset it was derived from
+    must not evict or invalidate it."""
+    fourd_id, _cube = _register_dataset()
+    nav = client.get(f"/api/fourd/{fourd_id}/nav").json()
+
+    r = client.delete(f"/api/fourd/{fourd_id}")
+    assert r.status_code == 200
+
+    assert client.get(f"/api/fourd/{fourd_id}/meta").status_code == 404
+    r2 = client.get(f"/api/image/{nav['id']}/meta")
+    assert r2.status_code == 200
+    r3 = client.get(f"/api/image/{nav['id']}/render")
+    assert r3.status_code == 200
+
+
+def test_delete_fourd_releases_the_file_handle_for_deletion(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """CRITICAL on Windows: a 4D dataset held open for the server's
+    lifetime (the bug this route fixes) keeps its backing file locked, so
+    it could never be deleted or replaced even after the user was done
+    with it. Uses a real file-backed dataset (via /session/open, not the
+    synthetic in-memory one from _register_dataset) so this actually
+    exercises the memmap close path."""
+    mib_path = _write_minimal_mib(tmp_path / "close_me.mib")
+    opened = client.post("/api/session/open", json={"paths": [str(mib_path)]}).json()
+    fourd_id = opened[0]["id"]
+    assert client.get(f"/api/fourd/{fourd_id}/pattern", params={"y": 0, "x": 0}).status_code == 200
+
+    r = client.delete(f"/api/fourd/{fourd_id}")
+    assert r.status_code == 200
+
+    import gc
+
+    gc.collect()
+    mib_path.unlink()  # must not raise PermissionError ([WinError 32])
 
 
 # ── /session/open wiring: a 4D file registers into the FourD store and

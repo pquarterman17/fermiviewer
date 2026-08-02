@@ -32,6 +32,24 @@ export default function WatchFolderSection({ onDerived }: WatchFolderSectionProp
 
   const preset = presets.find((item) => item.id === presetId);
   const watching = status?.watching ?? false;
+  const noPresets = presets.length === 0;
+  const startDisabled = busy || watching || !preset || !dir.trim();
+  // A disabled Start button gave zero explanation for why it stayed dead —
+  // with a directory typed but no preset chosen, or (worse) with no saved
+  // presets to choose from at all. Mirror FloatTools' disabled-compare-button
+  // pattern: the reason lives in data-tip/data-tip-detail, read by the
+  // global TooltipLayer. While busy/watching the button's state is already
+  // self-explanatory (Stop is the live action), so no tip is needed there.
+  const startReason =
+    busy || watching
+      ? null
+      : noPresets
+        ? 'No saved presets yet — save a recipe as a preset with "Save new" in Recipe presets above, then choose it here.'
+        : !preset
+          ? "Choose a saved preset."
+          : !dir.trim()
+            ? "Enter a folder path."
+            : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -130,17 +148,35 @@ export default function WatchFolderSection({ onDerived }: WatchFolderSectionProp
           placeholder="Folder path, e.g. C:\data\incoming"
           onChange={(event) => setDir(event.target.value)}
         />
-        <button
-          className="fvd-btn"
-          disabled={busy || watching || !preset || !dir.trim()}
-          onClick={() => void start()}
+        <span
+          className="fvd-tool-wrap"
+          data-tip={startReason ? "Start" : undefined}
+          data-tip-detail={startReason ?? undefined}
         >
-          Start
-        </button>
+          <button
+            className="fvd-btn"
+            disabled={startDisabled}
+            data-tip={startReason ? undefined : "Start"}
+            data-tip-detail={
+              startReason
+                ? undefined
+                : "Watch this folder and auto-run the chosen recipe on new files."
+            }
+            onClick={() => void start()}
+          >
+            Start
+          </button>
+        </span>
         <button className="fvd-btn" disabled={busy || !watching} onClick={() => void stop()}>
           Stop
         </button>
       </div>
+      {noPresets && (
+        <div className="fvd-ws-note">
+          No saved presets yet. Save a recipe as a preset with “Save new” in
+          Recipe presets above to enable watching.
+        </div>
+      )}
       {statusLine && (
         <div className="fvd-batch-preset-status" aria-live="polite">
           {statusLine}

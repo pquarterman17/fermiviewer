@@ -72,6 +72,26 @@ def fourd_meta(fourd_id: str) -> FourDMeta:
     return FourDMeta.from_dataset(fourd_id, fourd_store.name(fourd_id), ds4)
 
 
+@router.delete("/fourd/{fourd_id}")
+def close_fourd(fourd_id: str) -> dict[str, str]:
+    """Close a 4D dataset and release its file handle.
+
+    Mirrors `routes.images.close_image` exactly: same 404-on-unknown-id
+    semantics (so a second delete on an already-closed id 404s rather than
+    silently no-opping) and the same `{"status": "closed"}` response shape.
+
+    IMPORTANT: nav images and virtual-detector maps already derived from
+    this dataset are ORDINARY images registered in the separate
+    `image_store` (see `session_fourd.FourDStore`'s module docstring — the
+    two stores are never merged). Closing the 4D dataset here does not
+    touch them; they stay open and usable, keyed only by their own image
+    id, until the user closes them individually.
+    """
+    _get(fourd_id)
+    fourd_store.close(fourd_id)
+    return {"status": "closed"}
+
+
 @router.get("/fourd/{fourd_id}/nav")
 def fourd_nav(fourd_id: str) -> ImageMeta:
     """The navigation image (detector-summed intensity per scan position),

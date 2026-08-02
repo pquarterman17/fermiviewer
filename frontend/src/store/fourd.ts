@@ -16,6 +16,7 @@
 import { create } from "zustand";
 
 import {
+  closeFourD,
   computeVirtualDetector,
   fetchData16,
   fetchFourDMeanPattern,
@@ -149,6 +150,12 @@ interface FourDState {
   navRaster: Raster16 | null;
   probe: FourDProbe | null;
   patternRaster: Raster16 | null;
+  /** The mean pattern, cached separately from `patternRaster` (which is
+   *  overwritten by whatever's currently displayed — mean or a probed
+   *  pattern). The server always centers "auto" apertures on the MEAN
+   *  pattern's intensity centroid, so the client-side preview ring needs
+   *  this even while a probed pattern is on screen. */
+  meanRaster: Raster16 | null;
   aperture: FourDAperture;
   busyList: boolean;
   busyNav: boolean;
@@ -158,6 +165,7 @@ interface FourDState {
 
   fetchDatasets: () => Promise<void>;
   selectDataset: (id: string) => Promise<void>;
+  closeDataset: (id: string) => Promise<void>;
   fetchNavRaster: () => Promise<void>;
   showNavImage: () => Promise<void>;
   setProbe: (probe: FourDProbe | null) => void;
@@ -181,6 +189,7 @@ const initial = {
   navRaster: null as Raster16 | null,
   probe: null as FourDProbe | null,
   patternRaster: null as Raster16 | null,
+  meanRaster: null as Raster16 | null,
   aperture: defaultAperture([256, 256]),
   busyList: false,
   busyNav: false,
@@ -217,6 +226,7 @@ export const useFourD = create<FourDState>((set, get) => ({
       navRaster: null,
       probe: null,
       patternRaster: null,
+      meanRaster: null,
       aperture: defaultAperture(detShape),
       status: null,
     });
@@ -226,6 +236,31 @@ export const useFourD = create<FourDState>((set, get) => ({
     // (see showNavImage below), so merely browsing the dataset picker never
     // hijacks the main Stage's active image.
     await Promise.all([get().fetchMeanPattern(), get().fetchNavRaster()]);
+  },
+
+  closeDataset: async (id) => {
+    try {
+      await closeFourD(id);
+    } catch (e) {
+      set({ status: `close dataset: ${(e as Error).message}` });
+      return;
+    }
+    const wasSelected = get().selectedId === id;
+    await get().fetchDatasets();
+    // Derived nav/virtual-detector images live in the main viewer store and
+    // are untouched server-side (routes/fourd.py's close_fourd docstring) —
+    // only this workshop's own 4D-specific state needs clearing, and only
+    // when the closed dataset was the one being viewed.
+    if (wasSelected) {
+      set({
+        selectedId: null,
+        navMeta: null,
+        navRaster: null,
+        probe: null,
+        patternRaster: null,
+        meanRaster: null,
+      });
+    }
   },
 
   fetchNavRaster: async () => {
@@ -273,8 +308,12 @@ export const useFourD = create<FourDState>((set, get) => ({
     set({ busyPattern: true });
     try {
       const raster = await fetchFourDMeanPattern(id);
-      // a probe click may have already landed while this was in flight —
-      // only replace the pattern if we're still showing the mean (no probe)
+      // Always cache the mean pattern itself (the auto-center preview needs
+      // it even once a probe replaces `patternRaster`). A probe click may
+      // have already landed while this was in flight — only replace the
+      // currently-displayed pattern if we're still showing the mean (no
+      // probe).
+      set({ meanRaster: raster });
       if (get().probe === null) set({ patternRaster: raster });
     } catch (e) {
       set({ status: `mean pattern: ${(e as Error).message}` });

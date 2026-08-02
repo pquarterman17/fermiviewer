@@ -17,6 +17,15 @@ export async function fetchFourDMeta(id: string): Promise<FourDMeta> {
   return json(await fetch(`/api/fourd/${id}/meta`));
 }
 
+/** Close a 4D dataset server-side, releasing its file handle (it would
+ *  otherwise stay open for the server's lifetime). Nav images and
+ *  virtual-detector maps already derived from it are ordinary images in
+ *  the separate image store and are NOT affected — see
+ *  routes/fourd.py's `close_fourd` docstring. */
+export async function closeFourD(id: string): Promise<void> {
+  await json(await fetch(`/api/fourd/${id}`, { method: "DELETE" }));
+}
+
 /** Registers (idempotently) and returns the nav image's ImageMeta. Callers
  *  decide whether to also `useViewer().ingestDerived([meta])` to surface it
  *  on the main Stage/filmstrip — this alone does not touch the viewer store. */

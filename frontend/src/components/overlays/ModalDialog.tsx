@@ -6,6 +6,8 @@ import {
   type ReactNode,
 } from "react";
 
+import { MODAL_BACKDROP } from "../../styles/zLayers";
+
 const FOCUSABLE = [
   "button:not([disabled])",
   "a[href]",
@@ -124,7 +126,11 @@ export default function ModalDialog({
   };
 
   return (
-    <div className="fvd-overlay-backdrop" onMouseDown={handleBackdrop}>
+    <div
+      className="fvd-overlay-backdrop"
+      style={{ zIndex: MODAL_BACKDROP }}
+      onMouseDown={handleBackdrop}
+    >
       <div
         ref={dialogRef}
         className={`fvd-glass ${className}`}

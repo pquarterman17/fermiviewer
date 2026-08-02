@@ -25,22 +25,58 @@ export function drawRaster16(canvas: HTMLCanvasElement, raster: Raster16): void 
   ctx.putImageData(img, 0, 0);
 }
 
+/** Intensity centroid of a raster: the finite-weighted first moment,
+ *  mirroring `calc/fourd/geometry.pattern_center(method="centroid")`
+ *  exactly (same fallback too) so the client preview and the server's
+ *  authoritative center agree. Non-finite samples contribute zero weight;
+ *  an all-zero (or non-positive-total) raster falls back to the geometric
+ *  center `((h-1)/2, (w-1)/2)` — a degenerate pattern carries no
+ *  information to seed a center from. Returns `(cy, cx)` in 0-based pixel
+ *  coordinates, row-major `values[y * w + x]` like the rest of Raster16. */
+export function rasterCentroid(
+  values: ArrayLike<number>,
+  w: number,
+  h: number,
+): { cy: number; cx: number } {
+  const geometric = { cy: (h - 1) / 2, cx: (w - 1) / 2 };
+  let total = 0;
+  let sumY = 0;
+  let sumX = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const v = values[y * w + x];
+      if (!Number.isFinite(v)) continue;
+      total += v;
+      sumY += v * y;
+      sumX += v * x;
+    }
+  }
+  if (total <= 0) return geometric;
+  return { cy: sumY / total, cx: sumX / total };
+}
+
 /** Where to draw the aperture ring, in (row, col) pixel coords of the
  *  CURRENT pattern raster. When a manual center is set, that's authoritative.
- *  When auto-center is on this is a client-side PREVIEW only — it uses the
- *  geometric mid-point, the same fallback formula
- *  `calc/fourd/geometry.pattern_center` uses for a degenerate pattern; the
- *  server computes the true intensity-weighted centroid from the full
- *  float64 mean pattern when Compute map actually runs. */
+ *  When auto-center is on, the server always centers on the MEAN pattern's
+ *  intensity centroid (routes/fourd.py's compute-map path) — regardless of
+ *  which pattern (mean or a probed one) is currently on screen — so the
+ *  preview must use `meanRaster`, the mean pattern cached independently of
+ *  whatever `displayedRaster` (the one actually drawn) currently is. Falls
+ *  back to the displayed raster's geometric mid-point only when no mean
+ *  pattern has been fetched yet. */
 export function apertureCenterPreview(
   aperture: Pick<FourDAperture, "autoCenter" | "centerKy" | "centerKx">,
-  raster: Pick<Raster16, "w" | "h"> | null,
+  displayedRaster: Pick<Raster16, "w" | "h"> | null,
+  meanRaster: Raster16 | null = null,
 ): { cy: number; cx: number } | null {
   if (!aperture.autoCenter) {
     return aperture.centerKy != null && aperture.centerKx != null
       ? { cy: aperture.centerKy, cx: aperture.centerKx }
       : null;
   }
-  if (!raster) return null;
-  return { cy: (raster.h - 1) / 2, cx: (raster.w - 1) / 2 };
+  if (meanRaster) {
+    return rasterCentroid(meanRaster.data, meanRaster.w, meanRaster.h);
+  }
+  if (!displayedRaster) return null;
+  return { cy: (displayedRaster.h - 1) / 2, cx: (displayedRaster.w - 1) / 2 };
 }

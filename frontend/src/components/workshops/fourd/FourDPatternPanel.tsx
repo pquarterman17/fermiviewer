@@ -52,6 +52,7 @@ function ApertureRing({
 
 export default function FourDPatternPanel({ meta }: { meta: FourDMeta | null }) {
   const patternRaster = useFourD((s) => s.patternRaster);
+  const meanRaster = useFourD((s) => s.meanRaster);
   const busyPattern = useFourD((s) => s.busyPattern);
   const probe = useFourD((s) => s.probe);
   const aperture = useFourD((s) => s.aperture);
@@ -72,14 +73,23 @@ export default function FourDPatternPanel({ meta }: { meta: FourDMeta | null }) 
 
   const scale = VIEW_W / patternRaster.w;
   const viewH = patternRaster.h * scale;
-  const center = apertureCenterPreview(aperture, patternRaster);
+  // det_shape aspect must survive regardless of what the surrounding flex
+  // layout does (e.g. extra note/warning text pushing the column taller
+  // after a Compute run can shrink a fixed-height flex item's main axis —
+  // that's what turned the 144×144 pattern into a wide rectangle). Drive
+  // sizing from CSS aspect-ratio instead of a static pixel height so the
+  // browser always re-derives height from width, and pin flex-shrink: 0
+  // (in .fvd-ws-pattern, 07-preferences-workshops.css) so it's never
+  // squeezed away from that size in the first place.
+  const aspectRatio = `${patternRaster.w} / ${patternRaster.h}`;
+  const center = apertureCenterPreview(aperture, patternRaster, meanRaster);
 
   return (
     <div className="fvd-ws-fourd-pattern">
-      <div className="fvd-ws-pattern" style={{ width: VIEW_W, height: viewH }}>
+      <div className="fvd-ws-pattern" style={{ width: VIEW_W, aspectRatio }}>
         <canvas
           ref={canvasRef}
-          style={{ width: VIEW_W, height: viewH, imageRendering: "pixelated" }}
+          style={{ width: VIEW_W, aspectRatio, imageRendering: "pixelated" }}
         />
         {center && (
           <svg width={VIEW_W} height={viewH} pointerEvents="none">

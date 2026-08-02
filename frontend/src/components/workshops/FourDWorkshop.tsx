@@ -20,7 +20,7 @@
 // plus a way for the Stage to know which open image is a 4D nav image,
 // neither of which exists yet.
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { useFourD } from "../../store/fourd";
 import FourDApertureControls from "./fourd/FourDApertureControls";
@@ -36,11 +36,23 @@ export default function FourDWorkshop() {
   const status = useFourD((s) => s.status);
   const fetchDatasets = useFourD((s) => s.fetchDatasets);
   const selectDataset = useFourD((s) => s.selectDataset);
+  const closeDataset = useFourD((s) => s.closeDataset);
   const showNavImage = useFourD((s) => s.showNavImage);
+  const [closing, setClosing] = useState(false);
 
   useEffect(() => {
     void fetchDatasets();
   }, [fetchDatasets]);
+
+  const handleClose = async () => {
+    if (!selectedId) return;
+    setClosing(true);
+    try {
+      await closeDataset(selectedId);
+    } finally {
+      setClosing(false);
+    }
+  };
 
   // debounced probe → /pattern fetch; a no-op while no dataset is selected
   useFourDPatternFetch(selectedId);
@@ -98,6 +110,14 @@ export default function FourDWorkshop() {
           title="Register (or re-show) the nav image on the main Stage"
         >
           Show nav image
+        </button>
+        <button
+          className="fvd-btn danger"
+          disabled={!selectedId || closing}
+          onClick={() => void handleClose()}
+          title="Close this dataset and release its file handle (derived nav/map images stay open)"
+        >
+          Close
         </button>
       </div>
 

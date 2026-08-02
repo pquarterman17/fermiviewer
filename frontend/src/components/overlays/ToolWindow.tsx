@@ -4,6 +4,7 @@
 import { useRef, useState } from "react";
 
 import { useViewer, type ToolKind } from "../../store/viewer";
+import { toolWindowZIndex } from "../../styles/zLayers";
 
 export default function ToolWindow({
   kind,
@@ -63,7 +64,7 @@ export default function ToolWindow({
     <div
       ref={windowRef}
       className="fvd-glass fvd-tool-window"
-      style={{ left: x, top: y, zIndex: 200 + z, ...size }}
+      style={{ left: x, top: y, zIndex: toolWindowZIndex(z), ...size }}
       onMouseDown={() => focusTool(kind)}
     >
       <div

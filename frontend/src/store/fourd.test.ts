@@ -10,11 +10,13 @@ vi.mock("../lib/api", async (importActual) => {
     fetchFourDMeanPattern: vi.fn(),
     fetchData16: vi.fn(),
     computeVirtualDetector: vi.fn(),
+    closeFourD: vi.fn(),
   };
 });
 
 import type { FourDMeta, ImageMeta, Raster16 } from "../lib/api";
 import {
+  closeFourD,
   computeVirtualDetector,
   fetchData16,
   fetchFourDMeanPattern,
@@ -196,6 +198,9 @@ describe("useFourD store", () => {
       shape: "circle",
     });
     expect(s.patternRaster).toEqual(raster(8, 8));
+    // cached separately from patternRaster so the auto-center preview can
+    // still find the mean pattern once a probe overwrites patternRaster
+    expect(s.meanRaster).toEqual(raster(8, 8));
     expect(s.navMeta).toEqual(imageMeta("nav1"));
     expect(s.navRaster).toEqual(raster(4, 5));
     // dataset selection alone must NOT hijack the main viewer's active image
@@ -369,5 +374,61 @@ describe("useFourD store", () => {
     await useFourD.getState().fetchDatasets();
 
     expect(useFourD.getState().datasets.map((d) => d.id)).toEqual(["d1"]);
+  });
+
+  it("closeDataset closes the selected dataset, refreshes the list, and clears its state", async () => {
+    useFourD.setState({
+      datasets: [fourdMeta("d1")],
+      selectedId: "d1",
+      navMeta: imageMeta("nav1"),
+      navRaster: raster(4, 5),
+      probe: { y: 1, x: 2 },
+      patternRaster: raster(8, 8),
+      meanRaster: raster(8, 8),
+    });
+    vi.mocked(closeFourD).mockResolvedValue(undefined);
+    vi.mocked(listFourD).mockResolvedValue([]); // server-side already closed
+
+    await act(() => useFourD.getState().closeDataset("d1"));
+
+    expect(closeFourD).toHaveBeenCalledWith("d1");
+    expect(listFourD).toHaveBeenCalled(); // "refreshing the list"
+    const s = useFourD.getState();
+    expect(s.datasets).toEqual([]);
+    expect(s.selectedId).toBeNull();
+    expect(s.navMeta).toBeNull();
+    expect(s.navRaster).toBeNull();
+    expect(s.probe).toBeNull();
+    expect(s.patternRaster).toBeNull();
+    expect(s.meanRaster).toBeNull();
+  });
+
+  it("closeDataset leaves an unrelated selection untouched when closing a different (non-selected) dataset", async () => {
+    useFourD.setState({
+      datasets: [fourdMeta("d1"), fourdMeta("d2")],
+      selectedId: "d1",
+      patternRaster: raster(8, 8),
+    });
+    vi.mocked(closeFourD).mockResolvedValue(undefined);
+    vi.mocked(listFourD).mockResolvedValue([fourdMeta("d1")]);
+
+    await act(() => useFourD.getState().closeDataset("d2"));
+
+    const s = useFourD.getState();
+    expect(s.selectedId).toBe("d1");
+    expect(s.patternRaster).toEqual(raster(8, 8));
+  });
+
+  it("closeDataset surfaces a failed close as a status message and does not touch state", async () => {
+    useFourD.setState({ datasets: [fourdMeta("d1")], selectedId: "d1" });
+    vi.mocked(closeFourD).mockRejectedValue(new Error("unknown 4D dataset id: d1"));
+
+    await act(() => useFourD.getState().closeDataset("d1"));
+
+    expect(useFourD.getState().status).toBe(
+      "close dataset: unknown 4D dataset id: d1",
+    );
+    expect(useFourD.getState().selectedId).toBe("d1");
+    expect(listFourD).not.toHaveBeenCalled();
   });
 });

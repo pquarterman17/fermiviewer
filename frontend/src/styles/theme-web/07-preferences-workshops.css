@@ -437,6 +437,13 @@
   border-radius: var(--radius-sm);
   overflow: hidden;
   align-self: center;
+  /* Column-flex parents (.fvd-ws-fourd-pattern / -nav) default flex-shrink
+   * to 1 on the main (vertical) axis — extra content below (e.g. a status
+   * note after Compute) can shrink this panel's height below its intrinsic
+   * aspect-ratio size, distorting circular apertures into ellipses. Never
+   * shrink it; let its own width + aspect-ratio (set inline per-panel)
+   * define its box. */
+  flex-shrink: 0;
 }
 
 .fvd-ws-pattern img {

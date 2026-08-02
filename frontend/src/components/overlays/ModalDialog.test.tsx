@@ -3,6 +3,7 @@ import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import ModalDialog from "./ModalDialog";
+import { TOOL_WINDOW_SPAN, toolWindowZIndex } from "../../styles/zLayers";
 
 function Fixture({ onClose = () => undefined }: { onClose?: () => void }) {
   const [open, setOpen] = useState(false);
@@ -74,6 +75,15 @@ describe("ModalDialog", () => {
     expect(onClose).not.toHaveBeenCalled();
     fireEvent.mouseDown(dialog.parentElement!);
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("stacks above the floating tool-window layer, even at its max z", () => {
+    render(<Fixture />);
+    fireEvent.click(screen.getByRole("button", { name: "Open dialog" }));
+    const backdrop = screen.getByRole("dialog", { name: "Test dialog" })
+      .parentElement!;
+    const backdropZ = Number(getComputedStyle(backdrop).zIndex);
+    expect(backdropZ).toBeGreaterThan(toolWindowZIndex(TOOL_WINDOW_SPAN));
   });
 });
 

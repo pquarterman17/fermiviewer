@@ -1,10 +1,27 @@
 /* ── overlays: backdrop, cmdk, shortcuts, radial ── */
 
+/* Stacking ladder (low → high). Modal dialogs (Batch, Export, Preferences,
+ * command palette, radial menu, ...) sit on .fvd-overlay-backdrop and MUST
+ * outrank floating tool/workshop windows (ToolWindow.tsx, z-index 200-290)
+ * — a modal is application-modal, so nothing behind it should render on
+ * top of it. See src/styles/zLayers.ts for the full ladder (including the
+ * inline TS-driven layers) and the single-source MODAL_BACKDROP constant
+ * that ModalDialog.tsx sets inline; the z-index below is the CSS-only
+ * fallback for the two backdrop users that don't go through ModalDialog
+ * (CommandPalette, RadialMenu) and must be kept numerically equal to it.
+ *
+ *   30        menubar
+ *   40 / 41   menu dropdown / submenu
+ *   200-290   floating tool/workshop windows      (zLayers.ts)
+ *   300       modal / cmdk / radial backdrop      (zLayers.ts MODAL_BACKDROP)
+ *   400 / 401 context-menu backdrop / menu
+ *   2000      hover tooltip
+ */
 .fvd-overlay-backdrop {
   position: fixed;
   inset: 0;
   background: rgb(0 0 0 / 0.35);
-  z-index: 100;
+  z-index: 300;
 }
 
 .fvd-overlay-backdrop.transparent {
