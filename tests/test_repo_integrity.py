@@ -167,3 +167,39 @@ def test_goldens_present_and_pinned() -> None:
         f"goldens were captured with skips: {manifest['skipped']} — re-run "
         "tools/matlab/freeze_reference_values.m cleanly before relying on them"
     )
+
+
+def test_node_version_declarations_agree() -> None:
+    """Node is declared in four places; they must never drift apart.
+
+    .nvmrc (repo root) is the single source: workflows read it via
+    ``node-version-file`` (a hardcoded ``node-version:`` in any workflow is
+    exactly how CI ran Node 20 while jsdom 30 required 22 — the v0.1.23-era
+    Dependabot failure), frontend/package.json's ``engines`` range must
+    contain it, and its ``volta`` pin must share the same major.
+    """
+    import json
+    import re
+
+    nvmrc = (ROOT / ".nvmrc").read_text().strip()
+    major = int(nvmrc.split(".")[0])
+
+    for wf in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+        text = wf.read_text()
+        assert not re.search(r"^\s*node-version:", text, re.M), (
+            f"{wf.name} hardcodes node-version — use node-version-file: "
+            ".nvmrc so the repo file stays the single source of truth"
+        )
+
+    pkg = json.loads((ROOT / "frontend" / "package.json").read_text())
+    engines = pkg["engines"]["node"]
+    bounds = re.fullmatch(r">=(\d+) <(\d+)", engines)
+    assert bounds, f"unexpected engines format: {engines!r}"
+    low, high = int(bounds.group(1)), int(bounds.group(2))
+    assert low <= major < high, (
+        f".nvmrc Node {major} is outside engines range {engines!r}"
+    )
+    volta_major = int(pkg["volta"]["node"].split(".")[0])
+    assert volta_major == major, (
+        f"volta pins Node {volta_major} but .nvmrc says {major}"
+    )
