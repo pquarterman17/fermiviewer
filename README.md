@@ -226,6 +226,63 @@ Feature walkthroughs, screenshots, and how-tos live in the
 
 ---
 
+## Scripting
+
+Everything the GUI can do is also a headless Python surface —
+`fermiviewer.api` — the same engine the server and a notebook both use,
+with no FastAPI/browser dependency:
+
+```python
+import fermiviewer.api as fv
+
+img = fv.open("scan.dm4")                                   # any registered format
+denoised = img.gaussian(sigma=2).image.median(window_size=3).image
+stats = denoised.image_stats()
+print(stats.value)              # {'mean': ..., 'std': ..., 'min': ..., 'max': ..., 'shape': ...}
+csv_bytes = stats.to_csv()      # a one-row CSV, ready to write or upload
+print(denoised.methods())       # "scan.dm4 was processed with fermiviewer X.Y.Z:
+                                 #  gaussian (sigma=2.0); median (window_size=3)."
+```
+
+| Surface | What it gives you |
+|---|---|
+| `fv.open(path)` / `fv.Session()` | Load any registered format into an `Image`; a `Session` tracks opened + derived images and their lineage |
+| `Image.<op>(**params)` | Every registered op as a method — `.gaussian()`, `.eds_quantify()`, `.roughness()`, ... — returns a `Result` |
+| `Image.pipeline([{"op": ..., "params": {...}}, ...])` | Run a whole recipe (the same shape a saved batch preset uses) in one call |
+| `Result.value` / `.image` / `.params` | A plain value (scalar/table), a derived `Image`, and the resolved parameters |
+| `Result.to_csv()` / `.to_json()` | Export a dict-shaped result as a table |
+| `Image.methods()` / `.provenance_json()` | A reproducible methods paragraph / full JSON ancestry for that image's pipeline |
+| **op categories** | `filter`, `geometry`, `analysis`, `eels`, `eds`, `diffraction` — see `fv.ops()` or `docs/api-reference.md` for the full, generated list with every parameter |
+
+Full generated reference (every class, method, and op parameter,
+regenerated from source): **[`docs/api-reference.md`](docs/api-reference.md)**.
+Complete worked scripts (filters + roughness, EDS quantification, and the
+same recipe against real corpus data): **[`examples/`](examples/)**.
+
+For a no-code, headless batch run over a folder of files, `fv --script`
+replays a saved recipe (the exact `.fvbatch.json` the GUI's batch dialog
+exports, or a bare JSON recipe) with no server and no browser:
+
+```bash
+fv --script recipe.json scan1.dm4 scan2.dm4 --out results/
+```
+
+```json
+{
+  "steps": [
+    { "op": "gaussian", "params": { "sigma": 1.5 } },
+    { "op": "median", "params": { "window_size": 3 } },
+    { "op": "image_stats", "params": {} }
+  ]
+}
+```
+
+Each input gets its derived image (TIFF), every value-producing step's
+result (CSV + JSON), and a provenance JSON written into `--out` — see
+`fv --script --help` for directory/glob input expansion and defaults.
+
+---
+
 ## Development
 
 ```bash
@@ -292,6 +349,8 @@ npx @tauri-apps/cli@^2 build --config \
 |---|---|
 | `docs/parity_report.md` | Three-way parity vs the MATLAB reference + design prototype |
 | `docs/w3_imaging_audit.md` | Per-algorithm port decisions (map / port / hybrid) |
+| `docs/api-reference.md` | Generated reference for the `fermiviewer.api` scripting surface — every class/method/op, regenerate with `tools/gen_api_reference.py` |
+| `examples/` | Worked `fermiviewer.api` scripts (filters + roughness, EDS quantification, real-corpus recipe) |
 | `tests/golden/` | Frozen MATLAB reference values (see `tools/matlab/`) |
 | `plans/` *(local-only)* | Per-machine working plans (gitignored, fermi-viewer convention) |
 
