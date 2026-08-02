@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from fermiviewer import usermeta
+from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.server import create_app
 from fermiviewer.session import store
 from fixtures.minidm4 import write_mini_dm4
@@ -87,6 +88,17 @@ def test_sidecar_round_trip(tmp_path) -> None:
     assert usermeta.read_sidecar(str(img)) == {"Design": "9", "Lot": "abc"}
 
 
+def test_sidecar_bytes_matches_write_sidecar(tmp_path) -> None:
+    """sidecar_bytes must be the exact serialization write_sidecar uses, so
+    a downloaded file and a written sidecar are byte-identical."""
+    values = {"Design": "9", "Lot": "abc"}
+    img = tmp_path / "x.dm4"
+    img.write_bytes(b"")
+    usermeta.write_sidecar(str(img), values)
+    written = usermeta.sidecar_path(str(img)).read_bytes()
+    assert usermeta.sidecar_bytes(values) == written
+
+
 def test_load_schema_from_config(cfg) -> None:
     s = usermeta.load_schema()
     assert [f.name for f in s.fields] == ["Design", "Lot", "Wafer", "Reticle"]
@@ -145,6 +157,9 @@ def test_usermeta_autofill_and_save(cfg, client, tmp_path) -> None:
     assert got["values"]["Design"] == "1234"  # auto-filled from the name
     assert got["can_write_sidecar"] is True
     assert got["has_sidecar"] is False
+    # sidecar_name is server-derived so the frontend never has to
+    # re-implement the "<name>.fvmeta.yaml" naming convention
+    assert got["sidecar_name"] == "D1234_L44576_W1234_R13.dm4.fvmeta.yaml"
 
     saved = client.post(
         f"/api/image/{img_id}/usermeta",
@@ -160,6 +175,49 @@ def test_usermeta_autofill_and_save(cfg, client, tmp_path) -> None:
 
 def test_usermeta_unknown_id(cfg, client) -> None:
     assert client.get("/api/image/nope/usermeta").status_code == 404
+
+
+# ── API: sidecar download ───────────────────────────────────────────────
+
+
+def test_download_sidecar_matches_written_file(cfg, client, tmp_path) -> None:
+    """The downloaded bytes for a disk-backed image must match exactly what
+    Save would have written to its sidecar."""
+    img_id = _open(client, tmp_path, "D1234_L44576_W1234_R13.dm4")
+    client.post(
+        f"/api/image/{img_id}/usermeta",
+        json={"values": {"Design": "1234", "Lot": "X", "Wafer": "", "Reticle": ""}},
+    )
+    r = client.get(f"/api/image/{img_id}/usermeta/sidecar")
+    assert r.status_code == 200
+    assert r.headers["content-disposition"] == (
+        'attachment; filename="D1234_L44576_W1234_R13.dm4.fvmeta.yaml"'
+    )
+    written = (tmp_path / "D1234_L44576_W1234_R13.dm4.fvmeta.yaml").read_bytes()
+    assert r.content == written
+
+
+def test_download_sidecar_pathless_image(cfg) -> None:
+    """No file on disk (browser upload / derived image) is exactly the case
+    the download route exists for."""
+    ds = DataStruct(
+        data=np.zeros((4, 4)), kind=DataKind.IMAGE, axes=(AxisCal(), AxisCal())
+    )
+    img_id = store.add_parsed(ds, "uploaded.dm4")
+    client = TestClient(create_app())
+    r = client.get(f"/api/image/{img_id}/usermeta/sidecar")
+    assert r.status_code == 200
+    assert r.headers["content-disposition"] == (
+        'attachment; filename="uploaded.dm4.fvmeta.yaml"'
+    )
+    expected = usermeta.sidecar_bytes(
+        {"Design": "", "Lot": "", "Wafer": "", "Reticle": ""}
+    )
+    assert r.content == expected
+
+
+def test_download_sidecar_unknown_id(cfg, client) -> None:
+    assert client.get("/api/image/nope/usermeta/sidecar").status_code == 404
 
 
 def test_patterns_as_bare_string(tmp_path, monkeypatch) -> None:

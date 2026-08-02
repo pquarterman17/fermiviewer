@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 
 import {
   batchAutofill,
+  downloadUserMetaSidecar,
   getUserMeta,
   saveUserMeta,
   type MetaField,
@@ -13,6 +14,53 @@ import {
 } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
 import Card from "./Card";
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Compact "how this works" disclosure — the mechanism (filename auto-fill,
+ *  precedence, what the two buttons do) explained in a few short lines so
+ *  a physicist can read it in ~20s without leaving the card. */
+function HowThisWorks({ configPath }: { configPath: string }) {
+  return (
+    <details style={{ marginTop: 4 }}>
+      <summary style={{ cursor: "pointer", fontSize: 11, opacity: 0.85 }}>
+        How this works
+      </summary>
+      <div className="fvd-ws-note" style={{ fontSize: 11 }}>
+        <p style={{ margin: "4px 0" }}>
+          Fields are configured in{" "}
+          <code style={{ wordBreak: "break-all", userSelect: "all" }}>
+            {configPath}
+          </code>
+          .
+        </p>
+        <p style={{ margin: "4px 0" }}>
+          Filename auto-fill matches the file name against a pattern, e.g.{" "}
+          <code>{"D{Design}_L{Lot}_W{Wafer}_R{Reticle}"}</code> parses{" "}
+          <code>D1234_L44576_W1234_R13.dm3</code> into Design=1234,
+          Lot=44576, Wafer=1234, Reticle=13.
+        </p>
+        <p style={{ margin: "4px 0" }}>
+          Values resolve filename auto-fill first, then a saved file, then
+          your own edits here — your edits win, and clearing a field to
+          blank sticks.
+        </p>
+        <p style={{ margin: "4px 0" }}>
+          <b>Save</b> stores the values above for this image. <b>Auto-fill
+          all</b> runs the filename pattern on every open image and saves
+          each one.
+        </p>
+      </div>
+    </details>
+  );
+}
 
 export default function CustomMetaCard() {
   const activeId = useViewer((s) => s.activeId);
@@ -55,7 +103,9 @@ export default function CustomMetaCard() {
 
   if (!activeId || !info) return null;
 
-  // no fields configured yet — point the user at their config file
+  // no fields configured yet — point the user at their config file, with
+  // a copy-pasteable minimal example so getting started doesn't require
+  // reading the docs
   if (info.fields.length === 0) {
     return (
       <Card title="Custom Metadata" defaultOpen={false}>
@@ -63,8 +113,24 @@ export default function CustomMetaCard() {
           <span className="k">No fields configured</span>
         </div>
         <div className="fvd-ws-note">
-          Add a <code>fields:</code> list to your config:
+          Add a <code>fields:</code> list to your config, e.g.:
+          <pre
+            style={{
+              margin: "4px 0",
+              whiteSpace: "pre",
+              userSelect: "all",
+            }}
+          >
+{`fields:
+  - Design
+  - Lot
+  - Wafer`}
+          </pre>
+          You can also add a <code>pattern:</code> line (e.g.{" "}
+          <code>{"D{Design}_L{Lot}"}</code>) to fill fields from the file
+          name automatically.
           <br />
+          Config file:{" "}
           <code style={{ wordBreak: "break-all" }}>{info.config_path}</code>
         </div>
       </Card>
@@ -102,6 +168,18 @@ export default function CustomMetaCard() {
         setReload((x) => x + 1); // refresh the active image's values
       })
       .catch((e: Error) => setStatus(`batch auto-fill: ${e.message}`))
+      .finally(() => setBusy(false));
+  };
+
+  const downloadSidecar = () => {
+    if (!activeId) return;
+    setBusy(true);
+    downloadUserMetaSidecar(activeId)
+      .then(({ blob, filename }) => {
+        downloadBlob(blob, filename);
+        setStatus(`downloaded ${filename}`);
+      })
+      .catch((e: Error) => setStatus(`metadata: ${e.message}`))
       .finally(() => setBusy(false));
   };
 
@@ -143,9 +221,15 @@ export default function CustomMetaCard() {
 
   const footHint = info.can_write_sidecar
     ? info.has_sidecar
-      ? "↳ saved to a .fvmeta.yaml beside the file"
-      : "↳ Save writes a .fvmeta.yaml beside the file"
-    : "↳ session only — no file path for a sidecar";
+      ? `↳ Saved in ${info.sidecar_name} next to the image — these values ` +
+        `load automatically whenever this file is opened.`
+      : `↳ Save writes ${info.sidecar_name} next to the image, so the ` +
+        `values load automatically next time.`
+    : `↳ This image didn't come from a file on disk, so values stay with ` +
+      `this session only — Save still keeps them, and Save Session (File ` +
+      `menu) preserves them too. Download metadata file gives you ` +
+      `${info.sidecar_name} to place next to the original image so it ` +
+      `loads automatically there.`;
 
   return (
     <Card title="Custom Metadata" defaultOpen>
@@ -174,8 +258,19 @@ export default function CustomMetaCard() {
         >
           Auto-fill all ({order.length})
         </button>
+        {!info.can_write_sidecar && (
+          <button
+            className="fvd-btn"
+            onClick={downloadSidecar}
+            disabled={busy}
+            title={`Download the saved values as ${info.sidecar_name} (Save first if you've made changes)`}
+          >
+            Download metadata file
+          </button>
+        )}
       </div>
       <div className="fvd-ws-note">{footHint}</div>
+      <HowThisWorks configPath={info.config_path} />
     </Card>
   );
 }

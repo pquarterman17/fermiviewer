@@ -18,6 +18,9 @@ export interface UserMeta {
   source_path: string | null;
   can_write_sidecar: boolean;
   has_sidecar: boolean;
+  /** basename the sidecar has/would have, e.g. "img.dm3.fvmeta.yaml" —
+   *  server-derived so the frontend never re-implements the naming rule. */
+  sidecar_name: string;
 }
 
 /** Resolved custom-metadata fields + values for one image (filename →
@@ -32,6 +35,30 @@ export function saveUserMeta(
   values: Record<string, string>,
 ): Promise<{ values: Record<string, string>; wrote_sidecar: boolean }> {
   return post(`/api/image/${id}/usermeta`, { values });
+}
+
+/** Download the resolved custom-metadata values as a .fvmeta.yaml file —
+ *  for images with no path on disk, so the file can be placed next to the
+ *  original by hand. Filename comes from the Content-Disposition header. */
+export async function downloadUserMetaSidecar(
+  id: string,
+): Promise<{ blob: Blob; filename: string }> {
+  const res = await fetch(`/api/image/${id}/usermeta/sidecar`);
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      detail = ((await res.json()) as { detail?: string }).detail ?? detail;
+    } catch {
+      /* binary or empty error body */
+    }
+    throw new Error(detail);
+  }
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = /filename="([^"]+)"/.exec(disposition);
+  return {
+    blob: await res.blob(),
+    filename: match?.[1] ?? "metadata.fvmeta.yaml",
+  };
 }
 
 export interface BatchAutofillResult {

@@ -4,7 +4,7 @@ over fermiviewer.usermeta."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 
 from fermiviewer import usermeta
@@ -32,6 +32,24 @@ def _schema_dict(s: usermeta.MetaSchema) -> dict:
     }
 
 
+def _sidecar_basename(name: str, path: str | None) -> str:
+    """The sidecar's basename whether or not the image has a disk path, so
+    the frontend never has to re-derive the ``<name>.fvmeta.yaml`` naming
+    convention itself."""
+    return usermeta.sidecar_path(path if path else name).name
+
+
+def _safe_filename(name: str) -> str:
+    """Strip path separators and header-unsafe characters before a
+    server-derived filename reaches Content-Disposition (mirrors
+    routes/export_table.py's ``_safe_filename``): Starlette encodes header
+    values as latin-1, so a name with e.g. CJK characters would raise an
+    uncaught UnicodeEncodeError (a 500) rather than just rendering oddly."""
+    stripped = name.replace("\\", "/").rsplit("/", 1)[-1]
+    cleaned = "".join(ch for ch in stripped if 0x20 <= ord(ch) <= 0x7E and ch != '"')
+    return cleaned or "metadata.fvmeta.yaml"
+
+
 @router.get("/metadata-schema")
 def metadata_schema() -> dict:
     """The user's configured metadata fields + filename auto-fill patterns."""
@@ -44,16 +62,37 @@ def get_usermeta(img_id: str) -> dict:
     ds = _get(img_id)
     schema = usermeta.load_schema()
     path = store.source_path(img_id)
-    values = usermeta.resolve_values(
-        schema, store.name(img_id), path, ds.metadata
-    )
+    name = store.name(img_id)
+    values = usermeta.resolve_values(schema, name, path, ds.metadata)
     return {
         **_schema_dict(schema),
         "values": values,
         "source_path": path,
         "can_write_sidecar": path is not None,
         "has_sidecar": path is not None and usermeta.sidecar_path(path).exists(),
+        "sidecar_name": _sidecar_basename(name, path),
     }
+
+
+@router.get("/image/{img_id}/usermeta/sidecar")
+def download_usermeta_sidecar(img_id: str) -> Response:
+    """Download the resolved field values as a ``.fvmeta.yaml`` file — for
+    images with no path on disk (browser upload, or a derived/computed
+    image) so the values can still be carried by hand to sit beside the
+    original file. Uses the exact serialization `write_sidecar` uses, so
+    a downloaded file and a written sidecar are byte-identical."""
+    ds = _get(img_id)
+    schema = usermeta.load_schema()
+    path = store.source_path(img_id)
+    name = store.name(img_id)
+    values = usermeta.resolve_values(schema, name, path, ds.metadata)
+    data = usermeta.sidecar_bytes(values)
+    filename = _safe_filename(_sidecar_basename(name, path))
+    return Response(
+        content=data,
+        media_type="application/x-yaml",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 class UserMetaPatch(BaseModel):

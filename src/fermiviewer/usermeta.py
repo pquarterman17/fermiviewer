@@ -26,6 +26,7 @@ __all__ = [
     "parse_filename",
     "read_sidecar",
     "resolve_values",
+    "sidecar_bytes",
     "sidecar_path",
     "write_sidecar",
 ]
@@ -229,12 +230,18 @@ def read_sidecar(image_path: str) -> dict[str, str]:
     return {str(k): ("" if v is None else str(v)) for k, v in d.items()}
 
 
+def sidecar_bytes(values: dict[str, str]) -> bytes:
+    """Serialize field values exactly as `write_sidecar` persists them, but
+    in memory — shared by the sidecar-download route (for images with no
+    disk path to write beside) so a downloaded file and a written sidecar
+    are byte-identical."""
+    text: str = yaml.safe_dump(dict(values), sort_keys=False, allow_unicode=True)
+    return text.encode("utf-8")
+
+
 def write_sidecar(image_path: str, values: dict[str, str]) -> None:
     sp = sidecar_path(image_path)
-    sp.write_text(
-        yaml.safe_dump(dict(values), sort_keys=False, allow_unicode=True),
-        encoding="utf-8",
-    )
+    sp.write_bytes(sidecar_bytes(values))
 
 
 # ── value resolution ──────────────────────────────────────────────────
