@@ -20,6 +20,7 @@ import { askParams } from "../../store/params";
 import { useViewer } from "../../store/viewer";
 import BatchPresetControls from "./BatchPresetControls";
 import ModalDialog from "./ModalDialog";
+import WatchFolderSection from "./WatchFolderSection";
 
 interface RecipeStep extends BatchRecipeStep {
   uid: number;
@@ -313,6 +314,8 @@ export default function BatchDialog() {
         disabled={running || operations.length === 0}
         onLoad={loadPreset}
       />
+
+      <WatchFolderSection onDerived={ingestDerived} />
 
       {schemaError && <div className="fvd-batch-empty">{schemaError}</div>}
       {Object.entries(groups).map(([category, entries]) => (

@@ -9,6 +9,13 @@ Desktop-style lifecycle: the SPA holds a WebSocket open; when the last
 tab disconnects (and stays gone past a refresh-safe grace period) the
 server exits instead of lingering in the terminal. Armed only by
 main()'s non-dev path — never under tests or --dev.
+
+An ACTIVE folder watch (routes/watch.py, Scripting #7) is a deliberate
+exception to "last tab closed": watching a folder unattended means having
+NO browser tab open by design, so the grace-check must not treat that as
+abandonment. While `routes.watch.is_watch_active()` is true, the grace-check
+reschedules itself instead of exiting; ordinary last-tab-closed shutdown
+resumes as soon as the watch is stopped.
 """
 
 from __future__ import annotations
@@ -123,10 +130,15 @@ def _frontend_dist() -> Path | None:
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """On server stop, cancel still-queued background jobs so exit never
-    waits behind a queue backlog (running jobs finish on their thread)."""
+    waits behind a queue backlog (running jobs finish on their thread), and
+    stop any active folder watch so its poll thread is always joined
+    cleanly (never left to an atexit hook — see jobs.py's shutdown
+    docstring for why that ordering matters)."""
     yield
     from fermiviewer.jobs import jobs
+    from fermiviewer.routes.watch import shutdown_watch
 
+    shutdown_watch()
     jobs.shutdown()
 
 
@@ -155,6 +167,7 @@ def create_app() -> FastAPI:
     from fermiviewer.routes.spectral_fit import router as spectral_fit_router
     from fermiviewer.routes.structure import router as structure_router
     from fermiviewer.routes.usermeta import router as usermeta_router
+    from fermiviewer.routes.watch import router as watch_router
 
     app = FastAPI(title="fermiviewer", version=__version__, lifespan=_lifespan)
 
@@ -182,7 +195,7 @@ def create_app() -> FastAPI:
         imaging_ops_router, defect_ops_router, structure_router, grains_trained_router,
         jobs_router, calibration_router, dev_router, usermeta_router,
         diffraction_setup_router, spectral_fit_router, eds_advanced_router,
-        eds_quant_router, eels_advanced_router, layers_router,
+        eds_quant_router, eels_advanced_router, layers_router, watch_router,
     ):
         app.include_router(_router)
 
@@ -255,11 +268,24 @@ async def _lifecycle_ws(ws: WebSocket) -> None:
 
 async def _grace_check() -> None:
     """Shut down unless a client reconnected within the grace window
-    (a tab refresh disconnects and reconnects within ~1 s)."""
+    (a tab refresh disconnects and reconnects within ~1 s) OR a folder
+    watch is actively running (see this module's docstring): in that case
+    reschedule another check instead of exiting, so ordinary shutdown
+    resumes the moment the watch stops."""
     await asyncio.sleep(_SHUTDOWN_GRACE_S)
-    if _auto_shutdown and _ever_connected and _clients == 0:
-        print("last tab closed — shutting down")
-        _request_shutdown()
+    if not (_auto_shutdown and _ever_connected and _clients == 0):
+        return
+    if _watch_active():
+        asyncio.get_running_loop().create_task(_grace_check())
+        return
+    print("last tab closed — shutting down")
+    _request_shutdown()
+
+
+def _watch_active() -> bool:
+    from fermiviewer.routes.watch import is_watch_active
+
+    return is_watch_active()
 
 
 app = create_app()
