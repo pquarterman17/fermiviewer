@@ -13,6 +13,33 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [0.1.25] - 2026-08-06
+
+### Fixed
+- **Sibling-instance collision on port 8000.** fermiviewer and the sibling
+  `quantized` app both default to `127.0.0.1:8000` and previously answered
+  `/api/health` with a byte-identical payload, so each app's shell could
+  adopt the *other* app's running server as "our own instance" and render
+  the wrong UI. Health now carries an `app: fermiviewer` field and both the
+  Tauri shell's health probe and `netprobe.py` require it before treating a
+  server as reusable; a server too old to send the field is treated as
+  foreign and fails safe.
+- **Ephemeral-port fallback.** Completes the identity fix above: when port
+  8000 is held by a foreign server (typically the sibling `quantized`), the
+  shell now picks a free ephemeral port, passes it to the sidecar via the
+  (newly-added) `--port` flag, and navigates the window there instead of
+  timing out after 60 s waiting for a port it could never own. A mismatched-
+  version sibling (no `app` field) now opens as a working second instance
+  instead of an error dialog.
+- Installed-app sidecar lookup hardcoded the Windows `fv-server.exe` name
+  and `.venv/Scripts/python.exe` dev path; both now branch by target OS, so
+  macOS and Linux installed builds can find their own backend.
+- `ParamDialog` reset its form values in a `useEffect`, which could lose a
+  fast field edit that landed between the effect's reset and the next
+  paint. Values now reset synchronously during render, keyed on request
+  identity; `coerceParams` also now falls back to a field's default instead
+  of writing `undefined` for a key missing from `values`.
+
 ## [0.1.24] - 2026-08-02
 
 ### Changed
