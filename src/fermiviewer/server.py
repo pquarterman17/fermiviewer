@@ -354,6 +354,15 @@ def main() -> None:
         help="run as a desktop app in a native window (pywebview)",
     )
     parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="bind port (default 8000). Given explicitly, the port is "
+        "pinned — it is never floated to a fallback, even if busy (the "
+        "Tauri/Start-Menu shell relies on this to spawn the headless "
+        "sidecar on a port it already chose and knows to poll).",
+    )
+    parser.add_argument(
         "--script",
         metavar="RECIPE",
         help="run RECIPE (.fvbatch.json preset export, or a bare "
@@ -403,8 +412,14 @@ def main() -> None:
 
     # The browser CLI may float to a free port; the headless sidecar
     # (--no-browser, spawned by the Tauri/Start-Menu shell) must stay on the
-    # FIXED port the shell navigates to, so it never floats.
-    host, port = _HOST, _PORT
+    # FIXED port the shell navigates to, so it never floats. An explicit
+    # --port (the shell's ephemeral-port fallback when the sibling quantized
+    # holds 8000 — the shell picks the port and must be able to trust it)
+    # is pinned the same way regardless of --no-browser: floating would move
+    # the server to a port the shell never learns and can't navigate to.
+    host = _HOST
+    explicit_port = args.port is not None
+    port = args.port if explicit_port else _PORT
 
     # If a healthy FermiViewer already owns the port, REUSE it instead of
     # starting a second server — the browser CLI opens it; the sidecar exits
@@ -423,16 +438,17 @@ def main() -> None:
             webbrowser.open(f"http://{host}:{port}")
         return
 
-    # Bind ourselves so a taken port floats (browser) or fails readably
-    # (sidecar) here — not as an OSError traceback inside uvicorn.run().
+    # Bind ourselves so a taken port floats (browser, default port only) or
+    # fails readably (sidecar, or any explicit --port) here — not as an
+    # OSError traceback inside uvicorn.run().
     sock = _bind(host, port)
-    if sock is None and not args.no_browser:
+    if sock is None and not args.no_browser and not explicit_port:
         port = _find_free_port(host, _PORT + 1)
         sock = _bind(host, port)
         print(f"port {_PORT} is in use by another app — using {port}")
     if sock is None:
         print(
-            f"Cannot start FermiViewer: port {_PORT} is in use by another "
+            f"Cannot start FermiViewer: port {port} is in use by another "
             "program (or a stuck FermiViewer process). Close it and relaunch."
         )
         raise SystemExit(1)

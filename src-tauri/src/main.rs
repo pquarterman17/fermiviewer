@@ -4,6 +4,12 @@
 // navigates to the live app once /api/health answers, so a slow server
 // start (cold numpy/scipy import, first-run AV scan) never leaves the
 // user staring at a "can't reach this page" error that won't retry.
+//
+// Port policy (mirrors the sibling quantized shell / the fv CLI): reuse an
+// already-healthy FermiViewer server on the default port; if a foreign app
+// holds it (the sibling quantized shares the 8000 default), spawn our
+// sidecar on a free ephemeral port and point the window there instead of
+// timing out against the wrong app.
 
 #![cfg_attr(
     all(not(debug_assertions), target_os = "windows"),
@@ -21,8 +27,29 @@ use tauri::Manager;
 
 struct ServerProc(Mutex<Option<Child>>);
 
-const ADDR: &str = "127.0.0.1:8000";
-const APP_URL: &str = "http://127.0.0.1:8000";
+const DEFAULT_PORT: u16 = 8000;
+
+fn app_url(port: u16) -> String {
+    format!("http://127.0.0.1:{port}")
+}
+
+/// True iff nothing currently holds 127.0.0.1:`port` (bind-probe; the
+/// listener is dropped immediately). Windows binds without SO_REUSEADDR,
+/// so a port a foreign server owns reads busy here rather than stolen.
+fn port_is_free(port: u16) -> bool {
+    std::net::TcpListener::bind(("127.0.0.1", port)).is_ok()
+}
+
+/// A free OS-assigned ephemeral port — the fallback home for our sidecar
+/// when a foreign app (typically the sibling quantized, which shares the
+/// same default) holds 8000. Mirrors `_resolve_port`-style handling on the
+/// Python side (see server.py's explicit `--port` pinning).
+fn pick_free_port() -> Option<u16> {
+    std::net::TcpListener::bind(("127.0.0.1", 0))
+        .ok()
+        .and_then(|l| l.local_addr().ok())
+        .map(|a| a.port())
+}
 
 fn repo_root() -> PathBuf {
     // src-tauri/ lives one level under the repo root
@@ -41,7 +68,12 @@ const SIDECAR_EXE: &str = "fv-server.exe";
 #[cfg(not(target_os = "windows"))]
 const SIDECAR_EXE: &str = "fv-server";
 
-fn spawn_server(repo: &PathBuf) -> std::io::Result<Child> {
+fn spawn_server(repo: &PathBuf, port: u16) -> std::io::Result<Child> {
+    // Passing --port explicitly pins the server to the port this shell will
+    // navigate to. Without it, a busy default port makes the fv CLI fall
+    // back to an ephemeral port of ITS OWN choosing — one this shell can't
+    // discover, so the health poll times out against the wrong port.
+    let port_arg = port.to_string();
     // 1) installed app: the PyInstaller sidecar ships as a resource
     //    next to the shell exe (<install>/fv-server/fv-server[.exe])
     if let Ok(exe) = std::env::current_exe() {
@@ -52,7 +84,7 @@ fn spawn_server(repo: &PathBuf) -> std::io::Result<Child> {
             ] {
                 if cand.is_file() {
                     let mut cmd = Command::new(&cand);
-                    cmd.args(["--no-browser", "--no-auto-shutdown"]);
+                    cmd.args(["--no-browser", "--no-auto-shutdown", "--port", &port_arg]);
                     hide_console(&mut cmd);
                     return cmd.spawn();
                 }
@@ -67,8 +99,15 @@ fn spawn_server(repo: &PathBuf) -> std::io::Result<Child> {
     #[cfg(not(target_os = "windows"))]
     let python = repo.join(".venv").join("bin").join("python");
     let mut cmd = Command::new(python);
-    cmd.args(["-m", "fermiviewer", "--no-browser", "--no-auto-shutdown"])
-        .current_dir(repo);
+    cmd.args([
+        "-m",
+        "fermiviewer",
+        "--no-browser",
+        "--no-auto-shutdown",
+        "--port",
+        &port_arg,
+    ])
+    .current_dir(repo);
     hide_console(&mut cmd);
     cmd.spawn()
 }
@@ -95,11 +134,8 @@ fn health_body_ok(buf: &str) -> bool {
 /// One HTTP GET /api/health attempt — distinguishes *our* server (200 + a
 /// JSON body identifying itself as fermiviewer) from a foreign app that
 /// merely holds the port.
-fn http_health_ok() -> bool {
-    let addr = match ADDR.parse() {
-        Ok(a) => a,
-        Err(_) => return false,
-    };
+fn http_health_ok(port: u16) -> bool {
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
     let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_millis(500)) else {
         return false;
     };
@@ -114,10 +150,10 @@ fn http_health_ok() -> bool {
 }
 
 /// Poll /api/health until it answers or the timeout elapses.
-fn wait_for_health(timeout: Duration) -> bool {
+fn wait_for_health(timeout: Duration, port: u16) -> bool {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
-        if http_health_ok() {
+        if http_health_ok(port) {
             return true;
         }
         std::thread::sleep(Duration::from_millis(300));
@@ -204,12 +240,18 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let repo = repo_root();
-            // a dev/leftover server may already own the port — reuse it
-            let already = wait_for_health(Duration::from_millis(800));
-            let child = if already {
-                None
+            // a dev/leftover FermiViewer server may already own the default
+            // port — reuse it. If a foreign app holds it instead (typically
+            // the sibling quantized, which shares the 8000 default), fall
+            // back to a free ephemeral port rather than timing out.
+            let already = wait_for_health(Duration::from_millis(800), DEFAULT_PORT);
+            let (port, child) = if already {
+                (DEFAULT_PORT, None)
+            } else if port_is_free(DEFAULT_PORT) {
+                (DEFAULT_PORT, Some(spawn_server(&repo, DEFAULT_PORT)?))
             } else {
-                Some(spawn_server(&repo)?)
+                let fallback = pick_free_port().unwrap_or(DEFAULT_PORT);
+                (fallback, Some(spawn_server(&repo, fallback)?))
             };
             app.manage(ServerProc(Mutex::new(child)));
 
@@ -218,20 +260,20 @@ fn main() {
             // (or surface a clear error if it never comes up).
             let handle = app.handle().clone();
             std::thread::spawn(move || {
-                let ok = already || wait_for_health(Duration::from_secs(60));
+                let ok = already || wait_for_health(Duration::from_secs(60), port);
                 if let Some(win) = handle.get_webview_window("main") {
                     if ok {
-                        if let Ok(url) = APP_URL.parse() {
+                        if let Ok(url) = app_url(port).parse() {
                             let _ = win.navigate(url);
                         }
                     } else {
-                        let _ = win.eval(
+                        let _ = win.eval(&format!(
                             "window.__fvError && window.__fvError('FermiViewer \
-                             could not reach its local server on port 8000. \
-                             Another program may be using the port, or your \
-                             antivirus may be scanning the first launch. Close \
-                             other copies and try again.')",
-                        );
+                             could not reach its local server on port {port}. \
+                             Your antivirus may be scanning the first launch, \
+                             or another copy may be mid-start. Close other \
+                             copies and try again.')"
+                        ));
                     }
                 }
             });
@@ -263,6 +305,27 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn app_url_formats_default_and_fallback_ports() {
+        assert_eq!(app_url(DEFAULT_PORT), "http://127.0.0.1:8000");
+        assert_eq!(app_url(49321), "http://127.0.0.1:49321");
+    }
+
+    #[test]
+    fn port_is_free_false_while_a_listener_holds_it() {
+        let held = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind ephemeral");
+        let port = held.local_addr().expect("local addr").port();
+        assert!(!port_is_free(port));
+        drop(held);
+    }
+
+    #[test]
+    fn pick_free_port_returns_a_bindable_port() {
+        let port = pick_free_port().expect("an ephemeral port");
+        // It must be a real free port, not just a number that differs.
+        assert!(std::net::TcpListener::bind(("127.0.0.1", port)).is_ok());
+    }
 
     #[test]
     fn health_body_accepts_our_own_identified_server() {
