@@ -109,6 +109,58 @@ describe("ParamDialog queue rendering", () => {
     expect(await screen.findByRole("heading", { name: "Second op" })).toBeInTheDocument();
   });
 
+  // Render-race regression (ported from quantized's ParamDialog.test.tsx,
+  // 2026-08-05): jsdom's act() flushes effects synchronously, so these
+  // can't reproduce the raw async scheduling gap a useEffect-based reset
+  // left open — what they pin instead is the dialog's resulting CONTRACT,
+  // which a partial `values` reset would violate: every open starts from
+  // fully-defaulted values, an edit to one field never drops a sibling
+  // field's key, and back-to-back opens with DIFFERENT field sets never
+  // leak a stale key from the previous request into the next one's result.
+  const EXPORT_FIELDS: ParamField[] = [
+    { key: "fmt", label: "Format", type: "select", default: "pdf", options: ["pdf", "svg", "png"] },
+    { key: "dpi", label: "DPI", type: "number", default: 300 },
+    { key: "title", label: "Title", type: "text", default: "" },
+  ];
+
+  it("editing ONE field preserves every sibling field's default in the resolved result", async () => {
+    render(<ParamDialog />);
+    let result: Promise<unknown> = Promise.resolve();
+    act(() => {
+      result = askParams("Export figure", EXPORT_FIELDS);
+    });
+
+    await screen.findByRole("heading", { name: "Export figure" });
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "svg" } });
+    fireEvent.click(screen.getByRole("button", { name: /run/i }));
+
+    await expect(result).resolves.toEqual({ fmt: "svg", dpi: 300, title: "" });
+  });
+
+  it("a request opened right after a DIFFERENT one starts from ITS OWN defaults, no leaked keys", async () => {
+    render(<ParamDialog />);
+    const RENAME_FIELDS: ParamField[] = [{ key: "label", label: "Label", type: "text", default: "series 0" }];
+
+    let first: Promise<unknown> = Promise.resolve();
+    act(() => {
+      first = askParams("Rename series", RENAME_FIELDS);
+    });
+    await screen.findByRole("heading", { name: "Rename series" });
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+    await expect(first).resolves.toBeNull();
+
+    let second: Promise<unknown> = Promise.resolve();
+    act(() => {
+      second = askParams("Export figure", EXPORT_FIELDS);
+    });
+    await screen.findByRole("heading", { name: "Export figure" });
+    fireEvent.click(screen.getByRole("button", { name: /run/i }));
+
+    const resolved = await second;
+    expect(resolved).toEqual({ fmt: "pdf", dpi: 300, title: "" });
+    expect(resolved).not.toHaveProperty("label"); // nothing leaked from the first request
+  });
+
   it("unmounting does not settle pending requests on its own", async () => {
     // ParamDialog unmounts on every normal close (LazyOverlays drops it when
     // the queue empties) and StrictMode double-invokes mount effects, so an

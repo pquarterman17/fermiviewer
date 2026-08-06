@@ -20,6 +20,17 @@ describe("coerceParams", () => {
     expect(coerceParams({ x: "0" }, [numField("x", 2)])).toEqual({ x: 0 });
   });
 
+  it("falls back to the field default for a key missing from values entirely", () => {
+    // Ported from quantized's params.test.ts (2026-08-05): the last
+    // chokepoint before a command consumes the result must always have
+    // every field's key, even when `values` itself is partial (the shape a
+    // ParamDialog render race can otherwise hand to a consumer that does
+    // `(params.x as string).trim()` with no guard of its own).
+    const fields: ParamField[] = [numField("x", 2), numField("y", 9)];
+    expect(coerceParams({ x: "5" }, fields)).toEqual({ x: 5, y: 9 });
+    expect(coerceParams({}, fields)).toEqual({ x: 2, y: 9 });
+  });
+
   it("coerces numeric strings to numbers", () => {
     expect(coerceParams({ x: "5" }, [numField("x", 2)])).toEqual({ x: 5 });
     expect(coerceParams({ x: "0.05" }, [numField("x", 2)])).toEqual({ x: 0.05 });
