@@ -15,6 +15,9 @@ def test_health() -> None:
     body = r.json()
     assert body["status"] == "ok"
     assert body["version"]
+    # The launchers key on this to tell a fermiviewer server apart from the
+    # sibling quantized on the shared default port — see netprobe._health_ok.
+    assert body["app"] == "fermiviewer"
 
 
 def test_debug_report() -> None:

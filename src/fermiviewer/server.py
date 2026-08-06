@@ -210,7 +210,11 @@ def create_app() -> FastAPI:
 
     @app.get("/api/health")
     def health() -> dict[str, str]:
-        return {"status": "ok", "version": __version__}
+        # "app" is the identity field the launchers key on: the sibling
+        # quantized serves the same {"status": "ok"} shape on the same
+        # default port (8000), and a probe that checks status alone adopts
+        # it — rendering the wrong app's UI in a FermiViewer window.
+        return {"status": "ok", "app": "fermiviewer", "version": __version__}
 
     # logging ring buffer + bug-report payload (checklist O)
     from fermiviewer import logbuf

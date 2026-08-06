@@ -14,9 +14,17 @@ if TYPE_CHECKING:
 
 
 def _health_ok(host: str, port: int, timeout: float = 0.4) -> bool:
-    """True iff a *FermiViewer* server answers /api/health with 200 — used
-    to tell our own running instance apart from a foreign app on the port
-    and to gate the browser/window open on the server actually being up."""
+    """True iff a *FermiViewer* server answers /api/health — used to tell
+    our own running instance apart from a foreign app on the port and to
+    gate the browser/window open on the server actually being up.
+
+    ``status: ok`` alone is NOT identity: the sibling quantized app answers
+    the same default port (8000) with the same payload shape, and adopting
+    it points a FermiViewer window at the wrong app (mirror of the
+    2026-08-05 quantized fix — its Tauri shell rendered fermiviewer's EM
+    opening screen). Require the health body to name this app; a server too
+    old to carry ``app`` reads as foreign, which fails safe (spawn our own
+    instance / refuse, never render it)."""
     import json
     import urllib.request
 
@@ -27,7 +35,11 @@ def _health_ok(host: str, port: int, timeout: float = 0.4) -> bool:
             if r.status != 200:
                 return False
             data = json.loads(r.read())
-            return bool(isinstance(data, dict) and data.get("status") == "ok")
+            return bool(
+                isinstance(data, dict)
+                and data.get("status") == "ok"
+                and data.get("app") == "fermiviewer"
+            )
     except Exception:
         return False
 

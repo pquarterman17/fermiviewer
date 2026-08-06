@@ -90,10 +90,46 @@ def test_health_ok_true_on_valid_ok_payload(
 
     def fake_urlopen(url: str, timeout: float | None = None) -> _FakeResponse:
         assert "/api/health" in url
-        return _FakeResponse(200, json.dumps({"status": "ok"}).encode())
+        return _FakeResponse(
+            200, json.dumps({"status": "ok", "app": "fermiviewer"}).encode()
+        )
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
     assert _health_ok("127.0.0.1", 19200) is True
+
+
+def test_health_ok_false_when_a_sibling_app_answers_status_ok(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The sibling quantized serves the same {"status": "ok"} shape on the
+    same default port (8000); a probe keyed on status alone adopts it and
+    points the FermiViewer window at the wrong app. Identity requires
+    ``app: fermiviewer``."""
+    import urllib.request
+
+    monkeypatch.setattr(
+        urllib.request, "urlopen",
+        lambda url, timeout=None: _FakeResponse(
+            200, json.dumps({"status": "ok", "app": "quantized"}).encode()
+        ),
+    )
+    assert _health_ok("127.0.0.1", 19205) is False
+
+
+def test_health_ok_false_when_app_field_is_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A server too old to send ``app`` reads as foreign — failing safe
+    (spawn our own / refuse) rather than rendering an unidentified app."""
+    import urllib.request
+
+    monkeypatch.setattr(
+        urllib.request, "urlopen",
+        lambda url, timeout=None: _FakeResponse(
+            200, json.dumps({"status": "ok"}).encode()
+        ),
+    )
+    assert _health_ok("127.0.0.1", 19206) is False
 
 
 def test_health_ok_false_on_non_200_status(
