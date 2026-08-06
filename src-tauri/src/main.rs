@@ -32,14 +32,23 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
+// release.yml ships the PyInstaller sidecar extensionless on macOS/Linux, so
+// the lookup must branch by OS — a hardcoded "fv-server.exe" makes every
+// non-Windows installed build unable to find its own backend (mirrors the
+// SIDECAR_EXE pattern in quantized's shell, where this was fixed first).
+#[cfg(target_os = "windows")]
+const SIDECAR_EXE: &str = "fv-server.exe";
+#[cfg(not(target_os = "windows"))]
+const SIDECAR_EXE: &str = "fv-server";
+
 fn spawn_server(repo: &PathBuf) -> std::io::Result<Child> {
     // 1) installed app: the PyInstaller sidecar ships as a resource
-    //    next to the shell exe (<install>/fv-server/fv-server.exe)
+    //    next to the shell exe (<install>/fv-server/fv-server[.exe])
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
             for cand in [
-                dir.join("fv-server").join("fv-server.exe"),
-                dir.join("resources").join("fv-server").join("fv-server.exe"),
+                dir.join("fv-server").join(SIDECAR_EXE),
+                dir.join("resources").join("fv-server").join(SIDECAR_EXE),
             ] {
                 if cand.is_file() {
                     let mut cmd = Command::new(&cand);
@@ -53,7 +62,10 @@ fn spawn_server(repo: &PathBuf) -> std::io::Result<Child> {
     // 2) dev fallback: repo venv python directly (not the fv.exe
     //    launcher) so kill() reaches uvicorn itself rather than
     //    orphaning a grandchild interpreter
+    #[cfg(target_os = "windows")]
     let python = repo.join(".venv").join("Scripts").join("python.exe");
+    #[cfg(not(target_os = "windows"))]
+    let python = repo.join(".venv").join("bin").join("python");
     let mut cmd = Command::new(python);
     cmd.args(["-m", "fermiviewer", "--no-browser", "--no-auto-shutdown"])
         .current_dir(repo);
