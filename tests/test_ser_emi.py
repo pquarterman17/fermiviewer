@@ -27,6 +27,7 @@ _XML_TEMPLATE = (
     "<AcceleratingVoltage>{av}</AcceleratingVoltage>"
     "</MicroscopeConditions></ExperimentalConditions>"
     "<ExperimentalDescription><Root>{fields}</Root></ExperimentalDescription>"
+    "{acquire_info}"
     "<AcquireDate>{date}</AcquireDate><Manufacturer>{manufacturer}</Manufacturer>"
     "</ObjectInfo>"
 ).format
@@ -38,15 +39,23 @@ def _field_xml(label: str, value: str, unit: str = "") -> str:
 
 def _sample_xml(
     *, uuid: str = "abc-123", av: str = "200000", date: str = "Mon Jan 1 00:00:00 2026",
-    manufacturer: str = "FEI", extra_fields: str = ""
+    manufacturer: str = "FEI", extra_fields: str = "", camera: str | None = None,
 ) -> bytes:
     fields = (
         _field_xml("High tension", "200", "kV")
         + _field_xml("Microscope", "Tecnai 200 kV", "")
         + extra_fields
     )
+    # <AcquireInfo> is a sibling of <ExperimentalDescription>, not a Data
+    # field; CameraNamePath in it is what marks a camera-recorded frame.
+    acquire_info = (
+        f"<AcquireInfo><CameraNamePath>{camera}</CameraNamePath></AcquireInfo>"
+        if camera
+        else ""
+    )
     return _XML_TEMPLATE(
-        uuid=uuid, av=av, date=date, manufacturer=manufacturer, fields=fields
+        uuid=uuid, av=av, date=date, manufacturer=manufacturer, fields=fields,
+        acquire_info=acquire_info,
     ).encode("utf-8")
 
 
@@ -262,3 +271,67 @@ def test_all_real_corpus_ser_files_pair_successfully(rsciio_examples: Path) -> N
             ds = load_ser(ser_path)
         assert "emi" in ds.metadata, ser_path.name
         assert "acceleration_voltage_v" in ds.metadata["emi"], ser_path.name
+
+
+# ── real vs reciprocal space ────────────────────────────────────────────
+#
+# A .ser states a CalibrationDeltaX and nothing about what it measures. For a
+# TEM diffraction pattern that field is a reciprocal spacing, so labelling
+# every image "m" reported the corpus's 64x64 pattern at 1.0e8 metres per
+# pixel. Only the paired .emi distinguishes them; the rule (and the STEM
+# carve-out below) is rosettasciio's `_guess_units_from_mode`.
+
+def _paired(tmp_path, mode: str, *, camera: str | None = None, delta: float = 2.5e-9):
+    write_ser_image(tmp_path / "acq_1.ser", width=4, height=3, dtype_code=2,
+                    cal_delta_x=delta)
+    write_raw_emi(tmp_path / "acq.emi",
+                  _sample_xml(extra_fields=_field_xml("Mode", mode), camera=camera))
+    return load_ser(tmp_path / "acq_1.ser")
+
+
+def test_tem_diffraction_axes_are_reciprocal(tmp_path):
+    ds = _paired(tmp_path, " TEM uP SA Zoom Diffraction", delta=1.0157e8)
+    assert ds.pixel_unit == "1/m"
+    assert ds.pixel_size == pytest.approx(1.0157e8)  # same number, honest label
+    assert ds.metadata["spatial_domain"] == "reciprocal"
+
+
+def test_tem_image_axes_stay_real_space(tmp_path):
+    ds = _paired(tmp_path, " TEM uP SA Zoom Image")
+    assert ds.pixel_unit == "m"
+    assert ds.pixel_size == pytest.approx(2.5e-9)
+    assert ds.metadata["spatial_domain"] == "real"
+
+
+def test_stem_diffraction_mode_is_still_a_real_space_scan(tmp_path):
+    """The carve-out that made this worth getting right: under STEM the
+    projector sits in diffraction mode while the image formed is a real-space
+    scan. Without corroboration (a camera, or a genuine multi-position nav
+    axis) these must stay metres — the corpus's STEM BF/DF pair at 21.5 nm/px
+    would otherwise be relabelled reciprocal."""
+    ds = _paired(tmp_path, " STEM nP SA Zoom Diffraction")
+    assert ds.pixel_unit == "m"
+    assert ds.metadata["spatial_domain"] == "real"
+
+
+def test_stem_with_camera_is_reciprocal(tmp_path):
+    ds = _paired(tmp_path, " STEM nP SA Zoom Diffraction", camera="BM-Ceta")
+    assert ds.pixel_unit == "1/m"
+    assert ds.metadata["spatial_domain"] == "reciprocal"
+
+
+def test_unpaired_ser_defaults_to_real_space(tmp_path):
+    """No .emi means no way to know; metres is the overwhelmingly common case
+    and mislabelling it would be worse than the status quo."""
+    write_ser_image(tmp_path / "lone.ser", width=4, height=3, dtype_code=2)
+    ds = load_ser(tmp_path / "lone.ser")
+    assert ds.pixel_unit == "m"
+    assert "spatial_domain" not in ds.metadata
+
+
+def test_emi_without_mode_defaults_to_real_space(tmp_path):
+    write_ser_image(tmp_path / "nomode_1.ser", width=4, height=3, dtype_code=2)
+    write_raw_emi(tmp_path / "nomode.emi", _sample_xml())
+    ds = load_ser(tmp_path / "nomode_1.ser")
+    assert ds.pixel_unit == "m"
+    assert ds.metadata["spatial_domain"] == "real"

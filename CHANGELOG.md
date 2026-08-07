@@ -70,6 +70,27 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   The old magnitude heuristic (|v| < π ⇒ radians) survives only as a fallback
   for metadata of unknown provenance; it silently turns a genuine 2° tilt into
   114°, so no parser relies on it now.
+- **TIA `.ser` diffraction patterns were labelled in metres.** A `.ser` states
+  a `CalibrationDeltaX` and nothing about what it measures; for a TEM
+  diffraction pattern that field is a reciprocal spacing, so the corpus's
+  64×64 pattern reported 1.0e8 **metres** per pixel — a hundred thousand
+  kilometres. Only the paired `.emi` distinguishes them, via the rule
+  rosettasciio's TIA reader uses: a "Diffraction" projector mode means
+  reciprocal, *except* under STEM, where the projector is in diffraction mode
+  while the image formed is a real-space scan. There it needs corroboration —
+  a camera recorded the frame (`CameraNamePath`), or the first navigation
+  dimension is a genuine multi-position scan rather than a plain image stack
+  (which TIA marks with a zero-length unit string). Affected images now report
+  `1/m` and carry `metadata["spatial_domain"]`; the number is unchanged, since
+  the SER delta already *was* the reciprocal spacing. Real-space images, and
+  any `.ser` with no `.emi` to consult, are untouched.
+- **MRC pixel size divided by the wrong header field.** MRC2014 defines the
+  sampling as CELLA / MX, and is explicit that MX "need not be the same as NX
+  … if the map doesn't cover exactly a single unit cell"; we divided by NX, so
+  a cropped sub-volume came out wrong by exactly the crop factor. Now CELLA/MX
+  per axis (rosettasciio uses `Xlen / MX` likewise), falling back to NX/NY for
+  the writers that leave MX at 0, with CELLA_Y/MY calibrating the row axis
+  independently. Every corpus file has MX == NX, so no pinned value moves.
 
 ## [0.1.25] - 2026-08-06
 

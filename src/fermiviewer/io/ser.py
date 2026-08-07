@@ -67,9 +67,13 @@ def _parse_header(buf: bytes) -> dict:
     off_arr = _int(buf, 22, osize)
     ndim = _int(buf, 22 + osize, 4)
 
-    # dimension array (navigation axes): sizes only; skip the strings
+    # dimension array (navigation axes): sizes only; skip the strings. The
+    # units STRING is skipped but its LENGTH is kept — a zero-length unit on
+    # the first navigation dimension is how TIA marks an image stack rather
+    # than a scan, which `_spatial_units` needs.
     cur = 22 + osize + 4
     dims: list[int] = []
+    dim_unit_lens: list[int] = []
     for _ in range(ndim):
         dims.append(_int(buf, cur, 4))
         cur += 4 + 8 + 8 + 4  # size, calOffset f64, calDelta f64, calElement i32
@@ -77,6 +81,7 @@ def _parse_header(buf: bytes) -> dict:
         cur += 4 + desc_len
         unit_len = _int(buf, cur, 4)
         cur += 4 + unit_len
+        dim_unit_lens.append(unit_len)
 
     # data-offset array: the first valid_elements entries point at data
     data_offsets = [
@@ -88,6 +93,7 @@ def _parse_header(buf: bytes) -> dict:
         "valid_elements": valid_elements,
         "wide": wide,
         "dims": dims,
+        "dim_unit_lens": dim_unit_lens,
         "data_offsets": data_offsets,
     }
 
@@ -213,9 +219,42 @@ def _load_spectra(path: Path, buf: bytes, hdr: dict) -> DataStruct:
     )
 
 
-def _merge_emi_metadata(path: Path, ds: DataStruct) -> DataStruct:
+def _spatial_units(emi_meta: dict, hdr: dict) -> str:
+    """``"m"`` (real space) or ``"1/m"`` (reciprocal) for a SER image's axes.
+
+    A `.ser` states a CalibrationDeltaX and nothing about what it measures.
+    For a TEM diffraction pattern that same field is a reciprocal spacing,
+    so labelling every image "m" reports a 64x64 diffraction pattern at
+    1.0e8 metres per pixel — a hundred thousand kilometres. Only the paired
+    `.emi` can tell the two apart.
+
+    The discriminator is rosettasciio's (`rsciio.tia._guess_units_from_mode`):
+    a "Diffraction" projector mode means reciprocal, EXCEPT under STEM,
+    where the projector is in diffraction mode while the image being formed
+    is a real-space scan. There, reciprocal needs corroboration — either a
+    camera recorded the frame (`CameraNamePath`) or the first navigation
+    dimension is a genuine multi-position scan rather than a plain image
+    stack, which TIA marks by writing a zero-length unit string for it.
+
+    Defaults to "m" whenever the `.emi` is absent or silent: real space is
+    overwhelmingly the common case, and mislabelling it would be worse.
+    """
+    fields = emi_meta.get("fields") or {}
+    mode = str((fields.get("Mode") or {}).get("value", ""))
+    if "STEM" in mode:
+        is_camera = "CameraNamePath" in (emi_meta.get("acquire_info") or {})
+        unit_lens = hdr.get("dim_unit_lens") or []
+        is_image_stack = bool(unit_lens) and unit_lens[0] == 0
+        dims = hdr.get("dims") or []
+        is_scan = bool(dims) and dims[0] > 1 and not is_image_stack
+        return "1/m" if (is_camera or is_scan) else "m"
+    return "1/m" if "Diffraction" in mode else "m"
+
+
+def _merge_emi_metadata(path: Path, ds: DataStruct, hdr: dict) -> DataStruct:
     """Pair a sibling `.emi` (if any) into `ds.metadata["emi"]`, filling
-    axis calibration from it only where the `.ser`'s own is uncalibrated."""
+    axis calibration from it only where the `.ser`'s own is uncalibrated,
+    and relabelling reciprocal-space images (see `_spatial_units`)."""
     emi_path = _emi.find_emi_sibling(path)
     if emi_path is None:
         return ds
@@ -237,11 +276,19 @@ def _merge_emi_metadata(path: Path, ds: DataStruct) -> DataStruct:
         metadata["stage_tilt_deg"] = tilt_deg
     axes = ds.axes
     if ds.kind is DataKind.IMAGE:
+        units = _spatial_units(emi_meta, hdr)
+        metadata["spatial_domain"] = "reciprocal" if units == "1/m" else "real"
         if not axes[0].calibrated:
-            px = _emi.pixel_size_m(emi_meta)
+            # The .emi's own "Pixel size" field is a real-space length, so it
+            # can only stand in for a real-space axis.
+            px = _emi.pixel_size_m(emi_meta) if units == "m" else None
             if px:
                 cal = AxisCal(scale=px, units="m")
                 axes = (cal, cal)
+        elif axes[0].units != units:
+            # Same number, truthful label: the SER delta already IS the
+            # reciprocal spacing, only "m" was wrong about what it measures.
+            axes = tuple(dataclasses.replace(a, units=units) for a in axes)
     else:  # SPECTRUM / SPECTRUM_IMAGE — energy axis is always last
         if not axes[-1].calibrated:
             dispersion = _emi.energy_dispersion_ev(emi_meta)
@@ -265,4 +312,4 @@ def load_ser(path: str | Path) -> DataStruct:
             f"unsupported SER DataTypeID 0x{tid:04X} "
             f"(expected 0x4122 image or 0x4120 spectrum): {path}"
         )
-    return _merge_emi_metadata(path, ds)
+    return _merge_emi_metadata(path, ds, hdr)

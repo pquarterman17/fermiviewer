@@ -97,3 +97,51 @@ def test_float32_mode_be_and_le(tmp_path) -> None:
     fbe = write_mini_mrc(tmp_path / "f32be.mrc", grid, mode=2, endian="big")
     np.testing.assert_array_equal(load_mrc(fle).data, grid)
     np.testing.assert_array_equal(load_mrc(fbe).data, grid)
+
+
+# ── calibration: CELLA / MX, per MRC2014 ─────────────────────────────
+
+def test_pixel_size_divides_cella_by_grid_sampling(tmp_path) -> None:
+    """MRC2014 divides the cell length by MX, the grid sampling — not by NX,
+    the image width. A map that does not cover exactly one cell (a cropped
+    sub-volume) has MX != NX, and dividing by NX is then wrong by the crop
+    factor. rosettasciio uses `Xlen / MX` for the same reason."""
+    grid = np.arange(64, dtype=np.uint16).reshape(8, 8)
+    f = write_mini_mrc(tmp_path / "cropped.mrc", grid, mode=6,
+                       cella_x=32.0, mxyz=(16, 16, 1))
+    ds = load_mrc(f)
+    assert ds.pixel_unit == "A"
+    assert ds.pixel_size == pytest.approx(2.0)   # 32 / MX(16), NOT 32 / NX(8)
+
+
+def test_pixel_size_falls_back_to_nx_when_grid_sampling_absent(tmp_path) -> None:
+    """Plain microscopy writers leave MX at 0; NX is then the only divisor."""
+    grid = np.arange(64, dtype=np.uint16).reshape(8, 8)
+    f = write_mini_mrc(tmp_path / "nomx.mrc", grid, mode=6, cella_x=32.0)
+    ds = load_mrc(f)
+    assert ds.pixel_size == pytest.approx(4.0)   # 32 / NX(8)
+
+
+def test_pixel_size_per_axis(tmp_path) -> None:
+    """CELLA_Y/MY calibrates the row axis independently of the column axis."""
+    grid = np.arange(32, dtype=np.uint16).reshape(4, 8)   # ny=4, nx=8
+    f = write_mini_mrc(tmp_path / "rect.mrc", grid, mode=6,
+                       cella_x=16.0, cella_y=40.0, mxyz=(8, 4, 1))
+    ds = load_mrc(f)
+    assert ds.axes[1].scale == pytest.approx(2.0)   # x: 16 / 8
+    assert ds.axes[0].scale == pytest.approx(10.0)  # y: 40 / 4
+
+
+def test_missing_cella_y_assumes_square_pixels(tmp_path) -> None:
+    """CELLA_Y is routinely left at 0; square pixels beat a half-calibration."""
+    grid = np.arange(64, dtype=np.uint16).reshape(8, 8)
+    f = write_mini_mrc(tmp_path / "sq.mrc", grid, mode=6, cella_x=32.0)
+    ds = load_mrc(f)
+    assert ds.axes[0].scale == pytest.approx(ds.axes[1].scale)
+    assert ds.axes[0].units == "A"
+
+
+def test_uncalibrated_when_cella_is_zero(tmp_path) -> None:
+    grid = np.arange(64, dtype=np.uint16).reshape(8, 8)
+    ds = load_mrc(write_mini_mrc(tmp_path / "nocal.mrc", grid, mode=6))
+    assert not ds.axes[0].calibrated and not ds.axes[1].calibrated
