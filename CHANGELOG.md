@@ -13,6 +13,55 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **TIFF files now carry their instrument calibration.** A `.tif` was read as
+  a bare raster: pixel size, stage tilt and acquisition settings were dropped
+  even when the file stated them, so a Thermo Fisher (FEI) dual-beam image
+  opened uncalibrated and measurements came out in pixels. `io/tiff_meta.py`
+  now reads, in priority order:
+  - **Thermo Fisher / FEI** tags 34682 (`FEI_HELIOS` — Helios/Scios/Quanta/
+    Apreo) and 34680 (`FEI_SFEG`): `[Scan] PixelWidth/PixelHeight` in metres,
+    falling back to `[EScan]`/`[IScan]` for single-column exports and then to
+    a field width (`HorFieldsize`, or a column block's `HFW`/`VFW`) divided by
+    `[Image] ResolutionX/Y`. Stage tilt comes from `[Stage] StageT` (radians —
+    a 52° FIB lift-out reads 0.9076 in the file), and the active column is
+    taken from `[Beam] Beam`. Beam energy, working distance, scan rotation,
+    system type and databar height are recorded too.
+  - **Zeiss SmartSEM** tag 34118 (`CZ_SEM`): `ap_image_pixel_size` with its
+    unit, and `ap_stage_at_t` in degrees.
+  - **ImageJ/Fiji** `unit=` plus X/YResolution — how a Gatan DM image exported
+    through Fiji keeps its nm/px.
+  - **Baseline TIFF** X/YResolution when ResolutionUnit is inch or cm.
+
+  Axes come back in nm, or µm above 1 µm/px so an SEM overview does not read
+  "2000 nm". A ResolutionUnit of NONE is deliberately *not* honoured — that
+  combination means "aspect ratio only", and treating a 72-dpi formatting
+  default as a calibration would be worse than reporting none.
+
+### Fixed
+- **Stage tilt was never reported, for any format.** `get_stage_tilt` searched
+  for bare keys (`StageT`, `Tilt`), but every parser stores the angle behind a
+  dotted path or a differently-spelled key, so the lookup returned NaN for
+  every one of the 171 loadable files in the instrument corpus (16 of which
+  do record a tilt) and the viewer's tilt hint never seeded.
+  Each parser now normalizes the angle to `metadata["stage_tilt_deg"]` using
+  its own format's convention, and that key outranks the guesswork:
+  - Gatan DM3/DM4/DM5 — `Microscope Info.Stage Position.Stage Alpha`, degrees.
+  - Velox EMD (Thermo Fisher) — `Stage.AlphaTilt`, radians. `Stage` was also
+    missing from the Velox metadata branches that get flattened, so the tag
+    was not even harvested.
+  - TIA `.ser` — the `.emi` sibling's `Stage A` field, degrees (a lone `.ser`
+    carries no stage state at all).
+  - Bruker `.bcf` — `io/bcf.py` writes `stage_tilt_deg` but the lookup table
+    listed only the MATLAB-era `stageTilt_deg`, so the two spellings never met.
+  - TIFF — as above.
+
+  The old magnitude heuristic (|v| < π ⇒ radians) survives only as a fallback
+  for metadata of unknown provenance; it silently turns a genuine 2° tilt into
+  114°, so no parser relies on it now.
+
 ## [0.1.25] - 2026-08-06
 
 ### Fixed

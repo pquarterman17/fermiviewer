@@ -201,18 +201,24 @@ def load_bcf(
 
     syms, zs = _elements(xml)
     images = _sem_images(xml)
-    pixel_um = _sem_params(xml).get("pixel_size_um")
+    sem_params = _sem_params(xml)
+    pixel_um = sem_params.get("pixel_size_um")
     spatial = AxisCal(scale=pixel_um, units="um") if pixel_um else AxisCal()
 
     metadata: dict[str, Any] = {
         "source": str(path),
         "parser": "bcf",
-        "sem_params": _sem_params(xml),
+        "sem_params": sem_params,
         "elements": syms,
         "element_z": zs,
         "calib_abs": calib_abs,
         "calib_lin": calib_lin,
     }
+    # Promote the tilt to the top level: Esprit already gives it in degrees,
+    # and a top-level scalar survives _public_meta into the inspector, where
+    # a value nested under sem_params never showed up.
+    if "stage_tilt_deg" in sem_params:
+        metadata["stage_tilt_deg"] = sem_params["stage_tilt_deg"]
 
     cube = _load_cube(sfs, n_chan, max_cube_bytes, metadata) if load_cube else None
 

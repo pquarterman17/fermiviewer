@@ -32,6 +32,7 @@ from fermiviewer.io.hdf5_common import (
     axiscal_from_offset_scale,
     is_hdf5,
 )
+from fermiviewer.io.metadata import stage_tilt_from_image_tags
 
 __all__ = ["EMDFormatError", "load_emd"]
 
@@ -220,6 +221,11 @@ def _load_velox(f: h5py.File, path: Path) -> DataStruct:
         "velox_uid": key,
         "image_tags": _flatten_velox_meta(md),
     }
+    # Velox writes Stage.AlphaTilt in radians, as a string, under a dotted
+    # leaf — normalize to degrees so get_stage_tilt can see it at all.
+    tilt_deg = stage_tilt_from_image_tags(meta["image_tags"])
+    if np.isfinite(tilt_deg):
+        meta["stage_tilt_deg"] = tilt_deg
 
     # Velox image data is [H, W, frames]; take the first frame (record count)
     if raw.ndim == 3:
@@ -249,7 +255,10 @@ def _load_velox(f: h5py.File, path: Path) -> DataStruct:
 
 def _flatten_velox_meta(md: dict[str, Any]) -> dict[str, Any]:
     """Flatten a couple of useful Velox metadata branches to scalar leaves
-    for the inspector (HT, detector, dwell), dotted-key style like dm.py."""
+    for the inspector (HT, detector, dwell, stage), dotted-key style like
+    dm.py. ``Stage`` earns its place: ``Stage.AlphaTilt`` is the only place
+    a Velox image records the specimen tilt every geometry correction
+    downstream needs."""
     out: dict[str, Any] = {}
 
     def walk(prefix: str, obj: Any) -> None:
@@ -259,7 +268,7 @@ def _flatten_velox_meta(md: dict[str, Any]) -> dict[str, Any]:
         elif isinstance(obj, (int, float, str)):
             out[prefix] = obj
 
-    for branch in ("Optics", "Detectors", "Acquisition", "BinaryResult"):
+    for branch in ("Optics", "Detectors", "Acquisition", "BinaryResult", "Stage"):
         if branch in md:
             walk(branch, md[branch])
     return out

@@ -17,9 +17,10 @@ Ground-up port of [fermi-viewer](https://github.com/pquarterman17/fermi-viewer)
 
 **Formats:** DM3/DM4/DM5 (Gatan), EMD (Velox/NCEM), BCF (Bruker), SER (TIA),
 MRC, HDF5 family (.hspy, NeXus .nxs/.nx5, generic .h5/.hdf5), MSA/EMSA spectra,
-JEOL Analysis Station (.img/.map/.pts), EDAX .spc, Lispix .rpl/.raw, TIFF,
-PNG/JPEG/BMP/GIF, headerless RAW, Bruker Nanoscope AFM (.spm/.000), 4D-STEM
-(Merlin .mib, 4D HyperSpy).
+JEOL Analysis Station (.img/.map/.pts), EDAX .spc, Lispix .rpl/.raw, TIFF
+(pixel size and stage tilt read from Thermo Fisher/FEI SEM-FIB, Zeiss SmartSEM
+and ImageJ tags), PNG/JPEG/BMP/GIF, headerless RAW, Bruker Nanoscope AFM
+(.spm/.000), 4D-STEM (Merlin .mib, 4D HyperSpy).
 **Analysis:** EELS (background, maps, quantification ± σ, thickness,
 Kramers–Kronig, Fourier-log, model-based peak fitting, SVD), EDS
 (Cliff–Lorimer / ZAF / ζ-factor composition with mass-thickness ± σ, maps,

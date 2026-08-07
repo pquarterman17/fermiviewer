@@ -82,6 +82,7 @@ import numpy as np
 
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.io.hdf5_common import attr_float, attr_str, is_hdf5
+from fermiviewer.io.metadata import stage_tilt_from_image_tags
 
 __all__ = ["DM5FormatError", "load_dm5"]
 
@@ -326,6 +327,10 @@ def load_dm5(path: str | Path) -> DataStruct:
         metadata["image_tags"] = (
             _harvest_image_tags(tags_node) if isinstance(tags_node, h5py.Group) else {}
         )
+        # Same dotted-leaf normalization as dm.py — DM5 keeps DM's tag names.
+        tilt_deg = stage_tilt_from_image_tags(metadata["image_tags"])
+        if np.isfinite(tilt_deg):
+            metadata["stage_tilt_deg"] = tilt_deg
 
         if ndim == 1:                            # 1D spectrum
             return DataStruct(

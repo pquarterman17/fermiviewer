@@ -4,10 +4,16 @@ TIFF maps to tifffile and PNG/JPEG/BMP/GIF to Pillow (sanctioned by the
 deps policy — these are container readers, not algorithms). RGB inputs
 collapse to grayscale by channel mean (the MATLAB getGrayscale rule);
 multi-page TIFFs keep page 0 with n_frames recorded.
+
+A TIFF off an SEM/FIB is not a bare raster: the vendor's whole acquisition
+record rides along in a private tag. `io.tiff_meta` reads it, so a Thermo
+Fisher dual-beam image opens with its pixel size and stage tilt already
+set instead of arriving uncalibrated.
 """
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -25,13 +31,19 @@ def _to_gray(arr: np.ndarray) -> tuple[np.ndarray, bool]:
     return arr, False
 
 
-def _image_struct(arr: np.ndarray, path: Path, parser: str, **extra: object) -> DataStruct:
+def _image_struct(
+    arr: np.ndarray,
+    path: Path,
+    parser: str,
+    axes: tuple[AxisCal, AxisCal] = (AxisCal(), AxisCal()),
+    **extra: object,
+) -> DataStruct:
     gray, was_rgb = _to_gray(arr)
     bit_depth = arr.dtype.itemsize * 8
     return DataStruct(
         data=gray,
         kind=DataKind.IMAGE,
-        axes=(AxisCal(), AxisCal()),
+        axes=axes,
         metadata={
             "source": str(path),
             "parser": parser,
@@ -45,11 +57,25 @@ def _image_struct(arr: np.ndarray, path: Path, parser: str, **extra: object) -> 
 def load_tiff(path: str | Path) -> DataStruct:
     import tifffile
 
+    from fermiviewer.io.tiff_meta import tiff_calibration
+
     path = Path(path)
     with tifffile.TiffFile(path) as tf:
         n_pages = len(tf.pages)
         arr = tf.pages[0].asarray()
-    return _image_struct(arr, path, "tiff", n_frames=n_pages)
+        y_cal, x_cal = AxisCal(), AxisCal()
+        cal_meta: dict[str, object] = {}
+        try:
+            y_cal, x_cal, cal_meta = tiff_calibration(tf, arr.shape)
+        except Exception as e:  # noqa: BLE001 - metadata must never block pixels
+            warnings.warn(
+                f"{path.name}: TIFF metadata unreadable ({type(e).__name__}: {e}); "
+                "the image loads uncalibrated",
+                stacklevel=2,
+            )
+    return _image_struct(
+        arr, path, "tiff", axes=(y_cal, x_cal), n_frames=n_pages, **cal_meta
+    )
 
 
 def load_image(path: str | Path) -> DataStruct:

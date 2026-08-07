@@ -232,6 +232,9 @@ def _merge_emi_metadata(path: Path, ds: DataStruct) -> DataStruct:
         return ds
 
     metadata = {**ds.metadata, "emi": emi_meta, "emi_source": str(emi_path)}
+    tilt_deg = _emi.stage_tilt_deg(emi_meta)
+    if tilt_deg is not None:
+        metadata["stage_tilt_deg"] = tilt_deg
     axes = ds.axes
     if ds.kind is DataKind.IMAGE:
         if not axes[0].calibrated:

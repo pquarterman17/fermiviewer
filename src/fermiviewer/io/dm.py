@@ -26,6 +26,7 @@ from typing import Any
 import numpy as np
 
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
+from fermiviewer.io.metadata import stage_tilt_from_image_tags
 
 __all__ = ["DMFormatError", "load_dm"]
 
@@ -379,6 +380,12 @@ def load_dm(path: str | Path) -> DataStruct:
         for k, v in tags.items()
         if k.startswith(prefix) and isinstance(v, (int, float, str))
     }
+    # `Microscope Info.Stage Position.Stage Alpha` is a dotted leaf, so the
+    # bare-key search in get_stage_tilt could never reach it — normalize it
+    # here (DM records degrees) instead.
+    tilt_deg = stage_tilt_from_image_tags(metadata["image_tags"])
+    if np.isfinite(tilt_deg):
+        metadata["stage_tilt_deg"] = tilt_deg
 
     if len(dims) == 1:                       # 1D spectrum
         return DataStruct(
