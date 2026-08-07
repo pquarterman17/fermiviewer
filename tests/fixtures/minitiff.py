@@ -143,17 +143,26 @@ def write_cz_sem_tiff(
     pixel: str = "3.400 nm",
     tilt_deg: str = "52.0 °",
     kv: str = "5.00 kV",
+    mag: str = "10.00 K X",
     extra: dict[str, tuple[str, Any]] | None = None,
 ) -> Path:
-    """Write `data` as a Zeiss SmartSEM-tagged TIFF (tag 34118)."""
+    """Write `data` as a Zeiss SmartSEM-tagged TIFF (tag 34118).
+
+    Labels and value formatting follow published LEO1550/Merlin tag dumps:
+    `Image Pixel Size = 35.94 nm`, `Stage at T = -0.1 °`, `WD = 4.1 mm`,
+    `Mag = 10.00 K X`, `EHT = 5.00 kV`. The "K X" magnification form
+    matters — it is three tokens, which tifffile leaves unparsed.
+    """
     import tifffile
 
     entries: dict[str, tuple[str, Any]] = {
+        "ap_pixel_size": ("Pixel Size", pixel),
         "ap_image_pixel_size": ("Image Pixel Size", pixel),
         "ap_stage_at_t": ("Stage at T", tilt_deg),
-        "ap_actualkv": ("EHT Target Value", kv),
-        "ap_wd": ("WD", "5.000 mm"),
-        "ap_mag": ("Mag", "50.00 K X"),
+        "ap_tilt_angle": ("Tilt Angle", "0.0 °"),
+        "ap_actualkv": ("EHT", kv),
+        "ap_wd": ("WD", "4.1 mm"),
+        "ap_mag": ("Mag", mag),
         "sv_serial_number": ("Serial Number", "GEMINI-0001"),
         **(extra or {}),
     }

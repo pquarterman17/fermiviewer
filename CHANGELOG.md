@@ -40,6 +40,15 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   combination means "aspect ratio only", and treating a 72-dpi formatting
   default as a calibration would be worse than reporting none.
 
+  None of these vendor layouts is a published standard, so the unit
+  conventions were cross-checked against independent readers: Bio-Formats,
+  NIST's NexusLIMS and rosettasciio all read `[Scan] PixelWidth` as metres;
+  NexusLIMS converts FEI's `ScanRotation` with `degrees()` and Thermo
+  Fisher's AutoScript API uses the same metres/radians convention for stage
+  position; the Zeiss labels and units match published LEO1550/Merlin tag
+  dumps; and ImageJ's own `TiffDecoder` computes `1/XResolution` and treats
+  ResolutionUnit 1 as no unit at all.
+
 ### Fixed
 - **Stage tilt was never reported, for any format.** `get_stage_tilt` searched
   for bare keys (`StageT`, `Tilt`), but every parser stores the angle behind a

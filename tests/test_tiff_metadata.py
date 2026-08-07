@@ -253,7 +253,48 @@ def test_zeiss_cz_sem_calibrates_and_tilts(tmp_path) -> None:
     assert get_stage_tilt(ds.metadata)[0] == pytest.approx(52.0)
     assert ds.metadata["calibration_source"] == "zeiss"
     assert ds.metadata["beam_kv"] == pytest.approx(5.0)
-    assert ds.metadata["working_distance_mm"] == pytest.approx(5.0)
+    assert ds.metadata["working_distance_mm"] == pytest.approx(4.1)
+
+
+def test_zeiss_prefers_image_pixel_size_over_pixel_size(tmp_path) -> None:
+    """SmartSEM writes both. `Pixel Size` stays at the store resolution while
+    `Image Pixel Size` tracks the acquisition settings actually used, so the
+    latter is the one that describes these pixels."""
+    frame = np.arange(64 * 64, dtype=np.uint8).reshape(64, 64)
+    ds = load_tiff(
+        write_cz_sem_tiff(
+            tmp_path / "two.tif",
+            frame,
+            extra={"ap_pixel_size": ("Pixel Size", "99.00 nm")},
+        )
+    )
+    assert ds.pixel_size == pytest.approx(3.4)
+
+
+@pytest.mark.parametrize(
+    "mag, expected",
+    [
+        ("10.00 K X", 10000.0),   # LEO1550 dump
+        ("40.15 K X", 40150.0),   # Merlin dump
+        ("1.250 M X", 1_250_000.0),
+        ("500 X", 500.0),         # two tokens — tifffile splits this one
+    ],
+)
+def test_zeiss_magnification_suffix_forms(tmp_path, mag, expected) -> None:
+    """"10.00 K X" is three tokens, so tifffile hands it over unparsed —
+    without the suffix handling the magnification is silently dropped."""
+    frame = np.arange(64 * 64, dtype=np.uint8).reshape(64, 64)
+    ds = load_tiff(write_cz_sem_tiff(tmp_path / f"m{expected}.tif", frame, mag=mag))
+    assert ds.metadata["magnification"] == pytest.approx(expected)
+
+
+def test_zeiss_unparseable_magnification_is_omitted(tmp_path) -> None:
+    frame = np.arange(64 * 64, dtype=np.uint8).reshape(64, 64)
+    ds = load_tiff(
+        write_cz_sem_tiff(tmp_path / "badmag.tif", frame, mag="Unknown Q X")
+    )
+    assert "magnification" not in ds.metadata
+    assert ds.pixel_size == pytest.approx(3.4)  # the rest still lands
 
 
 def test_zeiss_micron_pixel_unit(tmp_path) -> None:

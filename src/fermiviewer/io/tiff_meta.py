@@ -24,6 +24,8 @@ Sources, highest priority first:
    1024/width). The labelled value carries fewer significant figures, but a
    positional index into an undocumented tuple mis-reads silently and by a
    large factor; a displayed-precision pixel size does not.
+   ``ap_image_pixel_size`` outranks ``ap_pixel_size``: SmartSEM writes both,
+   and only the former tracks the acquisition settings actually used.
 3. **ImageJ / Fiji** — ``unit=`` in the ImageDescription plus
    XResolution/YResolution (pixels per unit). This is how a Gatan DM image
    exported through ImageJ keeps its nm/px.
@@ -34,6 +36,26 @@ Sources, highest priority first:
 Returns AxisCals in nm (or µm above 1 µm/px — an SEM overview at mm field
 width should not read "1200000 nm"), plus a flat metadata dict. Pure
 parsing over an already-open `tifffile.TiffFile`; no I/O of its own.
+
+None of these vendor layouts is a published standard, so the unit
+conventions here are cross-checked against independent readers rather than
+assumed:
+
+* `[Scan] PixelWidth` is **metres**. Bio-Formats' `FEITiffReader` labels the
+  raw value `UNITS.METER` unscaled, NIST's NexusLIMS Quanta extractor
+  multiplies it by 1e9 to report nm, and rosettasciio's TIFF reader assigns
+  it "m" — all three agree, and our synthetic fixtures reproduce
+  rosettasciio's scales exactly (3.4e-9 m, 1.2e-8 m, 2e-6 m).
+* FEI states **angles in radians**. NexusLIMS converts the sibling
+  `ScanRotation` field with `degrees()`, and Thermo Fisher's own AutoScript
+  API uses the same SI convention (metres, radians) for stage position. The
+  |v| > π guard in `_tilt_deg_from_radians` covers the alternative anyway.
+* Zeiss labels/units follow published LEO1550 and Merlin tag dumps:
+  `Image Pixel Size = 35.94 nm`, `Stage at T = -0.1 °`, `WD = 4.1 mm`,
+  `Mag = 10.00 K X`, `EHT = 5.00 kV`.
+* ImageJ's own `TiffDecoder` computes `pixelWidth = 1/XResolution` and maps
+  ResolutionUnit 2 → inch, 3 → cm, and 1 → no unit at all — which is why
+  NONE is not honoured here.
 """
 
 from __future__ import annotations
@@ -317,12 +339,39 @@ def _zeiss_calibration(
     _put(meta, "beam_kv", _cz_beam_kv(sem))
     wd, wd_unit = _cz_value(sem, "ap_wd")
     _put(meta, "working_distance_mm", _length_to_nm(wd, wd_unit) / 1e6)
-    mag, _ = _cz_value(sem, "ap_mag")
-    _put(meta, "magnification", mag)
+    _put(meta, "magnification", _cz_magnification(sem))
     name = sem.get("sv_serial_number")
     if isinstance(name, tuple) and len(name) > 1 and str(name[1]).strip():
         meta["instrument_name"] = str(name[1]).strip()
     return y_cal, x_cal, meta
+
+
+# SmartSEM's magnification multiplier suffix, e.g. "10.00 K X" = 10000x.
+_CZ_MAG_MULTIPLIER = {"k": 1e3, "m": 1e6}
+
+
+def _cz_magnification(sem: dict[str, Any]) -> float:
+    """Magnification from `ap_mag`, including the "K"/"M" suffix form.
+
+    SmartSEM writes it as "<value> [K|M] X". tifffile's CZ_SEM reader only
+    coerces a two-token "<value> <unit>" pair, so a bare "500 X" arrives as
+    (500.0, "X") but the far more common "10.00 K X" arrives as an
+    unsplit string and would otherwise be dropped. Both spellings appear
+    in real LEO1550 and Merlin tag dumps.
+    """
+    value, _unit = _cz_value(sem, "ap_mag")
+    if math.isfinite(value):
+        return value
+    entry = sem.get("ap_mag")
+    raw = entry[1] if isinstance(entry, tuple) and len(entry) > 1 else None
+    if not isinstance(raw, str):
+        return float("nan")
+    tokens = [t for t in raw.split() if t.upper() != "X"]
+    if not tokens:
+        return float("nan")
+    mag = _to_float(tokens[0])
+    factor = 1.0 if len(tokens) == 1 else _CZ_MAG_MULTIPLIER.get(tokens[1].lower(), float("nan"))
+    return mag * factor
 
 
 def _cz_beam_kv(sem: dict[str, Any]) -> float:
