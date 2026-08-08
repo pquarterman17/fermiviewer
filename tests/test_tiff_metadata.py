@@ -433,3 +433,98 @@ def test_fei_scan_rotation_at_half_turn(tmp_path, frame) -> None:
     sections["EBeam"]["ScanRotation"] = float(np.float32(np.pi))
     ds = load_tiff(write_fei_tiff(tmp_path / "rot.tif", frame, sections=sections))
     assert ds.metadata["scan_rotation_deg"] == pytest.approx(180.0, abs=1e-4)
+
+
+# ── real instrument files (../test-data) ─────────────────────────────
+#
+# Every value below was cross-checked against the rosettasciio TIFF reader on
+# the same file. These are the cases the synthetic fixtures above could not
+# reach, and each one caught a bug: the Zeiss 1024-referencing, the 96-dpi
+# baseline default, and the Gatan private tags.
+
+@pytest.mark.realdata
+@pytest.mark.parametrize(
+    "rel, px_nm, unit, source",
+    [
+        # Thermo Fisher Helios: [Scan] PixelWidth = 3.3724e-06 m
+        ("fei/microscopy/rosettasciio_Helios-Ebeam-8bits.tif", 3372.4, "um", "fei"),
+        ("fei/microscopy/rosettasciio_Helios-Ebeam-16bits.tif", 3372.4, "um", "fei"),
+        # Navcam: no [Scan] at all — [IRBeam] HFW / [Image] ResolutionX
+        ("fei/microscopy/rosettasciio_Helios-navcam.tif", 263973.958, "um", "fei"),
+        # Zeiss: ap_image_pixel_size, or ap_pixel_size x 1024/width
+        ("zeiss/microscopy/rosettasciio_Zeiss-SEM-1k.tif", 2614.514, "um", "zeiss"),
+        ("zeiss/microscopy/rosettasciio_Zeiss-SEM-512pix.tif", 11.649976, "nm", "zeiss"),
+        ("zeiss/microscopy/rosettasciio_Zeiss-SEM-multipage.tif", 12.326225, "nm", "zeiss"),
+        # Gatan DM private tags vs the same image through ImageJ
+        ("gatan/microscopy/rosettasciio_saved_with_DM.tif", 168.67469, "nm", "gatan"),
+        ("gatan/microscopy/rosettasciio_saved_with_imageJ.tif", 168.67471, "nm", "imagej"),
+    ],
+)
+def test_real_vendor_tiff_calibration(
+    rsciio_examples, rel: str, px_nm: float, unit: str, source: str
+) -> None:
+    ds = load_auto(rsciio_examples / rel)
+    assert ds.pixel_unit == unit, rel
+    scale_nm = ds.pixel_size * (1e3 if unit == "um" else 1.0)
+    assert scale_nm == pytest.approx(px_nm, rel=1e-6), rel
+    assert ds.metadata["calibration_source"] == source, rel
+
+
+@pytest.mark.realdata
+def test_real_zeiss_pixel_size_is_referenced_to_1024(rsciio_examples) -> None:
+    """The 512-wide file states `ap_pixel_size` 5.825 nm and NO
+    `ap_image_pixel_size`. Taking the label at face value under-reports by
+    exactly 1024/512 — every measurement on the image would be half size."""
+    ds = load_auto(rsciio_examples / "zeiss/microscopy/rosettasciio_Zeiss-SEM-512pix.tif")
+    assert ds.data.shape[1] == 512
+    assert ds.pixel_size == pytest.approx(11.649976, rel=1e-6)   # not 5.825
+    assert ds.metadata["image_tags"]["ap_pixel_size"] == pytest.approx(5.825)
+
+
+@pytest.mark.realdata
+def test_real_zeiss_stage_tilt(rsciio_examples) -> None:
+    """`ap_stage_at_t` = 52.6° in degrees — SmartSEM does not use FEI's
+    radians, and this is the corpus's only genuinely tilted SEM image."""
+    ds = load_auto(rsciio_examples / "zeiss/microscopy/rosettasciio_Zeiss-SEM-multipage.tif")
+    assert get_stage_tilt(ds.metadata)[0] == pytest.approx(52.6)
+
+
+@pytest.mark.realdata
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "fei/microscopy/rosettasciio_Helios-navcam-no-IRBeam.tif",
+        "fei/microscopy/rosettasciio_Helios-navcam-no-IRBeam-bad-floats.tif",
+    ],
+)
+def test_real_navcam_without_field_width_stays_uncalibrated(rsciio_examples, rel) -> None:
+    """These carry `XResolution = 96/1 INCH` — Windows desktop DPI, present on
+    every navcam including the one whose true field width FEI also states.
+    Honouring it reported 264.583 µm/px, only coincidentally near the real
+    263.974. With nothing else to go on the honest answer is no calibration,
+    which is what rosettasciio reports too."""
+    ds = load_auto(rsciio_examples / rel)
+    assert not ds.axes[0].calibrated and not ds.axes[1].calibrated
+    assert ds.pixel_unit == ""
+    assert ds.metadata.get("calibration_source") in (None, "fei")
+
+
+@pytest.mark.realdata
+def test_real_navcam_databar_excluded_from_the_field_width(rsciio_examples) -> None:
+    """551 array rows but `[Image] ResolutionY` = 512: dividing VFW by the
+    array height instead of the declared raster would be 7% out."""
+    ds = load_auto(rsciio_examples / "fei/microscopy/rosettasciio_Helios-navcam.tif")
+    assert ds.data.shape == (551, 768)
+    assert ds.metadata["image_rows"] == pytest.approx(512)
+    # y from VFW/ResolutionY, x from HFW/ResolutionX — near-square, not equal
+    assert ds.axes[0].scale * 1e3 == pytest.approx(263974.609, rel=1e-6)
+    assert ds.axes[1].scale * 1e3 == pytest.approx(263973.958, rel=1e-6)
+
+
+@pytest.mark.realdata
+def test_real_dm_tiff_carries_origin_and_value_unit(rsciio_examples) -> None:
+    """DM's private tags give the axis origin (65006/65007) and the intensity
+    unit (65022) as well as the scale."""
+    ds = load_auto(rsciio_examples / "gatan/microscopy/rosettasciio_saved_with_DM.tif")
+    assert ds.axes[0].units == "nm"
+    assert ds.axes[0].origin == pytest.approx(-139.6626 / 0.16867469, rel=1e-5)

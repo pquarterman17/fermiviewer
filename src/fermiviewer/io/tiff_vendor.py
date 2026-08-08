@@ -28,6 +28,7 @@ See `io.tiff_meta` for how these unit conventions were cross-checked.
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 from fermiviewer.datastruct import AxisCal
@@ -43,7 +44,7 @@ from fermiviewer.io.tiff_units import (
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import tifffile
 
-__all__ = ["fei_calibration", "zeiss_calibration"]
+__all__ = ["fei_calibration", "gatan_calibration", "zeiss_calibration"]
 
 # Private tag codes (tifffile parses these for us; the codes are spelled out
 # because that parsing is what we depend on, not the names).
@@ -204,8 +205,59 @@ def _cz_value(sem: dict[str, Any], key: str) -> tuple[float, str]:
     return to_float(entry[1]), unit
 
 
+# SmartSEM's `ap_pixel_size` and the tag's unlabelled SI value are both
+# referenced to a 1024-wide display, so they need scaling by 1024/width to
+# describe the stored image. `ap_image_pixel_size` is already corrected.
+_CZ_REFERENCE_WIDTH = 1024
+
+
+def _zeiss_pixel_nm(sem: dict[str, Any], width_px: float) -> float:
+    """Pixel size in nm for the STORED image.
+
+    Three sources, verified against the rosettasciio Zeiss corpus (a 2048,
+    a 1024 and a 512-wide file):
+
+    * ``ap_image_pixel_size`` — the true value, needing no correction, but
+      rounded to SmartSEM's displayed 4 significant figures. **Absent from
+      the 512-wide file**, which is what makes the other two necessary.
+    * ``ap_pixel_size`` — equals the unlabelled value below and is
+      referenced to a 1024-wide display: 24.65 nm on the 2048-wide file
+      whose true pixel is 12.33 nm. Taking it at face value under-reports
+      by exactly 1024/width, a factor of 2 on the 512-wide file.
+    * the tag's unlabelled leading tuple, index 3 — the same number in full
+      precision (2.465245e-08 m where the label says 24.65 nm).
+
+    The unlabelled value wins when a labelled one corroborates it, which
+    buys the precision without trusting a positional index into an
+    undocumented tuple on its own.
+    """
+    labelled_true = length_to_nm(*_cz_value(sem, "ap_image_pixel_size"))
+
+    def corrected(nm: float) -> float:
+        if not (math.isfinite(nm) and width_px > 0):
+            return float("nan")
+        return nm * _CZ_REFERENCE_WIDTH / width_px
+
+    labelled_ref = corrected(length_to_nm(*_cz_value(sem, "ap_pixel_size")))
+
+    unlabelled = sem.get("")
+    raw_nm = float("nan")
+    if isinstance(unlabelled, tuple) and len(unlabelled) > 3:
+        raw_nm = positive(unlabelled[3]) * 1e9  # metres in the tuple
+    full_precision = corrected(raw_nm)
+
+    for reference in (labelled_true, labelled_ref):
+        if (
+            math.isfinite(full_precision)
+            and math.isfinite(reference)
+            and abs(full_precision - reference) <= 0.01 * reference
+        ):
+            return full_precision
+    return labelled_true if math.isfinite(labelled_true) else labelled_ref
+
+
 def zeiss_calibration(
-    tf: tifffile.TiffFile,
+    tf: tifffile.TiffFile, shape: tuple[int, ...] = ()
 ) -> tuple[AxisCal, AxisCal, dict[str, Any]] | None:
     try:
         sem = tf.pages.first.tags.valueof(_TAG_CZ_SEM)
@@ -214,12 +266,8 @@ def zeiss_calibration(
     if not isinstance(sem, dict):
         return None
 
-    px_nm = float("nan")
-    for key in ("ap_image_pixel_size", "ap_pixel_size"):
-        value, unit = _cz_value(sem, key)
-        px_nm = length_to_nm(value, unit)
-        if math.isfinite(px_nm):
-            break
+    width_px = float((*shape, 0, 0)[1])
+    px_nm = _zeiss_pixel_nm(sem, width_px)
     y_cal, x_cal = axes_nm(px_nm, px_nm)
 
     meta: dict[str, Any] = {
@@ -278,6 +326,61 @@ def _cz_beam_kv(sem: dict[str, Any]) -> float:
             return value * (1e-3 if unit.strip().lower() == "v" else 1.0)
     return float("nan")
 
+
+
+# ────────────────────────────────────────────────────────────────────
+#  Gatan DigitalMicrograph
+# ────────────────────────────────────────────────────────────────────
+
+# DM stamps its calibration into private tags in the 65000 range when it
+# exports a TIFF directly (as opposed to via ImageJ, which writes `unit=`).
+# Axis assignment follows rosettasciio's reader and the corpus file
+# `test_loading_image_saved_with_DM.tif`, where 65009/65010 both hold
+# 0.16867469 and 65003/65004 hold "µm".
+_TAG_DM_UNITS = {"y": 65003, "x": 65004}
+_TAG_DM_SCALE = {"y": 65009, "x": 65010}
+_TAG_DM_ORIGIN = {"y": 65006, "x": 65007}
+_TAG_DM_VALUE_UNIT = 65022
+
+
+def gatan_calibration(
+    tf: tifffile.TiffFile, shape: tuple[int, ...] = ()
+) -> tuple[AxisCal, AxisCal, dict[str, Any]] | None:
+    """Calibration from a TIFF written by Gatan DigitalMicrograph.
+
+    Baseline XResolution on these files is a bare 72 dpi, so without the
+    private tags a DM export looks uncalibrated — or worse, 353 µm/px.
+    """
+    tags = tf.pages.first.tags
+
+    def tag(code: int) -> Any:
+        try:
+            return tags.valueof(code, default=None)
+        except (KeyError, TypeError, ValueError):
+            return None
+
+    nm: dict[str, float] = {}
+    for axis, code in _TAG_DM_SCALE.items():
+        unit = tag(_TAG_DM_UNITS[axis])
+        nm[axis] = length_to_nm(tag(code), str(unit) if unit else "")
+    if not any(math.isfinite(v) for v in nm.values()):
+        return None
+
+    y_cal, x_cal = axes_nm(nm["y"], nm["x"])
+    # DM states the offset in calibrated units; AxisCal counts origin in
+    # pixels (value = (index − origin) × scale), so divide it back out.
+    cals = {"y": y_cal, "x": x_cal}
+    for axis, cal in list(cals.items()):
+        offset = to_float(tag(_TAG_DM_ORIGIN[axis]))
+        scale_units = to_float(tag(_TAG_DM_SCALE[axis]))
+        if cal.calibrated and math.isfinite(offset) and scale_units:
+            cals[axis] = replace(cal, origin=-offset / scale_units)
+
+    meta: dict[str, Any] = {"calibration_source": "gatan", "vendor": "gatan"}
+    value_unit = tag(_TAG_DM_VALUE_UNIT)
+    if isinstance(value_unit, str) and value_unit.strip():
+        meta["value_unit"] = value_unit.strip()
+    return cals["y"], cals["x"], meta
 
 
 # ────────────────────────────────────────────────────────────────────

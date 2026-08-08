@@ -14,10 +14,12 @@ SEM/FIB tags live in `io.tiff_vendor` and the shared unit arithmetic in
 1. **Thermo Fisher / FEI** — tags 34682 (`FEI_HELIOS`) and 34680
    (`FEI_SFEG`). See `io.tiff_vendor`.
 2. **Zeiss SmartSEM** — tag 34118 (`CZ_SEM`). See `io.tiff_vendor`.
-3. **ImageJ / Fiji** — ``unit=`` in the ImageDescription plus
+3. **Gatan DigitalMicrograph** — private tags 65003-65010 written by a
+   direct DM TIFF export. See `io.tiff_vendor`.
+4. **ImageJ / Fiji** — ``unit=`` in the ImageDescription plus
    XResolution/YResolution (pixels per unit). This is how a Gatan DM image
    exported through ImageJ keeps its nm/px.
-4. **Baseline TIFF** — XResolution/YResolution with a real ResolutionUnit
+5. **Baseline TIFF** — XResolution/YResolution with a real ResolutionUnit
    (inch or cm). Never trusted when ResolutionUnit is NONE: that combination
    means "aspect ratio only", and honouring it invents a calibration.
 
@@ -55,7 +57,11 @@ from typing import TYPE_CHECKING, Any
 
 from fermiviewer.datastruct import AxisCal
 from fermiviewer.io.tiff_units import TO_NM, axes_nm, to_float
-from fermiviewer.io.tiff_vendor import fei_calibration, zeiss_calibration
+from fermiviewer.io.tiff_vendor import (
+    fei_calibration,
+    gatan_calibration,
+    zeiss_calibration,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import tifffile
@@ -68,6 +74,15 @@ _TAG_RESOLUTION_UNIT = 296
 
 # ResolutionUnit values that mean something physical (1 = NONE does not).
 _RESUNIT_NM = {2: 2.54e7, 3: 1.0e7}  # inch, centimetre
+
+# Screen/print defaults that imaging libraries stamp on every file they
+# write. All three FEI navcam images in the rosettasciio corpus carry
+# XResolution = 96/1 INCH — including the one whose real field width FEI
+# also states — so 96 dpi there is Windows' desktop DPI, not a measurement.
+# Honouring it reported 264.583 um/px for a navigation-camera image, which
+# is only coincidentally near the true 263.97 um/px.
+_SCREEN_DPI = {72.0, 96.0}
+_SCREEN_PX_PER_CM = {round(d / 2.54, 3) for d in _SCREEN_DPI}
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -95,9 +110,15 @@ def _resolution_nm(tf: tifffile.TiffFile) -> tuple[float, float, str]:
     unit_nm = TO_NM.get(str(ij.get("unit", "")).strip().lower().replace("μ", "µ"))
     source = "imagej"
     if unit_nm is None:
-        resunit = tags.valueof(_TAG_RESOLUTION_UNIT, default=1)
-        unit_nm = _RESUNIT_NM.get(int(resunit) if resunit is not None else 1)
+        resunit = int(tags.valueof(_TAG_RESOLUTION_UNIT, default=1) or 1)
+        unit_nm = _RESUNIT_NM.get(resunit)
         source = "resolution_tag"
+        # An ImageJ `unit=` is a deliberate statement; a bare ResolutionUnit
+        # is whatever the writing library defaulted to, so screen DPI here
+        # is a formatting artefact rather than a calibration.
+        defaults = _SCREEN_DPI if resunit == 2 else _SCREEN_PX_PER_CM
+        if any(round(v, 3) in defaults for v in (x_per, y_per) if v > 0):
+            return float("nan"), float("nan"), ""
     if unit_nm is None:
         return float("nan"), float("nan"), ""
     y_nm = unit_nm / y_per if y_per > 0 else float("nan")
@@ -106,10 +127,17 @@ def _resolution_nm(tf: tifffile.TiffFile) -> tuple[float, float, str]:
 
 
 def _resolution_calibration(
-    tf: tifffile.TiffFile,
+    tf: tifffile.TiffFile, vendor_present: bool = False
 ) -> tuple[AxisCal, AxisCal, dict[str, Any]] | None:
     y_nm, x_nm, source = _resolution_nm(tf)
     if not source:
+        return None
+    if vendor_present and source == "resolution_tag":
+        # The instrument wrote its own record and did not state a pixel size
+        # there. The baseline tags alongside it are its imaging library's
+        # defaults, so falling back to them invents a scale the instrument
+        # declined to give. (ImageJ's `unit=` is exempt: that is a user's
+        # explicit calibration, which can legitimately post-date the vendor.)
         return None
     y_cal, x_cal = axes_nm(y_nm, x_nm)
     if not (y_cal.calibrated or x_cal.calibrated):
@@ -120,6 +148,15 @@ def _resolution_calibration(
 # ────────────────────────────────────────────────────────────────────
 #  Entry point
 # ────────────────────────────────────────────────────────────────────
+
+def _note(
+    seen: list[bool], found: tuple[AxisCal, AxisCal, dict[str, Any]] | None
+) -> tuple[AxisCal, AxisCal, dict[str, Any]] | None:
+    """Record that a vendor source recognised the file, and pass it through."""
+    if found is not None:
+        seen.append(True)
+    return found
+
 
 def tiff_calibration(
     tf: tifffile.TiffFile, shape: tuple[int, ...] = ()
@@ -137,10 +174,12 @@ def tiff_calibration(
     """
     y_cal, x_cal = AxisCal(), AxisCal()
     meta: dict[str, Any] = {}
+    vendor: list[bool] = []
     for extract in (
-        lambda: fei_calibration(tf, shape),
-        lambda: zeiss_calibration(tf),
-        lambda: _resolution_calibration(tf),
+        lambda: _note(vendor, fei_calibration(tf, shape)),
+        lambda: _note(vendor, zeiss_calibration(tf, shape)),
+        lambda: _note(vendor, gatan_calibration(tf, shape)),
+        lambda: _resolution_calibration(tf, vendor_present=any(vendor)),
     ):
         try:
             found = extract()

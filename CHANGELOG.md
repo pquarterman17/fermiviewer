@@ -31,9 +31,19 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
     system type and databar height are recorded too.
   - **Zeiss SmartSEM** tag 34118 (`CZ_SEM`): `ap_image_pixel_size` with its
     unit, and `ap_stage_at_t` in degrees.
+  - **Gatan DigitalMicrograph** private tags 65003–65010, written by a direct
+    DM TIFF export (scale, axis origin, and the intensity unit). Without them
+    a DM export looks uncalibrated, because its baseline `XResolution` is a
+    bare 72 dpi.
   - **ImageJ/Fiji** `unit=` plus X/YResolution — how a Gatan DM image exported
     through Fiji keeps its nm/px.
-  - **Baseline TIFF** X/YResolution when ResolutionUnit is inch or cm.
+  - **Baseline TIFF** X/YResolution when ResolutionUnit is inch or cm, and
+    only when the value is not a screen/print default (72 or 96 dpi) and the
+    file carries no vendor tag of its own. All three FEI navcam images in the
+    corpus stamp `XResolution = 96/1 INCH` — Windows desktop DPI, including on
+    the one whose real field width FEI *also* states — so honouring it
+    reported 264.583 µm/px for a navigation-camera image, only coincidentally
+    near the true 263.974.
 
   Axes come back in nm, or µm above 1 µm/px so an SEM overview does not read
   "2000 nm". A ResolutionUnit of NONE is deliberately *not* honoured — that
@@ -84,6 +94,15 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   `1/m` and carry `metadata["spatial_domain"]`; the number is unchanged, since
   the SER delta already *was* the reciprocal spacing. Real-space images, and
   any `.ser` with no `.emi` to consult, are untouched.
+- **Zeiss pixel size was half the truth on sub-1024 images.** SmartSEM writes
+  two pixel sizes: `ap_image_pixel_size` describes the stored image, while
+  `ap_pixel_size` (and the tag's unlabelled SI value) is referenced to a
+  1024-wide display. They coincide only at 1024 px wide, and the 512-wide
+  corpus file omits `ap_image_pixel_size` entirely — so falling back to
+  `ap_pixel_size` reported 5.825 nm where the truth is 11.65 nm, halving every
+  measurement on the image. The reader now applies the 1024/width correction,
+  and prefers the unlabelled full-precision value when a labelled one
+  corroborates it (12.3262 nm rather than the displayed 12.33).
 - **A 180° FEI scan rotation was reported as 3.14°.** The FEI angle
   conversion guarded with "|v| > π cannot be radians, so it must already be
   degrees". That guard is safe for stage tilt, which never reaches 180°, but
