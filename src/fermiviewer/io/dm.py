@@ -311,6 +311,28 @@ def _energy_dim(tags: dict[str, Any], cal_base: str) -> int:
     return 2  # GMS layout default: energy last
 
 
+def _degenerate_spectrum_dim(
+    tags: dict[str, Any], cal_base: str, dims: list[int]
+) -> int | None:
+    """The surviving dimension when a 2-D DM dataset is really a spectrum.
+
+    DM stores a spectrum extracted or cropped from a line scan as a 2-D
+    dataset with one dimension of length 1 — `openNCEM_carbon.dm3` is
+    1x2048 with an eV axis. Routing on rank alone made that a DataKind.IMAGE
+    whose "pixel size" was 0.1 eV, which no EELS tool can consume.
+
+    Deliberately conservative: the surviving axis must be calibrated in
+    energy. A 1xN dataset in nm is a single image row and stays an image.
+    """
+    if len(dims) != 2 or 1 not in dims:
+        return None
+    keep = 0 if dims[1] == 1 else 1
+    if dims[keep] <= 1:
+        return None  # 1x1 — no axis worth keeping
+    units = _string(tags, f"{cal_base}.{keep}.Units", "").strip().lower()
+    return keep if units in ENERGY_UNITS else None
+
+
 def _axis_cal(tags: dict[str, Any], cal_base: str, d: int, default_units: str = "") -> AxisCal:
     return AxisCal(
         scale=_scalar(tags, f"{cal_base}.{d}.Scale", float("nan")),
@@ -397,6 +419,15 @@ def load_dm(path: str | Path) -> DataStruct:
 
     if len(dims) == 2:                       # 2D image (row-major: [H, W])
         w, h = dims
+        spec_dim = _degenerate_spectrum_dim(tags, cal_base, dims)
+        if spec_dim is not None:             # 1xN / Nx1 energy axis → spectrum
+            metadata["squeezed_from_shape"] = [h, w]
+            return DataStruct(
+                data=px,
+                kind=DataKind.SPECTRUM,
+                axes=(_axis_cal(tags, cal_base, spec_dim, "eV"),),
+                metadata=metadata,
+            )
         return DataStruct(
             data=px.reshape(h, w),
             kind=DataKind.IMAGE,

@@ -84,6 +84,30 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   `1/m` and carry `metadata["spatial_domain"]`; the number is unchanged, since
   the SER delta already *was* the reciprocal spacing. Real-space images, and
   any `.ser` with no `.emi` to consult, are untouched.
+- **A 1×N EELS acquisition opened as an image.** DM stores a spectrum
+  extracted or cropped from a line scan as a 2-D dataset with one dimension
+  of length 1. `dm.py`/`dm5.py` routed on rank alone, so `openNCEM_carbon.dm3`
+  (1×2048, eV axis) became a `DataKind.IMAGE` whose reported "pixel size" was
+  0.1 eV — not a pixel size at all, and out of reach of every EELS tool. Both
+  readers now squeeze the degenerate dimension and return a SPECTRUM, matching
+  rosettasciio (which reads the same file as an EELS signal with an "Energy
+  loss" axis) and recovering an energy range of 240–445 eV, which brackets the
+  carbon K edge at 284 eV. Deliberately conservative: the surviving axis must
+  be calibrated in energy, so a 1×N image row in nm stays an image. The
+  original shape is kept in `metadata["squeezed_from_shape"]`.
+
+  This is a departure from the frozen MATLAB reference, which recorded the
+  file as 2-D. The golden values are left untouched — they are the parity
+  baseline — and the divergence is asserted explicitly instead, via
+  `DIVERGES_FROM_MATLAB` in `tests/test_dm_golden.py`, alongside every pixel
+  value that did *not* change. The same applies to `EDW087-1.tif`, whose
+  golden entry records `pixelSize: null`: it now calibrates from its ImageJ
+  tags, pinned in `test_simple_parsers.py`.
+- **Dimensionless HDF5 axes counted as a calibration.** NCEM EMD writes `[]`
+  for an index-only axis; `AxisCal.calibrated` only tests `units != ""`, so
+  `rosettasciio_example_image.emd` reported a pixel size of 1.0 `[]` and would
+  have drawn a scale bar measured in `[]`. `axiscal_from_offset_scale` now
+  treats `[]`, `none`, `dimensionless`, `a.u.` and friends as uncalibrated.
 - **MRC pixel size divided by the wrong header field.** MRC2014 defines the
   sampling as CELLA / MX, and is explicit that MX "need not be the same as NX
   … if the map doesn't cover exactly a single unit cell"; we divided by NX, so

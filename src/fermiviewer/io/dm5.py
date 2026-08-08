@@ -241,6 +241,26 @@ def _display_info(entry: h5py.Group) -> dict[str, Any]:
     }
 
 
+def _degenerate_spectrum_dim(image_data: h5py.Group, shape: tuple[int, ...]) -> int | None:
+    """DM5 analogue of dm.py's `_degenerate_spectrum_dim`.
+
+    `shape` is the array's (rows, cols); DM dimension 1 is the row axis and
+    dimension 0 the column axis, so the DM index of the surviving axis is
+    the opposite of the array axis being dropped.
+    """
+    if len(shape) != 2 or 1 not in shape:
+        return None
+    keep_dm = 0 if shape[0] == 1 else 1   # drop rows -> keep DM dim 0 (cols)
+    keep_axis = 1 - keep_dm               # ...which is array axis 1
+    if shape[keep_axis] <= 1:
+        return None  # 1x1 — no axis worth keeping
+    node = _get_group(image_data, f"Calibrations/Dimension/{keep_dm}")
+    if node is None:
+        return None
+    units = attr_str(node, "Units", "").strip().lower()
+    return keep_dm if units in ENERGY_UNITS else None
+
+
 def _energy_dim(image_data: h5py.Group) -> int:
     for d in range(3):
         node = _get_group(image_data, f"Calibrations/Dimension/{d}")
@@ -341,6 +361,15 @@ def load_dm5(path: str | Path) -> DataStruct:
             )
 
         if ndim == 2:                            # 2D image (row-major: [H, W])
+            spec_dim = _degenerate_spectrum_dim(image_data, arr.shape)
+            if spec_dim is not None:             # 1xN / Nx1 energy axis
+                metadata["squeezed_from_shape"] = list(arr.shape)
+                return DataStruct(
+                    data=arr.reshape(-1),
+                    kind=DataKind.SPECTRUM,
+                    axes=(_axis_cal(image_data, spec_dim, "eV"),),
+                    metadata=metadata,
+                )
             return DataStruct(
                 data=arr,
                 kind=DataKind.IMAGE,
