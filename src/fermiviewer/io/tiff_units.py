@@ -20,10 +20,10 @@ from fermiviewer.datastruct import AxisCal
 __all__ = [
     "TO_NM",
     "axes_nm",
+    "deg_from_radians",
     "length_to_nm",
     "positive",
     "put",
-    "tilt_deg_from_radians",
     "to_float",
 ]
 
@@ -90,14 +90,28 @@ def axes_nm(y_nm: float, x_nm: float) -> tuple[AxisCal, AxisCal]:
     return cal(y_nm), cal(x_nm)
 
 
-def tilt_deg_from_radians(value: Any) -> float:
-    """FEI stage angles are radians. Values beyond ±π cannot be — no stage
-    tilts past 180° — so those are taken as degrees already, the same
-    salvage `io.metadata.get_stage_tilt` applies to unlabelled FEI keys."""
+def deg_from_radians(value: Any) -> float:
+    """Degrees from an FEI angle, which is always radians. NaN if absent.
+
+    Deliberately unconditional. An earlier version guarded with "|v| > π
+    cannot be radians, so treat it as degrees already" — the salvage
+    `io.metadata.get_stage_tilt` still applies to metadata of unknown
+    provenance. That guard is wrong here, and dangerously so: FEI applies
+    the same radian convention to ScanRotation, where 180° is an ordinary
+    setting and lands exactly on the π boundary. Stored at float32
+    precision it reads back as 3.1415927410125732, a hair ABOVE π, so the
+    guard returned 3.14 "degrees" for a half-turn — off by 57x. NIST's
+    Quanta reference file sits at 179.9947°, 0.005° from tripping it.
+
+    The convention is not guesswork: Bio-Formats reads FEI lengths as
+    unscaled metres, NIST's NexusLIMS converts ScanRotation with a bare
+    degrees(), and Thermo Fisher's AutoScript API states stage angles in
+    radians.
+    """
     raw = to_float(value)
     if not math.isfinite(raw):
         return float("nan")
-    return math.degrees(raw) if abs(raw) <= math.pi else raw
+    return math.degrees(raw)
 
 
 def put(meta: dict[str, Any], key: str, value: float) -> None:

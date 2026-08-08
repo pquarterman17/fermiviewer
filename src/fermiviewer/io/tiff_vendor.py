@@ -33,10 +33,10 @@ from typing import TYPE_CHECKING, Any
 from fermiviewer.datastruct import AxisCal
 from fermiviewer.io.tiff_units import (
     axes_nm,
+    deg_from_radians,
     length_to_nm,
     positive,
     put,
-    tilt_deg_from_radians,
     to_float,
 )
 
@@ -127,7 +127,7 @@ def _fei_tilt_deg(fei: dict[str, Any], active: str) -> float:
     blocks record it."""
     for sec in _fei_sections(fei, _FEI_STAGE_SECTIONS, active):
         for key in ("StageT", "StageTa"):
-            tilt = tilt_deg_from_radians(sec.get(key))
+            tilt = deg_from_radians(sec.get(key))
             if math.isfinite(tilt):
                 return tilt
     return float("nan")
@@ -176,7 +176,7 @@ def fei_calibration(
     if isinstance(column, dict):
         put(meta, "beam_kv", to_float(column.get("HV")) / 1e3)
         put(meta, "working_distance_mm", to_float(column.get("WD")) * 1e3)
-        put(meta, "scan_rotation_deg", tilt_deg_from_radians(column.get("ScanRotation")))
+        put(meta, "scan_rotation_deg", deg_from_radians(column.get("ScanRotation")))
     if isinstance(system, dict):
         name = str(system.get("SystemType") or system.get("Type") or "").strip()
         if name:

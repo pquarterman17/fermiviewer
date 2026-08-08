@@ -34,11 +34,13 @@ rather than assumed:
   multiplies it by 1e9 to report nm, and rosettasciio's TIFF reader assigns
   it "m" — all three agree, and our synthetic fixtures reproduce
   rosettasciio's scales exactly (3.4e-9 m, 1.2e-8 m, 2e-6 m).
-* FEI states **angles in radians**. NexusLIMS converts the sibling
-  `ScanRotation` field with `degrees()`, and Thermo Fisher's own AutoScript
-  API uses the same SI convention (metres, radians) for stage position. The
-  |v| > π guard in `tiff_units.tilt_deg_from_radians` covers the alternative
-  anyway.
+* FEI states **angles in radians**, unconditionally — see
+  `tiff_units.deg_from_radians` for why the tempting "|v| > π must already be
+  degrees" guard is actively wrong here. NexusLIMS converts the sibling
+  `ScanRotation` field with a bare `degrees()`, and its Quanta reference file
+  reads 179.9947° after that conversion, i.e. 3.141435 rad in the file.
+  Thermo Fisher's own AutoScript API uses the same SI convention (metres,
+  radians) for stage position.
 * Zeiss labels/units follow published LEO1550 and Merlin tag dumps:
   `Image Pixel Size = 35.94 nm`, `Stage at T = -0.1 °`, `WD = 4.1 mm`,
   `Mag = 10.00 K X`, `EHT = 5.00 kV`.

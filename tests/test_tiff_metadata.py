@@ -409,3 +409,27 @@ def test_multipage_fei_keeps_page_zero_calibration(tmp_path) -> None:
     ds = load_tiff(f)
     assert ds.metadata["n_frames"] == 3
     assert ds.pixel_size == pytest.approx(3.4)
+
+
+# ── FEI angles are radians, unconditionally ──────────────────────────
+
+@pytest.mark.parametrize("deg", [0.0, 0.5, 52.0, 90.0, 179.9947, 180.0, -52.0])
+def test_fei_angles_round_trip_through_radians(tmp_path, frame, deg) -> None:
+    """FEI writes radians. A "|v| > π cannot be radians" guard looks safe and
+    is not: 180° is 3.14159 rad, so a half-turn sits exactly on the boundary
+    and used to come back as 3.14 "degrees" — off by 57x. 179.9947° is NIST's
+    real Quanta reference value, 0.005° from tripping it."""
+    ds = load_tiff(
+        write_fei_tiff(tmp_path / f"a{deg}.tif", frame, tilt_rad=np.radians(deg))
+    )
+    assert ds.metadata["stage_tilt_deg"] == pytest.approx(deg, abs=1e-6)
+
+
+def test_fei_scan_rotation_at_half_turn(tmp_path, frame) -> None:
+    """Scan rotation genuinely reaches 180°, unlike stage tilt — and at
+    float32 precision π reads back just ABOVE math.pi, which is what made
+    the old guard misfire."""
+    sections = fei_sections(beam="EBeam")
+    sections["EBeam"]["ScanRotation"] = float(np.float32(np.pi))
+    ds = load_tiff(write_fei_tiff(tmp_path / "rot.tif", frame, sections=sections))
+    assert ds.metadata["scan_rotation_deg"] == pytest.approx(180.0, abs=1e-4)

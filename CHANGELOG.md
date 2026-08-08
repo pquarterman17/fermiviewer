@@ -84,6 +84,16 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   `1/m` and carry `metadata["spatial_domain"]`; the number is unchanged, since
   the SER delta already *was* the reciprocal spacing. Real-space images, and
   any `.ser` with no `.emi` to consult, are untouched.
+- **A 180° FEI scan rotation was reported as 3.14°.** The FEI angle
+  conversion guarded with "|v| > π cannot be radians, so it must already be
+  degrees". That guard is safe for stage tilt, which never reaches 180°, but
+  FEI applies the same radian convention to `ScanRotation`, where a half-turn
+  is an ordinary setting — and at float32 precision π reads back as
+  3.1415927410125732, a hair *above* `math.pi`, so the guard returned 3.14
+  "degrees" for 180°, off by 57×. NIST's Quanta reference file sits at
+  179.9947°, 0.005° from tripping it. FEI angles are now converted
+  unconditionally; the magnitude heuristic survives only in
+  `io.metadata.get_stage_tilt`, for metadata of unknown provenance.
 - **A 1×N EELS acquisition opened as an image.** DM stores a spectrum
   extracted or cropped from a line scan as a 2-D dataset with one dimension
   of length 1. `dm.py`/`dm5.py` routed on rank alone, so `openNCEM_carbon.dm3`
