@@ -266,18 +266,9 @@ size — same µm per screen px across consecutive frames and across panes.
 
 ### Tier 1 — High Impact
 
-6. **Physical-scale math** — extend `lib/geometry.ts` (197/500):
-   µm-per-screen-px of a view, view achieving a target scale about a
-   kept centre, fitView fallback when pixel_size is null; unit tests
-   beside geometry.test.ts.
-   Ratchet: room in an existing pure module. Model: sonnet ·
-   Parallel: yes
+6. ~~**Physical-scale math**~~ — shipped 2026-08-09, see Completed
 
-7. **Scale-lock store** — new standalone zustand store
-   `store/browseScale.ts` (locked flag + locked µm/px + seed/clear
-   actions), following the store/stage.ts pattern; viewer.ts (pin 575)
-   untouched.
-   Ratchet: NEW MODULE. Model: sonnet · Parallel: yes
+7. ~~**Scale-lock store**~~ — shipped 2026-08-09, see Completed
 
 8. **Stage honors the lock** — the pinned-file item
    - [ ] FRONT-LOADED EXTRACTION: move a cohesive block out of Stage.tsx
@@ -318,12 +309,7 @@ exported figures.
 
 ### Tier 1 — High Impact
 
-12. **One area computation** — polygon area (shoelace) + centroid +
-    perimeter next to physDist in `lib/geometry.ts`; px² × pixelSize² →
-    physical; shared by polygon AND lasso; tests cover non-convex and
-    closed/duplicate-last-point inputs.
-    Ratchet: room in an existing pure module. Model: sonnet ·
-    Parallel: yes
+12. ~~**One area computation**~~ — shipped 2026-08-09, see Completed
 
 13. **MeasureOverlay extraction (front-load)** — move per-kind renderers
     (or the label/hit-test block) from MeasureOverlay.tsx (636) into new
@@ -539,4 +525,22 @@ lands.
 
 ## Completed
 
-(nothing yet — plan created 2026-08-09)
+- ~~**#6 Physical-scale math**~~ (2026-08-09, PR #126) — `physicalScale`,
+  `viewForPhysicalScale`, `resolveScaleView` in `lib/geometry.ts`
+  (197 → 320). Unit-agnostic by design (pixel_unit per screen px, not µm —
+  the real Helios corpus is nm and its navcam µm); uncalibrated images
+  fall back to `fitView` with a test asserting equality against
+  `fitView`'s own output, so every uncalibrated path is provably
+  unchanged; `clampZoom` reused so the lock cannot exceed interactive
+  zoom limits. Not wired to any component — that is item 8.
+- ~~**#7 Scale-lock store**~~ (2026-08-09, PR #126) — new standalone
+  `store/browseScale.ts` (39 lines), global lock per the G5 resolution.
+  `store/viewer.ts` untouched, so its 575 pin is intact.
+- ~~**#12 One area computation**~~ (2026-08-09, PR #126) — `polygonStats`,
+  `polygonStatsNormalized`, `areaPxToPhysical` in `lib/geometry.ts`,
+  shared by the polygon and lasso kinds. Edge cases pinned rather than
+  assumed: <3 points → zeros not NaN, duplicated closing point not
+  double-counted, non-convex exact, degenerate zero-area centroid falls
+  back to a vertex average instead of dividing by zero, self-intersecting
+  input returns the signed shoelace result as documented behaviour.
+  Known-answer tests (unit square, triangle) pin the arithmetic.
