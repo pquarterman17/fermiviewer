@@ -5,12 +5,19 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  areaPxToPhysical,
   boxProfileLine,
+  fitView,
   niceScaleLength,
   physAngle,
   physDist,
+  physicalScale,
+  polygonStats,
+  polygonStatsNormalized,
+  resolveScaleView,
   tiltDist,
   unitToNm,
+  viewForPhysicalScale,
   type TiltSettings,
 } from "./geometry";
 
@@ -172,5 +179,138 @@ describe("niceScaleLength", () => {
     expect(niceScaleLength(43)).toBe(20);
     expect(niceScaleLength(100)).toBe(100);
     expect(niceScaleLength(0.3)).toBe(0.2);
+  });
+});
+
+describe("physicalScale / viewForPhysicalScale / resolveScaleView (#6, constant-scale browsing)", () => {
+  const img = { w: 512, h: 512 };
+  const vp = { w: 800, h: 600 };
+  const centre = { px: 0.5, py: 0.5 };
+
+  it("a 100-unit feature is the same screen width for two differently-calibrated images", () => {
+    const target = 1; // pixel_unit per screen px, shared across the series
+    const pixelSizeA = 2; // pixel_unit per image px
+    const pixelSizeB = 5;
+    const viewA = viewForPhysicalScale(target, pixelSizeA, centre);
+    const viewB = viewForPhysicalScale(target, pixelSizeB, centre);
+
+    const featureUnits = 100;
+    const screenWidthA = (featureUnits / pixelSizeA) * viewA.z;
+    const screenWidthB = (featureUnits / pixelSizeB) * viewB.z;
+    expect(screenWidthA).toBeCloseTo(screenWidthB, 10);
+    expect(screenWidthA).toBeCloseTo(100, 10);
+  });
+
+  it("round-trips target scale through physicalScale", () => {
+    for (const [pixelSize, target] of [
+      [2, 0.5],
+      [10, 20],
+      [0.1, 0.2],
+    ] as const) {
+      const view = viewForPhysicalScale(target, pixelSize, centre);
+      expect(physicalScale(view, pixelSize)).toBeCloseTo(target, 10);
+    }
+  });
+
+  it("keeps the given centre fixed while changing scale", () => {
+    const c = { px: 0.31, py: 0.72 };
+    const view = viewForPhysicalScale(2, 3, c);
+    expect(view.px).toBe(c.px);
+    expect(view.py).toBe(c.py);
+  });
+
+  it("locked + calibrated uses the physical-scale view", () => {
+    const got = resolveScaleView(1, 2, img, vp, centre);
+    expect(got).toEqual(viewForPhysicalScale(1, 2, centre));
+    expect(got).not.toEqual(fitView(img, vp));
+  });
+
+  it.each([
+    ["not locked (targetScale null)", null, 2],
+    ["uncalibrated (pixelSize null)", 1, null],
+    ["uncalibrated (pixelSize 0)", 1, 0],
+    ["uncalibrated (pixelSize NaN)", 1, NaN],
+    ["uncalibrated (pixelSize Infinity)", 1, Infinity],
+    ["uncalibrated (pixelSize negative)", 1, -2],
+  ])("%s falls back to fitView exactly", (_label, targetScale, pixelSize) => {
+    expect(resolveScaleView(targetScale, pixelSize, img, vp, centre)).toEqual(
+      fitView(img, vp),
+    );
+  });
+});
+
+describe("polygonStats (#12, shoelace area/centroid/perimeter)", () => {
+  it("unit square: known-answer area, centroid, perimeter", () => {
+    const square = [P(0, 0), P(1, 0), P(1, 1), P(0, 1)];
+    expect(polygonStats(square)).toEqual({
+      areaPx2: 1,
+      centroid: { x: 0.5, y: 0.5 },
+      perimeterPx: 4,
+    });
+  });
+
+  it("3-4-5 right triangle: known-answer area, centroid, perimeter", () => {
+    const tri = [P(0, 0), P(4, 0), P(0, 3)];
+    const { areaPx2, centroid, perimeterPx } = polygonStats(tri);
+    expect(areaPx2).toBeCloseTo(6, 10);
+    expect(centroid.x).toBeCloseTo(4 / 3, 10);
+    expect(centroid.y).toBeCloseTo(1, 10);
+    expect(perimeterPx).toBeCloseTo(12, 10);
+  });
+
+  it("non-convex (staircase L-shape) is exact, not a convex-hull approximation", () => {
+    // 2x2 square with a 1x1 corner notched out — true area 3, not 4.
+    const L = [P(0, 0), P(2, 0), P(2, 1), P(1, 1), P(1, 2), P(0, 2)];
+    const { areaPx2, perimeterPx } = polygonStats(L);
+    expect(areaPx2).toBeCloseTo(3, 10);
+    expect(perimeterPx).toBeCloseTo(8, 10);
+  });
+
+  it("a duplicated closing point is not double-counted", () => {
+    const square = [P(0, 0), P(1, 0), P(1, 1), P(0, 1)];
+    const withDupeClose = [...square, P(0, 0)];
+    expect(polygonStats(withDupeClose)).toEqual(polygonStats(square));
+  });
+
+  it("fewer than 3 points → area 0, not NaN", () => {
+    expect(polygonStats([])).toEqual({
+      areaPx2: 0,
+      centroid: { x: 0, y: 0 },
+      perimeterPx: 0,
+    });
+    expect(polygonStats([P(1, 1)]).areaPx2).toBe(0);
+    expect(polygonStats([P(0, 0), P(1, 1)]).areaPx2).toBe(0);
+  });
+
+  it("self-intersecting input gets the signed shoelace result, uncorrected", () => {
+    // Symmetric bowtie: two crossing triangular lobes of equal area
+    // cancel exactly in the signed sum — this is what shoelace gives,
+    // not a "fixed" true area, and that is intentional (see doc comment).
+    const bowtie = [P(0, 0), P(1, 1), P(1, 0), P(0, 1)];
+    expect(polygonStats(bowtie).areaPx2).toBeCloseTo(0, 10);
+  });
+
+  it("polygonStatsNormalized denormalizes by image dimensions", () => {
+    const unitSquare = [P(0, 0), P(1, 0), P(1, 1), P(0, 1)];
+    const got = polygonStatsNormalized(unitSquare, { w: 10, h: 20 });
+    expect(got).toEqual({
+      areaPx2: 200,
+      centroid: { x: 5, y: 10 },
+      perimeterPx: 60,
+    });
+  });
+});
+
+describe("areaPxToPhysical (#12, pixel_size² area conversion)", () => {
+  it("multiplies by pixel_size squared (assumes square pixels)", () => {
+    expect(areaPxToPhysical(100, 2)).toBe(400);
+  });
+
+  it("uncalibrated (null pixelSize) stays null", () => {
+    expect(areaPxToPhysical(100, null)).toBeNull();
+  });
+
+  it("zero-area input converts to zero, not null", () => {
+    expect(areaPxToPhysical(0, 2)).toBe(0);
   });
 });
