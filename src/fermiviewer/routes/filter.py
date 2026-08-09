@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from fermiviewer.calc import filters
 from fermiviewer.calc.segment import morph_op, multi_otsu
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
+from fermiviewer.io.metadata import databar_content_rows
 from fermiviewer.models import ImageMeta
 from fermiviewer.session import UnknownImageError, store
 
@@ -23,6 +24,10 @@ class FilterRequest(BaseModel):
     image_id: str
     kind: str
     params: dict[str, Any] = {}
+
+
+class StripDatabarRequest(BaseModel):
+    image_id: str
 
 
 def _scaled_axes(ds: DataStruct, factor_r: float, factor_c: float) -> tuple:
@@ -163,4 +168,53 @@ def apply_filter(req: FilterRequest) -> ImageMeta:
     new_id = store.add_derived(
         derived, f"{req.kind}({name})", req.image_id
     )
+    return ImageMeta.from_datastruct(new_id, store.name(new_id), derived)
+
+
+@router.post("/strip-databar")
+def strip_databar(req: StripDatabarRequest) -> ImageMeta:
+    """Crop a vendor-baked databar off the bottom of an image.
+
+    Thermo Fisher SEM/FIB TIFFs bake an info strip (magnification, HV, and
+    the vendor's own scale bar) into the pixels, which is unusable in a
+    figure and collides with FermiViewer's scale bar. The geometry lives
+    server-side (io.metadata.databar_content_rows) so the client only has
+    to ask, and the cut is exact rather than eyeballed against an ROI.
+    """
+    try:
+        ds = store.get(req.image_id)
+    except UnknownImageError:
+        raise HTTPException(404, f"unknown image id: {req.image_id}") from None
+    if ds.kind is not DataKind.IMAGE:
+        raise HTTPException(400, "only 2-D images carry a vendor databar")
+    rows = databar_content_rows(ds.metadata, int(ds.data.shape[0]))
+    if rows is None:
+        raise HTTPException(422, "no vendor databar recorded for this image")
+
+    name = store.name(req.image_id)
+    # Carry the acquisition provenance forward. The generic /filter path
+    # rebuilds metadata from scratch, which here would discard exactly the
+    # information the databar was *displaying* — beam kV, instrument, stage
+    # tilt — leaving a figure-ready image that can no longer say how it was
+    # taken. Only the two keys describing the geometry just removed are
+    # dropped, so a second call correctly reports "no databar".
+    carried = {
+        k: v
+        for k, v in ds.metadata.items()
+        if k not in ("databar_height", "image_rows")
+    }
+    # dtype is preserved: this is a pure crop, so unlike the filter path
+    # there is no computation to justify widening to float64.
+    derived = DataStruct(
+        data=np.asarray(ds.data)[:rows, :].copy(),
+        kind=DataKind.IMAGE,
+        axes=(ds.axes[0], ds.axes[1]),
+        metadata={
+            **carried,
+            "source": f"databar stripped from {name}",
+            "parser": "derived",
+            "filter_kind": "strip_databar",
+        },
+    )
+    new_id = store.add_derived(derived, f"nobar({name})", req.image_id)
     return ImageMeta.from_datastruct(new_id, store.name(new_id), derived)

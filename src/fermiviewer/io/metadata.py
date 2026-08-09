@@ -19,7 +19,12 @@ from typing import Any
 
 import numpy as np
 
-__all__ = ["get_stage_tilt", "stage_tilt_from_image_tags", "to_grayscale"]
+__all__ = [
+    "databar_content_rows",
+    "get_stage_tilt",
+    "stage_tilt_from_image_tags",
+    "to_grayscale",
+]
 
 # BT.601 luma weights (the MATLAB getGrayscale convention)
 _LUMA = (0.299, 0.587, 0.114)
@@ -44,6 +49,43 @@ _IMAGE_TAG_TILT: tuple[tuple[str, bool], ...] = (
     ("stage position.stage alpha", False),  # Gatan DM3/DM4/DM5 — degrees
     ("stage.alphatilt", True),              # Velox EMD (Thermo Fisher) — radians
 )
+
+
+def _positive_int(value: Any) -> int | None:
+    """A strictly-positive row count, or None. Vendor tags arrive as floats
+    (io.tiff_vendor stores them through `positive()`) and occasionally as
+    strings, so coerce rather than isinstance-check."""
+    try:
+        n = int(float(value))
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
+
+
+def databar_content_rows(metadata: Mapping[str, Any], n_rows: int) -> int | None:
+    """Rows of real image sitting above a vendor-baked databar, or None.
+
+    Thermo Fisher (FEI) SEM/FIB TIFFs burn an info bar — magnification, HV,
+    working distance and the vendor's OWN scale bar — into the bottom of the
+    pixel array, so the file is taller than the scanned raster. Parsers
+    record both halves of that geometry and deliberately never crop (a
+    golden checksum pins the array); this collapses the pair into the one
+    number callers actually need.
+
+    ``[Image] ResolutionY`` (recorded as ``image_rows``) is authoritative
+    when present, because it IS the scanned raster height; the recorded
+    ``databar_height`` is the fallback for files that omit it.
+
+    Returns None when the whole array is image — true for every format that
+    doesn't bake a bar in — which callers read as "no databar to avoid".
+    """
+    rows = _positive_int(metadata.get("image_rows"))
+    if rows is not None and rows < n_rows:
+        return rows
+    bar = _positive_int(metadata.get("databar_height"))
+    if bar is not None and bar < n_rows:
+        return n_rows - bar
+    return None
 
 
 def to_grayscale(pixels: np.ndarray) -> np.ndarray:

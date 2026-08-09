@@ -33,6 +33,9 @@ export default function ScaleBarOverlay({
   const color = sbColor;
   const visible = useViewer((s) => s.scaleBarVisible);
   const sbState = useViewer((s) => s.scaleBars[imageId]);
+  // primitive selector (stable snapshot): rows of real image above a
+  // vendor databar, null when the whole array is image
+  const contentRows = useViewer((s) => s.images[imageId]?.content_rows ?? null);
   const setScaleBar = useViewer((s) => s.setScaleBar);
   const dragRef = useRef<{ startX: number; startY: number; x0: number; y0: number } | null>(null);
 
@@ -46,8 +49,16 @@ export default function ScaleBarOverlay({
   // position (sbState.x/.y, viewport-normalized) overrides this. When the
   // image fills the viewport the visible rect == viewport, so this reduces
   // to the original 2% / 92% corner.
+  //
+  // "Real pixels" excludes a vendor-baked databar: Thermo Fisher SEM/FIB
+  // TIFFs burn an info strip (magnification, HV, and THEIR own scale bar)
+  // into the bottom ~7% of the array, and the 92% default landed squarely
+  // on it — two scale bars overlapping, both unreadable. Measuring the
+  // content rect to `contentH` instead of `img.h` lifts the default clear
+  // of the strip; with no databar contentH === img.h and this is a no-op.
+  const contentH = Math.min(img.h, contentRows ?? img.h);
   const tl = imageToScreen(0, 0, view, img, vp);
-  const br = imageToScreen(img.w, img.h, view, img, vp);
+  const br = imageToScreen(img.w, contentH, view, img, vp);
   const visL = Math.max(0, Math.min(tl.x, br.x));
   const visR = Math.min(vp.w, Math.max(tl.x, br.x));
   const visT = Math.max(0, Math.min(tl.y, br.y));

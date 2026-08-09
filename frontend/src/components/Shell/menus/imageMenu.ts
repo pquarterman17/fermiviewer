@@ -12,7 +12,7 @@ import {
   imageFft,
 } from "../../../lib/api";
 import { loadMacro, replayMacro, startRecording, stopRecording } from "../../../lib/macro";
-import { applyGeometry, cropToRoi } from "../../../lib/stageOps";
+import { applyGeometry, cropToRoi, databarRows, stripDatabar } from "../../../lib/stageOps";
 import { askParams } from "../../../store/params";
 import { useViewer } from "../../../store/viewer";
 import type { Entry, MenuCtx } from "./menuTypes";
@@ -29,6 +29,9 @@ export function buildImageMenu(ctx: MenuCtx): Entry[] {
     radialDock,
     calibrateFromMeasurement,
   } = ctx;
+  // read from the store slice this menu already subscribes to, so the
+  // databar item's enabled state re-renders when the active image changes
+  const activeMeta = store.activeId ? store.images[store.activeId] : undefined;
   return [
     { label: "Transform", submenu: [
     {
@@ -60,6 +63,14 @@ export function buildImageMenu(ctx: MenuCtx): Entry[] {
       label: "Crop to ROI",
       disabled: !store.activeId,
       action: () => cropToRoi(),
+    },
+    {
+      // Thermo Fisher SEM/FIB TIFFs bake an info strip into the bottom of
+      // the pixels. Enabled only when the active image actually declares
+      // one, so it reads as "not applicable here" rather than failing.
+      label: "Strip Vendor Databar",
+      disabled: databarRows(activeMeta) == null,
+      action: () => stripDatabar(),
     },
     ] },
     { label: "Combine & Stack", submenu: [

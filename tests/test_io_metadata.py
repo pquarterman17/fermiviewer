@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from fermiviewer.io.metadata import (
+    databar_content_rows,
     get_stage_tilt,
     stage_tilt_from_image_tags,
     to_grayscale,
@@ -80,3 +81,45 @@ def test_stage_tilt_from_image_tags_per_format_units() -> None:
     ))
     assert np.isnan(stage_tilt_from_image_tags({}))
     assert np.isnan(stage_tilt_from_image_tags({"Optics.Voltage": 200000}))
+
+
+# ── databar geometry ──────────────────────────────────────────────────
+
+def test_databar_content_rows_prefers_declared_resolution() -> None:
+    """A Helios frame: 1103 rows on disk, 1024 scanned, 79 of databar.
+    `image_rows` IS the scanned height, so it wins over the subtraction."""
+    meta = {"image_rows": 1024.0, "databar_height": 79.0}
+    assert databar_content_rows(meta, 1103) == 1024
+
+
+def test_databar_content_rows_falls_back_to_bar_height() -> None:
+    """Files that record only the bar height still get an exact cut."""
+    assert databar_content_rows({"databar_height": 79.0}, 1103) == 1024
+    # strings are coerced, not isinstance-rejected (vendor tags vary)
+    assert databar_content_rows({"databar_height": "79"}, 1103) == 1024
+
+
+def test_databar_content_rows_is_none_without_a_bar() -> None:
+    """Every non-FEI format, and FEI files whose declared resolution equals
+    the array — the caller reads None as "nothing to avoid or crop"."""
+    assert databar_content_rows({}, 512) is None
+    assert databar_content_rows({"parser": "tiff"}, 512) is None
+    # no bar: declared resolution == array height
+    assert databar_content_rows({"image_rows": 512.0}, 512) is None
+
+
+def test_databar_content_rows_rejects_impossible_geometry() -> None:
+    """Garbage must not produce a crop that would empty or grow the image.
+    A bar at least as tall as the frame, or a resolution taller than the
+    array, are both inconsistent — fall through rather than trust them."""
+    assert databar_content_rows({"databar_height": 1103.0}, 1103) is None
+    assert databar_content_rows({"databar_height": 2000.0}, 1103) is None
+    assert databar_content_rows({"image_rows": 4096.0}, 1103) is None
+    assert databar_content_rows({"databar_height": 0.0}, 1103) is None
+    assert databar_content_rows({"databar_height": -79.0}, 1103) is None
+    assert databar_content_rows({"databar_height": "n/a"}, 1103) is None
+    assert databar_content_rows({"databar_height": None}, 1103) is None
+    # an inconsistent image_rows still falls through to a usable bar height
+    assert databar_content_rows(
+        {"image_rows": 4096.0, "databar_height": 79.0}, 1103
+    ) == 1024

@@ -14,6 +14,14 @@ export function applyFilter(
   return post("/api/filter", { image_id: id, kind, params });
 }
 
+/** Crop a vendor-baked databar (Thermo Fisher SEM/FIB) off the bottom,
+ *  as a derived image that keeps the acquisition provenance. The cut
+ *  geometry is the server's to compute — it owns the vendor tags — so
+ *  this deliberately takes no rect. 422 when the image has no databar. */
+export function stripDatabar(id: string): Promise<ImageMeta> {
+  return post("/api/strip-databar", { image_id: id });
+}
+
 /** Log-magnitude FFT registered as a derived image. Optional 1-based
  *  rect computes the LOCAL FFT of that region (live-FFT). */
 export async function imageFft(

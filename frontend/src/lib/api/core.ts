@@ -19,6 +19,18 @@ export interface ImageMeta {
   energy_last: number | null;
   energy_units: string;
   stage_tilt_deg: number | null;
+  /** Rows of real image above a vendor-baked databar (Thermo Fisher
+   *  SEM/FIB TIFFs bake magnification/HV/their own scale bar into the
+   *  bottom of the pixels), else null. Server-normalized from the vendor
+   *  tag pair — see io.metadata.databar_content_rows — so the scale bar's
+   *  default position and Strip Vendor Databar share one number.
+   *
+   *  Optional rather than `number | null`: the server always sends it, but
+   *  absent and null mean the same thing to every consumer ("no bar to
+   *  avoid or crop"), so `?? shape[0]` covers both. Nothing in the app
+   *  constructs an ImageMeta — they all come off the wire — so this cannot
+   *  hide a production site that forgot to set it. */
+  content_rows?: number | null;
   meta: Record<string, string | number | boolean>;
 }
 
