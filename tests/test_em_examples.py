@@ -232,3 +232,104 @@ def test_bcf_calibration_needs_sem_dx_limitation(rsciio_examples: Path) -> None:
     assert calibrated.pixel_unit == "um"  # normal file: calibrated
     uncal = _load(rsciio_examples, "bruker/eds/rosettasciio_30x30_packed_16bit_compressed.bcf")
     assert uncal.pixel_unit == ""  # no DX tag → uncalibrated, not wrong
+
+
+# ── stage tilt, across formats ───────────────────────────────────────
+#
+# Before these, `get_stage_tilt` returned NaN for every file in the corpus:
+# each format hides the angle behind its own key and its own unit, and the
+# bare-key lookup reached none of them. Every value below was cross-checked
+# against the rosettasciio oracle's raw tag reads — DM's `Stage Alpha` and
+# Bruker's `Stage.Tilt` in degrees, Velox's `Stage.AlphaTilt` in radians
+# (rsciio applies np.degrees to it, as we do).
+
+@pytest.mark.parametrize(
+    "rel, tilt_deg",
+    [
+        # Gatan DM — Microscope Info.Stage Position.Stage Alpha, degrees
+        ("gatan/microscopy/rosettasciio_test_STEM_image.dm3", 24.950479),
+        ("gatan/eels/rosettasciio_test-EELS_spectrum.dm3", 24.950479),
+        ("gatan/eels/rosettasciio_EELS_SI.dm4", 0.00244),
+        # Velox EMD — Stage.AlphaTilt, radians (-0.2196736 rad)
+        ("emd/microscopy/rosettasciio_fei_example_tem_stack.emd", -12.586372),
+        # TIA — the .ser carries no stage state; the paired .emi's "Stage A"
+        # field does, in degrees
+        ("fei/microscopy/rosettasciio_64x64_TEM_images_acquire_1.ser", 0.0),
+        # Bruker Esprit — TRTSEMStageData/Tilt, degrees
+        ("bruker/eds/P45_the_default_job.bcf", 0.5),
+    ],
+)
+@pytest.mark.filterwarnings("ignore:.*image frames.*:UserWarning")
+def test_stage_tilt_recovered_per_format(
+    rsciio_examples: Path, rel: str, tilt_deg: float
+) -> None:
+    ds = _load(rsciio_examples, rel)
+    assert ds.metadata["stage_tilt_deg"] == pytest.approx(tilt_deg, abs=1e-5)
+    from fermiviewer.io.metadata import get_stage_tilt
+
+    assert get_stage_tilt(ds.metadata)[0] == pytest.approx(tilt_deg, abs=1e-5)
+
+
+def test_stage_tilt_absent_stays_absent(rsciio_examples: Path) -> None:
+    """A file with no stage record must report nothing, not a guess."""
+    ds = _load(rsciio_examples, "mrc/microscopy/rosettasciio_HAADFscan.mrc")
+    assert "stage_tilt_deg" not in ds.metadata
+
+
+def test_imagej_tiff_export_keeps_its_dm_calibration(rsciio_examples: Path) -> None:
+    """The corpus's one .tif is a DM image exported through ImageJ. Its
+    nm/px lives in `unit=` + XResolution and used to be dropped, so the
+    .tif opened uncalibrated while its .dm3 sibling did not."""
+    tif = _load(rsciio_examples, "gatan/microscopy/internal_specimenB_01.tif")
+    dm3 = _load(rsciio_examples, "gatan/microscopy/internal_specimenB_01.dm3")
+    assert tif.pixel_unit == dm3.pixel_unit == "nm"
+    assert tif.pixel_size == pytest.approx(dm3.pixel_size, rel=1e-6)
+    assert tif.metadata["calibration_source"] == "imagej"
+
+
+# ── real vs reciprocal space, TIA .ser ───────────────────────────────
+#
+# The .ser's CalibrationDeltaX says nothing about what it measures, so every
+# image used to be labelled "m" — reporting these two diffraction patterns at
+# ~1e8 metres per pixel, i.e. a hundred thousand kilometres. The paired .emi's
+# Mode resolves it; the STEM entries below are the reason the rule cannot be
+# a plain "Diffraction in mode" test.
+
+@pytest.mark.parametrize(
+    "rel, unit, domain",
+    [
+        # TEM diffraction — reciprocal. 1.0157e8 /m = 0.1016 /nm per pixel.
+        ("fei/microscopy/rosettasciio_64x64_diffraction_acquire_1.ser", "1/m", "reciprocal"),
+        # STEM multi-position scan recorded as diffraction — reciprocal.
+        ("fei/microscopy/rosettasciio_16x16-line_profile_horizontal_5x128x128_EDS_2.ser",
+         "1/m", "reciprocal"),
+        # STEM "Diffraction" projector mode, but a real-space BF/DF scan:
+        # no camera, no multi-position nav axis. Must stay metres.
+        ("fei/microscopy/rosettasciio_16x16_STEM_BF_DF_acquire_1.ser", "m", "real"),
+        ("fei/microscopy/rosettasciio_16x16_STEM_BF_DF_acquire_2.ser", "m", "real"),
+        # Plain TEM images — real space.
+        ("fei/microscopy/rosettasciio_64x64_TEM_images_acquire_1.ser", "m", "real"),
+        ("fei/microscopy/rosettasciio_128x128-TEM_search_1.ser", "m", "real"),
+    ],
+)
+@pytest.mark.filterwarnings("ignore:.*image frames.*:UserWarning")
+def test_ser_spatial_domain(rsciio_examples: Path, rel: str, unit: str, domain: str) -> None:
+    ds = _load(rsciio_examples, rel)
+    assert ds.pixel_unit == unit
+    assert ds.metadata["spatial_domain"] == domain
+
+
+def test_ser_reciprocal_relabel_keeps_the_number(rsciio_examples: Path) -> None:
+    """Only the label was ever wrong: the SER delta already IS the reciprocal
+    spacing, so the scale must not move when the unit is corrected."""
+    ds = _load(rsciio_examples, "fei/microscopy/rosettasciio_64x64_diffraction_acquire_1.ser")
+    assert ds.pixel_size == pytest.approx(1.01572e8, rel=1e-5)
+
+
+def test_mrc_pixel_size_uses_grid_sampling(rsciio_examples: Path) -> None:
+    """MX == NX for this file, so CELLA/MX and CELLA/NX agree — the pinned
+    value guards the switch to the spec-conforming divisor."""
+    ds = _load(rsciio_examples, "mrc/microscopy/rosettasciio_HAADFscan.mrc")
+    assert ds.metadata["mxyz"][0] == 16
+    assert ds.pixel_unit == "A"
+    assert ds.pixel_size == pytest.approx(56.7913, rel=1e-5)

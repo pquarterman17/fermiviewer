@@ -230,3 +230,74 @@ def test_truncated_data_zero_pads(tmp_path) -> None:
     assert ds.data.shape == (ny, nx, ne)
     assert ds.data[0, 0, 0] == encode(0, 0, 0)          # untouched
     assert ds.data[ny - 1, nx - 1, ne - 1] == 0          # chopped off → zero
+
+
+# ── degenerate 2-D spectra ───────────────────────────────────────────
+#
+# DM stores a spectrum extracted or cropped from a line scan as a 2-D dataset
+# with one dimension of length 1. Routing on rank alone made those images
+# whose "pixel size" was the eV dispersion — see DIVERGES_FROM_MATLAB in
+# test_dm_golden.py for the corpus file that hit this.
+
+def test_1xn_energy_axis_loads_as_a_spectrum(tmp_path) -> None:
+    counts = np.arange(1, 17, dtype=np.uint16)
+    f = write_mini_dm4(
+        tmp_path / "line.dm4",
+        dims=[16, 1],                       # DM [width, height] -> array (1, 16)
+        data=counts,
+        cal=[{"scale": 0.5, "origin": -20.0, "units": "eV"},
+             {"scale": 1.0, "origin": 0.0, "units": ""}],
+    )
+    ds = load_dm(f)
+    assert ds.kind is DataKind.SPECTRUM
+    assert ds.data.shape == (16,)
+    assert ds.metadata["squeezed_from_shape"] == [1, 16]
+    assert ds.energy_cal.units == "eV"
+    assert ds.energy_cal.scale == pytest.approx(0.5)
+    assert ds.energy_axis[0] == pytest.approx(10.0)   # (0 − (−20)) × 0.5
+    np.testing.assert_array_equal(ds.data, counts)
+
+
+def test_nx1_energy_axis_loads_as_a_spectrum(tmp_path) -> None:
+    """The transposed layout: the row axis carries the energy calibration."""
+    counts = np.arange(1, 9, dtype=np.uint16)
+    f = write_mini_dm4(
+        tmp_path / "col.dm4",
+        dims=[1, 8],                        # DM [width, height] -> array (8, 1)
+        data=counts,
+        cal=[{"scale": 1.0, "origin": 0.0, "units": ""},
+             {"scale": 0.25, "origin": 0.0, "units": "eV"}],
+    )
+    ds = load_dm(f)
+    assert ds.kind is DataKind.SPECTRUM
+    assert ds.data.shape == (8,)
+    assert ds.energy_cal.scale == pytest.approx(0.25)
+
+
+def test_1xn_length_axis_stays_an_image(tmp_path) -> None:
+    """Conservative on purpose: a single image row calibrated in nm is still
+    an image. Only an energy axis justifies reclassifying."""
+    f = write_mini_dm4(
+        tmp_path / "row.dm4",
+        dims=[16, 1],
+        data=np.arange(1, 17, dtype=np.uint16),
+        cal=[{"scale": 0.5, "origin": 0.0, "units": "nm"},
+             {"scale": 0.5, "origin": 0.0, "units": "nm"}],
+    )
+    ds = load_dm(f)
+    assert ds.kind is DataKind.IMAGE
+    assert ds.data.shape == (1, 16)
+    assert "squeezed_from_shape" not in ds.metadata
+
+
+def test_1x1_is_not_squeezed(tmp_path) -> None:
+    f = write_mini_dm4(
+        tmp_path / "dot.dm4",
+        dims=[1, 1],
+        data=np.array([7], dtype=np.uint16),
+        cal=[{"scale": 0.5, "origin": 0.0, "units": "eV"},
+             {"scale": 0.5, "origin": 0.0, "units": "eV"}],
+    )
+    ds = load_dm(f)
+    assert ds.kind is DataKind.IMAGE
+    assert ds.data.shape == (1, 1)

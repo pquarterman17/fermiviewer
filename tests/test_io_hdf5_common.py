@@ -95,3 +95,22 @@ def test_axiscal_zero_scale_is_uncalibrated() -> None:
     cal = axiscal_from_offset_scale(offset=5.0, scale=0.0, units="nm")
     assert not cal.calibrated
     assert np.allclose(cal.axis(3), [0, 1, 2])  # falls back to indices
+
+
+def test_dimensionless_units_are_not_a_calibration() -> None:
+    """NCEM EMD writes "[]" for an index-only axis. Treating that as a real
+    unit made AxisCal.calibrated true, so `rosettasciio_example_image.emd`
+    reported a pixel size of 1.0 "[]" — and would have drawn a scale bar
+    measured in "[]"."""
+    for marker in ("[]", "", "  ", "none", "dimensionless", "a.u.", "-"):
+        cal = axiscal_from_offset_scale(0.0, 1.0, marker)
+        assert not cal.calibrated, marker
+        assert cal.units == "", marker
+
+
+def test_real_units_survive_unchanged() -> None:
+    cal = axiscal_from_offset_scale(2.0, 0.5, "nm")
+    assert cal.calibrated
+    assert cal.units == "nm"
+    assert cal.scale == pytest.approx(0.5)
+    assert cal.origin == pytest.approx(-4.0)   # −offset/scale

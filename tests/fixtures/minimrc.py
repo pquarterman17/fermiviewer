@@ -30,6 +30,8 @@ def write_mini_mrc(
     endian: str = "little",
     nsymbt: int = 0,
     cella_x: float = 0.0,
+    cella_y: float | None = None,
+    mxyz: tuple[int, int, int] | None = None,
     machst: bytes | None = None,
     nx: int | None = None,
     ny: int | None = None,
@@ -40,6 +42,10 @@ def write_mini_mrc(
     every header integer/float AND the pixel data, plus the matching machine
     stamp; pass `machst=` to override it (e.g. junk bytes to test the
     unrecognised-stamp default-to-little-endian fallback).
+
+    `mxyz` sets the MX/MY/MZ grid sampling (default: left at 0, as plain
+    microscopy writers emit); `cella_y` sets CELLA_Y independently of
+    CELLA_X for the non-square-pixel case.
 
     `nx`/`ny` override the header's NX/NY fields independent of `data.shape`
     (for the invalid-dims test); `header_mode` overrides only the header's
@@ -60,7 +66,13 @@ def write_mini_mrc(
     header[4:8] = struct.pack(f"{bo}i", ny)
     header[8:12] = struct.pack(f"{bo}i", 1)  # NZ
     header[12:16] = struct.pack(f"{bo}i", stored_mode)
-    header[40:52] = struct.pack(f"{bo}fff", cella_x, cella_x, cella_x)
+    # MX/MY/MZ (words 8-10) — the grid sampling CELLA is divided by. Left at
+    # 0 by default, which is what plain microscopy writers emit and what the
+    # parser must fall back to NX/NY for.
+    if mxyz is not None:
+        header[28:40] = struct.pack(f"{bo}iii", *mxyz)
+    cy = cella_x if cella_y is None else cella_y
+    header[40:52] = struct.pack(f"{bo}fff", cella_x, cy, cella_x)
     header[92:96] = struct.pack(f"{bo}i", nsymbt)
     header[208:212] = b"MAP "
     header[212:216] = machst if machst is not None else _MACHST[endian]

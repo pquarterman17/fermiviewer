@@ -13,6 +13,138 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **TIFF files now carry their instrument calibration.** A `.tif` was read as
+  a bare raster: pixel size, stage tilt and acquisition settings were dropped
+  even when the file stated them, so a Thermo Fisher (FEI) dual-beam image
+  opened uncalibrated and measurements came out in pixels. `io/tiff_meta.py`
+  now reads, in priority order:
+  - **Thermo Fisher / FEI** tags 34682 (`FEI_HELIOS` — Helios/Scios/Quanta/
+    Apreo) and 34680 (`FEI_SFEG`): `[Scan] PixelWidth/PixelHeight` in metres,
+    falling back to `[EScan]`/`[IScan]` for single-column exports and then to
+    a field width (`HorFieldsize`, or a column block's `HFW`/`VFW`) divided by
+    `[Image] ResolutionX/Y`. Stage tilt comes from `[Stage] StageT` (radians —
+    a 52° FIB lift-out reads 0.9076 in the file), and the active column is
+    taken from `[Beam] Beam`. Beam energy, working distance, scan rotation,
+    system type and databar height are recorded too.
+  - **Zeiss SmartSEM** tag 34118 (`CZ_SEM`): `ap_image_pixel_size` with its
+    unit, and `ap_stage_at_t` in degrees.
+  - **Gatan DigitalMicrograph** private tags 65003–65010, written by a direct
+    DM TIFF export (scale, axis origin, and the intensity unit). Without them
+    a DM export looks uncalibrated, because its baseline `XResolution` is a
+    bare 72 dpi.
+  - **ImageJ/Fiji** `unit=` plus X/YResolution — how a Gatan DM image exported
+    through Fiji keeps its nm/px.
+  - **Baseline TIFF** X/YResolution when ResolutionUnit is inch or cm, and
+    only when the value is not a screen/print default (72 or 96 dpi) and the
+    file carries no vendor tag of its own. All three FEI navcam images in the
+    corpus stamp `XResolution = 96/1 INCH` — Windows desktop DPI, including on
+    the one whose real field width FEI *also* states — so honouring it
+    reported 264.583 µm/px for a navigation-camera image, only coincidentally
+    near the true 263.974.
+
+  Axes come back in nm, or µm above 1 µm/px so an SEM overview does not read
+  "2000 nm". A ResolutionUnit of NONE is deliberately *not* honoured — that
+  combination means "aspect ratio only", and treating a 72-dpi formatting
+  default as a calibration would be worse than reporting none.
+
+  None of these vendor layouts is a published standard, so the unit
+  conventions were cross-checked against independent readers: Bio-Formats,
+  NIST's NexusLIMS and rosettasciio all read `[Scan] PixelWidth` as metres;
+  NexusLIMS converts FEI's `ScanRotation` with `degrees()` and Thermo
+  Fisher's AutoScript API uses the same metres/radians convention for stage
+  position; the Zeiss labels and units match published LEO1550/Merlin tag
+  dumps; and ImageJ's own `TiffDecoder` computes `1/XResolution` and treats
+  ResolutionUnit 1 as no unit at all.
+
+### Fixed
+- **Stage tilt was never reported, for any format.** `get_stage_tilt` searched
+  for bare keys (`StageT`, `Tilt`), but every parser stores the angle behind a
+  dotted path or a differently-spelled key, so the lookup returned NaN for
+  every one of the 171 loadable files in the instrument corpus (16 of which
+  do record a tilt) and the viewer's tilt hint never seeded.
+  Each parser now normalizes the angle to `metadata["stage_tilt_deg"]` using
+  its own format's convention, and that key outranks the guesswork:
+  - Gatan DM3/DM4/DM5 — `Microscope Info.Stage Position.Stage Alpha`, degrees.
+  - Velox EMD (Thermo Fisher) — `Stage.AlphaTilt`, radians. `Stage` was also
+    missing from the Velox metadata branches that get flattened, so the tag
+    was not even harvested.
+  - TIA `.ser` — the `.emi` sibling's `Stage A` field, degrees (a lone `.ser`
+    carries no stage state at all).
+  - Bruker `.bcf` — `io/bcf.py` writes `stage_tilt_deg` but the lookup table
+    listed only the MATLAB-era `stageTilt_deg`, so the two spellings never met.
+  - TIFF — as above.
+
+  The old magnitude heuristic (|v| < π ⇒ radians) survives only as a fallback
+  for metadata of unknown provenance; it silently turns a genuine 2° tilt into
+  114°, so no parser relies on it now.
+- **TIA `.ser` diffraction patterns were labelled in metres.** A `.ser` states
+  a `CalibrationDeltaX` and nothing about what it measures; for a TEM
+  diffraction pattern that field is a reciprocal spacing, so the corpus's
+  64×64 pattern reported 1.0e8 **metres** per pixel — a hundred thousand
+  kilometres. Only the paired `.emi` distinguishes them, via the rule
+  rosettasciio's TIA reader uses: a "Diffraction" projector mode means
+  reciprocal, *except* under STEM, where the projector is in diffraction mode
+  while the image formed is a real-space scan. There it needs corroboration —
+  a camera recorded the frame (`CameraNamePath`), or the first navigation
+  dimension is a genuine multi-position scan rather than a plain image stack
+  (which TIA marks with a zero-length unit string). Affected images now report
+  `1/m` and carry `metadata["spatial_domain"]`; the number is unchanged, since
+  the SER delta already *was* the reciprocal spacing. Real-space images, and
+  any `.ser` with no `.emi` to consult, are untouched.
+- **Zeiss pixel size was half the truth on sub-1024 images.** SmartSEM writes
+  two pixel sizes: `ap_image_pixel_size` describes the stored image, while
+  `ap_pixel_size` (and the tag's unlabelled SI value) is referenced to a
+  1024-wide display. They coincide only at 1024 px wide, and the 512-wide
+  corpus file omits `ap_image_pixel_size` entirely — so falling back to
+  `ap_pixel_size` reported 5.825 nm where the truth is 11.65 nm, halving every
+  measurement on the image. The reader now applies the 1024/width correction,
+  and prefers the unlabelled full-precision value when a labelled one
+  corroborates it (12.3262 nm rather than the displayed 12.33).
+- **A 180° FEI scan rotation was reported as 3.14°.** The FEI angle
+  conversion guarded with "|v| > π cannot be radians, so it must already be
+  degrees". That guard is safe for stage tilt, which never reaches 180°, but
+  FEI applies the same radian convention to `ScanRotation`, where a half-turn
+  is an ordinary setting — and at float32 precision π reads back as
+  3.1415927410125732, a hair *above* `math.pi`, so the guard returned 3.14
+  "degrees" for 180°, off by 57×. NIST's Quanta reference file sits at
+  179.9947°, 0.005° from tripping it. FEI angles are now converted
+  unconditionally; the magnitude heuristic survives only in
+  `io.metadata.get_stage_tilt`, for metadata of unknown provenance.
+- **A 1×N EELS acquisition opened as an image.** DM stores a spectrum
+  extracted or cropped from a line scan as a 2-D dataset with one dimension
+  of length 1. `dm.py`/`dm5.py` routed on rank alone, so `openNCEM_carbon.dm3`
+  (1×2048, eV axis) became a `DataKind.IMAGE` whose reported "pixel size" was
+  0.1 eV — not a pixel size at all, and out of reach of every EELS tool. Both
+  readers now squeeze the degenerate dimension and return a SPECTRUM, matching
+  rosettasciio (which reads the same file as an EELS signal with an "Energy
+  loss" axis) and recovering an energy range of 240–445 eV, which brackets the
+  carbon K edge at 284 eV. Deliberately conservative: the surviving axis must
+  be calibrated in energy, so a 1×N image row in nm stays an image. The
+  original shape is kept in `metadata["squeezed_from_shape"]`.
+
+  This is a departure from the frozen MATLAB reference, which recorded the
+  file as 2-D. The golden values are left untouched — they are the parity
+  baseline — and the divergence is asserted explicitly instead, via
+  `DIVERGES_FROM_MATLAB` in `tests/test_dm_golden.py`, alongside every pixel
+  value that did *not* change. The same applies to `EDW087-1.tif`, whose
+  golden entry records `pixelSize: null`: it now calibrates from its ImageJ
+  tags, pinned in `test_simple_parsers.py`.
+- **Dimensionless HDF5 axes counted as a calibration.** NCEM EMD writes `[]`
+  for an index-only axis; `AxisCal.calibrated` only tests `units != ""`, so
+  `rosettasciio_example_image.emd` reported a pixel size of 1.0 `[]` and would
+  have drawn a scale bar measured in `[]`. `axiscal_from_offset_scale` now
+  treats `[]`, `none`, `dimensionless`, `a.u.` and friends as uncalibrated.
+- **MRC pixel size divided by the wrong header field.** MRC2014 defines the
+  sampling as CELLA / MX, and is explicit that MX "need not be the same as NX
+  … if the map doesn't cover exactly a single unit cell"; we divided by NX, so
+  a cropped sub-volume came out wrong by exactly the crop factor. Now CELLA/MX
+  per axis (rosettasciio uses `Xlen / MX` likewise), falling back to NX/NY for
+  the writers that leave MX at 0, with CELLA_Y/MY calibrating the row axis
+  independently. Every corpus file has MX == NX, so no pinned value moves.
+
 ## [0.1.25] - 2026-08-06
 
 ### Fixed

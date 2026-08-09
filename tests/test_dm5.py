@@ -244,3 +244,51 @@ def test_dm5_empty_imagelist_raises(tmp_path) -> None:
         f.create_group("ImageList")
     with pytest.raises(DM5FormatError, match="no usable image"):
         load_dm5(fp)
+
+
+# ── degenerate 2-D spectra (mirrors dm.py) ───────────────────────────
+
+def test_1xn_energy_axis_loads_as_a_spectrum(tmp_path) -> None:
+    """DM5 keeps DM's tag names, so the same 1xN-EELS-as-an-image trap
+    applies; the readers must agree. See test_dm_contract.py for the .dm4
+    twin and test_dm_golden.py for the corpus file that hit it."""
+    counts = np.arange(1, 17, dtype=np.uint16)
+    f = write_dm5(
+        tmp_path / "line.dm5",
+        counts.reshape(1, 16),      # array (rows, cols) = (1, 16)
+        cal=[{"scale": 0.5, "origin": -20.0, "units": "eV"},  # DM dim 0 = cols
+             {"scale": 1.0, "origin": 0.0, "units": ""}],
+    )
+    ds = load_dm5(f)
+    assert ds.kind is DataKind.SPECTRUM
+    assert ds.data.shape == (16,)
+    assert ds.metadata["squeezed_from_shape"] == [1, 16]
+    assert ds.energy_cal.units == "eV"
+    assert ds.energy_cal.scale == pytest.approx(0.5)
+    np.testing.assert_array_equal(ds.data, counts)
+
+
+def test_nx1_energy_axis_loads_as_a_spectrum(tmp_path) -> None:
+    counts = np.arange(1, 9, dtype=np.uint16)
+    f = write_dm5(
+        tmp_path / "col.dm5",
+        counts.reshape(8, 1),       # array (rows, cols) = (8, 1)
+        cal=[{"scale": 1.0, "origin": 0.0, "units": ""},
+             {"scale": 0.25, "origin": 0.0, "units": "eV"}],  # DM dim 1 = rows
+    )
+    ds = load_dm5(f)
+    assert ds.kind is DataKind.SPECTRUM
+    assert ds.data.shape == (8,)
+    assert ds.energy_cal.scale == pytest.approx(0.25)
+
+
+def test_1xn_length_axis_stays_an_image(tmp_path) -> None:
+    f = write_dm5(
+        tmp_path / "row.dm5",
+        np.arange(1, 17, dtype=np.uint16).reshape(1, 16),
+        cal=[{"scale": 0.5, "origin": 0.0, "units": "nm"},
+             {"scale": 0.5, "origin": 0.0, "units": "nm"}],
+    )
+    ds = load_dm5(f)
+    assert ds.kind is DataKind.IMAGE
+    assert ds.data.shape == (1, 16)
