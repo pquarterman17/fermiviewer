@@ -1,0 +1,254 @@
+# Spectral workspace plan — EDS + EELS
+
+Make the spectrum-image workspaces genuinely usable for routine analysis: pick
+a handful of species, tune their integration windows by direct manipulation,
+and get single or combined colour maps out — with EDS and EELS sharing one
+implementation so a feature cannot land in one and rot in the other.
+
+**Status:** Active
+**Parent:** MAIN_PLAN.md
+**Created:** 2026-07-29
+**Updated:** 2026-07-30
+
+---
+
+## Context
+
+### How the pieces fit together
+
+Both workspaces are the same shape — a spectrum, a set of species, an energy
+window per species, and maps derived from those windows — but they were built
+separately and only EDS has been maintained.
+
+| | EDS | EELS |
+|---|---|---|
+| Species source | `calc/eds.py` `line_energy()` K/L/M by overvoltage | `calc/eels.py` `EELS_EDGES` onsets |
+| Window model | one peak window; flanking background inferred | explicit background window + signal window |
+| Species picking | periodic table / dropdown, **one at a time** | text filter over an edge list |
+| Multi-species maps | only via `/eds/quantify` (welded to Cliff–Lorimer/ZAF) | `/eels/quantify-map` (welded to quant) |
+| Window editing | numeric fields + shift-drag | four typed numbers |
+| Zoom / colours / integration | yes (2026-07-29) | none |
+| Composite | yes | **none** |
+
+The asymmetry is the problem, not the feature gap: `extract_element_maps()`
+already exists in `calc/eds_maps.py` and does exactly the multi-species job,
+but the only route to it is `/eds/quantify`, so asking for five maps forces a
+quantification the user may not want.
+
+### Data / control flow (target)
+
+```
+  species list  ──┬─> window model ──> integration readout (client, per species)
+  (symbol +       │                     │
+   transition)    │                     └─> live net ± σ in the species row
+                  │
+                  └─> batch map request ──> per-species raster ──┬─> single map view
+                       (/eds/element-maps, /eels/maps)           └─> composite (N × colour)
+                                                                       └─> library image
+  colour registry ──────────────────────────────────────────────────────┘
+      (already shared; drives every surface)
+```
+
+### Dependency map
+
+- Items 1–3 are the foundation; nothing else in W1–W3 lands cleanly before them
+- Items 4, 5, 6 are independent of each other once 2 exists (parallelizable)
+- Item 8 unblocks 9; item 14 unblocks 15
+- Item 7 (shared composite) is a generalisation of the existing EDS composite —
+  do it with 15, not before, so it is written against two real callers
+- W4 item 17 is done and is the verification substrate for everything else
+- Item 11 is last: retiring the old flow needs the new one proven
+
+### Resolved decisions
+
+- (2026-07-29) **Species list panel**, not a batch button on the single-element
+  flow — multi-select builds a persistent list with per-row window, colour,
+  visibility and net.
+- (2026-07-29) **Window editing = drag edges + width presets/FWHM auto +
+  numeric steppers with live net.** All three, not one.
+- (2026-07-29) **Shared spectrum core** parameterised by modality, rather than
+  porting features twice or keeping two copies in sync.
+- (2026-07-29) **Synthetic data as real `.hspy` files**, opened through the
+  normal file path, with a `.truth.json` sidecar.
+- (2026-07-29) Peak/edge positions in synthetic data come from the app's own
+  tables, never a second copy.
+- (2026-07-30) **One "Elemental Analysis" workspace**, not two windows — the
+  only arrangement that structurally prevents a feature landing in one
+  modality and not the other.
+- (2026-07-30) **Three-tier code split** (spectrum / elemental / modality), not
+  a blanket "elemental" rename: `zoomRange.ts` serves any spectrum and EDS
+  background models serve only EDS.
+- (2026-07-30) Backend `calc/` and `routes/` keep their EDS/EELS names — the
+  physics genuinely differs and a shared name would hide that. Sharing happens
+  at the interface (item 2), not the filename.
+
+### Owner gates
+
+- Should the combined composite become a first-class library image (item 10),
+  or stay a panel-local canvas with PNG export?
+- Overlap detection (item 20) was explicitly deselected. Revisit only if the
+  Ta M / Si K case in real work produces a wrong answer silently.
+- EELS quantification currently needs a background *and* signal window per
+  edge. Should the species list auto-place the background window from the
+  onset (item 16), or always require the user to set it?
+
+---
+
+## Cross-cutting priorities
+
+| # | Item | Workstream | Why first |
+|---|------|------------|-----------|
+| 1 | Species model | W1 — Core | Every other item reads or writes it |
+| 8 | `/eds/element-maps` endpoint | W2 — EDS | Multi-species maps are unreachable without it |
+| 4 | Draggable window edges | W1 — Core | The single biggest usability win per line of code |
+| 3 | SpectrumWorkspace shell | W1 — Core | Where EELS stops being second-class |
+
+---
+
+## W1 — Shared spectrum core
+
+### Tier 1 — High Impact
+
+1. **Species model** — one type and store for "a thing with an energy window
+   and a colour", used by both modalities
+   - [ ] `Species { id, symbol, transition, windows, visible }`; colour stays
+         in the existing element-colour registry, keyed by symbol
+   - [ ] Persist per image; clear on image change (as zoom/regions already do)
+   - [ ] Derive the EDS default window from `line_energy` ± half-window, and
+         the EELS default from the edge onset
+
+2. **Window model abstraction** — one interface over two different window
+   shapes
+   - [ ] EDS: one signal window; flanking background inferred (`_side_windows`)
+   - [ ] EELS: explicit background window + signal window
+   - [ ] Both expose the same `integrate()` and the same drag targets, so the
+         editing UI does not branch on modality
+
+3. **Species list wiring into the shared shell** — the shell exists (item 21);
+   what remains is making the species list itself modality-driven
+   - [ ] One list component fed by either K/L/M lines or edge onsets
+
+4. **Draggable window edges** — grab an edge to resize, the middle to slide
+   - [ ] Hit-testing with a grab tolerance in pixels, not energy units
+   - [ ] Cursor feedback (`ew-resize` on edges, `grab` in the middle)
+   - [ ] Arrow-key nudge / shift+arrow coarse nudge for keyboard parity
+   - [ ] Must not fight the existing drag-zoom or shift-drag gestures
+
+7. **Shared composite** — N species → one RGBA raster, for either modality
+   - [ ] Generalise `EdsComposite` once item 15 gives it a second caller
+
+### Tier 2 — Medium Impact
+
+5. **Width presets and FWHM auto-fit** — narrow / standard / wide, or fit the
+   window to the measured peak width
+   - [ ] EDS: seed from the detector-resolution curve, refine on the data
+   - [ ] EELS: an integration width past the onset, which is the real control
+
+6. **Numeric steppers with live net** — typed bounds that show net ± σ as they
+   change, plus a lock so the window follows the species' line/onset
+
+---
+
+## W2 — EDS workspace
+
+### Tier 1 — High Impact
+
+8. **`/eds/element-maps` endpoint** — expose `extract_element_maps()` directly
+   - [ ] Batch: N symbols → N rasters, optional `save_derived`
+   - [ ] Per-species window override, so the endpoint serves the species list
+         rather than recomputing default windows
+   - [ ] Decoupled from Cliff–Lorimer/ZAF; quantify keeps its own route
+
+9. **Species list wired to EDS** — periodic-table multi-select feeding the list
+   - [ ] Multi-select in `PeriodicTable`, preserving single-select for the
+         existing callers
+   - [ ] "Extract maps" runs one batch request for every visible species
+   - [ ] Row click shows that single map; composite reflects visible rows
+
+### Tier 2 — Medium Impact
+
+10. **Composite → library** — register the combined map as an RGB image so it
+    reaches the filmstrip, comparison and export (owner gate above)
+
+11. **Retire the single-element Explore flow** — once the species list covers
+    it, remove the duplicate controls rather than leaving both
+
+---
+
+## W3 — EELS workspace
+
+The shared shell now shows EELS a **Maps** tab that states plainly what is
+missing rather than faking it. These four items are what fills it.
+
+### Tier 1 — High Impact
+
+12. **Edge picker** — species list backed by `EELS_EDGES`
+    - [ ] Element + edge choice (Si L23 vs Si K), not just element
+    - [ ] Same periodic-table affordance as EDS, filtered to elements with an
+          edge inside the cube's energy range
+
+13. **EELS zoom, colours and integration** — via the shared core from W1
+    - [ ] Replaces the four typed `bgLo/bgHi/sigLo/sigHi` fields
+
+14. **`/eels/maps` batch endpoint** — N edges → N rasters, mirroring item 8
+    - [ ] Built on `calc/eels.extract_map`, decoupled from `quantify_map`
+    - [ ] Return inline rasters; `/eels/map` returns a registered ImageMeta,
+          which the montage and overlay cannot consume directly
+    - [ ] Fix `extract_map`'s `np.asarray(cube, dtype=np.float64)` — it
+          materialises a float64 copy of the whole cube, the exact memory bug
+          the EDS path already fixed. Making EELS maps a primary workflow
+          would expose it on multi-GB cubes.
+
+22. **EELS edge identification** — the auto-ID half of the Maps workflow
+    - [ ] There is no `/eels/auto-assign`; EDS gets its element list for free
+          and EELS cannot
+    - [ ] Edge-jump significance over every `EELS_EDGES` entry inside the
+          cube's range gives the same net/σ confidence banding the EDS list
+          already uses
+
+15. **EELS composite** — the capability EELS has never had
+
+### Tier 2 — Medium Impact
+
+16. **Background-window auto-placement** — derive a sensible pre-edge fit
+    region from the onset, user-adjustable (owner gate above)
+
+---
+
+## W4 — Test data and verification
+
+### Tier 2 — Medium Impact
+
+18. **Quantification golden tests against truth** — assert `/eds/quantify` and
+    `/eels/quantify` recover the synthetic composition within tolerance
+    - [ ] Uses the `.truth.json` sidecar as the oracle
+    - [ ] Documents the tolerance each method actually achieves
+
+### Tier 3 — Nice-to-Have
+
+19. **More presets** — a diffusion-couple gradient and a thickness ramp, for
+    testing profiles and absorption corrections
+
+20. **Window overlap detection** — flag species whose windows interfere
+    (deselected 2026-07-29; see Owner gates)
+
+---
+
+## Completed
+
+- ~~**#21 Elemental Analysis workspace**~~ (2026-07-30) — EDS and EELS merged
+  into one shell owning a single tab strip and a modality badge;
+  `EelsWorkshop` lost its own tab state; the Inspector's two tabs became one
+  launcher; the redundant Composite tab was removed and the generic
+  compositor kept as `ChannelComposite`. Frontend split into
+  `spectrum` / `elemental` / `eds` tiers. Ratchet pins lowered
+  (EelsWorkshop 685→677, MenuBar 1539→1495).
+
+- ~~**#17 Synthetic SI generator**~~ (2026-07-29) — `tools/make_synthetic_si.py`
+  writes real `.hspy` cubes (4 presets: `eds-layers`, `eds-overlap`,
+  `eds-particles`, `eels-layers`) plus a `.truth.json` oracle. Peak and edge
+  positions come from `calc.eds.line_energy` / `calc.eels.EELS_EDGES`, so they
+  cannot drift from the windows the GUI snaps to. `.hspy` reader gained
+  `metadata/Sample/elements` so declared elements reach the picker.
+  `tests/test_synthetic_si.py` (7 tests) round-trips generator → loader →
+  `element_map` and asserts maps localize where the truth says.
