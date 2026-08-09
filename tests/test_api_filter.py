@@ -10,8 +10,12 @@ from fermiviewer.calc.filters import apply_gaussian, bin_image
 from fermiviewer.server import create_app
 from fermiviewer.session import store
 from fixtures.minidm4 import write_mini_dm4
+from fixtures.minitiff import write_fei_tiff
 
 pytestmark = [pytest.mark.api, pytest.mark.imaging]
+
+# a Helios frame with its 79-row databar baked in (see test_tiff_metadata)
+_FEI_W, _FEI_H = 1536, 1103
 
 
 @pytest.fixture(autouse=True)
@@ -205,3 +209,67 @@ def test_morph_and_multiotsu_kinds(client, img_id) -> None:
     assert client.post("/api/filter", json={
         "image_id": img_id, "kind": "multiotsu", "params": {"n_classes": 9},
     }).status_code == 422
+
+
+# ── POST /strip-databar ───────────────────────────────────────────────
+
+@pytest.fixture()
+def fei_id(client, tmp_path) -> str:
+    """A Helios-shaped TIFF: 1103 rows on disk, 1024 scanned, 79 of databar."""
+    frame = np.arange(_FEI_H * _FEI_W, dtype=np.uint16).reshape(_FEI_H, _FEI_W)
+    f = write_fei_tiff(tmp_path / "fib.tif", frame)
+    return client.post(
+        "/api/session/open", json={"paths": [str(f)]}
+    ).json()[0]["id"]
+
+
+def test_strip_databar_cuts_exactly_the_bar(client, fei_id) -> None:
+    src = np.asarray(store.get(fei_id).data)
+    r = client.post("/api/strip-databar", json={"image_id": fei_id})
+    assert r.status_code == 200
+    meta = r.json()
+
+    assert meta["shape"] == [1024, _FEI_W]        # 79 databar rows gone
+    out = store.get(meta["id"]).data
+    np.testing.assert_array_equal(out, src[:1024, :])
+    # a pure crop must not widen the data: the filter path goes float64
+    # because it computes; this one only slices.
+    assert out.dtype == src.dtype
+    # calibration survives, so the scale bar still reads correctly
+    assert meta["pixel_size"] == pytest.approx(3.4)
+    assert meta["pixel_unit"] == "nm"
+    # the original is untouched — this is a derived image, not an edit
+    assert store.get(fei_id).data.shape == (_FEI_H, _FEI_W)
+
+
+def test_strip_databar_keeps_acquisition_provenance(client, fei_id) -> None:
+    """The bar being cropped away is what *displayed* these numbers, so the
+    derived image has to carry them or the figure loses its provenance."""
+    meta = client.post(
+        "/api/strip-databar", json={"image_id": fei_id}
+    ).json()
+    assert meta["meta"]["vendor"] == "thermofisher"
+    assert meta["meta"]["instrument_name"] == "Helios NanoLab 660"
+    assert meta["meta"]["beam_kv"] == pytest.approx(30.0)
+    assert meta["stage_tilt_deg"] == pytest.approx(52.0, abs=1e-6)
+    assert meta["meta"]["filter_kind"] == "strip_databar"
+
+
+def test_strip_databar_is_not_repeatable(client, fei_id) -> None:
+    """The geometry keys describe a bar that no longer exists, so they are
+    dropped — a second call reports "no databar" instead of eating 79 more
+    rows of real image."""
+    first = client.post("/api/strip-databar", json={"image_id": fei_id}).json()
+    assert first["content_rows"] is None
+    again = client.post("/api/strip-databar", json={"image_id": first["id"]})
+    assert again.status_code == 422
+    assert "no vendor databar" in again.json()["detail"]
+
+
+def test_strip_databar_rejects_images_without_one(client, img_id) -> None:
+    """A plain DM4 has no baked bar: refuse rather than guess a crop."""
+    r = client.post("/api/strip-databar", json={"image_id": img_id})
+    assert r.status_code == 422
+    assert client.post(
+        "/api/strip-databar", json={"image_id": "nope"}
+    ).status_code == 404

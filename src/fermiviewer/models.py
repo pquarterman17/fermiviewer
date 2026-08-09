@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import BaseModel
 
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
-from fermiviewer.io.metadata import get_stage_tilt
+from fermiviewer.io.metadata import databar_content_rows, get_stage_tilt
 
 if TYPE_CHECKING:
     from fermiviewer.calc.fourd.dataset import FourDDataset
@@ -67,6 +67,12 @@ class ImageMeta(BaseModel):
     energy_last: float | None = None
     energy_units: str = ""
     stage_tilt_deg: float | None = None  # from io.metadata.get_stage_tilt
+    # Rows of real image above a vendor-baked databar (FEI/Thermo Fisher
+    # SEM/FIB TIFFs), else None. One normalized number so the client never
+    # re-derives the image_rows/databar_height precedence rule — the scale
+    # bar keeps its default off the bar, and Strip Vendor Databar knows
+    # where to cut. See io.metadata.databar_content_rows.
+    content_rows: int | None = None
     meta: dict[str, Any] = {}
 
     @classmethod
@@ -104,6 +110,12 @@ class ImageMeta(BaseModel):
             energy_last=_finite_or_none(float(ax[-1]) if ax is not None else None),
             energy_units=ds.energy_cal.units if spectral else "",
             stage_tilt_deg=None if math.isnan(tilt_deg) else tilt_deg,
+            content_rows=(
+                # DataKind.IMAGE is validated 2-D, so shape[0] is the row count
+                databar_content_rows(ds.metadata, int(ds.data.shape[0]))
+                if ds.kind is DataKind.IMAGE
+                else None
+            ),
             meta=_public_meta(ds.metadata),
         )
 

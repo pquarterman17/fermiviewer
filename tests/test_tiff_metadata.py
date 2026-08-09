@@ -76,6 +76,24 @@ def test_fei_databar_is_reported_not_cropped(tmp_path, frame) -> None:
     assert ds.metadata["image_rows"] == pytest.approx(1024)
 
 
+def test_fei_content_rows_reaches_the_wire(tmp_path, frame) -> None:
+    """The client places its scale bar off the databar and offers to strip
+    it, so the normalized row count has to survive onto ImageMeta — the raw
+    pair alone left the client re-deriving the precedence rule."""
+    ds = load_tiff(write_fei_tiff(tmp_path / "bar.tif", frame))
+    meta = ImageMeta.from_datastruct("i", "bar.tif", ds)
+    assert meta.content_rows == 1024          # of _H = 1103 rows on disk
+    assert meta.shape == [_H, _W]             # still uncropped
+
+
+def test_non_fei_image_reports_no_content_rows(tmp_path) -> None:
+    """An ImageJ TIFF has no baked bar, so content_rows stays None and the
+    scale bar keeps its original full-height default."""
+    px = np.arange(64 * 64, dtype=np.uint16).reshape(64, 64)
+    ds = load_tiff(write_imagej_tiff(tmp_path / "plain.tif", px))
+    assert ImageMeta.from_datastruct("i", "plain.tif", ds).content_rows is None
+
+
 def test_fei_sfeg_tag_is_read_too(tmp_path, frame) -> None:
     """Older S-FEG columns write tag 34680 instead of 34682."""
     ds = load_tiff(write_fei_tiff(tmp_path / "sfeg.tif", frame, tag=TAG_FEI_SFEG))
