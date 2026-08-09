@@ -94,9 +94,12 @@ polygon/lasso pts (measures) ──shoelace × pixelSize²──> per-image regi
 - Same-file conflict sets (never run two agents inside one set):
   {8} Stage.tsx · {9, 14} useStagePointers.ts · {9, 26}
   SideBySideStage.tsx · {13, 14} MeasureOverlay.tsx · {21, 22}
-  Filmstrip.tsx · {2, 4} FolderOpenDialog.tsx · {1, 16, 25} each add ~2
-  lines to server.py (rebase-trivial)
-- Cross-workstream: 24 needs W3's 15; 27 needs W1's 1–3 and gate G3;
+  Filmstrip.tsx · {2, 4} FolderOpenDialog.tsx · **{6, 12} both extend
+  lib/geometry.ts** · **{8, 13, 21} all lower a pin in
+  tests/test_repo_integrity.py** — run each set as ONE unit of work,
+  never as concurrent agents · {1, 16, 25} each add ~2 lines to
+  server.py (rebase-trivial)
+- Cross-workstream: 24 needs W3's 15; 27 needs W1's 1–3;
   W2's 9 makes 26 genuinely comparable but is not a hard dependency
 - Backend items (1, 16, 25) must clear ruff + mypy + pytest
   (--cov-fail-under=82); prefer FV_TEST_DATA real fixtures where the
@@ -153,26 +156,41 @@ polygon/lasso pts (measures) ──shoelace × pixelSize²──> per-image regi
   persist in the manifest's specified `measures` section, keyed by image
   id, with `polygon` and `lasso` added to `MeasureKind`. Overlay
   rendering, undo and round-trip come free; no separate region store.
+- (2026-08-09) **Folder import recursion — closes G3.** Selecting a folder
+  recurses fully. Each FIRST-LEVEL subfolder holding supported images
+  becomes one candidate sample named after it, and images deeper inside
+  flatten into that sample; supported images sitting directly in the
+  selected folder form a sample named after that folder. Unsupported and
+  non-image files are skipped and counted, surfaced as "skipped N
+  unsupported" rather than silently. The per-import cap is 500 supported
+  files with a `truncated` flag, mirroring `/session/launch-dir`'s
+  `files[:500]` so the two behave alike. The scan reuses launch-dir's
+  per-entry `is_file()` OSError guard, so a OneDrive cloud-only
+  placeholder skips itself instead of failing the whole import.
+- (2026-08-09) **Scale lock is global — closes G5.** One lock, seeded
+  from the active image's µm/px when enabled, re-seeded by
+  double-click-to-fit, persisted as an additive `browseScale` key in
+  `ui_state`. A per-group lock was rejected because the jarring this
+  feature exists to remove happens while stepping through whatever is
+  loaded, including across samples — a per-group lock would reintroduce a
+  jump at every sample boundary, which is the worst place for one.
+  Per-group can be added later with no format change, since `ui_state` is
+  deliberately opaque.
+- (2026-08-09) **Validation uses `jsonschema` — closes G6.** Added as a
+  runtime dependency (MIT; verified absent from the repo's
+  `GPL_PACKAGES` guard). The pure-layer test forbids `io/` from importing
+  fastapi/pydantic/starlette/routes only, so `io/` may use it — meaning
+  the shipped `docs/schema/fvp-v2.schema.json` IS the enforced contract
+  and cannot drift from the loader, which was the reason to have a schema
+  at all. Hand-rolled checks were rejected for exactly that drift risk.
+
 
 ### Owner gates
 
-- **G6 — Manifest validation dependency.** "Validate on load" needs a
-  JSON Schema validator, and `io/` is a pure layer forbidden from
-  importing pydantic (which is already a dependency, but only usable
-  above `io/`). RECOMMEND adding `jsonschema` (MIT, small) as a runtime
-  dependency so the shipped schema file IS the enforced contract; the
-  alternative is ~60 lines of hand-rolled checks in `io/`, no new
-  dependency, but the schema and the loader can then drift. Note the
-  installer grows either way only slightly. Sign-off before item 31.
-- **G3 — Folder import recursion + non-image files.** RECOMMEND full
-  recursion where each first-level subfolder becomes a candidate sample
-  (deeper levels flatten into it), unsupported files skipped with a
-  "skipped N" status count, and a per-import cap mirroring launch-dir's
-  500. Sign-off before items 5 and 27.
-- **G5 — Scale-lock scope.** Global stage lock vs per-group lock?
-  RECOMMEND one global lock seeded from the active image when enabled
-  (double-click-to-fit re-seeds it). Sign-off before item 10; items 6–8
-  are unaffected either way.
+None open. G1, G2 and G4 were closed by ADR 0002; G3, G5 and G6 were
+resolved 2026-08-09 with the reasoning recorded above so work could
+proceed unattended. Reopen one here rather than deciding it inline if
+implementation shows a resolution was wrong.
 
 ---
 
@@ -237,7 +255,7 @@ from an import.
 
 5. **Recursion + unsupported-file policy** — implement gate G3's
    resolution; per-import cap; "skipped N unsupported" status.
-   Model: haiku · Parallel: yes · Blocked by G3
+   Model: haiku · Parallel: yes
 
 ---
 
@@ -282,7 +300,7 @@ size — same µm per screen px across consecutive frames and across panes.
 10. **Lock affordance** — toggle + µm/px readout in StageChrome /
     FloatTools; double-click-to-fit re-seeds the lock rather than
     silently breaking it (wording per gate G5).
-    Model: sonnet · Parallel: yes (after 8) · Blocked by G5
+    Model: sonnet · Parallel: yes (after 8)
 
 ### Tier 2 — Medium Impact
 
@@ -432,7 +450,7 @@ stepping — all reading the same sample groups.
 
 27. **Import seeds projects** — W1's per-folder groups get a parent
     project group when importing a folder of folders (per gate G3).
-    Model: sonnet · Parallel: yes (after 1–3, 20) · Blocked by G3
+    Model: sonnet · Parallel: yes (after 1–3, 20)
 
 28. **Round-trip + migration tests** — params/parent survive save/load;
     pre-extension payloads load unchanged.
@@ -473,7 +491,7 @@ lands.
     `manifest.json` on load against the shipped schema, failing with the
     offending path; round-trip unknown keys verbatim on save. A test
     asserts the schema file and the loader agree, so they cannot drift.
-    Model: opus · Parallel: yes (after 30) · Blocked by G6
+    Model: opus · Parallel: yes (after 30)
 
 32. **v1 → v2 migration** — `load` accepts a v1 `.json`/`.npz` pair and
     upgrades in memory (splitting the opaque `client_state` into
