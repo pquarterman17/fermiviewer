@@ -111,14 +111,24 @@ def largest_dataset(
     return best
 
 
+# Markers an HDF5 axis uses to say "this dimension has no physical unit".
+# NCEM EMD writes "[]" for an uncalibrated index axis; treating that as a
+# real unit made AxisCal.calibrated true, so a 3x3 index-only image reported
+# a pixel size of 1.0 "[]" and would have drawn a scale bar measured in "[]".
+_DIMENSIONLESS = {"", "[]", "()", "-", "none", "dimensionless", "a.u.", "au", "arb"}
+
+
 def axiscal_from_offset_scale(
     offset: float, scale: float, units: str
 ) -> AxisCal:
     """Convert an HDF5 ``value = index*scale + offset`` axis to fermiviewer's
     ``value = (index − origin) × scale`` convention (origin = −offset/scale).
 
-    A zero/NaN scale yields an uncalibrated axis (scale 1, no units)."""
+    A zero/NaN scale, or a dimensionless unit marker, yields an uncalibrated
+    axis (scale 1, no units)."""
     if not np.isfinite(scale) or scale == 0:
         return AxisCal(scale=1.0, origin=0.0, units="")
+    if units.strip().lower() in _DIMENSIONLESS:
+        return AxisCal(scale=1.0, origin=0.0, units="")
     origin = -offset / scale if np.isfinite(offset) else 0.0
-    return AxisCal(scale=float(scale), origin=float(origin), units=units or "")
+    return AxisCal(scale=float(scale), origin=float(origin), units=units)

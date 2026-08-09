@@ -33,6 +33,22 @@ RELOCATED = {
     "Fig3c_apatite_HAADF.dm4": "zenodo8403583_apatite_HAADF.dm4",
 }
 
+# Entries where this reader deliberately departs from the MATLAB reference.
+# The golden values stay as the MATLAB record — they are the parity baseline
+# and must never be rewritten to match us — so the divergence is asserted
+# explicitly below instead, the way the *_limitation tests are.
+DIVERGES_FROM_MATLAB = {
+    "openNCEM_carbon.dm3": (
+        "A 1x2048 EELS acquisition. MATLAB routed on rank alone and made it a "
+        "2-D image whose 'pixel size' was 0.1 eV — a quantity no EELS tool can "
+        "consume, and not a pixel size at all. We squeeze the degenerate "
+        "dimension and return a SPECTRUM, agreeing with rosettasciio, which "
+        "reads the same file as an EELS signal with an 'Energy loss' axis. "
+        "Only the classification changes: every frozen pixel value still "
+        "holds, and is asserted in the divergence test below."
+    ),
+}
+
 
 def _dm_entries(golden) -> list[dict]:
     return [
@@ -66,7 +82,10 @@ def _assert_matches_golden(ds, e: dict) -> None:
 
 
 def test_committed_corpus_matches_matlab(golden, ml_datasets: Path) -> None:
-    entries = [e for e in _dm_entries(golden) if e["file"] not in RELOCATED]
+    entries = [
+        e for e in _dm_entries(golden)
+        if e["file"] not in RELOCATED and e["file"] not in DIVERGES_FROM_MATLAB
+    ]
     assert entries, "no DM entries in golden"
     mic = ml_datasets / "Microscopy"
 
@@ -90,6 +109,40 @@ def test_relocated_corpus_matches_matlab(
 ) -> None:
     e = next(x for x in _dm_entries(golden) if x["file"] == name)
     _assert_matches_golden(load_dm(gatan_microscopy / RELOCATED[name]), e)
+
+
+def test_diverging_entries_are_still_in_golden(golden) -> None:
+    """Same staleness guard as RELOCATED: a key naming a file the manifest no
+    longer carries would silently exempt nothing while looking deliberate."""
+    named = {e["file"] for e in _dm_entries(golden)}
+    assert set(DIVERGES_FROM_MATLAB) <= named, set(DIVERGES_FROM_MATLAB) - named
+
+
+def test_degenerate_eels_acquisition_is_a_spectrum(golden, ml_datasets: Path) -> None:
+    """The one documented departure from MATLAB (see DIVERGES_FROM_MATLAB).
+
+    Pins both halves: the classification we changed, and every frozen pixel
+    value we did not — a squeeze that altered the data would be a bug, not an
+    improvement.
+    """
+    e = next(x for x in _dm_entries(golden) if x["file"] == "openNCEM_carbon.dm3")
+    ds = load_dm(ml_datasets / "Microscopy" / e["file"])
+
+    assert ds.kind is DataKind.SPECTRUM
+    assert ds.data.shape == (e["width"],)          # the 1-row axis is gone
+    assert ds.metadata["squeezed_from_shape"] == [e["height"], e["width"]]
+
+    px = ds.data.astype(np.float64)
+    assert px.sum() == pytest.approx(e["pixSum"], rel=REL)
+    assert px.mean() == pytest.approx(e["pixMean"], rel=REL)
+    assert px.min() == e["pixMin"] and px.max() == e["pixMax"]
+    assert ds.metadata["bit_depth"] == e["bitDepth"]
+
+    # MATLAB reported the eV axis as a "pixel size"; it is the dispersion.
+    assert ds.energy_cal.units == "eV"
+    assert ds.energy_cal.scale == pytest.approx(e["pixelSize"], rel=1e-6)
+    # carbon K edge (284 eV) sits inside the recovered energy range
+    assert ds.energy_axis[0] < 284.0 < ds.energy_axis[-1]
 
 
 @pytest.mark.realdata

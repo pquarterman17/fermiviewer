@@ -39,6 +39,29 @@ def test_committed_corpus_matches_matlab(golden, ml_datasets: Path, ext: str) ->
             assert ds.pixel_unit == e["pixelUnit"], e["file"]
 
 
+@pytest.mark.golden
+def test_tiff_now_calibrates_where_matlab_did_not(golden, ml_datasets: Path) -> None:
+    """A deliberate departure from the MATLAB reference, pinned so it stays
+    visible instead of hiding behind the manifest's `null`.
+
+    The golden entry records `pixelSize: null` — MATLAB read EDW087-1.tif as
+    an uncalibrated raster. It is an ImageJ export of a DM image and states
+    1.102271 px/nm via `unit=` + XResolution, which `io.tiff_meta` now reads,
+    recovering the same calibration its .dm3 sibling carries. The pixel data
+    is untouched, so the frozen sum still holds.
+    """
+    e = next(
+        x for x in golden("parsers_committed")["images"] if x["file"] == "EDW087-1.tif"
+    )
+    assert e["pixelSize"] is None and e["pixelUnit"] == ""  # the MATLAB record
+
+    ds = load_auto(ml_datasets / "Microscopy" / e["file"])
+    assert ds.pixel_unit == "nm"
+    assert ds.pixel_size == pytest.approx(0.9072177, rel=1e-6)
+    assert ds.metadata["calibration_source"] == "imagej"
+    assert np.asarray(ds.data, np.float64).sum() == pytest.approx(e["pixSum"], rel=REL)
+
+
 # ── synthetic round-trips ────────────────────────────────────────────
 
 def test_raw_roundtrip(tmp_path) -> None:

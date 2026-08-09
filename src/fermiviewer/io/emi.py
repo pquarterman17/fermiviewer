@@ -15,6 +15,7 @@ independent of whether the file is OLE-wrapped.
 
 from __future__ import annotations
 
+import math
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -28,6 +29,7 @@ __all__ = [
     "load_emi_metadata",
     "parse_emi_xml",
     "pixel_size_m",
+    "stage_tilt_deg",
 ]
 
 _OBJECT_INFO_OPEN = b"<ObjectInfo>"
@@ -37,6 +39,9 @@ _OBJECT_INFO_CLOSE = b"</ObjectInfo>"
 # fallback axis calibration when the .ser's own calibration is absent.
 _ENERGY_DISPERSION_LABELS = ("Filter selected dispersion", "Dispersion")
 _PIXEL_SIZE_LABELS = ("Pixel size", "Pixel Size", "Image pixel size")
+# The alpha (primary) stage tilt. TIA labels it "Stage A" and states the
+# unit in the same triple, so nothing here has to guess deg vs rad.
+_STAGE_TILT_LABELS = ("Stage A", "Stage a", "Stage Alpha", "Stage A Tilt")
 _LENGTH_TO_M = {
     "pm": 1e-12,
     "a": 1e-10,
@@ -233,6 +238,33 @@ def energy_dispersion_ev(emi_meta: dict[str, Any]) -> float | None:
             return float(entry["value"])
         except (TypeError, ValueError):
             continue
+    return None
+
+
+def stage_tilt_deg(emi_meta: dict[str, Any]) -> float | None:
+    """Alpha stage tilt in degrees from the emi Data fields, or None.
+
+    The `.ser` itself carries no stage state — like HT and magnification,
+    the tilt only exists in the paired `.emi`, which is why a lone `.ser`
+    can never report one.
+    """
+    fields = emi_meta.get("fields", {})
+    for label in _STAGE_TILT_LABELS:
+        entry = fields.get(label)
+        if entry is None:
+            continue
+        unit = entry.get("unit", "").strip().lower()
+        try:
+            value = float(entry["value"])
+        except (TypeError, ValueError, KeyError):
+            continue
+        # TIA states "deg" on this field; an unlabelled value is taken as
+        # degrees too, matching what the TIA UI displays. A unit we don't
+        # recognise is skipped rather than assumed.
+        if unit.startswith("deg") or unit in ("°", ""):
+            return value
+        if unit.startswith("rad"):
+            return math.degrees(value)
     return None
 
 

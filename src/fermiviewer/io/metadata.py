@@ -1,25 +1,48 @@
 """Metadata accessors — ports of getGrayscale / getStageTilt (plan B).
 
 Small heuristics over parser metadata; pure functions, no I/O.
+
+**Stage tilt is normalized at parse time.** Every parser that can find a
+tilt writes it to ``metadata["stage_tilt_deg"]`` in degrees, because only
+the parser knows its format's convention: Gatan DM stores degrees, Thermo
+Fisher (FEI TIFF, Velox EMD) stores radians, Zeiss and Bruker store
+degrees. The guess-from-magnitude rule below stays as a fallback for
+metadata that arrives without a known provenance, but it is a salvage
+path, not the mechanism — it silently turns a genuine 2° stage tilt into
+114°, so no parser should rely on it.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
 
-__all__ = ["get_stage_tilt", "to_grayscale"]
+__all__ = ["get_stage_tilt", "stage_tilt_from_image_tags", "to_grayscale"]
 
 # BT.601 luma weights (the MATLAB getGrayscale convention)
 _LUMA = (0.299, 0.587, 0.114)
 
 # keys searched, in priority order; (key, assume_radians_if_small)
 _TILT_KEYS = (
+    ("stage_tilt_deg", False),  # parser-normalized — always degrees
+    # Bruker Esprit's key as the MATLAB port spelled it. io/bcf.py writes
+    # the snake_case form above, which is why this alone never matched a
+    # real .bcf: the two spellings had drifted apart.
+    ("stageTilt_deg", False),
     ("StageT", True),     # FEI/Thermo — radians or degrees, heuristic
     ("StageTa", True),
     ("Tilt", True),
-    ("stageTilt_deg", False),  # Bruker Esprit — always degrees
+)
+
+# Dotted `image_tags` leaves, matched case-insensitively against the END of
+# a key: (suffix, value_is_radians). dm.py / dm5.py / emd.py all flatten
+# their vendor trees into the same dotted-key shape, so one table serves
+# all three.
+_IMAGE_TAG_TILT: tuple[tuple[str, bool], ...] = (
+    ("stage position.stage alpha", False),  # Gatan DM3/DM4/DM5 — degrees
+    ("stage.alphatilt", True),              # Velox EMD (Thermo Fisher) — radians
 )
 
 
@@ -46,12 +69,34 @@ def _search(node: Any, key: str) -> Any:
     return None
 
 
+def stage_tilt_from_image_tags(image_tags: Mapping[str, Any]) -> float:
+    """Stage tilt in DEGREES from a flattened dotted `image_tags` map.
+
+    Returns NaN when the map carries no recognised tilt tag. Parsers call
+    this to fill ``metadata["stage_tilt_deg"]``; the per-format radian/degree
+    convention is baked into the table, never guessed from the value.
+    """
+    for suffix, is_radians in _IMAGE_TAG_TILT:
+        for key, value in image_tags.items():
+            if not str(key).lower().endswith(suffix):
+                continue
+            try:
+                tilt = float(value)
+            except (TypeError, ValueError):
+                continue
+            if not np.isfinite(tilt):
+                continue
+            return float(np.degrees(tilt)) if is_radians else tilt
+    return float("nan")
+
+
 def get_stage_tilt(metadata: dict[str, Any]) -> tuple[float, str]:
     """Stage tilt in DEGREES from parser metadata, with the source key.
 
-    FEI heuristic (ported): values with |v| < π are assumed radians and
-    converted; larger values are taken as degrees. Returns (nan, "")
-    when no tilt key is present.
+    Prefers the parser-normalized ``stage_tilt_deg``. Falls back to raw
+    vendor keys, where the ported FEI heuristic applies: values with
+    |v| < π are assumed radians and converted, larger values are taken as
+    degrees. Returns (nan, "") when no tilt key is present.
     """
     for key, maybe_radians in _TILT_KEYS:
         val = _search(metadata, key)
@@ -60,6 +105,8 @@ def get_stage_tilt(metadata: dict[str, Any]) -> tuple[float, str]:
         try:
             tilt = float(val)
         except (TypeError, ValueError):
+            continue
+        if not np.isfinite(tilt):
             continue
         if maybe_radians and abs(tilt) < np.pi:
             tilt = float(np.degrees(tilt))
