@@ -70,6 +70,56 @@ export function clampZoom(z: number): number {
   return Math.min(64, Math.max(1 / 64, z));
 }
 
+/** Physical scale of a view: PIXEL_UNIT PER SCREEN PX (not necessarily
+ *  µm/nm — `pixelSize` is in the image's own `pixel_unit`; callers label
+ *  the result with that unit string, this function never assumes one).
+ *  z = screen px per image px, pixelSize = pixel_unit per image px, so
+ *  pixelSize / z = pixel_unit per screen px. */
+export function physicalScale(view: View, pixelSize: number): number {
+  return pixelSize / view.z;
+}
+
+/** View hitting a target physical scale (same unit convention as
+ *  physicalScale) while keeping a given normalized centre fixed — so
+ *  switching to a differently-calibrated image changes zoom, not pan.
+ *  z is clamped to the same [1/64, 64] range as interactive zoom. */
+export function viewForPhysicalScale(
+  targetScale: number,
+  pixelSize: number,
+  centre: { px: number; py: number },
+): View {
+  return {
+    z: clampZoom(pixelSize / targetScale),
+    px: centre.px,
+    py: centre.py,
+  };
+}
+
+/** Resolves the view to use when browsing a series under an optional
+ *  physical-scale lock (Stage/Compare share this — plan item 8):
+ *  - locked (`targetScale` set) AND the image is calibrated (`pixelSize`
+ *    finite and > 0) → hold physical scale, keep the given centre
+ *  - otherwise (lock off, or an uncalibrated image: null/0/non-finite
+ *    pixelSize) → `fitView`, exactly as the no-lock / no-calibration
+ *    path has always behaved. */
+export function resolveScaleView(
+  targetScale: number | null,
+  pixelSize: number | null,
+  img: Size,
+  vp: Size,
+  keepCentre: { px: number; py: number },
+): View {
+  if (
+    targetScale != null &&
+    pixelSize != null &&
+    Number.isFinite(pixelSize) &&
+    pixelSize > 0
+  ) {
+    return viewForPhysicalScale(targetScale, pixelSize, keepCentre);
+  }
+  return fitView(img, vp);
+}
+
 /** View that frames an image-space rectangle (box-zoom). */
 export function viewForRect(
   a: { x: number; y: number },
@@ -97,6 +147,79 @@ export function physDist(
   return pixelSize != null
     ? { value: d * pixelSize, unit: "cal" }
     : { value: d, unit: "px" };
+}
+
+export interface PolygonStats {
+  areaPx2: number;
+  centroid: { x: number; y: number };
+  perimeterPx: number;
+}
+
+/** Shoelace area + centroid + perimeter over IMAGE-PIXEL points (use
+ *  polygonStatsNormalized for the Measure.pts 0-1 convention). Shared by
+ *  the polygon AND lasso measure kinds.
+ *  - < 3 points → an all-zero result (never NaN).
+ *  - A duplicated closing point (pts[last] === pts[0]) is NOT
+ *    double-counted: the loop always wraps i → i+1 (mod n), so a
+ *    repeated last vertex just contributes one zero-length edge.
+ *  - Non-convex simple polygons are exact — this is full shoelace, not a
+ *    convex-hull approximation.
+ *  - Self-intersecting input (e.g. a bowtie) gets the SIGNED shoelace
+ *    result as-is: crossing lobes can partially or fully cancel. This is
+ *    intentional and NOT corrected; a caller needing a "true" area for
+ *    self-intersecting polygons must simplify the outline first. */
+export function polygonStats(pts: { x: number; y: number }[]): PolygonStats {
+  const n = pts.length;
+  if (n < 3) return { areaPx2: 0, centroid: { x: 0, y: 0 }, perimeterPx: 0 };
+
+  let signedArea2 = 0; // 2x signed area (raw shoelace sum)
+  let cx = 0;
+  let cy = 0;
+  let perimeterPx = 0;
+  for (let i = 0; i < n; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % n];
+    const cross = a.x * b.y - b.x * a.y;
+    signedArea2 += cross;
+    cx += (a.x + b.x) * cross;
+    cy += (a.y + b.y) * cross;
+    perimeterPx += Math.hypot(b.x - a.x, b.y - a.y);
+  }
+  if (signedArea2 === 0) {
+    // degenerate (collinear / zero-enclosed-area) — the centroid formula
+    // divides by signedArea2, so fall back to the plain vertex average
+    const avg = pts.reduce(
+      (s, p) => ({ x: s.x + p.x / n, y: s.y + p.y / n }),
+      { x: 0, y: 0 },
+    );
+    return { areaPx2: 0, centroid: avg, perimeterPx };
+  }
+  return {
+    areaPx2: Math.abs(signedArea2) / 2,
+    centroid: { x: cx / (3 * signedArea2), y: cy / (3 * signedArea2) },
+    perimeterPx,
+  };
+}
+
+/** polygonStats over NORMALIZED 0-1 points + image dimensions — the
+ *  Measure.pts convention (viewerTypes.ts). Denormalizes then delegates;
+ *  areaPx2/perimeterPx come back in image pixels, same as polygonStats. */
+export function polygonStatsNormalized(
+  pts: { x: number; y: number }[],
+  img: Size,
+): PolygonStats {
+  return polygonStats(pts.map((p) => ({ x: p.x * img.w, y: p.y * img.h })));
+}
+
+/** px² → physical area via pixel_size² — ASSUMES SQUARE PIXELS, the
+ *  project's pixel_cal convention (one scalar pixel_size for both axes;
+ *  see calc/particles.py RegionStats.area_calibrated). null pixelSize
+ *  (uncalibrated) → null, mirroring physDist's px/cal split. */
+export function areaPxToPhysical(
+  areaPx2: number,
+  pixelSize: number | null,
+): number | null {
+  return pixelSize != null ? areaPx2 * pixelSize * pixelSize : null;
 }
 
 /** Per-image stage-tilt correction settings (#34). angle 0 = off. */
