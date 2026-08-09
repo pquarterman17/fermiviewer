@@ -8,7 +8,9 @@ a project/sample hierarchy whose deliverables are a result-vs-parameter
 table + plot (CSV), a shared-scale labelled comparison montage,
 per-sample statistics, and sample-wise side-by-side stepping. Everything
 extends the existing group / measure / workspace / montage primitives —
-no parallel mechanisms.
+no parallel mechanisms. The project itself is a documented,
+schema-validated single file (`.fvp`, ADR 0002) built to transfer
+between machines.
 
 **Status:** Active
 **Parent:** MAIN_PLAN.md
@@ -27,9 +29,11 @@ no parallel mechanisms.
   renders them as collapsible filmstrip sections and hangs parameter
   fields off them; compare panes already bind to groups
   (`SideBySideStage.tsx` steps within a group), so sample stepping is
-  nearly free. Groups already persist via workspace `client_state`
-  (`lib/api/workspace.ts` → `routes/session_io.py` →
-  `io/session_file.py`, transactional multi-file saves).
+  nearly free. Groups persist today inside the opaque workspace
+  `client_state` (`lib/api/workspace.ts` → `routes/session_io.py` →
+  `io/session_file.py`); W5 promotes them to the schema-validated
+  `samples` section of the `.fvp` manifest, because a parameter value
+  with a unit is scientific data and must be checkable.
 - **Region areas ride the measure rails** (`Measure {kind, pts}` in
   `store/viewerTypes.ts`, rendered by `MeasureOverlay.tsx`, captured by
   `useStagePointers.ts` — the polyline click-flow already exists). Two
@@ -84,9 +88,9 @@ polygon/lasso pts (measures) ──shoelace × pixelSize²──> per-image regi
 
 ### Dependency map
 
-- Parallel-safe starters (disjoint files): 1, 6, 7, 12, 13, 20, 21
-- 8 blocks 9–11; 13 blocks 14; 14 blocks 15–16; 20 blocks 22–28;
-  21 blocks 22; 15 + 23 block 24
+- Parallel-safe starters (disjoint files): 1, 6, 7, 12, 13, 21, 30
+- 30 blocks 20 and 31–36; 8 blocks 9–11; 13 blocks 14; 14 blocks 15–16;
+  20 blocks 22–28; 21 blocks 22; 15 + 23 block 24; 34 blocks 35
 - Same-file conflict sets (never run two agents inside one set):
   {8} Stage.tsx · {9, 14} useStagePointers.ts · {9, 26}
   SideBySideStage.tsx · {13, 14} MeasureOverlay.tsx · {21, 22}
@@ -122,31 +126,49 @@ polygon/lasso pts (measures) ──shoelace × pixelSize²──> per-image regi
   seeding share createGroup; region tools ride the measure rails;
   scale-lock state lives in a standalone store so the pinned viewer.ts
   is never touched; the montage deliverable extends calc/montage.py.
+- (2026-08-09) **Project file format — closes former gates G1 and G2.**
+  Fully specified in `docs/adr/0002-project-file-format.md` with the
+  machine-readable contract at `docs/schema/fvp-v2.schema.json`
+  (validated as Draft 2020-12; accept/reject cases exercised). Summary:
+  a project is a SINGLE ZIP with extension `.fvp` holding
+  `manifest.json` + `pixels/<id>.npy` + `thumbs/<id>.png`; version 2
+  SUPERSEDES the v1 two-file workspace, which becomes read-only legacy
+  upgraded in memory on load; TWO payload modes (`light` references
+  source pixels and always embeds derived images, measures, samples and
+  thumbnails at ~2–20 MB; `bundle` embeds everything, ~250–700 MB, for
+  transfer); references are stored as POSIX paths relative to ONE
+  declared data root plus an absolute hint, resolved hint →
+  project-dir-relative → user re-point, so relocation is one folder pick
+  for all images; unresolved images load as placeholders and their
+  references SURVIVE a save (no silent data loss), with a "Locate
+  folder…" action invokable at any time and repeatable for subsets that
+  moved elsewhere; the scientific content (`images`, `samples` with
+  parameter values + units, `measures`) is schema-validated while purely
+  presentational state stays opaque under `ui_state`; load validates and
+  save PRESERVES unknown keys verbatim so versions are not one-way.
+  Region areas are derived from `pts` + axis calibration, never stored,
+  so they cannot go stale against a recalibration.
+- (2026-08-09) **Region persistence — closes former gate G4.** Settled by
+  the format spec above: regions ride the existing measure rails and
+  persist in the manifest's specified `measures` section, keyed by image
+  id, with `polygon` and `lasso` added to `MeasureKind`. Overlay
+  rendering, undo and round-trip come free; no separate region store.
 
 ### Owner gates
 
-- **G1 — Project persistence format.** Extend the existing /workspaces
-  client_state payload, or a new project file format? RECOMMEND extend:
-  imageGroups already round-trips opaquely, and params/parentId are
-  additive optional keys needing no migration. Sign-off before item 20
-  freezes the shape.
-- **G2 — Path references vs bundle.** The session serializer already
-  snapshots pixel arrays into the .npz, so a saved workspace is a
-  self-contained bundle. RECOMMEND keeping bundle semantics and
-  recording source paths as provenance metadata; flag that at project
-  scale (several samples × ~20 images) bundles get large. Sign-off
-  before 20/27.
+- **G6 — Manifest validation dependency.** "Validate on load" needs a
+  JSON Schema validator, and `io/` is a pure layer forbidden from
+  importing pydantic (which is already a dependency, but only usable
+  above `io/`). RECOMMEND adding `jsonschema` (MIT, small) as a runtime
+  dependency so the shipped schema file IS the enforced contract; the
+  alternative is ~60 lines of hand-rolled checks in `io/`, no new
+  dependency, but the schema and the loader can then drift. Note the
+  installer grows either way only slightly. Sign-off before item 31.
 - **G3 — Folder import recursion + non-image files.** RECOMMEND full
   recursion where each first-level subfolder becomes a candidate sample
   (deeper levels flatten into it), unsupported files skipped with a
   "skipped N" status count, and a per-import cap mirroring launch-dir's
   500. Sign-off before items 5 and 27.
-- **G4 — Region measurement persistence.** New persisted store, or ride
-  the existing per-image measures? RECOMMEND riding measures
-  (persistence, undo, overlay rendering and workspace round-trip all
-  come free — the annotation precedent); a separate store only if
-  regions later need identity across images. Sign-off before 15's table
-  schema and 18.
 - **G5 — Scale-lock scope.** Global stage lock vs per-group lock?
   RECOMMEND one global lock seeded from the active image when enabled
   (double-click-to-fit re-seeds it). Sign-off before item 10; items 6–8
@@ -158,6 +180,7 @@ polygon/lasso pts (measures) ──shoelace × pixelSize²──> per-image regi
 
 | # | Item | Workstream | Why first |
 |---|------|------------|-----------|
+| 30 | `.fvp` container read/write | W5 — Format | Foundational: 20 cannot freeze the persisted shape until this exists |
 | 20 | Sample group model | W4 — Projects | Every W4 item plus 27 reads it; it is the data contract |
 | 13 | MeasureOverlay extraction | W3 — Areas | Zero-headroom pin blocks all region drawing |
 | 8 | Stage extraction + scale resolver | W2 — Browsing | The other zero-headroom pin; do it while nothing else touches Stage |
@@ -308,7 +331,8 @@ exported figures.
     (Measure.text), area in pixel_unit² via 12; CSV via
     lib/resultsExport.ts; exposes a pure per-image areas selector for
     W4's roll-up.
-    Model: sonnet · Parallel: yes (after 12, 14) · Blocked by G4 (schema)
+    Model: sonnet · Parallel: yes (after 12, 14) — row schema is the
+    manifest's `measures` section (ADR 0002)
 
 16. **Edge auto-detect assist** — segmentation proposes, user corrects
     - [ ] New `calc/contours.py`: label-mask → traced, simplified
@@ -328,7 +352,7 @@ exported figures.
 
 18. **Round-trip test** — polygon/lasso measures survive workspace
     save/load (measures already persist; assert it).
-    Model: haiku · Parallel: yes (after 14) · Blocked by G4
+    Model: haiku · Parallel: yes (after 14)
 
 ### Tier 3 — Nice-to-Have
 
@@ -353,11 +377,12 @@ stepping — all reading the same sample groups.
     - [ ] New actions in store/viewerCompareActions.ts (243/500):
           setGroupParams, setGroupParent, add/removeGroupMember;
           signatures in viewerState.ts (274/500)
-    - [ ] Persistence rides the existing imageGroups client_state
-          round-trip — freeze the shape only after gate G1
+    - [ ] Persistence uses the `samples` section specified in ADR 0002
+          (id, name, image_ids, parent, params with value+unit, color) —
+          NOT the opaque client_state blob it used to ride
     Ratchet: roomy files only; viewer.ts untouched.
     Model: opus · Parallel: NO — blocks 22–28; run first in W4 ·
-    Blocked by G1/G2 for the persisted shape
+    Depends on item 30 for the manifest shape
 
 21. **Filmstrip extraction (front-load)** — move ContextMenu + GroupsBar
     (~150 lines) out of Filmstrip.tsx (437 → ~300) into
@@ -418,6 +443,79 @@ stepping — all reading the same sample groups.
 29. **Polish** — sample colour tags in sections/panes; montage ordering
     by parameter value.
     Model: haiku · Parallel: yes
+
+---
+
+## W5 — Project file format (`.fvp` v2)
+
+Deliverable: a documented, schema-validated, single-file project that
+transfers between machines. Spec: `docs/adr/0002-project-file-format.md`;
+contract: `docs/schema/fvp-v2.schema.json`. This workstream is
+FOUNDATIONAL — item 20 cannot freeze the persisted sample shape until 30
+lands.
+
+### Tier 1 — High Impact
+
+30. **`.fvp` container read/write** — new pure `io/project_file.py`
+    - [ ] Single ZIP (DEFLATE): `manifest.json`, `pixels/<id>.npy`,
+          `thumbs/<id>.png`; per-image `.npy` so one image can be read
+          without inflating the rest
+    - [ ] Atomic save: temp sibling in the same dir → flush + fsync →
+          one `os.replace`. This RETIRES v1's manifest-last commit
+          ordering; assert an interrupted save leaves the old file intact
+    - [ ] Returns/accepts plain structures only — no fastapi/pydantic
+          (pure-layer guard); `session_file.py` stays for v1 reads
+    - [ ] Reject a manifest whose `rel` is absolute or escapes the root
+          with `..` (path traversal on an untrusted project file)
+    Ratchet: NEW MODULE. Model: opus · Parallel: NO — blocks 20, 31–36
+
+31. **Schema validation + unknown-key preservation** — validate
+    `manifest.json` on load against the shipped schema, failing with the
+    offending path; round-trip unknown keys verbatim on save. A test
+    asserts the schema file and the loader agree, so they cannot drift.
+    Model: opus · Parallel: yes (after 30) · Blocked by G6
+
+32. **v1 → v2 migration** — `load` accepts a v1 `.json`/`.npz` pair and
+    upgrades in memory (splitting the opaque `client_state` into
+    `samples`/`measures`/`ui_state`); the next save writes `.fvp`. v1
+    write path is removed.
+    Model: opus · Parallel: yes (after 30)
+
+33. **Light vs bundle payload modes** — `payload_mode`; light embeds
+    derived images + measures + samples + thumbnails and references
+    sources; bundle embeds everything. Save Project / Export Project
+    Bundle as distinct actions.
+    Model: sonnet · Parallel: yes (after 30)
+
+34. **Data-root resolution** — hint → project-dir-relative → session
+    re-point, POSIX normalisation both ways, `size_bytes` sanity check;
+    new route module exposing resolve + relocate (`routes/images.py` at
+    497 stays untouched).
+    Ratchet: NEW MODULE. Model: sonnet · Parallel: yes (after 30)
+
+35. **Unavailable placeholders + "Locate folder…"** — unresolved images
+    render as placeholders keeping name, sample membership, params and
+    measures; the action is invokable any time and repeatable for
+    subsets in different folders; saving preserves unresolved references.
+    Model: sonnet · Parallel: yes (after 34; UI slot after 22)
+
+### Tier 2 — Medium Impact
+
+36. **Format test suite** — the verification list in ADR 0002:
+    round-trip deep-equal, unknown-key survival, v1 migration,
+    Windows-hint-on-POSIX resolution, unresolved-reference survives a
+    save (the no-data-loss assertion), interrupted-save atomicity.
+    Model: sonnet · Parallel: yes (after 30–34)
+
+37. **Thumbnail generation** — ≤256 px longest edge on save, reusing the
+    existing render path; enables browsing and review with data absent.
+    Model: haiku · Parallel: yes (after 30)
+
+### Tier 3 — Nice-to-Have
+
+38. **Optional `sha256` verification** — opt-in content hashing so a
+    re-pointed folder can be proven to hold the expected data.
+    Model: haiku · Parallel: yes (after 34)
 
 ---
 

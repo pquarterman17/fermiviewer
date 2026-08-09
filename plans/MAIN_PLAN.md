@@ -29,7 +29,7 @@ measurement, project hierarchy).
 | Sub-plan | Scope | Status | Why its own file |
 |---|---|---|---|
 | SPECTRAL_WORKSPACE_PLAN.md | EDS+EELS shared spectrum core, species lists, batch maps, composites, synthetic-SI verification | Active (~30 open sub-tasks, W1–W4) | Independent lifecycle, four workstreams of its own |
-| PROJECT_WORKFLOW_PLAN.md | Folder import, constant-physical-scale browsing, area measurement, project/sample hierarchy + comparison deliverables | Active (29 items, W1–W4) | Four coupled feature workstreams sharing the group/measure/workspace primitives |
+| PROJECT_WORKFLOW_PLAN.md | Folder import, constant-physical-scale browsing, area measurement, project/sample hierarchy + comparison deliverables, and the `.fvp` project file format | Active (38 items, W1–W5) | Five coupled workstreams sharing the group/measure/workspace primitives; W5 is foundational to W4 |
 
 ### Cross-plan dependencies
 
@@ -45,6 +45,10 @@ measurement, project hierarchy).
   a third time.
 - `SideBySideStage.tsx` is touched by project-workflow items 9 and 26;
   the spectral plan does not touch it — no conflict today.
+- The `.fvp` project format (ADR 0002, schema in `docs/schema/`) is
+  owned by PROJECT_WORKFLOW_PLAN W5 and supersedes the v1 workspace
+  format. Any plan that persists new state adds a specified manifest
+  section rather than growing the opaque `ui_state` blob.
 - Ratchet pins: project-workflow items 8, 13 and 21 lower the
   Stage.tsx / MeasureOverlay.tsx / Filmstrip.tsx caps. Sequence those
   before any other work touches the same files (see that plan's
