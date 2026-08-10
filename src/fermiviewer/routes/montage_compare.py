@@ -21,7 +21,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from fermiviewer.calc.export import ScaleBar
-from fermiviewer.calc.montage import montage_physical_scale
+from fermiviewer.calc.montage_physical import montage_physical_scale
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.models import ImageMeta
 from fermiviewer.routes._arrays import value_error_as_422

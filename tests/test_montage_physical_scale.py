@@ -21,7 +21,10 @@ import pytest
 from fastapi.testclient import TestClient
 from scipy import ndimage as ndi
 
-from fermiviewer.calc.montage import PhysicalMontageResult, montage_physical_scale
+from fermiviewer.calc.montage_physical import (
+    PhysicalMontageResult,
+    montage_physical_scale,
+)
 from fermiviewer.server import create_app
 from fermiviewer.session import store
 
