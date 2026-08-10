@@ -15,6 +15,7 @@ import CompareStage from "./components/Stage/CompareStage";
 import SideBySideStage from "./components/Stage/SideBySideStage";
 import Stage, { type StageHandle } from "./components/Stage/Stage";
 import CommandPalette from "./components/overlays/CommandPalette";
+import FolderImportBanner from "./components/overlays/FolderImportBanner";
 import LazyOverlays from "./components/overlays/LazyOverlays";
 import ResultsWindow from "./components/overlays/ResultsWindow";
 import RadialMenu from "./components/overlays/RadialMenu";
@@ -26,6 +27,7 @@ import { useAppHotkeys } from "./hooks/useAppHotkeys";
 import { useCubeAutoExplore } from "./hooks/useCubeAutoExplore";
 import { devSampleFiles, launchDir, listImages } from "./lib/api";
 import { installErrLog } from "./lib/errlog";
+import { droppedDirectoryEntries, importDroppedFolders } from "./lib/folderDrop";
 import { useViewer } from "./store/viewer";
 
 installErrLog(); // module scope: catch errors from the very first render
@@ -85,13 +87,26 @@ export default function App() {
       .catch(() => undefined);
   }, []);
 
-  // ── drag-drop open (checklist L) ──
+  // ── drag-drop open (checklist L; folders — item 4) ──
   useEffect(() => {
     const onDragOver = (e: DragEvent) => {
       if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
     };
     const onDrop = (e: DragEvent) => {
-      const files = e.dataTransfer?.files;
+      const dt = e.dataTransfer;
+      if (!dt) return;
+      // A dropped folder gives a DataTransferItem, never a server-side
+      // path (see lib/folderDrop.ts's header) — route it through the
+      // folder-import path instead of the plain-file upload below.
+      const dirs = droppedDirectoryEntries(dt.items);
+      if (dirs.length > 0) {
+        e.preventDefault();
+        importDroppedFolders(dirs).catch((err: Error) =>
+          useViewer.getState().setStatus(err.message),
+        );
+        return;
+      }
+      const files = dt.files;
       if (files && files.length > 0) {
         e.preventDefault();
         const s = useViewer.getState();
@@ -173,6 +188,7 @@ export default function App() {
       </div>
       <StatusBar />
       <TooltipLayer />
+      <FolderImportBanner />
       <CommandPalette actions={actions} />
       <RadialMenu />
       <LazyOverlays />

@@ -36,6 +36,7 @@ export function createCompareActions(
   | "setGrid"
   | "setSbsLinked"
   | "createGroup"
+  | "createEmptyGroup"
   | "renameGroup"
   | "deleteGroup"
   | "setGroupMembers"
@@ -213,7 +214,7 @@ export function createCompareActions(
       const members = ids.filter((id) => id in s.images);
       if (members.length === 0) {
         s.setStatus("select at least one image to make a group");
-        return;
+        return null;
       }
       const id = nextGroupId();
       const groupName = name?.trim() || `Group ${s.imageGroups.length + 1}`;
@@ -221,6 +222,18 @@ export function createCompareActions(
         imageGroups: [...s.imageGroups, { id, name: groupName, ids: members }],
       });
       s.setStatus(`group "${groupName}" created (${members.length})`);
+      return id;
+    },
+
+    createEmptyGroup: (name) => {
+      const s = get();
+      const id = nextGroupId();
+      const groupName = name.trim() || `Project ${s.imageGroups.length + 1}`;
+      set({
+        imageGroups: [...s.imageGroups, { id, name: groupName, ids: [] }],
+      });
+      s.setStatus(`project "${groupName}" created`);
+      return id;
     },
 
     renameGroup: (id, name) =>

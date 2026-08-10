@@ -136,6 +136,12 @@ export default function FolderOpenDialog() {
             />
             Merge into one group
           </label>
+          <p className="fvd-folder-hint">
+            Each folder recurses fully: its own images become one group,
+            each first-level subfolder becomes another (nested under a new
+            project when there's more than one). Unsupported files are
+            skipped and counted; imports cap at 500 files.
+          </p>
           <div className="fvd-btn-row">
             <button
               className="fvd-btn primary"

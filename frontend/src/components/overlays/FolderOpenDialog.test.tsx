@@ -87,6 +87,12 @@ describe("FolderOpenDialog", () => {
     expect(importBtn).toBeEnabled();
   });
 
+  it("shows the recursion/cap/skip policy up front, before any import (item 5)", () => {
+    render(<FolderOpenDialog />);
+    expect(screen.getByText(/recurses fully/)).toBeTruthy();
+    expect(screen.getByText(/cap at 500 files/)).toBeTruthy();
+  });
+
   it("imports the typed folder paths, split on newlines, with the merge flag", async () => {
     render(<FolderOpenDialog />);
     fireEvent.change(screen.getByLabelText("Import folder(s)"), {

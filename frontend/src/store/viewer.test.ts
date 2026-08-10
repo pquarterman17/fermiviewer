@@ -787,6 +787,26 @@ describe("named image groups", () => {
     expect(useViewer.getState().imageGroups).toHaveLength(0);
   });
 
+  it("createGroup returns the new group's id, or null when rejected", () => {
+    const id = useViewer.getState().createGroup(["a"], "S1");
+    expect(id).toBe(useViewer.getState().imageGroups[0].id);
+    expect(useViewer.getState().createGroup(["ghost"])).toBeNull();
+  });
+
+  // ── project seeding (item 27) needs an image-less group creator ──
+  it("createEmptyGroup makes a project with no images, never rejected", () => {
+    const id = useViewer.getState().createEmptyGroup("Proj");
+    const g = useViewer.getState().imageGroups[0];
+    expect(g.id).toBe(id);
+    expect(g.name).toBe("Proj");
+    expect(g.ids).toEqual([]);
+  });
+
+  it("createEmptyGroup default-names like createGroup when given a blank name", () => {
+    useViewer.getState().createEmptyGroup("   ");
+    expect(useViewer.getState().imageGroups[0].name).toBe("Project 1");
+  });
+
   it("renameGroup / setGroupMembers mutate the named group", () => {
     useViewer.getState().createGroup(["a", "b"], "one");
     const id = useViewer.getState().imageGroups[0].id;

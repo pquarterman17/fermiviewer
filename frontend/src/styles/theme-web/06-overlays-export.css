@@ -113,6 +113,36 @@
   resize: vertical;
 }
 
+/* Import-policy note (item 5): visible ahead of the click, not just found
+ * out about after the fact. */
+.fvd-folder-hint {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+}
+
+/* Persistent post-import outcome (item 4/5) — mounted at the App level
+ * (App.tsx), NOT inside FolderOpenDialog, since that dialog closes the
+ * instant Import is clicked. Stays up until dismissed. */
+.fvd-import-banner {
+  position: fixed;
+  top: 54px;
+  right: 16px;
+  z-index: 250;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(420px, 80vw);
+  padding: 8px 8px 8px 14px;
+  font-size: var(--font-size-sm);
+}
+
+.fvd-import-banner.notable {
+  color: var(--capture);
+  border-color: var(--capture);
+  background: color-mix(in oklab, var(--capture-soft), var(--glass) 55%);
+}
+
 .fvd-cmdk {
   position: absolute;
   top: 15%;
