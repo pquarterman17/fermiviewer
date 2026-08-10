@@ -333,16 +333,7 @@ stepping — all reading the same sample groups.
     deliverables (a) and (d).
     Model: sonnet · Parallel: yes (after 15, 20, 23)
 
-25. **Comparison montage with shared scale bar** — extend
-    calc/montage.py (230/500) with a physical-scale mode: resample tiles
-    to a common µm/px from each image's pixel_size, label tiles with
-    sample name + parameter value, bake ONE scale bar; NEW route module
-    (imaging_ops.py at 457 stays put); a "Montage samples" action from
-    selected sample groups; result registers as a derived library image.
-    Keep figure conventions aligned with the spectral plan's composite
-    (see MAIN_PLAN cross-plan dependencies).
-    Ratchet: extend roomy calc module + NEW route module.
-    Model: opus · Parallel: yes (after 20; independent of 24)
+25. ~~**Comparison montage with shared scale bar**~~ — shipped 2026-08-09, see Completed
 
 ### Tier 2 — Medium Impact
 
@@ -429,6 +420,23 @@ lands.
 
 ## Completed
 
+- ~~**#25 Comparison montage with one shared scale bar**~~ (2026-08-09, PR #139)
+  — `POST /api/analyze/montage-compare` in new `routes/montage_compare.py`
+  (142); the mode lives in new `calc/montage_physical.py` (274) rather than
+  inside `calc/montage.py`, which the feature had pushed 230 → 485 against the
+  500 ceiling — split back to 245 at integration, because a file should not
+  grow to its limit just because a feature landed near it.
+  Every tile is downsampled to the COARSEST input scale (via
+  `export.UNIT_TO_NM`), so nothing is upsampled past its real resolution, and
+  ONE scale bar is baked for the panel using `export.scale_bar_geometry` — the
+  same function `/export` uses, not new bar sizing. Known-answer test: two
+  tiles at 1.0 vs 4.0 units/px each holding a 160-unit square both render the
+  feature at exactly 40×40 px. Uncalibrated input is REFUSED with a 422 naming
+  the image, never a silent fallback that would draw a wrong bar.
+  Correction to a number I had been quoting: the two real Helios frames differ
+  **78×** in pixel calibration (3.37 vs 264 µm/px); the 92× figure is their
+  apparent on-screen ratio under fit-each-image, which compounds calibration
+  with differing row counts. 78× is the figure relevant to resampling.
 - ~~**#16 Edge auto-detect assist**~~ (2026-08-09, PR #138) — segmentation PROPOSES,
   the user corrects: new pure `calc/contours.py` (174 lines) traces the
   outer boundary of a single labelled-region mask (skimage `find_contours`

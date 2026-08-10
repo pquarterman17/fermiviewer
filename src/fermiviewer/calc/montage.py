@@ -1,6 +1,6 @@
 """Labeled-tile montage (port of +fermiViewer/+visualization/executeMontage.m).
 
-Pure library — numpy + PIL in, ndarray out.  No fastapi/pydantic/routes.
+Pure library — numpy + PIL + scipy in, ndarray out.  No fastapi/pydantic/routes.
 
 Reference
 ---------
@@ -16,6 +16,21 @@ grid is approximately square — the conventional choice for contact-sheet
 montages.  Labels are an optional layer not present in the original (the MATLAB
 version writes a figure title; here they are baked per-tile at the top-left
 corner so the flat image carries its own annotation).
+
+Physical-scale mode (plan item #25 — comparison montage)
+----------------------------------------------------------
+``montage()`` above tiles frames pixel-for-pixel, which is correct for
+same-scale stacks but MISLEADING for a cross-sample comparison panel: two
+real Helios corpus frames can differ by tens of times in µm-per-pixel, and
+tiling them without resampling makes whichever one was imaged at higher
+magnification look like it has the bigger feature. ``montage_physical.montage_physical_scale``
+resamples every tile to one common physical scale FIRST (chosen as the
+coarsest — largest µm/px — among the inputs, so no tile is upsampled beyond
+its real resolution), then reuses ``montage()`` for the actual tiling/
+labeling, then bakes exactly ONE scale bar for the whole panel (a per-tile
+bar would defeat the point, since every tile now shares a scale). Bar
+geometry reuses ``calc.export.scale_bar_geometry`` — the same function the
+/export route uses — rather than inventing new bar sizing rules.
 """
 
 from __future__ import annotations
