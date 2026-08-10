@@ -221,6 +221,17 @@
   z-index: 5;
 }
 
+/* #26 "Compare samples…" picker — a native select over the glass chip */
+.fvd-compare-chip select {
+  background: var(--surface-3);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  padding: 1px 4px;
+  max-width: 160px;
+}
+
 .fvd-seg-wide {
   display: flex;
   margin-bottom: var(--pad);

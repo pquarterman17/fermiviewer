@@ -14,12 +14,14 @@ import { useEffect, useRef, useState } from "react";
 import { GLRenderer } from "../../gl/render";
 import { fetchData16 } from "../../lib/api";
 import { buildLut } from "../../lib/colormaps";
-import { fitView, zoomAbout, type Size } from "../../lib/geometry";
-import { groupMembers } from "../../lib/groups";
+import { resolveScaleView, zoomAbout, type Size } from "../../lib/geometry";
+import { groupChildren, groupMembers } from "../../lib/groups";
 import { nextGridViews, type ViewChange } from "../../lib/sbsView";
+import { useBrowseScale } from "../../store/browseScale";
 import { DEFAULT_DISPLAY, useViewer, type View } from "../../store/viewer";
 import MeasureOverlay from "./MeasureOverlay";
 import ScaleBarOverlay from "./ScaleBarOverlay";
+import { runFitAndReseed } from "./stageScaleLock";
 
 const WHEEL_K = 0.0015;
 
@@ -31,6 +33,15 @@ export default function SideBySideStage() {
   const sbsLinked = useViewer((s) => s.sbsLinked);
   const setSbsLinked = useViewer((s) => s.setSbsLinked);
   const exitCompare = useViewer((s) => s.exitCompare);
+  const images = useViewer((s) => s.images);
+  const imageGroups = useViewer((s) => s.imageGroups);
+  const startSampleCompare = useViewer((s) => s.startSampleCompare);
+  // #26: projects (a root group with >=2 samples) offered as one-click
+  // "compare samples" seeds — groupChildren distinguishes the project from
+  // its samples so a flat, sample-less group never shows up here.
+  const projects = groupChildren(imageGroups, null).filter(
+    (g) => groupChildren(imageGroups, g.id).length >= 2,
+  );
 
   // Per-pane views, indexed parallel to sbsPanes. A ref mirrors the state so
   // the coupling math always reads the latest values regardless of render
@@ -47,7 +58,20 @@ export default function SideBySideStage() {
   }, [sbsPanes.length]);
 
   const applyView = (idx: number, v: View, kind: ViewChange) => {
-    const next = nextGridViews(idx, v, kind, viewsRef.current, sbsLinked);
+    // #9: linked zoom matches physical scale (µm/px), not raw z, so panes
+    // showing differently-calibrated images still frame a feature the same
+    // on-screen size once linked.
+    const pixelSizes = sbsPanes.map((p) =>
+      p.imageId ? images[p.imageId]?.pixel_size ?? null : null,
+    );
+    const next = nextGridViews(
+      idx,
+      v,
+      kind,
+      viewsRef.current,
+      sbsLinked,
+      pixelSizes,
+    );
     viewsRef.current = next;
     setViews(next);
   };
@@ -82,6 +106,28 @@ export default function SideBySideStage() {
       ))}
       <div className="fvd-glass fvd-compare-chip">
         Side-by-side
+        {projects.length > 0 && (
+          <select
+            className="fvd-sbs-sample-compare"
+            value=""
+            title="Seed each pane from one project's samples, matched to the current frame"
+            onChange={(e) => {
+              const pid = e.target.value;
+              if (!pid) return;
+              startSampleCompare(
+                groupChildren(imageGroups, pid).map((g) => g.id),
+              );
+              e.target.value = "";
+            }}
+          >
+            <option value="">Compare samples…</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} ({groupChildren(imageGroups, p.id).length})
+              </option>
+            ))}
+          </select>
+        )}
         <button
           className={`fvd-icon-btn${sbsLinked ? " active" : ""}`}
           title={
@@ -129,6 +175,9 @@ function SbsPaneView({
   const setPaneGroup = useViewer((s) => s.setPaneGroup);
   const stepPane = useViewer((s) => s.stepPane);
   const setActivePane = useViewer((s) => s.setActivePane);
+  const scaleLocked = useBrowseScale((s) => s.locked);
+  const lockedScale = useBrowseScale((s) => s.scale);
+  const reseedScale = useBrowseScale((s) => s.reseed);
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -142,7 +191,14 @@ function SbsPaneView({
   const img: Size = meta
     ? { w: meta.shape[1] ?? 1, h: meta.shape[0] ?? 1 }
     : { w: 1, h: 1 };
-  const effView = view ?? fitView(img, vp);
+  const pixelSize = meta?.pixel_size ?? null;
+  // #9: honour the browse-scale lock, same resolver Stage.tsx uses
+  const effView =
+    view ??
+    resolveScaleView(scaleLocked ? lockedScale : null, pixelSize, img, vp, {
+      px: 0.5,
+      py: 0.5,
+    });
   // the image list this pane scrolls: its bound group's live members, or all
   const members = groupMembers(imageGroups, images, order, groupId);
   const idxInMembers = id ? members.indexOf(id) : -1;
@@ -271,11 +327,28 @@ function SbsPaneView({
           onChange={(e) => setPaneGroup(idx, e.target.value || null)}
         >
           <option value="">All images</option>
-          {imageGroups.map((g) => (
-            <option key={g.id} value={g.id}>
-              {g.name}
-            </option>
-          ))}
+          {/* #26: a project's samples nest under it (groupChildren) so the
+              picker distinguishes a project from a flat, sample-less group */}
+          {groupChildren(imageGroups, null).map((root) => {
+            const samples = groupChildren(imageGroups, root.id);
+            if (samples.length === 0) {
+              return (
+                <option key={root.id} value={root.id}>
+                  {root.name}
+                </option>
+              );
+            }
+            return (
+              <optgroup key={root.id} label={root.name}>
+                <option value={root.id}>{root.name} (all)</option>
+                {samples.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </optgroup>
+            );
+          })}
         </select>
         <button
           className="fvd-icon-btn"
@@ -317,7 +390,17 @@ function SbsPaneView({
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onDoubleClick={() => id && onView(fitView(img, vp), "fit")}
+        onDoubleClick={() =>
+          id &&
+          runFitAndReseed(
+            img,
+            vp,
+            pixelSize,
+            scaleLocked,
+            (v) => onView(v, "fit"),
+            reseedScale,
+          )
+        }
       >
         <canvas ref={canvasRef} />
         {!id && <div className="fvd-stage-empty">Pick an image</div>}

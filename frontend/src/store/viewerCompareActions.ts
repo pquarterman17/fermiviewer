@@ -12,6 +12,7 @@ import {
   stepWithin,
   wouldCycle,
 } from "../lib/groups";
+import type { ComparePane } from "../lib/groups";
 import { nextGroupId, paneCompareSet } from "./viewerSession";
 import type { ViewerState } from "./viewerState";
 
@@ -29,6 +30,7 @@ export function createCompareActions(
   | "setCompareFlickerMs"
   | "setCompareAB"
   | "startSideBySide"
+  | "startSampleCompare"
   | "setPaneImage"
   | "setPaneGroup"
   | "stepPane"
@@ -113,6 +115,49 @@ export function createCompareActions(
       });
       set({
         compareMode: "sidebyside",
+        sbsPanes,
+        compareSet: paneCompareSet(sbsPanes),
+        sbsActive: 0,
+        captureMode: "none",
+        selectedMeasure: null,
+        compareAB: null,
+      });
+    },
+
+    // #26: cross-sample stepping — pane i ← sampleIds[i], all matched to one
+    // shared member index so stepping stays meaningful across samples.
+    startSampleCompare: (sampleIds) => {
+      const s = get();
+      const ids = sampleIds.filter((id) => s.imageGroups.some((g) => g.id === id));
+      if (ids.length < 2) {
+        s.setStatus("pick at least 2 samples to compare");
+        return;
+      }
+      const memberLists = ids.map((gid) =>
+        groupMembersOf(s.imageGroups, s.images, s.order, gid),
+      );
+      // matched frame: the active image's index within whichever sample
+      // contains it, else the series start — every pane lands on the same
+      // relative position, not just the same absolute one
+      let matchedIdx = 0;
+      if (s.activeId) {
+        for (const members of memberLists) {
+          const at = members.indexOf(s.activeId);
+          if (at >= 0) {
+            matchedIdx = at;
+            break;
+          }
+        }
+      }
+      const sbsPanes: ComparePane[] = ids.map((gid, i) => {
+        const members = memberLists[i];
+        const idx = Math.min(matchedIdx, Math.max(members.length - 1, 0));
+        return { imageId: members[idx] ?? null, groupId: gid };
+      });
+      set({
+        compareMode: "sidebyside",
+        sbsRows: 1,
+        sbsCols: sbsPanes.length,
         sbsPanes,
         compareSet: paneCompareSet(sbsPanes),
         sbsActive: 0,

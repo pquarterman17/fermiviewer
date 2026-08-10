@@ -44,6 +44,11 @@ export interface Prefs {
   /** ⊥ averaging width (px) for profile captures. */
   profileWidth: number;
   profileReduce: "mean" | "sum";
+  /** Freehand (lasso) capture simplification tolerance, in screen px — a
+   *  dragged point closer than this to the last kept point is dropped
+   *  (components/Stage/regionCapture.ts appendLassoPoint). Higher = fewer,
+   *  coarser points; lower = more faithful to the cursor path. */
+  lassoSimplifyPx: number;
   scaleBarVisible: boolean;
   /** Scale-bar label font size (screen px). */
   scaleBarFontSize: number;
@@ -86,6 +91,7 @@ export const DEFAULTS: Prefs = {
   overlayEndSymbol: "bar",
   profileWidth: 1,
   profileReduce: "mean",
+  lassoSimplifyPx: 2,
   scaleBarVisible: true,
   scaleBarFontSize: 20,
   exportFormat: "png",
