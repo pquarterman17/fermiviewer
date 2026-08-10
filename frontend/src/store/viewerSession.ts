@@ -6,7 +6,12 @@
 
 import { isFourDMeta, type FourDMeta, type ImageMeta, type SessionClientState } from "../lib/api";
 import type { TiltSettings } from "../lib/geometry";
-import { resizePanes, type ComparePane, type ImageGroup } from "../lib/groups";
+import {
+  pruneGroups,
+  resizePanes,
+  type ComparePane,
+  type ImageGroup,
+} from "../lib/groups";
 import type { ViewerState } from "./viewerState";
 import {
   DEFAULT_DISPLAY,
@@ -347,15 +352,11 @@ export function sessionSlice(
     typeof cs.activeId === "string" && cs.activeId in images
       ? cs.activeId
       : (order[0] ?? null);
-  // groups: prune member ids to what actually loaded; drop now-empty groups
+  // groups: prune member ids to what actually loaded; drop groups left with
+  // neither members nor a surviving descendant. Sample params/parent (and any
+  // field a newer version added) ride through — see pruneGroups.
   const rawGroups = (cs.imageGroups as ImageGroup[] | undefined) ?? [];
-  const imageGroups: ImageGroup[] = rawGroups
-    .map((g) => ({
-      id: g.id,
-      name: g.name,
-      ids: (g.ids ?? []).filter((id) => id in images),
-    }))
-    .filter((g) => g.ids.length > 0);
+  const imageGroups: ImageGroup[] = pruneGroups(rawGroups, images);
   const liveGroupIds = new Set(imageGroups.map((g) => g.id));
   // grid: restore shape, then prune each pane's image + group binding
   const sbsRows = Math.max(1, Math.round((cs.sbsRows as number) ?? 1));
