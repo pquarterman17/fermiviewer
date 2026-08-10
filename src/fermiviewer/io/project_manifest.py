@@ -27,6 +27,7 @@ older build is not lossy (ADR 0002 §6).
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -413,4 +414,22 @@ def axes_from_manifest(entries: Sequence[Mapping[str, Any]]) -> tuple[AxisCal, .
 
 
 def axes_to_manifest(axes: Sequence[AxisCal]) -> list[dict[str, Any]]:
-    return [{"scale": ax.scale, "origin": ax.origin, "units": ax.units} for ax in axes]
+    """AxisCal per data dimension, as schema-valid (strict-JSON) numbers.
+
+    An uncalibrated axis often carries `scale=NaN` (e.g. `io/dm.py`,
+    `io/dm5.py` default an unread calibration tag to NaN rather than 1.0),
+    and `json.dumps` writes that as the bare token `NaN` — accepted by
+    Python's own reader but not strict JSON, which breaks `unzip
+    project.fvp` inspection with an external tool (ADR 0002). A non-finite
+    `scale`/`origin` is written as `0.0` instead: `AxisCal.calibrated` and
+    `.axis()` already treat scale 0 and NaN identically (both mean
+    "uncalibrated"), so this is a lossless substitution, not a lossy one.
+    """
+    return [
+        {
+            "scale": ax.scale if math.isfinite(ax.scale) else 0.0,
+            "origin": ax.origin if math.isfinite(ax.origin) else 0.0,
+            "units": ax.units,
+        }
+        for ax in axes
+    ]
