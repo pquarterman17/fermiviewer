@@ -25,6 +25,10 @@ dependencies = [
     "pyyaml>=6.0",
     # HDF5 interchange import (EMD/DM5/NeXus/.hspy) — BSD, Apache-compatible
     "h5py>=3.11",
+    # .fvp project manifest validation against docs/schema/fvp-v2.schema.json
+    # (MIT; verified absent from the GPL_PACKAGES guard). Draft 2020-12
+    # support lands in 4.18; the schema declares that dialect.
+    "jsonschema>=4.18",
 ]
 # LICENSE GUARDRAIL: no GPL packages (rosettasciio, hyperspy, exspy) may
 # ever appear in [project.dependencies] — this project is Apache-2.0.
@@ -136,6 +140,13 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 # h5py ships no py.typed marker / inline stubs; treat as opaque.
 module = "h5py"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# jsonschema ships no py.typed marker; treat as opaque rather than adding
+# types-jsonschema (same call as scipy/yaml/h5py above — a stub-only dev dep
+# that must install on every machine to keep the gate green).
+module = "jsonschema"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

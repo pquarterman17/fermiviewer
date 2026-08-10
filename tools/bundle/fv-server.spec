@@ -17,6 +17,10 @@ a = Analysis(  # noqa: F821
         # OFL-licensed JetBrains Mono TTF for baked scale-bar labels
         # (frozen-aware lookup in fermiviewer.assets.fonts)
         (str(ROOT / "src" / "fermiviewer" / "assets" / "fonts"), "fermiviewer/assets/fonts"),
+        # .fvp manifest schema — every project load validates against it, so
+        # without this the frozen sidecar cannot open a project at all
+        # (read via importlib.resources in io.project_manifest).
+        (str(ROOT / "src" / "fermiviewer" / "io" / "fvp-v2.schema.json"), "fermiviewer/io"),
     ],
     hiddenimports=[
         # uvicorn's dynamically-imported workers/loops
