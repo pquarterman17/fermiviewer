@@ -15,6 +15,7 @@ import {
   type ProjectLoadResponse,
   type RelocateResponse,
 } from "../lib/api";
+import { useBrowseScale } from "./browseScale";
 import { useViewer } from "./viewer";
 import { relocateStatus } from "./viewerProjectActions";
 
@@ -29,6 +30,7 @@ const initialState = useViewer.getState();
 
 beforeEach(() => {
   useViewer.setState(initialState, true);
+  useBrowseScale.setState({ locked: false, scale: null });
   vi.clearAllMocks();
 });
 
@@ -270,5 +272,42 @@ describe("relocateStatus", () => {
         rejected: [{ id: "a", name: "a.tif" }],
       }),
     ).toContain("1 found but not matching");
+  });
+});
+
+describe("browse-scale lock persistence (item 11)", () => {
+  it("saveProject sends the lock currently held in store/browseScale.ts", async () => {
+    useBrowseScale.getState().enable(1.5);
+    vi.mocked(apiSaveProject).mockResolvedValue({
+      path: "/p/study.fvp",
+      payload_mode: "light",
+      n_images: 1,
+      n_unavailable: 0,
+      dropped_samples: 0,
+      dropped_measures: 0,
+    });
+    await useViewer.getState().saveProject("/p/study.fvp");
+
+    const sent = vi.mocked(apiSaveProject).mock.calls[0][2];
+    expect(sent.browseScale).toEqual({ locked: true, scale: 1.5 });
+  });
+
+  it("openProject restores the lock from the loaded client_state", async () => {
+    vi.mocked(apiOpenProject).mockResolvedValueOnce({
+      ...PARTIAL_LOAD,
+      client_state: {
+        ...PARTIAL_LOAD.client_state,
+        browseScale: { locked: true, scale: 3 },
+      },
+    });
+    await useViewer.getState().openProject("/p/study.fvp");
+    expect(useBrowseScale.getState()).toMatchObject({ locked: true, scale: 3 });
+  });
+
+  it("a project saved before this key existed loads with the lock simply off", async () => {
+    useBrowseScale.getState().enable(9); // a lock left on from the PREVIOUS session
+    vi.mocked(apiOpenProject).mockResolvedValueOnce(PARTIAL_LOAD); // no browseScale key
+    await useViewer.getState().openProject("/p/study.fvp");
+    expect(useBrowseScale.getState()).toMatchObject({ locked: false, scale: null });
   });
 });

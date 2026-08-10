@@ -17,7 +17,12 @@ import {
   type ProjectPayloadMode,
   type RelocateResponse,
 } from "../lib/api";
-import { clientState, ingestImages, sessionSlice } from "./viewerSession";
+import {
+  clientState,
+  ingestImages,
+  restoreBrowseScale,
+  sessionSlice,
+} from "./viewerSession";
 import type { ViewerState } from "./viewerState";
 
 type Set = Parameters<StateCreator<ViewerState>>[0];
@@ -78,6 +83,7 @@ export function createProjectActions(
       const missing = r.unavailable.length
         ? ` · ${r.unavailable.length} unavailable — File ▸ Locate Data Folder…`
         : "";
+      restoreBrowseScale(r.client_state);
       set({
         ...sessionSlice(r, get().overlay),
         // an ad-hoc file open isn't a named workspace

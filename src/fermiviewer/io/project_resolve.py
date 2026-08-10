@@ -29,7 +29,7 @@ import numpy as np
 
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.io.project_manifest import ProjectImage
-from fermiviewer.io.project_paths import existing_file
+from fermiviewer.io.project_paths import content_hash, existing_file
 from fermiviewer.io.registry import load_auto
 
 __all__ = ["Resolution", "fits", "parse_source", "resolve"]
@@ -50,10 +50,16 @@ class Resolution:
     #: The file's actual size when it differs from the recorded `size_bytes`
     #: (ADR 0002 §3's cheap sanity check). Reported, never enforced.
     size_bytes: int | None = None
+    #: The file's actual sha256 when it differs from the recorded `sha256`
+    #: (plan #38). Only ever computed when the manifest HAS a recorded hash
+    #: to check — an image nobody opted into hashing costs nothing extra
+    #: here. Reported distinctly from `size_bytes`: a byte count matching by
+    #: chance says much less than a hash mismatch does.
+    sha256: str | None = None
 
     @property
     def mismatched(self) -> bool:
-        return self.size_bytes is not None
+        return self.size_bytes is not None or self.sha256 is not None
 
 
 def fits(data: np.ndarray, kind: DataKind, axes: Sequence[AxisCal]) -> bool:
@@ -95,6 +101,19 @@ def _size_mismatch(expected: int | None, found: Path) -> int | None:
     return None if actual == expected else actual
 
 
+def _hash_mismatch(expected: str | None, found: Path) -> str | None:
+    """The file's actual sha256, only when it does not match `expected`.
+
+    `expected is None` means this image was never hashed (plan #38 is
+    opt-in), so no hash is computed at all — a project nobody asked to
+    verify pays nothing extra on relocate or load.
+    """
+    if expected is None:
+        return None
+    actual = content_hash(found)
+    return None if actual is None or actual == expected else actual
+
+
 def resolve(img: ProjectImage, roots: Sequence[Path]) -> Resolution:
     """Try `root / img.rel` for each root in order, first match wins.
 
@@ -128,5 +147,6 @@ def resolve(img: ProjectImage, roots: Sequence[Path]) -> Resolution:
             ),
             found=found,
             size_bytes=_size_mismatch(img.size_bytes, found),
+            sha256=_hash_mismatch(img.sha256, found),
         )
     return Resolution(found=seen)

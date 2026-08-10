@@ -27,6 +27,7 @@ drift apart — in particular the two rules that make save/reload trustworthy:
 
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 from typing import Any
 
@@ -91,6 +92,13 @@ def unavailable_payload(images: tuple[ProjectImage, ...]) -> list[dict[str, Any]
     instead of an honest placeholder. The library keeps name and reference; the
     sample membership, parameters and measurements that go with it ride the
     project's own `samples` / `measures` sections, which never prune.
+
+    `thumb` (plan #37) is the one exception to "nothing to render": a
+    placeholder's pixels are gone, but its `thumbs/<id>.png` — baked in at a
+    previous save, before the source went missing — survived that save
+    regardless, so the library can still show a preview instead of a blank
+    card. Base64-inlined rather than a second endpoint: it is already
+    <= 256 px, and this is the one response that needs it.
     """
     return [
         {
@@ -99,6 +107,9 @@ def unavailable_payload(images: tuple[ProjectImage, ...]) -> list[dict[str, Any]
             "rel": img.rel,
             "source": img.source,
             "size_bytes": img.size_bytes,
+            "thumb": base64.b64encode(img.thumb).decode("ascii")
+            if img.thumb
+            else None,
         }
         for img in images
         if img.data is None
@@ -151,6 +162,7 @@ def save_current(
     mode: PayloadMode = "light",
     client_state: dict[str, Any] | None = None,
     name: str | None = None,
+    hash_sources: bool = False,
 ) -> dict[str, Any]:
     """Write everything the session holds to `path` as a `.fvp`.
 
@@ -158,6 +170,9 @@ def save_current(
     *placeholders count*: a project whose data is entirely missing on this
     machine must still be saveable, or the no-data-loss guarantee would only
     hold for projects that did not need it.
+
+    `hash_sources` (plan #38) is passed straight through to `save_project` —
+    see its docstring for what it does and why it defaults off.
     """
     sections = split_client_state(client_state)
     placeholders = project.placeholders()
@@ -178,6 +193,7 @@ def save_current(
         primary_param=state.primary_param,
         name=name if name is not None else state.name,
         unknown_keys=state.unknown_keys,
+        hash_sources=hash_sources,
     )
     project.note_save(written, mode, name)
     return {

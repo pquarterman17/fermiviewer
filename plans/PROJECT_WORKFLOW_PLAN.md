@@ -248,9 +248,7 @@ size — same µm per screen px across consecutive frames and across panes.
 
 ### Tier 2 — Medium Impact
 
-11. **Persist the lock in client_state** — additive optional key; old
-    payloads unaffected.
-    Model: haiku · Parallel: yes (after 7)
+11. ~~**Persist the lock in client_state**~~ — shipped 2026-08-09, see Completed
 
 ---
 
@@ -310,9 +308,7 @@ stepping — all reading the same sample groups.
 
 27. ~~**Import seeds projects**~~ — shipped 2026-08-09, see Completed
 
-28. **Round-trip + migration tests** — params/parent survive save/load;
-    pre-extension payloads load unchanged.
-    Model: haiku · Parallel: yes (after 20)
+28. ~~**Round-trip + migration tests**~~ — shipped 2026-08-09, see Completed
 
 ### Tier 3 — Nice-to-Have
 
@@ -346,20 +342,35 @@ lands.
 
 36. ~~**Format test suite**~~ — shipped 2026-08-09, see Completed
 
-37. **Thumbnail generation** — ≤256 px longest edge on save, reusing the
-    existing render path; enables browsing and review with data absent.
-    Model: haiku · Parallel: yes (after 30)
+37. ~~**Thumbnail generation**~~ — shipped 2026-08-09, see Completed
 
 ### Tier 3 — Nice-to-Have
 
-38. **Optional `sha256` verification** — opt-in content hashing so a
-    re-pointed folder can be proven to hold the expected data.
-    Model: haiku · Parallel: yes (after 34)
+38. ~~**Optional `sha256` verification**~~ — shipped 2026-08-09, see Completed
 
 ---
 
 ## Completed
 
+- ~~**#11/#28/#37/#38 Persistence polish — the last open items**~~ (2026-08-09,
+  PR #144) — #11: the backend already round-tripped `ui_state.browseScale`
+  opaquely; the gap was entirely frontend, which never populated or restored it.
+  `restoreBrowseScale` defaults to lock-off for absent/malformed/non-finite
+  values, so a pre-#11 project loads with the lock simply off — and a lock left
+  on from a prior session correctly turns OFF rather than persisting into a
+  project that never had one. #28: `params`+`color` were already covered; added
+  a non-null `parent` chain, a bare sample with none of the three, and a v1
+  group migrating with defaults (the migration path fills them, the direct path
+  does not — worth knowing they differ). #37: thumbnails reuse
+  `calc.render.to_display`, the exact windowing `/image/{id}/render` uses, so
+  there is no second contrast rule; the shared piece sits in `calc/` because
+  `io/` cannot import `routes/`, and glue moved to new `io/project_media.py` to
+  keep `project_file.py` off the ceiling (467 vs 497 before the extraction).
+  Thumbnails embed in BOTH modes and survive a placeholder re-save, which is
+  what lets a project be browsed with its data absent. #38: `hash_sources=True`
+  is opt-in and a recorded hash is only re-checked when present, so an un-hashed
+  study costs nothing; a hash mismatch is reported as its own
+  `hash_mismatches` list, distinct from a size mismatch.
 - ~~**#9/#26/#17 Compare surfaces, sample stepping, lasso hygiene**~~
   (2026-08-09, PR #143) — the resolver now covers the three remaining `fitView`
   defaults (`CompareStage`, `SideBySideStage`, `useStagePointers`), and linked

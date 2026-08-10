@@ -23,6 +23,7 @@ The one exception is a *hostile* reference — an absolute or root-escaping
 
 from __future__ import annotations
 
+import hashlib
 import os
 from collections.abc import Sequence
 from pathlib import Path
@@ -32,12 +33,17 @@ from fermiviewer.io.project_manifest import ProjectImage, safe_posix_rel
 
 __all__ = [
     "absolute_source",
+    "content_hash",
     "data_root",
     "data_root_hint",
     "existing_file",
     "reference",
     "search_roots",
 ]
+
+#: Streamed in the same chunk size the pixel writer uses (project_file.py) —
+#: a bundled spectrum-image source can run to gigabytes.
+_HASH_CHUNK = 1 << 20
 
 
 def existing_file(candidate: Path | None) -> Path | None:
@@ -65,6 +71,24 @@ def absolute_source(img: ProjectImage) -> Path | None:
         return None
     candidate = Path(text).expanduser()
     return candidate if candidate.is_absolute() else None
+
+
+def content_hash(path: Path) -> str | None:
+    """sha256 hex digest of `path`'s bytes, or None if it cannot be read.
+
+    Opt-in only (plan #38) — a caller decides whether hashing a source is
+    worth the time; this function has no opinion, it just hashes. OSError
+    counts as a miss like `existing_file`, not a failure: a file that
+    vanishes between the existence check and the read must not crash a save.
+    """
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as fh:
+            for chunk in iter(lambda: fh.read(_HASH_CHUNK), b""):
+                digest.update(chunk)
+    except OSError:
+        return None
+    return digest.hexdigest()
 
 
 def _usable_root(declared: str | Path) -> Path | None:

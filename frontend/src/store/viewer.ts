@@ -35,6 +35,7 @@ import {
   nextHistoryId,
   OVERLAY_KEY,
   pref,
+  restoreBrowseScale,
   sessionSlice,
   VIEWS_KEY,
   writePref,
@@ -220,6 +221,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
     const missing = r.unavailable.length
       ? ` · ${r.unavailable.length} unavailable — File ▸ Locate Data Folder…`
       : "";
+    restoreBrowseScale(r.client_state);
     set({
       ...sessionSlice(r, get().overlay),
       currentWorkspace: { slug, name: r.name },
