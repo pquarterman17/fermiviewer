@@ -13,16 +13,14 @@ import {
 } from "react";
 
 import { GLRenderer } from "../../gl/render";
-import { fetchData16, type Raster16 } from "../../lib/api";
+import { type Raster16 } from "../../lib/api";
 import { buildLabelLut, buildLut } from "../../lib/colormaps";
-import { autoWindow } from "../../lib/display";
 import {
   fitView,
   imageToScreen,
   zoomAbout,
   type Size,
 } from "../../lib/geometry";
-import { loadPrefs } from "../../lib/prefs";
 import { useScribble } from "../../store/scribble";
 import { useStageInfo } from "../../store/stage";
 import {
@@ -55,6 +53,7 @@ import {
   type FinalizerCtx,
 } from "./stageFinalizers";
 import { transformU16, WHEEL_K, type Pt } from "./stageUtils";
+import { useStageImageLoad } from "./useStageImageLoad";
 import { useStagePointers, type StagePointersCtx } from "./useStagePointers";
 
 export interface StageHandle {
@@ -96,7 +95,6 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   const setStatus = useViewer((s) => s.setStatus);
   const setCursor = useStageInfo((s) => s.setCursor);
   const setZoom = useStageInfo((s) => s.setZoom);
-  const setRaster = useStageInfo((s) => s.setRaster);
   const setProfile = useStageInfo((s) => s.setProfile);
 
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -170,86 +168,15 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   }, []);
 
   // ── load active image (raw uint16 → GPU) ──
-  // Depends on stackFrame so re-fetches when frame index changes.
-  useEffect(() => {
-    setImgSize(null);
-    setPending(null);
-    setProfile(null);
-    rasterRef.current = null;
-    setRaster(null);
-    if (!activeId || rasterless) {
-      glRef.current?.clear();
-      // no raster → no stack: drop the stale StackStepper overlay + ,/. wiring
-      setNFrames(null);
-      return;
-    }
-    const isStack = meta?.kind === "spectrum_image";
-    // frame < 0 → omit the param so the backend returns the energy sum
-    const frameArg = isStack && stackFrame >= 0 ? stackFrame : undefined;
-    let alive = true;
-    fetchData16(activeId, frameArg)
-      .then((r) => {
-        if (!alive || !glRef.current) return;
-        glRef.current.setImage16(r.data, r.w, r.h);
-        rasterRef.current = r;
-        setRaster(r);
-        setNFrames(r.nFrames);
-        setImgSize({ w: r.w, h: r.h });
-        // honor DM-saved display window on first load (checklist I)
-        const st = useViewer.getState();
-        if (!st.display[activeId] && st.images[activeId]) {
-          const m = st.images[activeId].meta;
-          const dl = m["display_low"];
-          const dh = m["display_high"];
-          const dg = m["display_gamma"];
-          const di = m["display_inverted"];
-          // these are one-time seeds on first display, not user actions —
-          // mark them silent so they fold into the "Opened" history step
-          // (WS4d) instead of logging a spurious "Contrast"/"Invert"
-          if (typeof dl === "number" && typeof dh === "number" && dh > dl) {
-            const span = r.vmax - r.vmin || 1;
-            setDisplay(
-              activeId,
-              {
-                lo: Math.max(0, (dl - r.vmin) / span),
-                hi: Math.min(1, (dh - r.vmin) / span),
-                gamma: typeof dg === "number" && dg > 0 ? dg : 1,
-                invert: di === true,
-              },
-              { silent: true },
-            );
-          } else if (di === true) {
-            setDisplay(activeId, { invert: true }, { silent: true });
-          } else {
-            // no embedded display window — auto-contrast on open if enabled
-            // in Preferences (otherwise leave the full 0–1 range)
-            const prefs = loadPrefs();
-            if (prefs.autoContrastOnOpen) {
-              setDisplay(
-                activeId,
-                autoWindow(r, prefs.autoLoPct, prefs.autoHiPct),
-                { silent: true },
-              );
-            }
-          }
-        }
-      })
-      .catch((e: Error) => {
-        if (alive) setStatus(`load failed: ${e.message}`);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [
-    activeId,
-    rasterless,
-    stackFrame,
-    meta?.kind,
-    setDisplay,
-    setProfile,
-    setRaster,
-    setStatus,
-  ]);
+  // Owns the fetch, the GPU upload and the first-load display seeding; it
+  // re-fetches when the stack frame index changes.
+  useStageImageLoad({
+    glRef,
+    rasterRef,
+    setImgSize,
+    setPending,
+    setNFrames,
+  });
 
   // ── colormap LUT upload ──
   useEffect(() => {
