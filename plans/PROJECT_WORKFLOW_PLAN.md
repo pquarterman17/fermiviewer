@@ -287,13 +287,7 @@ exported figures.
 
 14. ~~**Polygon + lasso measure kinds**~~ — shipped 2026-08-09, see Completed
 
-15. **Region table + CSV (the deliverable)** — new Regions panel/tool
-    window: rows = polygon/lasso measures of the active image, label
-    (Measure.text), area in pixel_unit² via 12; CSV via
-    lib/resultsExport.ts; exposes a pure per-image areas selector for
-    W4's roll-up.
-    Model: sonnet · Parallel: yes (after 12, 14) — row schema is the
-    manifest's `measures` section (ADR 0002)
+15. ~~**Region table + CSV (the deliverable)**~~ — shipped 2026-08-09, see Completed
 
 16. **Edge auto-detect assist** — segmentation proposes, user corrects
     - [ ] New `calc/contours.py`: label-mask → traced, simplified
@@ -458,6 +452,23 @@ lands.
 
 ## Completed
 
+- ~~**#15 Region table + CSV — THE AREA DELIVERABLE**~~ (2026-08-09, PR #135)
+  — new pure `lib/regionTable.ts` (158) + `Inspector/RegionsCard.tsx` (134),
+  27 tests. This is the point where a measured area actually leaves the app:
+
+      label,kind,area_px2,area_nm2,perimeter_px,centroid_x_px,centroid_y_px
+      Grain A,polygon,5000,20000,300,50,25
+
+  The unit in the header comes from the image's `pixel_unit`, so a
+  collaborator never guesses µm² vs nm². Uncalibrated images leave the
+  physical cell EMPTY — never 0, never NaN — and the panel shows px².
+  Areas are derived from `pts` + calibration on every read per ADR 0002, so
+  recalibrating updates every number with no migration; a test pins that by
+  changing `pixel_size` and asserting the area changes.
+  `regionPhysicalAreas(measures, image)` is the selector item 24 consumes for
+  the per-sample roll-up, so it will not re-derive areas.
+  Kept free of store types (structural `RegionCandidate`), the same
+  separation `lib/geometry.ts` keeps.
 - ~~**#14 Polygon + lasso measure kinds**~~ (2026-08-09, PR #133) — both kinds
   share the one area computation; new `closedShapeGlyph.tsx` (57) and
   `regionCapture.ts` (53); MeasureOverlay 512 → 527 (cap 562) and

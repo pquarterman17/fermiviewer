@@ -9,16 +9,17 @@
 // stored field (ADR 0002): recalibrating pixel_size changes every row
 // with no migration step.
 //
-// Item 14 (polygon + lasso measure kinds) has not merged on this branch
-// yet, so the store's `MeasureKind` union does not include "polygon" |
-// "lasso". This module never imports that type: `RegionCandidate.kind` is
-// plain `string`, and `REGION_KINDS` is tested with `.has()` rather than
-// `m.kind === "polygon"` (a literal-vs-union comparison the type checker
-// would reject today, since the two types have no overlap yet). The
-// store's real `Measure[]` is structurally assignable to
-// `RegionCandidate[]` — every field it needs is already on `Measure` —
-// so callers pass it straight through with no cast, both before and
-// after item 14 lands.
+// This module deliberately does NOT import `Measure`/`MeasureKind` from the
+// store. `RegionCandidate.kind` is plain `string` and `REGION_KINDS` is
+// tested with `.has()`, which keeps a pure lib module free of store types —
+// the same separation `lib/geometry.ts` keeps. The store's real `Measure[]`
+// is structurally assignable to `RegionCandidate[]` (every field this needs
+// already exists on `Measure`), so callers pass it straight through with no
+// cast; a test pins that by feeding a real `Measure[]` in.
+//
+// It was originally written this way because item 14 had not yet added
+// "polygon" | "lasso" to the union. That has since landed, but the
+// decoupling is worth keeping on its own merits.
 
 import { areaPxToPhysical, polygonStatsNormalized, type Size } from "./geometry";
 
