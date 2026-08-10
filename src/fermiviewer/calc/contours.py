@@ -7,14 +7,21 @@ frontend as an ordinary, editable `polygon` measure. There is no separate
 "detected region" concept anywhere in this stack: this module's only job
 is mask -> vertex list.
 
-Holes: this traces the OUTER boundary only. If `mask` has a hole (a
-background island fully enclosed by foreground), the hole's inner ring is
-discarded — the returned polygon covers the hole as if it were solid,
-which overestimates the true area by the hole's area. That is intentional
-for this item: PROJECT_WORKFLOW_PLAN.md item 19 ("holes / multi-part
-regions") owns subtracting inner outlines to model true holes; until that
-lands, a hole-containing region is no worse than what a person tracing the
-outline by hand would draw (a single ring straight across the hole).
+Holes: `trace_outer_contour` traces the OUTER boundary only, by design —
+its own callers (routes/regions.py's single-seed "Detect Region" assist)
+still get a single ring back, unchanged. If `mask` has a hole (a
+background island fully enclosed by foreground), `trace_outer_contour`'s
+returned polygon covers the hole as if it were solid, which overestimates
+the true area by the hole's area — that remains true and is pinned by
+test_hole_is_not_subtracted_outer_boundary_only.
+
+`trace_region_with_holes` is the item-19 follow-through: same single-
+connected-foreground-region precondition, but it also traces every OTHER
+boundary `find_contours` finds inside that region as a hole and nets its
+area out of the total. Nothing currently calls it end to end from the UI —
+wiring routes/regions.py's response and the frontend detect-flow
+(RegionsCard.tsx) to request and apply holes is a follow-up, not attempted
+here; this function is the tested, ready-to-wire computation.
 
 Determinism: the same mask always yields the same polygon — same vertex
 order, same start vertex — every call. skimage's `find_contours` /
@@ -37,7 +44,12 @@ from dataclasses import dataclass
 import numpy as np
 from skimage.measure import approximate_polygon, find_contours
 
-__all__ = ["Contour", "NoContourError", "trace_outer_contour"]
+__all__ = [
+    "Contour",
+    "NoContourError",
+    "trace_outer_contour",
+    "trace_region_with_holes",
+]
 
 
 class NoContourError(ValueError):
@@ -47,16 +59,26 @@ class NoContourError(ValueError):
 
 @dataclass(frozen=True)
 class Contour:
-    """A traced, simplified, closed polygon outline.
+    """A traced, simplified, closed polygon outline, with optional holes.
 
     `points` is (N, 2) float64, one row per vertex as (row, col) pixel
     coordinates. The ring is closed IMPLICITLY — the last point does not
     repeat the first, matching the frontend's `Measure.pts` convention
     (closed by returning to vertex 0).
+
+    `holes` is a tuple of the same (N_i, 2) open-ring arrays, one per
+    enclosed hole (item 19). Empty for `trace_outer_contour` (which never
+    populates it) and for a `trace_region_with_holes` call on a mask with
+    no holes — both cases mean "no holes", not "not computed".
+
+    `area_px` is always the NET area — outer minus every hole — so for
+    `trace_outer_contour` (holes always empty) it is simply the outer
+    ring's area, unchanged from before this field existed.
     """
 
     points: np.ndarray
     area_px: float
+    holes: tuple[np.ndarray, ...] = ()
 
 
 def _shoelace_signed(points: np.ndarray) -> float:
@@ -172,3 +194,68 @@ def trace_outer_contour(
     simplified = _simplify(ring, tolerance=tolerance, max_vertices=max_vertices)
     canon = _canonicalize(simplified)
     return Contour(points=canon, area_px=abs(_shoelace_signed(canon)))
+
+
+def trace_region_with_holes(
+    mask: np.ndarray,
+    *,
+    tolerance: float = 2.0,
+    max_vertices: int = 200,
+) -> Contour:
+    """Trace a single-region mask's outer boundary AND every enclosed hole
+    (plan item 19 — the follow-through `trace_outer_contour` explicitly
+    defers; see that function's docstring and the module docstring).
+
+    Same single-connected-foreground-region precondition as
+    `trace_outer_contour`: the largest traced ring is taken as the outer
+    boundary, and every OTHER ring `find_contours` finds is treated as a
+    hole. That holds exactly as long as the precondition does — an
+    unrelated second foreground blob would be mistaken for a hole the same
+    way it would confuse `trace_outer_contour`'s single-ring assumption.
+
+    `area_px` is the NET area: the outer ring's area minus every hole
+    ring's area, each taken as `abs(signed shoelace area)` on BOTH sides
+    before subtracting — never a raw signed-area sum. Marching squares can
+    trace a hole's boundary in either winding direction depending on mask
+    geometry; summing signed areas would only subtract correctly for one
+    of the two directions and silently ADD the hole's area for the other.
+    Taking the absolute value of each ring first makes the subtraction
+    correct regardless of which way either ring happens to wind, and the
+    net area is clamped to >= 0 (a degenerate/oversized "hole" can never
+    make the reported area negative).
+
+    Parameters, Returns and Raises are as `trace_outer_contour`; the
+    returned `Contour.holes` tuple holds one canonicalized ring per hole
+    (empty when the mask has none — identical to `trace_outer_contour` in
+    that case, other than the always-populated `holes` field).
+    """
+    bw = np.asarray(mask) > 0
+    if not bw.any() or bw.all():
+        raise NoContourError(
+            "mask must have both foreground and background pixels"
+        )
+
+    rings = find_contours(bw.astype(np.float64), level=0.5)
+    if not rings:
+        raise NoContourError("no boundary found in mask")
+
+    open_rings = [r[:-1] for r in rings]
+    outer_ring = _largest_ring(open_rings)
+    hole_rings = [r for r in open_rings if r is not outer_ring]
+
+    outer_canon = _canonicalize(
+        _simplify(outer_ring, tolerance=tolerance, max_vertices=max_vertices)
+    )
+    outer_area = abs(_shoelace_signed(outer_canon))
+
+    holes: list[np.ndarray] = []
+    hole_area_total = 0.0
+    for hole in hole_rings:
+        hole_canon = _canonicalize(
+            _simplify(hole, tolerance=tolerance, max_vertices=max_vertices)
+        )
+        holes.append(hole_canon)
+        hole_area_total += abs(_shoelace_signed(hole_canon))
+
+    net_area = max(0.0, outer_area - hole_area_total)
+    return Contour(points=outer_canon, area_px=net_area, holes=tuple(holes))

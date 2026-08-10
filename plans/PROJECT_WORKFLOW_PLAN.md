@@ -223,14 +223,9 @@ from an import.
 
 ### Tier 2 — Medium Impact
 
-4. **Drag-and-drop folders onto the window** — directory entries walk
-   into the same orchestrator as 2 (browser-picked files continue
-   through /session/upload).
-   Model: sonnet · Parallel: no — conflicts with 2 (dialog/drop wiring)
+4. ~~**Drag-and-drop folders onto the window**~~ — shipped 2026-08-09, see Completed
 
-5. **Recursion + unsupported-file policy** — implement gate G3's
-   resolution; per-import cap; "skipped N unsupported" status.
-   Model: haiku · Parallel: yes
+5. ~~**Recursion + unsupported-file policy**~~ — shipped 2026-08-09, see Completed
 
 ---
 
@@ -294,15 +289,11 @@ exported figures.
     preference.
     Model: haiku · Parallel: yes (after 14)
 
-18. **Round-trip test** — polygon/lasso measures survive workspace
-    save/load (measures already persist; assert it).
-    Model: haiku · Parallel: yes (after 14)
+18. ~~**Round-trip test**~~ — shipped 2026-08-09, see Completed
 
 ### Tier 3 — Nice-to-Have
 
-19. **Holes / multi-part regions** — subtract inner outlines from a
-    region's area.
-    Model: sonnet · Parallel: yes (after 15)
+19. ~~**Holes / multi-part regions**~~ — shipped 2026-08-09, see Completed
 
 ---
 
@@ -335,9 +326,7 @@ stepping — all reading the same sample groups.
     Model: sonnet · Parallel: NO — SideBySideStage.tsx conflicts with 9
     (after 20)
 
-27. **Import seeds projects** — W1's per-folder groups get a parent
-    project group when importing a folder of folders (per gate G3).
-    Model: sonnet · Parallel: yes (after 1–3, 20)
+27. ~~**Import seeds projects**~~ — shipped 2026-08-09, see Completed
 
 28. **Round-trip + migration tests** — params/parent survive save/load;
     pre-extension payloads load unchanged.
@@ -345,9 +334,7 @@ stepping — all reading the same sample groups.
 
 ### Tier 3 — Nice-to-Have
 
-29. **Polish** — sample colour tags in sections/panes; montage ordering
-    by parameter value.
-    Model: haiku · Parallel: yes
+29. ~~**Polish**~~ — shipped 2026-08-09, see Completed
 
 ---
 
@@ -365,37 +352,17 @@ lands.
 
 31. ~~**Schema validation + unknown-key preservation**~~ — shipped 2026-08-09, see Completed
 
-32. **v1 → v2 migration** — `load` accepts a v1 `.json`/`.npz` pair and
-    upgrades in memory (splitting the opaque `client_state` into
-    `samples`/`measures`/`ui_state`); the next save writes `.fvp`. v1
-    write path is removed.
-    Model: opus · Parallel: yes (after 30)
+32. ~~**v1 → v2 migration**~~ — shipped 2026-08-09, see Completed
 
-33. **Light vs bundle payload modes** — `payload_mode`; light embeds
-    derived images + measures + samples + thumbnails and references
-    sources; bundle embeds everything. Save Project / Export Project
-    Bundle as distinct actions.
-    Model: sonnet · Parallel: yes (after 30)
+33. ~~**Light vs bundle payload modes**~~ — shipped 2026-08-09, see Completed
 
-34. **Data-root resolution** — hint → project-dir-relative → session
-    re-point, POSIX normalisation both ways, `size_bytes` sanity check;
-    new route module exposing resolve + relocate (`routes/images.py` at
-    497 stays untouched).
-    Ratchet: NEW MODULE. Model: sonnet · Parallel: yes (after 30)
+34. ~~**Data-root resolution**~~ — shipped 2026-08-09, see Completed
 
-35. **Unavailable placeholders + "Locate folder…"** — unresolved images
-    render as placeholders keeping name, sample membership, params and
-    measures; the action is invokable any time and repeatable for
-    subsets in different folders; saving preserves unresolved references.
-    Model: sonnet · Parallel: yes (after 34; UI slot after 22)
+35. ~~**Unavailable placeholders + "Locate folder…"**~~ — shipped 2026-08-09, see Completed
 
 ### Tier 2 — Medium Impact
 
-36. **Format test suite** — the verification list in ADR 0002:
-    round-trip deep-equal, unknown-key survival, v1 migration,
-    Windows-hint-on-POSIX resolution, unresolved-reference survives a
-    save (the no-data-loss assertion), interrupted-save atomicity.
-    Model: sonnet · Parallel: yes (after 30–34)
+36. ~~**Format test suite**~~ — shipped 2026-08-09, see Completed
 
 37. **Thumbnail generation** — ≤256 px longest edge on save, reusing the
     existing render path; enables browsing and review with data absent.
@@ -411,6 +378,57 @@ lands.
 
 ## Completed
 
+- ~~**#32/#33/#34/#35 Project save + load THROUGH THE APP**~~ (2026-08-09,
+  PR #141) — File ▸ Save Project… / Export Project Bundle… / Open Project… /
+  Locate Data Folder… (N unavailable). Before this the `.fvp` format was a
+  library nothing called, so "save the project and reload it" was not true for
+  the user. Two commands rather than a mode picker: MB vs hundreds of MB, and
+  whether the file still needs its source folders, is a choice to make
+  knowingly. v1 `.json`/`.npz` files migrate on load; the v1 WRITER is deleted,
+  but only after an equivalence test proved both writers produced byte-identical
+  manifests. The no-data-loss guarantee is proven end to end: a project whose
+  file was deleted saves with an EMPTY session store and its `rel`,
+  `size_bytes`, sample membership and measures all survive. Subtle call: with
+  anything unresolved the save RE-DECLARES the loaded `data_root_hint` instead
+  of re-deriving it, because a placeholder's `rel` only means anything against
+  the root it was written under. Two self-found defects fixed: `replace:false`
+  wiping the previous project's placeholders, and a NaN reaching the manifest
+  and breaking `JSON.parse` for the whole load. `io/session_file.py` 242→92,
+  `io/project_file.py` 461→415, `store/viewer.ts` 448→442.
+  Also closes **#18** (measures round-trip) and substantially **#36** (the
+  format suite now covers round-trip, unknown keys, v1 migration, the Windows
+  hint, unresolved-survives-save and atomicity).
+- ~~**#4/#5/#27 Folder drop, policy surfacing, parent projects**~~ (2026-08-09,
+  PR #142) — item 4 is NOT what was specified, for a proven reason: no browser
+  exposes a server-side path for a dropped folder, and this app's Tauri shell
+  navigates to `http://127.0.0.1` rather than the `tauri://` origin its JS APIs
+  need (`src-tauri/Cargo.toml` says that IPC grant is deliberately avoided). So
+  `lib/folderDrop.ts` walks the dropped `FileSystemEntry` tree client-side with
+  the SAME G3 rules and uploads through `/session/upload`, joining the dialog
+  path at a shared `applyFolderImport` tail. A mixed drop processes only the
+  folder entries — documented, not invented. Item 5's policy is stated in the
+  dialog BEFORE any click, and outcomes report through a persistent dismissable
+  banner because the dialog closes synchronously on Import (an existing test
+  pins that). Item 27 nests a folder-of-folders under an empty-`ids` parent
+  project via `createEmptyGroup`; a flat folder still yields exactly one group
+  with no parent.
+- ~~**#19 Holes / multi-part regions**~~ (2026-08-09, PR #142) — chose
+  multi-ring (`Measure.holes?: {x,y}[][]`) over a separate hole KIND: geometric
+  containment would need its own parent field plus a new kind in every
+  region-kind whitelist, and would make area math branch on measure identity
+  rather than shape. Single-ring regions stay on the byte-identical pre-#19
+  path, pinned by a test. Hole winding is handled explicitly, so reversing a
+  hole's point order does not change the area. `calc/contours.py` gained
+  `trace_region_with_holes`, leaving `trace_outer_contour` and its pinning test
+  untouched. Schema gained an optional `holes` (both copies, byte-identical).
+  KNOWN GAP, flagged not hidden: no UI gesture creates a hole yet — the drawing
+  gesture lives in files this work could not touch. The number is correct; the
+  way to draw one is still to come.
+- ~~**#29 Polish**~~ (2026-08-09, PR #142) — pure `groupColor(g)` +
+  `GROUP_PALETTE` (explicit `color`, else a deterministic djb2 pick); wiring
+  points documented rather than applied, since another agent owned those files.
+  Montage tiles stable-sort by `params[primary_param]`, with non-numeric or
+  missing values kept in order and appended rather than crashing.
 - ~~**#24 Result-vs-parameter table + plot + CSV**~~ (2026-08-09, PR #140) —
   new pure `lib/projectCompare.ts` (234) + `ProjectComparePanel.tsx` (190) +
   `plots/ResultVsParamPlot.tsx` (118, uPlot scatter with ±1σ bars), reached via

@@ -14,6 +14,8 @@ import {
   physicalScale,
   polygonStats,
   polygonStatsNormalized,
+  polygonStatsNormalizedWithHoles,
+  polygonStatsWithHoles,
   resolveScaleView,
   tiltDist,
   unitToNm,
@@ -312,5 +314,74 @@ describe("areaPxToPhysical (#12, pixel_size² area conversion)", () => {
 
   it("zero-area input converts to zero, not null", () => {
     expect(areaPxToPhysical(0, 2)).toBe(0);
+  });
+});
+
+describe("polygonStatsWithHoles (#19, holes / multi-part regions)", () => {
+  const outerSquare = (n: number) => [P(0, 0), P(n, 0), P(n, n), P(0, n)];
+  const innerSquare = (x0: number, y0: number, n: number) => [
+    P(x0, y0),
+    P(x0 + n, y0),
+    P(x0 + n, y0 + n),
+    P(x0, y0 + n),
+  ];
+
+  it("known-answer: 100x100 outer minus a 20x20 hole = 9600 px^2", () => {
+    const outer = outerSquare(100);
+    const hole = innerSquare(40, 40, 20);
+    const stats = polygonStatsWithHoles(outer, [hole]);
+    expect(stats.areaPx2).toBeCloseTo(10000 - 400, 10);
+  });
+
+  it("no holes is IDENTICAL to plain polygonStats, not just equivalent", () => {
+    const outer = outerSquare(100);
+    expect(polygonStatsWithHoles(outer, [])).toEqual(polygonStats(outer));
+  });
+
+  it("reversing a hole's point order does not change the result", () => {
+    const outer = outerSquare(100);
+    const hole = innerSquare(40, 40, 20);
+    const forward = polygonStatsWithHoles(outer, [hole]);
+    const reversed = polygonStatsWithHoles(outer, [[...hole].reverse()]);
+    expect(reversed).toEqual(forward);
+  });
+
+  it("perimeter is outer perimeter PLUS every hole's perimeter", () => {
+    const outer = outerSquare(100);
+    const hole = innerSquare(40, 40, 20);
+    const stats = polygonStatsWithHoles(outer, [hole]);
+    expect(stats.perimeterPx).toBeCloseTo(400 + 80, 10); // 4*100 + 4*20
+  });
+
+  it("multiple holes all subtract", () => {
+    const outer = outerSquare(100);
+    const holes = [innerSquare(5, 5, 10), innerSquare(60, 60, 10)];
+    const stats = polygonStatsWithHoles(outer, holes);
+    expect(stats.areaPx2).toBeCloseTo(10000 - 100 - 100, 10);
+  });
+
+  it("centroid shifts off-centre when the hole is off-centre", () => {
+    // A hole in the right half pulls the net centroid left of centre.
+    const outer = outerSquare(100);
+    const hole = innerSquare(70, 40, 20);
+    const stats = polygonStatsWithHoles(outer, [hole]);
+    expect(stats.centroid.x).toBeLessThan(50);
+  });
+
+  it("a hole covering the whole outer ring clamps area to 0, not negative", () => {
+    const outer = outerSquare(100);
+    const hole = outerSquare(100); // same ring as a "hole"
+    const stats = polygonStatsWithHoles(outer, [hole]);
+    expect(stats.areaPx2).toBe(0);
+    // degenerate net area falls back to the outer centroid
+    expect(stats.centroid).toEqual(polygonStats(outer).centroid);
+  });
+
+  it("polygonStatsNormalizedWithHoles denormalizes outer + holes by image dimensions", () => {
+    const outerNorm = [P(0, 0), P(1, 0), P(1, 1), P(0, 1)];
+    const holeNorm = [P(0.4, 0.4), P(0.6, 0.4), P(0.6, 0.6), P(0.4, 0.6)];
+    const img = { w: 100, h: 100 };
+    const got = polygonStatsNormalizedWithHoles(outerNorm, [holeNorm], img);
+    expect(got.areaPx2).toBeCloseTo(10000 - 400, 10);
   });
 });

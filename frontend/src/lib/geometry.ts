@@ -211,6 +211,68 @@ export function polygonStatsNormalized(
   return polygonStats(pts.map((p) => ({ x: p.x * img.w, y: p.y * img.h })));
 }
 
+/** polygonStats for a region with enclosed holes subtracted (plan item
+ *  19). `outerPts`/`holePtsList` are IMAGE-PIXEL points (use
+ *  polygonStatsNormalizedWithHoles for the Measure.pts 0-1 convention).
+ *
+ *  - `holePtsList` empty → identical to `polygonStats(outerPts)` (same
+ *    formula, not a special-cased shortcut — see the netArea derivation
+ *    below, which reduces to the outer-only case when there are no
+ *    holes).
+ *  - Each ring's area is taken via `polygonStats`, which already returns
+ *    `Math.abs(signedArea2)/2` — so a hole's winding direction is HANDLED
+ *    EXPLICITLY (both sides always non-negative before subtracting)
+ *    rather than relied upon: reversing a hole's point order does not
+ *    change its contribution, unlike a scheme that summed signed areas
+ *    and trusted holes to wind opposite the outer ring.
+ *  - Net area is clamped to >= 0 (a hole drawn larger than the outer ring
+ *    can never report a negative area).
+ *  - Perimeter is the outer perimeter PLUS every hole's perimeter — a
+ *    hole's boundary is real boundary of the region, same convention
+ *    calc/contours.py's trace_region_with_holes documents.
+ *  - Centroid is the composite/subtraction formula (area-weighted outer
+ *    centroid minus area-weighted hole centroids, over the net area);
+ *    falls back to the outer centroid when net area is <= 0 to avoid
+ *    dividing by zero. */
+export function polygonStatsWithHoles(
+  outerPts: { x: number; y: number }[],
+  holePtsList: { x: number; y: number }[][],
+): PolygonStats {
+  const outer = polygonStats(outerPts);
+  const holes = holePtsList.map((h) => polygonStats(h));
+  const holeAreaSum = holes.reduce((s, h) => s + h.areaPx2, 0);
+  const netArea = outer.areaPx2 - holeAreaSum;
+  const perimeterPx =
+    outer.perimeterPx + holes.reduce((s, h) => s + h.perimeterPx, 0);
+
+  let centroid = outer.centroid;
+  if (netArea > 0) {
+    const wx =
+      outer.areaPx2 * outer.centroid.x -
+      holes.reduce((s, h) => s + h.areaPx2 * h.centroid.x, 0);
+    const wy =
+      outer.areaPx2 * outer.centroid.y -
+      holes.reduce((s, h) => s + h.areaPx2 * h.centroid.y, 0);
+    centroid = { x: wx / netArea, y: wy / netArea };
+  }
+
+  return { areaPx2: Math.max(0, netArea), centroid, perimeterPx };
+}
+
+/** polygonStatsWithHoles over NORMALIZED 0-1 points + image dimensions —
+ *  the Measure.pts/Measure.holes convention. Denormalizes outer + every
+ *  hole ring then delegates, same relationship polygonStatsNormalized has
+ *  to polygonStats. */
+export function polygonStatsNormalizedWithHoles(
+  outerPts: { x: number; y: number }[],
+  holePtsList: { x: number; y: number }[][],
+  img: Size,
+): PolygonStats {
+  const denorm = (pts: { x: number; y: number }[]) =>
+    pts.map((p) => ({ x: p.x * img.w, y: p.y * img.h }));
+  return polygonStatsWithHoles(denorm(outerPts), holePtsList.map(denorm));
+}
+
 /** px² → physical area via pixel_size² — ASSUMES SQUARE PIXELS, the
  *  project's pixel_cal convention (one scalar pixel_size for both axes;
  *  see calc/particles.py RegionStats.area_calibrated). null pixelSize

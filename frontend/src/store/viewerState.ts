@@ -188,8 +188,16 @@ export interface ViewerState {
   setGrid: (rows: number, cols: number) => void;
   setSbsLinked: (linked: boolean) => void;
   // ── named image groups ──────────────────────────────────────────────
-  /** Create a named group from the given image ids; default name `Group N`. */
-  createGroup: (ids: string[], name?: string) => void;
+  /** Create a named group from the given image ids; default name `Group N`.
+   *  Returns the new group's id, or null if no valid image id was given
+   *  (rejected — a group must hold at least one image; see
+   *  createEmptyGroup for the one case that doesn't). */
+  createGroup: (ids: string[], name?: string) => string | null;
+  /** Create an empty-membership group — a project (item 27), which holds
+   *  its images only through its sample children via setGroupParent.
+   *  Unlike createGroup, an empty member list is never rejected. Returns
+   *  the new group's id. */
+  createEmptyGroup: (name: string) => string;
   renameGroup: (id: string, name: string) => void;
   /** Delete a group and unbind it from any pane that referenced it. */
   deleteGroup: (id: string) => void;

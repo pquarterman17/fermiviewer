@@ -25,6 +25,7 @@ from fermiviewer.calc.montage_physical import (
     PhysicalMontageResult,
     montage_physical_scale,
 )
+from fermiviewer.routes.montage_compare import MontageTile, _order_tiles
 from fermiviewer.server import create_app
 from fermiviewer.session import store
 
@@ -262,6 +263,100 @@ def test_endpoint_unknown_image_id_returns_404(client) -> None:
 def test_endpoint_empty_tiles_returns_422(client) -> None:
     r = client.post("/api/analyze/montage-compare", json={"tiles": []})
     assert r.status_code == 422
+
+
+# ── tile ordering by parameter value (plan item 29) ──────────────────────
+
+
+def test_order_tiles_sorts_ascending_by_numeric_param_value() -> None:
+    tiles = [
+        MontageTile(image_id="c", param_value=500),
+        MontageTile(image_id="a", param_value=100),
+        MontageTile(image_id="b", param_value=300),
+    ]
+    ordered = _order_tiles(tiles)
+    assert [t.image_id for t in ordered] == ["a", "b", "c"]
+
+
+def test_order_tiles_non_numeric_and_missing_values_keep_original_order_at_the_end() -> None:
+    """A string param_value, a bool one (excluded — categorical, not
+    ordinal), and a missing one must not crash the sort, and must all
+    land after the numeric ones, preserving their own relative order."""
+    tiles = [
+        MontageTile(image_id="str1", param_value="cold"),
+        MontageTile(image_id="num1", param_value=200),
+        MontageTile(image_id="missing1"),
+        MontageTile(image_id="num2", param_value=100),
+        MontageTile(image_id="bool1", param_value=True),
+    ]
+    ordered = _order_tiles(tiles)
+    assert [t.image_id for t in ordered] == [
+        "num2", "num1",       # numeric, ascending
+        "str1", "missing1", "bool1",  # everything else, original order
+    ]
+
+
+def test_order_tiles_with_no_param_values_is_request_order_unchanged() -> None:
+    """The pre-#29 case: nobody sets param_value -> output order ==
+    input order, exactly (the feature must be a strict no-op then)."""
+    tiles = [MontageTile(image_id=str(i)) for i in ["z", "y", "x"]]
+    assert [t.image_id for t in _order_tiles(tiles)] == ["z", "y", "x"]
+
+
+def test_order_tiles_is_a_stable_sort_for_tied_values() -> None:
+    tiles = [
+        MontageTile(image_id="first", param_value=1),
+        MontageTile(image_id="second", param_value=1),
+        MontageTile(image_id="third", param_value=1),
+    ]
+    assert [t.image_id for t in _order_tiles(tiles)] == ["first", "second", "third"]
+
+
+def test_endpoint_reorders_tiles_by_param_value(client, tmp_path) -> None:
+    """End to end: three tiles submitted out of trend order come back
+    tiled (and labelled, via tile_labels) in ascending param_value
+    order, not request order."""
+    ids = {
+        name: _open_calibrated(client, tmp_path, np.zeros((16, 16)), 1.0, "um", f"{name}.dm4")
+        for name in ["hot", "cold", "warm"]
+    }
+    r = client.post(
+        "/api/analyze/montage-compare",
+        json={
+            "tiles": [
+                {"image_id": ids["hot"], "label": "hot", "param_value": 500},
+                {"image_id": ids["cold"], "label": "cold", "param_value": 100},
+                {"image_id": ids["warm"], "label": "warm", "param_value": 300},
+            ],
+            "gap": 0,
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["image"]["meta"]["tile_labels"] == ["cold", "warm", "hot"]
+
+
+def test_endpoint_ordering_tolerates_a_missing_param_value_without_crashing(
+    client, tmp_path,
+) -> None:
+    id_known = _open_calibrated(
+        client, tmp_path, np.zeros((16, 16)), 1.0, "um", "known.dm4",
+    )
+    id_unknown = _open_calibrated(
+        client, tmp_path, np.zeros((16, 16)), 1.0, "um", "unknown.dm4",
+    )
+    r = client.post(
+        "/api/analyze/montage-compare",
+        json={
+            "tiles": [
+                {"image_id": id_unknown, "label": "no-param"},
+                {"image_id": id_known, "label": "has-param", "param_value": 42},
+            ],
+            "gap": 0,
+        },
+    )
+    assert r.status_code == 200, r.text
+    # the numeric one sorts first; the missing one keeps its relative slot
+    assert r.json()["image"]["meta"]["tile_labels"] == ["has-param", "no-param"]
 
 
 # ── realdata: two real Helios frames at very different scales ───────────

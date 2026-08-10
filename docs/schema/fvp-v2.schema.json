@@ -193,7 +193,19 @@
               }
             },
             "text": { "type": ["string", "null"], "description": "Caption / region label." },
-            "color": { "type": ["string", "null"] }
+            "color": { "type": ["string", "null"] },
+            "holes": {
+              "type": "array",
+              "description": "Enclosed holes subtracted from this region's area (item 19). Each entry is one hole's ring, same normalized 0-1 point-list shape as pts. Absent/empty = no holes.",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["x", "y"],
+                  "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
+                }
+              }
+            }
           }
         }
       }

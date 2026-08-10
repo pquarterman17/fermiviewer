@@ -21,7 +21,12 @@
 // "polygon" | "lasso" to the union. That has since landed, but the
 // decoupling is worth keeping on its own merits.
 
-import { areaPxToPhysical, polygonStatsNormalized, type Size } from "./geometry";
+import {
+  areaPxToPhysical,
+  polygonStatsNormalized,
+  polygonStatsNormalizedWithHoles,
+  type Size,
+} from "./geometry";
 
 /** Structural shape this module needs from a measure. Deliberately not
  *  the store's `Measure` type — see file header. */
@@ -29,6 +34,9 @@ export interface RegionCandidate {
   id: string;
   kind: string;
   pts: { x: number; y: number }[];
+  /** Enclosed holes (plan item 19) — see Measure.holes (viewerTypes.ts)
+   *  for the field's full contract. Absent/empty is the pre-#19 shape. */
+  holes?: { x: number; y: number }[][];
   text?: string;
 }
 
@@ -50,7 +58,8 @@ export interface RegionRow {
    *  in the order they appear in `measures`. */
   label: string;
   kind: string;
-  /** px² — always populated, never null. */
+  /** px² — always populated, never null. NETS OUT any `holes` (item 19);
+   *  identical to the pre-#19 value when there are none. */
   areaPx2: number;
   /** pixel_unit² — null when the image is uncalibrated. Never 0 or NaN
    *  as a stand-in for "unknown"; a null here means "no physical number
@@ -59,6 +68,9 @@ export interface RegionRow {
   perimeterPx: number;
   /** image-pixel coordinates (not normalized). */
   centroid: { x: number; y: number };
+  /** number of enclosed holes subtracted from areaPx2 (plan item 19); 0
+   *  for every pre-#19 region. */
+  holeCount: number;
 }
 
 function imgSize(image: RegionTableImage): Size {
@@ -87,7 +99,12 @@ export function regionRows(
   for (const m of measures) {
     if (!REGION_KINDS.has(m.kind)) continue;
     n++;
-    const stats = polygonStatsNormalized(m.pts, img);
+    // Holes-free path is the exact pre-#19 call — single-ring regions get
+    // byte-identical numbers, not just equivalent ones.
+    const stats =
+      m.holes && m.holes.length > 0
+        ? polygonStatsNormalizedWithHoles(m.pts, m.holes, img)
+        : polygonStatsNormalized(m.pts, img);
     rows.push({
       measureId: m.id,
       label: m.text?.trim() || `Region ${n}`,
@@ -96,6 +113,7 @@ export function regionRows(
       areaPhysical: areaPxToPhysical(stats.areaPx2, image.pixel_size),
       perimeterPx: stats.perimeterPx,
       centroid: stats.centroid,
+      holeCount: m.holes?.length ?? 0,
     });
   }
   return rows;

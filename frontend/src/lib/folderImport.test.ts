@@ -11,13 +11,16 @@ vi.mock("./api/folders", () => ({
 
 import type { FourDMeta, ImageMeta } from "./api/core";
 import { openFolders, type FolderGroupResult } from "./api/folders";
+import { useFolderImportNotice } from "../store/folderImportNotice";
 import { useViewer } from "../store/viewer";
 import {
   dedupeGroupName,
   importFolders,
   mergedGroupName,
   seedGroupSpecs,
+  seedProjectSpecs,
   summarizeImport,
+  type FolderRootInfo,
 } from "./folderImport";
 
 function img(id: string): ImageMeta {
@@ -153,6 +156,91 @@ describe("seedGroupSpecs", () => {
   });
 });
 
+describe("seedProjectSpecs", () => {
+  const root = (name: string, groupCount: number): FolderRootInfo => ({
+    name,
+    groupCount,
+  });
+
+  it("a flat folder (one root, one group) produces no project", () => {
+    const { specs, projects } = seedProjectSpecs(
+      [group("400C", ["a"])],
+      [root("400C", 1)],
+      false,
+    );
+    expect(specs.map((s) => s.name)).toEqual(["400C"]);
+    expect(projects).toEqual([]);
+  });
+
+  it("a folder of folders (one root, N groups) gets a parent project", () => {
+    const { specs, projects } = seedProjectSpecs(
+      [group("sampleA", ["a"]), group("sampleB", ["b"])],
+      [root("StudyA", 2)],
+      false,
+    );
+    expect(specs.map((s) => s.name)).toEqual(["sampleA", "sampleB"]);
+    expect(projects).toEqual([
+      { name: "StudyA", childNames: ["sampleA", "sampleB"] },
+    ]);
+  });
+
+  it("multiple selected dirs: each root is judged independently", () => {
+    const { projects } = seedProjectSpecs(
+      [
+        group("flat", ["a"]),
+        group("sub1", ["b"]),
+        group("sub2", ["c"]),
+      ],
+      [root("flat", 1), root("nested", 2)],
+      false,
+    );
+    expect(projects).toEqual([{ name: "nested", childNames: ["sub1", "sub2"] }]);
+  });
+
+  it("a root's own loose-image child collides with the project name — the project is renamed, not the child", () => {
+    // StudyA has loose images (named "StudyA" per seedGroupSpecs) AND
+    // subfolders — 3 groups from one root.
+    const { specs, projects } = seedProjectSpecs(
+      [group("StudyA", ["a"]), group("sub1", ["b"]), group("sub2", ["c"])],
+      [root("StudyA", 3)],
+      false,
+    );
+    expect(specs.map((s) => s.name)).toEqual(["StudyA", "sub1", "sub2"]);
+    expect(projects).toEqual([
+      { name: "StudyA (2)", childNames: ["StudyA", "sub1", "sub2"] },
+    ]);
+  });
+
+  it("merge mode never nests, even with root info present", () => {
+    const { projects } = seedProjectSpecs(
+      [group("sampleA", ["a"]), group("sampleB", ["b"])],
+      [root("StudyA", 2)],
+      true,
+    );
+    expect(projects).toEqual([]);
+  });
+
+  it("no root info at all -> no projects (backward compatible with a plain scan)", () => {
+    const { projects } = seedProjectSpecs(
+      [group("sampleA", ["a"]), group("sampleB", ["b"])],
+      [],
+      false,
+    );
+    expect(projects).toEqual([]);
+  });
+
+  it("a folder of folders where all but one child turned out empty is flat, not a project", () => {
+    const { specs, projects, emptyFolders } = seedProjectSpecs(
+      [group("sampleA", ["a"]), group("sampleB", [])],
+      [root("StudyA", 2)],
+      false,
+    );
+    expect(specs.map((s) => s.name)).toEqual(["sampleA"]);
+    expect(emptyFolders).toEqual(["sampleB"]);
+    expect(projects).toEqual([]);
+  });
+});
+
 describe("summarizeImport", () => {
   it.each<[string, Parameters<typeof summarizeImport>[0], string]>([
     [
@@ -203,6 +291,7 @@ const initialState = useViewer.getState();
 describe("importFolders", () => {
   beforeEach(() => {
     useViewer.setState(initialState, true);
+    useFolderImportNotice.getState().clear();
     vi.clearAllMocks();
   });
 
@@ -257,5 +346,106 @@ describe("importFolders", () => {
   it("does nothing when no paths are given", async () => {
     await importFolders([]);
     expect(openFolders).not.toHaveBeenCalled();
+  });
+
+  it("returns null (rather than a summary) when no paths are given", async () => {
+    expect(await importFolders([])).toBeNull();
+  });
+
+  it("returns the import summary", async () => {
+    vi.mocked(openFolders).mockResolvedValue({
+      groups: [group("400C", ["a"])],
+      skipped: 0,
+      truncated: false,
+      roots: [],
+    });
+
+    const result = await importFolders(["/data/study"]);
+    expect(result).toEqual({
+      groupCount: 1,
+      imageCount: 1,
+      skipped: 0,
+      truncated: false,
+      emptyFolders: [],
+    });
+  });
+
+  it("also reports through the persistent folder-import notice (item 5)", async () => {
+    vi.mocked(openFolders).mockResolvedValue({
+      groups: [group("400C", ["a"])],
+      skipped: 1,
+      truncated: false,
+      roots: [],
+    });
+
+    await importFolders(["/data/study"]);
+
+    expect(useFolderImportNotice.getState().result).toEqual({
+      groupCount: 1,
+      imageCount: 1,
+      skipped: 1,
+      truncated: false,
+      emptyFolders: [],
+    });
+  });
+
+  it("a folder of folders (item 27) nests the sample groups under a new parent project", async () => {
+    vi.mocked(openFolders).mockResolvedValue({
+      groups: [group("sampleA", ["a"]), group("sampleB", ["b"])],
+      skipped: 0,
+      truncated: false,
+      roots: [{ name: "StudyA", group_count: 2 }],
+    });
+
+    await importFolders(["/data/StudyA"]);
+
+    const s = useViewer.getState();
+    const byName = (n: string) => s.imageGroups.find((g) => g.name === n)!;
+    const project = byName("StudyA");
+    expect(project.ids).toEqual([]); // a project holds images only via children
+    expect(byName("sampleA").parent).toBe(project.id);
+    expect(byName("sampleB").parent).toBe(project.id);
+  });
+
+  it("a flat folder (item 27's unchanged simple case) creates no parent project", async () => {
+    vi.mocked(openFolders).mockResolvedValue({
+      groups: [group("400C", ["a", "b"])],
+      skipped: 0,
+      truncated: false,
+      roots: [{ name: "400C", group_count: 1 }],
+    });
+
+    await importFolders(["/data/400C"]);
+
+    const s = useViewer.getState();
+    expect(s.imageGroups).toHaveLength(1);
+    expect(s.imageGroups[0].name).toBe("400C");
+    expect(s.imageGroups[0].parent).toBeUndefined();
+  });
+
+  it("multiple selected dirs: only the folder-of-folders one gets a project", async () => {
+    vi.mocked(openFolders).mockResolvedValue({
+      groups: [
+        group("flat", ["a"]),
+        group("sub1", ["b"]),
+        group("sub2", ["c"]),
+      ],
+      skipped: 0,
+      truncated: false,
+      roots: [
+        { name: "flat", group_count: 1 },
+        { name: "nested", group_count: 2 },
+      ],
+    });
+
+    await importFolders(["/data/flat", "/data/nested"]);
+
+    const s = useViewer.getState();
+    const byName = (n: string) => s.imageGroups.find((g) => g.name === n)!;
+    expect(byName("flat").parent).toBeUndefined();
+    const project = byName("nested");
+    expect(project.ids).toEqual([]);
+    expect(byName("sub1").parent).toBe(project.id);
+    expect(byName("sub2").parent).toBe(project.id);
   });
 });
