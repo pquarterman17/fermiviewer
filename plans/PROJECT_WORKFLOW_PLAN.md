@@ -329,19 +329,7 @@ stepping — all reading the same sample groups.
 
 21. ~~**Filmstrip extraction (front-load)**~~ — shipped 2026-08-09, see Completed
 
-22. **One panel that grows** — Filmstrip renders collapsible sections
-    per sample group when any exist (images in no sample under
-    "Ungrouped"); with no groups it stays today's flat list; membership
-    drag between sections edits group ids; selection/keyboard semantics
-    preserved; new components/Library/SampleSection.tsx keeps Filmstrip
-    ≤500
-    - [ ] ALSO: `closeImage` (store/viewer.ts:323) drops any group whose
-          ids empty, INCLUDING an image-less project group — a real defect
-          under nesting. Item 20 could not fix it (viewer.ts pinned 575,
-          zero headroom). Route that prune through `pruneGroups`, which
-          already has the keep-if-live-descendant rule, as part of an
-          extraction that buys the lines back
-    Model: opus · Parallel: NO — Filmstrip.tsx (after 20, 21)
+22. ~~**One panel that grows**~~ — shipped 2026-08-09, see Completed
 
 23. **Sample parameter editing** — per-section editor reusing
     lib/params.ts ParamField; values stored via setGroupParams; one
@@ -452,6 +440,23 @@ lands.
 
 ## Completed
 
+- ~~**#22 One panel that grows**~~ (2026-08-09) — new pure
+  `lib/sampleTree.ts` (103) + `Library/SampleSection.tsx` (114) +
+  `Library/FilmCard.tsx` (109); `Filmstrip.tsx` 283 → 367. Sections only
+  appear once groups exist: with none, the panel renders the same bare card
+  list it always did, verified by rendering main's Filmstrip beside the new
+  one over five states plus mid-drag and asserting identical DOM — the
+  existing `Filmstrip.test.tsx` needed no edits. Arrow keys and the single
+  tab stop walk the VISIBLE card sequence, so they cross section boundaries
+  and skip collapsed ones; a cross-section drop is a membership edit
+  (`addGroupMember`/`removeGroupMember`), a same-section drop still
+  reorders. Collapse reuses `Inspector/useCollapsedGroups`.
+  ALSO fixed the booked defect: `closeImage` pruned any group whose `ids`
+  emptied, which under nesting deleted an image-less PROJECT. It now routes
+  through `pruneGroups` (keep-if-live-descendant). Paid for by extracting
+  `store/viewerCloseImage.ts` (92) and `store/viewerChromeActions.ts` (110)
+  out of `store/viewer.ts`: **575 → 448 lines, so its 575 cap is DELETED —
+  it graduated** to the plain 500-line ceiling.
 - ~~**#15 Region table + CSV — THE AREA DELIVERABLE**~~ (2026-08-09, PR #135)
   — new pure `lib/regionTable.ts` (158) + `Inspector/RegionsCard.tsx` (134),
   27 tests. This is the point where a measured area actually leaves the app:

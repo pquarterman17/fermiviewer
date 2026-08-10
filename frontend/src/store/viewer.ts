@@ -7,11 +7,13 @@
 // persistence + session-restore machinery in viewerSession.ts. This
 // module holds the store implementation and re-exports the public
 // surface so call sites keep importing from "store/viewer".
+//
+// Further slices (W4 #22): viewerCloseImage.ts owns the close teardown and
+// viewerChromeActions.ts the theme/accent/density/panel preferences.
 
 import { create } from "zustand";
 
 import {
-  closeImage as apiClose,
   loadSession,
   loadWorkspaceNamed as apiLoadWorkspaceNamed,
   openSession,
@@ -20,6 +22,8 @@ import {
   uploadFiles,
 } from "../lib/api";
 import { logStatus } from "../lib/errlog";
+import { createChromeActions, initialChrome } from "./viewerChromeActions";
+import { createCloseAction } from "./viewerCloseImage";
 import { createCompareActions } from "./viewerCompareActions";
 import { createMeasureActions } from "./viewerMeasureActions";
 import type { ViewerState } from "./viewerState";
@@ -33,8 +37,6 @@ import {
   OVERLAY_KEY,
   pref,
   sessionSlice,
-  systemTheme,
-  THEME_KEY,
   VIEWS_KEY,
   writePref,
 } from "./viewerSession";
@@ -42,11 +44,7 @@ import {
   DEFAULT_DISPLAY,
   describePatch,
   UNDO_CAP,
-  type Accent,
-  type ColorbarSide,
-  type Density,
   type OverlayStyle,
-  type Theme,
   type View,
 } from "./viewerTypes";
 
@@ -89,16 +87,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
     document.documentElement.setAttribute("data-theme", t);
     return t;
   })(),
-  accent: (() => {
-    const a = pref<Accent>("accent", "violet");
-    document.documentElement.setAttribute("data-accent", a);
-    return a;
-  })(),
-  density: (() => {
-    const d = pref<Density>("density", "regular");
-    document.documentElement.setAttribute("data-density", d);
-    return d;
-  })(),
+  ...initialChrome(),
   // default endSymbol "bar" (user request 2026-06-09): dimension-style
   // perpendicular ticks at measurement line ends
   // merge defaults UNDER the persisted value so fields added later
@@ -130,10 +119,6 @@ export const useViewer = create<ViewerState>((set, get) => ({
     localStorage.getItem("fv_tools_layout") === "unified" ? "unified" : "cards",
   ),
   leftCol: false,
-  minimap: pref("minimap", true),
-  colorbar: pref("colorbarOnByDefault", false),
-  colorbarSide: pref<ColorbarSide>("colorbarSide", "right"),
-  scaleBarVisible: pref("scaleBarVisible", true),
   rightCol: false,
   cmdk: false,
   shorts: false,
@@ -301,75 +286,8 @@ export const useViewer = create<ViewerState>((set, get) => ({
     set({ activeId: next, selected: [next], selectedMeasure: null });
   },
 
-  closeImage: async (id) => {
-    await apiClose(id);
-    set((s) => {
-      const images = { ...s.images };
-      delete images[id];
-      const measures = { ...s.measures };
-      const closed = measures[id] ?? [];
-      delete measures[id];
-      const order = s.order.filter((o) => o !== id);
-      const activeId =
-        s.activeId === id ? (order[order.length - 1] ?? null) : s.activeId;
-      const compareSet = s.compareSet?.filter((c) => c !== id) ?? null;
-      // if the closed image sat in any compare pane, drop the dangling ref
-      // (the pane reseeds from its group/order when compare is re-entered)
-      const sbsPanes = s.sbsPanes.map((p) =>
-        p.imageId === id ? { ...p, imageId: null } : p,
-      );
-      // drop the closed image from every group's member list; prune groups
-      // that become empty, and unbind those from any pane that referenced them
-      const imageGroups = s.imageGroups
-        .map((g) => ({ ...g, ids: g.ids.filter((m) => m !== id) }))
-        .filter((g) => g.ids.length > 0);
-      const liveGroupIds = new Set(imageGroups.map((g) => g.id));
-      const sbsPanesPruned = sbsPanes.map((p) =>
-        p.groupId && !liveGroupIds.has(p.groupId) ? { ...p, groupId: null } : p,
-      );
-      // drop the closed image's per-image state so these maps don't grow
-      // unbounded across an open/close-heavy session (and evict its
-      // persisted view from localStorage)
-      const views = { ...s.views };
-      delete views[id];
-      const display = { ...s.display };
-      delete display[id];
-      const history = { ...s.history };
-      delete history[id];
-      const historyAt = { ...s.historyAt };
-      delete historyAt[id];
-      const scaleBars = { ...s.scaleBars };
-      delete scaleBars[id];
-      const tilts = { ...s.tilts };
-      delete tilts[id];
-      const stackFrames = { ...s.stackFrames };
-      delete stackFrames[id];
-      const roiStats = { ...s.roiStats };
-      for (const m of closed) delete roiStats[m.id];
-      const savedRois = { ...s.savedRois };
-      delete savedRois[id];
-      localStorage.setItem(VIEWS_KEY, JSON.stringify(views));
-      return {
-        images,
-        order,
-        measures,
-        activeId,
-        selected: s.selected.filter((x) => x !== id),
-        compareSet: compareSet && compareSet.length >= 2 ? compareSet : null,
-        sbsPanes: sbsPanesPruned,
-        imageGroups,
-        views,
-        display,
-        history,
-        historyAt,
-        scaleBars,
-        tilts,
-        stackFrames,
-        roiStats,
-        savedRois,
-      };
-    });
-  },
+  // ── image-close teardown (viewerCloseImage.ts) ────────────────────────
+  ...createCloseAction(set),
 
   setView: (id, view) => {
     const views = { ...get().views, [id]: view };
@@ -476,53 +394,8 @@ export const useViewer = create<ViewerState>((set, get) => ({
 
   setFixedZoomDims: (fixedZoomW, fixedZoomH) => set({ fixedZoomW, fixedZoomH }),
 
-  setTheme: (choice) => {
-    const eff: Theme = choice === "system" ? systemTheme() : choice;
-    document.documentElement.setAttribute("data-theme", eff);
-    localStorage.setItem(THEME_KEY, choice); // remember the CHOICE, incl. "system"
-    writePref("theme", choice);
-    set({ theme: eff });
-  },
-
-  toggleTheme: () => {
-    // quick flip → an explicit dark/light choice (overrides "system")
-    get().setTheme(get().theme === "dark" ? "light" : "dark");
-  },
-
-  setAccent: (accent) => {
-    // accent is a tint: only --accent* (+ capture under amber) change, live
-    document.documentElement.setAttribute("data-accent", accent);
-    writePref("accent", accent);
-    set({ accent });
-  },
-
-  setDensity: (density) => {
-    document.documentElement.setAttribute("data-density", density);
-    writePref("density", density);
-    set({ density });
-  },
-
-  toggleLeft: () => set((s) => ({ leftCol: !s.leftCol })),
-  toggleRight: () => set((s) => ({ rightCol: !s.rightCol })),
-  toggleMinimap: () => set((s) => ({ minimap: !s.minimap })),
-  toggleColorbar: () => set((s) => ({ colorbar: !s.colorbar })),
-  setColorbarSide: (side) => {
-    writePref("colorbarSide", side);
-    set({ colorbarSide: side });
-  },
-  toggleScaleBar: () =>
-    set((s) => {
-      const scaleBarVisible = !s.scaleBarVisible;
-      writePref("scaleBarVisible", scaleBarVisible);
-      return { scaleBarVisible };
-    }),
-  setScaleBarVisible: (on) => {
-    writePref("scaleBarVisible", on);
-    set({ scaleBarVisible: on });
-  },
-  setCmdk: (cmdk) => set({ cmdk }),
-  setShorts: (shorts) => set({ shorts }),
-  setRadial: (radial) => set({ radial }),
+  // ── theme / accent / density / panel chrome (viewerChromeActions.ts) ──
+  ...createChromeActions(set, get),
 
   // one window per kind; opening an existing one refocuses it (§4)
   openTool: (kind) =>
