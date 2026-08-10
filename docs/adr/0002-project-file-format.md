@@ -121,6 +121,25 @@ already steps through (`frontend/src/lib/groups.ts`), extended with
 `primary_param` names which parameter is the independent variable, so
 "result vs parameter" plots and montage ordering need no per-use prompt.
 
+### 5a. When a reference resolves, the manifest wins
+
+Settled during implementation; the spec above did not say. For a resolved
+light-mode image, **only pixels come from disk** — `kind`, `axes` and
+`metadata` are taken from the manifest. So a pixel size recalibrated
+inside the app survives a light save and reload, instead of being
+silently reverted by whatever the file on disk still claims.
+
+A source that resolves but no longer matches (wrong shape, unreadable)
+degrades that image to an unavailable placeholder rather than raising, so
+one changed file cannot stop a project opening.
+
+`source` stays exactly what the schema says — the original absolute path
+at import, never overwritten and never used for resolution. A separate
+load-only `resolved_path` records where the pixels actually came from.
+Without that split, a project resolved via the project-dir fallback on a
+second machine would re-save with a stale `source`, compute no `rel`, and
+quietly embed a referenced image.
+
 ### 6. Validation and forward compatibility
 
 `manifest.json` is validated against the schema on **load**, failing
