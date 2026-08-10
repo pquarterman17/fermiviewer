@@ -1084,6 +1084,13 @@ describe("restore preserves every field of persisted types", () => {
       { x: 0.4, y: 0.1 },
       { x: 0.3, y: 0.5 },
     ],
+    holes: [
+      [
+        { x: 0.2, y: 0.2 },
+        { x: 0.25, y: 0.2 },
+        { x: 0.22, y: 0.25 },
+      ],
+    ],
     text: "grain A",
     color: "#00ccff",
     labelDx: 7,

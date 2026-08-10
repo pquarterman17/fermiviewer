@@ -121,6 +121,18 @@ export interface Measure {
   id: string;
   kind: MeasureKind;
   pts: { x: number; y: number }[];
+  /** Enclosed holes subtracted from this region's area (plan item 19).
+   *  Each inner array is one hole's closed ring, same normalized 0-1,
+   *  implicitly-closed convention as `pts`. Only meaningful for the
+   *  area-bearing kinds (polygon/lasso); absent or empty means "no
+   *  holes" and is byte-identical to pre-#19 behaviour — chosen over a
+   *  separate "hole" measure kind linked by geometric containment so a
+   *  single-ring region's area math never has to change shape to stay
+   *  correct (see lib/geometry.ts polygonStatsWithHoles). There is
+   *  currently no drawing gesture that populates this field — see
+   *  PROJECT_WORKFLOW_PLAN.md item 19's completion note for the
+   *  reachability gap and the schema change persistence would need. */
+  holes?: { x: number; y: number }[][];
   /** annotation caption (text / arrow / box kinds) */
   text?: string;
   /** per-item colour override (falls back to the overlay style) */

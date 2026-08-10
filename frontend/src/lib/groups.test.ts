@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  GROUP_PALETTE,
   groupAncestors,
   groupChildren,
+  groupColor,
   groupMembers,
   normalizeGroupParams,
   pruneGroups,
@@ -335,5 +337,36 @@ describe("resizePanes", () => {
 
   it("clamps to at least 1×1", () => {
     expect(resizePanes(panes, 0, 0)).toHaveLength(1);
+  });
+});
+
+describe("groupColor (#29, sample colour tags)", () => {
+  it("uses the group's own color when set", () => {
+    expect(groupColor({ id: "g1", color: "#123456" })).toBe("#123456");
+  });
+
+  it("falls back to a palette pick when color is absent", () => {
+    expect(GROUP_PALETTE).toContain(groupColor({ id: "g1" }));
+  });
+
+  it("falls back to a palette pick when color is null", () => {
+    expect(GROUP_PALETTE).toContain(groupColor({ id: "g1", color: null }));
+  });
+
+  it("is deterministic — same id always resolves to the same fallback colour", () => {
+    const a = groupColor({ id: "sample-42" });
+    const b = groupColor({ id: "sample-42" });
+    expect(a).toBe(b);
+  });
+
+  it("different ids can resolve to different palette entries", () => {
+    const colors = new Set(
+      ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"].map((id) =>
+        groupColor({ id }),
+      ),
+    );
+    // Not a strict pigeonhole guarantee, but 10 distinct ids over an
+    // 8-entry palette should not all collide onto one colour.
+    expect(colors.size).toBeGreaterThan(1);
   });
 });

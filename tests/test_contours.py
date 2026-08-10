@@ -12,7 +12,11 @@ import numpy as np
 import pytest
 from skimage.measure import find_contours
 
-from fermiviewer.calc.contours import NoContourError, trace_outer_contour
+from fermiviewer.calc.contours import (
+    NoContourError,
+    trace_outer_contour,
+    trace_region_with_holes,
+)
 
 pytestmark = pytest.mark.imaging
 
@@ -129,3 +133,68 @@ def test_empty_and_full_masks_raise_no_contour_error() -> None:
         trace_outer_contour(np.zeros((10, 10), dtype=bool))
     with pytest.raises(NoContourError):
         trace_outer_contour(np.ones((10, 10), dtype=bool))
+
+
+# ── trace_region_with_holes (plan item 19) ───────────────────────────────
+
+
+def test_holes_are_subtracted_from_the_net_area() -> None:
+    """Same mask as test_hole_is_not_subtracted_outer_boundary_only, but
+    through the item-19 function: unlike trace_outer_contour, the net
+    area here DOES reflect the missing 36 px."""
+    mask = _square(h=30, w=30, r0=5, r1=25, c0=5, c1=25)  # 20x20 = 400
+    hole = mask.copy()
+    hole[12:18, 12:18] = False  # 6x6 = 36-px hole punched in the middle
+    true_net_area = int(hole.sum())  # 400 - 36 = 364
+
+    contour = trace_region_with_holes(hole, tolerance=0.4)
+
+    assert len(contour.holes) == 1
+    assert contour.area_px == pytest.approx(true_net_area, rel=0.05)
+    # the outer ring itself must match the solid (hole-free) square's
+    # outer boundary exactly — punching an interior hole cannot move the
+    # outer boundary, and trace_outer_contour's own contract (pinned by
+    # test_hole_is_not_subtracted_outer_boundary_only) is unaffected by
+    # this function existing.
+    solid = trace_outer_contour(mask, tolerance=0.4)
+    np.testing.assert_array_equal(contour.points, solid.points)
+
+
+def test_no_holes_matches_trace_outer_contour_exactly() -> None:
+    """A hole-free mask nets out to the outer area with an empty holes
+    tuple — identical numbers to trace_outer_contour, just with the extra
+    (empty) field."""
+    mask = _square()
+    outer_only = trace_outer_contour(mask, tolerance=0.4)
+    with_holes = trace_region_with_holes(mask, tolerance=0.4)
+
+    assert with_holes.holes == ()
+    assert with_holes.area_px == pytest.approx(outer_only.area_px, rel=1e-9)
+    np.testing.assert_array_equal(with_holes.points, outer_only.points)
+
+
+def test_multiple_holes_are_all_subtracted() -> None:
+    h = w = 60
+    mask = np.zeros((h, w), dtype=bool)
+    mask[5:55, 5:55] = True  # 50x50 = 2500
+    mask[10:16, 10:16] = False  # 6x6 = 36
+    mask[40:48, 40:48] = False  # 8x8 = 64
+    true_net_area = int(mask.sum())  # 2500 - 36 - 64 = 2400
+
+    contour = trace_region_with_holes(mask, tolerance=0.4)
+
+    assert len(contour.holes) == 2
+    assert contour.area_px == pytest.approx(true_net_area, rel=0.05)
+
+
+def test_net_area_never_goes_negative() -> None:
+    """A hole occupying almost the entire outer ring (a thin 1px frame) is
+    the closest a real mask gets to the clamp's edge — area_px must still
+    land at a small non-negative number, never negative, regardless of
+    how tight the margin is."""
+    mask = _square(h=30, w=30, r0=5, r1=25, c0=5, c1=25)  # 20x20 = 400
+    hole = mask.copy()
+    hole[6:24, 6:24] = False  # 18x18 = 324, leaving a 1px frame
+    contour = trace_region_with_holes(hole, tolerance=0.4)
+    assert contour.area_px >= 0.0
+    assert contour.area_px == pytest.approx(int(hole.sum()), rel=0.2)
