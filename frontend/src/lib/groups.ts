@@ -229,3 +229,49 @@ export function resizePanes(
   }
   return out;
 }
+
+// ── sample/project colour tags (plan item 29) ───────────────────────────
+// `ImageGroup.color` has existed since #20 but nothing reads it yet — this
+// is the pure resolver a UI surface calls, not a UI change itself. Two of
+// this item's natural mount points (Filmstrip's SampleSection headers,
+// GroupsBar chips) live under components/Library/*, and the compare-pane
+// label bound to a group lives in SideBySideStage.tsx/CompareStage.tsx —
+// all off-limits on this branch (owned by other in-flight work). Wiring is
+// one line per site: a left-border or dot swatch styled
+// `{ backgroundColor: groupColor(group) }`.
+
+/** Small distinguishable palette for a sample/project with no explicit
+ *  `color` — the same 8 hues as the EDS overlay palette
+ *  (lib/elemental/elementColors.ts EDS_PALETTE) so a filmstrip full of
+ *  colour tags reads consistently with the rest of the app's colour
+ *  language, without importing across the elemental/ boundary for 8
+ *  literals. */
+export const GROUP_PALETTE: readonly string[] = [
+  "#f43f5e", // red
+  "#22c55e", // green
+  "#3b82f6", // blue
+  "#eab308", // yellow
+  "#a855f7", // purple
+  "#06b6d4", // cyan
+  "#f97316", // orange
+  "#ec4899", // pink
+];
+
+/** Deterministic (djb2) string hash — used only to pick a stable palette
+ *  index from a group id, nothing security-sensitive. Always >= 0. */
+function hashString(s: string): number {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return h >>> 0;
+}
+
+/** Display colour for a sample/project tag: the group's own `color` when
+ *  set, else a deterministic pick from `GROUP_PALETTE` keyed on `id` —
+ *  stable across reloads with no persistence needed, and never dependent
+ *  on group creation order (an index-into-palette-by-position scheme
+ *  would reshuffle every sample's colour whenever one was added or
+ *  removed elsewhere in the list). */
+export function groupColor(g: Pick<ImageGroup, "id" | "color">): string {
+  if (g.color) return g.color;
+  return GROUP_PALETTE[hashString(g.id) % GROUP_PALETTE.length];
+}

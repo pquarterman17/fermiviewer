@@ -58,6 +58,12 @@ class MontageTile(BaseModel):
     # parameter value into this string; this endpoint has no opinion on
     # sample/param modelling, only on tiling + a shared scale.
     label: str | None = None
+    # Plan item 29: a sample's params[primary_param].value (schema field
+    # `primary_param`, io/project_manifest.py), for ordering the panel as
+    # a trend rather than in creation/request order. The caller (frontend
+    # or a future "Montage samples" action) resolves the value; this
+    # endpoint only knows how to sort by it — see `_order_tiles`.
+    param_value: float | str | bool | None = None
 
 
 class MontageCompareRequest(BaseModel):
@@ -67,6 +73,34 @@ class MontageCompareRequest(BaseModel):
     bg: float = 0.0
     font_size: int = Field(default=14, ge=6, le=48)
     bar_color: str = "#ffffff"
+
+
+def _order_tiles(tiles: list[MontageTile]) -> list[MontageTile]:
+    """Stable-sort `tiles` ascending by `param_value` (plan item 29).
+
+    Only a genuinely numeric `param_value` (`int`/`float`, `bool`
+    EXCLUDED even though it is an `int` subclass — a sample flag is
+    categorical, not a point on an ordinal scale) participates in the
+    ordering. Every tile with a non-numeric or missing `param_value`
+    keeps its original relative order and is placed AFTER all the
+    numeric ones, so:
+
+      - a request where NO tile sets `param_value` is unchanged from
+        creation/request order (the pre-#29 behaviour) — every tile
+        falls into the "non-numeric" bucket, which is never reordered;
+      - a request mixing numeric and non-numeric values still produces a
+        usable trend for the tiles that have one, without crashing or
+        silently dropping the rest.
+    """
+
+    def is_numeric(tile: MontageTile) -> bool:
+        v = tile.param_value
+        return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+    numeric = [t for t in tiles if is_numeric(t)]
+    other = [t for t in tiles if not is_numeric(t)]
+    numeric.sort(key=lambda t: float(t.param_value))  # type: ignore[arg-type]
+    return numeric + other
 
 
 @router.post("/analyze/montage-compare")
@@ -82,9 +116,17 @@ def analyze_montage_compare(req: MontageCompareRequest) -> dict:
     calc.montage.montage_physical_scale) — every other tile is downsampled,
     never upsampled beyond its own real resolution.
 
+    Tiles are reordered ascending by `param_value` before tiling (plan
+    item 29), so a panel built from a sample series reads as a trend left-
+    to-right / top-to-bottom instead of in creation order — see
+    `_order_tiles` for the exact rule, including the non-numeric/missing
+    case. A request that never sets `param_value` tiles in request order,
+    unchanged from before this existed.
+
     Request
     -------
-    tiles     : [{"image_id": str, "label": str | null}], >= 1 entries.
+    tiles     : [{"image_id": str, "label": str | null,
+                  "param_value": float | str | bool | null}], >= 1 entries.
     cols      : grid columns; null -> ceil(sqrt(n)).
     gap, bg, font_size, bar_color : passed through to
                 calc.montage.montage_physical_scale.
@@ -98,11 +140,13 @@ def analyze_montage_compare(req: MontageCompareRequest) -> dict:
     if not req.tiles:
         raise HTTPException(422, "montage-compare: provide at least 1 tile")
 
+    ordered_tiles = _order_tiles(req.tiles)
+
     frames: list[np.ndarray] = []
     pixel_sizes: list[float] = []
     pixel_units: list[str] = []
     labels: list[str] = []
-    for tile in req.tiles:
+    for tile in ordered_tiles:
         ds, raster = _raster(tile.image_id)
         if not ds.pixel_cal.calibrated:
             raise HTTPException(
