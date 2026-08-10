@@ -33,6 +33,7 @@ import LayersOverlay from "./LayersOverlay";
 import MeasureOverlay from "./MeasureOverlay";
 import Minimap from "./Minimap";
 import ScaleBarOverlay from "./ScaleBarOverlay";
+import ScaleLockChip from "./ScaleLockChip";
 import ScribbleOverlay from "./ScribbleOverlay";
 import SpectrumProbeMarker from "./SpectrumProbeMarker";
 import { ScaleBarCtxMenu, type CtxTarget } from "./StageCtxMenu";
@@ -528,6 +529,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
             vp={vp}
             onNavigate={apply}
           />
+          <ScaleLockChip />
           <ZoomChip
             onZoom={(f) => {
               if (view && imgSize) {

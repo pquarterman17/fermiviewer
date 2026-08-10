@@ -21,6 +21,7 @@ export type IconName =
   | "hand"
   | "keyboard"
   | "list"
+  | "lock"
   | "moon"
   | "panel-left"
   | "panel-right"
@@ -44,7 +45,7 @@ export const ICON_NAMES: IconName[] = [
   "angle", "box-profile", "box-zoom", "check", "chevron-down", "chevron-left",
   "chevron-right", "close", "compare", "crop", "delete", "distance",
   "edit", "fixed-zoom", "flip-horizontal", "flip-vertical", "grid", "hand",
-  "keyboard", "list", "moon", "panel-left", "panel-right", "polyline",
+  "keyboard", "list", "lock", "moon", "panel-left", "panel-right", "polyline",
   "profile", "plus", "reset", "roi", "rotate-ccw", "rotate-cw", "ruler",
   "save-crop", "search", "settings", "sun", "workspace", "zoom-in", "zoom-out",
 ];
@@ -122,6 +123,8 @@ function glyph(name: IconName): ReactNode {
       return <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 5 5M7.5 10.5h6" />{name === "zoom-in" && <path d="M10.5 7.5v6" />}</>;
     case "list":
       return <><path d="M8 6h12M8 12h12M8 18h12" /><circle cx="4" cy="6" r=".7" fill="currentColor" /><circle cx="4" cy="12" r=".7" fill="currentColor" /><circle cx="4" cy="18" r=".7" fill="currentColor" /></>;
+    case "lock":
+      return <><rect x="5" y="11" width="14" height="9" rx="1.5" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>;
     case "grid":
     case "workspace":
       return <><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><rect x="14" y="14" width="6" height="6" rx="1" /></>;
