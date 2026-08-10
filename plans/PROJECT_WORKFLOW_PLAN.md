@@ -260,10 +260,7 @@ size — same µm per screen px across consecutive frames and across panes.
    Model: sonnet · Parallel: NO — shares useStagePointers.ts with 14 and
    SideBySideStage.tsx with 26
 
-10. **Lock affordance** — toggle + µm/px readout in StageChrome /
-    FloatTools; double-click-to-fit re-seeds the lock rather than
-    silently breaking it (wording per gate G5).
-    Model: sonnet · Parallel: yes (after 8)
+10. ~~**Lock affordance**~~ — shipped 2026-08-09, see Completed
 
 ### Tier 2 — Medium Impact
 
@@ -452,6 +449,19 @@ lands.
 
 ## Completed
 
+- ~~**#10 Lock affordance — makes the browsing fix REACHABLE**~~ (2026-08-09,
+  PR #136) — new `Stage/ScaleLockChip.tsx` (102), 7 tests; Stage.tsx 582 → 584
+  against its 617 cap because the chip reads the store itself rather than
+  threading props, so the Stage diff is two lines. Until this landed, item 8's
+  resolver was correct but unreachable: `browseScale.locked` started false and
+  nothing could set it, so the 92× scale jump was still happening. Readout is
+  `1.76 µm/px` — 3 significant figures, unit from the image's `pixel_unit`,
+  never hardcoded. Enabling seeds from the active image's current physical
+  scale so it is visually a no-op. An uncalibrated image disables the toggle
+  and says why, rather than silently doing nothing — which matters because 3
+  of the 5 real Helios corpus files are uncalibrated. Follows FloatTools'
+  disabled convention, including putting the tooltip on the wrapper since a
+  disabled button swallows pointer events.
 - ~~**#15 Region table + CSV — THE AREA DELIVERABLE**~~ (2026-08-09, PR #135)
   — new pure `lib/regionTable.ts` (158) + `Inspector/RegionsCard.tsx` (134),
   27 tests. This is the point where a measured area actually leaves the app:
