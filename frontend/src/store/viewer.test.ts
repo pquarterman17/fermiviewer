@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { loadWorkspaceNamed as apiLoadWorkspaceNamed } from "../lib/api";
 import type { ImageMeta } from "../lib/api";
+import type { ImageGroup } from "../lib/groups";
+import type { Measure } from "./viewerTypes";
 import { useViewer } from "./viewer";
 
 // closeImage awaits a network DELETE — stub it so the cleanup logic runs
@@ -1010,5 +1012,76 @@ describe("groups + grid persistence round-trip", () => {
     expect(s.sbsRows).toBe(1);
     expect(s.sbsCols).toBe(2);
     expect(s.sbsPanes).toHaveLength(2);
+  });
+});
+
+// ── field-loss guards on the restore path ────────────────────────────
+//
+// These exist because a GREEN suite missed a real bug: session restore
+// rebuilt each group from a three-field whitelist
+// (`{id, name, ids}`), so `params`, `parent` and `color` were silently
+// dropped on every load — which would have destroyed sample parameters on
+// the first save/load cycle. The type checker cannot see that, because
+// rebuilding a type from named fields is always "valid".
+//
+// `satisfies Required<T>` is what makes these future-proof rather than a
+// one-off regression test: add an optional field to ImageGroup or Measure
+// and THIS FILE STOPS COMPILING until the fixture populates it — at which
+// point the round-trip below covers the new field for free.
+describe("restore preserves every field of persisted types", () => {
+  const FULL_GROUP = {
+    id: "gFull",
+    name: "400C",
+    ids: ["x"],
+    parent: "gParent",
+    params: { anneal_temp: { value: 400, unit: "degC" } },
+    color: "#ff8800",
+  } satisfies Required<ImageGroup>;
+
+  const FULL_MEASURE = {
+    id: "mFull",
+    kind: "polygon",
+    pts: [
+      { x: 0.1, y: 0.1 },
+      { x: 0.4, y: 0.1 },
+      { x: 0.3, y: 0.5 },
+    ],
+    text: "grain A",
+    color: "#00ccff",
+    labelDx: 7,
+    labelDy: -3,
+    endSymbol: "cross",
+    width: 5,
+    fontSize: 18,
+  } satisfies Required<Measure>;
+
+  beforeEach(() => {
+    vi.mocked(apiLoadWorkspaceNamed).mockResolvedValueOnce({
+      images: [meta("x")],
+      client_state: {
+        order: ["x"],
+        activeId: "x",
+        imageGroups: [{ id: "gParent", name: "study", ids: ["x"] }, FULL_GROUP],
+        measures: { x: [FULL_MEASURE] },
+      },
+      name: "saved",
+    } as unknown as Awaited<ReturnType<typeof apiLoadWorkspaceNamed>>);
+  });
+
+  it("keeps every ImageGroup field, including ones it does not interpret", async () => {
+    await useViewer.getState().loadWorkspaceNamed("saved");
+    const g = useViewer.getState().imageGroups.find((x) => x.id === "gFull");
+    expect(g).toBeDefined();
+    // deep-equal, not field-by-field: a whitelist rebuild fails here even if
+    // whoever added the field never thought to assert on it
+    expect(g).toEqual(FULL_GROUP);
+    expect(Object.keys(g!).sort()).toEqual(Object.keys(FULL_GROUP).sort());
+  });
+
+  it("keeps every Measure field across a restore", async () => {
+    await useViewer.getState().loadWorkspaceNamed("saved");
+    const m = useViewer.getState().measures.x?.[0];
+    expect(m).toEqual(FULL_MEASURE);
+    expect(Object.keys(m!).sort()).toEqual(Object.keys(FULL_MEASURE).sort());
   });
 });

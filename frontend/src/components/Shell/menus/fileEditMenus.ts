@@ -1,5 +1,6 @@
 // File + Edit menu builders, split out of MenuBar.tsx (repo-health #33).
 // Entries moved verbatim; only `store`/helper references now come from ctx.
+import { ANNOTATION_KINDS, MEASUREMENT_KINDS } from "../../../lib/measureKinds";
 import {
   exportBatch,
   exportFigure,
@@ -297,16 +298,7 @@ export function buildEditMenu(ctx: MenuCtx): Entry[] {
         (store.measures[store.activeId ?? ""] ?? []).length === 0,
       action: () => {
         if (store.activeId) {
-          store.clearMeasures(store.activeId, [
-            "distance",
-            "profile",
-            "angle",
-            "roi",
-            "ellipse",
-            "polyline",
-            "polygon",
-            "lasso",
-          ]);
+          store.clearMeasures(store.activeId, [...MEASUREMENT_KINDS]);
           store.setStatus("measurements cleared (undoable)");
         }
       },
@@ -318,12 +310,7 @@ export function buildEditMenu(ctx: MenuCtx): Entry[] {
         (store.measures[store.activeId ?? ""] ?? []).length === 0,
       action: () => {
         if (store.activeId) {
-          store.clearMeasures(store.activeId, [
-            "text",
-            "arrow",
-            "box",
-            "circle",
-          ]);
+          store.clearMeasures(store.activeId, [...ANNOTATION_KINDS]);
           store.setStatus("annotations cleared (undoable)");
         }
       },
