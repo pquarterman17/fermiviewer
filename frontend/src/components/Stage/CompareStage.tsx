@@ -9,12 +9,14 @@ import { useEffect, useRef, useState } from "react";
 import { GLRenderer } from "../../gl/render";
 import { fetchData16 } from "../../lib/api";
 import { buildLut } from "../../lib/colormaps";
-import { fitView, zoomAbout, type Size } from "../../lib/geometry";
+import { resolveScaleView, zoomAbout, type Size } from "../../lib/geometry";
+import { useBrowseScale } from "../../store/browseScale";
 import {
   DEFAULT_DISPLAY,
   useViewer,
   type View,
 } from "../../store/viewer";
+import { runFitAndReseed } from "./stageScaleLock";
 
 const WHEEL_K = 0.0015;
 
@@ -25,18 +27,28 @@ export default function CompareStage() {
   const compareAB = useViewer((s) => s.compareAB);
   const images = useViewer((s) => s.images);
   const exitCompare = useViewer((s) => s.exitCompare);
+  const scaleLocked = useBrowseScale((s) => s.locked);
+  const lockedScale = useBrowseScale((s) => s.scale);
 
   const [view, setView] = useState<View | null>(null);
   const [vp, setVp] = useState<Size>({ w: 0, h: 0 });
   const [tick, setTick] = useState(0);
 
   const first = images[compareSet[0]];
+  const pixelSize = first?.pixel_size ?? null;
   // raster dims from meta ([h, w] or [h, w, ch] for SI cubes)
   const img: Size = first
     ? { w: first.shape[1] ?? 1, h: first.shape[0] ?? 1 }
     : { w: 1, h: 1 };
 
-  const effView = view ?? fitView(img, vp);
+  // #9: honour the browse-scale lock the same way Stage.tsx does, so
+  // entering compare on a differently-calibrated series doesn't jump scale
+  const effView =
+    view ??
+    resolveScaleView(scaleLocked ? lockedScale : null, pixelSize, img, vp, {
+      px: 0.5,
+      py: 0.5,
+    });
 
   // flicker cycle — restarts when mode or interval changes
   useEffect(() => {
@@ -89,6 +101,7 @@ export default function CompareStage() {
           view={effView}
           setView={setView}
           img={img}
+          pixelSize={pixelSize}
           stacked={stacked}
           blend={compareMode === "subtract" && i > 0}
           hidden={compareMode === "flicker" && i !== visibleIdx}
@@ -119,6 +132,7 @@ function ComparePanel({
   view,
   setView,
   img,
+  pixelSize,
   stacked,
   blend,
   hidden,
@@ -129,6 +143,7 @@ function ComparePanel({
   view: View;
   setView: (v: View) => void;
   img: Size;
+  pixelSize: number | null;
   stacked: boolean;
   blend: boolean;
   hidden: boolean;
@@ -136,6 +151,8 @@ function ComparePanel({
 }) {
   const display = useViewer((s) => s.display[id] ?? DEFAULT_DISPLAY);
   const setStatus = useViewer((s) => s.setStatus);
+  const scaleLocked = useBrowseScale((s) => s.locked);
+  const reseedScale = useBrowseScale((s) => s.reseed);
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -249,7 +266,9 @@ function ComparePanel({
     e.currentTarget.releasePointerCapture(e.pointerId);
   };
 
-  const onDoubleClick = () => setView(fitView(img, vp));
+  // #9: fit-to-window also re-seeds the browse-scale lock (Stage.tsx parity)
+  const onDoubleClick = () =>
+    runFitAndReseed(img, vp, pixelSize, scaleLocked, setView, reseedScale);
 
   const cls = [
     "fvd-compare-panel",

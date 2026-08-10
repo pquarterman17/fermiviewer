@@ -62,3 +62,24 @@ export function fitAndReseedScale(
     reseedTo: locked && calibrated ? physicalScale(view, pixelSize) : null,
   };
 }
+
+/** Runs one fit-and-reseed cycle: computes the fitted view via
+ *  fitAndReseedScale, applies it, then reseeds the lock only when the fit
+ *  produced one (never on an uncalibrated image or while unlocked). Every
+ *  double-click-to-fit call site outside Stage.tsx (which inlines the same
+ *  two lines in its imperative `fit()`) — CompareStage.tsx,
+ *  SideBySideStage.tsx, useStagePointers.ts's onDoubleClick (item 9's
+ *  booked defect) — shares this so the sequencing can't drift between
+ *  them. */
+export function runFitAndReseed(
+  imgSize: Size,
+  vp: Size,
+  pixelSize: number | null,
+  locked: boolean,
+  applyView: (v: View) => void,
+  reseedScale: (scale: number) => void,
+): void {
+  const { view, reseedTo } = fitAndReseedScale(imgSize, vp, pixelSize, locked);
+  applyView(view);
+  if (reseedTo != null) reseedScale(reseedTo);
+}

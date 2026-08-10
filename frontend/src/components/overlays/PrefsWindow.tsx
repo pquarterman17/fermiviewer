@@ -142,6 +142,7 @@ export default function PrefsWindow() {
       autoHiPct: hi,
       inspectorGrid: Math.min(15, Math.max(3, Math.round(p.inspectorGrid))) | 1,
       profileWidth: Math.min(99, Math.max(1, Math.round(p.profileWidth))),
+      lassoSimplifyPx: Math.min(20, Math.max(0.5, p.lassoSimplifyPx)),
       scaleBarFontSize: Math.min(48, Math.max(8, Math.round(p.scaleBarFontSize))),
       exportScale: Math.min(4, Math.max(1, Math.round(p.exportScale))),
       fixedZoomW: Math.max(1, Math.round(p.fixedZoomW)),
@@ -300,6 +301,9 @@ export default function PrefsWindow() {
                 </Row>
                 <Row label="Profile reduction">
                   <Seg value={p.profileReduce} options={REDUCE_OPTS} onChange={(v) => set("profileReduce", v)} />
+                </Row>
+                <Row label="Lasso simplify (px)" hint="freehand capture point-spacing tolerance; higher = fewer points">
+                  <Num value={p.lassoSimplifyPx} min={0.5} max={20} step={0.5} onChange={(v) => set("lassoSimplifyPx", v)} />
                 </Row>
                 <Row label="Show scale bar">
                   <Toggle checked={p.scaleBarVisible} onChange={(v) => set("scaleBarVisible", v)} />

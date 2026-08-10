@@ -4,10 +4,14 @@
 // lib/geometry.test.ts; these tests exercise the exact call shape
 // Stage.tsx uses, so a regression here means Stage itself would jump.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { fitView, physicalScale } from "../../lib/geometry";
-import { defaultStageView, fitAndReseedScale } from "./stageScaleLock";
+import {
+  defaultStageView,
+  fitAndReseedScale,
+  runFitAndReseed,
+} from "./stageScaleLock";
 
 const vp = { w: 400, h: 300 };
 
@@ -105,5 +109,41 @@ describe("fitAndReseedScale", () => {
   it("not locked → never reseeds, even when calibrated", () => {
     const img = { w: 640, h: 480 };
     expect(fitAndReseedScale(img, vp, 3, false).reseedTo).toBeNull();
+  });
+});
+
+// #9's carried-over defect: double-click-to-fit on CompareStage.tsx,
+// SideBySideStage.tsx and useStagePointers.ts must re-seed the browse-scale
+// lock exactly like Stage.tsx's imperative fit() does. runFitAndReseed is
+// the one place all three now share that sequencing.
+describe("runFitAndReseed (double-click-to-fit re-seeds the lock — item 9)", () => {
+  it("always applies the fitted view", () => {
+    const img = { w: 640, h: 480 };
+    const applyView = vi.fn();
+    const reseedScale = vi.fn();
+    runFitAndReseed(img, vp, 2, true, applyView, reseedScale);
+    expect(applyView).toHaveBeenCalledWith(fitView(img, vp));
+  });
+
+  it("locked + calibrated: reseeds to the fitted view's own physical scale", () => {
+    const img = { w: 640, h: 480 };
+    const pixelSize = 3;
+    const applyView = vi.fn();
+    const reseedScale = vi.fn();
+    runFitAndReseed(img, vp, pixelSize, true, applyView, reseedScale);
+    const [fitted] = applyView.mock.calls[0] as [ReturnType<typeof fitView>];
+    expect(reseedScale).toHaveBeenCalledWith(physicalScale(fitted, pixelSize));
+  });
+
+  it("unlocked or uncalibrated: applies the view but never reseeds", () => {
+    const img = { w: 640, h: 480 };
+    const applyView = vi.fn();
+    const reseedScale = vi.fn();
+    runFitAndReseed(img, vp, 3, false, applyView, reseedScale);
+    expect(applyView).toHaveBeenCalled();
+    expect(reseedScale).not.toHaveBeenCalled();
+
+    runFitAndReseed(img, vp, null, true, applyView, reseedScale);
+    expect(reseedScale).not.toHaveBeenCalled();
   });
 });

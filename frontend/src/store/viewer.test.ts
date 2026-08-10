@@ -1013,6 +1013,90 @@ describe("named image groups", () => {
   });
 });
 
+// #26: sample stepping — pane i ← sampleIds[i], matched to one shared
+// member index so arrow keys/◀▶ walk equivalent frames across samples.
+describe("startSampleCompare (cross-sample stepping — item 26)", () => {
+  beforeEach(() => {
+    useViewer.setState(initialState, true);
+    // two "samples" of 3 frames each, deliberately misaligned in `order`
+    // so a correct implementation must key off each sample's OWN member
+    // list, not a shared position in `order`.
+    useViewer
+      .getState()
+      .ingest([
+        meta("a1"),
+        meta("b1"),
+        meta("a2"),
+        meta("b2"),
+        meta("a3"),
+        meta("b3"),
+      ]);
+    useViewer.getState().createGroup(["a1", "a2", "a3"], "Sample A");
+    useViewer.getState().createGroup(["b1", "b2", "b3"], "Sample B");
+  });
+
+  const byName = (n: string) =>
+    useViewer.getState().imageGroups.find((g) => g.name === n)!;
+
+  it("seeds pane i from sample i, both at frame 0, and enters sidebyside", () => {
+    const sA = byName("Sample A").id;
+    const sB = byName("Sample B").id;
+    useViewer.getState().setActive("a1"); // matched index 0
+    useViewer.getState().startSampleCompare([sA, sB]);
+    const s = useViewer.getState();
+    expect(s.compareMode).toBe("sidebyside");
+    expect(s.sbsRows).toBe(1);
+    expect(s.sbsCols).toBe(2);
+    expect(s.sbsPanes.map((p) => p.groupId)).toEqual([sA, sB]);
+    expect(s.sbsPanes.map((p) => p.imageId)).toEqual(["a1", "b1"]);
+  });
+
+  it("matches every pane to the ACTIVE image's index within its own sample", () => {
+    const sA = byName("Sample A").id;
+    const sB = byName("Sample B").id;
+    useViewer.getState().setActive("a2"); // index 1 within Sample A
+    useViewer.getState().startSampleCompare([sA, sB]);
+    // Sample B has no "a2" — the matched index (1) still applies to it
+    expect(useViewer.getState().sbsPanes.map((p) => p.imageId)).toEqual([
+      "a2",
+      "b2",
+    ]);
+  });
+
+  it("stepping a pane afterward stays within its own bound sample", () => {
+    const sA = byName("Sample A").id;
+    const sB = byName("Sample B").id;
+    useViewer.getState().setActive("a1"); // matched index 0
+    useViewer.getState().startSampleCompare([sA, sB]);
+    useViewer.getState().stepPane(0, 1); // a1 → a2, pane 1 frozen
+    const s = useViewer.getState();
+    expect(s.sbsPanes[0].imageId).toBe("a2");
+    expect(s.sbsPanes[1].imageId).toBe("b1");
+  });
+
+  it("clamps to the shorter sample's last frame when lengths differ", () => {
+    useViewer.getState().createGroup(["b1"], "Short B");
+    const sA = byName("Sample A").id;
+    const sShort = byName("Short B").id;
+    useViewer.getState().setActive("a3"); // index 2 within Sample A
+    useViewer.getState().startSampleCompare([sA, sShort]);
+    expect(useViewer.getState().sbsPanes.map((p) => p.imageId)).toEqual([
+      "a3",
+      "b1", // Short B only has index 0
+    ]);
+  });
+
+  it("needs >=2 resolvable sample ids (no-op with 1, or an unknown id)", () => {
+    const sA = byName("Sample A").id;
+    useViewer.getState().startSampleCompare([sA]);
+    expect(useViewer.getState().compareMode).not.toBe("sidebyside");
+    expect(useViewer.getState().status).toMatch(/at least 2 samples/);
+
+    useViewer.getState().startSampleCompare([sA, "ghost"]);
+    expect(useViewer.getState().compareMode).not.toBe("sidebyside");
+  });
+});
+
 describe("groups + grid persistence round-trip", () => {
   it("restores groups + pane bindings + grid shape on load, pruning stale refs", async () => {
     // a saved session whose payload references one image that didn't load
