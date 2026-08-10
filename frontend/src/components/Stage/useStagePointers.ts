@@ -5,14 +5,19 @@
 // Stage.tsx builds the ctx and calls this hook every render (matching how
 // these handlers were already recreated each render as plain consts, same
 // pattern as the stageFinalizers.ts split).
+//
+// The gesture RULES no longer live here (MAIN_PLAN item 1): each "given the
+// mode, the point and the pending capture, what should happen?" branch is a
+// pure function in pointerDecisions.ts returning a described action, and the
+// grain-map click mode is in stageGrainEdit.ts. What is left needs the
+// closure — refs, pointer capture, applying an action to state.
 
 import { useRef, type RefObject } from "react";
 
-import { applyFilter, grainsEdit } from "../../lib/api";
+import { applyFilter } from "../../lib/api";
 import { screenToImage, viewForRect, type Size } from "../../lib/geometry";
 import { loadPrefs } from "../../lib/prefs";
 import { useBrowseScale } from "../../store/browseScale";
-import { replaceCrossSectionGrainsAfterEdit } from "../../store/crossSection";
 import {
   useViewer,
   type CaptureMode,
@@ -20,15 +25,37 @@ import {
   type View,
 } from "../../store/viewer";
 import {
+  clickCaptureAction,
+  cropRectFromPoints,
+  fixedZoomCorners,
+  imagePointToPixel,
+  measuresInRect,
+  pendingAfterMove,
+  polyFinishAction,
+  spansMinRegion,
+  type CaptureAction,
+  type PendingMeasure,
+} from "./pointerDecisions";
+import {
   appendLassoPoint,
   finishLasso,
-  nearFirstVertex,
   startLasso,
   type LassoCapture,
 } from "./regionCapture";
+import { grainClickAction, runGrainEdit } from "./stageGrainEdit";
 import { runFitAndReseed } from "./stageScaleLock";
 import { buildCtxTarget, type CtxTarget } from "./StageCtxMenu";
-import { CLICKS, snapHV, type Pt } from "./stageUtils";
+import { CLICKS, type Pt } from "./stageUtils";
+
+/** Release pointer capture, tolerating a capture the browser has already
+ *  dropped — the guarded form every early return in onPointerUp needs. */
+function releaseCapture(e: React.PointerEvent) {
+  try {
+    e.currentTarget.releasePointerCapture(e.pointerId);
+  } catch {
+    // capture may already be gone; ignore
+  }
+}
 
 export interface StagePointersCtx {
   // refs (stable identity; mutated directly, not via setState)
@@ -51,7 +78,7 @@ export interface StagePointersCtx {
   isGrainMap: boolean;
   fixedZoomW: number;
   fixedZoomH: number;
-  pending: { kind: Measure["kind"]; pts: Pt[] } | null;
+  pending: PendingMeasure | null;
   marquee: { a: Pt; b: Pt } | null;
   grainPending: Pt | null;
 
@@ -62,7 +89,7 @@ export interface StagePointersCtx {
   setCursor: (p: Pt | null) => void;
   setSpecnavPixel: (pixel: [number, number]) => void;
   setMarquee: (m: { a: Pt; b: Pt } | null) => void;
-  setPending: (p: { kind: Measure["kind"]; pts: Pt[] } | null) => void;
+  setPending: (p: PendingMeasure | null) => void;
   setGrainPending: (p: Pt | null) => void;
   setStageCtx: (target: CtxTarget | null) => void;
   startStroke: (pt: [number, number]) => void;
@@ -130,52 +157,17 @@ export function useStagePointers(ctx: StagePointersCtx) {
       y: Math.min(imgSize!.h, Math.max(0, ip.y)),
     };
   };
-
-  // image-space point → 1-based [row, col] pixel, clamped to the image (#10)
-  const pixelAt = (ip: Pt): [number, number] => [
-    Math.min(imgSize!.h, Math.max(1, Math.floor(ip.y) + 1)),
-    Math.min(imgSize!.w, Math.max(1, Math.floor(ip.x) + 1)),
-  ];
-
-  const runGrainEdit = (op: "merge" | "split", points: [number, number][]) => {
-    if (!activeId) return;
-    const startId = activeId;
-    setStatus(op === "merge" ? "merging grains…" : "splitting grain…");
-    grainsEdit(startId, op, points)
-      .then((r) => {
-        const s = useViewer.getState();
-        s.ingestDerived([r.labels]);
-        replaceCrossSectionGrainsAfterEdit(r);
-        if (s.activeId === startId) s.setActive(r.labels.id);
-        setStatus(
-          `${r.n_grains} grains` +
-            (r.astm_grain_size != null
-              ? ` · ASTM G ${r.astm_grain_size.toFixed(1)}`
-              : ""),
-        );
-      })
-      .catch((e: Error) => setStatus(`grain edit: ${e.message}`));
-  };
-
-  const handleGrainClick = (ip: Pt) => {
-    if (!imgSize) return;
-    // snap to a valid 0-based pixel index; a click at the exact w/h edge
-    // would otherwise be out of bounds server-side (→ 422 on a real click)
-    const cp = {
-      x: Math.min(imgSize.w - 1, Math.max(0, Math.floor(ip.x))),
-      y: Math.min(imgSize.h - 1, Math.max(0, Math.floor(ip.y))),
-    };
-    if (grainMode === "split") {
-      runGrainEdit("split", [[cp.x, cp.y]]);
-    } else if (grainPending) {
-      runGrainEdit("merge", [
-        [grainPending.x, grainPending.y],
-        [cp.x, cp.y],
-      ]);
-      setGrainPending(null);
-    } else {
-      setGrainPending(cp);
+  // Apply one decided CaptureAction (pointerDecisions.ts). The finalizers
+  // clear captureMode themselves, so only the cancel path resets it here.
+  const runCaptureAction = (act: CaptureAction) => {
+    if (act.kind === "pending") {
+      setPending(act.pending);
+      return;
     }
+    if (act.kind === "measure") finalizeMeasure(act.measure, act.pts);
+    else if (act.kind === "calibration") finalizeCalibration(act.pts);
+    else setCaptureMode("none");
+    setPending(null);
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -203,17 +195,20 @@ export function useStagePointers(ctx: StagePointersCtx) {
 
     // grain editor intercepts plain clicks on a grain-label map
     if (grainMode !== "off" && isGrainMap) {
-      handleGrainClick(toImage(p));
+      const ip = toImage(p);
+      const act = grainClickAction(ip, imgSize, grainMode, grainPending);
+      if (act.kind === "pick") setGrainPending(act.at);
+      else {
+        runGrainEdit(activeId, act.op, act.points, setStatus);
+        // the second click of a merge consumes the remembered first pick
+        if (act.op === "merge") setGrainPending(null);
+      }
       return;
     }
 
     if (captureMode === "fixed-zoom" && imgSize) {
       // A2: click places a fixed W×H box centred at the cursor, then zooms
-      const ip = toImage(p);
-      const hw = fixedZoomW / 2;
-      const hh = fixedZoomH / 2;
-      const a = { x: ip.x - hw, y: ip.y - hh };
-      const b = { x: ip.x + hw, y: ip.y + hh };
+      const [a, b] = fixedZoomCorners(toImage(p), fixedZoomW, fixedZoomH);
       apply(viewForRect(a, b, imgSize, vp));
       setCaptureMode("none");
       return;
@@ -222,7 +217,7 @@ export function useStagePointers(ctx: StagePointersCtx) {
     // #10 specnav: click (or drag) the main image → publish the picked 1-based
     // pixel; the open EELS/EDS workshop watches it and refreshes its spectrum.
     if (captureMode === "specnav" && imgSize) {
-      setSpecnavPixel(pixelAt(toImage(p)));
+      setSpecnavPixel(imagePointToPixel(toImage(p), imgSize));
       specnavRef.current = true;
       e.currentTarget.setPointerCapture(e.pointerId);
       return;
@@ -240,47 +235,17 @@ export function useStagePointers(ctx: StagePointersCtx) {
     } else if (captureMode === "lasso") {
       // freehand region: pointermove appends points while the button is
       // held (onPointerMove below, via regionCapture.ts) — no click
-      // accumulation, unlike polygon just below.
+      // accumulation, unlike the click-counted modes just below.
       const ip = toImage(p);
       lassoTolRef.current = loadPrefs().lassoSimplifyPx;
       lassoRef.current = startLasso(ip);
       setPending({ kind: "lasso", pts: [ip] });
       e.currentTarget.setPointerCapture(e.pointerId);
     } else if (captureMode in CLICKS) {
-      let ip = toImage(p);
-      const need = CLICKS[captureMode];
-      const cur = pending?.pts ?? [];
-      // calibration line snaps H/V (Shift = free) so a flat bar traces cleanly
-      if (captureMode === "calibrate" && cur.length >= 1) {
-        ip = snapHV(cur[0], ip, e.shiftKey);
-      }
-      // polygon closes on a click back near its first vertex — the other
-      // finish gesture, alongside double-click (onDoubleClick below)
-      if (
-        captureMode === "polygon" &&
-        pending &&
-        nearFirstVertex(cur.slice(0, -1), ip, 8 / view.z)
-      ) {
-        finalizeMeasure("polygon", cur.slice(0, -1));
-        setPending(null);
-        return;
-      }
-      // replace the live cursor point with the committed click
-      const committed = pending ? [...cur.slice(0, -1), ip] : [ip];
-      if (committed.length >= need) {
-        if (captureMode === "calibrate") finalizeCalibration(committed);
-        else finalizeMeasure(captureMode as Measure["kind"], committed);
-        setPending(null);
-      } else {
-        setPending({
-          // preview the calibration line as a plain distance line
-          kind:
-            captureMode === "calibrate"
-              ? "distance"
-              : (captureMode as Measure["kind"]),
-          pts: [...committed, ip],
-        });
-      }
+      const ip = toImage(p);
+      runCaptureAction(
+        clickCaptureAction(captureMode, pending, ip, e.shiftKey, view.z),
+      );
     }
   };
 
@@ -299,7 +264,7 @@ export function useStagePointers(ctx: StagePointersCtx) {
     }
     // specnav drag: keep publishing the pixel under the cursor (#10)
     if (specnavRef.current && view && imgSize) {
-      setSpecnavPixel(pixelAt(toImage(p)));
+      setSpecnavPixel(imagePointToPixel(toImage(p), imgSize));
       return;
     }
     if (dragRef.current && view && imgSize) {
@@ -323,45 +288,27 @@ export function useStagePointers(ctx: StagePointersCtx) {
     } else if (marquee) {
       setMarquee({ a: marquee.a, b: p });
     } else if (pending && view && imgSize) {
-      let ip = toImage(p);
-      if (captureMode === "calibrate" && pending.pts.length >= 1) {
-        ip = snapHV(pending.pts[0], ip, e.shiftKey);
-      }
-      setPending({
-        kind: pending.kind,
-        pts: [...pending.pts.slice(0, -1), ip],
-      });
+      const ip = toImage(p);
+      setPending(pendingAfterMove(pending, captureMode, ip, e.shiftKey));
     }
   };
 
   const onPointerUp = (e: React.PointerEvent) => {
     if (paintingRef.current) {
       paintingRef.current = false;
-      try {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      } catch {
-        // capture may already be gone; ignore
-      }
+      releaseCapture(e);
       return;
     }
     if (specnavRef.current) {
       specnavRef.current = false;
-      try {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      } catch {
-        // capture may already be gone; ignore
-      }
+      releaseCapture(e);
       return;
     }
     if (lassoRef.current) {
       const cap = lassoRef.current;
       lassoRef.current = null;
       setPending(null);
-      try {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      } catch {
-        // capture may already be gone; ignore
-      }
+      releaseCapture(e);
       if (captureMode === "lasso") {
         const pts = finishLasso(cap);
         if (pts) finalizeMeasure("lasso", pts);
@@ -375,36 +322,22 @@ export function useStagePointers(ctx: StagePointersCtx) {
     } else if (marquee && view && imgSize) {
       const a = screenToImage(marquee.a.x, marquee.a.y, view, imgSize, vp);
       const b = screenToImage(marquee.b.x, marquee.b.y, view, imgSize, vp);
+      // ia/ib are the same corners CLAMPED into the image; a/b stay raw for
+      // the min-span test and the zoom rect, exactly as before the split
+      const ia = toImage(marquee.a);
+      const ib = toImage(marquee.b);
       if (captureMode === "roi" || captureMode === "ellipse") {
-        const w = Math.abs(b.x - a.x);
-        const h = Math.abs(b.y - a.y);
-        if (w >= 2 && h >= 2) {
-          finalizeMeasure(captureMode, [
-            toImage(marquee.a),
-            toImage(marquee.b),
-          ]);
-        } else {
-          setCaptureMode("none");
-        }
+        if (spansMinRegion(a, b)) finalizeMeasure(captureMode, [ia, ib]);
+        else setCaptureMode("none");
       } else if (captureMode === "box-profile") {
-        finalizeBoxProfile(toImage(marquee.a), toImage(marquee.b));
+        finalizeBoxProfile(ia, ib);
       } else if (captureMode === "crop-save") {
         // Save Cropped Region (audit #16): drag a box → register the cropped
         // area as a new derived image (same as Crop to ROI but marquee-driven
         // and does NOT navigate away — the original stays active).
-        const ia = toImage(marquee.a);
-        const ib = toImage(marquee.b);
-        const w2 = Math.abs(ib.x - ia.x);
-        const h2 = Math.abs(ib.y - ia.y);
-        if (w2 >= 2 && h2 >= 2 && activeId && imgSize) {
-          const px = (v: number, n: number) =>
-            Math.min(n, Math.max(1, Math.round(v + 0.5)));
-          applyFilter(activeId, "crop", {
-            row0: px(Math.min(ia.y, ib.y), imgSize.h),
-            col0: px(Math.min(ia.x, ib.x), imgSize.w),
-            row1: px(Math.max(ia.y, ib.y), imgSize.h),
-            col1: px(Math.max(ia.x, ib.x), imgSize.w),
-          })
+        const rect = cropRectFromPoints(ia, ib, imgSize);
+        if (rect && activeId) {
+          applyFilter(activeId, "crop", rect)
             .then((m) => {
               useViewer.getState().ingestDerived([m]);
               setStatus(`cropped region saved → ${m.name}`);
@@ -415,17 +348,12 @@ export function useStagePointers(ctx: StagePointersCtx) {
       } else if (captureMode === "none") {
         // shift-drag marquee: select every measure with a point inside
         const s = useViewer.getState();
-        const x0 = Math.min(a.x, b.x) / imgSize.w;
-        const x1 = Math.max(a.x, b.x) / imgSize.w;
-        const y0 = Math.min(a.y, b.y) / imgSize.h;
-        const y1 = Math.max(a.y, b.y) / imgSize.h;
-        const hits = (s.measures[activeId ?? ""] ?? [])
-          .filter((m) =>
-            m.pts.some(
-              (p2) => p2.x >= x0 && p2.x <= x1 && p2.y >= y0 && p2.y <= y1,
-            ),
-          )
-          .map((m) => m.id);
+        const hits = measuresInRect(
+          s.measures[activeId ?? ""] ?? [],
+          a,
+          b,
+          imgSize,
+        );
         s.setSelectedMulti(hits);
         if (hits.length) setStatus(`${hits.length} measures selected`);
       } else {
@@ -439,14 +367,7 @@ export function useStagePointers(ctx: StagePointersCtx) {
 
   const onDoubleClick = () => {
     if (pending?.kind === "polyline" || pending?.kind === "polygon") {
-      // the double-click's two pointerdowns committed a duplicate
-      // vertex + a live cursor point — drop both
-      const kind = pending.kind;
-      const committed = pending.pts.slice(0, -2);
-      const need = kind === "polygon" ? 3 : 2;
-      if (committed.length >= need) finalizeMeasure(kind, committed);
-      else setCaptureMode("none");
-      setPending(null);
+      runCaptureAction(polyFinishAction(pending));
       return;
     }
     // #9: fit-to-window also re-seeds the browse-scale lock (Stage.tsx parity)
@@ -488,7 +409,6 @@ export function useStagePointers(ctx: StagePointersCtx) {
   return {
     local,
     toImage,
-    pixelAt,
     onPointerDown,
     onPointerMove,
     onPointerUp,
