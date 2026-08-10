@@ -330,3 +330,70 @@ body {
   padding: var(--pad-lg);
   line-height: 1.5;
 }
+
+/* ── sample / project sections (W4 #22) ──────────────────────────────────
+   Only rendered once the project HAS sample groups; a flat library gets no
+   chrome from this block at all. */
+
+.fvd-sample-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pad);
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+}
+
+.fvd-sample-section.nested {
+  padding-left: 8px;
+  border-left: 1px solid var(--border-soft);
+  border-radius: 0;
+}
+
+.fvd-sample-section.drop-into {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.fvd-sample-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 2px 4px;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: var(--type-label);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: default;
+}
+
+.fvd-sample-head:hover {
+  color: var(--text);
+}
+
+.fvd-sample-head:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.fvd-sample-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.fvd-sample-count {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.fvd-sample-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pad);
+}

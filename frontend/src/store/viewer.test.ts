@@ -921,6 +921,44 @@ describe("named image groups", () => {
     // the "just-c" group became empty → pruned entirely
     expect(useViewer.getState().imageGroups.find((g) => g.name === "just-c")).toBeUndefined();
   });
+
+  it("closeImage keeps an image-less project when a sibling sample survives", async () => {
+    // W4 #22 regression: the prune used to drop any group whose ids emptied,
+    // which under nesting deleted the PROJECT — a project's own ids are empty
+    // by design, it holds its images through its samples. pruneGroups keeps a
+    // group with a live descendant, so closing out one sample must not take
+    // the project (or the other sample) with it.
+    useViewer.getState().createGroup(["a"], "Proj");
+    useViewer.getState().createGroup(["a"], "S1");
+    useViewer.getState().createGroup(["b"], "S2");
+    const byName = (n: string) =>
+      useViewer.getState().imageGroups.find((g) => g.name === n);
+    const proj = byName("Proj")!.id;
+    useViewer.getState().setGroupParent(byName("S1")!.id, proj);
+    useViewer.getState().setGroupParent(byName("S2")!.id, proj);
+    // the project itself holds no images, only its two samples do
+    useViewer.getState().setGroupMembers(proj, []);
+
+    await useViewer.getState().closeImage("a");
+    expect(byName("S1")).toBeUndefined(); // its last image is gone
+    expect(byName("S2")?.ids).toEqual(["b"]);
+    const kept = byName("Proj");
+    expect(kept?.ids).toEqual([]);
+    expect(kept?.parent ?? null).toBeNull();
+  });
+
+  it("closeImage still drops a project once its last sample empties", async () => {
+    useViewer.getState().createGroup(["c"], "Proj2");
+    useViewer.getState().createGroup(["c"], "OnlySample");
+    const byName = (n: string) =>
+      useViewer.getState().imageGroups.find((g) => g.name === n);
+    useViewer.getState().setGroupParent(byName("OnlySample")!.id, byName("Proj2")!.id);
+    useViewer.getState().setGroupMembers(byName("Proj2")!.id, []);
+
+    await useViewer.getState().closeImage("c");
+    expect(byName("OnlySample")).toBeUndefined();
+    expect(byName("Proj2")).toBeUndefined();
+  });
 });
 
 describe("groups + grid persistence round-trip", () => {
