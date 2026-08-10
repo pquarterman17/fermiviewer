@@ -18,6 +18,7 @@ from fermiviewer.calc.render import window_level
 __all__ = [
     "Annotation",
     "ScaleBar",
+    "UNIT_TO_NM",
     "colorbar_strip",
     "measure_annotations",
     "render_rgb",
@@ -307,8 +308,11 @@ def _bar_label(phys: float, unit: str) -> str:
     return f"{float(f'{phys:.3g}'):g} {unit}"
 
 
-# Conversion factors to nm (same basis as lib/geometry.ts unitToNm)
-_TO_NM: dict[str, float] = {
+# Conversion factors to nm (same basis as lib/geometry.ts unitToNm). Public —
+# calc/montage.py's physical-scale mode reuses this exact basis to compare
+# pixel_size across mismatched units (e.g. a nm-calibrated tile beside a
+# µm-calibrated one) rather than carrying a second copy of the table.
+UNIT_TO_NM: dict[str, float] = {
     "pm": 1e-3, "Å": 0.1, "nm": 1.0, "µm": 1e3, "um": 1e3,
     "mm": 1e6, "m": 1e9,
 }
@@ -320,8 +324,8 @@ def _bar_label_with_unit(phys: float, src_unit: str, tgt_unit: str) -> str:
     Falls back to the auto label when the conversion is unknown.
     Mirrors the frontend unitToNm table (lib/geometry.ts).
     """
-    f_src = _TO_NM.get(src_unit)
-    f_tgt = _TO_NM.get(tgt_unit)
+    f_src = UNIT_TO_NM.get(src_unit)
+    f_tgt = UNIT_TO_NM.get(tgt_unit)
     if f_src is None or f_tgt is None:
         return _bar_label(phys, src_unit)
     converted = phys * f_src / f_tgt
