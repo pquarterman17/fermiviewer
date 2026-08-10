@@ -153,6 +153,99 @@ def test_groups_are_frozen_dataclasses(tmp_path: Path) -> None:
         g.name = "renamed"  # type: ignore[misc]
 
 
+# ── root group-count tracking (item 27: import seeds projects) ─────────
+
+
+def test_root_group_count_flat_folder(tmp_path: Path) -> None:
+    """A flat folder (loose images only) is ONE group from ONE root —
+    the simple case item 27 says must stay unchanged (no parent project)."""
+    _write_png(tmp_path / "a.png")
+    result = scan_folders([tmp_path])
+    assert [r.name for r in result.roots] == [tmp_path.name]
+    assert [r.group_count for r in result.roots] == [1]
+
+
+def test_root_group_count_folder_of_subfolders(tmp_path: Path) -> None:
+    """A folder of folders is MULTIPLE groups from ONE root — the signal
+    the frontend uses to create a parent project."""
+    _write_png(tmp_path / "sub1" / "img1.png")
+    _write_png(tmp_path / "sub2" / "img2.png")
+    result = scan_folders([tmp_path])
+    assert [r.name for r in result.roots] == [tmp_path.name]
+    assert [r.group_count for r in result.roots] == [2]
+
+
+def test_root_group_count_loose_plus_subfolders(tmp_path: Path) -> None:
+    """Loose images beside subfolders: the root's own loose-image group
+    counts alongside its subfolders' groups."""
+    _write_png(tmp_path / "loose.png")
+    _write_png(tmp_path / "sub" / "nested.png")
+    result = scan_folders([tmp_path])
+    assert result.roots[0].group_count == 2  # loose group + "sub" group
+
+
+def test_root_group_count_empty_folder_is_zero(tmp_path: Path) -> None:
+    result = scan_folders([tmp_path])
+    assert [r.name for r in result.roots] == [tmp_path.name]
+    assert [r.group_count for r in result.roots] == [0]
+
+
+def test_root_group_count_multiple_selected_dirs_independent(
+    tmp_path: Path,
+) -> None:
+    """Two selected dirs: one flat, one a folder of folders — each root
+    reports its own count, independent of the other."""
+    flat = tmp_path / "flat"
+    nested = tmp_path / "nested"
+    _write_png(flat / "a.png")
+    _write_png(nested / "sub1" / "b.png")
+    _write_png(nested / "sub2" / "c.png")
+    result = scan_folders([flat, nested])
+    by_name = {r.name: r.group_count for r in result.roots}
+    assert by_name == {"flat": 1, "nested": 2}
+
+
+def test_root_group_counts_adjust_for_the_cap(tmp_path: Path) -> None:
+    """When the combined cap truncates mid-way through a root's groups,
+    that root's reported count shrinks to what actually survived, and a
+    root scanned after the cap was already hit reports zero."""
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    for i in range(510):
+        (first / f"img_{i:04d}.png").write_bytes(b"")
+    _write_png(second / "only.png")
+    result = scan_folders([first, second])
+    assert result.truncated
+    by_name = {r.name: r.group_count for r in result.roots}
+    assert by_name["first"] == 1  # its one loose-image group still counts
+    assert by_name["second"] == 0  # nothing left in the 500-file budget
+
+
+# ── /api/session/open-folder root results ───────────────────────────────
+
+
+def test_open_folder_response_includes_roots(
+    client: TestClient, tmp_path: Path
+) -> None:
+    _write_png(tmp_path / "sampleA" / "a1.png")
+    _write_png(tmp_path / "sampleB" / "b1.png")
+    r = client.post("/api/session/open-folder", json={"paths": [str(tmp_path)]})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["roots"] == [{"name": tmp_path.name, "group_count": 2}]
+
+
+def test_open_folder_response_roots_for_flat_folder(
+    client: TestClient, tmp_path: Path
+) -> None:
+    _write_png(tmp_path / "a.png")
+    r = client.post("/api/session/open-folder", json={"paths": [str(tmp_path)]})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["roots"] == [{"name": tmp_path.name, "group_count": 1}]
+
+
 # ── /api/session/open-folder route tests ────────────────────────────────
 
 

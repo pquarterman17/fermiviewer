@@ -31,10 +31,21 @@ class FolderGroupResult(BaseModel):
     images: list[ImageMeta | FourDMeta]
 
 
+class FolderRootResult(BaseModel):
+    """One selected top-level directory's own name and how many of
+    `groups` came from it (item 27: import seeds projects) — lets the
+    frontend tell a flat selected folder from a folder of folders without
+    a second, separately-capped request per directory."""
+
+    name: str
+    group_count: int
+
+
 class OpenFolderResponse(BaseModel):
     groups: list[FolderGroupResult]
     skipped: int
     truncated: bool
+    roots: list[FolderRootResult]
 
 
 @router.post("/session/open-folder")
@@ -49,6 +60,12 @@ def session_open_folder(req: OpenFolderRequest) -> OpenFolderResponse:
     response rather than silently dropped, and the combined import is
     capped at 500 supported files (`truncated` flags the cap), mirroring
     `/session/launch-dir`.
+
+    `roots` reports each requested path's own name and how many of
+    `groups` it produced, in request order — item 27's signal for whether
+    a selected folder is flat (0-1 groups) or a folder of folders (>1),
+    so the frontend can nest the latter's groups under a parent project
+    without a second, separately-capped scan.
 
     404s for a path that doesn't exist, 422s for one that isn't a
     directory or for a file this server can't parse — never a 500.
@@ -67,6 +84,9 @@ def session_open_folder(req: OpenFolderRequest) -> OpenFolderResponse:
         )
         for g in scan.groups
     ]
+    roots = [
+        FolderRootResult(name=r.name, group_count=r.group_count) for r in scan.roots
+    ]
     return OpenFolderResponse(
-        groups=groups, skipped=scan.skipped, truncated=scan.truncated
+        groups=groups, skipped=scan.skipped, truncated=scan.truncated, roots=roots
     )

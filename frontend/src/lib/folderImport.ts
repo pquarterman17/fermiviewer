@@ -1,12 +1,18 @@
-// Folder-import orchestration (PROJECT_WORKFLOW_PLAN.md items 2-3): turn
-// /api/session/open-folder's response into named ImageGroups.
+// Folder-import orchestration (PROJECT_WORKFLOW_PLAN.md items 2-3, 4, 27):
+// turn /api/session/open-folder's response — or a drag-and-drop-built
+// equivalent (lib/folderDrop.ts, item 4) — into named ImageGroups, nesting
+// per-folder samples under a parent project when the import found sample
+// subfolders (item 27).
 //
 // The pure SEEDING RULES below own the group-shaping decision — default is
 // one ImageGroup per backend-returned folder group (named after the
 // folder), unless the caller asks to merge everything into one — and are
 // deliberately synchronous/side-effect-free so they're unit-tested without
-// mocking fetch (folderImport.test.ts). `importFolders` at the bottom is
-// the only part that touches the network or the store.
+// mocking fetch (folderImport.test.ts). `applyFolderImport` is the ONE
+// shared tail (ingest → create groups → nest projects → report) both
+// `importFolders` (real on-disk paths) and lib/folderDrop.ts's
+// `importDroppedFolders` (uploaded bytes, no server-side path available)
+// feed into — one set of rules regardless of how the groups were found.
 
 import {
   isFourDMeta,
@@ -15,6 +21,8 @@ import {
   type FourDMeta,
   type ImageMeta,
 } from "./api";
+import type { FolderRootResult } from "./api/folders";
+import { useFolderImportNotice } from "../store/folderImportNotice";
 import { useViewer } from "../store/viewer";
 
 // ── pure seeding rules ──────────────────────────────────────────────────
@@ -98,6 +106,81 @@ export function mergedGroupName(groups: FolderGroupResult[]): string {
   return `${shown} + ${names.length - MAX_NAMED_IN_MERGE} more`;
 }
 
+// ── project nesting (item 27: import seeds projects) ────────────────────
+
+/** One requested directory's own name and how many of the scan's `groups`
+ *  it produced — the camelCase mirror of api/folders.ts's
+ *  FolderRootResult (and of lib/folderDrop.ts's client-side walk, which
+ *  has no backend response to read this from). */
+export interface FolderRootInfo {
+  name: string;
+  groupCount: number;
+}
+
+/** A parent project to create: its name, and the (already-deduped) names
+ *  of the sample specs that become its children via setGroupParent. */
+export interface ProjectSpec {
+  name: string;
+  childNames: string[];
+}
+
+export interface ProjectSeedResult extends SeedResult {
+  projects: ProjectSpec[];
+}
+
+/** Extends `seedGroupSpecs` with project nesting (item 27): a requested
+ *  directory that produced MORE THAN ONE group (a folder holding sample
+ *  subfolders) gets a parent project named after it, with those groups as
+ *  children. A flat directory (0 or 1 usable group, after dropping any
+ *  that turned out empty) produces no project — item 27's "the simple
+ *  case is unchanged" — and merge mode never nests, since it already
+ *  collapses everything to one group.
+ *
+ *  A project's name is deduped against every sample name AND every other
+ *  project name in this same import (dedupeGroupName), which matters when
+ *  a directory has BOTH loose images and subfolders: its loose-image
+ *  child is named after the directory itself (seedGroupSpecs), so the
+ *  project gets " (2)" rather than silently colliding with its own child. */
+export function seedProjectSpecs(
+  groups: FolderGroupResult[],
+  roots: FolderRootInfo[],
+  merge: boolean,
+): ProjectSeedResult {
+  const base = seedGroupSpecs(groups, merge);
+  if (merge || roots.length === 0) return { ...base, projects: [] };
+
+  // seedGroupSpecs (non-merge) maps 1:1 over the nonEmpty subset of
+  // `groups`, preserving order — replay that same filter to recover which
+  // final (deduped) spec name each ORIGINAL group index landed on, or null
+  // if it was dropped as empty.
+  const specNameByIndex: (string | null)[] = [];
+  let specI = 0;
+  for (const g of groups) {
+    if (g.images.length === 0) {
+      specNameByIndex.push(null);
+    } else {
+      specNameByIndex.push(base.specs[specI]?.name ?? null);
+      specI++;
+    }
+  }
+
+  const taken = new Set(base.specs.map((s) => s.name));
+  const projects: ProjectSpec[] = [];
+  let offset = 0;
+  for (const root of roots) {
+    const childNames = specNameByIndex
+      .slice(offset, offset + root.groupCount)
+      .filter((n): n is string => n !== null);
+    offset += root.groupCount;
+    if (childNames.length > 1) {
+      const name = dedupeGroupName(root.name, taken);
+      taken.add(name);
+      projects.push({ name, childNames });
+    }
+  }
+  return { ...base, projects };
+}
+
 // ── status-bar summary ──────────────────────────────────────────────────
 
 export interface ImportSummary {
@@ -128,10 +211,27 @@ export function summarizeImport(s: ImportSummary): string {
 const images2DOf = (images: (ImageMeta | FourDMeta)[]): ImageMeta[] =>
   images.filter((m): m is ImageMeta => !isFourDMeta(m));
 
-/** Import one or more on-disk folders: fetch the backend's per-folder
- *  groups, ingest every 2D image into the library, seed an ImageGroup per
- *  the rules above (or one merged group), and report the outcome via the
- *  store's existing status mechanism.
+/** Anything shaped like an /session/open-folder response — the real one
+ *  (openFolders), or lib/folderDrop.ts's client-side-walked equivalent
+ *  built from uploaded bytes (no server-side path exists for a dropped
+ *  folder to hand the real endpoint). `roots` is optional so a caller
+ *  with no root-boundary info (there is none today, but keeps this from
+ *  becoming a breaking change if one ever calls it without) still nests
+ *  nothing rather than throwing. */
+export interface FolderScanLike {
+  groups: FolderGroupResult[];
+  skipped: number;
+  truncated: boolean;
+  roots?: FolderRootInfo[];
+}
+
+/** The ONE shared tail: ingest every 2D image, create a sample group per
+ *  seeded spec, nest per-directory sample groups under a new parent
+ *  project where item 27 applies, and report the outcome — both via the
+ *  existing status-bar mechanism (setStatus) and the persistent
+ *  folder-import notice (store/folderImportNotice.ts) that
+ *  FolderImportBanner.tsx renders unmissably regardless of whether the
+ *  triggering dialog is still open (item 5).
  *
  *  4D-STEM entries a folder may contain (`FourDMeta`) can't be ingested
  *  into `images`/grouped yet (store/viewerSession.ts's `ingestImages`
@@ -139,13 +239,16 @@ const images2DOf = (images: (ImageMeta | FourDMeta)[]): ImageMeta[] =>
  *  group left with none after that filter reports the same way an
  *  actually-empty folder does, rather than creating a group with zero
  *  effective members. */
-export async function importFolders(
-  paths: string[],
+export async function applyFolderImport(
+  res: FolderScanLike,
   opts: { merge?: boolean } = {},
-): Promise<void> {
-  if (paths.length === 0) return;
-  const res = await openFolders(paths);
-  const { specs, emptyFolders } = seedGroupSpecs(res.groups, opts.merge ?? false);
+): Promise<ImportSummary> {
+  const merge = opts.merge ?? false;
+  const { specs, projects, emptyFolders } = seedProjectSpecs(
+    res.groups,
+    res.roots ?? [],
+    merge,
+  );
 
   const specImages = specs.map((spec) => ({
     name: spec.name,
@@ -158,22 +261,60 @@ export async function importFolders(
 
   let groupCount = 0;
   const unusable: string[] = [];
+  const idByName = new Map<string, string>();
   for (const g of specImages) {
     if (g.images.length === 0) {
       unusable.push(g.name);
       continue;
     }
-    s.createGroup(g.images.map((m) => m.id), g.name);
+    const id = s.createGroup(g.images.map((m) => m.id), g.name);
+    if (id) idByName.set(g.name, id);
     groupCount++;
   }
 
-  s.setStatus(
-    summarizeImport({
-      groupCount,
-      imageCount: allImages2D.length,
+  for (const project of projects) {
+    const childIds = project.childNames
+      .map((n) => idByName.get(n))
+      .filter((id): id is string => !!id);
+    if (childIds.length === 0) continue; // every child turned out unusable
+    const projectId = s.createEmptyGroup(project.name);
+    for (const childId of childIds) s.setGroupParent(childId, projectId);
+  }
+
+  const summary: ImportSummary = {
+    groupCount,
+    imageCount: allImages2D.length,
+    skipped: res.skipped,
+    truncated: res.truncated,
+    emptyFolders: [...emptyFolders, ...unusable],
+  };
+  s.setStatus(summarizeImport(summary));
+  useFolderImportNotice.getState().set(summary);
+  return summary;
+}
+
+/** Import one or more on-disk folders (the Import-dialog path, items 2-3):
+ *  fetch the backend's per-folder groups and hand them to the shared tail
+ *  above. Returns null without any network call when `paths` is empty. */
+export async function importFolders(
+  paths: string[],
+  opts: { merge?: boolean } = {},
+): Promise<ImportSummary | null> {
+  if (paths.length === 0) return null;
+  const res = await openFolders(paths);
+  return applyFolderImport(
+    {
+      groups: res.groups,
       skipped: res.skipped,
       truncated: res.truncated,
-      emptyFolders: [...emptyFolders, ...unusable],
-    }),
+      // optional-chained: older mocks in folderImport.test.ts resolve
+      // without a `roots` field, and must keep working unmodified.
+      roots: res.roots?.map(toRootInfo) ?? [],
+    },
+    opts,
   );
+}
+
+function toRootInfo(r: FolderRootResult): FolderRootInfo {
+  return { name: r.name, groupCount: r.group_count };
 }

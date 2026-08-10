@@ -18,6 +18,16 @@ export interface FolderGroupResult {
   images: (ImageMeta | FourDMeta)[];
 }
 
+/** One requested path's own name and how many of `groups` it produced, in
+ *  request order (item 27: import seeds projects). A flat selected folder
+ *  produces 0-1; a folder of folders produces more than one — the signal
+ *  lib/folderImport.ts's `seedProjectSpecs` uses to decide whether that
+ *  directory's groups nest under a new parent project. */
+export interface FolderRootResult {
+  name: string;
+  group_count: number;
+}
+
 export interface OpenFolderResponse {
   groups: FolderGroupResult[];
   /** Non-image / unsupported files skipped anywhere under the selected
@@ -26,6 +36,11 @@ export interface OpenFolderResponse {
   /** True when the combined import hit the 500-supported-file cap
    *  (mirrors /session/launch-dir's files[:500]). */
   truncated: boolean;
+  /** Per-requested-path group counts — see FolderRootResult. Optional at
+   *  the type level (the server always sends it) so existing test mocks
+   *  built before item 27 don't all need updating — nothing in production
+   *  code constructs this type; it only ever comes off the wire. */
+  roots?: FolderRootResult[];
 }
 
 /** Import one or more on-disk folders. Each is recursed fully server-side
