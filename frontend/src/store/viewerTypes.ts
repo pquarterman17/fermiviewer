@@ -239,7 +239,7 @@ export type ToolKind =
   | "overlay"
   | "surface" | "roughness"
   | "layers" | "crosssection" | "noise" | "interface-width" | "defects"
-  | "fourd";
+  | "fourd" | "projectcompare";
 
 export interface ToolWindowState {
   kind: ToolKind;

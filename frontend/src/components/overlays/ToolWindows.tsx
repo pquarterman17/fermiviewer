@@ -19,6 +19,7 @@ const NoiseWorkshop = lazy(() => import("../workshops/NoiseWorkshop"));
 const InterfaceWidthWorkshop = lazy(() => import("../workshops/InterfaceWidthWorkshop"));
 const DefectWorkshop = lazy(() => import("../workshops/DefectWorkshop"));
 const FourDWorkshop = lazy(() => import("../workshops/FourDWorkshop"));
+const ProjectComparePanel = lazy(() => import("../workshops/ProjectComparePanel"));
 
 const titles: Record<ToolKind, string> = {
   // Both kinds open the one workspace; the title says so, and the
@@ -38,6 +39,7 @@ const titles: Record<ToolKind, string> = {
   "interface-width": "Interface Width",
   defects: "Defect Analysis",
   fourd: "4D-STEM Viewer",
+  projectcompare: "Compare Samples",
 };
 
 const defaultWidths: Partial<Record<ToolKind, number>> = {
@@ -54,6 +56,7 @@ const defaultWidths: Partial<Record<ToolKind, number>> = {
   "interface-width": 620,
   defects: 620,
   fourd: 640,
+  projectcompare: 460,
 };
 
 export default function ToolWindows() {
@@ -116,5 +119,7 @@ function Workshop({ kind }: { kind: ToolKind }) {
       return <DefectWorkshop />;
     case "fourd":
       return <FourDWorkshop />;
+    case "projectcompare":
+      return <ProjectComparePanel />;
   }
 }
