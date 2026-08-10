@@ -11,9 +11,18 @@
 // that PR merging. `regionRows` (lib/regionTable.ts) selects region
 // measures by a REGION_KINDS set, not by narrowing MeasureKind, so this
 // card lights up with zero changes here once 14 merges.
+//
+// Plan item 16 (edge auto-detect assist): "Detect Region" below calls
+// POST /api/regions/propose (routes/regions.py) with a seed point and
+// lands the returned outline via the store's ordinary addMeasure action,
+// kind "polygon" — there is no separate "detected region" concept, so it
+// shows up in the table above with zero special-casing, immediately
+// draggable/correctable like any hand-drawn polygon (addMeasure already
+// selects the new measure, which is what makes its vertices live).
 
 import { useMemo, useState } from "react";
 
+import { proposeRegion } from "../../lib/api/regions";
 import {
   regionCsvColumns,
   regionCsvRows,
@@ -34,8 +43,11 @@ export default function RegionsCard() {
   const measures = useViewer((s) =>
     s.activeId ? (s.measures[s.activeId] ?? NO_MEASURES) : NO_MEASURES,
   );
+  const addMeasure = useViewer((s) => s.addMeasure);
   const setStatus = useViewer((s) => s.setStatus);
   const [copyFlash, setCopyFlash] = useState(false);
+  const [seedPct, setSeedPct] = useState({ x: 50, y: 50 });
+  const [detecting, setDetecting] = useState(false);
 
   const rows = useMemo(
     () => (meta ? regionRows(measures, meta) : []),
@@ -71,11 +83,72 @@ export default function RegionsCard() {
       .catch((e: Error) => setStatus(`copy failed: ${e.message}`));
   };
 
+  const onDetect = () => {
+    setDetecting(true);
+    proposeRegion({
+      image_id: activeId,
+      seed: [seedPct.x / 100, seedPct.y / 100],
+    })
+      .then((res) => {
+        addMeasure(activeId, {
+          kind: "polygon",
+          pts: res.points.map(([x, y]) => ({ x, y })),
+        });
+        setStatus(
+          `detected region (${Number(res.area_px.toPrecision(5))} px²) — ` +
+            "drag its vertices to correct",
+        );
+      })
+      .catch((e: Error) => setStatus(`detect region failed: ${e.message}`))
+      .finally(() => setDetecting(false));
+  };
+
   return (
     <Card title="Regions" count={rows.length} defaultOpen={false}>
       <div className="fvd-ws-note">
         Polygon and lasso regions on this image, with area in physical units
         derived from the current calibration.
+      </div>
+      <div className="fvd-ws-row" style={{ alignItems: "center", gap: 6 }}>
+        <span className="fvd-ws-note" style={{ margin: 0 }}>
+          Seed
+        </span>
+        <label style={{ display: "flex", alignItems: "center", gap: 3 }}>
+          X
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={seedPct.x}
+            onChange={(e) =>
+              setSeedPct((s) => ({ ...s, x: Number(e.target.value) }))
+            }
+            style={{ width: 48 }}
+          />
+          %
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 3 }}>
+          Y
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={seedPct.y}
+            onChange={(e) =>
+              setSeedPct((s) => ({ ...s, y: Number(e.target.value) }))
+            }
+            style={{ width: 48 }}
+          />
+          %
+        </label>
+        <button
+          className="fvd-btn"
+          title="Propose a region outline from the seed point above (multi-Otsu + morphology) — lands as an ordinary polygon you can drag to correct"
+          disabled={detecting}
+          onClick={onDetect}
+        >
+          {detecting ? "Detecting…" : "Detect Region"}
+        </button>
       </div>
       {rows.length === 0 ? (
         <div className="fvd-ws-note" style={{ color: "var(--fvd-muted)" }}>
