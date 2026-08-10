@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { supportedExtensions } from "../../lib/api";
+import { importFolders } from "../../lib/folderImport";
 import { useViewer } from "../../store/viewer";
 import ModalDialog from "./ModalDialog";
 
@@ -23,11 +24,28 @@ export default function FolderOpenDialog() {
   const [accept, setAccept] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // one absolute folder path per line; imported as one group per folder
+  // (or a single merged group, per PROJECT_WORKFLOW_PLAN.md items 2-3)
+  const [folderPaths, setFolderPaths] = useState("");
+  const [mergeFolders, setMergeFolders] = useState(false);
+  const folderPathList = folderPaths
+    .split("\n")
+    .map((p) => p.trim())
+    .filter(Boolean);
+
   // default every file selected whenever the dialog opens or the launch
   // folder changes (ctx is a stable store ref, so this won't loop)
   useEffect(() => {
     if (open) setSel(new Set((ctx?.files ?? []).map((f) => f.path)));
   }, [open, ctx]);
+
+  // reset the folder-import fields each time the dialog opens
+  useEffect(() => {
+    if (open) {
+      setFolderPaths("");
+      setMergeFolders(false);
+    }
+  }, [open]);
 
   // accept filter for the Browse fallback (same source as the menu picker)
   useEffect(() => {
@@ -62,6 +80,14 @@ export default function FolderOpenDialog() {
     e.target.value = "";
   };
 
+  const importSelectedFolders = () => {
+    if (folderPathList.length === 0) return;
+    setOpen(false);
+    importFolders(folderPathList, { merge: mergeFolders }).catch((e: Error) =>
+      setStatus(e.message),
+    );
+  };
+
   return (
     <ModalDialog
       ariaLabel="Open from folder"
@@ -91,6 +117,37 @@ export default function FolderOpenDialog() {
             ))}
           </ul>
         )}
+
+        <div className="fvd-folder-import">
+          <label htmlFor="fvd-folder-paths">Import folder(s)</label>
+          <textarea
+            id="fvd-folder-paths"
+            className="fvd-folder-paths"
+            rows={3}
+            placeholder={"One folder per line, e.g.\n/data/study/400C\n/data/study/500C"}
+            value={folderPaths}
+            onChange={(e) => setFolderPaths(e.target.value)}
+          />
+          <label className="fvd-check">
+            <input
+              type="checkbox"
+              checked={mergeFolders}
+              onChange={(e) => setMergeFolders(e.target.checked)}
+            />
+            Merge into one group
+          </label>
+          <div className="fvd-btn-row">
+            <button
+              className="fvd-btn primary"
+              disabled={folderPathList.length === 0}
+              onClick={importSelectedFolders}
+              title="Import the listed folder(s) as image group(s)"
+            >
+              Import folder{folderPathList.length > 1 ? "s" : ""}
+              {folderPathList.length > 0 ? ` (${folderPathList.length})` : ""}
+            </button>
+          </div>
+        </div>
 
         <input
           ref={fileRef}
