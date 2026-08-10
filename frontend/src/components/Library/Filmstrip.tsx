@@ -6,19 +6,14 @@ import { useEffect, useRef, useState } from "react";
 
 import { renderUrl } from "../../lib/api";
 import { renameSingleImage } from "../../lib/rename";
-import {
-  useViewer,
-  type ImageGroup,
-  type SelectGesture,
-} from "../../store/viewer";
+import { useViewer, type SelectGesture } from "../../store/viewer";
 import Icon from "../icons/Icon";
+import FilmstripContextMenu, {
+  type FilmstripCtxTarget,
+} from "./FilmstripContextMenu";
+import GroupsBar from "./GroupsBar";
 
-interface CtxMenu {
-  x: number;
-  y: number;
-  id: string;
-  returnFocus: HTMLDivElement | null;
-}
+type CtxMenu = FilmstripCtxTarget;
 
 export default function Filmstrip() {
   const order = useViewer((s) => s.order);
@@ -266,7 +261,7 @@ export default function Filmstrip() {
       </div>
 
       {ctx && (
-        <ContextMenu
+        <FilmstripContextMenu
           at={ctx}
           canCompare={selected.length >= 2}
           onShow={() => select(ctx.id, "single")}
@@ -284,154 +279,5 @@ export default function Filmstrip() {
         />
       )}
     </aside>
-  );
-}
-
-function ContextMenu({
-  at,
-  canCompare,
-  onShow,
-  onCompare,
-  onRename,
-  onClose,
-  dismiss,
-}: {
-  at: CtxMenu;
-  canCompare: boolean;
-  onShow: () => void;
-  onCompare: () => void;
-  onRename: () => void;
-  onClose: () => void;
-  dismiss: (restoreFocus?: boolean) => void;
-}) {
-  const refs = useRef<Array<HTMLButtonElement | null>>([]);
-  const liveItems = () =>
-    refs.current.filter((node): node is HTMLButtonElement => node != null);
-
-  useEffect(() => {
-    requestAnimationFrame(() => liveItems()[0]?.focus());
-  }, []);
-
-  const focusItem = (index: number) => {
-    const items = liveItems();
-    if (items.length === 0) return;
-    items[(index + items.length) % items.length]?.focus();
-  };
-
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    const items = liveItems();
-    const index = items.indexOf(document.activeElement as HTMLButtonElement);
-    if (e.key === "ArrowDown") focusItem(index + 1);
-    else if (e.key === "ArrowUp") focusItem(index - 1);
-    else if (e.key === "Home") focusItem(0);
-    else if (e.key === "End") focusItem(items.length - 1);
-    else if (e.key === "Escape") dismiss(true);
-    else if (e.key === "Tab") {
-      // APG: Tab closes the menu and continues the tab sequence. Without this
-      // focus walked out to the page while the menu stayed open on screen.
-      dismiss(false);
-      return;
-    } else return;
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  const items = [
-    { label: "Show in stage", run: onShow },
-    { label: "Compare selected", run: onCompare, disabled: !canCompare },
-    { label: "Rename…  F2", run: onRename },
-    { label: "Close", run: onClose, separator: true },
-  ];
-  let focusIndex = 0;
-
-  return (
-    <div
-      className="fvd-menu-dropdown fvd-film-ctx"
-      style={{ left: at.x, top: at.y }}
-      onMouseDown={(e) => e.stopPropagation()}
-      onKeyDown={onKeyDown}
-      role="menu"
-      aria-label="Image actions"
-    >
-      {items.map((item) => {
-        const index = item.disabled ? -1 : focusIndex++;
-        return (
-          <div key={item.label} role="presentation">
-            {item.separator && <div className="fvd-menu-sep" role="separator" />}
-            <button
-              ref={(node) => {
-                if (index >= 0) refs.current[index] = node;
-              }}
-              className="fvd-menu-entry"
-              role="menuitem"
-              // ARIA menus manage focus themselves: every item stays out of
-              // the tab sequence and exactly one is focused programmatically.
-              tabIndex={-1}
-              disabled={item.disabled}
-              onClick={() => {
-                dismiss(true);
-                item.run();
-              }}
-            >
-              <span>{item.label}</span>
-            </button>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/** Named compare-group chips: click to re-select members, rename, or delete.
- *  Groups bind to compare panes (the panes' dropdowns reference them). */
-function GroupsBar({
-  groups,
-  onRecall,
-  onRename,
-  onDelete,
-}: {
-  groups: ImageGroup[];
-  onRecall: (ids: string[]) => void;
-  onRename: (id: string, name: string) => void;
-  onDelete: (id: string) => void;
-}) {
-  return (
-    <div className="fvd-groups-bar">
-      <div className="fvd-groups-head">Groups</div>
-      {groups.map((g) => (
-        <div
-          key={g.id}
-          className="fvd-group-chip"
-          title={`${g.ids.length} images`}
-        >
-          <button
-            className="fvd-group-name"
-            onClick={() => onRecall(g.ids)}
-            title="Re-select this group's images"
-          >
-            {g.name} <span className="fvd-group-count">{g.ids.length}</span>
-          </button>
-          <button
-            className="fvd-icon-btn"
-            aria-label={`Rename group ${g.name}`}
-            title="Rename group"
-            onClick={() => {
-              const name = window.prompt("Rename group", g.name);
-              if (name != null) onRename(g.id, name);
-            }}
-          >
-            <Icon name="edit" />
-          </button>
-          <button
-            className="fvd-icon-btn"
-            aria-label={`Delete group ${g.name}`}
-            title="Delete group"
-            onClick={() => onDelete(g.id)}
-          >
-            <Icon name="close" />
-          </button>
-        </div>
-      ))}
-    </div>
   );
 }
