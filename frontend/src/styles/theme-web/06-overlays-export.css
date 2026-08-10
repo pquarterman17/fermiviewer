@@ -86,6 +86,33 @@
   white-space: nowrap;
 }
 
+/* Import folder(s) section (PROJECT_WORKFLOW_PLAN.md items 2-3) */
+.fvd-folder-import {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: var(--pad);
+  border-top: 1px solid var(--border-soft);
+}
+
+.fvd-folder-import > label:first-child {
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+}
+
+.fvd-folder-paths {
+  width: 100%;
+  min-height: 56px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  resize: vertical;
+}
+
 .fvd-cmdk {
   position: absolute;
   top: 15%;
