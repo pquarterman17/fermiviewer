@@ -125,6 +125,16 @@ describe("ToolWindows", () => {
     expect(content.closest(".fvd-tool-window")).toHaveStyle({ width: "620px" });
   });
 
+  it("opens the sample comparison panel (real store, no groups yet)", async () => {
+    useViewer.setState({
+      tools: [{ kind: "projectcompare", x: 10, y: 20, z: 1 }],
+      imageGroups: [],
+    });
+    render(<ToolWindows />);
+    expect(screen.getByText("Compare Samples")).toBeVisible();
+    expect(await screen.findByText(/No sample groups yet/)).toBeVisible();
+  });
+
   it("exposes an accessible resize grip", async () => {
     useViewer.setState({ tools: [{ kind: "eds", x: 10, y: 20, z: 1 }] });
     render(<ToolWindows />);

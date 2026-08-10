@@ -129,6 +129,15 @@ export function buildAnalysisMenu(ctx: MenuCtx): Entry[] {
       ],
     },
     {
+      label: "Samples",
+      submenu: [
+        {
+          label: "Compare Samples…",
+          action: () => store.openTool("projectcompare"),
+        },
+      ],
+    },
+    {
       label: "Reconstruction",
       submenu: [
         {

@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Measure } from "../store/viewer";
-import { computeMeasureStats, statsStatusLine } from "./measureStats";
+import { computeMeasureStats, meanSd, statsStatusLine } from "./measureStats";
 import type { MeasureStatsInput } from "./measureStats";
 
 // ---------------------------------------------------------------------------
@@ -223,5 +223,30 @@ describe("computeMeasureStats — annotations only", () => {
   it("total = 2, groups empty", () => {
     expect(stats.total).toBe(2);
     expect(stats.groups).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// meanSd — the shared mean/population-std convention (lib/projectCompare.ts
+// pins to this exact function so the two never drift apart).
+// ---------------------------------------------------------------------------
+
+describe("meanSd", () => {
+  it("pins the known answer: [10, 20, 30] -> mean 20, population sd sqrt(200/3)", () => {
+    const { mean, std, n } = meanSd([10, 20, 30]);
+    expect(mean).toBeCloseTo(20, 9);
+    expect(std).toBeCloseTo(Math.sqrt(200 / 3), 9);
+    expect(n).toBe(3);
+  });
+
+  it("std is 0 for a single value", () => {
+    expect(meanSd([42])).toEqual({ mean: 42, std: 0, n: 1 });
+  });
+
+  it("returns NaN mean/std and n=0 for an empty array, never divides by zero", () => {
+    const { mean, std, n } = meanSd([]);
+    expect(mean).toBeNaN();
+    expect(std).toBeNaN();
+    expect(n).toBe(0);
   });
 });

@@ -29,7 +29,7 @@ export const TOOL_WINDOW_BASE = 200;
  * per-session counter bumped on every open/focus (see openTool/focusTool in
  * viewerState.ts) — it is never reset or compacted. Clamp its contribution
  * to a fixed span so a long session of refocusing tool windows can never
- * climb into the modal layer above it. There are only 14 ToolKinds, so this
+ * climb into the modal layer above it. There are only 15 ToolKinds, so this
  * span is far larger than any real relative-order distinction ever needed.
  */
 export const TOOL_WINDOW_SPAN = 90;

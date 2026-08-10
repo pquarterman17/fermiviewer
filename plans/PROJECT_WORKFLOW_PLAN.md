@@ -320,18 +320,9 @@ stepping — all reading the same sample groups.
 
 22. ~~**One panel that grows**~~ — shipped 2026-08-09, see Completed
 
-23. **Sample parameter editing** — per-section editor reusing
-    lib/params.ts ParamField; values stored via setGroupParams; one
-    documented numeric-with-unit convention.
-    Model: sonnet · Parallel: yes (after 20; UI slot after 22)
+23. ~~**Sample parameter editing**~~ — shipped 2026-08-09, see Completed
 
-24. **Result-vs-parameter table + plot + CSV** — new pure
-    lib/projectCompare.ts: per sample group, aggregate the chosen result
-    (region areas via 15's selector) against a chosen parameter with
-    mean/sd/n (reuse lib/measureStats.ts); panel renders table + plot
-    (reuse components/plots) and exports via tableToCsv. Covers
-    deliverables (a) and (d).
-    Model: sonnet · Parallel: yes (after 15, 20, 23)
+24. ~~**Result-vs-parameter table + plot + CSV**~~ — shipped 2026-08-09, see Completed
 
 25. ~~**Comparison montage with shared scale bar**~~ — shipped 2026-08-09, see Completed
 
@@ -420,6 +411,28 @@ lands.
 
 ## Completed
 
+- ~~**#24 Result-vs-parameter table + plot + CSV**~~ (2026-08-09, PR #140) —
+  new pure `lib/projectCompare.ts` (234) + `ProjectComparePanel.tsx` (190) +
+  `plots/ResultVsParamPlot.tsx` (118, uPlot scatter with ±1σ bars), reached via
+  Samples ▸ Compare Samples…. Consumes item 15's `regionPhysicalAreas` rather
+  than re-deriving areas. CSV carries units in the header and n per row:
+
+      sample,temp_degC,n,area_um2_mean,area_um2_sd
+      Cold,100,1,10,0
+
+  Known-answer test pins the arithmetic (areas 10/20/30 → mean 20, sd
+  √(200/3)). Error bars are POPULATION σ, matching the documented MATLAB
+  `displayMeasurementStats` convention the port must agree with — not a new
+  choice; the old `sampleStd` was renamed `meanSd` because it always divided
+  by n. Excluded samples are reported with reasons, including two the brief did
+  not ask for: mixed units WITHIN a sample, and cross-sample unit mismatch —
+  either would otherwise plot nonsense.
+- ~~**#23 Sample parameter editing**~~ (2026-08-09, PR #140) —
+  `Library/SampleParamsEditor.tsx` (178) reusing `ParamFieldRow`; a unit input
+  appears only for numeric rows, so categorical values are never coerced into
+  something plottable. Standalone by design; its mount point is documented in
+  its own header (the `fvd-sample-head` button in `SampleSection.tsx`) since
+  another agent owned that file.
 - ~~**#25 Comparison montage with one shared scale bar**~~ (2026-08-09, PR #139)
   — `POST /api/analyze/montage-compare` in new `routes/montage_compare.py`
   (142); the mode lives in new `calc/montage_physical.py` (274) rather than

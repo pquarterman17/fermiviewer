@@ -64,25 +64,33 @@ export interface MeasureStats {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function sampleStd(values: number[], mean: number): number {
-  // MATLAB displayMeasurementStats uses population std (numel denominator),
-  // consistent with the showStats() function in MeasurePanel which also
-  // divides by vals.length (not vals.length-1).
-  if (values.length === 0) return 0;
-  return Math.sqrt(
-    values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length,
-  );
+/**
+ * Mean, population standard deviation (n divisor — MATLAB
+ * displayMeasurementStats uses the same numel denominator, as does
+ * MeasurePanel's showStats(), not the n-1 sample-std convention) and count
+ * of a plain numeric array. Exported so other pure modules — notably
+ * lib/projectCompare.ts's per-sample result-vs-parameter roll-up (W4 item
+ * 24) — share this exact arithmetic rather than a second hand-rolled copy
+ * that could drift from it. `{ mean: NaN, std: NaN, n: 0 }` for an empty
+ * array; never divides by zero.
+ */
+export function meanSd(values: number[]): { mean: number; std: number; n: number } {
+  const n = values.length;
+  if (n === 0) return { mean: NaN, std: NaN, n: 0 };
+  const mean = values.reduce((s, v) => s + v, 0) / n;
+  const std = Math.sqrt(values.reduce((s, v) => s + (v - mean) ** 2, 0) / n);
+  return { mean, std, n };
 }
 
 function groupOf(values: number[], label: string, unit: string): GroupStats {
   const sorted = [...values].sort((a, b) => a - b);
-  const mean = sorted.reduce((s, v) => s + v, 0) / sorted.length;
+  const { mean, std } = meanSd(sorted);
   return {
     label,
     unit,
     count: sorted.length,
     mean,
-    std: sampleStd(sorted, mean),
+    std,
     min: sorted[0],
     max: sorted[sorted.length - 1],
     values: sorted,
