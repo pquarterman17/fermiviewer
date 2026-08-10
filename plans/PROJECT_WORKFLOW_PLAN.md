@@ -215,20 +215,7 @@ from an import.
 
 ### Tier 1 — High Impact
 
-1. **Folder-open endpoint** — directory paths in, per-folder ImageMeta
-   lists out
-   - [ ] New `io/folder_scan.py`: pure directory scan (supported-extension
-         filter, OneDrive-safe is_file guard as in /session/launch-dir),
-         returning a frozen dataclass (folder name, file paths, skipped
-         count); no fastapi imports (layering guard)
-   - [ ] New `routes/folders.py`: POST /api/session/open-folder — scan,
-         then reuse store.open_paths + auto_apply_calibration exactly as
-         /session/open does; register the router in server.py
-   - [ ] Tests: synthetic tmp trees + FV_TEST_DATA vendor folders where
-         present (realdata auto-skip)
-   Ratchet: NEW MODULES (images.py at 497 untouched).
-   Model: sonnet · Parallel: yes (only the 2-line server.py hookup
-   overlaps 16/25)
+1. ~~**Folder-open endpoint**~~ — shipped 2026-08-09, see Completed
 
 2. **Import dialog grows folders + merge checkbox** —
    `FolderOpenDialog.tsx` (130/500) gains folder selection and a single
@@ -270,15 +257,13 @@ size — same µm per screen px across consecutive frames and across panes.
 
 7. ~~**Scale-lock store**~~ — shipped 2026-08-09, see Completed
 
-8. **Stage honors the lock** — the pinned-file item
-   - [ ] FRONT-LOADED EXTRACTION: move a cohesive block out of Stage.tsx
-         (640 → ≤570) into a new Stage/ module and lower the pin in
-         test_repo_integrity.py in the same change
-   - [ ] Replace both fitView defaults in Stage.tsx with a resolver:
-         locked + calibrated → scale view, else fitView
-   - [ ] cycleImage keeps on-screen µm/px across images with different
-         pixel sizes
-   Model: opus · Parallel: NO — exclusive on Stage.tsx
+8. **Stage honors the lock** — extraction DONE 2026-08-09 (PR #128:
+   640 → 567, cap 617); the resolver wiring remains
+   - [x] FRONT-LOADED EXTRACTION into `useStageImageLoad.ts`, cap lowered
+   - [ ] Replace both fitView defaults in Stage.tsx with `resolveScaleView`
+         (already on main from item 6) — locked + calibrated → scale view
+   - [ ] cycleImage keeps on-screen µm/px across differing pixel sizes
+   Model: sonnet · Parallel: NO — exclusive on Stage.tsx
 
 9. **Compare surfaces honor the lock** — same resolver at
    CompareStage.tsx:39, SideBySideStage.tsx:145,
@@ -311,11 +296,7 @@ exported figures.
 
 12. ~~**One area computation**~~ — shipped 2026-08-09, see Completed
 
-13. **MeasureOverlay extraction (front-load)** — move per-kind renderers
-    (or the label/hit-test block) from MeasureOverlay.tsx (636) into new
-    Stage/ module(s); lower the pin toward ≤550 in the same change;
-    behavior-preserving (MeasureOverlay.test.tsx stays green).
-    Model: opus · Parallel: NO — exclusive on MeasureOverlay.tsx
+13. ~~**MeasureOverlay extraction (front-load)**~~ — shipped 2026-08-09, see Completed
 
 14. **Polygon + lasso measure kinds**
     - [ ] Add "polygon"/"lasso" to MeasureKind (viewerTypes.ts 248/500)
@@ -388,10 +369,7 @@ stepping — all reading the same sample groups.
     Model: opus · Parallel: NO — blocks 22–28; run first in W4 ·
     Depends on item 30 for the manifest shape
 
-21. **Filmstrip extraction (front-load)** — move ContextMenu + GroupsBar
-    (~150 lines) out of Filmstrip.tsx (437 → ~300) into
-    components/Library/ modules; behavior-preserving.
-    Model: haiku · Parallel: NO — exclusive on Filmstrip.tsx; before 22
+21. ~~**Filmstrip extraction (front-load)**~~ — shipped 2026-08-09, see Completed
 
 22. **One panel that grows** — Filmstrip renders collapsible sections
     per sample group when any exist (images in no sample under
@@ -460,24 +438,9 @@ lands.
 
 ### Tier 1 — High Impact
 
-30. **`.fvp` container read/write** — new pure `io/project_file.py`
-    - [ ] Single ZIP (DEFLATE): `manifest.json`, `pixels/<id>.npy`,
-          `thumbs/<id>.png`; per-image `.npy` so one image can be read
-          without inflating the rest
-    - [ ] Atomic save: temp sibling in the same dir → flush + fsync →
-          one `os.replace`. This RETIRES v1's manifest-last commit
-          ordering; assert an interrupted save leaves the old file intact
-    - [ ] Returns/accepts plain structures only — no fastapi/pydantic
-          (pure-layer guard); `session_file.py` stays for v1 reads
-    - [ ] Reject a manifest whose `rel` is absolute or escapes the root
-          with `..` (path traversal on an untrusted project file)
-    Ratchet: NEW MODULE. Model: opus · Parallel: NO — blocks 20, 31–36
+30. ~~**`.fvp` container read/write**~~ — shipped 2026-08-09, see Completed
 
-31. **Schema validation + unknown-key preservation** — validate
-    `manifest.json` on load against the shipped schema, failing with the
-    offending path; round-trip unknown keys verbatim on save. A test
-    asserts the schema file and the loader agree, so they cannot drift.
-    Model: opus · Parallel: yes (after 30)
+31. ~~**Schema validation + unknown-key preservation**~~ — shipped 2026-08-09, see Completed
 
 32. **v1 → v2 migration** — `load` accepts a v1 `.json`/`.npz` pair and
     upgrades in memory (splitting the opaque `client_state` into
@@ -525,6 +488,37 @@ lands.
 
 ## Completed
 
+- ~~**#30 `.fvp` container read/write**~~ (2026-08-09, PR #129) — three pure
+  modules (`io/project_file.py` 461, `io/project_manifest.py` 373,
+  `io/project_paths.py` 172; one module would have been 545, over the
+  ceiling). Single ZIP, atomic single-`os.replace` save, light/bundle modes,
+  data-root references. 49 tests. Found and fixed a real zip-slip vector:
+  two images sharing an id wrote a duplicate `pixels/<id>.npy` and the
+  second silently read back the first's pixels — surfaced only because the
+  suite promotes warnings to errors. Ids are now validated as unique, single,
+  separator-free path components on save AND load, which matters because the
+  ADR advertises `unzip project.fvp` as an inspection route.
+- ~~**#31 Schema validation + unknown-key preservation**~~ (2026-08-09,
+  PR #129) — `jsonschema>=4.18` runtime dep (G6); packaged schema copy kept
+  byte-identical to `docs/schema/` by a test; `tools/bundle/fv-server.spec`
+  ships it into the frozen sidecar, without which a packaged build would
+  validate against a missing file.
+- ~~**#1 Folder-open endpoint**~~ (2026-08-09, PR #127) — `io/folder_scan.py`
+  (185, pure) + `routes/folders.py` (72) + shared `routes/_open_paths.py`
+  (74); `routes/images.py` 497 → **455**, so the feature made headroom
+  instead of consuming the 3 lines left. G3 semantics implemented in full.
+  CodeQL raised two `py/path-injection` alerts, dismissed "won't fix" per
+  the repo's existing triage of that rule on watch.py/workspaces.py/
+  session_io.py — a folder-open backend has no safe root to confine to, and
+  the mitigation is server.py's Host-header allowlist.
+- ~~**#13 MeasureOverlay extraction**~~ (2026-08-09, PR #128) — 636 → 512
+  via `MeasureCtxMenu.tsx` (177); cap 636 → 562.
+- ~~**#21 Filmstrip extraction**~~ (2026-08-09, PR #128) — 437 → 283 via
+  `FilmstripContextMenu.tsx` (109) + `GroupsBar.tsx` (60); no cap needed.
+- ~~**#8a Stage extraction**~~ (2026-08-09, PR #128) — 640 → 567 via
+  `useStageImageLoad.ts` (143); cap 640 → 617. Caps carry the ratchet's
+  50-line slack deliberately: pinned tight, an extraction made to create
+  room leaves none and the next line of items 8/14 would fail.
 - ~~**#6 Physical-scale math**~~ (2026-08-09, PR #126) — `physicalScale`,
   `viewForPhysicalScale`, `resolveScaleView` in `lib/geometry.ts`
   (197 → 320). Unit-agnostic by design (pixel_unit per screen px, not µm —
