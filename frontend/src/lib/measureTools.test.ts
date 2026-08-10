@@ -7,10 +7,10 @@ import { fuzzy } from "./fuzzy";
 import { MEASURE_GROUPS, MEASURE_TOOLS } from "./measureTools";
 
 describe("MEASURE_TOOLS", () => {
-  it("lists 11 capture kinds, each exactly once", () => {
-    expect(MEASURE_TOOLS).toHaveLength(11);
+  it("lists 13 capture kinds, each exactly once", () => {
+    expect(MEASURE_TOOLS).toHaveLength(13);
     const kinds = MEASURE_TOOLS.map((t) => t.kind);
-    expect(new Set(kinds).size).toBe(11);
+    expect(new Set(kinds).size).toBe(13);
     const expected = [
       "profile",
       "box-profile",
@@ -19,6 +19,8 @@ describe("MEASURE_TOOLS", () => {
       "polyline",
       "roi",
       "ellipse",
+      "polygon",
+      "lasso",
       "text",
       "arrow",
       "box",
@@ -27,7 +29,7 @@ describe("MEASURE_TOOLS", () => {
     expect([...kinds].sort()).toEqual([...expected].sort());
   });
 
-  it("partitions tools into groups of 5 / 2 / 4 in order", () => {
+  it("partitions tools into groups of 5 / 4 / 4 in order", () => {
     expect(MEASURE_GROUPS).toEqual([
       "Profiles & Distance",
       "Regions of Interest",
@@ -36,7 +38,7 @@ describe("MEASURE_TOOLS", () => {
     const counts = MEASURE_GROUPS.map(
       (g) => MEASURE_TOOLS.filter((t) => t.group === g).length,
     );
-    expect(counts).toEqual([5, 2, 4]);
+    expect(counts).toEqual([5, 4, 4]);
     for (const t of MEASURE_TOOLS) expect(MEASURE_GROUPS).toContain(t.group);
   });
 

@@ -47,6 +47,7 @@ export const CLICKS: Record<string, number> = {
   profile: 2,
   angle: 3,
   polyline: Infinity, // vertices accumulate; double-click finishes
+  polygon: Infinity, // vertices accumulate; double-click or close-click finishes
   text: 1,
   arrow: 2,
   box: 2,

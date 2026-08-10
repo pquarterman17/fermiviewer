@@ -304,6 +304,8 @@ export function buildEditMenu(ctx: MenuCtx): Entry[] {
             "roi",
             "ellipse",
             "polyline",
+            "polygon",
+            "lasso",
           ]);
           store.setStatus("measurements cleared (undoable)");
         }

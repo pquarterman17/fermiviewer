@@ -10,7 +10,12 @@ import {
 } from "../../lib/api";
 import { computeMeasureStats } from "../../lib/measureStats";
 import { fuzzy } from "../../lib/fuzzy";
-import { physAngle, tiltDist } from "../../lib/geometry";
+import {
+  areaPxToPhysical,
+  physAngle,
+  polygonStats,
+  tiltDist,
+} from "../../lib/geometry";
 import { MEASURE_GROUPS, MEASURE_TOOLS } from "../../lib/measureTools";
 import {
   boxProfileToCsv,
@@ -92,6 +97,13 @@ export default function MeasurePanel() {
     if (m.kind === "roi" || m.kind === "ellipse") {
       const s = roiStats[m.id];
       return s ? `μ ${Number(s.mean.toPrecision(4))}` : "…";
+    }
+    if (m.kind === "polygon" || m.kind === "lasso") {
+      const areaPx2 = polygonStats(px).areaPx2;
+      const areaPhys = areaPxToPhysical(areaPx2, meta.pixel_size ?? null);
+      return areaPhys != null
+        ? `${Number(areaPhys.toPrecision(4))} ${meta.pixel_unit}²`
+        : `${Number(areaPx2.toPrecision(4))} px²`;
     }
     if (
       m.kind === "text" ||

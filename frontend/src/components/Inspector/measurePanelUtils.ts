@@ -3,8 +3,10 @@
 // Results window. Split out of MeasurePanel.tsx (repo-health #33).
 
 import {
+  areaPxToPhysical,
   physAngle,
   physDist,
+  polygonStats,
   tiltDist,
   type TiltSettings,
 } from "../../lib/geometry";
@@ -24,6 +26,8 @@ export const KIND_GLYPH: Record<Measure["kind"], string> = {
   roi: "▭",
   ellipse: "◯",
   polyline: "⌇",
+  polygon: "⬠",
+  lasso: "➰",
   text: "T",
   arrow: "➹",
   box: "□",
@@ -105,6 +109,13 @@ export function showLog(
     } else if (m.kind === "roi" || m.kind === "ellipse") {
       const s = roiStats[m.id];
       value = s ? `μ=${s.mean} σ=${s.std}` : "";
+    } else if (m.kind === "polygon" || m.kind === "lasso") {
+      const areaPx2 = polygonStats(px).areaPx2;
+      const areaPhys = areaPxToPhysical(areaPx2, meta?.pixel_size ?? null);
+      value =
+        areaPhys != null
+          ? `${Number(areaPhys.toPrecision(6))} ${unit}²`
+          : `${Number(areaPx2.toPrecision(6))} px²`;
     } else {
       value = m.text ?? "";
     }
