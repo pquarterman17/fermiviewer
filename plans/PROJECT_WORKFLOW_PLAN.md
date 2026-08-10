@@ -242,18 +242,7 @@ size — same µm per screen px across consecutive frames and across panes.
 
 8. ~~**Stage honors the lock**~~ — shipped 2026-08-09, see Completed
 
-9. **Compare surfaces honor the lock** — same resolver at
-   CompareStage.tsx:39, SideBySideStage.tsx:145,
-   useStagePointers.ts:393; linked SBS zoom propagates physical scale
-   (lib/sbsView.ts nextGridViews gains pixel sizes) so panes match
-   µm/px, not raw z
-   - [ ] ALSO: the double-click-on-canvas fit gesture lives at
-         useStagePointers.ts:393 and does NOT yet re-seed the lock —
-         item 8 wired re-seeding into the imperative fit() only, because
-         that file was out of its scope. Route the gesture through the
-         same `fitAndReseedScale` helper (components/Stage/stageScaleLock.ts)
-   Model: sonnet · Parallel: NO — shares useStagePointers.ts with 14 and
-   SideBySideStage.tsx with 26
+9. ~~**Compare surfaces honor the lock**~~ — shipped 2026-08-09, see Completed
 
 10. ~~**Lock affordance**~~ — shipped 2026-08-09, see Completed
 
@@ -285,9 +274,7 @@ exported figures.
 
 ### Tier 2 — Medium Impact
 
-17. **Lasso hygiene** — point-count guard + simplification tolerance
-    preference.
-    Model: haiku · Parallel: yes (after 14)
+17. ~~**Lasso hygiene**~~ — shipped 2026-08-09, see Completed
 
 18. ~~**Round-trip test**~~ — shipped 2026-08-09, see Completed
 
@@ -319,12 +306,7 @@ stepping — all reading the same sample groups.
 
 ### Tier 2 — Medium Impact
 
-26. **Sample stepping affordance** — panes bound to groups already step
-    within a sample; add "compare samples" seeding (pane i ← sample i at
-    matched member index) and surface sample groups in the pane
-    dropdowns.
-    Model: sonnet · Parallel: NO — SideBySideStage.tsx conflicts with 9
-    (after 20)
+26. ~~**Sample stepping affordance**~~ — shipped 2026-08-09, see Completed
 
 27. ~~**Import seeds projects**~~ — shipped 2026-08-09, see Completed
 
@@ -378,6 +360,22 @@ lands.
 
 ## Completed
 
+- ~~**#9/#26/#17 Compare surfaces, sample stepping, lasso hygiene**~~
+  (2026-08-09, PR #143) — the resolver now covers the three remaining `fitView`
+  defaults (`CompareStage`, `SideBySideStage`, `useStagePointers`), and linked
+  side-by-side zoom propagates PHYSICAL scale via `sbsView.nextGridViews`, so
+  panes at different calibrations show a feature the same size. Carries over the
+  defect item 8 booked: the double-click-on-canvas fit gesture now re-seeds the
+  lock through the same `fitAndReseedScale` helper instead of silently diverging
+  from it. Sample stepping seeds pane *i* from sample *i* at a matched index.
+  Lasso capture is point-capped with a user-settable simplification tolerance in
+  Preferences.
+  **CONSTRAINT for whoever touches this next:** `useStagePointers.ts` is at
+  **498 of the 500-line default ceiling** — two lines. No clean extraction
+  exists: the file is one hook whose handlers all close over its local state, so
+  pulling one out means threading a large context object, which is worse than
+  the size. The next feature that needs room here must do a deliberate
+  restructure of the hook, not a quick move.
 - ~~**#32/#33/#34/#35 Project save + load THROUGH THE APP**~~ (2026-08-09,
   PR #141) — File ▸ Save Project… / Export Project Bundle… / Open Project… /
   Locate Data Folder… (N unavailable). Before this the `.fvp` format was a

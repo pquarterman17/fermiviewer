@@ -174,6 +174,13 @@ export interface ViewerState {
   /** Enter side-by-side compare seeded from the current image (pane 0 =
    *  active, pane 1 = next in order). No pre-selection needed. */
   startSideBySide: () => void;
+  /** Enter side-by-side compare seeded for cross-sample stepping (item 26):
+   *  pane i is bound to `sampleIds[i]`, all starting at the MATCHED member
+   *  index (the active image's position within whichever sample contains
+   *  it, else 0) — so arrow keys/◀▶ then walk equivalent frames across
+   *  samples. Grid becomes 1×sampleIds.length. No-op (with a status
+   *  message) if fewer than 2 ids resolve to a real group. */
+  startSampleCompare: (sampleIds: string[]) => void;
   /** Set a pane's image directly (e.g. dropdown pick) and focus it. */
   setPaneImage: (idx: number, id: string) => void;
   /** Bind a named group to a pane (null = unbound → steps all images);

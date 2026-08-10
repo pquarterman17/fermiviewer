@@ -60,4 +60,64 @@ describe("nextGridViews (compare-grid zoom coupling)", () => {
     expect(out).not.toBe(input);
     expect(input[1]).toEqual(v(1)); // original untouched
   });
+
+  it("omitting pixelSizes reproduces the pre-#9 raw-z matching", () => {
+    const acted = v(4, 0.2, 0.2);
+    const other = v(1, 0.8, 0.8);
+    const out = nextGridViews(0, acted, "zoom", [v(1), other], true);
+    expect(out[1]).toEqual({ z: 4, px: 0.8, py: 0.8 });
+  });
+});
+
+describe("nextGridViews — #9 physical-scale linking across calibrations", () => {
+  it("two panes at different pixel sizes: zoom-linking matches PHYSICAL scale, not raw z, so a feature keeps the same screen width", () => {
+    // pane 0: pixel_size 2 (coarse); pane 1: pixel_size 5 (fine) — same
+    // physical feature must occupy the same screen width in both once linked
+    const acted = v(4, 0.5, 0.5); // pane 0 zoomed to z=4
+    const other = v(1, 0.3, 0.7); // pane 1's own pan, pre-link
+    const out = nextGridViews(0, acted, "zoom", [v(1), other], true, [2, 5]);
+
+    expect(out[0]).toEqual(acted); // acted-on pane unchanged
+    expect(out[1]?.px).toBeCloseTo(0.3, 10); // pan preserved
+    expect(out[1]?.py).toBeCloseTo(0.7, 10);
+
+    // physicalScale = pixelSize / z must now match across panes
+    const scale0 = 2 / out[0]!.z;
+    const scale1 = 5 / out[1]!.z;
+    expect(scale1).toBeCloseTo(scale0, 10);
+
+    // a 100-unit feature occupies the same screen width in both panes
+    const featureUnits = 100;
+    const screenWidth0 = (featureUnits / 2) * out[0]!.z;
+    const screenWidth1 = (featureUnits / 5) * out[1]!.z;
+    expect(screenWidth1).toBeCloseTo(screenWidth0, 10);
+  });
+
+  it("acted-on pane uncalibrated → every other pane falls back to raw-z matching", () => {
+    const acted = v(3, 0.4, 0.4);
+    const out = nextGridViews(0, acted, "zoom", [v(1), v(1)], true, [null, 5]);
+    expect(out[1]?.z).toBe(3); // raw z, not a physical-scale computation
+  });
+
+  it("acted-on pane calibrated but a specific other pane is not → that pane still falls back to raw z", () => {
+    const acted = v(3, 0.4, 0.4);
+    const out = nextGridViews(0, acted, "zoom", [v(1), v(1), v(1)], true, [
+      2,
+      null,
+      4,
+    ]);
+    expect(out[1]?.z).toBe(3); // uncalibrated pane 1 → raw z
+    expect(out[2]?.z).toBeCloseTo((4 / (2 / 3)) as number, 10); // pane 2 matches physical scale
+  });
+
+  it("zoom-unlinked or a non-zoom kind ignores pixelSizes entirely", () => {
+    const acted = v(4, 0.2, 0.2);
+    const other = v(1, 0.8, 0.8);
+    expect(
+      nextGridViews(0, acted, "zoom", [v(1), other], false, [2, 5])[1],
+    ).toEqual(other);
+    expect(
+      nextGridViews(0, acted, "pan", [v(1), other], true, [2, 5])[1],
+    ).toEqual(other);
+  });
 });

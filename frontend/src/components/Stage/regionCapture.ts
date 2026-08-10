@@ -9,6 +9,16 @@ export interface LassoCapture {
   pts: { x: number; y: number }[];
 }
 
+/** Hard ceiling on a single capture's point count (item 17). The
+ *  distance-based decimation in appendLassoPoint already keeps ordinary
+ *  drags small, but it is a per-step filter: a sufficiently long or slow
+ *  drag (or a user-set tolerance near zero) can still accumulate points
+ *  without bound. This is the backstop — once hit, further points are
+ *  dropped outright rather than growing the Measure further. 2000 points
+ *  is generous for any real outline while keeping polygonStats and the
+ *  overlay render cheap. */
+export const MAX_LASSO_POINTS = 2000;
+
 /** Start a freehand capture at an image-space point. */
 export function startLasso(pt: { x: number; y: number }): LassoCapture {
   return { pts: [pt] };
@@ -17,13 +27,17 @@ export function startLasso(pt: { x: number; y: number }): LassoCapture {
 /** Append a point, dropping anything closer than `minStepPx` (image-space)
  *  to the last KEPT point — a cheap streaming decimation so a slow drag
  *  across a large image doesn't balloon the Measure to thousands of
- *  points. Callers derive minStepPx from the current zoom (e.g. 2 screen
- *  px ⇒ `2 / view.z`) so the simplification feels consistent at any zoom. */
+ *  points. Callers derive minStepPx from the current zoom and the user's
+ *  lasso-simplify preference (lib/prefs.ts lassoSimplifyPx), e.g.
+ *  `prefs.lassoSimplifyPx / view.z`, so the simplification feels
+ *  consistent at any zoom. Once MAX_LASSO_POINTS is reached, every further
+ *  point is dropped regardless of spacing (the hard cap above). */
 export function appendLassoPoint(
   cap: LassoCapture,
   pt: { x: number; y: number },
   minStepPx: number,
 ): LassoCapture {
+  if (cap.pts.length >= MAX_LASSO_POINTS) return cap;
   const last = cap.pts[cap.pts.length - 1];
   if (Math.hypot(pt.x - last.x, pt.y - last.y) < minStepPx) return cap;
   return { pts: [...cap.pts, pt] };

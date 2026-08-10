@@ -114,6 +114,15 @@ describe("PrefsWindow", () => {
     expect(state.setPrefsOpen).toHaveBeenCalledWith(false);
   });
 
+  it("lasso simplify tolerance (item 17): edits and persists via Save", () => {
+    render(<PrefsWindow />);
+    fireEvent.click(screen.getByText("Measurement"));
+    const input = screen.getByDisplayValue("2") as HTMLInputElement; // DEFAULTS.lassoSimplifyPx
+    fireEvent.change(input, { target: { value: "5" } });
+    fireEvent.click(screen.getByText("Save"));
+    expect(loadPrefs().lassoSimplifyPx).toBe(5);
+  });
+
   it("renders nothing when closed", () => {
     state.prefsOpen = false;
     const { container } = render(<PrefsWindow />);

@@ -9,12 +9,9 @@
 import { useRef, type RefObject } from "react";
 
 import { applyFilter, grainsEdit } from "../../lib/api";
-import {
-  fitView,
-  screenToImage,
-  viewForRect,
-  type Size,
-} from "../../lib/geometry";
+import { screenToImage, viewForRect, type Size } from "../../lib/geometry";
+import { loadPrefs } from "../../lib/prefs";
+import { useBrowseScale } from "../../store/browseScale";
 import { replaceCrossSectionGrainsAfterEdit } from "../../store/crossSection";
 import {
   useViewer,
@@ -29,6 +26,7 @@ import {
   startLasso,
   type LassoCapture,
 } from "./regionCapture";
+import { runFitAndReseed } from "./stageScaleLock";
 import { buildCtxTarget, type CtxTarget } from "./StageCtxMenu";
 import { CLICKS, snapHV, type Pt } from "./stageUtils";
 
@@ -117,6 +115,8 @@ export function useStagePointers(ctx: StagePointersCtx) {
   // lasso: local capture accumulator (regionCapture.ts) — no ctx ref needed
   // since only this hook's own pointer handlers touch it.
   const lassoRef = useRef<LassoCapture | null>(null);
+  // #17: simplify tolerance (screen px), cached per-drag (avoids per-move reads)
+  const lassoTolRef = useRef(2);
 
   // ── pointer: pan / marquee / capture / readout ──
   const local = (e: React.PointerEvent | React.MouseEvent): Pt => {
@@ -242,6 +242,7 @@ export function useStagePointers(ctx: StagePointersCtx) {
       // held (onPointerMove below, via regionCapture.ts) — no click
       // accumulation, unlike polygon just below.
       const ip = toImage(p);
+      lassoTolRef.current = loadPrefs().lassoSimplifyPx;
       lassoRef.current = startLasso(ip);
       setPending({ kind: "lasso", pts: [ip] });
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -315,7 +316,8 @@ export function useStagePointers(ctx: StagePointersCtx) {
         lassoRef.current = null;
       } else {
         const ip = toImage(p);
-        lassoRef.current = appendLassoPoint(lassoRef.current, ip, 2 / view.z);
+        const tol = lassoTolRef.current / view.z;
+        lassoRef.current = appendLassoPoint(lassoRef.current, ip, tol);
         setPending({ kind: "lasso", pts: lassoRef.current.pts });
       }
     } else if (marquee) {
@@ -447,7 +449,14 @@ export function useStagePointers(ctx: StagePointersCtx) {
       setPending(null);
       return;
     }
-    if (!pending && imgSize) apply(fitView(imgSize, vp));
+    // #9: fit-to-window also re-seeds the browse-scale lock (Stage.tsx parity)
+    if (!pending && imgSize) {
+      const pixelSize = activeId
+        ? useViewer.getState().images[activeId]?.pixel_size ?? null
+        : null;
+      const { locked, reseed } = useBrowseScale.getState();
+      runFitAndReseed(imgSize, vp, pixelSize, locked, apply, reseed);
+    }
   };
 
   const onContextMenu = (e: React.MouseEvent) => {

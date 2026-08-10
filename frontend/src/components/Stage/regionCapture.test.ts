@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   appendLassoPoint,
   finishLasso,
+  MAX_LASSO_POINTS,
   nearFirstVertex,
   startLasso,
 } from "./regionCapture";
@@ -32,6 +33,20 @@ describe("regionCapture", () => {
     expect(finishLasso(cap)).toBeNull(); // only 2 points
     cap = appendLassoPoint(cap, { x: 10, y: 10 }, 1);
     expect(finishLasso(cap)).toHaveLength(3);
+  });
+
+  it("caps the point count (item 17): a long drag stays bounded even with spacing that would otherwise keep every point", () => {
+    let cap = startLasso({ x: 0, y: 0 });
+    // minStepPx=0 keeps every point — the per-step decimation alone would
+    // never stop this drag, so the hard cap is what has to intervene
+    for (let i = 0; i < MAX_LASSO_POINTS + 500; i++) {
+      cap = appendLassoPoint(cap, { x: i + 1, y: 0 }, 0);
+    }
+    expect(cap.pts).toHaveLength(MAX_LASSO_POINTS);
+    // further points are silently dropped, not appended
+    cap = appendLassoPoint(cap, { x: 99999, y: 0 }, 0);
+    expect(cap.pts).toHaveLength(MAX_LASSO_POINTS);
+    expect(cap.pts.at(-1)).not.toEqual({ x: 99999, y: 0 });
   });
 
   it("nearFirstVertex requires a real polygon (>= 3 verts) before closing", () => {
