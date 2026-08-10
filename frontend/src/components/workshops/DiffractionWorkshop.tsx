@@ -12,22 +12,15 @@ import {
 } from "./DiffractionPanels";
 
 import {
-  analyzeDiffractionSimulate,
-  deleteDiffractionPhase,
-  diffractionCalibrate,
   diffractionDetect,
   diffractionDetectWithRoi,
   diffractionIndex,
-  importDiffractionPhase,
-  listDiffractionPhases,
   renderUrl,
   type AnalysisRoi,
-  type CalibrationResult,
   type IndexResult,
   type PhaseCandidate,
-  type PhaseInfo,
-  type SimulateResult,
 } from "../../lib/api";
+import { useDiffractionCalibration } from "./diffraction/useDiffractionCalibration";
 import {
   committedRoiOverlay,
   liveRoiDrawOverlay,
@@ -40,6 +33,7 @@ import {
   type RoiDraw,
   type RoiMode,
 } from "./diffraction/diffractionGeometry";
+import { useDiffractionSimulation } from "./diffraction/useDiffractionSimulation";
 import {
   downloadCsv,
   downloadJson,
@@ -77,15 +71,14 @@ export default function DiffractionWorkshop() {
   const [labels, setLabels] = useState(false);
   const [busy, setBusy] = useState(false);
   // A8 simulate
-  const [phases, setPhases] = useState<PhaseInfo[]>([]);
-  const [simPhase, setSimPhase] = useState("");
-  const [simZa, setSimZa] = useState("0 0 1");
-  const [simResult, setSimResult] = useState<SimulateResult | null>(null);
-  const [scatModel, setScatModel] = useState<"fe" | "z">("fe");
-  const cifInputRef = useRef<HTMLInputElement>(null);
+  const {
+    phases, simPhase, setSimPhase, simZa, setSimZa, simResult,
+    scatModel, setScatModel, cifInputRef, onCifFile, deletePhase, simulate,
+  } = useDiffractionSimulation(activeId, setStatus, setBusy);
   // calibration sub-panel
-  const [calKnownD, setCalKnownD] = useState("");
-  const [calib, setCalib] = useState<CalibrationResult | null>(null);
+  const { calKnownD, setCalKnownD, calib, calibrate } = useDiffractionCalibration(
+    activeId, simPhase, minRadius, setStatus, setBusy,
+  );
   // A7 manual click-spots
   const [clickMode, setClickMode] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -110,15 +103,6 @@ export default function DiffractionWorkshop() {
     setRoiDraw({ mode: "none", p1: null, p2: null });
     setRoiMode("none");
   }, [activeId]);
-
-  useEffect(() => {
-    listDiffractionPhases()
-      .then((list) => {
-        setPhases(list);
-        if (list.length > 0) setSimPhase(list[0].name);
-      })
-      .catch(() => undefined);
-  }, []);
 
   const scale = natural ? VIEW_W / natural.w : 0;
   const viewH = natural ? natural.h * scale : VIEW_W;
@@ -181,93 +165,6 @@ export default function DiffractionWorkshop() {
       .catch((e: Error) => setStatus(`index: ${e.message}`))
       .finally(() => setBusy(false));
   }, [activeId, spots, pixelSize, cameraLen, accKv, committedRoi, setStatus]);
-
-  // ── simulate ──────────────────────────────────────────────────────
-  const simulate = useCallback(() => {
-    if (!simPhase) return;
-    const parts = simZa.trim().split(/\s+/).map(Number);
-    if (parts.length !== 3 || parts.some(isNaN)) {
-      setStatus("Simulate: zone axis must be three integers, e.g. 0 0 1");
-      return;
-    }
-    setBusy(true);
-    analyzeDiffractionSimulate(simPhase, parts as [number, number, number], {
-      parentImageId: activeId ?? undefined,
-      scatteringModel: scatModel,
-    })
-      .then((r) => {
-        setSimResult(r);
-        setStatus(
-          `sim: ${r.phase} [${r.zone_axis.join(" ")}] · ` +
-            `${r.spots.length} spots · λ ${r.lam_angstrom.toFixed(4)} Å`,
-        );
-        if (r.image) {
-          useViewer.getState().ingestDerived([r.image]);
-        }
-      })
-      .catch((e: Error) => setStatus(`simulate: ${e.message}`))
-      .finally(() => setBusy(false));
-  }, [simPhase, simZa, activeId, scatModel, setStatus]);
-
-  // ── custom-phase import / delete (Diffraction #2) ─────────────────
-  const onCifFile = useCallback(
-    (file: File) => {
-      file
-        .text()
-        .then((text) => importDiffractionPhase(text, ""))
-        .then((p) => {
-          setStatus(`phase imported: ${p.name} (${p.centering}, ${p.n_sites} sites)`);
-          return listDiffractionPhases();
-        })
-        .then((list) => {
-          setPhases(list);
-          const last = list.find((p) => p.custom);
-          if (last) setSimPhase(last.name);
-        })
-        .catch((e: Error) => setStatus(`CIF import: ${e.message}`));
-    },
-    [setStatus],
-  );
-
-  const deletePhase = useCallback(() => {
-    const p = phases.find((x) => x.name === simPhase);
-    if (!p?.custom) return;
-    deleteDiffractionPhase(p.name)
-      .then(() => listDiffractionPhases())
-      .then((list) => {
-        setPhases(list);
-        setSimPhase(list[0]?.name ?? "");
-        setStatus(`phase deleted: ${p.name}`);
-      })
-      .catch((e: Error) => setStatus(`delete: ${e.message}`));
-  }, [phases, simPhase, setStatus]);
-
-  // ── elliptical-distortion calibration (Diffraction #1) ────────────
-  const calibrate = useCallback(() => {
-    if (!activeId) return;
-    const dKnown = Number(calKnownD);
-    setBusy(true);
-    diffractionCalibrate(activeId, {
-      dKnownAng: dKnown > 0 ? dKnown : undefined,
-      standardPhase: dKnown > 0 ? undefined : simPhase || undefined,
-      hkl: dKnown > 0 ? undefined : [1, 1, 1],
-      rMin: Number(minRadius) || 5,
-    })
-      .then((r) => {
-        setCalib(r);
-        const e = r.ellipse;
-        setStatus(
-          `calibrate: ecc ${e.eccentricity.toFixed(3)} · ` +
-            `a/b ${e.a.toFixed(1)}/${e.b.toFixed(1)} px · ` +
-            `RMS ${r.rms_residual_px.toFixed(2)} px` +
-            (r.camera_constant_px_ang
-              ? ` · C ${r.camera_constant_px_ang.toFixed(1)} px·Å`
-              : ""),
-        );
-      })
-      .catch((e: Error) => setStatus(`calibrate: ${e.message}`))
-      .finally(() => setBusy(false));
-  }, [activeId, calKnownD, simPhase, minRadius, setStatus]);
 
   if (!isImage) {
     return (
