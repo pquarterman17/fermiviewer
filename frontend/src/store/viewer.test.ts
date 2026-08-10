@@ -45,6 +45,18 @@ vi.mock("../lib/api", async (importOriginal) => {
         ],
         client_state: { order: ["x"], activeId: "x" },
         name: slug === "study" ? "Study" : slug,
+        // a workspace is a `.fvp` since plan #32, so its load response carries
+        // the project's identity and any placeholders alongside the images
+        unavailable: [],
+        project: {
+          path: `/cfg/workspaces/${slug}.fvp`,
+          name: slug === "study" ? "Study" : slug,
+          payload_mode: "light" as const,
+          loaded_payload_mode: "light" as const,
+          data_root_hint: null,
+          primary_param: null,
+          n_unavailable: 0,
+        },
       }),
     ),
   };
@@ -78,6 +90,25 @@ beforeEach(() => {
   localStorage.clear();
 });
 
+/** The project fields every /workspaces/load response carries (a workspace IS
+ *  a `.fvp` since plan #32). Spread into the mocks below so they stay whole
+ *  responses rather than partial ones the real endpoint never sends. */
+const LOADED_PROJECT = {
+  unavailable: [],
+  project: {
+    path: "/cfg/workspaces/saved.fvp",
+    name: "Saved",
+    payload_mode: "light",
+    loaded_payload_mode: "light",
+    data_root_hint: null,
+    primary_param: null,
+    n_unavailable: 0,
+  },
+} satisfies Pick<
+  Awaited<ReturnType<typeof apiLoadWorkspaceNamed>>,
+  "unavailable" | "project"
+>;
+
 // measureSeq/groupSeq are module-level counters, not part of the Zustand
 // state that beforeEach resets — this suite MUST run before any other test
 // calls addMeasure/createGroup, or the asserted "m10"/"g4" ids below will be
@@ -86,6 +117,7 @@ describe("id counter reseed on restore (dup-id fix)", () => {
   it("bumps measureSeq/groupSeq past restored ids so new mints don't collide", async () => {
     const images: ImageMeta[] = [meta("a")];
     vi.mocked(apiLoadWorkspaceNamed).mockResolvedValueOnce({
+      ...LOADED_PROJECT,
       images,
       name: "Saved",
       client_state: {
@@ -967,6 +999,7 @@ describe("groups + grid persistence round-trip", () => {
     // ("gone") and one stale group id bound to a pane — both must prune.
     const images: ImageMeta[] = [meta("a"), meta("b"), meta("c")];
     vi.mocked(apiLoadWorkspaceNamed).mockResolvedValueOnce({
+      ...LOADED_PROJECT,
       images,
       name: "Saved",
       client_state: {
@@ -1008,6 +1041,7 @@ describe("groups + grid persistence round-trip", () => {
     // surviving sample, and the sample whose only image is gone must not
     // take its params with it into a dangling parent
     vi.mocked(apiLoadWorkspaceNamed).mockResolvedValueOnce({
+      ...LOADED_PROJECT,
       images: [meta("a"), meta("b")],
       name: "Study",
       client_state: {
@@ -1040,6 +1074,7 @@ describe("groups + grid persistence round-trip", () => {
 
   it("falls back to the default 1×2 grid when the payload omits grid state", async () => {
     vi.mocked(apiLoadWorkspaceNamed).mockResolvedValueOnce({
+      ...LOADED_PROJECT,
       images: [meta("a")],
       name: "Bare",
       client_state: { order: ["a"], activeId: "a" },
@@ -1095,6 +1130,7 @@ describe("restore preserves every field of persisted types", () => {
 
   beforeEach(() => {
     vi.mocked(apiLoadWorkspaceNamed).mockResolvedValueOnce({
+      ...LOADED_PROJECT,
       images: [meta("x")],
       client_state: {
         order: ["x"],

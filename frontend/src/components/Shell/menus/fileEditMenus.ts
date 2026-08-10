@@ -42,6 +42,82 @@ export function recentImagesEntry(store: MenuCtx["store"]): Entry {
   };
 }
 
+/** The project commands (PROJECT_WORKFLOW_PLAN #32–#35, format ADR 0002).
+ *
+ *  Save Project and Export Project Bundle are deliberately TWO entries rather
+ *  than one dialog with a mode picker: the everyday save is megabytes and
+ *  references the source folders, the bundle is hundreds of MB and needs
+ *  none — a difference the user must choose knowingly, not discover later
+ *  when a project opens with no data on another machine.
+ *
+ *  Locate Data Folder… stays in the menu (not only in the library's
+ *  unavailable block) because it is repeatable: different samples may have
+ *  moved to different folders, so it is invoked once per folder, and it must
+ *  be reachable without hunting for a card. */
+function projectEntries(store: MenuCtx["store"]): Entry[] {
+  const missing = Object.keys(store.unavailable).length;
+  const nothingToSave = store.order.length === 0 && missing === 0;
+  return [
+    { kind: "sep" },
+    {
+      label: "Save Project…",
+      disabled: nothingToSave,
+      action: () => {
+        const p = window.prompt("Save project to path (.fvp):");
+        if (p) {
+          store
+            .saveProject(p, "light")
+            .catch((e: Error) => store.setStatus(e.message));
+        }
+      },
+    },
+    {
+      label: "Export Project Bundle…",
+      disabled: nothingToSave,
+      action: () => {
+        const p = window.prompt(
+          "Export a self-contained project bundle to path (.fvp) — " +
+            "embeds every image, so it needs no source folders:",
+        );
+        if (p) {
+          store
+            .saveProject(p, "bundle")
+            .catch((e: Error) => store.setStatus(e.message));
+        }
+      },
+    },
+    {
+      label: "Open Project…",
+      action: () => {
+        const p = window.prompt("Open project from path (.fvp):");
+        if (p) {
+          store
+            .openProject(p)
+            .catch((e: Error) => store.setStatus(e.message));
+        }
+      },
+    },
+    {
+      label: missing
+        ? `Locate Data Folder… (${missing} unavailable)`
+        : "Locate Data Folder…",
+      disabled: missing === 0,
+      action: () => {
+        const root = window.prompt(
+          "Folder the missing images are in now (every image under it is " +
+            "re-linked; repeat for samples that moved elsewhere):",
+        );
+        if (root) {
+          store
+            .locateData(root)
+            .catch((e: Error) => store.setStatus(e.message));
+        }
+      },
+    },
+    { kind: "sep" },
+  ];
+}
+
 export function buildFileMenu(ctx: MenuCtx): Entry[] {
   const { store, openFiles } = ctx;
   return [
@@ -159,29 +235,7 @@ export function buildFileMenu(ctx: MenuCtx): Entry[] {
         })();
       },
     },
-    {
-      label: "Save Session…",
-      disabled: store.order.length === 0,
-      action: () => {
-        const p = window.prompt("Save session to path (.json):");
-        if (p) {
-          store
-            .saveWorkspace(p)
-            .catch((e: Error) => store.setStatus(e.message));
-        }
-      },
-    },
-    {
-      label: "Load Session…",
-      action: () => {
-        const p = window.prompt("Load session from path (.json):");
-        if (p) {
-          store
-            .loadWorkspace(p)
-            .catch((e: Error) => store.setStatus(e.message));
-        }
-      },
-    },
+    ...projectEntries(store),
     {
       label: "Copy to Clipboard",
       disabled: !store.activeId,

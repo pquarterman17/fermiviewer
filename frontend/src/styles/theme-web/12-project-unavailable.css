@@ -1,0 +1,99 @@
+/* Unavailable images in the library (W5 #35, format ADR 0002 §4).
+   A light-mode project references its source pixels, so they can be missing
+   on another machine. This block is only rendered when some are: a project
+   with all its data gets no chrome from here at all.
+
+   Its own file rather than more lines in 01-shell-library.css, which was
+   already within ~100 lines of the stylesheet ceiling. */
+
+.fvd-unavailable {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 var(--pad) var(--pad);
+  padding: var(--pad);
+  border: 1px solid var(--warn, var(--border));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--warn, var(--accent)) 8%, transparent);
+}
+
+.fvd-unavailable-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fvd-unavailable-title {
+  color: var(--text);
+  font-size: var(--type-label);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.fvd-unavailable-note {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+}
+
+.fvd-unavailable-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.fvd-unavailable-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.fvd-unavailable-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.fvd-unavailable-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fvd-unavailable-list li {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: var(--font-size-sm);
+}
+
+.fvd-unavailable-name {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The stored reference, not an absolute path: it is what the user matches
+   against the folder they are about to pick. Truncated from the LEFT (rtl),
+   because the filename end of a path is the identifying part. */
+.fvd-unavailable-rel {
+  color: var(--text-faint);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--type-label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}

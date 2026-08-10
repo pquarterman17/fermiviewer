@@ -107,7 +107,7 @@ describe("CustomMetaCard", () => {
       "didn't come from a file on disk",
     );
     expect(container.textContent).toContain("this session only");
-    expect(container.textContent).toContain("Save Session");
+    expect(container.textContent).toContain("Save Project");
     expect(container.textContent).toContain(
       "Download metadata file gives you uploaded.dm3.fvmeta.yaml",
     );

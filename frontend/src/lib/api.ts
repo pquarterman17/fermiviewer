@@ -14,3 +14,4 @@ export * from "./api/batch";
 export * from "./api/watch";
 export * from "./api/fourd";
 export * from "./api/folders";
+export * from "./api/project";

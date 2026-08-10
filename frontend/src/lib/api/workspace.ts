@@ -1,8 +1,14 @@
 // Extracted from lib/api.ts; public imports remain stable via the barrel.
 import type { ImageMeta } from "./core";
+import type { ProjectInfo, UnavailableImage } from "./project";
 import { json, post } from "./transport";
 
 // ── workspace persistence ───────────────────────────────────────────
+//
+// The path-based saveSession/loadSession are gone with the v1 write path
+// (plan #32): the File menu speaks lib/api/project.ts now. What remains here
+// is the NAMED workspace switcher, which is the same `.fvp` bytes addressed by
+// display name instead of a path.
 
 export interface SessionClientState {
   order?: string[];
@@ -19,23 +25,14 @@ export interface SessionClientState {
   sbsPanes?: unknown;
   sbsRows?: number;
   sbsCols?: number;
-}
-
-export async function saveSession(
-  path: string,
-  clientState: SessionClientState,
-): Promise<{ n_images: number; json_path: string }> {
-  return post("/api/session/save", { path, client_state: clientState });
-}
-
-export async function loadSession(
-  path: string,
-): Promise<{ images: ImageMeta[]; client_state: SessionClientState | null }> {
-  return post("/api/session/load", { path });
+  /** The µm-per-screen-px browse lock (W2 gate G5) — presentational, so it
+   *  rides the manifest's opaque `ui_state` like everything else here except
+   *  `imageGroups` and `measures`, which are promoted to validated sections. */
+  browseScale?: unknown;
 }
 
 // ── named workspaces (design WS4b) ──────────────────────────────────
-// A workspace is the same session payload, addressed by display name and
+// A workspace is the same project payload, addressed by display name and
 // kept under the OS config dir instead of a user-typed path.
 
 export interface WorkspaceInfo {
@@ -62,6 +59,10 @@ export async function saveWorkspaceNamed(
 export async function loadWorkspaceNamed(slug: string): Promise<{
   images: ImageMeta[];
   client_state: SessionClientState | null;
+  /** Placeholders, exactly as an Open Project… returns them: a workspace is a
+   *  light-mode project, so its sources can go missing too. */
+  unavailable: UnavailableImage[];
+  project: ProjectInfo;
   name: string;
 }> {
   return post("/api/workspaces/load", { slug });

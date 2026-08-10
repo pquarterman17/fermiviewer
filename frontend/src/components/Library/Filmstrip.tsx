@@ -28,6 +28,7 @@ import FilmstripContextMenu, {
 } from "./FilmstripContextMenu";
 import GroupsBar from "./GroupsBar";
 import SampleSection, { type SampleSectionCtx } from "./SampleSection";
+import UnavailableSection from "./UnavailableSection";
 
 type CtxMenu = FilmstripCtxTarget;
 
@@ -44,6 +45,7 @@ export default function Filmstrip() {
   const closeImage = useViewer((s) => s.closeImage);
   const setBatchOpen = useViewer((s) => s.setBatchOpen);
   const imageGroups = useViewer((s) => s.imageGroups);
+  const unavailable = useViewer((s) => s.unavailable);
   const createGroup = useViewer((s) => s.createGroup);
   const renameGroup = useViewer((s) => s.renameGroup);
   const deleteGroup = useViewer((s) => s.deleteGroup);
@@ -61,6 +63,9 @@ export default function Filmstrip() {
 
   const { collapsed, toggle } = useCollapsedGroups("library");
   const hasGroups = imageGroups.length > 0;
+  // a project whose data has moved can have placeholders and no open images —
+  // "No images open. File → Open…" would be wrong advice there (#35)
+  const hasUnavailable = Object.keys(unavailable).length > 0;
   // derived in a memo, never in a selector: these build fresh arrays, and a
   // selector that returns one re-renders forever (zustand snapshot rule)
   const tree = useMemo(
@@ -296,13 +301,18 @@ export default function Filmstrip() {
         />
       )}
 
-      {order.length === 0 && (
+      {order.length === 0 && !hasUnavailable && (
         <div className="fvd-film-empty">
           No images open.
           <br />
           File → Open…
         </div>
       )}
+
+      {/* Placeholders for a project whose data has moved (#35). Above the
+          cards on purpose: it is the one thing in the library the user has to
+          act on, and it renders nothing at all when nothing is missing. */}
+      <UnavailableSection />
 
       <div
         className="fvd-film-list"

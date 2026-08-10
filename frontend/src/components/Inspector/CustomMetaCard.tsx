@@ -226,7 +226,7 @@ export default function CustomMetaCard() {
       : `↳ Save writes ${info.sidecar_name} next to the image, so the ` +
         `values load automatically next time.`
     : `↳ This image didn't come from a file on disk, so values stay with ` +
-      `this session only — Save still keeps them, and Save Session (File ` +
+      `this session only — Save still keeps them, and Save Project (File ` +
       `menu) preserves them too. Download metadata file gives you ` +
       `${info.sidecar_name} to place next to the original image so it ` +
       `loads automatically there.`;
