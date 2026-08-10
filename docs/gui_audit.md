@@ -53,7 +53,7 @@ Everything not listed above is ✅ — full tables follow.
 | Open Files… (⌘O) | ✅ | native picker + drag-drop + Open by Path |
 | Batch Convert… | ⚠ D3 | Batch Export ZIP |
 | Batch Rename… | ✅ | |
-| Save / Load Session… | ✅ | |
+| Save / Load Session… | ✅ | now Save Project… / Open Project… (`.fvp`, ADR 0002) + Export Project Bundle… |
 | Save Image… | ✅ | Export… ⌘E |
 | Copy to Clipboard | ✅ | |
 | Save with Overlays… | ✅ | export includes measurements/bar/colorbar |

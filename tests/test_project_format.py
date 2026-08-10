@@ -2,10 +2,13 @@
 
 Covers: single-container layout, round-trip deep-equality, unknown-key
 preservation, path-traversal rejection, unresolved references surviving a
-save (the no-data-loss assertion), interrupted-save atomicity, and a
-Windows-written hint resolving on POSIX.
+save (the no-data-loss assertion), interrupted-save atomicity, a
+Windows-written hint resolving on POSIX, v1 -> v2 migration (plan #32), the
+client_state split that migration shares with every save, and re-pointing a
+moved data root (plan #34).
 
-v1 -> v2 migration is deliberately absent: it is plan item 32.
+The route-level surface — Save Project / Export Project Bundle / Open
+Project… / Locate folder… — is in tests/test_api_project_io.py.
 """
 
 from __future__ import annotations
@@ -22,7 +25,8 @@ import pytest
 import tifffile
 
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
-from fermiviewer.io import project_file
+from fermiviewer.io import project_file, project_resolve
+from fermiviewer.io import project_paths as paths
 from fermiviewer.io.project_file import (
     ProjectFormatError,
     ProjectImage,
@@ -30,6 +34,8 @@ from fermiviewer.io.project_file import (
     save_project,
 )
 from fermiviewer.io.project_manifest import MANIFEST_NAME, schema_bytes
+from fermiviewer.io.project_sections import join_sections, split_client_state
+from fixtures.v1_session import write_v1_session
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -727,3 +733,370 @@ def test_corrupt_manifest_json_is_refused(tmp_path: Path) -> None:
         zf.writestr(MANIFEST_NAME, "{not json")
     with pytest.raises(ProjectFormatError, match="not valid JSON"):
         load_project(path)
+
+
+# ── v1 -> v2 migration (plan #32) ────────────────────────────────────
+# v1 is read-only legacy, so pairs come from the test-only writer in
+# fixtures/v1_session.py — which takes its constants from the v1 reader.
+
+
+V1_CLIENT_STATE: dict[str, Any] = {
+    "order": ["v1-a", "v1-b"],
+    "activeId": "v1-a",
+    "views": {"v1-a": {"z": 3.0}},
+    "display": {"v1-a": {"cmap": "viridis", "invert": False}},
+    "overlay": {"color": "#ffcc00", "size": "M"},
+    "savedRois": {"v1-a": [{"id": "r1", "name": "grain", "kind": "roi", "pts": []}]},
+    "sbsPanes": [{"imageId": "v1-a", "groupId": "g1"}],
+    "sbsRows": 1,
+    "sbsCols": 2,
+    "imageGroups": [
+        {
+            "id": "g1",
+            "name": "Sample A",
+            "ids": ["v1-a", "v1-b"],
+            "parent": None,
+            "params": {"anneal_T": {"value": 450.0, "unit": "degC"}},
+            "color": "#ff8800",
+        },
+        {"id": "g0", "name": "Study", "ids": [], "parent": None, "params": {},
+         "color": None},
+    ],
+    "measures": {
+        "v1-a": [
+            {
+                "id": "m1",
+                "kind": "lasso",
+                "pts": [{"x": 0.1, "y": 0.2}, {"x": 0.3, "y": 0.4}],
+                "text": "grain 3",
+                "labelDx": 4,
+            }
+        ]
+    },
+}
+
+
+def _v1_pair(tmp_path: Path, source: str = "/nowhere/frame.tif") -> Path:
+    image = DataStruct(
+        data=np.arange(12, dtype=np.uint16).reshape(3, 4),
+        kind=DataKind.IMAGE,
+        axes=(AxisCal(0.5, units="nm"), AxisCal(0.25, units="nm")),
+        metadata={"vendor": "acme", "source": source},
+    )
+    derived = DataStruct(
+        data=np.full(5, 2.5, dtype=np.float32),
+        kind=DataKind.SPECTRUM,
+        axes=(AxisCal(1.0, units="eV"),),
+        metadata={"derived_from": "v1-a", "parser": "derived"},
+    )
+    json_path, _ = write_v1_session(
+        tmp_path / "legacy.json",
+        [("v1-a", "frame.tif", image), ("v1-b", "frame sum", derived)],
+        V1_CLIENT_STATE,
+    )
+    return json_path
+
+
+def test_load_project_accepts_a_v1_pair_and_loses_nothing(tmp_path: Path) -> None:
+    loaded = load_project(_v1_pair(tmp_path))
+
+    assert [img.id for img in loaded.images] == ["v1-a", "v1-b"]
+    assert loaded.payload_mode == "bundle"  # v1 embedded everything
+    assert loaded.name == "legacy"  # v1 had no project name; the file's stem
+    image, derived = loaded.images
+    np.testing.assert_array_equal(image.data, np.arange(12).reshape(3, 4))
+    assert image.data is not None and image.data.dtype == np.uint16
+    assert image.axes == (AxisCal(0.5, units="nm"), AxisCal(0.25, units="nm"))
+    assert image.metadata["vendor"] == "acme"
+    # the import path becomes the v2 `source`, so the FIRST light save can
+    # reference this image instead of embedding it forever
+    assert image.source == "/nowhere/frame.tif"
+    assert image.derived is False
+    # a derived image keeps its lineage, which is what makes it embed in both
+    # payload modes rather than being referenced into nothing
+    assert derived.derived_from == "v1-a" and derived.derived is True
+    assert derived.kind is DataKind.SPECTRUM
+
+    # the opaque blob's scientific half is now validated sections...
+    assert loaded.samples[0]["image_ids"] == ["v1-a", "v1-b"]
+    assert loaded.samples[0]["params"] == {"anneal_T": {"value": 450.0, "unit": "degC"}}
+    assert loaded.samples[0]["color"] == "#ff8800"
+    assert loaded.samples[1]["id"] == "g0"  # an image-less project group survives
+    assert loaded.measures["v1-a"][0]["kind"] == "lasso"
+    assert loaded.measures["v1-a"][0]["labelDx"] == 4  # unmodelled field carried
+    # ...and its presentational half rides ui_state untouched
+    for key in ("order", "activeId", "views", "display", "overlay", "savedRois"):
+        assert loaded.ui_state[key] == V1_CLIENT_STATE[key]
+    assert loaded.ui_state["sbsPanes"] == V1_CLIENT_STATE["sbsPanes"]
+    assert "imageGroups" not in loaded.ui_state
+    assert "measures" not in loaded.ui_state
+
+
+def test_a_migrated_v1_project_re_saves_as_a_fvp(tmp_path: Path) -> None:
+    """The next save writes v2 — nothing can keep a project on v1."""
+    loaded = load_project(_v1_pair(tmp_path))
+    written = save_project(
+        tmp_path / "legacy",
+        loaded.images,
+        samples=loaded.samples,
+        measures=loaded.measures,
+        ui_state=loaded.ui_state,
+        name=loaded.name,
+    )
+    assert written == tmp_path / "legacy.fvp"
+
+    again = load_project(written)
+    assert [img.id for img in again.images] == ["v1-a", "v1-b"]
+    assert again.samples == loaded.samples
+    assert again.measures == loaded.measures
+    assert again.ui_state == loaded.ui_state
+    np.testing.assert_array_equal(again.images[0].data, np.arange(12).reshape(3, 4))
+    # the v1 source does not exist here, so nothing could be referenced: the
+    # pixels were embedded rather than dropped
+    assert all(entry["embedded"] for entry in _manifest(written)["images"])
+
+
+def test_a_migrated_v1_project_references_sources_that_still_exist(
+    tmp_path: Path,
+) -> None:
+    """The migration's payoff: a v1 workspace whose files are still on disk
+    becomes a light project (megabytes) rather than staying self-contained."""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    tifffile.imwrite(
+        data_dir / "frame.tif", np.arange(12, dtype=np.uint16).reshape(3, 4)
+    )
+    loaded = load_project(_v1_pair(tmp_path, source=str(data_dir / "frame.tif")))
+
+    written = save_project(tmp_path / "legacy.fvp", loaded.images, data_root=data_dir)
+    entries = {entry["id"]: entry for entry in _manifest(written)["images"]}
+    assert entries["v1-a"]["embedded"] is False
+    assert entries["v1-a"]["rel"] == "frame.tif"
+    assert entries["v1-b"]["embedded"] is True  # derived: no file of its own
+    np.testing.assert_array_equal(
+        load_project(written).images[0].data, np.arange(12).reshape(3, 4)
+    )
+
+
+def test_a_v1_pair_is_named_by_either_half(tmp_path: Path) -> None:
+    pair = _v1_pair(tmp_path)
+    assert load_project(pair.with_suffix(".npz")).images[0].id == "v1-a"
+
+
+def test_a_missing_v1_pair_raises_file_not_found(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        load_project(tmp_path / "absent.json")
+
+
+# ── the client_state split, on its own (plan #32) ────────────────────
+
+
+def test_a_malformed_sample_or_measure_is_dropped_not_raised() -> None:
+    """A save must never fail on state the schema cannot represent: the
+    manifest is validated before the container is committed, so one stray
+    entry would otherwise take the whole project down with it."""
+    sections = split_client_state(
+        {
+            "imageGroups": [
+                {"id": "g1", "name": "ok", "ids": ["a"]},
+                {"name": "no id"},
+                "not a group",
+                {"id": "", "name": "empty id"},
+            ],
+            "measures": {
+                "a": [
+                    {"id": "m1", "kind": "polygon", "pts": [{"x": 0.0, "y": 1.0}]},
+                    {"id": "m2", "kind": "teleport", "pts": []},  # unknown kind
+                    {"id": "m3", "kind": "roi"},  # no pts
+                    {"id": "m4", "kind": "roi", "pts": [{"x": 0.0}]},  # no y
+                ],
+                "b": [{"kind": "roi", "pts": []}],  # no id
+            },
+        }
+    )
+    assert [s["id"] for s in sections.samples] == ["g1"]
+    assert sections.dropped_samples == 3
+    assert [m["id"] for m in sections.measures["a"]] == ["m1"]
+    assert "b" not in sections.measures  # nothing survived; no empty row written
+    assert sections.dropped_measures == 4
+
+
+def test_non_finite_numbers_are_refused_by_the_split(tmp_path: Path) -> None:
+    """json.dumps writes NaN happily and JSON.parse refuses it, so one bad
+    float would produce a project this app can write and not read."""
+    sections = split_client_state(
+        {
+            "imageGroups": [
+                {
+                    "id": "g1",
+                    "name": "S",
+                    "ids": [],
+                    "params": {
+                        "good": {"value": 1.5, "unit": "nm"},
+                        "nan": {"value": float("nan")},
+                        "inf": {"value": float("inf"), "unit": "nm"},
+                    },
+                }
+            ],
+            "measures": {
+                "a": [
+                    {"id": "m1", "kind": "roi", "pts": [{"x": float("nan"), "y": 0.0}]}
+                ]
+            },
+        }
+    )
+    assert list(sections.samples[0]["params"]) == ["good"]
+    assert sections.measures == {}
+    # and the surviving manifest really is writable + readable back
+    path = save_project(
+        tmp_path / "s.fvp",
+        [_image()],
+        samples=sections.samples,
+        measures=sections.measures,
+    )
+    assert json.dumps(_manifest(path))  # no NaN token anywhere
+    assert load_project(path).samples[0]["params"] == {
+        "good": {"value": 1.5, "unit": "nm"}
+    }
+
+
+def test_a_v1_file_holding_nan_migrates_into_a_strictly_valid_manifest(
+    tmp_path: Path,
+) -> None:
+    """The reachable NaN path is a FILE, not a request: `json.loads` accepts a
+    bare `NaN` token and v1's writer emitted one, whereas neither a browser
+    (`JSON.stringify` writes null) nor httpx will transmit one. So a v1
+    workspace is where a non-finite number actually arrives — and if it reached
+    the manifest, `JSON.parse` would refuse the ENTIRE load response, not just
+    the field holding it."""
+    state = {
+        # opaque ui_state, and carried unknown fields on a sample and a measure
+        # — the three paths that pass values through verbatim
+        "views": {"v1-a": {"z": float("nan"), "px": 0.5}},
+        "imageGroups": [
+            {
+                "id": "g1",
+                "name": "S",
+                "ids": ["v1-a"],
+                "futureField": {"bad": float("inf"), "good": 2},
+                "params": {"T": {"value": float("nan"), "unit": "degC"}},
+            }
+        ],
+        "measures": {
+            "v1-a": [
+                {
+                    "id": "m1",
+                    "kind": "roi",
+                    "pts": [{"x": 0.1, "y": 0.2}],
+                    "futureList": [1.0, float("nan"), 3.0],
+                }
+            ]
+        },
+    }
+    json_path, _ = write_v1_session(tmp_path / "legacy.json", [_image()], state)
+    assert "NaN" in json_path.read_text(encoding="utf-8")  # v1 really wrote one
+
+    loaded = load_project(json_path)
+    written = save_project(
+        tmp_path / "clean.fvp",
+        loaded.images,
+        samples=loaded.samples,
+        measures=loaded.measures,
+        ui_state=loaded.ui_state,
+    )
+    # strict JSON: allow_nan=False would raise on a single NaN or Infinity
+    assert json.dumps(_manifest(written), allow_nan=False)
+
+    again = load_project(written)
+    assert again.ui_state["views"]["v1-a"] == {"px": 0.5}  # bad key dropped
+    assert again.samples[0]["futureField"] == {"good": 2}
+    assert again.samples[0]["params"] == {}  # an unplottable value is no value
+    # a list keeps its length, so the remaining indices still line up
+    assert again.measures["v1-a"][0]["futureList"] == [1.0, None, 3.0]
+
+
+def test_the_split_round_trips_through_join() -> None:
+    sections = split_client_state(V1_CLIENT_STATE)
+    rejoined = join_sections(sections.samples, sections.measures, sections.ui_state)
+    for key, value in V1_CLIENT_STATE.items():
+        assert rejoined[key] == value
+
+
+def test_ui_state_cannot_shadow_a_promoted_section() -> None:
+    """A hand-edited file that put `measures` in both places must not be able
+    to hide the validated copy behind the opaque one."""
+    rejoined = join_sections(
+        [{"id": "g1", "name": "S", "image_ids": ["a"]}],
+        {"a": [{"id": "m1", "kind": "roi", "pts": []}]},
+        {"measures": "junk", "imageGroups": "junk", "views": {}},
+    )
+    assert rejoined["measures"] == {"a": [{"id": "m1", "kind": "roi", "pts": []}]}
+    assert rejoined["imageGroups"] == [
+        {
+            "id": "g1",
+            "name": "S",
+            "ids": ["a"],
+            "parent": None,
+            "params": {},
+            "color": None,
+        }
+    ]
+
+
+# ── re-pointing a moved data root (plan #34/#35) ─────────────────────
+
+
+def test_a_user_root_is_appended_to_the_search_order(tmp_path: Path) -> None:
+    """ADR 0002 §3's order is preserved, not replaced: a hint that starts
+    working again still wins over a manual pick made while it was broken."""
+    hint = tmp_path / "hint"
+    hint.mkdir()
+    assert paths.search_roots(str(hint), tmp_path) == (hint, tmp_path)
+    assert paths.search_roots(None, tmp_path) == (tmp_path,)
+
+
+def test_resolve_skips_a_root_whose_file_holds_something_else(tmp_path: Path) -> None:
+    """One stale copy early in the order must not mask the real data later in
+    it — otherwise a decoy folder permanently shadows the right one."""
+    decoy = tmp_path / "decoy"
+    real = tmp_path / "real"
+    decoy.mkdir()
+    real.mkdir()
+    (decoy / "frame.tif").write_bytes(b"not a TIFF at all")
+    path = save_project(
+        tmp_path / "s.fvp", [_sourced(real / "frame.tif")], data_root=real
+    )
+    (reference,) = load_project(path).images
+    (real / "frame.tif").rename(tmp_path / "held.tif")
+    (tmp_path / "held.tif").rename(real / "frame.tif")
+
+    outcome = project_resolve.resolve(reference, (decoy, real))
+    assert outcome.image is not None
+    assert outcome.image.resolved_path == str(real / "frame.tif")
+
+
+def test_a_size_change_is_reported_not_enforced(tmp_path: Path) -> None:
+    """`size_bytes` is a cheap sanity check (ADR 0002 §3): a re-exported file
+    can differ in bytes and still be the right image, so the mismatch is
+    surfaced rather than used to reject the folder."""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    path = save_project(
+        tmp_path / "s.fvp", [_sourced(data_dir / "frame.tif")], data_root=data_dir
+    )
+    recorded = _manifest(path)["images"][0]["size_bytes"]
+
+    moved = tmp_path / "moved"
+    moved.mkdir()
+    tifffile.imwrite(
+        moved / "frame.tif", np.full((3, 4), 7, dtype=np.uint16), description="x" * 900
+    )
+    (data_dir / "frame.tif").unlink()
+
+    (placeholder,) = load_project(path).images
+    assert placeholder.unavailable is True
+    outcome = project_resolve.resolve(placeholder, (moved,))
+    assert outcome.image is not None  # accepted: the pixels are right
+    assert outcome.mismatched is True
+    assert outcome.size_bytes == (moved / "frame.tif").stat().st_size
+    assert outcome.size_bytes != recorded

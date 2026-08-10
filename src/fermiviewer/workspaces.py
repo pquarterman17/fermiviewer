@@ -1,11 +1,17 @@
 """Named-workspace registry (design WS4b).
 
-A *workspace* is just a named session. The bytes are written by the
-existing ``io.session_file`` serializer (``<slug>.json`` + ``<slug>.npz``)
-under the OS config dir at ``<config>/workspaces/``; this module adds the
-thin naming layer on top — slugs, a display-name/timestamp index, listing,
-and deletion. It owns no pixel I/O of its own, so the save/load contract
-stays in one place (``io.session_file``).
+A *workspace* is just a named project. The bytes are written by the project
+serializer (``<slug>.fvp``, ADR 0002) under the OS config dir at
+``<config>/workspaces/``; this module adds the thin naming layer on top —
+slugs, a display-name/timestamp index, listing, and deletion. It owns no
+pixel I/O of its own, so the save/load contract stays in one place
+(``io.project_file``).
+
+Workspaces saved by a build before plan #32 are a v1 ``<slug>.json`` +
+``<slug>.npz`` pair. ``stored_path`` prefers the ``.fvp`` and falls back to
+the pair, so an old workspace keeps opening (upgraded in memory) and the next
+save writes the ``.fvp`` beside it; ``delete_workspace`` removes all three
+names so nothing is left orphaned.
 """
 
 from __future__ import annotations
@@ -15,14 +21,17 @@ import re
 from pathlib import Path
 from typing import Any
 
+from fermiviewer.io.project_file import PROJECT_SUFFIX
 from fermiviewer.usermeta import config_dir
 
 __all__ = [
     "delete_workspace",
     "list_workspaces",
+    "project_path",
     "register",
     "session_path",
     "slugify",
+    "stored_path",
     "workspaces_dir",
 ]
 
@@ -38,9 +47,29 @@ def _index_path() -> Path:
     return workspaces_dir() / "index.json"
 
 
+def project_path(slug: str) -> Path:
+    """The ``.fvp`` project path for a slug — where a save goes."""
+    return workspaces_dir() / f"{slug}{PROJECT_SUFFIX}"
+
+
 def session_path(slug: str) -> Path:
-    """The ``.json`` manifest path for a slug (``.npz`` is its sibling)."""
+    """The legacy v1 ``.json`` manifest path (``.npz`` is its sibling).
+    Read-only: nothing writes this any more."""
     return workspaces_dir() / f"{slug}.json"
+
+
+def stored_path(slug: str) -> Path | None:
+    """Where this workspace actually is, or None if it is gone.
+
+    The ``.fvp`` wins over a legacy pair left beside it, so re-saving an old
+    workspace upgrades it in place rather than leaving two sources of truth
+    with the newer one ignored.
+    """
+    project = project_path(slug)
+    if project.is_file():
+        return project
+    legacy = session_path(slug)
+    return legacy if legacy.is_file() else None
 
 
 def slugify(name: str) -> str:
@@ -82,7 +111,7 @@ def list_workspaces() -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     keep: dict[str, Any] = {}
     for slug, info in entries.items():
-        if not session_path(slug).is_file():
+        if stored_path(slug) is None:
             continue
         keep[slug] = info
         out.append(
@@ -112,13 +141,13 @@ def register(slug: str, name: str, n_images: int, saved_at: str) -> None:
 
 
 def delete_workspace(slug: str) -> bool:
-    """Remove a workspace's index entry + its ``.json``/``.npz`` files.
+    """Remove a workspace's index entry + its files, current and legacy.
     Returns True if anything was actually removed."""
     data = _read_index()
     existed = data["workspaces"].pop(slug, None) is not None
     _write_index(data)
     removed = False
-    for ext in (".json", ".npz"):
+    for ext in (PROJECT_SUFFIX, ".json", ".npz"):
         f = workspaces_dir() / f"{slug}{ext}"
         if f.is_file():
             f.unlink()

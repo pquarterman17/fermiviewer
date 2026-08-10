@@ -4,7 +4,13 @@
 // restored ids can never collide), image ingest, and the session slice
 // that save/load round-trips.
 
-import { isFourDMeta, type FourDMeta, type ImageMeta, type SessionClientState } from "../lib/api";
+import {
+  isFourDMeta,
+  type FourDMeta,
+  type ImageMeta,
+  type SessionClientState,
+  type UnavailableImage,
+} from "../lib/api";
 import type { TiltSettings } from "../lib/geometry";
 import {
   pruneGroups,
@@ -332,19 +338,30 @@ function reseedSeq(current: number, ids: Iterable<string>, re: RegExp): number {
 }
 
 /** Build the store slice that a loaded session replaces — shared by
- *  loadWorkspace (arbitrary path) and loadWorkspaceNamed (config-dir
+ *  openProject (arbitrary path) and loadWorkspaceNamed (config-dir
  *  workspace) so both restore identical state (status + currentWorkspace
  *  are added by each caller). */
 export function sessionSlice(
-  r: { images: ImageMeta[]; client_state: SessionClientState | null },
+  r: {
+    images: ImageMeta[];
+    client_state: SessionClientState | null;
+    /** Images the project referenced but this machine could not find
+     *  (ADR 0002 §4). Absent for callers that cannot produce any. */
+    unavailable?: UnavailableImage[];
+  },
   fallbackOverlay: OverlayStyle,
 ): Partial<ViewerState> {
   const images: Record<string, ImageMeta> = {};
   for (const m of r.images) images[m.id] = m;
+  const unavailable: Record<string, UnavailableImage> = {};
+  for (const u of r.unavailable ?? []) unavailable[u.id] = u;
   const cs = r.client_state ?? {};
   const savedOrder = cs.order as string[] | undefined;
   const loadedIds = r.images.map((m) => m.id);
-  // saved order filtered to what actually loaded; append any newcomers
+  // saved order filtered to what actually loaded; append any newcomers.
+  // Placeholders are deliberately absent: `order` drives the stage, the card
+  // list and arrow-key navigation, none of which can do anything with an
+  // image that has no pixels. They render as their own library block instead.
   const order = (savedOrder?.filter((id) => id in images) ?? loadedIds).concat(
     loadedIds.filter((id) => !savedOrder?.includes(id)),
   );
@@ -355,8 +372,17 @@ export function sessionSlice(
   // groups: prune member ids to what actually loaded; drop groups left with
   // neither members nor a surviving descendant. Sample params/parent (and any
   // field a newer version added) ride through — see pruneGroups.
+  //
+  // A PLACEHOLDER COUNTS AS LOADED here. Pruning against `images` alone would
+  // silently drop an unavailable image's sample membership, and the next save
+  // would write that loss to the file — exactly the data destruction ADR 0002
+  // §4 forbids. (The server keeps the manifest's own membership regardless;
+  // this is what stops the client re-saving a pruned copy over it.)
   const rawGroups = (cs.imageGroups as ImageGroup[] | undefined) ?? [];
-  const imageGroups: ImageGroup[] = pruneGroups(rawGroups, images);
+  const imageGroups: ImageGroup[] = pruneGroups(rawGroups, {
+    ...images,
+    ...unavailable,
+  });
   const liveGroupIds = new Set(imageGroups.map((g) => g.id));
   // grid: restore shape, then prune each pane's image + group binding
   const sbsRows = Math.max(1, Math.round((cs.sbsRows as number) ?? 1));
@@ -385,6 +411,7 @@ export function sessionSlice(
   );
   return {
     images,
+    unavailable,
     order,
     activeId,
     selected: activeId ? [activeId] : [],
