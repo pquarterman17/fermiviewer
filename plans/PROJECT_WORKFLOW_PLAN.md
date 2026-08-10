@@ -257,19 +257,18 @@ size — same µm per screen px across consecutive frames and across panes.
 
 7. ~~**Scale-lock store**~~ — shipped 2026-08-09, see Completed
 
-8. **Stage honors the lock** — extraction DONE 2026-08-09 (PR #128:
-   640 → 567, cap 617); the resolver wiring remains
-   - [x] FRONT-LOADED EXTRACTION into `useStageImageLoad.ts`, cap lowered
-   - [ ] Replace both fitView defaults in Stage.tsx with `resolveScaleView`
-         (already on main from item 6) — locked + calibrated → scale view
-   - [ ] cycleImage keeps on-screen µm/px across differing pixel sizes
-   Model: sonnet · Parallel: NO — exclusive on Stage.tsx
+8. ~~**Stage honors the lock**~~ — shipped 2026-08-09, see Completed
 
 9. **Compare surfaces honor the lock** — same resolver at
    CompareStage.tsx:39, SideBySideStage.tsx:145,
    useStagePointers.ts:393; linked SBS zoom propagates physical scale
    (lib/sbsView.ts nextGridViews gains pixel sizes) so panes match
-   µm/px, not raw z.
+   µm/px, not raw z
+   - [ ] ALSO: the double-click-on-canvas fit gesture lives at
+         useStagePointers.ts:393 and does NOT yet re-seed the lock —
+         item 8 wired re-seeding into the imperative fit() only, because
+         that file was out of its scope. Route the gesture through the
+         same `fitAndReseedScale` helper (components/Stage/stageScaleLock.ts)
    Model: sonnet · Parallel: NO — shares useStagePointers.ts with 14 and
    SideBySideStage.tsx with 26
 
@@ -355,19 +354,7 @@ stepping — all reading the same sample groups.
 
 ### Tier 1 — High Impact
 
-20. **Sample/project group model** — extend ImageGroup with optional
-    named parameter fields and an optional parent reference
-    (project → sample nesting); groupMembers untouched
-    - [ ] Grep every ImageGroup consumer before changing the shared type
-    - [ ] New actions in store/viewerCompareActions.ts (243/500):
-          setGroupParams, setGroupParent, add/removeGroupMember;
-          signatures in viewerState.ts (274/500)
-    - [ ] Persistence uses the `samples` section specified in ADR 0002
-          (id, name, image_ids, parent, params with value+unit, color) —
-          NOT the opaque client_state blob it used to ride
-    Ratchet: roomy files only; viewer.ts untouched.
-    Model: opus · Parallel: NO — blocks 22–28; run first in W4 ·
-    Depends on item 30 for the manifest shape
+20. ~~**Sample/project group model**~~ — shipped 2026-08-09, see Completed
 
 21. ~~**Filmstrip extraction (front-load)**~~ — shipped 2026-08-09, see Completed
 
@@ -376,7 +363,13 @@ stepping — all reading the same sample groups.
     "Ungrouped"); with no groups it stays today's flat list; membership
     drag between sections edits group ids; selection/keyboard semantics
     preserved; new components/Library/SampleSection.tsx keeps Filmstrip
-    ≤500.
+    ≤500
+    - [ ] ALSO: `closeImage` (store/viewer.ts:323) drops any group whose
+          ids empty, INCLUDING an image-less project group — a real defect
+          under nesting. Item 20 could not fix it (viewer.ts pinned 575,
+          zero headroom). Route that prune through `pruneGroups`, which
+          already has the keep-if-live-descendant rule, as part of an
+          extraction that buys the lines back
     Model: opus · Parallel: NO — Filmstrip.tsx (after 20, 21)
 
 23. **Sample parameter editing** — per-section editor reusing
@@ -488,6 +481,23 @@ lands.
 
 ## Completed
 
+- ~~**#20 Sample/project group model**~~ (2026-08-09, PR #130) — `ImageGroup`
+  gains optional `parent`, `params` (`{name: {value, unit}}`) and `color`,
+  matching the schema's `samples` entries exactly. Four actions, five pure
+  cycle-safe helpers, 37 unit tests; `lib/groups.ts` 69 → 231. **Found a real
+  pre-existing defect**: session restore rebuilt each group from a
+  three-field whitelist, so `params`/`parent`/`color` would have been wiped
+  on the first save/load cycle with no compile error — the
+  narrowing-a-shared-type failure mode exactly. Now routed through
+  `pruneGroups`. Store keeps `ids`; schema says `image_ids`; mapping is 1:1.
+- ~~**#8 Stage honors the lock**~~ (2026-08-09, PR #131) — both `fitView`
+  defaults in Stage.tsx now resolve through `resolveScaleView`; logic in a new
+  `stageScaleLock.ts` (64) so Stage.tsx went 567 → 582 against its 617 cap.
+  Real-corpus check: paging between the two real Helios frames under
+  fit-each-image changed apparent scale **92×** (1.76 vs 161.6 µm per screen
+  px) — that is the jarring this removes. Uncalibrated images still fall back
+  to fitView exactly. Two carry-overs booked: the double-click gesture's
+  re-seed on item 9, and it is not user-reachable until item 10's toggle.
 - ~~**#30 `.fvp` container read/write**~~ (2026-08-09, PR #129) — three pure
   modules (`io/project_file.py` 461, `io/project_manifest.py` 373,
   `io/project_paths.py` 172; one module would have been 545, over the
