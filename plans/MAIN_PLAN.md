@@ -65,9 +65,15 @@ measurement, project hierarchy).
 1. **Pin-graduation campaign** — three legacy caps remain, down from four.
    `store/viewer.ts` graduated 2026-08-10 (575 → 444, entry deleted) as the
    price of fixing `closeImage`; Stage.tsx (584/617) and MeasureOverlay.tsx
-   (527/562) fell but stay pinned. Still to graduate:
-   `components/workshops/DiffractionWorkshop.tsx` (548/548 — zero headroom).
-   - [ ] Split DiffractionWorkshop.tsx below 500 and delete its cap entry
+   (527/562) fell but stay pinned. `DiffractionWorkshop.tsx` graduated
+   2026-08-10 (548 → 445, entry deleted), leaving only those two.
+   - [x] ~~Split DiffractionWorkshop.tsx below 500 and delete its cap entry~~
+         (2026-08-10) — Simulate-tab state/logic → `useDiffractionSimulation.ts`
+         (128) and the elliptical-distortion flow → `useDiffractionCalibration.ts`
+         (57), both under `diffraction/`. Bodies moved verbatim as custom hooks
+         with identical dependency arrays and destructured names, so the JSX
+         needed zero edits. A third candidate (`buildReportTable`) was rejected
+         for needing 10 dependencies — the ≥6-prop rule working.
    - [ ] `frontend/src/components/Stage/useStagePointers.ts` is at **498 of
          the 500 default ceiling** with NO clean extraction available: it is
          one hook whose handlers all close over its local state, so pulling
