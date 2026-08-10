@@ -15,12 +15,8 @@ import {
 import { GLRenderer } from "../../gl/render";
 import { type Raster16 } from "../../lib/api";
 import { buildLabelLut, buildLut } from "../../lib/colormaps";
-import {
-  fitView,
-  imageToScreen,
-  zoomAbout,
-  type Size,
-} from "../../lib/geometry";
+import { imageToScreen, zoomAbout, type Size } from "../../lib/geometry";
+import { useBrowseScale } from "../../store/browseScale";
 import { useScribble } from "../../store/scribble";
 import { useStageInfo } from "../../store/stage";
 import {
@@ -52,6 +48,7 @@ import {
   makeFinalizeMeasure,
   type FinalizerCtx,
 } from "./stageFinalizers";
+import { defaultStageView, fitAndReseedScale } from "./stageScaleLock";
 import { transformU16, WHEEL_K, type Pt } from "./stageUtils";
 import { useStageImageLoad } from "./useStageImageLoad";
 import { useStagePointers, type StagePointersCtx } from "./useStagePointers";
@@ -96,6 +93,10 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   const setCursor = useStageInfo((s) => s.setCursor);
   const setZoom = useStageInfo((s) => s.setZoom);
   const setProfile = useStageInfo((s) => s.setProfile);
+  // constant-physical-scale lock (item 8) — global, not per-image
+  const scaleLocked = useBrowseScale((s) => s.locked);
+  const lockedScale = useBrowseScale((s) => s.scale);
+  const reseedScale = useBrowseScale((s) => s.reseed);
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -131,7 +132,13 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   const isGrainMap = Boolean(meta?.meta?.["grain_labels"]);
   // true while the trained-mode paint panel is open on THIS image
   const paintActive = scribbleActive && scribbleImageId === activeId;
-  const view: View | null = imgSize && (storedView ?? fitView(imgSize, vp));
+  const view: View | null = defaultStageView(
+    storedView,
+    imgSize,
+    vp,
+    meta?.pixel_size ?? null,
+    { locked: scaleLocked, scale: lockedScale },
+  );
 
   // ── renderer lifecycle ──
   useEffect(() => {
@@ -301,7 +308,15 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     handle,
     () => ({
       fit: () => {
-        if (imgSize) apply(fitView(imgSize, vp));
+        if (!imgSize) return;
+        const { view: v, reseedTo } = fitAndReseedScale(
+          imgSize,
+          vp,
+          meta?.pixel_size ?? null,
+          scaleLocked,
+        );
+        apply(v);
+        if (reseedTo != null) reseedScale(reseedTo);
       },
       actualSize: () => {
         if (view) apply({ ...view, z: 1 });
@@ -321,7 +336,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
         }
       },
     }),
-    [imgSize, vp, view, apply],
+    [imgSize, vp, view, apply, meta?.pixel_size, scaleLocked, reseedScale],
   );
 
   // ── wheel zoom about cursor (native listener: needs preventDefault) ──
