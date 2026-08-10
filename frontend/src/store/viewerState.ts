@@ -4,7 +4,7 @@
 
 import type { ImageMeta, RoiStats } from "../lib/api";
 import type { TiltSettings } from "../lib/geometry";
-import type { ComparePane, ImageGroup } from "../lib/groups";
+import type { ComparePane, GroupParams, ImageGroup } from "../lib/groups";
 import type {
   CaptureMode,
   ColorbarSide,
@@ -56,7 +56,8 @@ export interface ViewerState {
   /** Link zoom level across all panes (default true; toggle to unlink). */
   sbsLinked: boolean;
   // ── named image groups (reusable, persisted) ──
-  /** Ordered named groups built from multi-selections; bind one to a pane. */
+  /** Ordered named groups built from multi-selections; bind one to a pane.
+   *  A group carrying params/parent is a sample or project (ADR 0002 §5). */
   imageGroups: ImageGroup[];
   // monotonic counter bumped on every ingestDerived — a lineage signal that
   // lets views like Live FFT re-fetch when a new derived image is produced
@@ -171,6 +172,21 @@ export interface ViewerState {
   deleteGroup: (id: string) => void;
   /** Replace a group's member list. */
   setGroupMembers: (id: string, ids: string[]) => void;
+  /** Replace a group's parameter map wholesale — same semantics as
+   *  setGroupMembers, so a single-field edit passes `{ ...g.params, k: v }`.
+   *  Values are normalised to what the manifest schema accepts (finite
+   *  number / string / boolean, unit forced to string|null). */
+  setGroupParams: (id: string, params: GroupParams) => void;
+  /** Nest a group under `parentId` (project → sample), or make it a root with
+   *  null. No-ops if the group or the parent doesn't exist, or if the move
+   *  would create a cycle (which reports via setStatus). */
+  setGroupParent: (id: string, parentId: string | null) => void;
+  /** Append one open image to a group's members; no-op if it isn't open or is
+   *  already a member. */
+  addGroupMember: (id: string, imageId: string) => void;
+  /** Drop one image from a group's members, keeping the group even if it
+   *  empties (an image-less group can be a project). */
+  removeGroupMember: (id: string, imageId: string) => void;
   cycleImage: (dir: 1 | -1) => void;
   closeImage: (id: string) => Promise<void>;
   setView: (id: string, view: View) => void;
