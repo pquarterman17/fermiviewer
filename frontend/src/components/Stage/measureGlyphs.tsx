@@ -5,7 +5,9 @@
 
 import type { RoiStats } from "../../lib/api";
 import {
+  areaPxToPhysical,
   physAngle,
+  polygonStats,
   tiltDist,
   type Size,
   type TiltSettings,
@@ -137,6 +139,14 @@ export function measureLabel(m: Measure, ctx: MeasureLabelCtx): string {
     case "ellipse": {
       const s = roiStats[m.id];
       return s ? `μ ${fmt(s.mean)} · σ ${fmt(s.std)}` : "…";
+    }
+    case "polygon":
+    case "lasso": {
+      const areaPx2 = polygonStats(px).areaPx2;
+      const areaPhys = areaPxToPhysical(areaPx2, pixelSize);
+      return areaPhys != null
+        ? `${fmt(areaPhys)} ${pixelUnit}²`
+        : `${fmt(areaPx2)} px²`;
     }
     case "text":
     case "arrow":

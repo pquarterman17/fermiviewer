@@ -7,7 +7,9 @@
 // Pure module — no React, no Zustand.  All inputs are plain values.
 
 import {
+  areaPxToPhysical,
   physAngle,
+  polygonStats,
   tiltDist,
   type TiltSettings,
 } from "./geometry";
@@ -98,6 +100,7 @@ function groupOf(values: number[], label: string, unit: string): GroupStats {
  *   "Distance" — distance / profile / polyline lengths (tilt-corrected #34)
  *   "Angle"    — angle measurements (degrees)
  *   "ROI"      — roi / ellipse mean intensities (from roiStats)
+ *   "Area"     — polygon / lasso areas (item 14; physical when calibrated)
  *
  * @returns MeasureStats with .total and .groups (empty groups omitted).
  *
@@ -112,6 +115,7 @@ export function computeMeasureStats(input: MeasureStatsInput): MeasureStats {
   const distVals: number[] = [];
   const angleVals: number[] = [];
   const roiVals: number[] = [];
+  const areaVals: number[] = [];
 
   const unit = pixelSize != null ? pixelUnit : "px";
 
@@ -134,6 +138,9 @@ export function computeMeasureStats(input: MeasureStatsInput): MeasureStats {
     } else if (m.kind === "roi" || m.kind === "ellipse") {
       const s = roiStats[m.id];
       if (s !== undefined) roiVals.push(s.mean);
+    } else if (m.kind === "polygon" || m.kind === "lasso") {
+      const areaPx2 = polygonStats(px).areaPx2;
+      areaVals.push(areaPxToPhysical(areaPx2, pixelSize) ?? areaPx2);
     }
     // annotations (text/arrow/box/circle) carry no numeric value → skipped
   }
@@ -145,6 +152,8 @@ export function computeMeasureStats(input: MeasureStatsInput): MeasureStats {
     groups.push(groupOf(angleVals, "Angle", "°"));
   if (roiVals.length > 0)
     groups.push(groupOf(roiVals, "ROI mean", "counts"));
+  if (areaVals.length > 0)
+    groups.push(groupOf(areaVals, "Area", `${unit}²`));
 
   return { total: measures.length, groups };
 }

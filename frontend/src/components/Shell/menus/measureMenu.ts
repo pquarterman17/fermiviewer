@@ -42,6 +42,16 @@ export function buildMeasureMenu(ctx: MenuCtx): Entry[] {
       disabled: !store.activeId,
       action: () => store.setCaptureMode("polyline"),
     },
+    {
+      label: "Polygon",
+      disabled: !store.activeId,
+      action: () => store.setCaptureMode("polygon"),
+    },
+    {
+      label: "Lasso",
+      disabled: !store.activeId,
+      action: () => store.setCaptureMode("lasso"),
+    },
     { kind: "section", label: "Calibration" },
     {
       label: "Calibrate from Measurement…",

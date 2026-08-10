@@ -22,6 +22,13 @@ export const CAPTURE_STEPS: Partial<Record<CaptureMode, CaptureStep>> = {
     label: "Polyline",
     steps: ["Click vertices — double-click to finish"],
   },
+  polygon: {
+    label: "Polygon",
+    steps: [
+      "Click vertices — click vertex 1 again or double-click to close",
+    ],
+  },
+  lasso: { label: "Lasso", steps: ["Drag to trace a freehand region"] },
   text: { label: "Text", steps: ["Click to place text"] },
   arrow: { label: "Arrow", steps: ["Click tail", "Click head"] },
   box: { label: "Box", steps: ["Click corner", "Click opposite corner"] },

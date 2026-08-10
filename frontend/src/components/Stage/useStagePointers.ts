@@ -6,7 +6,7 @@
 // these handlers were already recreated each render as plain consts, same
 // pattern as the stageFinalizers.ts split).
 
-import type { RefObject } from "react";
+import { useRef, type RefObject } from "react";
 
 import { applyFilter, grainsEdit } from "../../lib/api";
 import {
@@ -22,6 +22,13 @@ import {
   type Measure,
   type View,
 } from "../../store/viewer";
+import {
+  appendLassoPoint,
+  finishLasso,
+  nearFirstVertex,
+  startLasso,
+  type LassoCapture,
+} from "./regionCapture";
 import { buildCtxTarget, type CtxTarget } from "./StageCtxMenu";
 import { CLICKS, snapHV, type Pt } from "./stageUtils";
 
@@ -106,6 +113,10 @@ export function useStagePointers(ctx: StagePointersCtx) {
     finalizeCalibration,
     finalizeBoxProfile,
   } = ctx;
+
+  // lasso: local capture accumulator (regionCapture.ts) — no ctx ref needed
+  // since only this hook's own pointer handlers touch it.
+  const lassoRef = useRef<LassoCapture | null>(null);
 
   // ── pointer: pan / marquee / capture / readout ──
   const local = (e: React.PointerEvent | React.MouseEvent): Pt => {
@@ -226,6 +237,14 @@ export function useStagePointers(ctx: StagePointersCtx) {
     ) {
       setMarquee({ a: p, b: p });
       e.currentTarget.setPointerCapture(e.pointerId);
+    } else if (captureMode === "lasso") {
+      // freehand region: pointermove appends points while the button is
+      // held (onPointerMove below, via regionCapture.ts) — no click
+      // accumulation, unlike polygon just below.
+      const ip = toImage(p);
+      lassoRef.current = startLasso(ip);
+      setPending({ kind: "lasso", pts: [ip] });
+      e.currentTarget.setPointerCapture(e.pointerId);
     } else if (captureMode in CLICKS) {
       let ip = toImage(p);
       const need = CLICKS[captureMode];
@@ -233,6 +252,17 @@ export function useStagePointers(ctx: StagePointersCtx) {
       // calibration line snaps H/V (Shift = free) so a flat bar traces cleanly
       if (captureMode === "calibrate" && cur.length >= 1) {
         ip = snapHV(cur[0], ip, e.shiftKey);
+      }
+      // polygon closes on a click back near its first vertex — the other
+      // finish gesture, alongside double-click (onDoubleClick below)
+      if (
+        captureMode === "polygon" &&
+        pending &&
+        nearFirstVertex(cur.slice(0, -1), ip, 8 / view.z)
+      ) {
+        finalizeMeasure("polygon", cur.slice(0, -1));
+        setPending(null);
+        return;
       }
       // replace the live cursor point with the committed click
       const committed = pending ? [...cur.slice(0, -1), ip] : [ip];
@@ -279,6 +309,15 @@ export function useStagePointers(ctx: StagePointersCtx) {
         py: view.py - (p.y - last.y) / (view.z * imgSize.h),
       });
       dragRef.current = { last: p };
+    } else if (lassoRef.current && view && imgSize) {
+      if (captureMode !== "lasso") {
+        // tool was cancelled mid-drag (e.g. Escape) — stop accumulating
+        lassoRef.current = null;
+      } else {
+        const ip = toImage(p);
+        lassoRef.current = appendLassoPoint(lassoRef.current, ip, 2 / view.z);
+        setPending({ kind: "lasso", pts: lassoRef.current.pts });
+      }
     } else if (marquee) {
       setMarquee({ a: marquee.a, b: p });
     } else if (pending && view && imgSize) {
@@ -309,6 +348,22 @@ export function useStagePointers(ctx: StagePointersCtx) {
         e.currentTarget.releasePointerCapture(e.pointerId);
       } catch {
         // capture may already be gone; ignore
+      }
+      return;
+    }
+    if (lassoRef.current) {
+      const cap = lassoRef.current;
+      lassoRef.current = null;
+      setPending(null);
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        // capture may already be gone; ignore
+      }
+      if (captureMode === "lasso") {
+        const pts = finishLasso(cap);
+        if (pts) finalizeMeasure("lasso", pts);
+        else setCaptureMode("none");
       }
       return;
     }
@@ -381,11 +436,13 @@ export function useStagePointers(ctx: StagePointersCtx) {
   };
 
   const onDoubleClick = () => {
-    if (pending?.kind === "polyline") {
+    if (pending?.kind === "polyline" || pending?.kind === "polygon") {
       // the double-click's two pointerdowns committed a duplicate
       // vertex + a live cursor point — drop both
+      const kind = pending.kind;
       const committed = pending.pts.slice(0, -2);
-      if (committed.length >= 2) finalizeMeasure("polyline", committed);
+      const need = kind === "polygon" ? 3 : 2;
+      if (committed.length >= need) finalizeMeasure(kind, committed);
       else setCaptureMode("none");
       setPending(null);
       return;

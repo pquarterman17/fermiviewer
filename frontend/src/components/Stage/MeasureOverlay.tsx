@@ -16,6 +16,7 @@ import {
   type Measure,
   type View,
 } from "../../store/viewer";
+import { ClosedShapeGlyph, closedShapeLabelAnchor } from "./closedShapeGlyph";
 import MeasureCtxMenu from "./MeasureCtxMenu";
 import { EndpointGlyph, measureLabel } from "./measureGlyphs";
 import { useMeasureRefresh } from "./useMeasureRefresh";
@@ -313,6 +314,20 @@ export default function MeasureOverlay({
       );
       const last = pts[pts.length - 1];
       labelAt = { x: last.x + 10, y: last.y - 10 };
+    } else if ((m.kind === "polygon" || m.kind === "lasso") && pts.length >= 2) {
+      shape = (
+        <ClosedShapeGlyph
+          pts={pts}
+          stroke={stroke}
+          strokeWidth={sw}
+          isPending={isPending}
+          onBodyDown={onBodyDown}
+          onHandleMove={onHandleMove}
+          onHandleUp={onHandleUp}
+          onContextMenu={common.onContextMenu}
+        />
+      );
+      labelAt = isPending ? pts[pts.length - 1] : closedShapeLabelAnchor(pts);
     } else if (pts.length >= 2) {
       // box profiles (m.width set): show the averaging BOX, with the
       // dashed centerline marking where the profile runs (user request
