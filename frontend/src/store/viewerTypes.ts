@@ -99,6 +99,14 @@ export type MeasureKind =
   | "roi"
   | "ellipse"
   | "polyline"
+  // closed area kinds (plan item 14): polygon is click-to-place vertices
+  // closed by clicking vertex 0 again or double-click; lasso is a
+  // freehand drag. Both share polygonStats/areaPxToPhysical (lib/geometry,
+  // item 12) for their area label — never baked into exported figures
+  // (W3 design; calc/export.py's measure_annotations skips any kind it
+  // doesn't recognize, which for these two is intentional).
+  | "polygon"
+  | "lasso"
   // annotations (checklist H) — ride the measure rails: overlay
   // rendering, persistence, undo and export baking all come free
   | "text"

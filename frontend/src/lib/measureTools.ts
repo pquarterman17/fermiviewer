@@ -30,6 +30,8 @@ export const MEASURE_TOOLS: MeasureTool[] = [
   { label: "Polyline", glyph: "⌇", kind: "polyline", group: "Profiles & Distance" },
   { label: "ROI", glyph: "▭", kind: "roi", group: "Regions of Interest" },
   { label: "Ellipse", glyph: "◯", kind: "ellipse", group: "Regions of Interest" },
+  { label: "Polygon", glyph: "⬠", kind: "polygon", group: "Regions of Interest" },
+  { label: "Lasso", glyph: "➰", kind: "lasso", group: "Regions of Interest" },
   { label: "Text", glyph: "T", kind: "text", group: "Annotations" },
   { label: "Arrow", glyph: "➹", kind: "arrow", group: "Annotations" },
   { label: "Box", glyph: "□", kind: "box", group: "Annotations" },
