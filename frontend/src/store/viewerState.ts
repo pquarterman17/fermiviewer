@@ -2,7 +2,12 @@
 // (repo-health #33). Types only: the implementation lives in viewer.ts,
 // the session restore/persist machinery in viewerSession.ts.
 
-import type { ImageMeta, RoiStats } from "../lib/api";
+import type {
+  ImageMeta,
+  ProjectPayloadMode,
+  RoiStats,
+  UnavailableImage,
+} from "../lib/api";
 import type { TiltSettings } from "../lib/geometry";
 import type { ComparePane, GroupParams, ImageGroup } from "../lib/groups";
 import type {
@@ -34,6 +39,13 @@ export interface ViewerState {
   order: string[];
   activeId: string | null;
   images: Record<string, ImageMeta>;
+  /** Images the open project references but this machine could not find,
+   *  keyed by id (ADR 0002 §4). They are NOT in `images` or `order` — there
+   *  are no pixels to render — but they keep their name, their sample
+   *  membership (`imageGroups`), their parameters and their measurements, and
+   *  the server writes their references straight back on the next save.
+   *  Narrowed one folder at a time by `locateData`. */
+  unavailable: Record<string, UnavailableImage>;
   selected: string[];
   listView: ListView;
   compareSet: string[] | null;
@@ -131,12 +143,23 @@ export interface ViewerState {
   launchContext: { dir: string | null; files: { name: string; path: string }[] } | null;
   status: string;
   currentWorkspace: WorkspaceRef | null;
+  /** The `.fvp` this session is working in, once one has been opened or
+   *  saved. Null for a session that has only ever opened loose images. */
+  currentProject: { path: string; name: string | null } | null;
 
   openPaths: (paths: string[]) => Promise<void>;
   openFiles: (files: FileList | File[]) => Promise<void>;
   ingest: (metas: ImageMeta[]) => void;
-  saveWorkspace: (path: string) => Promise<void>;
-  loadWorkspace: (path: string) => Promise<void>;
+  /** Write the session as a `.fvp`. `"light"` references source pixels and
+   *  embeds derived images (Save Project); `"bundle"` embeds everything so
+   *  the file needs no source folders (Export Project Bundle). */
+  saveProject: (path: string, mode?: ProjectPayloadMode) => Promise<void>;
+  /** Open a `.fvp`, or a legacy v1 `.json`/`.npz` pair (migrated on load). */
+  openProject: (path: string) => Promise<void>;
+  /** Re-resolve unavailable images against a folder the user picked.
+   *  Invokable at any time and repeatable — different samples may have moved
+   *  to different folders. */
+  locateData: (root: string) => Promise<void>;
   saveWorkspaceNamed: (name: string) => Promise<void>;
   loadWorkspaceNamed: (slug: string) => Promise<void>;
   setActive: (id: string) => void;

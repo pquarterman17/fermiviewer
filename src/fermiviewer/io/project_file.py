@@ -45,7 +45,7 @@ from typing import Any
 import numpy as np
 
 from fermiviewer import __version__
-from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
+from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.io.project_manifest import (
     FORMAT_MAGIC,
     IMAGE_KEYS,
@@ -60,17 +60,20 @@ from fermiviewer.io.project_manifest import (
     axes_from_manifest,
     axes_to_manifest,
     extra_keys,
+    image_from_entry,
     json_safe,
     merge_extra,
     safe_image_id,
     safe_posix_rel,
     validate_manifest,
 )
-from fermiviewer.io.registry import load_auto
+from fermiviewer.io.project_v1 import V1_SUFFIXES, load_v1_as_project
 
-# Imported as a module, not by name: `data_root` is also this module's public
-# keyword argument, and shadowing the helper with it would be silent.
+# Imported as modules, not by name: `data_root` and `resolve` are also public
+# names in this module's own signature space, and shadowing either helper with
+# one would be silent.
 from fermiviewer.io import project_paths as paths  # isort: skip
+from fermiviewer.io import project_resolve as resolving  # isort: skip
 
 __all__ = [
     "PROJECT_SUFFIX",
@@ -184,23 +187,7 @@ def _as_project_image(entry: ProjectEntry) -> ProjectImage:
     """Normalise a session-store triple into the manifest's per-image shape."""
     if isinstance(entry, ProjectImage):
         return entry
-    img_id, name, ds = entry
-    metadata = dict(ds.metadata)
-    derived_from = metadata.get("derived_from")
-    source = metadata.get("source")
-    # A derived image reuses metadata["source"] for the operation that made
-    # it (e.g. "gaussian"), which is not a path — don't record it as one.
-    is_derived = bool(derived_from) or metadata.get("parser") == "derived"
-    return ProjectImage(
-        id=str(img_id),
-        name=str(name),
-        kind=ds.kind,
-        axes=tuple(ds.axes),
-        metadata=metadata,
-        data=ds.data,
-        source=str(source) if isinstance(source, str) and not is_derived else None,
-        derived_from=str(derived_from) if derived_from else None,
-    )
+    return image_from_entry(*entry)
 
 
 def _image_entry(
@@ -280,7 +267,7 @@ def _cleanup(path: Path) -> None:
 
 
 def load_project(path: str | Path) -> LoadedProject:
-    """Read a `.fvp`: validates the manifest, then resolves references.
+    """Read a project: validates the manifest, then resolves references.
 
     Resolution per referenced image (ADR 0002 §3): `data_root_hint` + `rel`,
     then the directory containing the `.fvp` + `rel`. An image that does not
@@ -288,8 +275,15 @@ def load_project(path: str | Path) -> LoadedProject:
     describes — comes back as an **unavailable placeholder** keeping its
     identity, calibration, metadata and reference. It is never dropped, and
     `save_project` writes the reference back.
+
+    A **v1 workspace** (`<stem>.json` + `<stem>.npz`) is accepted too and
+    upgraded in memory (plan #32), so every caller gets migration for free and
+    the next `save_project` writes a `.fvp`. v1 is read-only legacy: nothing
+    writes it any more.
     """
     project = Path(path)
+    if project.suffix.lower() in V1_SUFFIXES:
+        return load_v1_as_project(project)
     if not project.is_file():
         raise FileNotFoundError(f"project file not found: {project}")
     try:
@@ -391,27 +385,16 @@ def _load_image(
     }
     if raw["embedded"]:
         data = _read_pixels(zf, img_id, index)
-        if not _fits(data, kind, axes):
+        if not resolving.fits(data, kind, axes):
             raise ProjectFormatError(
                 f"images[{index}] ({img_id}): embedded pixels are {data.ndim}D "
                 f"with {len(axes)} axes, which does not describe a {kind.value}"
             )
         return ProjectImage(**fields, data=data, embedded=True)
-    if rel is not None:
-        for root in roots:
-            found = paths.existing_file(root / rel)
-            if found is None:
-                continue
-            data_or_none = _parse_source(found, kind, axes)
-            if data_or_none is not None:
-                return ProjectImage(
-                    **fields,
-                    data=data_or_none,
-                    embedded=False,
-                    resolved_path=str(found),
-                )
-    # Unresolved: a placeholder that keeps everything except the pixels.
-    return ProjectImage(**fields, data=None, embedded=False, unavailable=True)
+    # Start from the placeholder that keeps everything except the pixels, so
+    # an unresolved image is the *default* rather than a fallback path.
+    placeholder = ProjectImage(**fields, data=None, embedded=False, unavailable=True)
+    return resolving.resolve(placeholder, roots).image or placeholder
 
 
 def _read_pixels(zf: zipfile.ZipFile, img_id: str, index: int) -> np.ndarray:
@@ -430,32 +413,3 @@ def _read_pixels(zf: zipfile.ZipFile, img_id: str, index: int) -> np.ndarray:
             f"images[{index}] ({img_id}): unreadable pixel payload: {exc}"
         ) from None
     return array
-
-
-def _fits(data: np.ndarray, kind: DataKind, axes: Sequence[AxisCal]) -> bool:
-    """Whether an array is what the manifest says it is — DataStruct's own
-    invariants: dimensionality for the kind, one axis per dimension,
-    non-empty."""
-    try:
-        DataStruct(data=data, kind=kind, axes=tuple(axes))
-    except (ValueError, KeyError):
-        return False
-    return True
-
-
-def _parse_source(
-    source: Path, kind: DataKind, axes: Sequence[AxisCal]
-) -> np.ndarray | None:
-    """Pixels from a referenced file, or None if it is not what we expect.
-
-    Only the pixels come from disk: kind, calibration and metadata stay as
-    the manifest recorded them, so a recalibration done in the app survives a
-    light save. Any parser failure degrades to an unavailable placeholder —
-    one unreadable source must never make a whole project unloadable.
-    """
-    try:
-        ds = load_auto(source)
-    except Exception:  # noqa: BLE001 - see docstring: degrade, never fail the load
-        return None
-    data = np.asarray(ds.data)
-    return data if _fits(data, kind, axes) else None

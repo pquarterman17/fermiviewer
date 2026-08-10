@@ -16,6 +16,34 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **You can save a project and reload it.** The `.fvp` container
+  (ADR 0002) existed as a library nothing called — no menu entry, no
+  endpoint, no UI — so the state of a study could not actually be kept.
+  The File menu now has four commands: **Save Project…** (light — embeds
+  derived images and every measurement, references the source files, so an
+  everyday save is megabytes), **Export Project Bundle…** (self-contained,
+  needs no source folders, for moving a study to another machine),
+  **Open Project…** and **Locate Data Folder…**. Behind them,
+  `POST /api/project/{save,load,relocate}`.
+  - Samples with their **parameter values and units**, and every
+    measurement and region, are now schema-validated sections of the
+    manifest instead of an opaque blob — a parameter value is scientific
+    data, and the format can finally check it.
+  - **Opening a project whose data has moved cannot destroy it.** Those
+    images load as placeholders in the library that keep their name,
+    sample membership, parameters and measurements, and saving writes
+    their references straight back. The references are carried
+    server-side, so this holds even if the client never mentions them.
+  - **Locate folder…** re-links every image found under a folder you pick,
+    and can be used again for samples that moved somewhere else. The
+    folder is *appended* to the resolution order rather than replacing the
+    project's recorded hint, so a remounted drive takes over again by
+    itself. If a re-pointed file's size differs from the one recorded at
+    save, that is reported rather than silently accepted.
+  - **Existing workspaces keep working.** A v1 `.json` + `.npz` pair —
+    including a named workspace saved by an older build — is upgraded on
+    load with nothing lost, and the next save writes a `.fvp`.
+
 - **TIFF files now carry their instrument calibration.** A `.tif` was read as
   a bare raster: pixel size, stage tilt and acquisition settings were dropped
   even when the file stated them, so a Thermo Fisher (FEI) dual-beam image
@@ -58,6 +86,13 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   position; the Zeiss labels and units match published LEO1550/Merlin tag
   dumps; and ImageJ's own `TiffDecoder` computes `1/XResolution` and treats
   ResolutionUnit 1 as no unit at all.
+
+### Changed
+- **v1 workspaces are read-only.** Nothing writes the two-file format any
+  more: `Save Session…` / `Load Session…` and `POST /api/session/{save,load}`
+  are replaced by the project commands above, and a named workspace is now a
+  single `<slug>.fvp`. `io/session_file.py` keeps only its reader, so existing
+  pairs still open.
 
 ### Fixed
 - **Stage tilt was never reported, for any format.** `get_stage_tilt` searched

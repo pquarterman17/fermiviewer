@@ -14,10 +14,8 @@
 import { create } from "zustand";
 
 import {
-  loadSession,
   loadWorkspaceNamed as apiLoadWorkspaceNamed,
   openSession,
-  saveSession,
   saveWorkspaceNamed as apiSaveWorkspaceNamed,
   uploadFiles,
 } from "../lib/api";
@@ -26,6 +24,7 @@ import { createChromeActions, initialChrome } from "./viewerChromeActions";
 import { createCloseAction } from "./viewerCloseImage";
 import { createCompareActions } from "./viewerCompareActions";
 import { createMeasureActions } from "./viewerMeasureActions";
+import { createProjectActions } from "./viewerProjectActions";
 import type { ViewerState } from "./viewerState";
 import {
   applyUndoEntry,
@@ -57,6 +56,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   order: [],
   activeId: null,
   images: {},
+  unavailable: {},
   selected: [],
   listView: "thumbs",
   compareSet: null,
@@ -134,6 +134,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   launchContext: null,
   status: "ready",
   currentWorkspace: null,
+  currentProject: null,
 
   openPaths: async (paths) => {
     ingestImages(set, await openSession(paths));
@@ -202,22 +203,8 @@ export const useViewer = create<ViewerState>((set, get) => ({
     return e;
   },
 
-  // current client state as the serializable session payload
-  saveWorkspace: async (path) => {
-    const s = get();
-    const r = await saveSession(path, clientState(s));
-    set({ status: `saved ${r.n_images} images → ${r.json_path}` });
-  },
-
-  loadWorkspace: async (path) => {
-    const r = await loadSession(path);
-    set({
-      ...sessionSlice(r, get().overlay),
-      // an ad-hoc file load isn't a named workspace
-      currentWorkspace: null,
-      status: `loaded ${r.images.length} images`,
-    });
-  },
+  // Save Project / Export Project Bundle / Open Project… / Locate folder…
+  ...createProjectActions(set, get),
 
   saveWorkspaceNamed: async (name) => {
     const r = await apiSaveWorkspaceNamed(name, clientState(get()));
@@ -229,10 +216,17 @@ export const useViewer = create<ViewerState>((set, get) => ({
 
   loadWorkspaceNamed: async (slug) => {
     const r = await apiLoadWorkspaceNamed(slug);
+    // a workspace is a light-mode project, so its sources can be missing too
+    const missing = r.unavailable.length
+      ? ` · ${r.unavailable.length} unavailable — File ▸ Locate Data Folder…`
+      : "";
     set({
       ...sessionSlice(r, get().overlay),
       currentWorkspace: { slug, name: r.name },
-      status: `opened workspace “${r.name}” · ${r.images.length} images`,
+      currentProject: r.project.path
+        ? { path: r.project.path, name: r.project.name }
+        : null,
+      status: `opened workspace “${r.name}” · ${r.images.length} images${missing}`,
     });
   },
 

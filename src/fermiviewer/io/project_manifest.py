@@ -54,6 +54,7 @@ __all__ = [
     "axes_from_manifest",
     "axes_to_manifest",
     "extra_keys",
+    "image_from_entry",
     "json_safe",
     "merge_extra",
     "safe_image_id",
@@ -169,6 +170,32 @@ class ProjectImage:
             axes=self.axes,
             metadata=dict(self.metadata),
         )
+
+
+def image_from_entry(img_id: str, name: str, ds: DataStruct) -> ProjectImage:
+    """A session-store ``(id, name, DataStruct)`` triple as a `ProjectImage`.
+
+    Shared by `save_project` (open images) and the v1 migration (images that
+    arrived from a legacy workspace), so both classify derived-vs-sourced the
+    same way — the decision that governs whether a light save may reference an
+    image or must embed it.
+    """
+    metadata = dict(ds.metadata)
+    derived_from = metadata.get("derived_from")
+    source = metadata.get("source")
+    # A derived image reuses metadata["source"] for the operation that made
+    # it (e.g. "gaussian"), which is not a path — don't record it as one.
+    is_derived = bool(derived_from) or metadata.get("parser") == "derived"
+    return ProjectImage(
+        id=str(img_id),
+        name=str(name),
+        kind=ds.kind,
+        axes=tuple(ds.axes),
+        metadata=metadata,
+        data=ds.data,
+        source=str(source) if isinstance(source, str) and not is_derived else None,
+        derived_from=str(derived_from) if derived_from else None,
+    )
 
 
 @dataclass(frozen=True)
