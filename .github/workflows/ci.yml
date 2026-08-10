@@ -38,9 +38,13 @@ jobs:
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.13'
         run: uv run mypy src tools
       - name: Tests
-        # realdata/oracle tests skip in CI (corpus + rsciio absent), which
-        # costs ~3.6 pts vs a local run — CI coverage is ~85%, so the gate
-        # sits at 82 to leave headroom for normal churn without false-fails.
+        # realdata/oracle tests skip in CI (the private instrument corpus is
+        # absent there — see tests/conftest.py's EXAMPLE_DATA_ROOT). A full
+        # local run WITH that corpus checked out currently reads ~93.8%
+        # coverage (1808 tests); CI never sees that corpus, so its own
+        # number runs lower and is not the right basis for this gate either
+        # way. The gate stays pinned at 82 with headroom for normal churn —
+        # do not raise it from a local coverage reading.
         run: uv run pytest -v --cov=fermiviewer --cov-report=term-missing --cov-fail-under=82
 
   frontend:

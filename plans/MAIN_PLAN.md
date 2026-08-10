@@ -65,14 +65,31 @@ measurement, project hierarchy).
 1. **Pin-graduation campaign** — three legacy caps remain, down from four.
    `store/viewer.ts` graduated 2026-08-10 (575 → 444, entry deleted) as the
    price of fixing `closeImage`; Stage.tsx (584/617) and MeasureOverlay.tsx
-   (527/562) fell but stay pinned. Still to graduate:
-   `components/workshops/DiffractionWorkshop.tsx` (548/548 — zero headroom).
-   - [ ] Split DiffractionWorkshop.tsx below 500 and delete its cap entry
-   - [ ] `frontend/src/components/Stage/useStagePointers.ts` is at **498 of
-         the 500 default ceiling** with NO clean extraction available: it is
-         one hook whose handlers all close over its local state, so pulling
-         one out means threading a large context object. The next feature
-         needing room there must restructure the hook deliberately.
+   (527/562) fell but stay pinned. `DiffractionWorkshop.tsx` graduated
+   2026-08-10 (548 → 445, entry deleted), leaving only those two.
+   - [x] ~~Split DiffractionWorkshop.tsx below 500 and delete its cap entry~~
+         (2026-08-10) — Simulate-tab state/logic → `useDiffractionSimulation.ts`
+         (128) and the elliptical-distortion flow → `useDiffractionCalibration.ts`
+         (57), both under `diffraction/`. Bodies moved verbatim as custom hooks
+         with identical dependency arrays and destructured names, so the JSX
+         needed zero edits. A third candidate (`buildReportTable`) was rejected
+         for needing 10 dependencies — the ≥6-prop rule working.
+   - [x] ~~`useStagePointers.ts` at 498/500 with no clean extraction~~
+         (2026-08-10) — restructured to **418**, 82 lines of headroom.
+         Pure decision logic lifted to `pointerDecisions.ts` (178) and
+         `stageGrainEdit.ts` (79), leaving the hook holding only what needs
+         the closure: refs, pointer capture, applying a result. This
+         continued an ESTABLISHED seam — `regionCapture.ts` in the same
+         directory is already this exact extraction from this exact file.
+         Threading the context was rejected on evidence: `StagePointersCtx`
+         has ~35 fields. Splitting by interaction mode was rejected because
+         marquee/lasso/click-accumulating modes each span
+         pointerdown→move→up through the same state, so a per-mode module
+         would participate in three handlers — making event ordering, the
+         actual regression risk, the thing under change.
+         Payoff: 29 tests of rules that previously needed a synthetic drag,
+         including the polygon close tolerance (8 px ÷ zoom) and the
+         1-based-inclusive crop clamping at both ends.
          (was PROJECT_WORKFLOW_PLAN #9)
    Model: opus · Parallel: no — coordinate with any item touching these files
 
@@ -93,7 +110,10 @@ measurement, project hierarchy).
    creates a hole: the gesture belongs in `useStagePointers.ts`/`Stage.tsx`,
    which that work was fenced out of. The number is correct; the way to
    draw one is missing. (was PROJECT_WORKFLOW_PLAN #19)
-   Model: sonnet · Parallel: no — blocked by item 1's useStagePointers note
+   UNBLOCKED 2026-08-10: `useStagePointers.ts` now has 82 lines of headroom,
+   and `pointerDecisions.ts` is the natural home for the gesture's decision
+   logic.
+   Model: sonnet · Parallel: no — exclusive on useStagePointers.ts
 
 5. **`AxisCal.scale` writes raw NaN into a `.fvp` manifest** — an
    uncalibrated axis defaults to NaN and `axes_to_manifest` passes it
