@@ -172,6 +172,7 @@ def create_app() -> FastAPI:
     from fermiviewer.routes.jobs_api import router as jobs_router
     from fermiviewer.routes.layers import router as layers_router
     from fermiviewer.routes.measure import router as measure_router
+    from fermiviewer.routes.montage_compare import router as montage_compare_router
     from fermiviewer.routes.regions import router as regions_router
     from fermiviewer.routes.session_io import router as session_io_router
     from fermiviewer.routes.spectral_fit import router as spectral_fit_router
@@ -206,7 +207,7 @@ def create_app() -> FastAPI:
         jobs_router, calibration_router, dev_router, usermeta_router,
         diffraction_setup_router, spectral_fit_router, eds_advanced_router,
         eds_quant_router, eels_advanced_router, layers_router, watch_router,
-        fourd_router, folders_router, regions_router,
+        fourd_router, folders_router, regions_router, montage_compare_router,
     ):
         app.include_router(_router)
 
