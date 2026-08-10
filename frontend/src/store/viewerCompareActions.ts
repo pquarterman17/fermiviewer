@@ -7,8 +7,10 @@ import type { StateCreator } from "zustand";
 
 import {
   groupMembers as groupMembersOf,
+  normalizeGroupParams,
   resizePanes,
   stepWithin,
+  wouldCycle,
 } from "../lib/groups";
 import { nextGroupId, paneCompareSet } from "./viewerSession";
 import type { ViewerState } from "./viewerState";
@@ -37,6 +39,10 @@ export function createCompareActions(
   | "renameGroup"
   | "deleteGroup"
   | "setGroupMembers"
+  | "setGroupParams"
+  | "setGroupParent"
+  | "addGroupMember"
+  | "removeGroupMember"
 > {
   return {
     startCompare: (ids) => {
@@ -237,6 +243,55 @@ export function createCompareActions(
       set((s) => ({
         imageGroups: s.imageGroups.map((g) =>
           g.id === id ? { ...g, ids: ids.filter((x) => x in s.images) } : g,
+        ),
+      })),
+
+    // ── samples / projects: parameters + nesting (W4 #20) ─────────────────
+    setGroupParams: (id, params) =>
+      set((s) => ({
+        imageGroups: s.imageGroups.map((g) =>
+          g.id === id ? { ...g, params: normalizeGroupParams(params) } : g,
+        ),
+      })),
+
+    setGroupParent: (id, parentId) => {
+      const s = get();
+      const g = s.imageGroups.find((x) => x.id === id);
+      if (!g) return;
+      // a parent that doesn't resolve is rejected outright: a dangling parent
+      // would hide the group from a tree walked down from the roots
+      if (parentId !== null && !s.imageGroups.some((x) => x.id === parentId)) {
+        return;
+      }
+      if (wouldCycle(s.imageGroups, id, parentId)) {
+        s.setStatus(`can't nest "${g.name}" inside itself or its own group`);
+        return;
+      }
+      set({
+        imageGroups: s.imageGroups.map((x) =>
+          x.id === id ? { ...x, parent: parentId } : x,
+        ),
+      });
+    },
+
+    addGroupMember: (id, imageId) => {
+      const s = get();
+      if (!s.images[imageId]) return;
+      set({
+        imageGroups: s.imageGroups.map((g) =>
+          g.id === id && !g.ids.includes(imageId)
+            ? { ...g, ids: [...g.ids, imageId] }
+            : g,
+        ),
+      });
+    },
+
+    // NB: unlike closeImage's prune, a group emptied by hand is kept — with
+    // nesting an image-less group is a legitimate project. Use deleteGroup.
+    removeGroupMember: (id, imageId) =>
+      set((s) => ({
+        imageGroups: s.imageGroups.map((g) =>
+          g.id === id ? { ...g, ids: g.ids.filter((x) => x !== imageId) } : g,
         ),
       })),
   };

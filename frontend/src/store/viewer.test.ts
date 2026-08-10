@@ -828,6 +828,87 @@ describe("named image groups", () => {
     expect(useViewer.getState().sbsPanes[0].imageId).toBe("a");
   });
 
+  // ── samples / projects (W4 #20) ──
+  it("setGroupParams normalises values and replaces the map wholesale", () => {
+    useViewer.getState().createGroup(["a"], "S1");
+    const id = useViewer.getState().imageGroups[0].id;
+    useViewer.getState().setGroupParams(id, {
+      temp: { value: 450, unit: "degC" },
+      substrate: { value: "MgO" }, // unit omitted → null
+    });
+    expect(useViewer.getState().imageGroups[0].params).toEqual({
+      temp: { value: 450, unit: "degC" },
+      substrate: { value: "MgO", unit: null },
+    });
+    // replace semantics (mirrors setGroupMembers): a one-field edit spreads
+    const cur = useViewer.getState().imageGroups[0].params ?? {};
+    useViewer
+      .getState()
+      .setGroupParams(id, { ...cur, temp: { value: 500, unit: "degC" } });
+    expect(useViewer.getState().imageGroups[0].params).toEqual({
+      temp: { value: 500, unit: "degC" },
+      substrate: { value: "MgO", unit: null },
+    });
+  });
+
+  it("setGroupParent nests a sample under a project and back to a root", () => {
+    useViewer.getState().createGroup(["a"], "S1");
+    useViewer.getState().createGroup(["b"], "Proj");
+    const [s1, proj] = useViewer.getState().imageGroups.map((g) => g.id);
+    useViewer.getState().setGroupParent(s1, proj);
+    expect(useViewer.getState().imageGroups[0].parent).toBe(proj);
+    useViewer.getState().setGroupParent(s1, null);
+    expect(useViewer.getState().imageGroups[0].parent).toBeNull();
+  });
+
+  it("setGroupParent rejects a cycle and an unknown parent", () => {
+    useViewer.getState().createGroup(["a"], "S1");
+    useViewer.getState().createGroup(["b"], "Proj");
+    const [s1, proj] = useViewer.getState().imageGroups.map((g) => g.id);
+    useViewer.getState().setGroupParent(s1, proj);
+    // proj is now s1's parent — nesting it under s1 would close the loop
+    useViewer.getState().setGroupParent(proj, s1);
+    expect(useViewer.getState().imageGroups[1].parent).toBeUndefined();
+    expect(useViewer.getState().status).toMatch(/can't nest/);
+    // a parent that doesn't exist leaves the group where it was
+    useViewer.getState().setGroupParent(s1, "ghost");
+    expect(useViewer.getState().imageGroups[0].parent).toBe(proj);
+    // and a group can't parent itself
+    useViewer.getState().setGroupParent(proj, proj);
+    expect(useViewer.getState().imageGroups[1].parent).toBeUndefined();
+  });
+
+  it("add/removeGroupMember edit membership, keeping an emptied group", () => {
+    useViewer.getState().createGroup(["a"], "S1");
+    const id = useViewer.getState().imageGroups[0].id;
+    useViewer.getState().addGroupMember(id, "b");
+    expect(useViewer.getState().imageGroups[0].ids).toEqual(["a", "b"]);
+    useViewer.getState().addGroupMember(id, "b"); // already a member
+    useViewer.getState().addGroupMember(id, "ghost"); // not open
+    expect(useViewer.getState().imageGroups[0].ids).toEqual(["a", "b"]);
+    useViewer.getState().removeGroupMember(id, "a");
+    expect(useViewer.getState().imageGroups[0].ids).toEqual(["b"]);
+    useViewer.getState().removeGroupMember(id, "b");
+    // emptied by hand ≠ pruned: an image-less group can be a project
+    expect(useViewer.getState().imageGroups).toHaveLength(1);
+    expect(useViewer.getState().imageGroups[0].ids).toEqual([]);
+  });
+
+  it("params and nesting survive an unrelated group edit", () => {
+    useViewer.getState().createGroup(["a"], "S1");
+    useViewer.getState().createGroup(["b"], "Proj");
+    const [s1, proj] = useViewer.getState().imageGroups.map((g) => g.id);
+    useViewer.getState().setGroupParent(s1, proj);
+    useViewer.getState().setGroupParams(s1, { temp: { value: 450, unit: null } });
+    useViewer.getState().renameGroup(s1, "Sample 1");
+    useViewer.getState().setGroupMembers(s1, ["a", "c"]);
+    const g = useViewer.getState().imageGroups[0];
+    expect(g.name).toBe("Sample 1");
+    expect(g.ids).toEqual(["a", "c"]);
+    expect(g.parent).toBe(proj);
+    expect(g.params).toEqual({ temp: { value: 450, unit: null } });
+  });
+
   it("closeImage prunes the id from groups and drops empty ones", async () => {
     useViewer.getState().createGroup(["a", "b"], "ab");
     useViewer.getState().createGroup(["c"], "just-c");
@@ -880,6 +961,41 @@ describe("groups + grid persistence round-trip", () => {
     expect(s.sbsPanes[1]).toEqual({ imageId: null, groupId: null }); // closed image
     expect(s.sbsPanes[2]).toEqual({ imageId: "c", groupId: null }); // group gone
     expect(s.sbsPanes[3]).toEqual({ imageId: "b", groupId: "g1" });
+  });
+
+  it("restores sample params + nesting, keeping an image-less project", async () => {
+    // the project group holds no images of its own — it must survive on its
+    // surviving sample, and the sample whose only image is gone must not
+    // take its params with it into a dangling parent
+    vi.mocked(apiLoadWorkspaceNamed).mockResolvedValueOnce({
+      images: [meta("a"), meta("b")],
+      name: "Study",
+      client_state: {
+        order: ["a", "b"],
+        activeId: "a",
+        imageGroups: [
+          { id: "g1", name: "Project", ids: [], parent: null },
+          {
+            id: "g2",
+            name: "S1",
+            ids: ["a"],
+            parent: "g1",
+            params: { temp: { value: 450, unit: "degC" } },
+            color: "#ff8800",
+          },
+          { id: "g3", name: "S2", ids: ["gone"], parent: "g1" },
+        ],
+      },
+    });
+
+    await useViewer.getState().loadWorkspaceNamed("study");
+    const s = useViewer.getState();
+    expect(s.imageGroups.map((g) => g.id)).toEqual(["g1", "g2"]); // g3 pruned
+    expect(s.imageGroups[1].parent).toBe("g1");
+    expect(s.imageGroups[1].params).toEqual({
+      temp: { value: 450, unit: "degC" },
+    });
+    expect(s.imageGroups[1].color).toBe("#ff8800");
   });
 
   it("falls back to the default 1×2 grid when the payload omits grid state", async () => {
