@@ -35,7 +35,7 @@ from fermiviewer.io.project_file import (
     load_project,
     save_project,
 )
-from fermiviewer.io.project_manifest import MANIFEST_NAME, schema_bytes
+from fermiviewer.io.project_manifest import MANIFEST_NAME, axes_to_manifest, schema_bytes
 from fermiviewer.io.project_sections import join_sections, split_client_state
 from fixtures.v1_session import write_v1_session
 
@@ -307,6 +307,61 @@ def test_dtype_and_non_image_kinds_survive(tmp_path: Path) -> None:
     assert img.data is not None and img.data.dtype == np.float32
     assert img.axes[-1] == AxisCal(10.0, 0.0, "eV")
     np.testing.assert_array_equal(img.data, cube.data)
+
+
+# ── non-finite axis calibration (item 5) ─────────────────────────────
+# AxisCal.scale defaults to NaN for an uncalibrated axis in several parsers
+# (io/dm.py, io/dm5.py) — axes_to_manifest must not let that raw NaN reach
+# manifest.json, since a bare NaN/Infinity token is not strict JSON even
+# though Python's own json module both writes and reads it happily.
+
+
+def test_axes_to_manifest_maps_non_finite_scale_and_origin_to_zero() -> None:
+    entries = axes_to_manifest(
+        [
+            AxisCal(scale=float("nan"), origin=0.0, units=""),
+            AxisCal(scale=float("inf"), origin=float("nan"), units="nm"),
+            AxisCal(scale=0.5, origin=1.0, units="nm"),
+        ]
+    )
+    assert entries[0] == {"scale": 0.0, "origin": 0.0, "units": ""}
+    assert entries[1] == {"scale": 0.0, "origin": 0.0, "units": "nm"}
+    assert entries[2] == {"scale": 0.5, "origin": 1.0, "units": "nm"}
+
+
+def test_uncalibrated_axis_round_trips_and_manifest_is_strict_json(
+    tmp_path: Path,
+) -> None:
+    """The reachable case: a parser hands save_project a DataStruct with a
+    raw-NaN AxisCal (real Helios corpus files are uncalibrated). The saved
+    manifest must contain no NaN/Infinity token, and the axis must still
+    read back as uncalibrated — 0.0 and NaN are already the same thing to
+    `AxisCal.calibrated`/`.axis()`, so this is not a lossy transform."""
+    ds = DataStruct(
+        data=np.full((3, 4), 1, dtype=np.uint16),
+        kind=DataKind.IMAGE,
+        axes=(
+            AxisCal(scale=float("nan"), origin=0.0, units=""),
+            AxisCal(0.5, units="nm"),
+        ),
+        metadata={},
+    )
+    path = save_project(tmp_path / "study.fvp", [("img1", "frame.tif", ds)])
+
+    with zipfile.ZipFile(path) as zf:
+        raw = zf.read(MANIFEST_NAME)
+    assert b"NaN" not in raw and b"Infinity" not in raw
+
+    def _reject_non_finite(token: str) -> float:
+        raise ValueError(f"manifest.json is not strict JSON: {token!r} token present")
+
+    json.loads(raw, parse_constant=_reject_non_finite)  # raises if NaN/Infinity present
+
+    (img,) = load_project(path).images
+    uncal, cal = img.axes
+    assert uncal.scale == 0.0
+    assert uncal.calibrated is False
+    assert cal.calibrated is True  # the real axis is untouched
 
 
 # ── unknown-key preservation (ADR 0002 §6) ───────────────────────────
