@@ -251,6 +251,23 @@
   color: var(--text-dim);
 }
 
+/* constant-physical-scale lock toggle + readout (plan item 10) — top-left,
+   clear of FloatTools (top-centre) and the Minimap (top-right, top: 50px) */
+.fvd-scale-lock-chip {
+  top: 10px;
+  left: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+}
+
+.fvd-scale-readout {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+}
+
 .fvd-scalebar {
   position: absolute;
   pointer-events: none;
