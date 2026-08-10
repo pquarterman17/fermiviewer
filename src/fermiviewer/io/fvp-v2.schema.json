@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/pquarterman17/fermiviewer/docs/schema/fvp-v2.schema.json",
+  "title": "FermiViewer project manifest (.fvp v2)",
+  "description": "Schema for manifest.json inside a .fvp ZIP container. See docs/adr/0002-project-file-format.md. Unknown properties are permitted throughout and MUST be preserved verbatim on save, so a project written by a newer build is not degraded by an older one.",
+  "type": "object",
+  "required": ["format", "version", "generation", "payload_mode", "images"],
+  "properties": {
+    "format": {
+      "const": "fermiviewer-project",
+      "description": "Magic string; lets a reader reject an unrelated JSON file before anything else."
+    },
+    "version": {
+      "type": "integer",
+      "const": 2,
+      "description": "Manifest version. v1 was the legacy two-file workspace (.json + .npz) and is read-only legacy."
+    },
+    "generation": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8,64}$",
+      "description": "Random hex id for this save. Provenance and torn-write diagnosis; the single-file container makes it non-load-bearing."
+    },
+    "saved_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "ISO-8601 UTC timestamp of the save."
+    },
+    "app_version": {
+      "type": ["string", "null"],
+      "description": "FermiViewer version that wrote the file."
+    },
+    "name": {
+      "type": ["string", "null"],
+      "description": "Human-readable project name; independent of the filename."
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "description": "Free-text project notes."
+    },
+    "payload_mode": {
+      "enum": ["light", "bundle"],
+      "description": "light: source pixels referenced, derived images embedded. bundle: every image embedded and self-contained."
+    },
+    "data_root_hint": {
+      "type": ["string", "null"],
+      "description": "Absolute path of the data root as seen on the writing machine, forward slashes. A HINT only — resolution falls back to the project file's own directory, then to a user re-point."
+    },
+    "primary_param": {
+      "type": ["string", "null"],
+      "description": "Key into a sample's params naming the independent variable, so result-vs-parameter output and montage ordering need no prompt."
+    },
+    "images": {
+      "type": "array",
+      "description": "Every image in the project, in no particular order (ui_state.order governs display).",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "kind", "axes", "embedded"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable id; also the pixels/<id>.npy and thumbs/<id>.png entry name."
+          },
+          "name": { "type": "string", "description": "Display name." },
+          "kind": {
+            "enum": ["image", "spectrum", "spectrum_image"],
+            "description": "DataKind value; mirrors fermiviewer.datastruct.DataKind."
+          },
+          "axes": {
+            "type": "array",
+            "minItems": 1,
+            "description": "One AxisCal per data dimension. An axis is calibrated iff scale is finite and non-zero AND units is non-empty.",
+            "items": {
+              "type": "object",
+              "required": ["scale", "origin", "units"],
+              "properties": {
+                "scale": { "type": "number" },
+                "origin": { "type": "number" },
+                "units": { "type": "string" }
+              }
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "description": "JSON-safe parser metadata (vendor, beam_kv, content_rows, ...). Non-representable values were dropped at save time.",
+            "default": {}
+          },
+          "embedded": {
+            "type": "boolean",
+            "description": "True iff pixels/<id>.npy exists in this container. Always true for derived images, in BOTH payload modes, because they have no source file."
+          },
+          "rel": {
+            "type": ["string", "null"],
+            "description": "Source path relative to the data root, POSIX separators. Required when embedded is false. Must not be absolute and must not escape the root with '..'.",
+            "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$)).*$"
+          },
+          "source": {
+            "type": ["string", "null"],
+            "description": "Original absolute path at import, kept as provenance only. Never used for resolution."
+          },
+          "size_bytes": {
+            "type": ["integer", "null"],
+            "minimum": 0,
+            "description": "Source file size, for a cheap check that a re-pointed folder holds the expected data."
+          },
+          "sha256": {
+            "type": ["string", "null"],
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "Optional content hash for strict verification after relocation. Omitted by default — hashing a whole study on every save is not worth the time."
+          },
+          "derived_from": {
+            "type": ["string", "null"],
+            "description": "Parent image id when this image was produced by a filter/crop/analysis rather than read from disk."
+          },
+          "unavailable": {
+            "type": "boolean",
+            "default": false,
+            "description": "Written true when the previous load could not resolve this image. Advisory: it is re-derived on load, and its presence must never cause the entry to be dropped."
+          }
+        }
+      }
+    },
+    "samples": {
+      "type": "array",
+      "description": "Samples and projects. A sample IS an ImageGroup (frontend/src/lib/groups.ts) extended with params and parent; there is no separate grouping mechanism.",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "image_ids"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string" },
+          "image_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Ordered member ids. MAY contain ids no longer present; readers prune for display and MUST keep them on save. An image id may appear in more than one sample."
+          },
+          "parent": {
+            "type": ["string", "null"],
+            "description": "Parent sample id, giving project -> sample nesting. Null for a root. Cycles are invalid."
+          },
+          "params": {
+            "type": "object",
+            "description": "Named experimental parameters for this sample, keyed by parameter name.",
+            "additionalProperties": {
+              "type": "object",
+              "required": ["value"],
+              "properties": {
+                "value": {
+                  "type": ["number", "string", "boolean"],
+                  "description": "Numeric for anything to be plotted against; string for categorical."
+                },
+                "unit": {
+                  "type": ["string", "null"],
+                  "description": "Physical unit of value, e.g. degC, nm, sccm. Null for dimensionless or categorical."
+                }
+              }
+            }
+          },
+          "color": {
+            "type": ["string", "null"],
+            "description": "Optional display colour for this sample in sections, panes and plots."
+          }
+        }
+      }
+    },
+    "measures": {
+      "type": "object",
+      "description": "Annotations and regions, keyed by image id. Region areas are derived from pts and the image's axis calibration — never stored, so they cannot go stale against a recalibration.",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["id", "kind", "pts"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 },
+            "kind": {
+              "enum": [
+                "distance", "profile", "angle", "roi", "ellipse", "polyline",
+                "polygon", "lasso", "text", "arrow", "box", "circle"
+              ],
+              "description": "polygon and lasso are the closed area kinds; both are measured by one shared area computation."
+            },
+            "pts": {
+              "type": "array",
+              "description": "Normalized 0-1 image coordinates, so a measure survives derived images of the same aspect ratio.",
+              "items": {
+                "type": "object",
+                "required": ["x", "y"],
+                "properties": {
+                  "x": { "type": "number" },
+                  "y": { "type": "number" }
+                }
+              }
+            },
+            "text": { "type": ["string", "null"], "description": "Caption / region label." },
+            "color": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "ui_state": {
+      "type": "object",
+      "description": "Presentational state, deliberately UNVALIDATED beyond being an object: views, display windows, overlay style, savedRois, sbsPanes/sbsRows/sbsCols, browseScale. Passed through verbatim so its shape stays free to change without a format revision."
+    }
+  }
+}
