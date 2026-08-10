@@ -6,7 +6,8 @@ Spec: `docs/adr/0002-project-file-format.md`; contract:
 
     project.fvp                 ZIP, DEFLATE
     ├── manifest.json           schema-validated on every load
-    └── pixels/<image-id>.npy   one entry per image with embedded: true
+    ├── pixels/<image-id>.npy   one entry per image with embedded: true
+    └── thumbs/<image-id>.png   <= 256 px longest edge, BOTH payload modes
 
 One container cannot be separated in transfer, and it makes the save
 **atomic by construction**: staged sibling → flush + fsync → a single
@@ -22,6 +23,13 @@ Two payload modes, one reader:
 * ``bundle`` — Export Project Bundle. Every image is embedded, and
   references are still recorded, so a bundle can be re-saved as a light
   project without losing them.
+
+Thumbnails (plan #37) are embedded in BOTH modes for every image that has
+pixels, independent of whether the pixels themselves are embedded or
+referenced — so a project browses and reviews with its source data absent.
+Rendering reuses `calc.thumbnail.render_thumbnail_png`, which shares its
+windowing with the `/image/{id}/render` route rather than inventing a
+second contrast rule.
 
 Structures and validation live in `project_manifest.py`, data-root and
 reference maths in `project_paths.py`.
@@ -52,6 +60,7 @@ from fermiviewer.io.project_manifest import (
     MANIFEST_KEYS,
     MANIFEST_NAME,
     PIXELS_DIR,
+    THUMBS_DIR,
     VERSION,
     LoadedProject,
     PayloadMode,
@@ -67,6 +76,7 @@ from fermiviewer.io.project_manifest import (
     safe_posix_rel,
     validate_manifest,
 )
+from fermiviewer.io.project_media import sha256_for, thumbnail_bytes
 from fermiviewer.io.project_v1 import V1_SUFFIXES, load_v1_as_project
 
 # Imported as modules, not by name: `data_root` and `resolve` are also public
@@ -109,6 +119,7 @@ def save_project(
     primary_param: str | None = None,
     name: str | None = None,
     unknown_keys: Mapping[str, Any] | None = None,
+    hash_sources: bool = False,
 ) -> Path:
     """Write a `.fvp` project; returns the path actually written.
 
@@ -124,6 +135,14 @@ def save_project(
     them. `unknown_keys` is `LoadedProject.unknown_keys` fed back, so a
     manifest written by a newer build survives a save by this one.
 
+    `hash_sources` (plan #38) opts into computing each referenced source's
+    sha256 for strict post-relocation verification. Default OFF: hashing a
+    whole study on every save is not worth the time for callers who never
+    asked for it. A hash already carried from a previous save survives a
+    save with `hash_sources=False`, exactly like `rel`/`size_bytes` survive
+    when no fresh value can be computed — this parameter only controls
+    whether a NEW hash is computed, never whether an old one is dropped.
+
     The manifest is schema-validated *before* the container is committed: a
     file no reader could load back is not worth putting on disk.
     """
@@ -133,7 +152,7 @@ def save_project(
     root = paths.data_root(data_root, images)
     generation = uuid.uuid4().hex
     records = [
-        (img, _image_entry(img, index, root=root, mode=mode))
+        (img, _image_entry(img, index, root=root, mode=mode, hash_sources=hash_sources))
         for index, img in enumerate(images)
     ]
 
@@ -191,7 +210,12 @@ def _as_project_image(entry: ProjectEntry) -> ProjectImage:
 
 
 def _image_entry(
-    img: ProjectImage, index: int, *, root: Path | None, mode: PayloadMode
+    img: ProjectImage,
+    index: int,
+    *,
+    root: Path | None,
+    mode: PayloadMode,
+    hash_sources: bool,
 ) -> dict[str, Any]:
     """One `images[]` manifest entry, deciding embedded vs referenced."""
     rel, size = (None, None) if img.derived else paths.reference(img, index, root)
@@ -212,6 +236,7 @@ def _image_entry(
         "rel": rel,
         "source": img.source,
         "size_bytes": size,
+        "sha256": sha256_for(img, hash_sources),
         "derived_from": img.derived_from,
         "unavailable": placeholder,
     }
@@ -238,15 +263,20 @@ def _write_container(
                 zf.writestr(MANIFEST_NAME, json.dumps(manifest, indent=1))
                 for img, entry in records:
                     data = img.data
-                    if not entry["embedded"] or data is None:
-                        continue
-                    # Stream into the archive: a bundled spectrum-image cube
-                    # runs to gigabytes and must not be buffered whole.
-                    # force_zip64 because that size is unknown up front.
-                    with zf.open(
-                        f"{PIXELS_DIR}/{img.id}.npy", "w", force_zip64=True
-                    ) as dest:
-                        np.save(dest, data, allow_pickle=False)
+                    if entry["embedded"] and data is not None:
+                        # Stream into the archive: a bundled spectrum-image
+                        # cube runs to gigabytes and must not be buffered
+                        # whole. force_zip64 because size is unknown up front.
+                        with zf.open(
+                            f"{PIXELS_DIR}/{img.id}.npy", "w", force_zip64=True
+                        ) as dest:
+                            np.save(dest, data, allow_pickle=False)
+                    # thumbs/ (plan #37): embedded in BOTH payload modes, for
+                    # every image, regardless of whether ITS pixels are
+                    # embedded or referenced — see project_media.
+                    thumb = thumbnail_bytes(img)
+                    if thumb is not None:
+                        zf.writestr(f"{THUMBS_DIR}/{img.id}.png", thumb)
             fh.flush()
             os.fsync(fh.fileno())
         os.replace(staged, target)
@@ -371,6 +401,10 @@ def _load_image(
     img_id = str(raw["id"])
     kind = DataKind(str(raw["kind"]))
     axes = axes_from_manifest(raw["axes"])
+    # Read regardless of `embedded`: thumbnails are embedded in BOTH payload
+    # modes (ADR 0002 §2), and absent entirely for a project saved before
+    # plan #37 — either way `_read_thumb` just returns None.
+    thumb = _read_thumb(zf, img_id)
     fields: dict[str, Any] = {
         "id": img_id,
         "name": str(raw["name"]),
@@ -380,6 +414,7 @@ def _load_image(
         "rel": rel,
         "source": raw.get("source"),
         "size_bytes": raw.get("size_bytes"),
+        "sha256": raw.get("sha256"),
         "derived_from": raw.get("derived_from"),
         "extra": extra_keys(raw, IMAGE_KEYS),
     }
@@ -390,10 +425,14 @@ def _load_image(
                 f"images[{index}] ({img_id}): embedded pixels are {data.ndim}D "
                 f"with {len(axes)} axes, which does not describe a {kind.value}"
             )
-        return ProjectImage(**fields, data=data, embedded=True)
+        return ProjectImage(**fields, data=data, embedded=True, thumb=thumb)
     # Start from the placeholder that keeps everything except the pixels, so
-    # an unresolved image is the *default* rather than a fallback path.
-    placeholder = ProjectImage(**fields, data=None, embedded=False, unavailable=True)
+    # an unresolved image is the *default* rather than a fallback path. `thumb`
+    # rides along through `resolve`'s `replace()` either way, so a resolved
+    # image keeps the SAME thumbnail bytes rather than losing them.
+    placeholder = ProjectImage(
+        **fields, data=None, embedded=False, unavailable=True, thumb=thumb
+    )
     return resolving.resolve(placeholder, roots).image or placeholder
 
 
@@ -413,3 +452,16 @@ def _read_pixels(zf: zipfile.ZipFile, img_id: str, index: int) -> np.ndarray:
             f"images[{index}] ({img_id}): unreadable pixel payload: {exc}"
         ) from None
     return array
+
+
+def _read_thumb(zf: zipfile.ZipFile, img_id: str) -> bytes | None:
+    """The `thumbs/<id>.png` bytes, or None when absent.
+
+    Absence is normal, never an error: the ADR marks the entry optional (a
+    1D spectrum has no raster to thumbnail), and it is missing entirely from
+    any project saved before plan #37.
+    """
+    try:
+        return zf.read(f"{THUMBS_DIR}/{img_id}.png")
+    except KeyError:
+        return None

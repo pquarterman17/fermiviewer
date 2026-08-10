@@ -19,9 +19,9 @@ Three jobs:
    filesystem access.
 
 Keys this reader does not model — including schema-known but unimplemented
-ones (`notes`, `sha256`) and anything a newer build added — are carried
-verbatim in `extra` / `unknown_keys` and written back on save, so a
-round-trip through an older build is not lossy (ADR 0002 §6).
+ones (`notes`) and anything a newer build added — are carried verbatim in
+`extra` / `unknown_keys` and written back on save, so a round-trip through an
+older build is not lossy (ADR 0002 §6).
 """
 
 from __future__ import annotations
@@ -46,6 +46,7 @@ __all__ = [
     "MANIFEST_NAME",
     "PIXELS_DIR",
     "SCHEMA_NAME",
+    "THUMBS_DIR",
     "VERSION",
     "LoadedProject",
     "PayloadMode",
@@ -67,6 +68,7 @@ FORMAT_MAGIC = "fermiviewer-project"
 VERSION = 2
 MANIFEST_NAME = "manifest.json"
 PIXELS_DIR = "pixels"
+THUMBS_DIR = "thumbs"
 SCHEMA_NAME = "fvp-v2.schema.json"
 _SCHEMA_PACKAGE = "fermiviewer.io"
 
@@ -104,6 +106,7 @@ IMAGE_KEYS = frozenset(
         "rel",
         "source",
         "size_bytes",
+        "sha256",
         "derived_from",
         "unavailable",
     }
@@ -139,6 +142,12 @@ class ProjectImage:
     rel: str | None = None
     source: str | None = None
     size_bytes: int | None = None
+    #: Optional content hash (plan #38), opt-in at save time — see
+    #: `save_project`'s `hash_sources`. None unless a save has computed one
+    #: for this image; once present, re-saves and relocations both use it
+    #: (recomputed when a fresh source is available, else carried over
+    #: unchanged like `rel`/`size_bytes`).
+    sha256: str | None = None
     derived_from: str | None = None
     unavailable: bool = False
     extra: dict[str, Any] = field(default_factory=dict)
@@ -148,6 +157,13 @@ class ProjectImage:
     #: its `rel` from here, so a project resolved through the project-dir
     #: fallback on a second machine re-saves with correct references.
     resolved_path: str | None = None
+    #: The `thumbs/<id>.png` bytes this load found, if any (plan #37).
+    #: Load-only, like `resolved_path`: it is a ZIP entry, not a manifest
+    #: key, so `save_project` decides what to write itself — freshly
+    #: rendered whenever pixels are available, this carried-over value
+    #: otherwise, so an unavailable placeholder's thumbnail survives a
+    #: re-save exactly like its `rel` does (ADR 0002 §4).
+    thumb: bytes | None = None
 
     @property
     def derived(self) -> bool:

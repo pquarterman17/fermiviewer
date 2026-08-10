@@ -18,6 +18,7 @@ import {
   type ComparePane,
   type ImageGroup,
 } from "../lib/groups";
+import { useBrowseScale } from "./browseScale";
 import type { ViewerState } from "./viewerState";
 import {
   DEFAULT_DISPLAY,
@@ -306,8 +307,13 @@ export function applyUndoEntry(
 }
 
 /** The serializable slice of store state a saved session captures —
- *  shared by every save path (file + named workspace). */
+ *  shared by every save path (file + named workspace).
+ *
+ *  `browseScale` (plan item 11) lives in its OWN standalone store
+ *  (store/browseScale.ts), not on `ViewerState` — it is read here rather
+ *  than threaded in as a parameter, so every caller gets it for free. */
 export function clientState(s: ViewerState): SessionClientState {
+  const { locked, scale } = useBrowseScale.getState();
   return {
     order: s.order,
     activeId: s.activeId,
@@ -320,7 +326,27 @@ export function clientState(s: ViewerState): SessionClientState {
     sbsPanes: s.sbsPanes,
     sbsRows: s.sbsRows,
     sbsCols: s.sbsCols,
+    browseScale: { locked, scale },
   };
+}
+
+/** Apply a loaded session's browse-scale lock to its own standalone store
+ *  (plan item 11). Kept out of `sessionSlice`'s `Partial<ViewerState>`
+ *  return on purpose — `browseScale` is deliberately not on `ViewerState` —
+ *  so every load call site applies this alongside `sessionSlice`.
+ *
+ *  Additive and backward compatible: a project saved before this key
+ *  existed (or one holding anything malformed) has no usable `browseScale`,
+ *  so the lock simply comes back off rather than erroring. */
+export function restoreBrowseScale(
+  cs: SessionClientState | null | undefined,
+): void {
+  const raw = cs?.browseScale;
+  const scale =
+    typeof raw?.scale === "number" && Number.isFinite(raw.scale) && raw.scale > 0
+      ? raw.scale
+      : null;
+  useBrowseScale.setState({ locked: raw?.locked === true && scale != null, scale });
 }
 
 /** Bump `current` past every numeric suffix found in `ids` matching `re`

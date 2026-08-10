@@ -27,8 +27,10 @@ export interface SessionClientState {
   sbsCols?: number;
   /** The µm-per-screen-px browse lock (W2 gate G5) — presentational, so it
    *  rides the manifest's opaque `ui_state` like everything else here except
-   *  `imageGroups` and `measures`, which are promoted to validated sections. */
-  browseScale?: unknown;
+   *  `imageGroups` and `measures`, which are promoted to validated sections.
+   *  Additive (plan item 11): absent on a project saved before this key
+   *  existed, and the lock loads back off in that case. */
+  browseScale?: { locked: boolean; scale: number | null };
 }
 
 // ── named workspaces (design WS4b) ──────────────────────────────────

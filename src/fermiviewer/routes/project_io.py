@@ -1,16 +1,20 @@
-"""Project save / open / relocate — the `.fvp` v2 surface (plan #32–#35).
+"""Project save / open / relocate — the `.fvp` v2 surface (plan #32–#38).
 
 Three endpoints, one per user action:
 
 * ``POST /api/project/save`` — **Save Project** (`mode="light"`) and **Export
   Project Bundle** (`mode="bundle"`) are the same call with the one field that
-  distinguishes them (ADR 0002 §2). Derived images embed in both modes.
+  distinguishes them (ADR 0002 §2). Derived images and thumbnails (plan #37)
+  embed in both modes. `hash_sources` (plan #38) opts into per-image sha256,
+  off by default.
 * ``POST /api/project/load`` — **Open Project…**, accepting a `.fvp` or a
   legacy v1 `.json`/`.npz` pair, which is upgraded in memory (plan #32).
 * ``POST /api/project/relocate`` — **Locate folder…**, re-resolving whatever is
   still unavailable against a folder the user picked (plan #34). Invokable at
   any time and repeatable, so samples that moved to different folders can each
-  be pointed at their own.
+  be pointed at their own. Reports a `sha256` mismatch (plan #38) distinctly
+  from a `size_bytes` one — the former only fires for an image that was
+  actually hashed, and means something a size match cannot.
 
 A separate module because `routes/images.py` is at its ceiling, and because
 this is one cohesive surface: the store adapter it shares with the named
@@ -48,6 +52,10 @@ class SaveProjectRequest(BaseModel):
     mode: PayloadMode = "light"
     client_state: dict[str, Any] | None = None
     name: str | None = None
+    #: Opt-in content hashing (plan #38) — off by default, since hashing a
+    #: whole study on every save is not worth the time for callers who never
+    #: asked for strict post-relocation verification.
+    hash_sources: bool = False
 
 
 @router.post("/project/save")
@@ -55,7 +63,11 @@ def project_save(req: SaveProjectRequest) -> dict[str, Any]:
     """Write the session to a `.fvp`. The suffix is applied if absent."""
     try:
         return save_current(
-            req.path, mode=req.mode, client_state=req.client_state, name=req.name
+            req.path,
+            mode=req.mode,
+            client_state=req.client_state,
+            name=req.name,
+            hash_sources=req.hash_sources,
         )
     except ValueError as e:
         # ProjectFormatError is a ValueError: a manifest that would not
@@ -110,6 +122,10 @@ def project_relocate(req: RelocateRequest) -> dict[str, Any]:
         "still_unavailable": unavailable_payload(outcome.still_unavailable),
         # Reported, not enforced — see project_session.SizeMismatch.
         "mismatches": [vars(m) for m in outcome.mismatches],
+        # Distinct from "mismatches" (plan #38): only ever populated for an
+        # image saved with hash_sources=True, and a hash mismatch is strong
+        # evidence the bytes differ rather than a byte count matching by luck.
+        "hash_mismatches": [vars(m) for m in outcome.hash_mismatches],
         # Found under the chosen root but holding something else: a
         # wrong-data folder, which needs a different message from a
         # wrong-path one.

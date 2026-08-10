@@ -34,7 +34,14 @@ from fermiviewer.io import project_paths as paths
 from fermiviewer.io import project_resolve as resolving
 from fermiviewer.io.project_manifest import LoadedProject, ProjectImage
 
-__all__ = ["OpenProject", "ProjectSession", "Relocation", "SizeMismatch", "project"]
+__all__ = [
+    "HashMismatch",
+    "OpenProject",
+    "ProjectSession",
+    "Relocation",
+    "SizeMismatch",
+    "project",
+]
 
 
 @dataclass(frozen=True)
@@ -76,6 +83,21 @@ class SizeMismatch:
 
 
 @dataclass(frozen=True)
+class HashMismatch:
+    """A resolved file whose sha256 does not match the one recorded at save
+    (plan #38). Unlike `SizeMismatch`, this is only ever produced for an
+    image that was actually hashed — `save_project(hash_sources=True)` — so
+    it means something a size match cannot: the bytes really do differ, not
+    just their count. Reported, not enforced, same as `SizeMismatch`."""
+
+    id: str
+    name: str
+    rel: str
+    expected_sha256: str
+    actual_sha256: str
+
+
+@dataclass(frozen=True)
 class Relocation:
     """The outcome of one "Locate folder…"."""
 
@@ -83,6 +105,9 @@ class Relocation:
     resolved: tuple[ProjectImage, ...] = ()
     still_unavailable: tuple[ProjectImage, ...] = ()
     mismatches: tuple[SizeMismatch, ...] = ()
+    #: Distinct from `mismatches`: a byte-count match is weak evidence, a
+    #: hash mismatch is strong evidence the bytes really differ.
+    hash_mismatches: tuple[HashMismatch, ...] = ()
     #: Images whose file WAS found under the chosen root but did not describe
     #: what the manifest says — a wrong-data folder, not a wrong-path one.
     rejected: tuple[ProjectImage, ...] = ()
@@ -212,6 +237,7 @@ class ProjectSession:
         unresolved: list[ProjectImage] = []
         rejected: list[ProjectImage] = []
         mismatches: list[SizeMismatch] = []
+        hash_mismatches: list[HashMismatch] = []
         for img in self.placeholders():
             outcome = resolving.resolve(img, order)
             if outcome.image is None:
@@ -228,6 +254,18 @@ class ProjectSession:
                         rel=img.rel or "",
                         expected_bytes=img.size_bytes,
                         actual_bytes=outcome.size_bytes,
+                    )
+                )
+            # Distinct from the size check above: only ever populated for an
+            # image that was actually hashed at save time (plan #38).
+            if outcome.sha256 is not None and img.sha256 is not None:
+                hash_mismatches.append(
+                    HashMismatch(
+                        id=img.id,
+                        name=img.name,
+                        rel=img.rel or "",
+                        expected_sha256=img.sha256,
+                        actual_sha256=outcome.sha256,
                     )
                 )
 
@@ -248,6 +286,7 @@ class ProjectSession:
             resolved=tuple(resolved),
             still_unavailable=tuple(unresolved),
             mismatches=tuple(mismatches),
+            hash_mismatches=tuple(hash_mismatches),
             rejected=tuple(rejected),
         )
 

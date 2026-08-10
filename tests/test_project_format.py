@@ -23,7 +23,9 @@ from typing import Any
 import numpy as np
 import pytest
 import tifffile
+from PIL import Image
 
+from fermiviewer.calc.thumbnail import THUMBNAIL_MAX_EDGE
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.io import project_file, project_resolve
 from fermiviewer.io import project_paths as paths
@@ -137,7 +139,13 @@ def test_container_is_a_single_file_with_only_known_entries(tmp_path: Path) -> N
     assert path == tmp_path / "study.fvp"
     assert [p.name for p in tmp_path.iterdir()] == ["study.fvp"]  # no sidecar, no temp
     with zipfile.ZipFile(path) as zf:
-        assert sorted(zf.namelist()) == ["manifest.json", "pixels/img1.npy"]
+        # thumbs/img1.png (plan #37): embedded alongside pixels for every
+        # image that has data, in BOTH payload modes.
+        assert sorted(zf.namelist()) == [
+            "manifest.json",
+            "pixels/img1.npy",
+            "thumbs/img1.png",
+        ]
         assert zf.getinfo("pixels/img1.npy").compress_type == zipfile.ZIP_DEFLATED
     assert zipfile.is_zipfile(path)  # inspectable with standard tools
 
@@ -201,6 +209,90 @@ def test_sample_membership_of_a_missing_image_is_kept(tmp_path: Path) -> None:
     assert load_project(first).samples[0]["image_ids"] == ["img1", "gone-long-ago"]
 
 
+# ── sample params/parent/color round-trip + pre-extension loads (item 28) ──
+# test_round_trip_is_deep_equal above already exercises SAMPLES, which has
+# `params` and `color` populated — but its one sample's `parent` is always
+# None, so that round-trip alone never proves a non-null parent link survives.
+# ADR 0002 §5's whole point for `parent` is project -> sample NESTING, so it
+# gets its own assertion here.
+
+
+def test_nested_sample_parent_survives_a_round_trip(tmp_path: Path) -> None:
+    nested: list[dict[str, Any]] = [
+        {
+            "id": "proj",
+            "name": "Study",
+            "image_ids": [],
+            "parent": None,
+            "params": {},
+            "color": None,
+        },
+        {
+            "id": "s1",
+            "name": "Sample A",
+            "image_ids": ["img1"],
+            "parent": "proj",
+            "params": {"anneal_T": {"value": 450.0, "unit": "degC"}},
+            "color": "#ff8800",
+        },
+    ]
+    path = save_project(tmp_path / "study.fvp", [_image()], samples=nested)
+
+    loaded = load_project(path)
+    assert [dict(s) for s in loaded.samples] == nested
+    assert loaded.samples[1]["parent"] == "proj"
+
+
+def test_a_sample_without_params_parent_or_color_loads_unchanged(
+    tmp_path: Path,
+) -> None:
+    """A pre-extension sample — one written before plan #20 added params,
+    parent and color, so only the schema's originally-required id/name/
+    image_ids are present — must still load. `save_project`/`load_project`
+    never backfill defaults for keys they were not given, so a bare sample
+    stays bare rather than growing new keys on a round trip."""
+    bare = {"id": "s1", "name": "Sample A", "image_ids": ["img1"]}
+    path = save_project(tmp_path / "study.fvp", [_image()], samples=[bare])
+
+    assert [dict(s) for s in load_project(path).samples] == [bare]
+
+    # and it survives a re-save just as unchanged
+    again_path = save_project(path, load_project(path).images, samples=[bare])
+    assert [dict(s) for s in load_project(again_path).samples] == [bare]
+
+
+def test_a_pre_extension_v1_group_migrates_with_sensible_defaults(
+    tmp_path: Path,
+) -> None:
+    """A v1 `imageGroups` entry written before plan #20 added params/parent/
+    color to `ImageGroup` has only id/name/ids. Unlike the direct-manifest
+    case above, migration goes through `project_sections._sample`, which DOES
+    fill in defaults (parent None, params {}, color None) — this must not
+    crash on the missing keys, and the defaults it invents must themselves be
+    stable across a re-save."""
+    client_state = {"imageGroups": [{"id": "g1", "name": "Sample A", "ids": ["v1-a"]}]}
+    json_path, _ = write_v1_session(
+        tmp_path / "legacy.json", [_image(img_id="v1-a")], client_state
+    )
+
+    loaded = load_project(json_path)
+    expected = {
+        "id": "g1",
+        "name": "Sample A",
+        "image_ids": ["v1-a"],
+        "parent": None,
+        "params": {},
+        "color": None,
+    }
+    assert [dict(s) for s in loaded.samples] == [expected]
+
+    written = save_project(
+        tmp_path / "legacy.fvp", loaded.images, samples=loaded.samples
+    )
+    again = load_project(written)
+    assert [dict(s) for s in again.samples] == [expected]
+
+
 def test_dtype_and_non_image_kinds_survive(tmp_path: Path) -> None:
     cube = DataStruct(
         data=np.arange(24, dtype=np.float32).reshape(2, 3, 4),
@@ -229,7 +321,10 @@ def test_unknown_keys_round_trip_verbatim(tmp_path: Path) -> None:
         manifest["future_section"] = {"deconvolution": [1, 2, 3]}
         manifest["notes"] = "written by a newer build"
         manifest["images"][0]["future_flag"] = True
-        manifest["images"][0]["sha256"] = "a" * 64
+        # An example of a key this build still does NOT model — sha256 (plan
+        # #38) and thumbs/ (plan #37) graduated out of "unimplemented" and
+        # are covered by their own tests now.
+        manifest["images"][0]["provenance_tag"] = "acquired-2026"
         manifest["samples"][0]["future_field"] = {"nested": "kept"}
 
     _rewrite_manifest(path, inject)
@@ -237,7 +332,10 @@ def test_unknown_keys_round_trip_verbatim(tmp_path: Path) -> None:
     loaded = load_project(path)
     assert loaded.unknown_keys["future_section"] == {"deconvolution": [1, 2, 3]}
     assert loaded.unknown_keys["notes"] == "written by a newer build"
-    assert loaded.images[0].extra == {"future_flag": True, "sha256": "a" * 64}
+    assert loaded.images[0].extra == {
+        "future_flag": True,
+        "provenance_tag": "acquired-2026",
+    }
 
     save_project(
         path,
@@ -249,7 +347,7 @@ def test_unknown_keys_round_trip_verbatim(tmp_path: Path) -> None:
     assert manifest["future_section"] == {"deconvolution": [1, 2, 3]}
     assert manifest["notes"] == "written by a newer build"
     assert manifest["images"][0]["future_flag"] is True
-    assert manifest["images"][0]["sha256"] == "a" * 64
+    assert manifest["images"][0]["provenance_tag"] == "acquired-2026"
     assert manifest["samples"][0]["future_field"] == {"nested": "kept"}
 
 
@@ -379,7 +477,14 @@ def test_light_mode_references_sources_and_embeds_derived(tmp_path: Path) -> Non
     assert derived_entry["rel"] is None
     assert derived_entry["derived_from"] is None
     with zipfile.ZipFile(path) as zf:
-        assert zf.namelist() == ["manifest.json", "pixels/img2.npy"]
+        # thumbs/ for BOTH images (plan #37) — unlike pixels/, a thumbnail
+        # does not depend on whether the image itself is embedded.
+        assert sorted(zf.namelist()) == [
+            "manifest.json",
+            "pixels/img2.npy",
+            "thumbs/img1.png",
+            "thumbs/img2.png",
+        ]
 
     loaded = load_project(path)
     assert [img.unavailable for img in loaded.images] == [False, False]
@@ -439,6 +544,82 @@ def test_manifest_calibration_wins_over_the_referenced_file(tmp_path: Path) -> N
     (loaded_img,) = load_project(path).images
     assert loaded_img.embedded is False
     assert loaded_img.axes == (AxisCal(2.5, units="um"), AxisCal(2.5, units="um"))
+
+
+# ── thumbnails (ADR 0002 §2, plan #37) ───────────────────────────────
+
+
+def test_thumbnails_are_embedded_regardless_of_reference_or_payload_mode(
+    tmp_path: Path,
+) -> None:
+    """A light-mode image is REFERENCED, not embedded — but its thumbnail is
+    embedded anyway, in a real decodable PNG no bigger than the ADR's cap."""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    path = save_project(
+        tmp_path / "study.fvp", [_sourced(data_dir / "frame.tif")], data_root=data_dir
+    )
+
+    manifest = _manifest(path)
+    assert manifest["images"][0]["embedded"] is False  # referenced, not embedded
+    with zipfile.ZipFile(path) as zf:
+        png_bytes = zf.read("thumbs/img1.png")
+    thumb = Image.open(io.BytesIO(png_bytes))
+    assert thumb.format == "PNG"
+    assert max(thumb.size) <= THUMBNAIL_MAX_EDGE
+
+    loaded = load_project(path)
+    assert loaded.images[0].thumb == png_bytes  # exposed on ProjectImage too
+
+
+def test_no_thumbnail_entry_for_a_1d_spectrum(tmp_path: Path) -> None:
+    spectrum = DataStruct(
+        data=np.arange(5, dtype=np.float32),
+        kind=DataKind.SPECTRUM,
+        axes=(AxisCal(1.0, units="eV"),),
+        metadata={},
+    )
+    path = save_project(tmp_path / "study.fvp", [("s1", "spec.txt", spectrum)])
+
+    with zipfile.ZipFile(path) as zf:
+        assert "thumbs/s1.png" not in zf.namelist()
+    assert load_project(path).images[0].thumb is None
+
+
+def test_a_placeholder_keeps_its_thumbnail_across_a_resave(tmp_path: Path) -> None:
+    """The thumbnail was baked in while the pixels still existed; losing the
+    pixels later must not also lose the one preview the library has left."""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    path = save_project(
+        tmp_path / "study.fvp", [_sourced(data_dir / "frame.tif")], data_root=data_dir
+    )
+    with zipfile.ZipFile(path) as zf:
+        original_thumb = zf.read("thumbs/img1.png")
+    (data_dir / "frame.tif").unlink()
+
+    loaded = load_project(path)
+    (placeholder,) = loaded.images
+    assert placeholder.unavailable is True
+    assert placeholder.thumb == original_thumb  # survived losing its pixels
+
+    save_project(path, loaded.images, data_root=loaded.data_root_hint)
+    again = load_project(path)
+    assert again.images[0].thumb == original_thumb  # and a re-save too
+
+
+def test_a_project_saved_before_thumbnails_existed_still_loads(tmp_path: Path) -> None:
+    """Additive: a `.fvp` with no `thumbs/` entries at all (plan #37 had not
+    landed yet) must still load, with `thumb` simply absent."""
+    path = save_project(tmp_path / "study.fvp", [_image()])
+    with zipfile.ZipFile(path) as zf:
+        blobs = {n: zf.read(n) for n in zf.namelist() if not n.startswith("thumbs/")}
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, blob in blobs.items():
+            zf.writestr(name, blob)
+
+    (img,) = load_project(path).images
+    assert img.thumb is None
 
 
 # ── missing sources (ADR 0002 §4) ────────────────────────────────────
@@ -1100,3 +1281,144 @@ def test_a_size_change_is_reported_not_enforced(tmp_path: Path) -> None:
     assert outcome.mismatched is True
     assert outcome.size_bytes == (moved / "frame.tif").stat().st_size
     assert outcome.size_bytes != recorded
+
+
+# ── optional sha256 verification (plan #38) ──────────────────────────
+
+
+def test_hash_sources_is_off_by_default(tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    path = save_project(
+        tmp_path / "s.fvp", [_sourced(data_dir / "frame.tif")], data_root=data_dir
+    )
+    assert _manifest(path)["images"][0]["sha256"] is None
+    assert load_project(path).images[0].sha256 is None
+
+
+def test_hash_sources_true_computes_a_real_sha256(tmp_path: Path) -> None:
+    import hashlib
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    frame = data_dir / "frame.tif"
+    _sourced(frame)
+    expected = hashlib.sha256(frame.read_bytes()).hexdigest()
+
+    path = save_project(
+        tmp_path / "s.fvp",
+        [_sourced(frame)],
+        data_root=data_dir,
+        hash_sources=True,
+    )
+    manifest = _manifest(path)
+    assert manifest["images"][0]["sha256"] == expected
+
+    loaded = load_project(path)
+    assert loaded.images[0].sha256 == expected
+
+
+def test_a_derived_image_is_never_hashed(tmp_path: Path) -> None:
+    """A derived image has no source file — nothing to hash."""
+    path = save_project(
+        tmp_path / "s.fvp", [_derived()], mode="light", hash_sources=True
+    )
+    assert _manifest(path)["images"][0]["sha256"] is None
+
+
+def test_a_hash_survives_a_resave_that_does_not_ask_for_one(tmp_path: Path) -> None:
+    """`hash_sources` only controls whether a FRESH hash is computed — an
+    existing one is preserved exactly like `rel`/`size_bytes` are, mirroring
+    `project_paths.reference`'s recompute-when-possible-else-preserve rule."""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    path = save_project(
+        tmp_path / "s.fvp",
+        [_sourced(data_dir / "frame.tif")],
+        data_root=data_dir,
+        hash_sources=True,
+    )
+    recorded = _manifest(path)["images"][0]["sha256"]
+    assert recorded is not None
+
+    loaded = load_project(path)
+    save_project(path, loaded.images, data_root=data_dir)  # hash_sources defaults False
+    assert _manifest(path)["images"][0]["sha256"] == recorded
+
+
+def test_a_placeholders_hash_survives_across_a_resave(tmp_path: Path) -> None:
+    """The no-data-loss guarantee extends to the hash: a placeholder that
+    cannot be re-hashed (no pixels to read) keeps the one it already had."""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    path = save_project(
+        tmp_path / "s.fvp",
+        [_sourced(data_dir / "frame.tif")],
+        data_root=data_dir,
+        hash_sources=True,
+    )
+    recorded = _manifest(path)["images"][0]["sha256"]
+    (data_dir / "frame.tif").unlink()
+
+    loaded = load_project(path)
+    (placeholder,) = loaded.images
+    assert placeholder.unavailable is True
+    assert placeholder.sha256 == recorded
+
+    save_project(path, loaded.images, data_root=loaded.data_root_hint)
+    assert _manifest(path)["images"][0]["sha256"] == recorded
+
+
+def test_relocate_reports_a_hash_mismatch_distinctly_from_a_size_mismatch(
+    tmp_path: Path,
+) -> None:
+    """A hash mismatch is stronger evidence than a size mismatch, and the two
+    are reported through separate `Resolution` fields — `project_resolve`
+    already distinguishes `size_bytes` mismatches from `rejected`; this adds
+    a third, orthogonal signal rather than conflating it with either."""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    path = save_project(
+        tmp_path / "s.fvp",
+        [_sourced(data_dir / "frame.tif", value=7)],
+        data_root=data_dir,
+        hash_sources=True,
+    )
+    recorded_hash = _manifest(path)["images"][0]["sha256"]
+    recorded_size = _manifest(path)["images"][0]["size_bytes"]
+
+    # same shape/dtype (so it parses and fits, and the SIZE matches too) but
+    # different pixel values — sha256 must catch what size_bytes cannot.
+    moved = tmp_path / "moved"
+    moved.mkdir()
+    tifffile.imwrite(moved / "frame.tif", np.full((3, 4), 9, dtype=np.uint16))
+    assert (moved / "frame.tif").stat().st_size == recorded_size
+    (data_dir / "frame.tif").unlink()
+
+    (placeholder,) = load_project(path).images
+    outcome = project_resolve.resolve(placeholder, (moved,))
+    assert outcome.image is not None  # accepted: shape/kind still fit
+    assert outcome.size_bytes is None  # sizes DO match — no size mismatch
+    assert outcome.sha256 is not None
+    assert outcome.sha256 != recorded_hash
+    assert outcome.mismatched is True  # surfaced via the hash alone
+
+
+def test_no_hash_mismatch_when_nothing_was_ever_hashed(tmp_path: Path) -> None:
+    """The whole point of the opt-in: an image nobody asked to hash costs
+    nothing extra at relocate time, and reports no false mismatch."""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    path = save_project(
+        tmp_path / "s.fvp", [_sourced(data_dir / "frame.tif")], data_root=data_dir
+    )  # hash_sources defaults False
+    moved = tmp_path / "moved"
+    moved.mkdir()
+    tifffile.imwrite(moved / "frame.tif", np.full((3, 4), 9, dtype=np.uint16))
+    (data_dir / "frame.tif").unlink()
+
+    (placeholder,) = load_project(path).images
+    assert placeholder.sha256 is None
+    outcome = project_resolve.resolve(placeholder, (moved,))
+    assert outcome.image is not None
+    assert outcome.sha256 is None

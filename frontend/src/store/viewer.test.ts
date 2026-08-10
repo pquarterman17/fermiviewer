@@ -3,9 +3,13 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { loadWorkspaceNamed as apiLoadWorkspaceNamed } from "../lib/api";
+import {
+  loadWorkspaceNamed as apiLoadWorkspaceNamed,
+  saveWorkspaceNamed as apiSaveWorkspaceNamed,
+} from "../lib/api";
 import type { ImageMeta } from "../lib/api";
 import type { ImageGroup } from "../lib/groups";
+import { useBrowseScale } from "./browseScale";
 import type { Measure } from "./viewerTypes";
 import { useViewer } from "./viewer";
 
@@ -87,6 +91,7 @@ function meta(id: string, extra: Partial<ImageMeta> = {}): ImageMeta {
 
 beforeEach(() => {
   useViewer.setState(initialState, true);
+  useBrowseScale.setState({ locked: false, scale: null });
   localStorage.clear();
 });
 
@@ -376,6 +381,34 @@ describe("named workspaces (WS4b)", () => {
     expect(s.currentWorkspace).toEqual({ slug: "study", name: "Study" });
     expect(s.undoStack).toEqual([]); // a load is a fresh session
     expect(s.views["old1"]).toBeUndefined(); // stale per-image state cleared
+  });
+
+  // item 11: browseScale lives in its own store, so this named-workspace
+  // call site needs the SAME restoreBrowseScale wiring openProject has.
+  it("saveWorkspaceNamed includes the browse-scale lock", async () => {
+    useBrowseScale.getState().enable(2);
+    await useViewer.getState().saveWorkspaceNamed("My Study");
+    // mocks in this file are never cleared between tests, so the LAST call
+    // (not [0]) is the one this test just made
+    expect(vi.mocked(apiSaveWorkspaceNamed).mock.lastCall?.[1].browseScale).toEqual({
+      locked: true,
+      scale: 2,
+    });
+  });
+
+  it("loadWorkspaceNamed restores the browse-scale lock", async () => {
+    vi.mocked(apiLoadWorkspaceNamed).mockResolvedValueOnce({
+      ...(await apiLoadWorkspaceNamed("study")),
+      client_state: { order: ["x"], browseScale: { locked: true, scale: 4 } },
+    });
+    await useViewer.getState().loadWorkspaceNamed("study");
+    expect(useBrowseScale.getState()).toMatchObject({ locked: true, scale: 4 });
+  });
+
+  it("a workspace saved before item 11 loads with the lock off", async () => {
+    useBrowseScale.getState().enable(9);
+    await useViewer.getState().loadWorkspaceNamed("study"); // default mock: no browseScale key
+    expect(useBrowseScale.getState()).toMatchObject({ locked: false, scale: null });
   });
 });
 

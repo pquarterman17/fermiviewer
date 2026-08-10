@@ -13,6 +13,8 @@ without its data and pressing save CANNOT destroy it (ADR 0002 §4).
 
 from __future__ import annotations
 
+import base64
+import io
 import json
 import zipfile
 from pathlib import Path
@@ -22,6 +24,7 @@ import numpy as np
 import pytest
 import tifffile
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.project_session import project
@@ -195,6 +198,33 @@ def test_light_references_sources_and_bundle_embeds_them(client, tmp_path) -> No
     assert (tmp_path / "bundle.fvp").stat().st_size > (
         tmp_path / "light.fvp"
     ).stat().st_size
+
+
+# ── thumbnails (plan #37) ─────────────────────────────────────────────
+
+
+def test_a_placeholders_thumbnail_is_exposed_base64_on_load(client, tmp_path) -> None:
+    """The one thing a placeholder CAN still show: the preview baked in
+    while its pixels still existed, so the library isn't a blank card."""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    _open_tiff(client, data_dir / "frame.tif")
+    client.post(
+        "/api/project/save", json={"path": str(project_dir / "study.fvp")}
+    )
+    (data_dir / "frame.tif").unlink()
+
+    store.clear()
+    opened = client.post(
+        "/api/project/load", json={"path": str(project_dir / "study.fvp")}
+    ).json()
+    (placeholder,) = opened["unavailable"]
+    assert placeholder["thumb"] is not None
+    thumb = Image.open(io.BytesIO(base64.b64decode(placeholder["thumb"])))
+    assert thumb.format == "PNG"
+    assert max(thumb.size) <= 256
 
 
 # ── v1 migration (item 32) ───────────────────────────────────────────
@@ -500,6 +530,63 @@ def test_locate_folder_distinguishes_wrong_data_from_a_wrong_path(
     assert body["resolved"] == []
     assert [u["id"] for u in body["still_unavailable"]] == [img_id]
     assert [r["id"] for r in body["rejected"]] == [img_id]  # found, but wrong
+
+
+# ── optional sha256 verification (plan #38) ──────────────────────────
+
+
+def test_save_with_hash_sources_computes_a_real_sha256(client, tmp_path) -> None:
+    import hashlib
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    frame = data_dir / "frame.tif"
+    _open_tiff(client, frame)
+    expected = hashlib.sha256(frame.read_bytes()).hexdigest()
+
+    client.post(
+        "/api/project/save",
+        json={"path": str(tmp_path / "s.fvp"), "hash_sources": True},
+    )
+    manifest = _manifest(tmp_path / "s.fvp")
+    assert manifest["images"][0]["sha256"] == expected
+
+    # off by default: a second study, no hash_sources at all
+    store.clear()
+    _open_tiff(client, data_dir / "b.tif")
+    client.post("/api/project/save", json={"path": str(tmp_path / "no-hash.fvp")})
+    assert _manifest(tmp_path / "no-hash.fvp")["images"][0]["sha256"] is None
+
+
+def test_relocate_reports_a_hash_mismatch_distinctly_from_a_size_mismatch(
+    client, tmp_path
+) -> None:
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    img_id = _open_tiff(client, data_dir / "frame.tif")
+    client.post(
+        "/api/project/save",
+        json={"path": str(tmp_path / "s.fvp"), "hash_sources": True},
+    )
+    recorded = _manifest(tmp_path / "s.fvp")["images"][0]
+    (data_dir / "frame.tif").unlink()
+
+    # same shape/dtype/size, different pixels — only the hash catches this
+    moved = tmp_path / "moved"
+    moved.mkdir()
+    tifffile.imwrite(moved / "frame.tif", np.full((6, 8), 99, dtype=np.uint16))
+    assert (moved / "frame.tif").stat().st_size == recorded["size_bytes"]
+
+    store.clear()
+    client.post("/api/project/load", json={"path": str(tmp_path / "s.fvp")})
+    body = client.post("/api/project/relocate", json={"root": str(moved)}).json()
+
+    assert [m["id"] for m in body["resolved"]] == [img_id]
+    assert body["mismatches"] == []  # sizes match — no size mismatch
+    (hash_mismatch,) = body["hash_mismatches"]
+    assert hash_mismatch["id"] == img_id
+    assert hash_mismatch["expected_sha256"] == recorded["sha256"]
+    assert hash_mismatch["actual_sha256"] != recorded["sha256"]
 
 
 def test_relocate_error_paths(client, tmp_path) -> None:
