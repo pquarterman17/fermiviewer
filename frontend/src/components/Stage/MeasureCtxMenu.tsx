@@ -1,0 +1,177 @@
+// Right-click menu for one annotation on the measure overlay: colour
+// swatches, end symbol, per-annotation label font size, caption edit,
+// label-position reset, delete — plus the dismiss backdrop behind it.
+//
+// Extracted verbatim from MeasureOverlay.tsx. It renders a fragment of the
+// same two sibling divs in the same order, so the overlay's DOM is unchanged.
+
+import {
+  useViewer,
+  type EndSymbol,
+  type Measure,
+} from "../../store/viewer";
+
+/** Which annotation the menu is acting on, and where it was opened. */
+export interface MeasureCtxTarget {
+  mid: string;
+  x: number;
+  y: number;
+}
+
+interface Props {
+  imageId: string;
+  /** live measures for this image — the menu resolves `at.mid` against it */
+  measures: Measure[];
+  at: MeasureCtxTarget;
+  /** overlay-wide end symbol, shown as active when the measure has none */
+  defaultEndSymbol: EndSymbol;
+  /** overlay-wide label font size, the fallback in the font-size prompt */
+  globalFont: number;
+  onClose: () => void;
+}
+
+export default function MeasureCtxMenu({
+  imageId,
+  measures,
+  at,
+  defaultEndSymbol,
+  globalFont,
+  onClose,
+}: Props) {
+  const setMeasureStyle = useViewer((s) => s.setMeasureStyle);
+  const setMeasureFontSize = useViewer((s) => s.setMeasureFontSize);
+  const removeMeasure = useViewer((s) => s.removeMeasure);
+
+  return (
+    <>
+      <div
+        className="fvd-ctx-menu fvd-glass"
+        style={{ left: at.x, top: at.y }}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <div className="fvd-ctx-swatches">
+          {[
+            "#ffffff",
+            "#22d3ee",
+            "#fbbf24",
+            "#f472b6",
+            "#a3e635",
+            "#f43f5e",
+          ].map((c) => (
+            <button
+              key={c}
+              className="fvd-swatch"
+              style={{ background: c }}
+              title="Set annotation color"
+              onClick={() => {
+                setMeasureStyle(imageId, at.mid, { color: c });
+                onClose();
+              }}
+            />
+          ))}
+        </div>
+        <div className="fvd-ctx-label">End symbol</div>
+        <div className="fvd-ctx-sym-row">
+          {(["bar", "none", "circle", "square", "cross"] as EndSymbol[]).map(
+            (sym) => {
+              const active =
+                (measures.find((x) => x.id === at.mid)?.endSymbol ??
+                  defaultEndSymbol) === sym;
+              return (
+                <button
+                  key={sym}
+                  className={`fvd-ctx-sym${active ? " active" : ""}`}
+                  title={sym}
+                  onClick={() => {
+                    setMeasureStyle(imageId, at.mid, { endSymbol: sym });
+                    onClose();
+                  }}
+                >
+                  {sym === "bar"
+                    ? "|"
+                    : sym === "none"
+                      ? "—"
+                      : sym === "circle"
+                        ? "○"
+                        : sym === "square"
+                          ? "□"
+                          : "×"}
+                </button>
+              );
+            },
+          )}
+        </div>
+        <div className="fvd-ctx-sep" />
+        <button
+          className="fvd-ctx-item"
+          title="Set this annotation's label font size"
+          onClick={() => {
+            const m = measures.find((x) => x.id === at.mid);
+            const cur = m?.fontSize ?? globalFont;
+            const t = window.prompt(
+              `Font size (px, current: ${cur}):`,
+              String(cur),
+            );
+            if (t !== null) {
+              const n = Number(t);
+              if (Number.isFinite(n) && n > 0) {
+                setMeasureFontSize(imageId, at.mid, n);
+              } else if (t.trim() === "" || t === "0") {
+                setMeasureFontSize(imageId, at.mid, null);
+              }
+            }
+            onClose();
+          }}
+        >
+          Font size…
+        </button>
+        <div className="fvd-ctx-sep" />
+        <button
+          className="fvd-ctx-item"
+          title="Edit the annotation's caption text"
+          onClick={() => {
+            const m = measures.find((x) => x.id === at.mid);
+            const t = window.prompt("Caption:", m?.text ?? "");
+            if (t !== null) {
+              useViewer.getState().setMeasureText(imageId, at.mid, t);
+            }
+            onClose();
+          }}
+        >
+          Edit caption…
+        </button>
+        <button
+          className="fvd-ctx-item"
+          title="Snap the caption back to its default position"
+          onClick={() => {
+            setMeasureStyle(imageId, at.mid, {
+              labelDx: 0,
+              labelDy: 0,
+            });
+            onClose();
+          }}
+        >
+          Reset label position
+        </button>
+        <button
+          className="fvd-ctx-item danger"
+          title="Delete this annotation"
+          onClick={() => {
+            removeMeasure(imageId, at.mid);
+            onClose();
+          }}
+        >
+          Delete
+        </button>
+      </div>
+      <div
+        className="fvd-ctx-backdrop"
+        onPointerDown={() => onClose()}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          onClose();
+        }}
+      />
+    </>
+  );
+}

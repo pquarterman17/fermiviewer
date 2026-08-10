@@ -35,11 +35,18 @@ MAX_MODULE_LINES = 500
 FRONTEND_MAX_MODULE_LINES = 500
 FRONTEND_MAX_STYLESHEET_LINES = 500
 # Existing production modules above the default ceiling. These are debt, not
-# precedent: each cap is its current size, so a module may shrink but not grow.
+# precedent: a cap only ever moves DOWN, so a module may shrink but not grow.
 # Delete an entry as soon as that module is split below the default ceiling.
+#
+# A cap sits at roughly the module's size plus ~50 lines of slack, NOT at its
+# exact size. Pinning tight looks stricter but is self-defeating: an
+# extraction done specifically to make room for a booked feature then leaves
+# zero room, so the very next line fails the ratchet and the gain cannot be
+# spent. The slack is the working margin; the distance from the previous cap
+# is what got banked.
 FRONTEND_LEGACY_CAPS = {
-    "components/Stage/MeasureOverlay.tsx": 636,
-    "components/Stage/Stage.tsx": 640,
+    "components/Stage/MeasureOverlay.tsx": 562,
+    "components/Stage/Stage.tsx": 617,
     "components/workshops/DiffractionWorkshop.tsx": 548,
     "store/viewer.ts": 575,
 }
