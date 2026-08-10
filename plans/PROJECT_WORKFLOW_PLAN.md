@@ -217,21 +217,9 @@ from an import.
 
 1. ~~**Folder-open endpoint**~~ — shipped 2026-08-09, see Completed
 
-2. **Import dialog grows folders + merge checkbox** —
-   `FolderOpenDialog.tsx` (130/500) gains folder selection and a single
-   "Merge into one group" checkbox
-   - [ ] New `lib/api/folders.ts` client + new `lib/folderImport.ts`
-         orchestrator: endpoint → ingest metas → createGroup per folder,
-         or one merged group
-   - [ ] Group name = folder name; collision suffixing; empty folders
-         reported via status
-   Ratchet: NEW MODULES + a roomy dialog. Model: sonnet · Parallel: yes
-   (conflicts with 4 — same dialog)
+2. ~~**Import dialog grows folders + merge checkbox**~~ — shipped 2026-08-09, see Completed
 
-3. **Seeding rules as pure, tested logic** — single folder = one group;
-   N folders = N groups; merge = one group; rules live in
-   lib/folderImport.ts with table-driven tests.
-   Model: haiku · Parallel: yes (after 2)
+3. ~~**Seeding rules as pure, tested logic**~~ — shipped 2026-08-09, see Completed
 
 ### Tier 2 — Medium Impact
 
@@ -297,18 +285,7 @@ exported figures.
 
 13. ~~**MeasureOverlay extraction (front-load)**~~ — shipped 2026-08-09, see Completed
 
-14. **Polygon + lasso measure kinds**
-    - [ ] Add "polygon"/"lasso" to MeasureKind (viewerTypes.ts 248/500)
-          — grep every MeasureKind narrowing site first
-    - [ ] Polygon rides the existing polyline click-flow
-          (useStagePointers.ts) with close-on-first-vertex /
-          double-click; vertex drag-adjust reuses the measure-move rails
-    - [ ] Lasso capture in a NEW `Stage/regionCapture.ts` (pointermove
-          append + simplification); thin glue keeps useStagePointers.ts
-          (432) under its 500 cap
-    - [ ] Closed-shape rendering goes in the module extracted by 13
-    Model: opus · Parallel: NO — Stage pointer/overlay files; after 13;
-    not concurrent with 9
+14. ~~**Polygon + lasso measure kinds**~~ — shipped 2026-08-09, see Completed
 
 15. **Region table + CSV (the deliverable)** — new Regions panel/tool
     window: rows = polygon/lasso measures of the active image, label
@@ -481,6 +458,29 @@ lands.
 
 ## Completed
 
+- ~~**#14 Polygon + lasso measure kinds**~~ (2026-08-09, PR #133) — both kinds
+  share the one area computation; new `closedShapeGlyph.tsx` (57) and
+  `regionCapture.ts` (53); MeasureOverlay 512 → 527 (cap 562) and
+  useStagePointers 432 → 489 (cap 500), no cap touched. The narrowing audit
+  found a **real bug** — "Clear Measurements" used an explicit kind whitelist
+  that excluded the new kinds — plus three silent gaps (MeasurePanel.valueOf,
+  showLog, and measureStats omitting Area entirely). Sites typed as
+  `Record<Measure["kind"], T>` or an exhaustive switch failed to COMPILE and
+  so protected themselves; hand-written whitelists did not. Prefer the former.
+  Tools were also registered in measureTools/the Measure menu/captureSteps —
+  a kind reachable from nowhere is not a feature.
+- ~~**#2 Import dialog grows folders + merge checkbox**~~ (2026-08-09, PR #132)
+  — folder paths + a single "Merge into one group" checkbox; new
+  `lib/api/folders.ts` (37) and `lib/folderImport.ts` (179); the existing
+  file-open path untouched. Folder structure is derived ONLY in the backend;
+  the frontend maps returned groups one-to-one, which is why "one folder → one
+  group" and "N folders → N groups" are the same rule, not two branches.
+- ~~**#3 Seeding rules as pure, tested logic**~~ (2026-08-09, PR #132) —
+  `seedGroupSpecs`/`dedupeGroupName`/`mergedGroupName`/`summarizeImport`, split
+  from the async orchestrator so the rules test against the real store with no
+  fetch mocking. Collisions get a numeric suffix rather than silently merging;
+  an empty folder yields no group and is named in the status line, as are
+  skipped-unsupported counts and cap truncation.
 - ~~**#20 Sample/project group model**~~ (2026-08-09, PR #130) — `ImageGroup`
   gains optional `parent`, `params` (`{name: {value, unit}}`) and `color`,
   matching the schema's `samples` entries exactly. Four actions, five pure
