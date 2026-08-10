@@ -12,10 +12,11 @@ no parallel mechanisms. The project itself is a documented,
 schema-validated single file (`.fvp`, ADR 0002) built to transfer
 between machines.
 
-**Status:** Active
+**Status:** Complete
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-08-09
-**Updated:** 2026-08-09
+**Updated:** 2026-08-10
+**Completed:** 2026-08-10 — all 27 items shipped, all six owner gates resolved
 
 ---
 

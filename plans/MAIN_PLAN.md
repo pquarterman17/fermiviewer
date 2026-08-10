@@ -6,7 +6,7 @@ plan in `plans/` declares this file as its parent.
 
 **Status:** Active
 **Created:** 2026-08-09
-**Updated:** 2026-08-09
+**Updated:** 2026-08-10
 
 ---
 
@@ -29,7 +29,7 @@ measurement, project hierarchy).
 | Sub-plan | Scope | Status | Why its own file |
 |---|---|---|---|
 | SPECTRAL_WORKSPACE_PLAN.md | EDS+EELS shared spectrum core, species lists, batch maps, composites, synthetic-SI verification | Active (~30 open sub-tasks, W1–W4) | Independent lifecycle, four workstreams of its own |
-| PROJECT_WORKFLOW_PLAN.md | Folder import, constant-physical-scale browsing, area measurement, project/sample hierarchy + comparison deliverables, and the `.fvp` project file format | Active (38 items, W1–W5) | Five coupled workstreams sharing the group/measure/workspace primitives; W5 is foundational to W4 |
+| ~~PROJECT_WORKFLOW_PLAN.md~~ | Folder import, constant-physical-scale browsing, area measurement, project/sample hierarchy + comparison deliverables, and the `.fvp` project file format | **Complete 2026-08-10** → `plans/archive/` | 27 items shipped, 6 gates resolved. Kept for the decision record: ADR 0002's rationale, the `py/path-injection` triage, and the ratchet outcomes (`store/viewer.ts` graduated 575→444) |
 
 ### Cross-plan dependencies
 
@@ -62,13 +62,19 @@ measurement, project hierarchy).
 
 ## Tier 2 — Medium Impact
 
-1. **Pin-graduation campaign** — the pinned files no sub-plan item
-   already shrinks: `store/viewer.ts` (575) and
-   `components/workshops/DiffractionWorkshop.tsx` (548) split below 500
-   so their `FRONTEND_LEGACY_CAPS` entries are deleted
-   (Stage.tsx and MeasureOverlay.tsx pins fall via
-   PROJECT_WORKFLOW_PLAN #8/#13).
-   Model: opus · Parallel: no — coordinate with any item touching viewer.ts
+1. **Pin-graduation campaign** — three legacy caps remain, down from four.
+   `store/viewer.ts` graduated 2026-08-10 (575 → 444, entry deleted) as the
+   price of fixing `closeImage`; Stage.tsx (584/617) and MeasureOverlay.tsx
+   (527/562) fell but stay pinned. Still to graduate:
+   `components/workshops/DiffractionWorkshop.tsx` (548/548 — zero headroom).
+   - [ ] Split DiffractionWorkshop.tsx below 500 and delete its cap entry
+   - [ ] `frontend/src/components/Stage/useStagePointers.ts` is at **498 of
+         the 500 default ceiling** with NO clean extraction available: it is
+         one hook whose handlers all close over its local state, so pulling
+         one out means threading a large context object. The next feature
+         needing room there must restructure the hook deliberately.
+         (was PROJECT_WORKFLOW_PLAN #9)
+   Model: opus · Parallel: no — coordinate with any item touching these files
 
 2. **BACKLOG.md dashboard** — with two live campaigns, create the
    derived dashboard per plan-hygiene (regenerated from the plans' open
@@ -79,8 +85,23 @@ measurement, project hierarchy).
 
 3. **ci.yml stale coverage comment** — the "~85%" note contradicts the
    82% gate; fix the comment only, never raise the gate from a local
-   coverage reading.
+   coverage reading. Local now measures ~93.8% (1808 tests).
    Model: haiku · Parallel: yes
+
+4. **Region holes have no drawing gesture** — item 19 shipped the area
+   computation, the schema field and the reporting, but nothing in the UI
+   creates a hole: the gesture belongs in `useStagePointers.ts`/`Stage.tsx`,
+   which that work was fenced out of. The number is correct; the way to
+   draw one is missing. (was PROJECT_WORKFLOW_PLAN #19)
+   Model: sonnet · Parallel: no — blocked by item 1's useStagePointers note
+
+5. **`AxisCal.scale` writes raw NaN into a `.fvp` manifest** — an
+   uncalibrated axis defaults to NaN and `axes_to_manifest` passes it
+   through. Python round-trips fine and nothing in the app parses the
+   manifest in JS, but a `.fvp` written from an uncalibrated Helios frame
+   is **not strict JSON for an external tool**. Found while wiring
+   items 32–35; out of scope there.
+   Model: sonnet · Parallel: yes
 
 ## Completed
 
