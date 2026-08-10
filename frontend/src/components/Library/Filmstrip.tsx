@@ -1,17 +1,33 @@
 // Left filmstrip / library (handoff §4 "Library", Phase 3): thumbs⇄names
 // toggle, ⌘/⇧-click multi-select, HTML5 drag-reorder, right-click context
 // menu, Compare N button.
+//
+// ONE panel that grows (W4 #22): with no sample groups this is exactly the
+// flat card list it always was — no section chrome at all. Once groups
+// exist the same panel renders them as collapsible sections (projects
+// nesting their samples, everything else under "Ungrouped"), and dragging a
+// card across a section boundary edits group membership instead of
+// reordering. There is no second view and no mode toggle.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { renderUrl } from "../../lib/api";
 import { renameSingleImage } from "../../lib/rename";
+import {
+  buildSampleTree,
+  entryKey,
+  UNGROUPED_SECTION,
+  visibleEntries,
+  type FilmEntry,
+} from "../../lib/sampleTree";
 import { useViewer, type SelectGesture } from "../../store/viewer";
 import Icon from "../icons/Icon";
+import { useCollapsedGroups } from "../Inspector/useCollapsedGroups";
+import FilmCard, { type FilmCardCtx } from "./FilmCard";
 import FilmstripContextMenu, {
   type FilmstripCtxTarget,
 } from "./FilmstripContextMenu";
 import GroupsBar from "./GroupsBar";
+import SampleSection, { type SampleSectionCtx } from "./SampleSection";
 
 type CtxMenu = FilmstripCtxTarget;
 
@@ -31,11 +47,42 @@ export default function Filmstrip() {
   const createGroup = useViewer((s) => s.createGroup);
   const renameGroup = useViewer((s) => s.renameGroup);
   const deleteGroup = useViewer((s) => s.deleteGroup);
+  const addGroupMember = useViewer((s) => s.addGroupMember);
+  const removeGroupMember = useViewer((s) => s.removeGroupMember);
 
   const [ctx, setCtx] = useState<CtxMenu | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [dropSection, setDropSection] = useState<string | null>(null);
   const dragId = useRef<string | null>(null);
+  // section the drag started in (null = Ungrouped / the flat list), so a drop
+  // can tell "reorder within this section" from "move between sections"
+  const dragFrom = useRef<string | null>(null);
   const cardRefs = useRef<Array<HTMLDivElement | null>>([]);
+
+  const { collapsed, toggle } = useCollapsedGroups("library");
+  const hasGroups = imageGroups.length > 0;
+  // derived in a memo, never in a selector: these build fresh arrays, and a
+  // selector that returns one re-renders forever (zustand snapshot rule)
+  const tree = useMemo(
+    () => buildSampleTree(imageGroups, images, order),
+    [imageGroups, images, order],
+  );
+  // With no groups the panel is the flat list it always was — no sections, so
+  // no collapse state can hide a card either.
+  const entries: FilmEntry[] = useMemo(
+    () =>
+      hasGroups
+        ? visibleEntries(tree, collapsed)
+        : order.map((id) => ({ id, groupId: null })),
+    [hasGroups, tree, collapsed, order],
+  );
+  const posOf = useMemo(() => {
+    const at = new Map(entries.map((e, i) => [entryKey(e), i]));
+    return (key: string) => at.get(key) ?? -1;
+  }, [entries]);
+  // exactly one tab stop: the active image's card, else the first one
+  const activePos = entries.findIndex((e) => e.id === activeId);
+  const tabPos = activePos === -1 ? 0 : activePos;
 
   useEffect(() => {
     if (!ctx) return;
@@ -69,6 +116,8 @@ export default function Filmstrip() {
     requestAnimationFrame(() => cardRefs.current[index]?.focus());
   };
 
+  // arrow keys walk the VISIBLE card sequence, which with no groups is
+  // `order` itself and with groups runs on across section boundaries
   const onCardKeyDown = (
     e: React.KeyboardEvent<HTMLDivElement>,
     id: string,
@@ -86,15 +135,16 @@ export default function Filmstrip() {
       });
       return;
     }
+    const n = entries.length;
     let nextIndex: number | undefined;
     if (e.key === "ArrowDown" || e.key === "ArrowRight") {
-      nextIndex = (index + 1) % order.length;
+      nextIndex = (index + 1) % n;
     } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
-      nextIndex = (index - 1 + order.length) % order.length;
+      nextIndex = (index - 1 + n) % n;
     } else if (e.key === "Home") {
       nextIndex = 0;
     } else if (e.key === "End") {
-      nextIndex = order.length - 1;
+      nextIndex = n - 1;
     } else if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       select(
@@ -106,11 +156,80 @@ export default function Filmstrip() {
       return;
     }
     e.preventDefault();
-    const nextId = nextIndex == null ? undefined : order[nextIndex];
+    const nextId = nextIndex == null ? undefined : entries[nextIndex]?.id;
     if (nextId && nextIndex != null) {
       select(nextId, "single");
       focusCard(nextIndex);
     }
+  };
+
+  /** Cross-section drop: membership edit, not a reorder. */
+  const moveBetween = (id: string, from: string | null, into: string | null) => {
+    if (from === into) return;
+    if (from) removeGroupMember(from, id);
+    if (into) addGroupMember(into, id);
+  };
+
+  const endDrag = () => {
+    dragId.current = null;
+    dragFrom.current = null;
+    setDropTarget(null);
+    setDropSection(null);
+  };
+
+  const cardCtx: FilmCardCtx = {
+    images,
+    listView,
+    activeId,
+    selected,
+    dropTarget,
+    tabPos,
+    posOf,
+    registerRef: (pos, node) => {
+      cardRefs.current[pos] = node;
+    },
+    select: (e, id) => select(id, gesture(e)),
+    keyDown: onCardKeyDown,
+    contextMenu: onContextMenu,
+    dragStart: (id, from) => {
+      dragId.current = id;
+      dragFrom.current = from;
+    },
+    dragOver: (key, id, into) => {
+      // only hint "drop before this card" when the drop would reorder; a
+      // cross-section drop is a membership change and highlights the section
+      if (dragId.current && dragId.current !== id && into === dragFrom.current) {
+        setDropTarget(key);
+      }
+    },
+    dragLeave: (key) => setDropTarget((t) => (t === key ? null : t)),
+    drop: (id, into) => {
+      const src = dragId.current;
+      if (src) {
+        if (into === dragFrom.current) reorder(src, id);
+        else moveBetween(src, dragFrom.current, into);
+      }
+      endDrag();
+    },
+    dragEnd: endDrag,
+  };
+
+  const sectionCtx: SampleSectionCtx = {
+    collapsed,
+    toggle,
+    dropSection,
+    sectionDragOver: (sectionId, into) => {
+      if (dragId.current && into !== dragFrom.current) setDropSection(sectionId);
+    },
+    sectionDragLeave: (sectionId) =>
+      setDropSection((s) => (s === sectionId ? null : s)),
+    // a card's own onDrop runs first and clears dragId, so this only fires for
+    // a drop on the section's chrome/gaps — never twice for one drop
+    sectionDrop: (into) => {
+      const src = dragId.current;
+      if (src) moveBetween(src, dragFrom.current, into);
+      endDrag();
+    },
   };
 
   return (
@@ -191,73 +310,38 @@ export default function Filmstrip() {
         aria-label="Open images"
         aria-multiselectable="true"
       >
-      {order.map((id, index) => {
-        const meta = images[id];
-        if (!meta) return null;
-        const isSel = selected.includes(id);
-        const cls = [
-          "fvd-film-card",
-          listView === "names" ? "names" : "",
-          id === activeId ? "active" : "",
-          isSel ? "selected" : "",
-          dropTarget === id ? "drop-before" : "",
-        ]
-          .filter(Boolean)
-          .join(" ");
-        return (
-          <div
-            key={id}
-            ref={(node) => {
-              cardRefs.current[index] = node;
-            }}
-            className={cls}
-            title={meta.name}
-            role="option"
-            aria-selected={isSel}
-            // activeId can be null while images remain (e.g. undoing a derived
-            // image whose parent is gone). Fall back so the listbox always has
-            // exactly one tab stop instead of becoming keyboard-unreachable.
-            tabIndex={id === (activeId ?? order[0]) ? 0 : -1}
-            draggable
-            onClick={(e) => select(id, gesture(e))}
-            onKeyDown={(e) => onCardKeyDown(e, id, index)}
-            onContextMenu={(e) => onContextMenu(e, id)}
-            onDragStart={(e) => {
-              dragId.current = id;
-              e.dataTransfer.effectAllowed = "move";
-            }}
-            onDragOver={(e) => {
-              e.preventDefault();
-              if (dragId.current && dragId.current !== id) setDropTarget(id);
-            }}
-            onDragLeave={() => setDropTarget((t) => (t === id ? null : t))}
-            onDrop={(e) => {
-              e.preventDefault();
-              if (dragId.current) reorder(dragId.current, id);
-              dragId.current = null;
-              setDropTarget(null);
-            }}
-            onDragEnd={() => {
-              dragId.current = null;
-              setDropTarget(null);
-            }}
-          >
-            {listView === "thumbs" &&
-              (meta.kind === "spectrum" ? (
-                // 1-D spectra have no raster (backend 400s on /render)
-                <div className="fvd-film-thumb fvd-film-spectrum">⌇</div>
-              ) : (
-                <img
-                  className="fvd-film-thumb"
-                  src={renderUrl(id)}
-                  alt={meta.name}
-                  draggable={false}
-                />
-              ))}
-            <div className="fvd-film-name">{meta.name}</div>
-          </div>
-        );
-      })}
+      {!hasGroups &&
+        entries.map((e) => (
+          <FilmCard key={entryKey(e)} id={e.id} groupId={null} ctx={cardCtx} />
+        ))}
+
+      {hasGroups &&
+        tree.roots.map((node) => (
+          <SampleSection
+            key={node.group.id}
+            sectionId={node.group.id}
+            name={node.group.name}
+            groupId={node.group.id}
+            depth={node.depth}
+            ids={node.ids}
+            subsections={node.children}
+            ctx={cardCtx}
+            sec={sectionCtx}
+          />
+        ))}
+
+      {hasGroups && tree.ungrouped.length > 0 && (
+        <SampleSection
+          sectionId={UNGROUPED_SECTION}
+          name="Ungrouped"
+          groupId={null}
+          depth={0}
+          ids={tree.ungrouped}
+          subsections={[]}
+          ctx={cardCtx}
+          sec={sectionCtx}
+        />
+      )}
       </div>
 
       {ctx && (
