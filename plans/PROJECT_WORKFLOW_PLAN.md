@@ -286,15 +286,7 @@ exported figures.
 
 15. ~~**Region table + CSV (the deliverable)**~~ — shipped 2026-08-09, see Completed
 
-16. **Edge auto-detect assist** — segmentation proposes, user corrects
-    - [ ] New `calc/contours.py`: label-mask → traced, simplified
-          polygon (pure; frozen dataclass result)
-    - [ ] New `routes/regions.py`: propose an outline from a seed click
-          or rough region via calc.segment (multi_otsu + morph) or the
-          trained-grain path; returns normalized polygon pts
-    - [ ] Frontend: the proposal lands as an ordinary editable polygon
-          measure, so 15's table just works
-    Ratchet: NEW MODULES. Model: opus · Parallel: yes vs W4 (after 14)
+16. ~~**Edge auto-detect assist**~~ — shipped 2026-08-09, see Completed
 
 ### Tier 2 — Medium Impact
 
@@ -437,6 +429,34 @@ lands.
 
 ## Completed
 
+- ~~**#16 Edge auto-detect assist**~~ (2026-08-09, PR #138) — segmentation PROPOSES,
+  the user corrects: new pure `calc/contours.py` (174 lines) traces the
+  outer boundary of a single labelled-region mask (skimage `find_contours`
+  + `approximate_polygon`, no new dependency), simplifies it to a
+  hand-correctable vertex count, and canonicalizes winding + start vertex
+  so the same mask always yields the identical polygon (determinism was a
+  named requirement, not an assumption — verified by a dedicated test).
+  Holes are NOT subtracted — the outer ring alone is returned, documented
+  in the module docstring; #19 owns subtracting inner outlines.
+  New `routes/regions.py` (173 lines, registered in `server.py`) exposes
+  `POST /api/regions/propose`: a normalized 0-1 seed point OR rough rect
+  picks which multi-Otsu class/connected-component to trace (a rect also
+  crops the search locally, padded so the true boundary is never clipped
+  at the crop edge); 404 for an unknown image, 422 for any unusable seed
+  (out of bounds, a degenerate rect, a class that doesn't classify, no
+  boundary) — never a 500. Frontend glue lives in `RegionsCard.tsx` (a
+  seed-percent control + "Detect Region" button) and the new
+  `lib/api/regions.ts` client; the returned points are handed straight to
+  the store's existing `addMeasure(imageId, {kind: "polygon", pts})` — no
+  separate "detected region" concept anywhere, so overlay rendering,
+  vertex dragging, the region table, CSV export, persistence and undo all
+  work with zero special-casing, and the new polygon is immediately
+  draggable because `addMeasure` already selects it.
+  Verified on a synthetic bright-blob image: proposed area within 8% of
+  the true pixel-count area (seed-only and rect-seed paths both), plus a
+  `@pytest.mark.realdata` test against a real HAADF frame (auto-skips
+  without the sibling corpus). No files near their ceiling were touched
+  (`server.py` 477→478/500, one import + one tuple entry).
 - ~~**#22 One panel that grows**~~ (2026-08-09, PR #137) — new pure
   `lib/sampleTree.ts` (103) + `Library/SampleSection.tsx` (114) +
   `Library/FilmCard.tsx` (109); `Filmstrip.tsx` 283 → 367. Sections only
