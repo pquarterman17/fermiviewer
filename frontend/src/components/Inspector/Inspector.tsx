@@ -17,6 +17,7 @@ import CustomMetaCard from "./CustomMetaCard";
 import ExportCard from "./ExportCard";
 import HistoryCard from "./HistoryCard";
 import MeasurePanel from "./MeasurePanel";
+import RegionsCard from "./RegionsCard";
 import RoiManagerCard from "./RoiManagerCard";
 import ScaleBarCard from "./ScaleBarCard";
 import ToolsBrowser from "./ToolsBrowser";
@@ -237,6 +238,7 @@ export default function Inspector() {
       {tab === "Image" && unified && <ToolsBrowser />}
       {tab === "Image" && !unified && <MeasurePanel />}
       {tab === "Image" && meta.kind !== "spectrum" && <RoiManagerCard />}
+      {tab === "Image" && meta.kind !== "spectrum" && <RegionsCard />}
       {tab === "Image" && !unified && meta.kind !== "spectrum" && (
         <TransformPanel />
       )}
