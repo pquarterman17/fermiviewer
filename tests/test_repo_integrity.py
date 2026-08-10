@@ -47,10 +47,14 @@ FRONTEND_MAX_STYLESHEET_LINES = 500
 FRONTEND_LEGACY_CAPS = {
     "components/Stage/MeasureOverlay.tsx": 562,
     "components/Stage/Stage.tsx": 617,
-    "components/workshops/DiffractionWorkshop.tsx": 548,
     # store/viewer.ts graduated 2026-08-09 (W4 #22): 575 -> 448 lines, once
     # the close teardown moved to viewerCloseImage.ts and the appearance
     # preferences to viewerChromeActions.ts. It is a plain 500-line module now.
+    # DiffractionWorkshop.tsx graduated 2026-08-10 (MAIN_PLAN item 1): 548 ->
+    # 445 lines, once the Simulate-tab state/logic (phase list, CIF import/
+    # delete, kinematic simulate) moved to useDiffractionSimulation.ts and the
+    # elliptical-distortion calibration flow moved to
+    # useDiffractionCalibration.ts, both under diffraction/. Last legacy pin.
 }
 PURE_LAYERS = ("io", "calc", "ops")
 FORBIDDEN_IN_PURE = ("fastapi", "pydantic", "fermiviewer.routes", "starlette")
