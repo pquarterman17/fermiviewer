@@ -16,6 +16,23 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Element maps no longer require a quantification you did not ask for.**
+  `POST /api/eds/element-maps` takes N element symbols and returns N maps
+  directly. The multi-element extraction had existed all along, but the only
+  route to it was `/eds/quantify`, so asking for five maps forced a
+  Cliff–Lorimer/ZAF quantification and its whole result table. Each species
+  may carry its own `e_lo`/`e_hi` window override, so a tuned window is
+  integrated as given rather than recomputed from the element's line.
+
+  A species that cannot be mapped — no known X-ray line, or a line outside
+  the cube's energy axis — comes back as its own row with `map: null` and a
+  plain-language reason, keeping request order, rather than being dropped
+  the way `/eds/quantify` drops it. An entirely unmappable request is still
+  a `200` with per-row reasons, so one rendering path covers both.
+
+  This is the HTTP API only. The Elemental Analysis workspace still issues
+  one request per element and does not call the batch route yet.
+
 - **You can save a project and reload it.** The `.fvp` container
   (ADR 0002) existed as a library nothing called — no menu entry, no
   endpoint, no UI — so the state of a study could not actually be kept.
