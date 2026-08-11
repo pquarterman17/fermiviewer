@@ -37,8 +37,6 @@ see the Dashboard note below for why that differs from MAIN_PLAN's own
 ### W1 — Shared spectrum core
 
 **Tier 1 — High Impact**
-1. **Species model** — one type/store for an energy window + colour, shared
-   by both modalities
 2. **Window model abstraction** — one interface over EDS's single-window and
    EELS's background+signal window shapes
 3. **Species list wiring into the shared shell** — one list component fed by
@@ -88,7 +86,7 @@ see the Dashboard note below for why that differs from MAIN_PLAN's own
 20. **Window overlap detection** (deselected 2026-07-29; revisit only if a
     real case produces a silently wrong answer)
 
-**Open items: 19**
+**Open items: 18**
 
 ---
 
@@ -97,9 +95,9 @@ see the Dashboard note below for why that differs from MAIN_PLAN's own
 | Plan | Status | Open items |
 |---|---|---|
 | MAIN_PLAN.md | Active (root) | 0 |
-| SPECTRAL_WORKSPACE_PLAN.md | Active | 19 |
+| SPECTRAL_WORKSPACE_PLAN.md | Active | 18 |
 
-**Total open items:** 19
+**Total open items:** 18
 
 **Counting method:** top-level numbered items (the plan-format.md unit of a
 tracked work item) — not nested `- [ ]` sub-task checkboxes. The spectral

@@ -109,14 +109,6 @@ quantification the user may not want.
 
 ### Tier 1 — High Impact
 
-1. **Species model** — one type and store for "a thing with an energy window
-   and a colour", used by both modalities
-   - [ ] `Species { id, symbol, transition, windows, visible }`; colour stays
-         in the existing element-colour registry, keyed by symbol
-   - [ ] Persist per image; clear on image change (as zoom/regions already do)
-   - [ ] Derive the EDS default window from `line_energy` ± half-window, and
-         the EELS default from the edge onset
-
 2. **Window model abstraction** — one interface over two different window
    shapes
    - [ ] EDS: one signal window; flanking background inferred (`_side_windows`)
@@ -156,8 +148,17 @@ quantification the user may not want.
 9. **Species list wired to EDS** — periodic-table multi-select feeding the list
    - [ ] Multi-select in `PeriodicTable`, preserving single-select for the
          existing callers
-   - [ ] "Extract maps" runs one batch request for every visible species
+   - [ ] "Extract maps" runs one batch request for every visible species —
+         `useElementMaps.ts` currently fans out N concurrent SINGULAR
+         `/eds/element-map` calls; item 8's batch route replaces them
    - [ ] Row click shows that single map; composite reflects visible rows
+   - [ ] **Wire `store/species.ts`, which item 1 left with no consumer.**
+         `MapsTab` still owns its list in component-local `useState` and wipes
+         it on every image change. Two specific loose ends: `IdentifiedElement`
+         (auto-ID evidence) must stay the evidence and stop owning `selected`,
+         or "which species are we mapping" ends up with two sources of truth;
+         and `pruneClosed` has no call site yet, so the per-image map leaks
+         until this lands.
 
 ### Tier 2 — Medium Impact
 
@@ -229,6 +230,31 @@ missing rather than faking it. These four items are what fills it.
 ---
 
 ## Completed
+
+- ~~**#1 Species model**~~ (2026-08-10) — `lib/spectrum/species.ts` (the
+  modality-neutral tier, since both workspaces use it unchanged) plus a
+  per-image `store/species.ts`. **Foundation only: it has no UI consumer yet
+  — item 9 is the wiring, and carries that as an explicit sub-task.**
+  Kept separate from `identify.ts`'s `IdentifiedElement` on purpose: that type
+  is what auto-ID *measured* (net, σ, significance, confidence, δ-from-line),
+  it has no EELS analogue, and a user's decisions must survive a
+  re-identification that changes every one of those numbers. Evidence in,
+  decision out.
+  `Species` carries **no colour** — it resolves from the symbol registry, so
+  "Carbon is green" holds on montage, overlay, legend and spectrum labels at
+  once; a stored colour would be a second source of truth, which this repo has
+  already paid for. `splitEdgeLabel` exists for the same reason: "Fe-L2,3" must
+  reach the registry as `Fe`, not as an unrecognised key.
+  `modality` fixes the window shape AND the unit (EDS keV, EELS eV) from one
+  field, so the two cannot contradict. EELS `background` is deliberately left
+  UNSET — auto-placing it is item 16 and an open owner gate; guessing here
+  would answer that question by accident and a wrong background window yields
+  a quantification that looks fine and is not.
+  Per-image state is keyed by image id rather than cleared, so switching cubes
+  and back restores the list instead of wiping it (today `MapsTab` discards
+  every tick and manual addition). `NO_SPECIES` is a module-level constant for
+  the zustand stable-snapshot rule, matching `MeasureOverlay`'s `NO_MEASURES`.
+  27 tests.
 
 - ~~**#8 `/eds/element-maps` endpoint**~~ (2026-08-10) — `extract_element_maps()`
   is no longer reachable only through a Cliff–Lorimer/ZAF quantification the
