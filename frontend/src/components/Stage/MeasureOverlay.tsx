@@ -315,9 +315,15 @@ export default function MeasureOverlay({
       const last = pts[pts.length - 1];
       labelAt = { x: last.x + 10, y: last.y - 10 };
     } else if ((m.kind === "polygon" || m.kind === "lasso") && pts.length >= 2) {
+      // plan item 4: render enclosed holes as a void in the shape, not a
+      // silent subtraction only visible in the label
+      const holes = !isPending && m.holes?.length
+        ? m.holes.map((h) => h.map(toScreen))
+        : undefined;
       shape = (
         <ClosedShapeGlyph
           pts={pts}
+          holes={holes}
           stroke={stroke}
           strokeWidth={sw}
           isPending={isPending}

@@ -10,6 +10,7 @@ import {
   type EndSymbol,
   type Measure,
 } from "../../store/viewer";
+import { findHoleHost } from "./pointerDecisions";
 
 /** Which annotation the menu is acting on, and where it was opened. */
 export interface MeasureCtxTarget {
@@ -41,6 +42,19 @@ export default function MeasureCtxMenu({
   const setMeasureStyle = useViewer((s) => s.setMeasureStyle);
   const setMeasureFontSize = useViewer((s) => s.setMeasureFontSize);
   const removeMeasure = useViewer((s) => s.removeMeasure);
+  const addHole = useViewer((s) => s.addHole);
+  const removeHole = useViewer((s) => s.removeHole);
+
+  // Plan item 4 — DRAW a hole: a polygon/lasso ring fully contained by
+  // another region offers "Mark as hole" (findHoleHost — pointerDecisions
+  // .ts — picks the smallest containing region deterministically); a
+  // region that already HAS holes offers the reverse, one entry per hole.
+  const target = measures.find((x) => x.id === at.mid);
+  const holeHostId =
+    target && (target.kind === "polygon" || target.kind === "lasso")
+      ? findHoleHost(measures, target.id, target.pts)
+      : null;
+  const holes = target?.holes ?? [];
 
   return (
     <>
@@ -153,6 +167,37 @@ export default function MeasureCtxMenu({
         >
           Reset label position
         </button>
+        {holeHostId && (
+          <button
+            className="fvd-ctx-item"
+            title="Subtract this ring from the smallest region that fully contains it"
+            onClick={() => {
+              addHole(imageId, holeHostId, at.mid);
+              onClose();
+            }}
+          >
+            Mark as hole
+          </button>
+        )}
+        {holes.length > 0 && (
+          <>
+            <div className="fvd-ctx-sep" />
+            <div className="fvd-ctx-label">Holes</div>
+            {holes.map((_, i) => (
+              <button
+                key={i}
+                className="fvd-ctx-item"
+                title="Restore this hole as its own region"
+                onClick={() => {
+                  removeHole(imageId, at.mid, i);
+                  onClose();
+                }}
+              >
+                Remove hole {i + 1}
+              </button>
+            ))}
+          </>
+        )}
         <button
           className="fvd-ctx-item danger"
           title="Delete this annotation"

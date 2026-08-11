@@ -7,7 +7,7 @@ import type { StateCreator } from "zustand";
 
 import { nextMeasureId } from "./viewerSession";
 import type { ViewerState } from "./viewerState";
-import { UNDO_CAP, type SavedRoi } from "./viewerTypes";
+import { UNDO_CAP, type Measure, type SavedRoi } from "./viewerTypes";
 
 type Set = Parameters<StateCreator<ViewerState>>[0];
 type Get = Parameters<StateCreator<ViewerState>>[1];
@@ -20,6 +20,8 @@ export function createMeasureActions(
   | "addMeasure"
   | "updateMeasure"
   | "removeMeasure"
+  | "addHole"
+  | "removeHole"
   | "deleteLastAnnotation"
   | "resetToOriginal"
   | "setMeasureText"
@@ -86,6 +88,72 @@ export function createMeasureActions(
             ],
             redoStack: [],
           }),
+        };
+      }),
+
+    // ── draw a hole (plan item 4) ───────────────────────────────────────
+    // The area math (lib/geometry polygonStatsWithHoles), the schema field
+    // (Measure.holes) and the region-table reporting all shipped in item
+    // 19; this is the gesture that actually populates the field. Which
+    // host a ring attaches to is decided in pointerDecisions.ts
+    // (findHoleHost) by the caller (MeasureCtxMenu) — this action just
+    // performs the move, undoably.
+
+    addHole: (imageId, hostId, childId) =>
+      set((s) => {
+        const list = s.measures[imageId] ?? [];
+        const child = list.find((m) => m.id === childId);
+        const host = list.find((m) => m.id === hostId);
+        if (!child || !host || child.id === host.id) return {};
+        if (child.kind !== "polygon" && child.kind !== "lasso") return {};
+        return {
+          measures: {
+            ...s.measures,
+            [imageId]: list
+              .filter((m) => m.id !== childId)
+              .map((m) =>
+                m.id === hostId
+                  ? { ...m, holes: [...(m.holes ?? []), child.pts] }
+                  : m,
+              ),
+          },
+          selectedMeasure:
+            s.selectedMeasure === childId ? hostId : s.selectedMeasure,
+          undoStack: [
+            ...s.undoStack.slice(-UNDO_CAP),
+            { t: "hole-add" as const, imageId, hostId, child },
+          ],
+          redoStack: [],
+        };
+      }),
+
+    removeHole: (imageId, hostId, holeIndex) =>
+      set((s) => {
+        const list = s.measures[imageId] ?? [];
+        const host = list.find((m) => m.id === hostId);
+        const hole = host?.holes?.[holeIndex];
+        if (!host || !hole) return {};
+        const child: Measure = { id: nextMeasureId(), kind: "polygon", pts: hole };
+        return {
+          measures: {
+            ...s.measures,
+            [imageId]: list
+              .map((m) =>
+                m.id === hostId
+                  ? {
+                      ...m,
+                      holes: (m.holes ?? []).filter((_, i) => i !== holeIndex),
+                    }
+                  : m,
+              )
+              .concat(child),
+          },
+          selectedMeasure: child.id,
+          undoStack: [
+            ...s.undoStack.slice(-UNDO_CAP),
+            { t: "hole-remove" as const, imageId, hostId, child },
+          ],
+          redoStack: [],
         };
       }),
 

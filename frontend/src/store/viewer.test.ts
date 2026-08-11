@@ -9,6 +9,7 @@ import {
 } from "../lib/api";
 import type { ImageMeta } from "../lib/api";
 import type { ImageGroup } from "../lib/groups";
+import { regionRows } from "../lib/regionTable";
 import { useBrowseScale } from "./browseScale";
 import type { Measure } from "./viewerTypes";
 import { useViewer } from "./viewer";
@@ -310,6 +311,126 @@ describe("measures + undo", () => {
     removeMeasure("img", id);
     expect(useViewer.getState().measures["img"]).toHaveLength(0);
     expect(useViewer.getState().selectedMeasure).toBeNull();
+  });
+});
+
+describe("draw a hole (plan item 4)", () => {
+  // 100x100 image; outer ring fills it, ring2 is a 20x20 square in the
+  // centre — the exact known-answer shape used in lib/regionTable.test.ts
+  // (100x100 - 20x20 = 9600 px^2), but exercised end-to-end THROUGH the
+  // store's addHole/removeHole/undo/redo rather than the pure helper
+  // directly, so a regression in the wiring (not just the math) fails
+  // this test.
+  const IMG = { shape: [100, 100], pixel_size: null, pixel_unit: "px" };
+  const OUTER: Measure["pts"] = [
+    { x: 0, y: 0 },
+    { x: 1, y: 0 },
+    { x: 1, y: 1 },
+    { x: 0, y: 1 },
+  ];
+  const INNER: Measure["pts"] = [
+    { x: 0.4, y: 0.4 },
+    { x: 0.6, y: 0.4 },
+    { x: 0.6, y: 0.6 },
+    { x: 0.4, y: 0.6 },
+  ];
+
+  it("addHole moves the ring into the host's holes and nets the reported area", () => {
+    const { addMeasure, addHole } = useViewer.getState();
+    const hostId = addMeasure("img", { kind: "polygon", pts: OUTER });
+    const ringId = addMeasure("img", { kind: "polygon", pts: INNER });
+    expect(regionRows(useViewer.getState().measures["img"], IMG)[0].areaPx2).toBeCloseTo(
+      10000,
+      6,
+    );
+
+    addHole("img", hostId, ringId);
+
+    const measures = useViewer.getState().measures["img"];
+    expect(measures).toHaveLength(1); // the ring is no longer a separate top-level measure
+    expect(measures[0].id).toBe(hostId);
+    expect(measures[0].holes).toEqual([INNER]);
+    const rows = regionRows(measures, IMG);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].areaPx2).toBeCloseTo(10000 - 400, 6); // known-answer net area
+    expect(rows[0].holeCount).toBe(1);
+  });
+
+  it("undo restores the ring as its own measure and the gross area; redo re-nets it", () => {
+    const { addMeasure, addHole, undo, redo } = useViewer.getState();
+    const hostId = addMeasure("img", { kind: "polygon", pts: OUTER });
+    const ringId = addMeasure("img", { kind: "polygon", pts: INNER });
+    addHole("img", hostId, ringId);
+
+    undo();
+    let measures = useViewer.getState().measures["img"];
+    expect(measures).toHaveLength(2);
+    expect(measures.find((m) => m.id === ringId)).toBeTruthy();
+    expect(regionRows(measures, IMG).reduce((s, r) => s + r.areaPx2, 0)).toBeCloseTo(
+      10000 + 400,
+      6,
+    ); // gross: outer (10000) + the ring counted on its own (400)
+
+    redo();
+    measures = useViewer.getState().measures["img"];
+    expect(measures).toHaveLength(1);
+    expect(regionRows(measures, IMG)[0].areaPx2).toBeCloseTo(10000 - 400, 6);
+  });
+
+  it("removeHole detaches the hole back into its own top-level measure with a fresh id", () => {
+    const { addMeasure, addHole, removeHole } = useViewer.getState();
+    const hostId = addMeasure("img", { kind: "polygon", pts: OUTER });
+    const ringId = addMeasure("img", { kind: "polygon", pts: INNER });
+    addHole("img", hostId, ringId);
+
+    removeHole("img", hostId, 0);
+
+    const measures = useViewer.getState().measures["img"];
+    expect(measures).toHaveLength(2);
+    const host = measures.find((m) => m.id === hostId)!;
+    expect(host.holes ?? []).toHaveLength(0);
+    const restored = measures.find((m) => m.id !== hostId)!;
+    expect(restored.id).not.toBe(ringId); // a hole carries no id — this is a fresh measure
+    expect(restored.pts).toEqual(INNER);
+    expect(regionRows(measures, IMG).reduce((s, r) => s + r.areaPx2, 0)).toBeCloseTo(
+      10000 + 400,
+      6,
+    );
+  });
+
+  it("undo of removeHole puts the ring back as a hole", () => {
+    const { addMeasure, addHole, removeHole, undo } = useViewer.getState();
+    const hostId = addMeasure("img", { kind: "polygon", pts: OUTER });
+    const ringId = addMeasure("img", { kind: "polygon", pts: INNER });
+    addHole("img", hostId, ringId);
+    removeHole("img", hostId, 0);
+
+    undo();
+
+    const measures = useViewer.getState().measures["img"];
+    expect(measures).toHaveLength(1);
+    expect(measures[0].holes).toEqual([INNER]);
+    expect(regionRows(measures, IMG)[0].areaPx2).toBeCloseTo(10000 - 400, 6);
+  });
+
+  it("addHole is a no-op when the ring doesn't exist, the host doesn't exist, or the ring isn't an area kind", () => {
+    // addHole itself only checks existence + kind — WHICH host a ring
+    // should attach to (including "none, nothing contains it") is decided
+    // upstream by pointerDecisions.ts findHoleHost, exercised against this
+    // exact geometry in pointerDecisions.test.ts and end-to-end through
+    // the context menu in MeasureCtxMenu.test.tsx.
+    const { addMeasure, addHole } = useViewer.getState();
+    const hostId = addMeasure("img", { kind: "polygon", pts: OUTER });
+    const lineId = addMeasure("img", {
+      kind: "distance",
+      pts: [{ x: 0.1, y: 0.1 }, { x: 0.2, y: 0.2 }],
+    });
+    addHole("img", hostId, "nonexistent-id");
+    addHole("img", "nonexistent-host", lineId);
+    addHole("img", hostId, lineId); // wrong kind (distance, not polygon/lasso)
+    const measures = useViewer.getState().measures["img"];
+    expect(measures).toHaveLength(2); // unchanged
+    expect(measures.find((m) => m.id === hostId)?.holes ?? []).toHaveLength(0);
   });
 });
 

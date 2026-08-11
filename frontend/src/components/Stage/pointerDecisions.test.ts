@@ -10,11 +10,14 @@ import type { Measure } from "../../store/viewerTypes";
 import {
   clickCaptureAction,
   cropRectFromPoints,
+  findHoleHost,
   fixedZoomCorners,
   imagePointToPixel,
   measuresInRect,
   pendingAfterMove,
+  pointInPolygon,
   polyFinishAction,
+  polygonContainsRing,
   spansMinRegion,
 } from "./pointerDecisions";
 
@@ -337,5 +340,132 @@ describe("measuresInRect", () => {
 
   it("returns nothing for an empty measure list", () => {
     expect(measuresInRect([], { x: 0, y: 0 }, { x: 99, y: 49 }, IMG)).toEqual([]);
+  });
+});
+
+const SQUARE10: { x: number; y: number }[] = [
+  { x: 0, y: 0 },
+  { x: 10, y: 0 },
+  { x: 10, y: 10 },
+  { x: 0, y: 10 },
+];
+
+// A "U"-shaped concave polygon: a 10x10 square with a notch cut from the
+// top, from x=4..6 down to y=4. (5, 8) sits inside the notch — inside the
+// polygon's bounding box, but outside the actual outline — so it is the
+// case a bounding-box shortcut gets wrong and a real point-in-polygon test
+// gets right.
+const U_SHAPE: { x: number; y: number }[] = [
+  { x: 0, y: 0 },
+  { x: 10, y: 0 },
+  { x: 10, y: 10 },
+  { x: 6, y: 10 },
+  { x: 6, y: 4 },
+  { x: 4, y: 4 },
+  { x: 4, y: 10 },
+  { x: 0, y: 10 },
+];
+
+describe("pointInPolygon", () => {
+  it("is true for a point well inside a square", () => {
+    expect(pointInPolygon({ x: 5, y: 5 }, SQUARE10)).toBe(true);
+  });
+
+  it("is false for a point well outside a square", () => {
+    expect(pointInPolygon({ x: 15, y: 5 }, SQUARE10)).toBe(false);
+  });
+
+  it("is false inside the notch of a concave polygon, even though the notch is inside the bounding box", () => {
+    expect(pointInPolygon({ x: 5, y: 8 }, U_SHAPE)).toBe(false);
+  });
+
+  it("is true inside one of the concave polygon's solid legs", () => {
+    expect(pointInPolygon({ x: 2, y: 8 }, U_SHAPE)).toBe(true);
+    expect(pointInPolygon({ x: 8, y: 8 }, U_SHAPE)).toBe(true);
+  });
+});
+
+describe("polygonContainsRing", () => {
+  it("is true when every ring vertex is inside the host", () => {
+    const ring = [
+      { x: 3, y: 3 },
+      { x: 7, y: 3 },
+      { x: 7, y: 7 },
+      { x: 3, y: 7 },
+    ];
+    expect(polygonContainsRing(SQUARE10, ring)).toBe(true);
+  });
+
+  it("is false when any ring vertex pokes outside the host", () => {
+    const ring = [
+      { x: 3, y: 3 },
+      { x: 12, y: 3 }, // outside
+      { x: 7, y: 7 },
+    ];
+    expect(polygonContainsRing(SQUARE10, ring)).toBe(false);
+  });
+
+  it("rejects a ring sitting in a concave host's notch (bounding-box would wrongly accept it)", () => {
+    const ringInNotch = [
+      { x: 4.5, y: 6 },
+      { x: 5.5, y: 6 },
+      { x: 5, y: 9 },
+    ];
+    expect(polygonContainsRing(U_SHAPE, ringInNotch)).toBe(false);
+  });
+});
+
+describe("findHoleHost", () => {
+  const ring = [
+    { x: 4, y: 4 },
+    { x: 6, y: 4 },
+    { x: 6, y: 6 },
+    { x: 4, y: 6 },
+  ];
+  const host: Measure = { id: "host", kind: "polygon", pts: SQUARE10 };
+
+  it("returns null when no region contains the ring", () => {
+    expect(findHoleHost([], "ring", ring)).toBeNull();
+    const farAway: Measure = {
+      id: "far",
+      kind: "polygon",
+      pts: [
+        { x: 100, y: 100 },
+        { x: 110, y: 100 },
+        { x: 110, y: 110 },
+      ],
+    };
+    expect(findHoleHost([farAway], "ring", ring)).toBeNull();
+  });
+
+  it("returns the containing region's id", () => {
+    expect(findHoleHost([host], "ring", ring)).toBe("host");
+  });
+
+  it("excludes the ring's own id from candidacy (a ring can't be its own host)", () => {
+    const selfHost: Measure = { id: "ring", kind: "polygon", pts: SQUARE10 };
+    expect(findHoleHost([selfHost], "ring", ring)).toBeNull();
+  });
+
+  it("ignores candidates that aren't polygon/lasso, even if they geometrically contain the ring", () => {
+    const roiHost: Measure = { id: "roi1", kind: "roi", pts: SQUARE10 };
+    expect(findHoleHost([roiHost], "ring", ring)).toBeNull();
+  });
+
+  it("picks the SMALLEST containing region when two overlap (deterministic, not array order)", () => {
+    const outer: Measure = { id: "outer", kind: "polygon", pts: SQUARE10 };
+    const inner: Measure = {
+      id: "inner",
+      kind: "lasso",
+      pts: [
+        { x: 2, y: 2 },
+        { x: 8, y: 2 },
+        { x: 8, y: 8 },
+        { x: 2, y: 8 },
+      ],
+    };
+    // order shouldn't matter — try both
+    expect(findHoleHost([outer, inner], "ring", ring)).toBe("inner");
+    expect(findHoleHost([inner, outer], "ring", ring)).toBe("inner");
   });
 });
