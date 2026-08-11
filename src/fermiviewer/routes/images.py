@@ -16,6 +16,7 @@ from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.io.registry import UnsupportedFormatError, load_auto, supported_extensions
 from fermiviewer.models import FourDMeta, ImageMeta, OpenRequest
 from fermiviewer.routes._open_paths import open_paths_as_metas
+from fermiviewer.routes._paths import checked_data_path, checked_data_paths
 from fermiviewer.session import UnknownImageError, store
 
 router = APIRouter(prefix="/api")
@@ -50,8 +51,11 @@ def session_open(req: OpenRequest) -> list[ImageMeta | FourDMeta]:
     see `routes._open_paths.open_paths_as_metas`, shared with
     `/session/open-folder` (routes/folders.py) so both open files exactly
     the same way.
+
+    Paths are canonicalised against the install's path policy first
+    (`io.user_paths`), so what gets opened is what was checked.
     """
-    return open_paths_as_metas(req.paths)
+    return open_paths_as_metas(checked_data_paths(req.paths, where="paths"))
 
 
 @router.post("/session/upload")
@@ -121,15 +125,16 @@ def session_open_raw(req: OpenRawRequest) -> ImageMeta:
     the RAW dialog flow; load_auto can't infer .raw dimensions)."""
     from fermiviewer.io.images import load_raw
 
+    path = checked_data_path(req.path, where="path")
     try:
-        ds = load_raw(req.path, req.width, req.height,
+        ds = load_raw(path, req.width, req.height,
                       bit_depth=req.bit_depth, byte_order=req.byte_order,
                       header_bytes=req.header_bytes)
     except FileNotFoundError as e:
         raise HTTPException(404, str(e)) from None
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
-    name = Path(req.path).name
+    name = Path(path).name
     img_id = store.add_parsed(ds, name)
     return ImageMeta.from_datastruct(img_id, name, store.get(img_id))
 

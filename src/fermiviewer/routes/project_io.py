@@ -35,6 +35,7 @@ from pydantic import BaseModel
 from fermiviewer.io.project_file import PayloadMode
 from fermiviewer.io.project_manifest import ProjectFormatError
 from fermiviewer.project_session import project
+from fermiviewer.routes._paths import checked_data_path
 from fermiviewer.routes._project_adapter import (
     load_into_session,
     meta_of,
@@ -61,9 +62,10 @@ class SaveProjectRequest(BaseModel):
 @router.post("/project/save")
 def project_save(req: SaveProjectRequest) -> dict[str, Any]:
     """Write the session to a `.fvp`. The suffix is applied if absent."""
+    path = checked_data_path(req.path, where="path")
     try:
         return save_current(
-            req.path,
+            path,
             mode=req.mode,
             client_state=req.client_state,
             name=req.name,
@@ -85,8 +87,9 @@ class LoadProjectRequest(BaseModel):
 @router.post("/project/load")
 def project_load(req: LoadProjectRequest) -> dict[str, Any]:
     """Open a `.fvp` (or a v1 workspace) into the session."""
+    path = checked_data_path(req.path, where="path")
     try:
-        return load_into_session(req.path, replace=req.replace)
+        return load_into_session(path, replace=req.replace)
     except FileNotFoundError as e:
         raise HTTPException(404, str(e)) from None
     except ProjectFormatError as e:
@@ -108,8 +111,9 @@ def project_relocate(req: RelocateRequest) -> dict[str, Any]:
     a project is open, or pick the same one twice, and an empty result is the
     honest answer to both.
     """
+    root = checked_data_path(req.root, where="root")
     try:
-        outcome = project.relocate(req.root)
+        outcome = project.relocate(root)
     except FileNotFoundError as e:
         raise HTTPException(404, str(e)) from None
     except NotADirectoryError as e:

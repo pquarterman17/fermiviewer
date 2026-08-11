@@ -27,11 +27,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, model_validator
 
 from fermiviewer.calc.eds import line_energy
-from fermiviewer.calc.eds_maps import (
-    UnusableElementError,
-    element_map,
-    resolve_element_window,
-)
+from fermiviewer.calc.eds_maps import element_map, element_window
 from fermiviewer.calc.energy_units import to_kev
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.models import ImageMeta
@@ -99,30 +95,34 @@ class EdsElementMapsRequest(BaseModel):
 def _window_for(
     spec: ElementSpec, e_min: float, e_max: float,
     half_window: float, beam_kv: float,
-) -> tuple[float, str, tuple[float, float]]:
-    """Resolve one species to (line energy, line label, window).
+) -> tuple[tuple[float, str, tuple[float, float]] | None, str | None]:
+    """Resolve one species to ``(window, None)`` or ``(None, reason)``.
 
     An explicit override wins; otherwise the shared calc-layer rule picks
     the principal line. An override is still reported alongside whatever
     line the symbol would have used, so the UI can label the row — and an
     override makes an unknown symbol usable rather than fatal, since the
     window no longer depends on the line table.
+
+    Returns the reason rather than raising it, because it goes straight into
+    the response body: the per-row ``error`` the caller renders is a string
+    built here for that purpose, never the text of a caught exception.
     """
     if (spec.e_lo is None) != (spec.e_hi is None):
-        raise UnusableElementError("a window override needs both e_lo and e_hi")
+        return None, "a window override needs both e_lo and e_hi"
     if spec.e_lo is None or spec.e_hi is None:
-        return resolve_element_window(
+        return element_window(
             spec.symbol, e_min, e_max,
             half_window=half_window, beam_kv=beam_kv, line=spec.line,
         )
     lo, hi = sorted((spec.e_lo, spec.e_hi))
     if lo > e_max or hi < e_min:
-        raise UnusableElementError(
+        return None, (
             f"window [{lo:.3f}, {hi:.3f}] keV is outside the energy axis "
             f"[{e_min:.3f}, {e_max:.3f}] keV"
         )
     e, used = line_energy(spec.symbol.strip(), line=spec.line, beam_kv=beam_kv)
-    return float(e), used, (lo, hi)
+    return (float(e), used, (lo, hi)), None
 
 
 @router.post("/eds/element-maps")
@@ -167,17 +167,17 @@ def eds_element_maps(req: EdsElementMapsRequest) -> dict:
     with value_error_as_422():          # cube-wide shape errors abort the batch
         for spec in req.elements:
             sym = spec.symbol.strip()
-            try:
-                e_kev, line, win = _window_for(
-                    spec, e_min, e_max, req.half_window_kev, beam_kv
-                )
-            except UnusableElementError as exc:
+            window, reason = _window_for(
+                spec, e_min, e_max, req.half_window_kev, beam_kv
+            )
+            if window is None:
                 out.append({
                     "symbol": sym, "line": None, "energy_kev": None,
                     "window": None, "map": None, "total_counts": None,
-                    "map_meta": None, "error": str(exc),
+                    "map_meta": None, "error": reason,
                 })
                 continue
+            e_kev, line, win = window
             m = element_map(
                 ds.data, energy, win[0], win[1],
                 bg=req.bg,
