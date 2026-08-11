@@ -8,6 +8,7 @@ import {
   areaPxToPhysical,
   physAngle,
   polygonStats,
+  polygonStatsWithHoles,
   tiltDist,
   type Size,
   type TiltSettings,
@@ -142,11 +143,25 @@ export function measureLabel(m: Measure, ctx: MeasureLabelCtx): string {
     }
     case "polygon":
     case "lasso": {
-      const areaPx2 = polygonStats(px).areaPx2;
-      const areaPhys = areaPxToPhysical(areaPx2, pixelSize);
+      // plan item 4: the on-canvas label must net out holes too — this
+      // used to call plain polygonStats unconditionally, so a region
+      // with a hole (area math correct in lib/regionTable's CSV/table
+      // path since item 19) still showed its GROSS area right on the
+      // shape it was drawn on. Holes-free stays the exact pre-item-19
+      // polygonStats call, so nothing here regresses.
+      const holesPx = m.holes?.length
+        ? m.holes.map((h) => h.map((p) => ({ x: p.x * img.w, y: p.y * img.h })))
+        : undefined;
+      const stats = holesPx ? polygonStatsWithHoles(px, holesPx) : polygonStats(px);
+      const areaPhys = areaPxToPhysical(stats.areaPx2, pixelSize);
+      // legibility (plan item 4 requirement 4): a holed region must not
+      // read identically to a plain region of the same net area
+      const holeNote = holesPx
+        ? ` (${holesPx.length} hole${holesPx.length > 1 ? "s" : ""})`
+        : "";
       return areaPhys != null
-        ? `${fmt(areaPhys)} ${pixelUnit}²`
-        : `${fmt(areaPx2)} px²`;
+        ? `${fmt(areaPhys)} ${pixelUnit}²${holeNote}`
+        : `${fmt(stats.areaPx2)} px²${holeNote}`;
     }
     case "text":
     case "arrow":

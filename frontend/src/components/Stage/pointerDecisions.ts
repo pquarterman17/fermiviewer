@@ -8,7 +8,7 @@
 // lib/api — values in, values out, so every gesture rule is unit-testable
 // without a DOM or a store.
 
-import type { Size } from "../../lib/geometry";
+import { polygonStats, type Size } from "../../lib/geometry";
 import type { CaptureMode, Measure } from "../../store/viewerTypes";
 import { nearFirstVertex } from "./regionCapture";
 import { CLICKS, snapHV, type Pt } from "./stageUtils";
@@ -175,4 +175,75 @@ export function measuresInRect(
       m.pts.some((p) => p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1),
     )
     .map((m) => m.id);
+}
+
+// ── DRAW A HOLE (plan item 4) ────────────────────────────────────────
+// item 19 shipped the area math (lib/geometry polygonStatsWithHoles) and
+// the schema field (Measure.holes), but nothing decided WHICH region a
+// newly-drawn ring should subtract from. That decision is containment —
+// same "given points, what should happen" shape as the rest of this file
+// — so it lives here rather than in the store or the context-menu
+// component that triggers it (MeasureCtxMenu.tsx).
+
+/** Point-in-polygon via ray casting (even-odd rule) against a CLOSED
+ *  polygon — the implicit closing edge back to vertex 0 matches
+ *  lib/geometry's polygonStats convention. A point exactly on an edge
+ *  may resolve either way; callers here only rely on vertices safely
+ *  inside or outside, never on boundary-exact input. */
+export function pointInPolygon(pt: Pt, poly: Pt[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i];
+    const b = poly[j];
+    if (a.y > pt.y === b.y > pt.y) continue;
+    const xIntersect = ((b.x - a.x) * (pt.y - a.y)) / (b.y - a.y) + a.x;
+    if (pt.x < xIntersect) inside = !inside;
+  }
+  return inside;
+}
+
+/** True when EVERY vertex of `ring` lies inside `host`. Deliberately
+ *  vertex-by-vertex against the real outline rather than a bounding-box
+ *  check — a bounding-box test would wrongly accept a ring that pokes
+ *  outside a concave host as long as it stays inside the host's AABB. */
+export function polygonContainsRing(host: Pt[], ring: Pt[]): boolean {
+  return (
+    host.length >= 3 &&
+    ring.length > 0 &&
+    ring.every((p) => pointInPolygon(p, host))
+  );
+}
+
+/** Which existing region a ring (a drawn polygon/lasso measure, by id)
+ *  should become a hole of, or null if none contains it — the null case
+ *  is not an error, just "nothing to attach to" (the ring stays a plain
+ *  top-level measure). Candidates are every OTHER polygon/lasso measure
+ *  that fully contains the ring (polygonContainsRing); holes are only
+ *  meaningful on those two area-bearing kinds (viewerTypes.ts), so an
+ *  roi/ellipse/etc that happens to geometrically contain the ring is not
+ *  a candidate. When more than one region contains it (concentric or
+ *  overlapping regions), the SMALLEST by area wins — the most specific
+ *  container, so nesting picks the inner region deterministically rather
+ *  than by array order. Areas are compared directly in the measures'
+ *  normalized 0-1 space: every candidate on the same image is scaled by
+ *  the same w/h, so relative area ordering is unaffected and no image
+ *  Size is needed here. */
+export function findHoleHost(
+  measures: Measure[],
+  ringId: string,
+  ring: Pt[],
+): string | null {
+  let bestId: string | null = null;
+  let bestArea = Infinity;
+  for (const m of measures) {
+    if (m.id === ringId) continue;
+    if (m.kind !== "polygon" && m.kind !== "lasso") continue;
+    if (!polygonContainsRing(m.pts, ring)) continue;
+    const area = polygonStats(m.pts).areaPx2;
+    if (area < bestArea) {
+      bestArea = area;
+      bestId = m.id;
+    }
+  }
+  return bestId;
 }

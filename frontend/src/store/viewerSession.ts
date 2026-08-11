@@ -19,6 +19,7 @@ import {
   type ImageGroup,
 } from "../lib/groups";
 import { useBrowseScale } from "./browseScale";
+import { applyHoleUndoEntry } from "./viewerHoleUndo";
 import type { ViewerState } from "./viewerState";
 import {
   DEFAULT_DISPLAY,
@@ -275,6 +276,12 @@ export function applyUndoEntry(
           ),
         },
       }));
+      break;
+    case "hole-add":
+    case "hole-remove":
+      // logic lives in viewerHoleUndo.ts — this case alone tipped the
+      // module over the frontend size ratchet
+      applyHoleUndoEntry(set, e, inverse);
       break;
     case "derived":
       if (inverse) {

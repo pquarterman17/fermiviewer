@@ -161,6 +161,13 @@ export type UndoEntry =
       before: Measure["pts"];
       after: Measure["pts"];
     }
+  // Draw-a-hole (plan item 4): converting a top-level polygon/lasso ring
+  // into a subtracted hole of `hostId`, or the reverse. `child` is the
+  // FULL ring measure — carried whole (not just its pts) so undo restores
+  // it with its original id/color/text intact, symmetric with how
+  // measure-add/measure-del round-trip the whole Measure.
+  | { t: "hole-add"; imageId: string; hostId: string; child: Measure }
+  | { t: "hole-remove"; imageId: string; hostId: string; child: Measure }
   | { t: "derived"; meta: ImageMeta; parentId: string };
 
 export function undoLabel(e: UndoEntry): string {
@@ -171,6 +178,10 @@ export function undoLabel(e: UndoEntry): string {
       return `delete ${e.measure.kind}`;
     case "measure-move":
       return "move measure";
+    case "hole-add":
+      return "mark as hole";
+    case "hole-remove":
+      return "remove hole";
     case "derived":
       return e.meta.name;
   }

@@ -247,6 +247,14 @@ export interface ViewerState {
     pts: Measure["pts"],
   ) => void;
   removeMeasure: (imageId: string, measureId: string) => void;
+  /** Plan item 4 — DRAW a hole: convert an existing top-level polygon/
+   *  lasso measure (`childId`), fully contained by `hostId`, into a
+   *  subtracted hole of that host. Undoable, symmetric with removeHole. */
+  addHole: (imageId: string, hostId: string, childId: string) => void;
+  /** Inverse of addHole: detach one of a region's holes back into its
+   *  own top-level polygon measure with a fresh id — a hole is just a
+   *  point ring while it lives in `.holes`, so it has no id to restore. */
+  removeHole: (imageId: string, hostId: string, holeIndex: number) => void;
   /** Remove the most recently added annotation/measure (audit #11). */
   deleteLastAnnotation: (imageId: string) => void;
   /** Switch the active image to the root ancestor of a derived chain,
