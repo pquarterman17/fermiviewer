@@ -12,29 +12,19 @@ from this file entirely, not left as an empty section.
 
 ## MAIN_PLAN.md
 
-*Root of the plan tree. Status: Active.*
+*Root of the plan tree. Status: Active — **no open items of its own**.*
 
-### Tier 2 — Medium Impact
+All five items it carried closed on 2026-08-10 (PRs #146–#149): the
+pin-graduation campaign, this dashboard, the `ci.yml` coverage comment, the
+hole-drawing gesture, and the raw-`NaN`-in-a-manifest defect. See the plan's
+`## Completed` section for outcomes.
 
-1. **Pin-graduation campaign** — split `DiffractionWorkshop.tsx` (548/548,
-   zero headroom) below 500 lines and delete its cap entry;
-   `useStagePointers.ts` is at 498/500 with no clean extraction available —
-   the next feature needing room there must restructure the hook.
-2. **BACKLOG.md dashboard** — this file.
+The section is kept rather than deleted because MAIN_PLAN is the **root** — it
+still holds the plan tree and the cross-plan dependencies even with no items of
+its own. An empty root is not the same as an archived plan; only a plan that
+reaches Complete and moves to `plans/archive/` is dropped from this file.
 
-### Tier 3 — Nice-to-Have
-
-3. **ci.yml stale coverage comment** — the "~85%" note contradicted the 82%
-   gate.
-4. **Region holes have no drawing gesture** — item 19 (PROJECT_WORKFLOW_PLAN,
-   archived) shipped the area computation, but nothing in the UI creates a
-   hole; blocked by item 1's `useStagePointers.ts` note.
-5. **`AxisCal.scale` writes raw NaN into a `.fvp` manifest** — an
-   uncalibrated axis's manifest entry is not strict JSON for an external
-   tool reading `manifest.json` directly (ADR 0002's `unzip` inspection
-   route).
-
-**Open items: 5**
+**Open items: 0**
 
 ---
 
@@ -108,10 +98,10 @@ see the Dashboard note below for why that differs from MAIN_PLAN's own
 
 | Plan | Status | Open items |
 |---|---|---|
-| MAIN_PLAN.md | Active | 5 |
+| MAIN_PLAN.md | Active (root) | 0 |
 | SPECTRAL_WORKSPACE_PLAN.md | Active | 20 |
 
-**Total open items:** 25
+**Total open items:** 20
 
 **Counting method:** top-level numbered items (the plan-format.md unit of a
 tracked work item) — not nested `- [ ]` sub-task checkboxes. The spectral

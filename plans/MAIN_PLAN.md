@@ -62,48 +62,13 @@ measurement, project hierarchy).
 
 ## Tier 2 — Medium Impact
 
-1. **Pin-graduation campaign** — three legacy caps remain, down from four.
-   `store/viewer.ts` graduated 2026-08-10 (575 → 444, entry deleted) as the
-   price of fixing `closeImage`; Stage.tsx (584/617) and MeasureOverlay.tsx
-   (527/562) fell but stay pinned. `DiffractionWorkshop.tsx` graduated
-   2026-08-10 (548 → 445, entry deleted), leaving only those two.
-   - [x] ~~Split DiffractionWorkshop.tsx below 500 and delete its cap entry~~
-         (2026-08-10) — Simulate-tab state/logic → `useDiffractionSimulation.ts`
-         (128) and the elliptical-distortion flow → `useDiffractionCalibration.ts`
-         (57), both under `diffraction/`. Bodies moved verbatim as custom hooks
-         with identical dependency arrays and destructured names, so the JSX
-         needed zero edits. A third candidate (`buildReportTable`) was rejected
-         for needing 10 dependencies — the ≥6-prop rule working.
-   - [x] ~~`useStagePointers.ts` at 498/500 with no clean extraction~~
-         (2026-08-10) — restructured to **418**, 82 lines of headroom.
-         Pure decision logic lifted to `pointerDecisions.ts` (178) and
-         `stageGrainEdit.ts` (79), leaving the hook holding only what needs
-         the closure: refs, pointer capture, applying a result. This
-         continued an ESTABLISHED seam — `regionCapture.ts` in the same
-         directory is already this exact extraction from this exact file.
-         Threading the context was rejected on evidence: `StagePointersCtx`
-         has ~35 fields. Splitting by interaction mode was rejected because
-         marquee/lasso/click-accumulating modes each span
-         pointerdown→move→up through the same state, so a per-mode module
-         would participate in three handlers — making event ordering, the
-         actual regression risk, the thing under change.
-         Payoff: 29 tests of rules that previously needed a synthetic drag,
-         including the polygon close tolerance (8 px ÷ zoom) and the
-         1-based-inclusive crop clamping at both ends.
-         (was PROJECT_WORKFLOW_PLAN #9)
-   Model: opus · Parallel: no — coordinate with any item touching these files
+1. ~~**Pin-graduation campaign**~~ — shipped 2026-08-10, see Completed
 
-2. **BACKLOG.md dashboard** — with two live campaigns, create the
-   derived dashboard per plan-hygiene (regenerated from the plans' open
-   items; never edited in isolation).
-   Model: haiku · Parallel: yes
+2. ~~**BACKLOG.md dashboard**~~ — shipped 2026-08-10, see Completed
 
 ## Tier 3 — Nice-to-Have
 
-3. **ci.yml stale coverage comment** — the "~85%" note contradicts the
-   82% gate; fix the comment only, never raise the gate from a local
-   coverage reading. Local now measures ~93.8% (1808 tests).
-   Model: haiku · Parallel: yes
+3. ~~**ci.yml stale coverage comment**~~ — shipped 2026-08-10, see Completed
 
 4. ~~**Region holes have no drawing gesture**~~ — CLOSED 2026-08-10.
    Right-click a drawn polygon/lasso wholly inside another region →
@@ -125,14 +90,40 @@ measurement, project hierarchy).
    `viewerHoleUndo.ts` (55) — the ratchet forcing a module rather than a
    bulge, again.
 
-5. **`AxisCal.scale` writes raw NaN into a `.fvp` manifest** — an
-   uncalibrated axis defaults to NaN and `axes_to_manifest` passes it
-   through. Python round-trips fine and nothing in the app parses the
-   manifest in JS, but a `.fvp` written from an uncalibrated Helios frame
-   is **not strict JSON for an external tool**. Found while wiring
-   items 32–35; out of scope there.
-   Model: sonnet · Parallel: yes
+5. ~~**`AxisCal.scale` writes raw NaN into a `.fvp` manifest**~~ — shipped 2026-08-10, see Completed
 
 ## Completed
 
-(nothing yet — plan created 2026-08-09)
+- ~~**#1 Pin-graduation campaign**~~ (2026-08-10) — both booked graduations
+  landed. `store/viewer.ts` 575 → 442, cap DELETED (paid for by fixing
+  `closeImage`); `DiffractionWorkshop.tsx` 548 → 445, cap DELETED (PR #146,
+  Simulate + calibration tabs → `diffraction/` hooks; a third candidate
+  rejected for needing 10 dependencies). `useStagePointers.ts` 498 → 418 with
+  82 lines spare (PR #148) by lifting pure decisions to `pointerDecisions.ts`
+  — an established seam, `regionCapture.ts` being the same extraction from the
+  same file; threading the ~35-field `StagePointersCtx` and per-mode splitting
+  were both rejected on evidence. Payoff: 29 tests of rules that previously
+  needed a synthetic drag.
+  **Two caps remain and are NOT drift:** `Stage.tsx` 584/617 and
+  `MeasureOverlay.tsx` 533/562 both shrank this campaign but stay above the
+  500 ceiling, so they keep their pins legitimately.
+- ~~**#5 `AxisCal.scale` writes raw NaN into a `.fvp` manifest**~~ (2026-08-10,
+  PR #147) — non-finite `scale`/`origin` now write `0.0`. Lossless, not lossy:
+  `AxisCal.calibrated` is `isfinite(scale) and scale != 0 and units != ""` and
+  `.axis()` guards identically, so NaN and 0.0 already meant the same thing and
+  nothing distinguishes them. No schema change needed. The assertion that
+  actually pins it is a raw-bytes check for `NaN`/`Infinity` plus
+  `json.loads(parse_constant=<raises>)` — a "still uncalibrated" test would pass
+  with NaN still in the file, because Python's reader accepts it. Scope noted
+  honestly: no corpus file carries a non-finite axis (24 DM files checked), so
+  the path is covered by a unit test constructing the NaN directly.
+- ~~**#3 ci.yml stale coverage comment**~~ (2026-08-10, PR #147) — stopped
+  asserting an unverifiable CI-only percentage (probably how it drifted),
+  states the private-corpus asymmetry, records ~93.8 % as the full local
+  reading, and says why the 82 gate must not be raised from a local number.
+  `--cov-fail-under=82` unchanged.
+- ~~**#2 BACKLOG.md dashboard**~~ (2026-08-10, PR #147) — created, derived from
+  the plans and saying so. MAIN_PLAN 5 + SPECTRAL 20 = 25 open, counts verified
+  independently. Counts top-level numbered items and explicitly flags that the
+  same spectral plan carries ~30 nested checkboxes, so the two conventions are
+  not conflated. The archived PROJECT_WORKFLOW_PLAN appears nowhere.
