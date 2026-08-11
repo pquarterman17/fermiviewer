@@ -40,6 +40,7 @@ from pydantic import BaseModel, Field
 from fermiviewer.io.registry import load_auto
 from fermiviewer.jobs import ProgressFn, jobs
 from fermiviewer.ops.batch import run_recipe
+from fermiviewer.routes._paths import checked_data_path
 from fermiviewer.routes.batch_ops import (
     BatchStepRequest,
     json_safe,
@@ -134,7 +135,7 @@ def _on_new_file(path: Path, steps: list[dict[str, Any]]) -> None:
 
 @router.post("/watch/start")
 def watch_start(req: WatchStartRequest) -> dict[str, str]:
-    directory = Path(req.dir)
+    directory = Path(checked_data_path(req.dir, where="dir"))
     if not directory.exists():
         raise HTTPException(404, f"directory not found: {req.dir}")
     if not directory.is_dir():

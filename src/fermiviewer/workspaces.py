@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from fermiviewer.io.project_file import PROJECT_SUFFIX
+from fermiviewer.io.user_paths import PathPolicyError, safe_config_path
 from fermiviewer.usermeta import config_dir
 
 __all__ = [
@@ -47,15 +48,29 @@ def _index_path() -> Path:
     return workspaces_dir() / "index.json"
 
 
+def _slug_path(slug: str, suffix: str) -> Path:
+    """``<workspaces>/<slug><suffix>``, confined to the workspaces dir.
+
+    Slugs reaching here have already been through `slugify` (on save) or
+    `session_io._valid_slug` (on load/delete), both of which restrict them to
+    ``[a-z0-9-]``. The containment check is deliberately kept anyway: it is
+    the guarantee that survives if either of those is ever loosened, and it
+    costs one `realpath` per call on a path that is about to be stat'd.
+    """
+    return safe_config_path(
+        f"{slug}{suffix}", workspaces_dir(), where="workspace slug"
+    )
+
+
 def project_path(slug: str) -> Path:
     """The ``.fvp`` project path for a slug — where a save goes."""
-    return workspaces_dir() / f"{slug}{PROJECT_SUFFIX}"
+    return _slug_path(slug, PROJECT_SUFFIX)
 
 
 def session_path(slug: str) -> Path:
     """The legacy v1 ``.json`` manifest path (``.npz`` is its sibling).
     Read-only: nothing writes this any more."""
-    return workspaces_dir() / f"{slug}.json"
+    return _slug_path(slug, ".json")
 
 
 def stored_path(slug: str) -> Path | None:
@@ -64,11 +79,19 @@ def stored_path(slug: str) -> Path | None:
     The ``.fvp`` wins over a legacy pair left beside it, so re-saving an old
     workspace upgrades it in place rather than leaving two sources of truth
     with the newer one ignored.
+
+    A slug that does not stay inside the workspaces directory reads as gone
+    rather than raising: `index.json` is an on-disk file that can be edited
+    out-of-band, and `list_workspaces` prunes what it cannot resolve instead
+    of failing the whole listing over one bad entry.
     """
-    project = project_path(slug)
+    try:
+        project = project_path(slug)
+        legacy = session_path(slug)
+    except PathPolicyError:
+        return None
     if project.is_file():
         return project
-    legacy = session_path(slug)
     return legacy if legacy.is_file() else None
 
 
@@ -148,7 +171,7 @@ def delete_workspace(slug: str) -> bool:
     _write_index(data)
     removed = False
     for ext in (PROJECT_SUFFIX, ".json", ".npz"):
-        f = workspaces_dir() / f"{slug}{ext}"
+        f = _slug_path(slug, ext)
         if f.is_file():
             f.unlink()
             removed = True

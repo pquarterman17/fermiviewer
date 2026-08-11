@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from fermiviewer.io.folder_scan import scan_folders
 from fermiviewer.models import FourDMeta, ImageMeta
 from fermiviewer.routes._open_paths import open_paths_as_metas
+from fermiviewer.routes._paths import checked_data_paths
 
 router = APIRouter(prefix="/api")
 
@@ -71,7 +72,7 @@ def session_open_folder(req: OpenFolderRequest) -> OpenFolderResponse:
     directory or for a file this server can't parse — never a 500.
     """
     try:
-        scan = scan_folders(req.paths)
+        scan = scan_folders(checked_data_paths(req.paths, where="paths"))
     except FileNotFoundError as e:
         raise HTTPException(404, str(e)) from None
     except NotADirectoryError as e:

@@ -43,6 +43,36 @@ Out of scope:
 - Issues that require an already-compromised local machine
 - Vulnerabilities in dependencies already tracked by open Dependabot alerts
 
+## Hardening the local API
+
+The server binds `127.0.0.1`, checks the `Host` header on every request (so a
+DNS-rebinding attempt from a browser is refused) and the `Origin` header on
+`/api/*` (the CSRF guard). Filesystem paths that arrive over that API are
+canonicalised and policy-checked in one place — `io/user_paths.py` — before
+anything opens them.
+
+By default a request may name any path on the volume: FermiViewer is a
+desktop app, and opening the file you just picked in an OS dialog is what it
+is for. Paths inside FermiViewer's own config directory are the exception and
+are always refused, since saved workspaces and the calibration DB have their
+own endpoints.
+
+On a **shared or unattended machine**, set `FV_DATA_ROOTS` to confine the API
+to specific trees — `os.pathsep`-separated, like `PATH`:
+
+```sh
+# Linux/macOS
+FV_DATA_ROOTS=/srv/instrument-data:/home/shared/corpus fv
+```
+
+```powershell
+# Windows
+$env:FV_DATA_ROOTS = "D:\instrument-data;E:\corpus"; fv
+```
+
+Any request naming a path outside those roots is a 422. Containment is
+per path component, so a root of `/data` does not admit `/database`.
+
 ## Supported Versions
 
 This project tracks the latest commit on `main`. Fixes land against the most

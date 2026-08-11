@@ -19,6 +19,7 @@ __all__ = [
     "UnusableElementError",
     "composition_profile",
     "element_map",
+    "element_window",
     "extract_element_maps",
     "pixel_spectrum",
     "resolve_element_window",
@@ -210,6 +211,34 @@ class UnusableElementError(ValueError):
     """
 
 
+def element_window(
+    symbol: str,
+    e_min: float,
+    e_max: float,
+    half_window: float = 0.085,
+    beam_kv: float = float("inf"),
+    line: str = "auto",
+) -> tuple[tuple[float, str, tuple[float, float]] | None, str | None]:
+    """Element symbol → ``(window, None)`` or ``(None, reason)``.
+
+    The non-raising form of `resolve_element_window`, and the one to use
+    when the reason is going to be *reported* rather than logged: a caller
+    that puts it in a response body should be handling a plain string it
+    built here, not stringifying a caught exception, which is a different
+    thing wearing the same words.
+    """
+    sym = symbol.strip()
+    e, used = line_energy(sym, line=line, beam_kv=beam_kv)
+    if np.isnan(e):
+        return None, f"no known line for '{symbol}'"
+    if not e_min <= e <= e_max:
+        return None, (
+            f"{sym} {used}α line ({e:.3f} keV) outside the energy axis "
+            f"[{e_min:.3f}, {e_max:.3f}] keV"
+        )
+    return (e, used, (e - half_window, e + half_window)), None
+
+
 def resolve_element_window(
     symbol: str,
     e_min: float,
@@ -223,18 +252,15 @@ def resolve_element_window(
     The single copy of the "which line, and is it usable here" rule, so a
     species list and a quantification cannot disagree about which line an
     element maps on. Raises ``UnusableElementError`` when there is no known
-    line or it lies outside ``[e_min, e_max]``.
+    line or it lies outside ``[e_min, e_max]`` — see `element_window` for the
+    variant that hands the reason back instead.
     """
-    sym = symbol.strip()
-    e, used = line_energy(sym, line=line, beam_kv=beam_kv)
-    if np.isnan(e):
-        raise UnusableElementError(f"no known line for '{symbol}'")
-    if not e_min <= e <= e_max:
-        raise UnusableElementError(
-            f"{sym} {used}α line ({e:.3f} keV) outside the energy axis "
-            f"[{e_min:.3f}, {e_max:.3f}] keV"
-        )
-    return e, used, (e - half_window, e + half_window)
+    window, reason = element_window(
+        symbol, e_min, e_max, half_window=half_window, beam_kv=beam_kv, line=line
+    )
+    if window is None:
+        raise UnusableElementError(reason)
+    return window
 
 
 def extract_element_maps(

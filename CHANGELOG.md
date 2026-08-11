@@ -13,6 +13,41 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Security
+- **Every path that arrives over the local API now goes through one policy.**
+  `io/user_paths.py` canonicalises a request-supplied path once — resolving
+  `..`, symlinks and `~` — so the path that gets checked is the path that
+  gets opened, instead of each caller re-resolving a string that could mean
+  something different by the time it is used. Opening a file you picked in an
+  OS dialog is unchanged; this is about where the decision is made.
+
+  Two things are newly refused. A data path may no longer resolve inside
+  FermiViewer's own config directory: saved workspaces, the calibration DB
+  and the workspace index are reached through their own endpoints, and
+  `/session/open` or `/project/save` must not be a second, unguarded way to
+  read or overwrite them. And a workspace slug is now *structurally* confined
+  to the workspaces directory, so a slug that ever got past `slugify` and the
+  route's `[a-z0-9-]` check still could not address a file outside it.
+
+  Refused paths are a 422 naming the field (and, for a list, the index),
+  never a 500.
+
+- **`FV_DATA_ROOTS` confines the API to specific trees.** Unset — the default
+  — the API may open anything on the volume, which is what a desktop app that
+  opens files you pick is for. Set it (os.pathsep-separated, like `PATH`) on
+  a shared or unattended lab machine and every request-supplied path must
+  resolve inside one of the listed roots. Containment is per path component,
+  so a root of `/data` never claims `/database`.
+
+### Fixed
+- `POST /api/eds/element-maps` builds its per-row `error` string itself
+  rather than stringifying a caught exception, so the reason an element could
+  not be mapped is the curated one and nothing incidental can ride along with
+  it. `calc.eds_maps.element_window` is the non-raising form the route uses;
+  `resolve_element_window` keeps raising for the callers that want that.
+
 ## [0.1.26] - 2026-08-10
 
 ### Added
