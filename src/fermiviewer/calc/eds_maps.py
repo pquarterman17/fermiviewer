@@ -15,8 +15,15 @@ import numpy as np
 from fermiviewer.calc.eds import line_energy
 
 __all__ = [
+    "ElementMapEntry",
+    "UnusableElementError",
     "composition_profile",
-    "virtual_dark_field","ElementMapEntry", "element_map", "extract_element_maps", "pixel_spectrum"]
+    "element_map",
+    "extract_element_maps",
+    "pixel_spectrum",
+    "resolve_element_window",
+    "virtual_dark_field",
+]
 
 
 def _side_windows(
@@ -191,6 +198,45 @@ class ElementMapEntry:
     total: float
 
 
+class UnusableElementError(ValueError):
+    """An element cannot yield a map: no known X-ray line, or its principal
+    line falls outside the cube's energy axis.
+
+    Carries a human-readable reason so a caller can say *which* element
+    failed and *why*. ``extract_element_maps`` turns it back into the
+    warn-and-skip it has always done (a quantification table just omits the
+    element); the batch map route reports it per row instead, because a
+    species the user picked by hand must not vanish unexplained.
+    """
+
+
+def resolve_element_window(
+    symbol: str,
+    e_min: float,
+    e_max: float,
+    half_window: float = 0.085,
+    beam_kv: float = float("inf"),
+    line: str = "auto",
+) -> tuple[float, str, tuple[float, float]]:
+    """Element symbol → (line energy keV, line label, integration window keV).
+
+    The single copy of the "which line, and is it usable here" rule, so a
+    species list and a quantification cannot disagree about which line an
+    element maps on. Raises ``UnusableElementError`` when there is no known
+    line or it lies outside ``[e_min, e_max]``.
+    """
+    sym = symbol.strip()
+    e, used = line_energy(sym, line=line, beam_kv=beam_kv)
+    if np.isnan(e):
+        raise UnusableElementError(f"no known line for '{symbol}'")
+    if not e_min <= e <= e_max:
+        raise UnusableElementError(
+            f"{sym} {used}α line ({e:.3f} keV) outside the energy axis "
+            f"[{e_min:.3f}, {e_max:.3f}] keV"
+        )
+    return e, used, (e - half_window, e + half_window)
+
+
 def extract_element_maps(
     cube: np.ndarray,
     energy: np.ndarray,
@@ -210,20 +256,15 @@ def extract_element_maps(
     for sym in elements:
         if not sym:
             continue
-        e, line = line_energy(sym, beam_kv=beam_kv)
-        if np.isnan(e):
-            warnings.warn(f"no known line for '{sym}' — skipped", stacklevel=2)
-            continue
-        if not e_min <= e <= e_max:
-            warnings.warn(
-                f"{sym} {line}α line ({e:.3f} keV) outside the energy axis — skipped",
-                stacklevel=2,
+        try:
+            e, line, win = resolve_element_window(
+                sym, e_min, e_max, half_window=half_window, beam_kv=beam_kv
             )
+        except UnusableElementError as exc:
+            warnings.warn(f"{exc} — skipped", stacklevel=2)
             continue
-        m = element_map(cube, energy, e - half_window, e + half_window,
-                        bg=bg, e0_kev=e0_kev)
-        out.append(ElementMapEntry(sym, line, e, (e - half_window, e + half_window),
-                                   m, float(m.sum())))
+        m = element_map(cube, energy, win[0], win[1], bg=bg, e0_kev=e0_kev)
+        out.append(ElementMapEntry(sym, line, e, win, m, float(m.sum())))
     return out
 
 

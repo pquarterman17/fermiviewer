@@ -8,7 +8,7 @@ implementation so a feature cannot land in one and rot in the other.
 **Status:** Active
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-07-29
-**Updated:** 2026-07-30
+**Updated:** 2026-08-10
 
 ---
 
@@ -99,7 +99,7 @@ quantification the user may not want.
 | # | Item | Workstream | Why first |
 |---|------|------------|-----------|
 | 1 | Species model | W1 — Core | Every other item reads or writes it |
-| 8 | `/eds/element-maps` endpoint | W2 — EDS | Multi-species maps are unreachable without it |
+| ~~8~~ | ~~`/eds/element-maps` endpoint~~ | W2 — EDS | Shipped 2026-08-10 — item 9 is now unblocked |
 | 4 | Draggable window edges | W1 — Core | The single biggest usability win per line of code |
 | 3 | SpectrumWorkspace shell | W1 — Core | Where EELS stops being second-class |
 
@@ -152,12 +152,6 @@ quantification the user may not want.
 ## W2 — EDS workspace
 
 ### Tier 1 — High Impact
-
-8. **`/eds/element-maps` endpoint** — expose `extract_element_maps()` directly
-   - [ ] Batch: N symbols → N rasters, optional `save_derived`
-   - [ ] Per-species window override, so the endpoint serves the species list
-         rather than recomputing default windows
-   - [ ] Decoupled from Cliff–Lorimer/ZAF; quantify keeps its own route
 
 9. **Species list wired to EDS** — periodic-table multi-select feeding the list
    - [ ] Multi-select in `PeriodicTable`, preserving single-select for the
@@ -235,6 +229,25 @@ missing rather than faking it. These four items are what fills it.
 ---
 
 ## Completed
+
+- ~~**#8 `/eds/element-maps` endpoint**~~ (2026-08-10) — `extract_element_maps()`
+  is no longer reachable only through a Cliff–Lorimer/ZAF quantification the
+  user may not want. N species → N rasters inline, `save_derived` optional,
+  per-species `e_lo`/`e_hi` override so the endpoint serves the species list
+  instead of recomputing default windows (item 9 is unblocked).
+  **The rule moved, it was not copied:** picking an element's line and judging
+  whether it is usable now lives once in `calc/eds_maps.resolve_element_window`,
+  raising a domain `UnusableElementError`. `extract_element_maps` catches it and
+  warn-and-skips exactly as before; the route catches it and reports the reason
+  **per row** — a species the user picked by hand must never vanish unexplained,
+  which is the one behaviour the batch route deliberately does not inherit. A
+  wholly-failed list is still 200, so the caller needs no second branch.
+  New module (`routes/eds_maps.py`, 205) rather than growing
+  `analysis_wireups.py` at 432/500 — the ratchet forcing a module again.
+  Tested on a cube with real spatial structure (Fe left, Cu right): a
+  uniform cube cannot distinguish per-element windows from one window applied
+  N times. Verified by mutation — pinning a fixed window fails 2 of the 9
+  tests. Peaks are planted via `line_energy()`, never transcribed.
 
 - ~~**#21 Elemental Analysis workspace**~~ (2026-07-30) — EDS and EELS merged
   into one shell owning a single tab strip and a modality badge;

@@ -53,10 +53,8 @@ see the Dashboard note below for why that differs from MAIN_PLAN's own
 ### W2 — EDS workspace
 
 **Tier 1 — High Impact**
-8. **`/eds/element-maps` endpoint** — expose `extract_element_maps()`
-   directly, decoupled from Cliff–Lorimer/ZAF quantify
 9. **Species list wired to EDS** — periodic-table multi-select feeding the
-   list, batch "Extract maps"
+   list, batch "Extract maps" (unblocked: item 8 shipped 2026-08-10)
 
 **Tier 2 — Medium Impact**
 10. **Composite → library** — register the combined map as an RGB image
@@ -90,7 +88,7 @@ see the Dashboard note below for why that differs from MAIN_PLAN's own
 20. **Window overlap detection** (deselected 2026-07-29; revisit only if a
     real case produces a silently wrong answer)
 
-**Open items: 20**
+**Open items: 19**
 
 ---
 
@@ -99,9 +97,9 @@ see the Dashboard note below for why that differs from MAIN_PLAN's own
 | Plan | Status | Open items |
 |---|---|---|
 | MAIN_PLAN.md | Active (root) | 0 |
-| SPECTRAL_WORKSPACE_PLAN.md | Active | 20 |
+| SPECTRAL_WORKSPACE_PLAN.md | Active | 19 |
 
-**Total open items:** 20
+**Total open items:** 19
 
 **Counting method:** top-level numbered items (the plan-format.md unit of a
 tracked work item) — not nested `- [ ]` sub-task checkboxes. The spectral
