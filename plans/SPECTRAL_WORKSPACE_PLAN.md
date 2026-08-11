@@ -143,22 +143,8 @@ quantification the user may not want.
 
 ## W2 — EDS workspace
 
-### Tier 1 — High Impact
-
-9. **Species list wired to EDS** — periodic-table multi-select feeding the list
-   - [ ] Multi-select in `PeriodicTable`, preserving single-select for the
-         existing callers
-   - [ ] "Extract maps" runs one batch request for every visible species —
-         `useElementMaps.ts` currently fans out N concurrent SINGULAR
-         `/eds/element-map` calls; item 8's batch route replaces them
-   - [ ] Row click shows that single map; composite reflects visible rows
-   - [ ] **Wire `store/species.ts`, which item 1 left with no consumer.**
-         `MapsTab` still owns its list in component-local `useState` and wipes
-         it on every image change. Two specific loose ends: `IdentifiedElement`
-         (auto-ID evidence) must stay the evidence and stop owning `selected`,
-         or "which species are we mapping" ends up with two sources of truth;
-         and `pruneClosed` has no call site yet, so the per-image map leaks
-         until this lands.
+*Tier 1 is empty — items 8 and 9 both shipped 2026-08-10, so the EDS Maps
+workflow is complete end to end. What remains is polish and retirement.*
 
 ### Tier 2 — Medium Impact
 
@@ -230,6 +216,35 @@ missing rather than faking it. These four items are what fills it.
 ---
 
 ## Completed
+
+- ~~**#9 Species list wired to EDS**~~ (2026-08-10) — the species store now has
+  its consumer, and every loose end item 1 left is closed.
+  **The user-visible win:** switching cubes and back restores your list.
+  `MapsTab` held it in component-local `useState` and wiped it on every image
+  change; it now holds only *evidence* (transient, re-measured each identify)
+  while decisions live per-image in the store. Re-identifying refreshes every
+  measured number without reticking a row the user untucked.
+  **The second source of truth is gone.** `IdentifiedElement.selected` →
+  `recommended`, a rename so the compiler found all five call sites — it was
+  never state, only auto-ID's above-trace hint, and it now seeds `visible`
+  once instead of competing with it. The merge rules live in a pure
+  `lib/elemental/speciesRows.ts` (84 lines): rows are built from SPECIES, so a
+  removed element stays removed even though auto-ID still finds it, and a
+  hand-added one still shows even with nothing measured for it (evidence is
+  nullable, rendering "added" rather than a fake confidence).
+  **One batch request, cache kept.** `useElementMaps.ts` sends only the cache
+  MISSES to `/eds/element-maps`, so five elements are one round trip instead of
+  five, and ticking a sixth still fetches one. An unmappable species reports
+  its reason to the status bar rather than going quietly missing from the
+  montage.
+  `pruneClosed` is wired into `viewerCloseImage.ts` — the one place the whole
+  per-image teardown is auditable, which that file's own header argues for.
+  `PeriodicTable` takes `string | string[] | null` rather than gaining a
+  second multi-select flag that could contradict the first.
+  **Item 1's type gained `energy`**, surfaced by wiring it: the window and the
+  line diverge the moment the user tunes one, and both the row label and item
+  6's planned window-lock need the anchor kept.
+  Sizes all under the 500 ceiling (MapsTab 367, ElementList 198). 22 new tests.
 
 - ~~**#1 Species model**~~ (2026-08-10) — `lib/spectrum/species.ts` (the
   modality-neutral tier, since both workspaces use it unchanged) plus a

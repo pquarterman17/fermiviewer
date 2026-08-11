@@ -33,8 +33,13 @@ export interface IdentifiedElement {
   deltaKev: number;
   /** net relative to the strongest element, for the strength bar. */
   relative: number;
-  /** Pre-ticked for everything but `trace`. */
-  selected: boolean;
+  /**
+   * Auto-ID's RECOMMENDATION that this element is worth mapping — true for
+   * everything but `trace`. It is a seeding hint, not state: whether a
+   * species is actually shown lives on the Species in `store/species.ts`, so
+   * that a re-identification cannot silently retick what the user untucked.
+   */
+  recommended: boolean;
 }
 
 /** Counting-statistics bands. A peak at 100σ in a whole-cube sum spectrum is
@@ -113,7 +118,7 @@ export function identifyElements(
       confidence,
       deltaKev: match.delta,
       relative: 0,
-      selected: confidence !== "trace",
+      recommended: confidence !== "trace",
     });
   }
 
@@ -159,6 +164,6 @@ export function measureElement(
     confidence: confidenceOf(significance),
     deltaKev: 0,
     relative: Math.max(0, Math.min(1, integration.net / strongest)),
-    selected: true, // an element the user asked for is on by definition
+    recommended: true, // an element the user asked for is wanted by definition
   };
 }

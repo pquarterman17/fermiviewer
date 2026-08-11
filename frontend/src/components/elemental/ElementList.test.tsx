@@ -3,13 +3,14 @@ import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { IdentifiedElement } from "../../lib/elemental/identify";
+import type { SpeciesRow } from "../../lib/elemental/speciesRows";
+import { edsSpecies } from "../../lib/spectrum/species";
 import EdsElementList from "./ElementList";
 
-function element(
+function evidenceFor(
   symbol: string,
   net: number,
   confidence: IdentifiedElement["confidence"],
-  selected = true,
 ): IdentifiedElement {
   return {
     symbol,
@@ -23,7 +24,19 @@ function element(
     confidence,
     deltaKev: 0.002,
     relative: 1,
-    selected,
+    recommended: confidence !== "trace",
+  };
+}
+
+function row(
+  symbol: string,
+  net: number,
+  confidence: IdentifiedElement["confidence"],
+  visible = true,
+): SpeciesRow {
+  return {
+    species: edsSpecies(symbol, "K", 1.74, { visible }),
+    evidence: evidenceFor(symbol, net, confidence),
   };
 }
 
@@ -31,9 +44,9 @@ type Props = ComponentProps<typeof EdsElementList>;
 
 function renderList(overrides: Partial<Props> = {}) {
   const props: Props = {
-    elements: [
-      element("Si", 3_100_000, "strong"),
-      element("Cu", 100_000, "trace", false),
+    rows: [
+      row("Si", 3_100_000, "strong"),
+      row("Cu", 100_000, "trace", false),
     ],
     busy: false,
     onToggle: vi.fn(),
@@ -79,12 +92,34 @@ describe("EdsElementList", () => {
   it("offers the periodic table for an element the identifier missed", () => {
     const props = renderList();
     fireEvent.click(screen.getByRole("button", { name: "+ Add" }));
-    fireEvent.click(screen.getByRole("button", { name: "Ta" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Ta/ }));
     expect(props.onAdd).toHaveBeenCalledWith("Ta");
   });
 
+  it("keeps a hand-added species that the last identification did not measure", () => {
+    // Rows come from species, not evidence — an element nothing detected a
+    // peak for still gets a row, it just has nothing to report in it.
+    renderList({
+      rows: [{ species: edsSpecies("Ta", "L", 8.146), evidence: null }],
+    });
+    expect(screen.getByLabelText("Show Ta")).toBeVisible();
+    expect(screen.getByText("added")).toBeVisible();
+    expect(screen.getByText("8.146")).toBeVisible();
+  });
+
+  it("toggles and removes by species id, not by symbol", () => {
+    // Two rows can share an element on different transitions, so the symbol
+    // is not a usable identifier here.
+    const only = row("Si", 1000, "strong");
+    const props = renderList({ rows: [only] });
+    fireEvent.click(screen.getByLabelText("Show Si"));
+    expect(props.onToggle).toHaveBeenCalledWith(only.species.id, false);
+    fireEvent.click(screen.getByLabelText("Remove Si"));
+    expect(props.onRemove).toHaveBeenCalledWith(only.species.id);
+  });
+
   it("explains itself when nothing was identified", () => {
-    renderList({ elements: [] });
+    renderList({ rows: [] });
     expect(screen.getByText(/No elements identified/)).toBeVisible();
   });
 });

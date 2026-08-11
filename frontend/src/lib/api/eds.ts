@@ -327,6 +327,60 @@ export function edsElementMap(
   return post("/api/eds/element-map", body, { signal: opts.signal });
 }
 
+/** One row of a batch element-map response, aligned with the request. */
+export interface EdsElementMapEntry {
+  symbol: string;
+  line: string | null;
+  energy_kev: number | null;
+  window: [number, number] | null;
+  map: number[][] | null;
+  total_counts: number | null;
+  map_meta: ImageMeta | null;
+  /** Why this species could not be mapped, when it could not. Null on
+   *  success. The row is kept either way — see the endpoint's docstring. */
+  error: string | null;
+}
+
+export interface EdsElementMapsResult {
+  image_id: string;
+  shape: [number, number];
+  bg: string;
+  /** One entry per requested species, in request order — including the ones
+   *  that failed. Filter on `error` rather than assuming every row has a map. */
+  maps: EdsElementMapEntry[];
+}
+
+/** N species → N maps in ONE request, without a quantification.
+ *
+ *  Each species may carry its own window; omit `eLo`/`eHi` to let the server
+ *  derive it from the element's principal line. Prefer this over N concurrent
+ *  `edsElementMap` calls — the batch is one round trip and one cube read. */
+export function edsElementMaps(
+  id: string,
+  elements: { symbol: string; eLo?: number; eHi?: number }[],
+  opts: {
+    bg?: "linear" | "none" | "bremsstrahlung";
+    e0Kev?: number;
+    beamKv?: number;
+    saveDerived?: boolean;
+    signal?: AbortSignal;
+  } = {},
+): Promise<EdsElementMapsResult> {
+  const body: Record<string, unknown> = {
+    image_id: id,
+    elements: elements.map((e) =>
+      e.eLo != null && e.eHi != null
+        ? { symbol: e.symbol, e_lo: e.eLo, e_hi: e.eHi }
+        : { symbol: e.symbol },
+    ),
+    bg: opts.bg ?? "linear",
+    save_derived: opts.saveDerived ?? false,
+  };
+  if (opts.e0Kev != null) body.e0_kev = opts.e0Kev;
+  if (opts.beamKv != null) body.beam_kv = opts.beamKv;
+  return post("/api/eds/element-maps", body, { signal: opts.signal });
+}
+
 export interface EdsLine {
   symbol: string;
   line: string; // "K" | "L" | "M"

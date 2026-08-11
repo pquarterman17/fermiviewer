@@ -16,6 +16,24 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Your element list now survives switching cubes.** The Elemental Analysis
+  Maps tab held its list in view state and rebuilt it from scratch on every
+  image change, so ticking elements, adding one the identifier missed, or
+  tuning a window were all lost the moment you looked at another cube and
+  came back. The list is now kept per image, and re-running identification
+  refreshes the measured numbers — net counts, σ, confidence — without
+  reticking a row you had turned off.
+
+  Picking elements is a multi-select on the periodic table rather than one at
+  a time, and a hand-added element keeps its row even when nothing detected a
+  peak for it, showing `added` instead of a confidence it has not earned.
+
+  Extraction is also one request for the whole list instead of one per
+  element, so a five-element montage is a single round trip and a single read
+  of the cube. Ticking a sixth element still fetches only the sixth. An
+  element that cannot be mapped now says why in the status bar rather than
+  going quietly missing from the montage.
+
 - **Element maps no longer require a quantification you did not ask for.**
   `POST /api/eds/element-maps` takes N element symbols and returns N maps
   directly. The multi-element extraction had existed all along, but the only

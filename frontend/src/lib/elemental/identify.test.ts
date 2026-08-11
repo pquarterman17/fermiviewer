@@ -69,7 +69,7 @@ describe("identifyElements", () => {
   it("leaves a trace-level match unticked but present", () => {
     const cu = result.find((r) => r.symbol === "Cu")!;
     expect(cu.confidence).toBe("trace");
-    expect(cu.selected).toBe(false);
+    expect(cu.recommended).toBe(false);
     // still in the list — a real trace element must remain reachable
     expect(result).toHaveLength(3);
   });
@@ -107,7 +107,7 @@ describe("measureElement", () => {
     expect(added.symbol).toBe("Ca");
     expect(added.net).toBeGreaterThan(10_000);
     // an element the user asked for is shown even if it reads as trace
-    expect(added.selected).toBe(true);
+    expect(added.recommended).toBe(true);
     expect(added.relative).toBeLessThan(1);
   });
 });

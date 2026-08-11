@@ -63,6 +63,15 @@ describe("species construction", () => {
     expect(eelsSpecies("Fe", "L2,3", 708)).not.toHaveProperty("color");
   });
 
+  it("anchors on the reference energy, separately from the window", () => {
+    // The two diverge as soon as a window is dragged; the row label and item
+    // 6's window-lock both need the anchor still there afterwards.
+    const fe = edsSpecies("Fe", "K", 6.404);
+    fe.windows.signal = { lo: 1, hi: 2 };
+    expect(fe.energy).toBeCloseTo(6.404, 10);
+    expect(eelsSpecies("O", "K", 532).energy).toBe(532);
+  });
+
   it("defaults to visible and records its modality", () => {
     expect(edsSpecies("Si", "K", 1.74).visible).toBe(true);
     expect(edsSpecies("Si", "K", 1.74).modality).toBe("eds");

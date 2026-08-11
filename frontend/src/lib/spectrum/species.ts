@@ -50,6 +50,19 @@ export interface Species {
   /** EDS: the shell whose line is integrated — "K" | "L" | "M".
    *  EELS: the edge label — "K", "L2,3", "M4,5". */
   transition: string;
+  /**
+   * The REFERENCE energy this species is anchored to — the tabulated line
+   * (EDS) or edge onset (EELS), in the modality's unit.
+   *
+   * Deliberately separate from `windows`: the window starts centred on (EDS)
+   * or above (EELS) this energy, but the user may drag it elsewhere, after
+   * which the window's midpoint is no longer the line. Keeping the anchor is
+   * what lets the list label a row "Fe Kα 6.404" regardless of where its
+   * window sits, and what makes item 6's "lock the window to the line"
+   * possible at all — a window with no remembered anchor cannot be re-snapped
+   * to one.
+   */
+  energy: number;
   /** Fixes both the window shape AND the energy unit: EDS windows are in keV
    *  (what `/eds/element-map(s)` takes), EELS windows in eV (what the edge
    *  table and `/eels/*` use). Mixing the two silently is the failure this
@@ -128,6 +141,7 @@ export function edsSpecies(
     symbol,
     transition,
     modality: "eds",
+    energy: lineKev,
     windows: edsDefaultWindows(lineKev, opts.halfWindowKev),
     visible: opts.visible ?? true,
   };
@@ -145,6 +159,7 @@ export function eelsSpecies(
     symbol,
     transition,
     modality: "eels",
+    energy: onsetEv,
     windows: eelsDefaultWindows(onsetEv, opts.widthEv),
     visible: opts.visible ?? true,
   };

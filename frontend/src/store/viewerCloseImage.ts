@@ -10,6 +10,7 @@ import type { StateCreator } from "zustand";
 
 import { closeImage as apiClose } from "../lib/api";
 import { pruneGroups } from "../lib/groups";
+import { useSpecies } from "./species";
 import { VIEWS_KEY } from "./viewerSession";
 import type { ViewerState } from "./viewerState";
 
@@ -19,6 +20,7 @@ export function createCloseAction(set: Set): Pick<ViewerState, "closeImage"> {
   return {
     closeImage: async (id) => {
       await apiClose(id);
+      let surviving: string[] = [];
       set((s) => {
         const images = { ...s.images };
         delete images[id];
@@ -67,6 +69,7 @@ export function createCloseAction(set: Set): Pick<ViewerState, "closeImage"> {
         const savedRois = { ...s.savedRois };
         delete savedRois[id];
         localStorage.setItem(VIEWS_KEY, JSON.stringify(views));
+        surviving = Object.keys(images);
         return {
           images,
           order,
@@ -87,6 +90,11 @@ export function createCloseAction(set: Set): Pick<ViewerState, "closeImage"> {
           savedRois,
         };
       });
+      // Per-image state that lives OUTSIDE this store still has to be pruned
+      // here — this is the one place the whole teardown is auditable, and the
+      // species store cannot see a close on its own. Done after the set so it
+      // reads the surviving ids rather than mutating a second store mid-update.
+      useSpecies.getState().pruneClosed(surviving);
     },
   };
 }

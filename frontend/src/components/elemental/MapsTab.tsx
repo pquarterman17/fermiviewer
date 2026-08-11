@@ -23,6 +23,14 @@ import {
   measureElement,
   type IdentifiedElement,
 } from "../../lib/elemental/identify";
+import {
+  buildRows,
+  seedSpeciesFrom,
+  visibleSpecies,
+  type SpeciesRow,
+} from "../../lib/elemental/speciesRows";
+import { edsSpecies } from "../../lib/spectrum/species";
+import { speciesOf, useSpecies } from "../../store/species";
 import { buildElementLut } from "../../lib/elemental/elementColors";
 import { normalizeEdsSpectrum } from "../../lib/edsSpectrumDisplay";
 import { mapDisplayRange, renderElementMap } from "../../lib/edsMapDisplay";
@@ -59,15 +67,24 @@ export default function EdsMapsTab({
   bg: EdsMapBackground;
   e0Kev: number;
   quantBySymbol?: Record<string, number>;
-  /** Frame this element's window on the Explore spectrum. */
-  onFocusElement?: (element: IdentifiedElement) => void;
+  /** Frame this species' window on the Explore spectrum. */
+  onFocusElement?: (row: SpeciesRow) => void;
   onHoverElement?: (symbol: string | null) => void;
 }) {
   const activeId = useViewer((s) => s.activeId);
   const images = useViewer((s) => s.images);
   const setStatus = useViewer((s) => s.setStatus);
+  const byImage = useSpecies((s) => s.byImage);
+  const setSpecies = useSpecies((s) => s.setSpecies);
+  const addSpecies = useSpecies((s) => s.addSpecies);
+  const removeSpecies = useSpecies((s) => s.removeSpecies);
+  const setVisible = useSpecies((s) => s.setVisible);
+  const setAllVisible = useSpecies((s) => s.setAllVisible);
+  const species = speciesOf(byImage, activeId);
 
-  const [elements, setElements] = useState<IdentifiedElement[]>([]);
+  // EVIDENCE ONLY. What the user decided lives in the species store, keyed by
+  // image, so it survives switching cubes and a re-identification.
+  const [evidence, setEvidence] = useState<IdentifiedElement[]>([]);
   const [idBusy, setIdBusy] = useState(false);
   const [view, setView] = useState<View>("both");
   const [gains, setGains] = useState<Record<string, number>>({});
@@ -108,15 +125,20 @@ export default function EdsMapsTab({
       sumSpectrum.current = raw;
       const spectrum = normalizeEdsSpectrum(raw);
       const found = identifyElements(auto, spectrum, { background: bg, e0Kev });
-      setElements(found);
-      const shown = found.filter((e) => e.selected).length;
+      setEvidence(found);
+      // Seed only when this image has no species yet. On a return visit, or a
+      // re-ID, the user's decisions win and only the measured numbers refresh.
+      const seeded = seedSpeciesFrom(found, speciesOf(useSpecies.getState().byImage, id));
+      if (seeded) setSpecies(id, seeded);
+      const current = seeded ?? speciesOf(useSpecies.getState().byImage, id);
+      const shown = current.filter((sp) => sp.visible).length;
       report(
         id,
         found.length === 0
           ? "EDS: no elements identified — add them manually"
           : `EDS: identified ${found.length} element${
               found.length === 1 ? "" : "s"
-            }, ${shown} above trace`,
+            }, ${shown} showing${seeded ? " (above trace)" : " (your list)"}`,
       );
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -130,7 +152,7 @@ export default function EdsMapsTab({
   // element box on a dataset whose elements are sitting in its own spectrum.
   useEffect(() => {
     sumSpectrum.current = null;
-    setElements([]);
+    setEvidence([]);
     setGains({});
     setSurveyId(null);
     setSurvey(null);
@@ -140,9 +162,12 @@ export default function EdsMapsTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId]);
 
+  const rows = useMemo(() => buildRows(species, evidence), [species, evidence]);
+  const shownSpecies = useMemo(() => visibleSpecies(rows), [rows]);
+
   const { tiles, mapsBusy } = useEdsElementMaps({
     imageId: activeId,
-    elements,
+    species: shownSpecies,
     bg,
     e0Kev,
     isOpen: stillOpen,
@@ -181,27 +206,33 @@ export default function EdsMapsTab({
     };
   }, [activeId, report, surveyId]);
 
-  const setSelected = (symbol: string, selected: boolean) =>
-    setElements((prev) =>
-      prev.map((e) => (e.symbol === symbol ? { ...e, selected } : e)),
-    );
-
+  /** Picking an element in the table toggles it: already on the list → remove,
+   *  otherwise measure it against the spectrum and add it. Matches what the
+   *  multi-select picker looks like it does. */
   const addElement = (symbol: string) => {
+    const id = activeId;
+    if (!id) return;
+    const existing = species.find((sp) => sp.symbol === symbol);
+    if (existing) {
+      removeSpecies(id, existing.id);
+      return;
+    }
     const spectrum = sumSpectrum.current;
-    if (!spectrum || elements.some((e) => e.symbol === symbol)) return;
+    if (!spectrum) return;
     edsLineEnergy(symbol)
       .then(({ energy_kev, line }) => {
+        if (!stillOpen(id)) return;
+        addSpecies(id, edsSpecies(symbol, line, energy_kev));
+        // Measure it too, so the new row shows net and confidence like the
+        // identified ones rather than a blank strength bar.
         const measured = measureElement(
-          symbol,
-          line,
-          energy_kev,
-          normalizeEdsSpectrum(spectrum),
-          elements,
+          symbol, line, energy_kev,
+          normalizeEdsSpectrum(spectrum), evidence,
           { background: bg, e0Kev },
         );
-        if (measured) setElements((prev) => [...prev, measured]);
+        if (measured) setEvidence((prev) => [...prev, measured]);
       })
-      .catch((error: Error) => report(activeId, `EDS add: ${error.message}`));
+      .catch((error: Error) => report(id, `EDS add: ${error.message}`));
   };
 
   const exportFigure = () => {
@@ -259,20 +290,18 @@ export default function EdsMapsTab({
   return (
     <div className="fvd-eds-maps">
       <EdsElementList
-        elements={elements}
+        rows={rows}
         busy={idBusy}
         quantBySymbol={quantBySymbol}
-        onToggle={setSelected}
-        onSetAll={(selected) =>
-          setElements((prev) => prev.map((e) => ({ ...e, selected })))
+        onToggle={(speciesId, visible) =>
+          activeId && setVisible(activeId, speciesId, visible)
         }
+        onSetAll={(visible) => activeId && setAllVisible(activeId, visible)}
         onReidentify={() => void identify()}
         onAdd={addElement}
-        onRemove={(symbol) =>
-          setElements((prev) => prev.filter((e) => e.symbol !== symbol))
-        }
+        onRemove={(speciesId) => activeId && removeSpecies(activeId, speciesId)}
         onHover={(symbol) => onHoverElement?.(symbol)}
-        onFocus={(element) => onFocusElement?.(element)}
+        onFocus={(row) => onFocusElement?.(row)}
       />
 
       <div className="fvd-ws-row">
@@ -303,7 +332,7 @@ export default function EdsMapsTab({
 
       {tiles.length === 0 && !mapsBusy && (
         <div className="fvd-ws-empty">
-          Tick elements above to extract their maps.
+          Tick species above to extract their maps.
         </div>
       )}
 
@@ -311,8 +340,8 @@ export default function EdsMapsTab({
         <EdsMapMontage
           tiles={tiles}
           onFocus={(symbol) => {
-            const element = elements.find((e) => e.symbol === symbol);
-            if (element) onFocusElement?.(element);
+            const row = rows.find((r) => r.species.symbol === symbol);
+            if (row) onFocusElement?.(row);
           }}
         />
       )}

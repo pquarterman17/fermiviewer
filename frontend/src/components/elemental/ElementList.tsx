@@ -1,16 +1,22 @@
-// The element list — the workspace's primary control.
+// The species list — the workspace's primary control.
 //
 // A cube opens, peaks are identified, and this is what the user sees: one row
-// per element with its line, window, net counts and a strength bar, each
-// pre-ticked unless it is only a trace. Ticking drives the maps, the overlay
-// and the legend. Hovering a row highlights that element's peak on the
-// spectrum, which is how "is this identification real?" gets answered without
-// leaving the panel.
+// per species with its line, energy, net counts and a strength bar, showing
+// unless it is only a trace. Visibility drives the maps, the overlay and the
+// legend. Hovering a row highlights that element's peak on the spectrum, which
+// is how "is this identification real?" gets answered without leaving the
+// panel.
+//
+// Rows come from SPECIES (the user's decisions), with auto-ID evidence looked
+// up per row and allowed to be missing — a hand-added element nothing detected
+// a peak for still gets a row, it just has no net or confidence to show. See
+// lib/elemental/speciesRows.ts for why the two are not one object.
 
 import { useState } from "react";
 
 import { setElementColor, useElementColors } from "../../lib/elemental/elementColors";
-import type { Confidence, IdentifiedElement } from "../../lib/elemental/identify";
+import type { Confidence } from "../../lib/elemental/identify";
+import type { SpeciesRow } from "../../lib/elemental/speciesRows";
 import { formatCountTick } from "../../lib/edsSpectrumDisplay";
 import PeriodicTable from "./PeriodicTable";
 
@@ -22,7 +28,7 @@ const CONFIDENCE_LABEL: Record<Confidence, string> = {
 };
 
 export default function EdsElementList({
-  elements,
+  rows,
   busy,
   quantBySymbol,
   onToggle,
@@ -33,23 +39,25 @@ export default function EdsElementList({
   onHover,
   onFocus,
 }: {
-  elements: IdentifiedElement[];
+  rows: SpeciesRow[];
   busy: boolean;
   /** Optional at% per symbol, shown instead of net once quantified. */
   quantBySymbol?: Record<string, number>;
-  onToggle: (symbol: string, selected: boolean) => void;
-  onSetAll: (selected: boolean) => void;
+  /** Toggle by species id, not symbol — two rows can share an element on
+   *  different transitions (Fe-L2,3 and Fe-K are distinct measurements). */
+  onToggle: (speciesId: string, visible: boolean) => void;
+  onSetAll: (visible: boolean) => void;
   onReidentify: () => void;
   onAdd: (symbol: string) => void;
-  onRemove: (symbol: string) => void;
+  onRemove: (speciesId: string) => void;
   /** Highlight this element's peak on the spectrum (null clears). */
   onHover: (symbol: string | null) => void;
-  /** Frame this element's window on the spectrum. */
-  onFocus: (element: IdentifiedElement) => void;
+  /** Frame this species' window on the spectrum. */
+  onFocus: (row: SpeciesRow) => void;
 }) {
   const colors = useElementColors();
   const [adding, setAdding] = useState(false);
-  const selected = elements.filter((e) => e.selected).length;
+  const shown = rows.filter((r) => r.species.visible).length;
 
   return (
     <section className="fvd-eds-elements" aria-label="Identified elements">
@@ -58,16 +66,16 @@ export default function EdsElementList({
         <span className="k">
           {busy
             ? "Identifying…"
-            : `${elements.length} found · ${selected} shown`}
+            : `${rows.length} found · ${shown} shown`}
         </span>
         <div className="fvd-eds-elements-actions">
           <button
             type="button"
             className="fvd-btn"
-            onClick={() => onSetAll(selected < elements.length)}
-            disabled={elements.length === 0}
+            onClick={() => onSetAll(shown < rows.length)}
+            disabled={rows.length === 0}
           >
-            {selected < elements.length ? "All" : "None"}
+            {shown < rows.length ? "All" : "None"}
           </button>
           <button
             type="button"
@@ -93,17 +101,14 @@ export default function EdsElementList({
       {adding && (
         <div className="fvd-eds-elements-add">
           <PeriodicTable
-            selected={null}
-            present={elements.map((e) => e.symbol)}
-            onSelect={(symbol) => {
-              onAdd(symbol);
-              setAdding(false);
-            }}
+            selected={rows.map((r) => r.species.symbol)}
+            present={rows.map((r) => r.species.symbol)}
+            onSelect={(symbol) => onAdd(symbol)}
           />
         </div>
       )}
 
-      {elements.length === 0 && !busy ? (
+      {rows.length === 0 && !busy ? (
         <div className="fvd-ws-note">
           No elements identified. Use <strong>+ Add</strong> to pick them
           manually, or <strong>Re-ID</strong> after changing the spectrum
@@ -111,67 +116,75 @@ export default function EdsElementList({
         </div>
       ) : (
         <ul className="fvd-eds-element-rows" onMouseLeave={() => onHover(null)}>
-          {elements.map((element) => {
-            const color = colors(element.symbol);
-            const atPct = quantBySymbol?.[element.symbol];
+          {rows.map((row) => {
+            const { species, evidence } = row;
+            const { symbol, transition, energy, visible } = species;
+            const color = colors(symbol);
+            const atPct = quantBySymbol?.[symbol];
             return (
               <li
-                key={element.symbol}
-                className={`fvd-eds-element-row${element.selected ? " on" : ""}`}
-                onMouseEnter={() => onHover(element.symbol)}
+                key={species.id}
+                className={`fvd-eds-element-row${visible ? " on" : ""}`}
+                onMouseEnter={() => onHover(symbol)}
               >
                 <input
                   type="checkbox"
-                  checked={element.selected}
-                  aria-label={`Show ${element.symbol}`}
-                  onChange={(e) => onToggle(element.symbol, e.target.checked)}
+                  checked={visible}
+                  aria-label={`Show ${symbol}`}
+                  onChange={(e) => onToggle(species.id, e.target.checked)}
                 />
                 <input
                   type="color"
                   className="fvd-eds-color-input"
                   value={color}
-                  aria-label={`Colour for ${element.symbol}`}
-                  onChange={(e) => setElementColor(element.symbol, e.target.value)}
+                  aria-label={`Colour for ${symbol}`}
+                  onChange={(e) => setElementColor(symbol, e.target.value)}
                 />
                 <button
                   type="button"
                   className="fvd-eds-element-name"
                   style={{ color }}
-                  title={`Frame ${element.symbol} ${element.line}α on the spectrum`}
-                  onClick={() => onFocus(element)}
+                  title={`Frame ${symbol} ${transition}α on the spectrum`}
+                  onClick={() => onFocus(row)}
                 >
-                  {element.symbol}
+                  {symbol}
                 </button>
-                <span className="k fvd-eds-element-line">
-                  {element.line}α
-                </span>
+                <span className="k fvd-eds-element-line">{transition}α</span>
+                {/* the anchor line, not the window midpoint — they differ once
+                    the user tunes the window */}
                 <span className="fvd-eds-element-energy">
-                  {element.energyKev.toFixed(3)}
+                  {energy.toFixed(3)}
                 </span>
                 <span className="fvd-eds-element-net">
                   {atPct != null
                     ? `${atPct.toFixed(1)} at%`
-                    : formatCountTick(element.net)}
+                    : evidence
+                      ? formatCountTick(evidence.net)
+                      : "—"}
                 </span>
                 <span
                   className="fvd-eds-strength"
-                  title={`${element.significance.toFixed(0)}σ above background`}
+                  title={
+                    evidence
+                      ? `${evidence.significance.toFixed(0)}σ above background`
+                      : "not measured by the last identification"
+                  }
                 >
                   <span
                     style={{
-                      width: `${Math.round(element.relative * 100)}%`,
+                      width: `${Math.round((evidence?.relative ?? 0) * 100)}%`,
                       background: color,
                     }}
                   />
                 </span>
-                <span className={`fvd-eds-conf ${element.confidence}`}>
-                  {CONFIDENCE_LABEL[element.confidence]}
+                <span className={`fvd-eds-conf ${evidence?.confidence ?? ""}`}>
+                  {evidence ? CONFIDENCE_LABEL[evidence.confidence] : "added"}
                 </span>
                 <button
                   type="button"
                   className="fvd-icon-btn"
-                  aria-label={`Remove ${element.symbol}`}
-                  onClick={() => onRemove(element.symbol)}
+                  aria-label={`Remove ${symbol}`}
+                  onClick={() => onRemove(species.id)}
                 >
                   ✕
                 </button>
