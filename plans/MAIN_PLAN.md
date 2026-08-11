@@ -105,15 +105,25 @@ measurement, project hierarchy).
    coverage reading. Local now measures ~93.8% (1808 tests).
    Model: haiku · Parallel: yes
 
-4. **Region holes have no drawing gesture** — item 19 shipped the area
-   computation, the schema field and the reporting, but nothing in the UI
-   creates a hole: the gesture belongs in `useStagePointers.ts`/`Stage.tsx`,
-   which that work was fenced out of. The number is correct; the way to
-   draw one is missing. (was PROJECT_WORKFLOW_PLAN #19)
-   UNBLOCKED 2026-08-10: `useStagePointers.ts` now has 82 lines of headroom,
-   and `pointerDecisions.ts` is the natural home for the gesture's decision
-   logic.
-   Model: sonnet · Parallel: no — exclusive on useStagePointers.ts
+4. ~~**Region holes have no drawing gesture**~~ — CLOSED 2026-08-10.
+   Right-click a drawn polygon/lasso wholly inside another region →
+   "Mark as hole"; "Remove hole N" detaches it back to a top-level measure.
+   Chosen over auto-converting any nested shape (which would silently
+   swallow a region drawn inside another for its own sake) and over an
+   Alt-modifier (which would have had to thread `altKey` through both the
+   multi-click and drag capture paths in `useStagePointers.ts` — this
+   gesture touches that file not at all). Two overlapping hosts resolve to
+   the SMALLEST containing region, tested with the order reversed both
+   ways. Containment is a real point-in-polygon test, pinned by a concave
+   "U" case whose notch is inside the bounding box but outside the polygon
+   — the case a bbox shortcut gets wrong.
+   **Found a live bug while doing it:** `measureGlyphs.tsx` called plain
+   `polygonStats` unconditionally, so a holed region's CSV was net (item 19)
+   while its ON-SCREEN label showed the GROSS area. Export and display
+   disagreed. Now both net out, and the label appends "(N holes)".
+   `viewerSession.ts` hit 510 adding the undo case, so the logic split into
+   `viewerHoleUndo.ts` (55) — the ratchet forcing a module rather than a
+   bulge, again.
 
 5. **`AxisCal.scale` writes raw NaN into a `.fvp` manifest** — an
    uncalibrated axis defaults to NaN and `axes_to_manifest` passes it
