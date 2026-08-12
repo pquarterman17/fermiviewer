@@ -8,10 +8,11 @@ implementation so a feature cannot land in one and rot in the other.
 **Status:** Active
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-07-29
-**Updated:** 2026-08-12 — item 7 closed: the composite was already shared,
-but verifying that exposed a forked figure export (fixed, one path now) and
-a figure shipping with no scale bar (fixed). 7 items open (W1 polish, W2
-retirement, W4 verification); W1 Tier 1 and W3 are both complete
+**Updated:** 2026-08-12 — **W1 (shared spectrum core) is COMPLETE**: item 7
+closed (the composite was already shared; verifying it exposed a forked
+figure export and a figure with no scale bar, both fixed) and items 5 + 6
+shipped as one window-control strip serving both modalities. 5 items open
+(W2 retirement, W4 verification)
 
 ---
 
@@ -54,8 +55,7 @@ quantification the user may not want.
 
 ### Dependency map
 
-- The W1 foundation (items 1–4, 7) and all of W3 are complete
-- Items 5 and 6 are independent of each other (both build on item 2's core)
+- All of W1 (items 1–7) and all of W3 are complete
 - Item 8 unblocks 9; item 14 unblocks 15 (both 8 and 14 have now shipped)
 - Item 10 (composite → library) is the one open item with an unanswered
   architectural question: `DataStruct` is grayscale-only (`_to_gray` collapses
@@ -116,17 +116,10 @@ quantification the user may not want.
 
 ## W1 — Shared spectrum core
 
-*Tier 1 is empty — item 7 shipped 2026-08-12; see Completed.*
-
-### Tier 2 — Medium Impact
-
-5. **Width presets and FWHM auto-fit** — narrow / standard / wide, or fit the
-   window to the measured peak width
-   - [ ] EDS: seed from the detector-resolution curve, refine on the data
-   - [ ] EELS: an integration width past the onset, which is the real control
-
-6. **Numeric steppers with live net** — typed bounds that show net ± σ as they
-   change, plus a lock so the window follows the species' line/onset
+**COMPLETE 2026-08-12** — every item (1–7) shipped; see Completed. The
+shared core is the species model, the modality-blind window model and its
+drag/nudge surface, the SpectrumWorkspace shell, the width-preset/fit/lock
+strip, and one composite + one figure export for both modalities.
 
 ---
 
@@ -175,6 +168,55 @@ the same shared components as EDS.
 ---
 
 ## Completed
+
+- ~~**#5 Width presets and FWHM auto-fit + #6 Numeric steppers with live
+  net**~~ (2026-08-12) — shipped together because they are one control strip:
+  `components/spectrum/WindowPresetBar.tsx` (narrow / standard / wide, Fit
+  width, Lock to line) sits under the plot in BOTH Explore tabs, with every
+  number coming from `lib/spectrum/windowPresets.ts`.
+  **The presets are physics, not three arbitrary numbers.** EDS widths are
+  multiples of the DETECTOR resolution at that line (1.0 / 1.5 / 2.0 × FWHM
+  total = 76 / 92 / 98 % of a Gaussian peak), because a fixed ±85 eV is 1.3
+  FWHM at C-Kα and 0.65 FWHM at Mn-Kα — the same number meaning two different
+  things is what the item was about. EELS widths are absolute (30 / 50 / 100
+  eV past the onset): an edge is a step, there is nothing to bracket, and
+  `standard` IS `EELS_SIGNAL_WIDTH_EV` rather than a copy of 50, so the preset
+  row and a fresh species' default cannot drift.
+  **The resolution curve is a documented port, pinned by numbers in both
+  suites.** `lib/eds/resolution.ts` ports `calc/eds_calib.py::fano_fwhm` (a
+  preset click must not need a round trip), and
+  `test_fano_fwhm_matches_frontend_port` + `resolution.test.ts` assert the
+  SAME five sample values — change a constant on either side and one suite
+  goes red. That is the only lockstep two languages can have here, and it is
+  stronger than the prose lockstep the EELS constants have.
+  **"Refine on the data" refuses rather than guesses.** `fitPeakWindow`
+  measures the peak's real FWHM against a baseline joining the search span's
+  ends, and returns null — leaving the window exactly as the user had it —
+  when the span holds no interior maximum, when a half-maximum crossing runs
+  off the end, or when the peak stands less than 5 % of its own counts above
+  that baseline. That last guard came out of a test: a peak far broader than
+  the span reads as 0.14 keV wide instead of 2.0, because the span's ends sit
+  on the peak's own flanks. A silently TOO-NARROW window would have been the
+  worst possible outcome of a button labelled "Fit".
+  **Item 6's lock is where the two items meet.** EDS keeps the tabulated line
+  in `useEdsEnergyWindow` (the `Species.energy` split, for the reason item 1
+  recorded), and while locked a commit re-centres the window on it: an edge
+  drag widens symmetrically, a body drag cannot walk the window off its peak,
+  and the element stays bound — dropping to "(custom)" while locked would
+  silently undo the lock. Fitting re-anchors to the MEASURED centre so a later
+  resize does not snap back to an energy this spectrum's calibration disagrees
+  with. EELS gets no toggle on purpose: its window starts at the onset by
+  definition, so the presets are onset-following unconditionally and a toggle
+  could only offer to make the window wrong.
+  Typed bounds already showed live net ± σ in both tabs (EDS via
+  `IntegrationPanel`, EELS via item 13's readout); the EDS steppers moved from
+  a 50 eV step to 5 eV — a 50 eV nudge is a third of a window — and now show
+  the width in eV beside them.
+  Sizes: EdsSpectrumImage 473 → 408 (new `useEdsEnergyWindow.ts` 168 +
+  `EdsWindowControls.tsx` 155), so the strip was paid for by extraction, and
+  the lock/preset/fit rules are unit-tested rather than reachable only by
+  driving a React tree. 34 new tests; the lock's re-centring verified by
+  mutation. Frontend gate 1275 vitest / 170 files, tsc + build clean.
 
 - ~~**#7 Shared composite**~~ (2026-08-12) — the composite itself was already
   shared: `EdsComposite` no longer exists (item 21 renamed the generic

@@ -23,6 +23,26 @@ def test_fano_fwhm_anchors_at_mn_ka() -> None:
     assert fano_fwhm(MN_KA_KEV) == pytest.approx(MN_KA_FWHM_EV, abs=1e-9)
 
 
+def test_fano_fwhm_matches_frontend_port() -> None:
+    """LOCKSTEP with frontend/src/lib/eds/resolution.ts.
+
+    The window-preset widths (SPECTRAL_WORKSPACE_PLAN #5) need this curve
+    client-side, without a round trip per preset click, so `fanoFwhmEv` is a
+    deliberate port of `fano_fwhm`. `resolution.test.ts` asserts the SAME
+    table below; changing a constant on either side reddens one of the two
+    suites, which is the only lockstep two languages can have here.
+    """
+    expected = {
+        0.277: 49.971549,   # C-Kα
+        1.0: 65.949899,
+        5.899: 130.0,       # the anchor, exact by construction
+        8.048: 149.684545,  # Cu-Kα
+        15.0: 200.538268,
+    }
+    for kev, ev in expected.items():
+        assert float(fano_fwhm(kev)) == pytest.approx(ev, abs=1e-6)
+
+
 def test_fano_fwhm_monotonic_increasing() -> None:
     e = np.array([0.277, 1.487, 5.899, 8.048, 17.479])  # C, Al, Mn, Cu, Mo Kα
     fwhm = fano_fwhm(e)

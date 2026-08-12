@@ -16,6 +16,23 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Window width presets, on both spectroscopies.** Narrow / standard / wide
+  now sit under the spectrum in Explore. On EDS they are multiples of the
+  detector's own resolution at that line (1.0 / 1.5 / 2.0 × FWHM, capturing
+  76 / 92 / 98 % of the peak), so "standard" means the same thing at carbon
+  and at copper — a fixed ±85 eV does not. On EELS they are integration
+  widths past the edge onset (30 / 50 / 100 eV), and the pre-edge background
+  window re-places itself underneath.
+- **Fit width** measures the peak's real width in the spectrum you are
+  looking at and fits the window to it — useful when the detector is not
+  performing to spec or the line is an unresolved pair. If there is no
+  resolved peak to measure it says so and leaves your window alone.
+- **Lock to line.** With an element picked, the EDS window stays centred on
+  its line: dragging an edge widens it symmetrically instead of walking it
+  off the peak, and the element stays selected. Fitting re-anchors to the
+  line as measured here, so a later resize does not snap back to a tabulated
+  energy this spectrum disagrees with. Untick it and the window moves freely,
+  exactly as before.
 - **The exported elemental figure now carries a scale bar.** Export figure
   bakes a round scale bar onto the combined overlay panel — or onto the first
   map when you export the montage-only view, which previously produced a

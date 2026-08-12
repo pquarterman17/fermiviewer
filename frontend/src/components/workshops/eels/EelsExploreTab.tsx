@@ -20,12 +20,17 @@ import type { PeakMarker } from "../../../lib/eds/peakMarkers";
 import { formatCountTick } from "../../../lib/edsSpectrumDisplay";
 import { integrateEdge } from "../../../lib/eels/integrate";
 import { orderWindow, splitEdgeLabel } from "../../../lib/spectrum/species";
+import {
+  presetWindows,
+  type WindowPreset,
+} from "../../../lib/spectrum/windowPresets";
 import type { XRange } from "../../../lib/spectrum/zoomRange";
 import type { CaptureMode } from "../../../store/viewerTypes";
 import SpectrumPlot, {
   type SpectrumOverlay,
 } from "../../spectrum/SpectrumPlot";
 import SpectrumZoomBar from "../../spectrum/SpectrumZoomBar";
+import WindowPresetBar from "../../spectrum/WindowPresetBar";
 import RegionPicker, { type Rect1 } from "../RegionPicker";
 import SpectrumNavigationControl from "../SpectrumNavigationControl";
 import { fmtNum } from "../eelsWindows";
@@ -176,6 +181,14 @@ export default function EelsExploreTab({
     }
   };
 
+  /** A width preset is measured from the ONSET, which for an EELS signal
+   *  window is its lower bound: the edge is a step, so the window's start is
+   *  the physical landmark and only its extent is a choice. Re-placing the
+   *  pre-edge background under it comes free from `eelsDefaultWindows` — the
+   *  same placement a fresh species is born with. */
+  const applyPreset = (preset: WindowPreset) =>
+    handleWindowsChange(presetWindows("eels", sigWindow.lo, preset));
+
   return (
     <>
       <div className="fvd-ws-row">
@@ -322,6 +335,13 @@ export default function EelsExploreTab({
           Map
         </button>
       </div>
+
+      <WindowPresetBar
+        modality="eels"
+        anchorEnergy={sigWindow.lo}
+        width={sigWindow.hi - sigWindow.lo}
+        onPreset={applyPreset}
+      />
     </>
   );
 }

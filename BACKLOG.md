@@ -52,12 +52,6 @@ re-verified against the code before folding).*
 *Parent: MAIN_PLAN.md. Status: Active. Counted by top-level numbered item —
 see the Dashboard note below for the counting convention.*
 
-### W1 — Shared spectrum core
-
-**Tier 2 — Medium Impact**
-5. **Width presets and FWHM auto-fit**
-6. **Numeric steppers with live net**
-
 ### W2 — EDS workspace
 
 **Tier 2 — Medium Impact**
@@ -77,8 +71,8 @@ see the Dashboard note below for the counting convention.*
 20. **Window overlap detection** (deselected 2026-07-29; revisit only if a
     real case produces a silently wrong answer)
 
-**Open items: 7** *(W3 — EELS workspace — completed in full 2026-08-11;
-W1 Tier 1 — item 7 — completed 2026-08-12)*
+**Open items: 5** *(W1 — shared spectrum core — and W3 — EELS workspace —
+are both complete: items 1–7 on 2026-08-12, items 12–16 + 22 on 2026-08-11)*
 
 ---
 
@@ -114,15 +108,15 @@ live-audit usability follow-up list.*
 | Plan | Status | Open items |
 |---|---|---|
 | MAIN_PLAN.md | Active (root) | 9 |
-| SPECTRAL_WORKSPACE_PLAN.md | Active | 7 |
+| SPECTRAL_WORKSPACE_PLAN.md | Active | 5 |
 | PLAN_4DSTEM.md | Active | 8 |
 
-**Total open items:** 24
+**Total open items:** 22
 
 **Counting method:** top-level numbered items (the plan-format.md unit of a
 tracked work item) — not nested `- [ ]` sub-task checkboxes. Nested-checkbox
-counts by plan, for reference: MAIN_PLAN 5, SPECTRAL_WORKSPACE_PLAN 4,
-PLAN_4DSTEM 14 (23 total). A checkbox-based count would disagree with the
+counts by plan, for reference: MAIN_PLAN 5, SPECTRAL_WORKSPACE_PLAN 2,
+PLAN_4DSTEM 14 (21 total). A checkbox-based count would disagree with the
 open-items count above — pick one convention when reading this table and
 don't mix the two.
 
