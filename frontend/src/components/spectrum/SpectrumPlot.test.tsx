@@ -267,6 +267,97 @@ describe("EdsSpectrumPlot", () => {
     expect(second[1]).toBeCloseTo(16.4, 10);
   });
 
+  it("drags the background window independently, reporting the full window set", () => {
+    const onDragWindowsLive = vi.fn();
+    const onDragWindowsCommit = vi.fn();
+    render(
+      <SpectrumPlot
+        spec={WIDE}
+        label="Sum spectrum"
+        eLo={9}
+        eHi={11}
+        background={{ lo: 1, hi: 3 }}
+        onDragWindowsLive={onDragWindowsLive}
+        onDragWindowsCommit={onDragWindowsCommit}
+      />,
+    );
+
+    // background's hi edge sits at px 3; the signal window (9–11) is far
+    // enough away that hitTest must prefer the background edge.
+    fireEvent.mouseDown(plot().over, { clientX: 3, button: 0 });
+    fireEvent.mouseMove(document, { clientX: 5 });
+    expect(onDragWindowsLive).toHaveBeenLastCalledWith({
+      signal: { lo: 9, hi: 11 },
+      background: { lo: 1, hi: 5 },
+    });
+
+    fireEvent.mouseUp(document);
+    expect(onDragWindowsCommit).toHaveBeenCalledWith({
+      signal: { lo: 9, hi: 11 },
+      background: { lo: 1, hi: 5 },
+    });
+  });
+
+  it("nudges only the signal window when a background window is present", () => {
+    const onDragWindowsLive = vi.fn();
+    const onDragWindowsCommit = vi.fn();
+    render(
+      <SpectrumPlot
+        spec={WIDE}
+        label="Sum spectrum"
+        eLo={9}
+        eHi={11}
+        background={{ lo: 1, hi: 3 }}
+        onDragWindowsLive={onDragWindowsLive}
+        onDragWindowsCommit={onDragWindowsCommit}
+      />,
+    );
+
+    const host = plot().over.parentElement!;
+    fireEvent.keyDown(host, { key: "ArrowRight" });
+    expect(onDragWindowsLive).toHaveBeenLastCalledWith({
+      signal: { lo: 14, hi: 16 },
+      background: { lo: 1, hi: 3 },
+    });
+    fireEvent.keyUp(host, { key: "ArrowRight" });
+    expect(onDragWindowsCommit).toHaveBeenCalledWith({
+      signal: { lo: 14, hi: 16 },
+      background: { lo: 1, hi: 3 },
+    });
+  });
+
+  it("adds overlay curves as extra series/data without disturbing the base spectrum", () => {
+    render(
+      <SpectrumPlot
+        spec={WIDE}
+        label="Sum spectrum"
+        eLo={9}
+        eHi={11}
+        overlays={[
+          { label: "background", values: [1, 1, 1, 1, 1], color: "#d97706" },
+          {
+            label: "signal",
+            values: [2, 2, 2, 2, 2],
+            color: "#a78bfa",
+            dash: [4, 2],
+          },
+        ]}
+      />,
+    );
+
+    const series = mock.state.options.series as { label?: string }[];
+    expect(series.map((s) => s.label)).toEqual([
+      "E (keV)",
+      "Counts",
+      "background",
+      "signal",
+    ]);
+    const data = plot().data as unknown[];
+    expect(data).toHaveLength(4);
+    expect(data[2]).toEqual([1, 1, 1, 1, 1]);
+    expect(data[3]).toEqual([2, 2, 2, 2, 2]);
+  });
+
   it("reports a full-width scale as null so the axis returns to auto", () => {
     const onXRangeChange = vi.fn();
     render(

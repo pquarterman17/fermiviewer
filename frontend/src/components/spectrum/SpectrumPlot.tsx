@@ -1,14 +1,19 @@
-// EDS spectrum plot (uPlot): x-zoom, a shift-drag energy window, and
-// element-coloured characteristic-line markers.
+// Shared spectrum plot (uPlot): x-zoom, one or two draggable energy windows,
+// element-coloured markers, and optional fit-curve overlays. Used by both the
+// EDS Explore tab (signal window only) and the EELS Explore tab (signal +
+// pre-edge background window) — SPECTRAL_WORKSPACE_PLAN #13 generalises what
+// had been an EDS-only component.
 //
 // Gesture split (EdsSpectrumZoomBar carries the visible affordances):
 //   drag         → zoom the energy axis (uPlot's native drag-select)
-//   drag window edge / body → resize / slide the energy window
+//   drag window edge / body → resize / slide a window
 //                  (claimed in spectrumWindowGestures.ts before uPlot's zoom)
-//   shift + drag → set the element-map energy window
+//   shift + drag → set the signal window from scratch
 //   wheel        → zoom about the energy under the cursor
 //   double-click → reset to the full range (uPlot native)
-//   ← / →        → nudge the window one channel (shift: ten), plot focused
+//   ← / →        → nudge the SIGNAL window one channel (shift: ten), plot
+//                  focused — the background window has no keyboard nudge,
+//                  matching spectrumWindowGestures.ts's `nudge(..., "signal", …)`
 //
 // The window handler previously bound mousedown/mouseup to the <canvas>. uPlot
 // builds its wrap as under → canvas → over, and `.u-over` is absolutely
@@ -19,9 +24,19 @@
 // through `u.over` and uPlot's own select machinery.
 //
 // The window/marker overlay reads refs inside the `draw` hook instead of
-// listing eLo/eHi/markers as build-effect dependencies, so dragging the window
-// or recolouring an element redraws the live chart rather than destroying and
-// rebuilding it on every frame.
+// listing eLo/eHi/background/markers as build-effect dependencies, so dragging
+// a window or recolouring an element redraws the live chart rather than
+// destroying and rebuilding it on every frame. `overlays` (fit curves) is the
+// one exception: it rebuilds the plot, because a new series list needs a new
+// uPlot instance and fit curves change on button click, not on every frame.
+//
+// Two callback shapes coexist for back-compat: `onDragWindow`/`onDragWindowLive`
+// (single signal window, energy pair) is the original EDS contract and its
+// behaviour is unchanged when `background` is absent; `onDragWindowsLive`/
+// `onDragWindowsCommit` (full `SpeciesWindows`) is the new shape that also
+// reports the background window when present. Both fire together on every
+// signal-window change, so an EDS caller supplying only the old prop keeps
+// working untouched.
 
 import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import uPlot from "uplot";
@@ -29,12 +44,23 @@ import uPlot from "uplot";
 import type { Spectrum } from "../../lib/api";
 import { useElementColors } from "../../lib/elemental/elementColors";
 import type { PeakMarker } from "../../lib/eds/peakMarkers";
+import type { EnergyWindow, SpeciesWindows } from "../../lib/spectrum/species";
 import { zoomAbout, type XRange } from "../../lib/spectrum/zoomRange";
 import { formatCountTick } from "../../lib/edsSpectrumDisplay";
 import PlotContextSurface from "../plots/PlotContextSurface";
 import { attachWindowGestures } from "./spectrumWindowGestures";
 
 const WHEEL_STEP = 1.25;
+
+/** Extra y-series drawn on the same energy axis (a fit's background/signal
+ *  curves). Kept separate from `markers` because these are full arrays that
+ *  warrant a real uPlot series rather than a canvas overlay line. */
+export interface SpectrumOverlay {
+  label: string;
+  values: number[];
+  color: string;
+  dash?: number[];
+}
 
 export default function SpectrumPlot({
   spec,
@@ -50,15 +76,21 @@ export default function SpectrumPlot({
   minSpan = 0,
   onXRangeChange,
   onDragWindowLive,
+  background = null,
+  onDragWindowsLive,
+  onDragWindowsCommit,
+  overlays = [],
 }: {
   spec: Spectrum;
   label: string;
   eLo: number;
   eHi: number;
-  /** Committed window change — release of a drag/nudge, or a shift-drag. */
-  onDragWindow: (lo: number, hi: number) => void;
-  /** Streaming window change while an edge/body drag or key-nudge is live.
-   *  Client-side readouts only; the commit callback is where to refetch. */
+  /** Committed signal-window change — release of a drag/nudge, or a
+   *  shift-drag. Optional so a caller driving purely off `onDragWindowsCommit`
+   *  (EELS, once both windows matter) need not supply a redundant handler. */
+  onDragWindow?: (lo: number, hi: number) => void;
+  /** Streaming signal-window change while a drag/nudge is live. Client-side
+   *  readouts only; the commit callback is where to refetch. */
   onDragWindowLive?: (lo: number, hi: number) => void;
   markers?: PeakMarker[];
   height?: number;
@@ -72,6 +104,17 @@ export default function SpectrumPlot({
    *  land in one render — a fast trackpad flick otherwise loses steps that
    *  all zoomed from the same stale prop. */
   onXRangeChange?: Dispatch<SetStateAction<XRange | null>>;
+  /** Second draggable window (EELS pre-edge background), painted amber. Absent
+   *  or null renders/drags exactly one window — the original EDS shape. */
+  background?: EnergyWindow | null;
+  /** Streaming/committed change reported as the FULL window set, whichever
+   *  window (signal or background) moved. Fires alongside the single-window
+   *  callbacks above, never instead of them. */
+  onDragWindowsLive?: (windows: SpeciesWindows) => void;
+  onDragWindowsCommit?: (windows: SpeciesWindows) => void;
+  /** Extra curves on the same energy axis (e.g. a background/signal fit).
+   *  Changing this rebuilds the plot — see the header comment. */
+  overlays?: SpectrumOverlay[];
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
@@ -80,10 +123,44 @@ export default function SpectrumPlot({
 
   // Live inputs the plot's own handlers and draw hook read. Assigning on every
   // render keeps them current without making them build-effect dependencies.
-  const live = useRef({ eLo, eHi, markers, elementColors, xRange, minSpan });
-  live.current = { eLo, eHi, markers, elementColors, xRange, minSpan };
-  const callbacks = useRef({ onDragWindow, onDragWindowLive, onXRangeChange });
-  callbacks.current = { onDragWindow, onDragWindowLive, onXRangeChange };
+  const live = useRef({
+    eLo,
+    eHi,
+    background,
+    markers,
+    elementColors,
+    xRange,
+    minSpan,
+  });
+  live.current = { eLo, eHi, background, markers, elementColors, xRange, minSpan };
+  const callbacks = useRef({
+    onDragWindow,
+    onDragWindowLive,
+    onXRangeChange,
+    onDragWindowsLive,
+    onDragWindowsCommit,
+  });
+  callbacks.current = {
+    onDragWindow,
+    onDragWindowLive,
+    onXRangeChange,
+    onDragWindowsLive,
+    onDragWindowsCommit,
+  };
+
+  // A window-set change, reported through both callback shapes at once.
+  const windowsOf = (signal: EnergyWindow): SpeciesWindows =>
+    live.current.background
+      ? { signal, background: live.current.background }
+      : { signal };
+  const dispatchLive = (w: SpeciesWindows) => {
+    callbacks.current.onDragWindowLive?.(w.signal.lo, w.signal.hi);
+    callbacks.current.onDragWindowsLive?.(w);
+  };
+  const dispatchCommit = (w: SpeciesWindows) => {
+    callbacks.current.onDragWindow?.(w.signal.lo, w.signal.hi);
+    callbacks.current.onDragWindowsCommit?.(w);
+  };
 
   useEffect(() => {
     const host = hostRef.current;
@@ -94,28 +171,45 @@ export default function SpectrumPlot({
     const bounds: XRange = [energy[0], energy[energy.length - 1]];
     const initial = live.current.xRange;
 
+    const seriesConfig: uPlot.Series[] = [
+      { label: `E (${spec.units})` },
+      {
+        label: logScale ? "log₁₀(counts + 1)" : "Counts",
+        stroke: "#8b5cf6",
+        width: 1,
+        points: { show: false },
+      },
+    ];
+    const alignedData: unknown[] = [
+      energy,
+      (logScale
+        ? spec.counts.map((v) => Math.log10(Math.max(0, v) + 1))
+        : spec.counts) as unknown as number[],
+    ];
+    for (const overlay of overlays) {
+      seriesConfig.push({
+        label: overlay.label,
+        stroke: overlay.color,
+        width: 1.25,
+        ...(overlay.dash ? { dash: overlay.dash } : {}),
+      });
+      alignedData.push(overlay.values);
+    }
+
     const u = new uPlot(
       {
         width: host.clientWidth || 320,
         height,
         title: label,
-        // energy axis is keV, not a timestamp — uPlot defaults x to a time
-        // scale, which renders small keV values as clock/date labels
+        // energy axis is keV/eV, not a timestamp — uPlot defaults x to a time
+        // scale, which renders small values as clock/date labels
         scales: {
           x: {
             time: false,
             ...(initial ? { min: initial[0], max: initial[1] } : {}),
           },
         },
-        series: [
-          { label: `E (${spec.units})` },
-          {
-            label: logScale ? "log₁₀(counts + 1)" : "Counts",
-            stroke: "#8b5cf6",
-            width: 1,
-            points: { show: false },
-          },
-        ],
+        series: seriesConfig,
         axes: [
           { stroke: "#888", grid: { stroke: "rgba(128,128,128,0.15)" } },
           {
@@ -136,10 +230,9 @@ export default function SpectrumPlot({
               shiftDragRef.current = false;
               const { left, width } = u2.select;
               if (width > 1) {
-                callbacks.current.onDragWindow(
-                  u2.posToVal(left, "x"),
-                  u2.posToVal(left + width, "x"),
-                );
+                const lo = u2.posToVal(left, "x");
+                const hi = u2.posToVal(left + width, "x");
+                dispatchCommit(windowsOf({ lo, hi }));
               }
               // uPlot only auto-hides the selection on the zoom path, which
               // this gesture deliberately suppressed.
@@ -158,30 +251,46 @@ export default function SpectrumPlot({
           ],
           draw: [
             (u2) => {
-              const { eLo: lo, eHi: hi, markers: marks, elementColors: color } =
-                live.current;
+              const {
+                eLo: lo,
+                eHi: hi,
+                background: bg,
+                markers: marks,
+                elementColors: color,
+              } = live.current;
               const ctx = u2.ctx;
-              const x0 = u2.valToPos(lo, "x");
-              const x1 = u2.valToPos(hi, "x");
               const y0 = u2.bbox.top;
               const y1 = u2.bbox.top + u2.bbox.height;
-              ctx.save();
-              ctx.globalAlpha = 0.15;
-              ctx.fillStyle = "#3b82f6";
-              ctx.fillRect(x0 + u2.bbox.left, y0, x1 - x0, y1 - y0);
-              ctx.globalAlpha = 1;
-              ctx.strokeStyle = "#2563eb";
-              ctx.lineWidth = 1.5;
-              ctx.beginPath();
-              ctx.moveTo(x0 + u2.bbox.left, y0);
-              ctx.lineTo(x0 + u2.bbox.left, y1);
-              ctx.moveTo(x1 + u2.bbox.left, y0);
-              ctx.lineTo(x1 + u2.bbox.left, y1);
-              ctx.stroke();
-              ctx.restore();
 
-              // characteristic-line / peak labels (Si Kα, Fe Kα, …): each in
-              // its element's registry colour, so a marker, its composite
+              const paintWindow = (
+                winLo: number,
+                winHi: number,
+                fill: string,
+                stroke: string,
+              ) => {
+                const x0 = u2.valToPos(winLo, "x") + u2.bbox.left;
+                const x1 = u2.valToPos(winHi, "x") + u2.bbox.left;
+                ctx.save();
+                ctx.globalAlpha = 0.15;
+                ctx.fillStyle = fill;
+                ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+                ctx.globalAlpha = 1;
+                ctx.strokeStyle = stroke;
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(x0, y0);
+                ctx.lineTo(x0, y1);
+                ctx.moveTo(x1, y0);
+                ctx.lineTo(x1, y1);
+                ctx.stroke();
+                ctx.restore();
+              };
+
+              paintWindow(lo, hi, "#3b82f6", "#2563eb"); // signal
+              if (bg) paintWindow(bg.lo, bg.hi, "#d97706", "#b45309"); // background (EELS pre-edge)
+
+              // characteristic-line / edge-onset labels: each in its
+              // element's registry colour, so a marker, its composite
               // channel and its map tint all read as the same element.
               // Auto-detected peaks stay dashed and desaturated.
               for (const m of marks) {
@@ -210,12 +319,7 @@ export default function SpectrumPlot({
           ],
         },
       } satisfies uPlot.Options,
-      [
-        energy,
-        (logScale
-          ? spec.counts.map((v) => Math.log10(Math.max(0, v) + 1))
-          : spec.counts) as unknown as number[],
-      ] as uPlot.AlignedData,
+      alignedData as unknown as uPlot.AlignedData,
       host,
     );
     plotRef.current = u;
@@ -244,18 +348,16 @@ export default function SpectrumPlot({
     over?.addEventListener("mousedown", onDown);
     over?.addEventListener("wheel", onWheel, { passive: false });
 
-    // Direct manipulation of the energy window (edges resize, body slides,
-    // arrows nudge). Live updates stream to the cheap client-side readout;
-    // the commit lands on the same callback a shift-drag uses.
+    // Direct manipulation of the energy window(s) (edges resize, body slides,
+    // arrows nudge the signal window). Live updates stream to the cheap
+    // client-side readout; the commit lands on the same callbacks a
+    // shift-drag uses.
     const detachGestures = over
       ? attachWindowGestures(u, host, {
-          getWindows: () => ({
-            signal: { lo: live.current.eLo, hi: live.current.eHi },
-          }),
-          onLive: (w) =>
-            callbacks.current.onDragWindowLive?.(w.signal.lo, w.signal.hi),
-          onCommit: (w) =>
-            callbacks.current.onDragWindow(w.signal.lo, w.signal.hi),
+          getWindows: () =>
+            windowsOf({ lo: live.current.eLo, hi: live.current.eHi }),
+          onLive: dispatchLive,
+          onCommit: dispatchCommit,
           nudgeStep: () =>
             energy.length > 1
               ? (energy[energy.length - 1] - energy[0]) / (energy.length - 1)
@@ -276,7 +378,7 @@ export default function SpectrumPlot({
       plotRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spec, label, height, logScale]);
+  }, [spec, label, height, logScale, overlays]);
 
   // Apply an externally-driven view (zoom bar, pinned region, wheel). A change
   // that originated inside uPlot already matches, so this is a no-op for it and
@@ -295,7 +397,7 @@ export default function SpectrumPlot({
   // Overlay-only inputs: repaint the existing canvas, never rebuild the plot.
   useEffect(() => {
     plotRef.current?.redraw?.(false);
-  }, [eLo, eHi, markers, elementColors]);
+  }, [eLo, eHi, background, markers, elementColors]);
 
   return (
     <PlotContextSurface
