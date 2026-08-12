@@ -9,43 +9,29 @@
 // so "pick Fe" from the periodic table adds/removes every edge auto-assign
 // found for that symbol, not a single looked-up line.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { eelsAutoAssign, fetchData16 } from "../../lib/api";
 import type { CompositeRaster } from "../../lib/composite";
-import { buildElementLut, elementColor } from "../../lib/elemental/elementColors";
 import { eelsEvidenceFrom, type EelsEdgeEvidence } from "../../lib/elemental/eelsIdentify";
-import { renderFigure, type FigureSource } from "../../lib/elemental/figure";
+import { exportElementalFigure } from "../../lib/elemental/figureExport";
+import type { LegendValue } from "../../lib/elemental/mapLegend";
 import {
   buildRows,
   seedEelsSpeciesFrom,
   visibleSpecies,
   type SpeciesRow,
 } from "../../lib/elemental/speciesRows";
-import { mapDisplayRange, renderElementMap } from "../../lib/edsMapDisplay";
 import { eelsSpecies } from "../../lib/spectrum/species";
 import { speciesOf, useSpecies } from "../../store/species";
 import { useViewer } from "../../store/viewer";
-import EdsElementList from "./ElementList";
-import EdsMapMontage, { type MapTile } from "./MapMontage";
-import EdsMapOverlay, { type LegendValue } from "./MapOverlay";
+import ElementList from "./ElementList";
+import MapMontage from "./MapMontage";
+import MapOverlay from "./MapOverlay";
 import { useEelsElementMaps } from "./useEelsMaps";
 
 type View = "both" | "montage" | "overlay";
 type Method = "powerlaw" | "exponential";
-
-function tileToFigureSource(tile: MapTile): FigureSource {
-  const [h, w] = tile.shape;
-  const color = elementColor(tile.symbol);
-  const range = mapDisplayRange(tile.map, 1, 99);
-  return {
-    label: tile.caption ?? `${tile.symbol} ${tile.line}`,
-    color,
-    rgba: renderElementMap(tile.map, w, h, range, buildElementLut(color)),
-    w,
-    h,
-  };
-}
 
 export default function EelsMapsTab({
   onFocusElement,
@@ -78,6 +64,7 @@ export default function EelsMapsTab({
   const [legendValue, setLegendValue] = useState<LegendValue>("net");
   const [surveyId, setSurveyId] = useState<string | null>(null);
   const [survey, setSurvey] = useState<CompositeRaster | null>(null);
+  const overlayCanvas = useRef<HTMLCanvasElement | null>(null);
 
   const stillOpen = useCallback(
     (id: string | null): id is string =>
@@ -216,51 +203,28 @@ export default function EelsMapsTab({
   };
 
   const exportFigure = () => {
-    if (tiles.length === 0) return;
-    const sources = tiles.map(tileToFigureSource);
-    const overlayCanvas = document.querySelector<HTMLCanvasElement>(
-      ".fvd-eds-overlay-canvas canvas",
-    );
-    let overlay: FigureSource | undefined;
-    if (overlayCanvas) {
-      const ctx = overlayCanvas.getContext("2d");
-      const data = ctx?.getImageData(
-        0,
-        0,
-        overlayCanvas.width,
-        overlayCanvas.height,
-      );
-      if (data) {
-        overlay = {
-          label: "Overlay",
-          color: "#e6e8ee",
-          rgba: data.data,
-          w: overlayCanvas.width,
-          h: overlayCanvas.height,
-        };
-      }
-    }
-    const canvas = document.createElement("canvas");
-    renderFigure(canvas, sources, {
+    const id = activeId;
+    void exportElementalFigure({
+      tiles,
+      overlayCanvas: view === "montage" ? null : overlayCanvas.current,
       title: meta?.name ?? "EELS elemental maps",
-      overlay,
-      columns: Math.min(4, Math.max(2, Math.ceil(Math.sqrt(tiles.length + 1)))),
-    });
-    canvas.toBlob((blob) => {
-      if (!blob) return;
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = "eels-element-maps.png";
-      anchor.click();
-      URL.revokeObjectURL(url);
-      report(activeId, `EELS: exported figure with ${tiles.length} maps`);
-    }, "image/png");
+      filename: "eels-element-maps.png",
+      legendValue,
+      pixelSize: meta?.pixel_size,
+      pixelUnit: meta?.pixel_unit,
+    }).then((ok) =>
+      report(
+        id,
+        ok
+          ? `EELS: exported figure with ${tiles.length} maps`
+          : "EELS: nothing to export yet",
+      ),
+    );
   };
 
   return (
     <div className="fvd-eds-maps">
-      <EdsElementList
+      <ElementList
         rows={rows}
         busy={idBusy}
         onToggle={(speciesId, visible) =>
@@ -314,7 +278,7 @@ export default function EelsMapsTab({
       )}
 
       {view !== "overlay" && (
-        <EdsMapMontage
+        <MapMontage
           tiles={tiles}
           onFocus={(symbol) => {
             const row = rows.find((r) => r.species.symbol === symbol);
@@ -324,7 +288,7 @@ export default function EelsMapsTab({
       )}
 
       {view !== "montage" && (
-        <EdsMapOverlay
+        <MapOverlay
           tiles={tiles}
           gains={gains}
           onGain={(key, gain) => setGains((prev) => ({ ...prev, [key]: gain }))}
@@ -334,6 +298,7 @@ export default function EelsMapsTab({
           onSurveyId={setSurveyId}
           legendValue={legendValue}
           onLegendValue={setLegendValue}
+          canvasRef={overlayCanvas}
         />
       )}
     </div>

@@ -197,6 +197,9 @@ def load_hspy4d(path: str | Path) -> FourDDataset:
             "source": str(p),
             "parser": "hspy4d",
             "hspy_experiment": exp.name.rsplit("/", 1)[-1],
+            # The navigation axes are IN the file, so re-rastering the frames
+            # is not a thing a user can be asked to do here (contrast .mib).
+            "scan_shape_from_file": True,
         }
     except BaseException:
         f.close()

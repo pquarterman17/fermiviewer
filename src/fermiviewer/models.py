@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel
 
+from fermiviewer.calc.fourd.scanshape import scan_shape_candidates
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.io.metadata import databar_content_rows, get_stage_tilt
 
@@ -152,10 +153,23 @@ class FourDMeta(BaseModel):
     scan_axes: list[AxisCalOut]
     det_axes: list[AxisCalOut]
     nav_available: bool = True
+    #: Probe positions in the file — the product of `scan_shape`, and the
+    #: quantity any re-rastering has to preserve.
+    n_frames: int = 0
+    #: False when the format records no raster (Merlin `.mib`), meaning the
+    #: current `scan_shape` is a guess the user may correct via
+    #: `POST /fourd/{id}/reshape`. True when the file states it.
+    scan_shape_from_file: bool = True
+    #: Plausible `(rows, cols)` re-rasterings, best first. Empty when the
+    #: shape came from the file — offering alternatives there would invite
+    #: the user to contradict the acquisition.
+    scan_shape_options: list[list[int]] = []
 
     @classmethod
     def from_dataset(cls, fourd_id: str, name: str, ds: FourDDataset) -> FourDMeta:
         source = ds.metadata.get("source")
+        rows, cols = ds.scan_shape
+        from_file = bool(ds.metadata.get("scan_shape_from_file", True))
         return cls(
             id=fourd_id,
             name=name,
@@ -165,4 +179,11 @@ class FourDMeta(BaseModel):
             dtype=str(ds.dtype),
             scan_axes=[AxisCalOut.from_axis_cal(a) for a in ds.scan_axes],
             det_axes=[AxisCalOut.from_axis_cal(a) for a in ds.det_axes],
+            n_frames=rows * cols,
+            scan_shape_from_file=from_file,
+            scan_shape_options=(
+                []
+                if from_file
+                else [list(p) for p in scan_shape_candidates(rows * cols)]
+            ),
         )

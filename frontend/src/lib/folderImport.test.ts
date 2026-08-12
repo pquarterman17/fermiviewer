@@ -54,6 +54,9 @@ function fourd(id: string): FourDMeta {
     scan_axes: [],
     det_axes: [],
     nav_available: false,
+  n_frames: 0,
+  scan_shape_from_file: true,
+  scan_shape_options: [],
   };
 }
 

@@ -46,6 +46,28 @@ class FourDStore:
                 self._paths[fourd_id] = str(source_path)
         return fourd_id
 
+    def replace(self, fourd_id: str, ds: FourDDataset) -> None:
+        """Swap a dataset's handle in place, keeping its id, name and path.
+
+        Used by `/fourd/{id}/reshape`, which re-opens a headerless Merlin file
+        under a different raster. Keeping the id is the point: the workshop's
+        selection, the probe position and the registered nav image are all
+        keyed by it, and a fresh id would silently deselect the dataset the
+        user is looking at. The OLD dataset is closed here, releasing its
+        memmap — a reshape that leaked one per attempt would make the feature
+        unusable exactly for the large files it exists for.
+        """
+        with self._lock:
+            if fourd_id not in self._datasets:
+                raise UnknownFourDError(fourd_id)
+            previous = self._datasets[fourd_id]
+            self._datasets[fourd_id] = ds
+            # The nav image was rastered at the OLD scan shape, so it no
+            # longer describes this dataset; drop the association and let the
+            # next /nav call register a fresh one.
+            self._nav_ids.pop(fourd_id, None)
+        previous.close()
+
     def get(self, fourd_id: str) -> FourDDataset:
         try:
             return self._datasets[fourd_id]

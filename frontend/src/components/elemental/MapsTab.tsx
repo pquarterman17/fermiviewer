@@ -16,8 +16,8 @@ import {
   type Spectrum,
 } from "../../lib/api";
 import type { CompositeRaster } from "../../lib/composite";
-import { elementColor } from "../../lib/elemental/elementColors";
-import { renderFigure, type FigureSource } from "../../lib/elemental/figure";
+import { exportElementalFigure } from "../../lib/elemental/figureExport";
+import type { LegendValue } from "../../lib/elemental/mapLegend";
 import {
   identifyElements,
   measureElement,
@@ -31,31 +31,15 @@ import {
 } from "../../lib/elemental/speciesRows";
 import { edsSpecies } from "../../lib/spectrum/species";
 import { speciesOf, useSpecies } from "../../store/species";
-import { buildElementLut } from "../../lib/elemental/elementColors";
 import { normalizeEdsSpectrum } from "../../lib/edsSpectrumDisplay";
-import { mapDisplayRange, renderElementMap } from "../../lib/edsMapDisplay";
 import { useViewer } from "../../store/viewer";
-import EdsElementList from "./ElementList";
-import EdsMapMontage, { type MapTile } from "./MapMontage";
-import EdsMapOverlay, { type LegendValue } from "./MapOverlay";
+import ElementList from "./ElementList";
+import MapMontage from "./MapMontage";
+import MapOverlay from "./MapOverlay";
 import type { EdsMapBackground } from "../workshops/useEdsElementMap";
 import { useEdsElementMaps } from "./useElementMaps";
 
 type View = "both" | "montage" | "overlay";
-
-function tileToFigureSource(tile: MapTile, detail: string): FigureSource {
-  const [h, w] = tile.shape;
-  const color = elementColor(tile.symbol);
-  const range = mapDisplayRange(tile.map, 1, 99);
-  return {
-    label: `${tile.symbol} ${tile.line}α`,
-    color,
-    detail,
-    rgba: renderElementMap(tile.map, w, h, range, buildElementLut(color)),
-    w,
-    h,
-  };
-}
 
 export default function EdsMapsTab({
   bg,
@@ -92,6 +76,7 @@ export default function EdsMapsTab({
   const [surveyId, setSurveyId] = useState<string | null>(null);
   const [survey, setSurvey] = useState<CompositeRaster | null>(null);
   const sumSpectrum = useRef<Spectrum | null>(null);
+  const overlayCanvas = useRef<HTMLCanvasElement | null>(null);
 
   const stillOpen = useCallback(
     (id: string | null): id is string =>
@@ -236,60 +221,29 @@ export default function EdsMapsTab({
   };
 
   const exportFigure = () => {
-    if (tiles.length === 0) return;
-    const detailOf = (symbol: string) => {
-      if (legendValue === "atomic") {
-        const pct = quantBySymbol?.[symbol];
-        return pct == null ? "" : `${pct.toFixed(1)} at%`;
-      }
-      return "";
-    };
-    const sources = tiles.map((tile) =>
-      tileToFigureSource(tile, detailOf(tile.symbol)),
-    );
-    const overlayCanvas = document.querySelector<HTMLCanvasElement>(
-      ".fvd-eds-overlay-canvas canvas",
-    );
-    let overlay: FigureSource | undefined;
-    if (overlayCanvas) {
-      const ctx = overlayCanvas.getContext("2d");
-      const data = ctx?.getImageData(
-        0,
-        0,
-        overlayCanvas.width,
-        overlayCanvas.height,
-      );
-      if (data) {
-        overlay = {
-          label: "Overlay",
-          color: "#e6e8ee",
-          rgba: data.data,
-          w: overlayCanvas.width,
-          h: overlayCanvas.height,
-        };
-      }
-    }
-    const canvas = document.createElement("canvas");
-    renderFigure(canvas, sources, {
+    const id = activeId;
+    void exportElementalFigure({
+      tiles,
+      overlayCanvas: view === "montage" ? null : overlayCanvas.current,
       title: meta?.name ?? "Elemental maps",
-      overlay,
-      columns: Math.min(4, Math.max(2, Math.ceil(Math.sqrt(tiles.length + 1)))),
-    });
-    canvas.toBlob((blob) => {
-      if (!blob) return;
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = "eds-element-maps.png";
-      anchor.click();
-      URL.revokeObjectURL(url);
-      report(activeId, `EDS: exported figure with ${tiles.length} maps`);
-    }, "image/png");
+      filename: "eds-element-maps.png",
+      legendValue,
+      quantBySymbol,
+      pixelSize: meta?.pixel_size,
+      pixelUnit: meta?.pixel_unit,
+    }).then((ok) =>
+      report(
+        id,
+        ok
+          ? `EDS: exported figure with ${tiles.length} maps`
+          : "EDS: nothing to export yet",
+      ),
+    );
   };
 
   return (
     <div className="fvd-eds-maps">
-      <EdsElementList
+      <ElementList
         rows={rows}
         busy={idBusy}
         quantBySymbol={quantBySymbol}
@@ -337,7 +291,7 @@ export default function EdsMapsTab({
       )}
 
       {view !== "overlay" && (
-        <EdsMapMontage
+        <MapMontage
           tiles={tiles}
           onFocus={(symbol) => {
             const row = rows.find((r) => r.species.symbol === symbol);
@@ -347,7 +301,7 @@ export default function EdsMapsTab({
       )}
 
       {view !== "montage" && (
-        <EdsMapOverlay
+        <MapOverlay
           tiles={tiles}
           gains={gains}
           onGain={(symbol, gain) =>
@@ -360,6 +314,7 @@ export default function EdsMapsTab({
           legendValue={legendValue}
           onLegendValue={setLegendValue}
           quantBySymbol={quantBySymbol}
+          canvasRef={overlayCanvas}
         />
       )}
     </div>

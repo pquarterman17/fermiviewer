@@ -8,6 +8,7 @@ import {
   areaPxToPhysical,
   boxProfileLine,
   fitView,
+  formatScaleLength,
   niceScaleLength,
   physAngle,
   physDist,
@@ -383,5 +384,26 @@ describe("polygonStatsWithHoles (#19, holes / multi-part regions)", () => {
     const img = { w: 100, h: 100 };
     const got = polygonStatsNormalizedWithHoles(outerNorm, [holeNorm], img);
     expect(got.areaPx2).toBeCloseTo(10000 - 400, 10);
+  });
+});
+
+describe("formatScaleLength", () => {
+  it("keeps lengths at or above 1 in their own unit, to 3 significant figures", () => {
+    expect(formatScaleLength(500, "nm")).toBe("500 nm");
+    expect(formatScaleLength(1.23456, "µm")).toBe("1.23 µm");
+    expect(formatScaleLength(1, "nm")).toBe("1 nm");
+  });
+
+  it("steps a sub-unit length down to the first sub-unit that reads >= 1", () => {
+    // Å preferred over pm just below a nanometre — the EM convention.
+    expect(formatScaleLength(0.2, "nm")).toBe("2 Å");
+    expect(formatScaleLength(0.05, "nm")).toBe("50 pm");
+    expect(formatScaleLength(0.0005, "µm")).toBe("5 Å");
+    expect(formatScaleLength(0.5, "um")).toBe("500 nm");
+  });
+
+  it("leaves a unit it has no chain for alone rather than inventing one", () => {
+    expect(formatScaleLength(0.5, "px")).toBe("0.5 px");
+    expect(formatScaleLength(0.5, "1/nm")).toBe("0.5 1/nm");
   });
 });

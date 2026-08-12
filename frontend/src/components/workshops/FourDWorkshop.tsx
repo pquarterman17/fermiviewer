@@ -26,6 +26,7 @@ import { useFourD } from "../../store/fourd";
 import FourDApertureControls from "./fourd/FourDApertureControls";
 import FourDNavPanel from "./fourd/FourDNavPanel";
 import FourDPatternPanel from "./fourd/FourDPatternPanel";
+import FourDScanShape from "./fourd/FourDScanShape";
 import { useFourDPatternFetch } from "./fourd/useFourDPatternFetch";
 
 export default function FourDWorkshop() {
@@ -33,6 +34,7 @@ export default function FourDWorkshop() {
   const selectedId = useFourD((s) => s.selectedId);
   const busyList = useFourD((s) => s.busyList);
   const busyNav = useFourD((s) => s.busyNav);
+  const reshapeDataset = useFourD((s) => s.reshapeDataset);
   const status = useFourD((s) => s.status);
   const fetchDatasets = useFourD((s) => s.fetchDatasets);
   const selectDataset = useFourD((s) => s.selectDataset);
@@ -123,6 +125,11 @@ export default function FourDWorkshop() {
 
       {selectedId && (
         <>
+          <FourDScanShape
+            meta={meta}
+            busy={busyNav}
+            onApply={(rows, cols) => void reshapeDataset(rows, cols)}
+          />
           <div className="fvd-fourd-panels">
             <FourDNavPanel />
             <FourDPatternPanel meta={meta} />

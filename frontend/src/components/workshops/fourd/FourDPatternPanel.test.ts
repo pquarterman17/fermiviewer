@@ -18,6 +18,9 @@ function fourdMeta(scanAxes: FourDMeta["scan_axes"]): FourDMeta {
       { scale: 1, origin: 0, units: "" },
     ],
     nav_available: true,
+  n_frames: 0,
+  scan_shape_from_file: true,
+  scan_shape_options: [],
   };
 }
 

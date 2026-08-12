@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { Raster16 } from "../../../lib/api";
-import { apertureCenterPreview, rasterCentroid } from "./fourdRaster";
+import {
+  apertureCenterPreview,
+  logStretchRaster,
+  rasterCentroid,
+} from "./fourdRaster";
 
 function raster(w: number, h: number, fill: (y: number, x: number) => number): Raster16 {
   const data = new Uint16Array(w * h);
@@ -95,5 +99,54 @@ describe("rasterCentroid", () => {
   it("ignores non-finite samples as zero weight, matching the server's fallback", () => {
     const data = [NaN, NaN, NaN, NaN];
     expect(rasterCentroid(data, 2, 2)).toEqual({ cy: 0.5, cx: 0.5 });
+  });
+});
+
+describe("logStretchRaster", () => {
+  const line = (values: number[]): Raster16 => ({
+    data: Uint16Array.from(values),
+    w: values.length,
+    h: 1,
+    vmin: 0,
+    vmax: 1,
+    nFrames: null,
+  });
+
+  it("leaves the ends of the ramp alone and lifts the middle", () => {
+    const out = logStretchRaster(line([0, 65535]));
+    expect(out.data[0]).toBe(0);
+    expect(out.data[1]).toBe(65535);
+    // A pixel at 0.1 % of full scale — a faint Bragg disk beside a saturated
+    // direct beam — must become visible rather than stay at 65/65535.
+    const faint = logStretchRaster(line([66])).data[0];
+    expect(faint).toBeGreaterThan(66 * 20);
+  });
+
+  it("is monotonic, so it never reorders intensities", () => {
+    const out = logStretchRaster(line([0, 1, 100, 5000, 20000, 65535]));
+    for (let i = 1; i < out.data.length; i++) {
+      expect(out.data[i]).toBeGreaterThan(out.data[i - 1]);
+    }
+  });
+
+  it("clamps a negative or non-finite sample instead of emitting NaN", () => {
+    // The output indexes a LUT; one NaN would render as an arbitrary colour
+    // rather than as the absent signal it stands for.
+    const bad = { ...line([0]), data: [-5, Number.NaN] as unknown as Uint16Array };
+    const out = logStretchRaster(bad);
+    expect(Array.from(out.data)).toEqual([0, 0]);
+  });
+
+  it("copies rather than mutating — the fetched raster is still linear", () => {
+    const source = line([0, 1000, 65535]);
+    const before = Array.from(source.data);
+    logStretchRaster(source);
+    expect(Array.from(source.data)).toEqual(before);
+  });
+
+  it("keeps the raster's dimensions and value range metadata", () => {
+    const source = line([0, 1000, 65535]);
+    const out = logStretchRaster(source);
+    expect([out.w, out.h, out.vmin, out.vmax]).toEqual([3, 1, 0, 1]);
   });
 });

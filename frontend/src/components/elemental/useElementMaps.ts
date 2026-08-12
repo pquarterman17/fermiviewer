@@ -17,7 +17,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { edsElementMaps } from "../../lib/api";
 import type { Species } from "../../lib/spectrum/species";
-import type { MapTile } from "./MapMontage";
+import type { MapTile } from "../../lib/elemental/mapTile";
 import type { EdsMapBackground } from "../workshops/useEdsElementMap";
 
 function keyOf(s: Species, bg: EdsMapBackground, e0Kev: number): string {

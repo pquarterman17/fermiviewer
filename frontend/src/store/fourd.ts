@@ -22,6 +22,7 @@ import {
   fetchFourDMeanPattern,
   fetchFourDNav,
   listFourD,
+  reshapeFourD,
   type ApertureShape,
   type FourDMeta,
   type ImageMeta,
@@ -165,6 +166,8 @@ interface FourDState {
 
   fetchDatasets: () => Promise<void>;
   selectDataset: (id: string) => Promise<void>;
+  /** Re-raster the selected headerless dataset to `rows × cols`. */
+  reshapeDataset: (rows: number, cols: number) => Promise<void>;
   closeDataset: (id: string) => Promise<void>;
   fetchNavRaster: () => Promise<void>;
   showNavImage: () => Promise<void>;
@@ -236,6 +239,30 @@ export const useFourD = create<FourDState>((set, get) => ({
     // (see showNavImage below), so merely browsing the dataset picker never
     // hijacks the main Stage's active image.
     await Promise.all([get().fetchMeanPattern(), get().fetchNavRaster()]);
+  },
+
+  reshapeDataset: async (rows, cols) => {
+    const id = get().selectedId;
+    if (!id) return;
+    set({ busyNav: true });
+    let meta: FourDMeta;
+    try {
+      meta = await reshapeFourD(id, rows, cols);
+    } catch (e) {
+      set({ status: `reshape: ${(e as Error).message}`, busyNav: false });
+      return;
+    }
+    // The id is unchanged (routes/fourd.py keeps it deliberately), so the
+    // selection survives — but EVERY cached raster described the old raster
+    // and none of them describe this one. selectDataset re-fetches them and
+    // resets the aperture, which is exactly the teardown needed here; the
+    // dataset list is refreshed first so it carries the new shape.
+    set({
+      datasets: get().datasets.map((d) => (d.id === id ? meta : d)),
+      busyNav: false,
+    });
+    await get().selectDataset(id);
+    set({ status: `scan re-rastered to ${rows} × ${cols}` });
   },
 
   closeDataset: async (id) => {

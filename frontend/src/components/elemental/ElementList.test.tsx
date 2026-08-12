@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { IdentifiedElement } from "../../lib/elemental/identify";
 import type { SpeciesRow } from "../../lib/elemental/speciesRows";
 import { edsSpecies, eelsSpecies } from "../../lib/spectrum/species";
-import EdsElementList from "./ElementList";
+import ElementList from "./ElementList";
 
 function evidenceFor(
   symbol: string,
@@ -40,7 +40,7 @@ function row(
   };
 }
 
-type Props = ComponentProps<typeof EdsElementList>;
+type Props = ComponentProps<typeof ElementList>;
 
 function renderList(overrides: Partial<Props> = {}) {
   const props: Props = {
@@ -58,11 +58,11 @@ function renderList(overrides: Partial<Props> = {}) {
     onFocus: vi.fn(),
     ...overrides,
   };
-  render(<EdsElementList {...props} />);
+  render(<ElementList {...props} />);
   return props;
 }
 
-describe("EdsElementList", () => {
+describe("ElementList", () => {
   it("summarises how many elements were found and how many are shown", () => {
     renderList();
     expect(screen.getByText("2 found · 1 shown")).toBeVisible();

@@ -8,10 +8,13 @@ implementation so a feature cannot land in one and rot in the other.
 **Status:** Active
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-07-29
-**Updated:** 2026-08-11 — items 2, 3, 4, 12, 13, 14, 15, 16 and 22 all
-shipped today: the W1 foundation is complete and **W3 (EELS workspace) is
-COMPLETE** — Maps workflow, Explore direct manipulation, batch maps and
-auto-ID. 8 items open (W1 polish, W2 retirement, W4 verification)
+**Updated:** 2026-08-12 — **W1 (shared spectrum core) and W4's Tier 2 are
+both COMPLETE**: items 7, 5, 6, 18 and 23 all shipped today. The goldens
+required rebuilding the synthetic oracle — it planted intensities the
+quantifiers do not invert, wrapped uint16, buried its EELS edges under the
+background, and was compared against the wrong truth. Both EELS quantifiers
+now recover the planted composition to 0.4 pp. 4 items open (W2 retirement,
+W4 Tier 3)
 
 ---
 
@@ -54,15 +57,18 @@ quantification the user may not want.
 
 ### Dependency map
 
-- The W1 foundation (items 1–4) and all of W3 are complete
-- Items 5 and 6 are independent of each other (both build on item 2's core)
+- All of W1 (items 1–7) and all of W3 are complete
 - Item 8 unblocks 9; item 14 unblocks 15 (both 8 and 14 have now shipped)
-- Item 7 (shared composite) now has its second caller: item 15 shipped by
-  reusing MapOverlay for EELS, so the remaining question is whether a
-  distinct `EdsComposite`/`ChannelComposite` surface still needs unifying —
-  verify against the code before starting
+- Item 10 (composite → library) is the one open item with an unanswered
+  architectural question: `DataStruct` is grayscale-only (`_to_gray` collapses
+  every RGB input on load) and `DataKind.IMAGE` is asserted in ~69 places, so
+  "register the composite as an RGB library image" needs a data-model decision
+  and an ADR before code — not a wiring job
 - W4 item 17 is done and is the verification substrate for everything else
 - Item 11 is last: retiring the old flow needs the new one proven
+- Items 18 and 23 shipped together: the synthetic cubes now invert the app's
+  own forward models, so both EELS quantifiers recover the planted composition
+  to 0.4 pp and agree with each other
 
 ### Resolved decisions
 
@@ -115,20 +121,10 @@ quantification the user may not want.
 
 ## W1 — Shared spectrum core
 
-### Tier 1 — High Impact
-
-7. **Shared composite** — N species → one RGBA raster, for either modality
-   - [ ] Generalise `EdsComposite` once item 15 gives it a second caller
-
-### Tier 2 — Medium Impact
-
-5. **Width presets and FWHM auto-fit** — narrow / standard / wide, or fit the
-   window to the measured peak width
-   - [ ] EDS: seed from the detector-resolution curve, refine on the data
-   - [ ] EELS: an integration width past the onset, which is the real control
-
-6. **Numeric steppers with live net** — typed bounds that show net ± σ as they
-   change, plus a lock so the window follows the species' line/onset
+**COMPLETE 2026-08-12** — every item (1–7) shipped; see Completed. The
+shared core is the species model, the modality-blind window model and its
+drag/nudge surface, the SpectrumWorkspace shell, the width-preset/fit/lock
+strip, and one composite + one figure export for both modalities.
 
 ---
 
@@ -159,12 +155,7 @@ the same shared components as EDS.
 
 ## W4 — Test data and verification
 
-### Tier 2 — Medium Impact
-
-18. **Quantification golden tests against truth** — assert `/eds/quantify` and
-    `/eels/quantify` recover the synthetic composition within tolerance
-    - [ ] Uses the `.truth.json` sidecar as the oracle
-    - [ ] Documents the tolerance each method actually achieves
+*Tier 2 is empty — items 18 and 23 both shipped 2026-08-12; see Completed.*
 
 ### Tier 3 — Nice-to-Have
 
@@ -177,6 +168,138 @@ the same shared components as EDS.
 ---
 
 ## Completed
+
+- ~~**#18 Quantification golden tests against truth + #23 synthetic edge
+  shapes from `calc/eels_model`**~~ (2026-08-12) — `tests/test_quant_golden.py`
+  runs `/eds/quantify`, `/eels/quantify` and `/eels/fit` on cubes of known
+  composition. **Every EELS number below is a same-day correction of a first
+  pass that shipped wrong**, which is recorded here rather than tidied away:
+  the first attempt scaled the planted edges to their own physical
+  cross-section magnitude (~1e-25 m²) against a background normalised to ~1e-2,
+  burying every edge twenty-odd orders of magnitude under it. The "EELS
+  quantifies to 26 pp" figure that first booked this item was measuring
+  background residue, not edges.
+  **The oracle did not work and had to be made to — four defects.** (1) EDS
+  line areas came from an invented `1 + 0.5·log1p(E)` weighting unrelated to
+  anything the quantifier inverts: C came back at 21 at% against a truth of
+  9.4, Al at 5.0 against 10.0. Areas now come from the app's own Cliff-Lorimer
+  model (`I ∝ f·M/k`) and EELS edges from `eels_model.edge_shape_fn` — item
+  23's deliverable, and the rule that already governed peak POSITIONS applied
+  to their shapes and areas. (2) `astype(np.uint16)` WRAPS: with correct
+  weights, Ta's per-pixel peak mean reached ~2.6e5 and most of its peak wrapped
+  to near zero, quantifying 6.2 at% as 0.7. Sampling now rescales into range
+  first — a global factor, so every ratio survives, where a clip would have
+  truncated the brightest element. (3) `eels-layers` started its axis at 80 eV,
+  leaving Si L23 at 99 eV only 19 eV of pre-edge against the 52 eV its
+  background fit asks for; the truncated fit over-extrapolated and Si came back
+  at 3 at% against 46. (4) The planted edges needed ONE global scale to a
+  realistic edge jump (0.6 of the background at the lowest onset) — one factor,
+  so the cross-section ratios that make the cube an oracle are untouched.
+  **And a comparison error in the test itself:** it compared against
+  `field_mean_atomic_percent`, which averages over the whole raster including
+  vacuum, while a quantifier measures the MATERIAL and normalises to 100. That
+  is a silent bias of exactly the empty fraction (6.25 % of eds-layers). The
+  sidecar now carries `material_atomic_percent` too, and a test asserts the two
+  are one scale factor apart so they cannot drift.
+  **Results, all measured and asserted as ceilings** so an improvement fails
+  the test and forces the docstring's table to be tightened. EDS: Al and O land
+  within **0.02 pp** on eds-layers, which is what makes the remaining carbon
+  error attributable to carbon rather than to a loose pipeline. That error —
+  C 21.2 vs 10.0 — is the flanking LINEAR background under a steep convex
+  Kramers continuum, and the `bremsstrahlung` alternative was measured and is
+  WORSE (25.6 pp), so it is a floor of window integration, not a hardcoded
+  wrong model. EELS: BOTH quantifiers now recover the four-edge composition to
+  **0.4 pp**, and agree with each other to 0.5 pp — the check that the cube is
+  a real oracle rather than two methods failing the same way.
+  Scope stated in the docstring rather than implied: planting and inverting
+  with the same table cannot test the table, so the k-factors and
+  cross-sections themselves are NOT under test; everything between the cube and
+  the answer is. Verified by mutation — restoring the old intensity weighting,
+  the uint16 wrap, the edge-jump scale, or the field-vs-material comparison
+  each reddens the suite. 11 tests; backend gate 1890 passed.
+
+- ~~**#5 Width presets and FWHM auto-fit + #6 Numeric steppers with live
+  net**~~ (2026-08-12) — shipped together because they are one control strip:
+  `components/spectrum/WindowPresetBar.tsx` (narrow / standard / wide, Fit
+  width, Lock to line) sits under the plot in BOTH Explore tabs, with every
+  number coming from `lib/spectrum/windowPresets.ts`.
+  **The presets are physics, not three arbitrary numbers.** EDS widths are
+  multiples of the DETECTOR resolution at that line (1.0 / 1.5 / 2.0 × FWHM
+  total = 76 / 92 / 98 % of a Gaussian peak), because a fixed ±85 eV is 1.3
+  FWHM at C-Kα and 0.65 FWHM at Mn-Kα — the same number meaning two different
+  things is what the item was about. EELS widths are absolute (30 / 50 / 100
+  eV past the onset): an edge is a step, there is nothing to bracket, and
+  `standard` IS `EELS_SIGNAL_WIDTH_EV` rather than a copy of 50, so the preset
+  row and a fresh species' default cannot drift.
+  **The resolution curve is a documented port, pinned by numbers in both
+  suites.** `lib/eds/resolution.ts` ports `calc/eds_calib.py::fano_fwhm` (a
+  preset click must not need a round trip), and
+  `test_fano_fwhm_matches_frontend_port` + `resolution.test.ts` assert the
+  SAME five sample values — change a constant on either side and one suite
+  goes red. That is the only lockstep two languages can have here, and it is
+  stronger than the prose lockstep the EELS constants have.
+  **"Refine on the data" refuses rather than guesses.** `fitPeakWindow`
+  measures the peak's real FWHM against a baseline joining the search span's
+  ends, and returns null — leaving the window exactly as the user had it —
+  when the span holds no interior maximum, when a half-maximum crossing runs
+  off the end, or when the peak stands less than 5 % of its own counts above
+  that baseline. That last guard came out of a test: a peak far broader than
+  the span reads as 0.14 keV wide instead of 2.0, because the span's ends sit
+  on the peak's own flanks. A silently TOO-NARROW window would have been the
+  worst possible outcome of a button labelled "Fit".
+  **Item 6's lock is where the two items meet.** EDS keeps the tabulated line
+  in `useEdsEnergyWindow` (the `Species.energy` split, for the reason item 1
+  recorded), and while locked a commit re-centres the window on it: an edge
+  drag widens symmetrically, a body drag cannot walk the window off its peak,
+  and the element stays bound — dropping to "(custom)" while locked would
+  silently undo the lock. Fitting re-anchors to the MEASURED centre so a later
+  resize does not snap back to an energy this spectrum's calibration disagrees
+  with. EELS gets no toggle on purpose: its window starts at the onset by
+  definition, so the presets are onset-following unconditionally and a toggle
+  could only offer to make the window wrong.
+  Typed bounds already showed live net ± σ in both tabs (EDS via
+  `IntegrationPanel`, EELS via item 13's readout); the EDS steppers moved from
+  a 50 eV step to 5 eV — a 50 eV nudge is a third of a window — and now show
+  the width in eV beside them.
+  Sizes: EdsSpectrumImage 473 → 408 (new `useEdsEnergyWindow.ts` 168 +
+  `EdsWindowControls.tsx` 155), so the strip was paid for by extraction, and
+  the lock/preset/fit rules are unit-tested rather than reachable only by
+  driving a React tree. 34 new tests; the lock's re-centring verified by
+  mutation. Frontend gate 1275 vitest / 170 files, tsc + build clean.
+
+- ~~**#7 Shared composite**~~ (2026-08-12) — the composite itself was already
+  shared: `EdsComposite` no longer exists (item 21 renamed the generic
+  surface to `ChannelComposite` in 2026-07-30), `lib/composite.ts` is the one
+  blend both it and `MapOverlay` call, and item 15 landed the EELS caller by
+  reusing `MapOverlay` whole. `ChannelComposite` stays separate on purpose —
+  its channel is a filename, not an element, and its own header records the
+  bug that conflating the two caused. So this item closed as a **verification
+  plus the residue that verification exposed**, which was real:
+  **the figure export had already forked.** Both Maps tabs carried a ~40-line
+  copy, and the copies had drifted — the EDS figure captioned at% and only
+  at%, the EELS figure captioned nothing, while both on-screen legends showed
+  net counts. The one rule now lives in `lib/elemental/mapLegend.ts` and the
+  one assembly in `lib/elemental/figureExport.ts`; EELS gained the caption
+  detail it never had, and both modalities now honour the legend selector the
+  user actually set.
+  **The exported figure gained its scale bar** — `renderFigure` had supported
+  one since it was written and neither caller passed it, so the deliverable
+  this plan exists to produce was going out unpublishable. It is drawn on the
+  combined panel, or on the first tile when the montage-only view is exported
+  (previously that view silently produced no bar at all — mutation-verified).
+  An uncalibrated cube gets NO bar rather than a default-scaled one: a bar is
+  an assertion about physical length and there is nothing to assert.
+  `formatScaleLength` moved out of `ScaleBarOverlay` into `lib/geometry.ts`
+  beside `niceScaleLength`, so the Stage bar and the figure bar cannot word a
+  length differently.
+  Also: `MapTile`/`tileKey` moved to `lib/elemental/mapTile.ts` (a `lib/`
+  module must not import from `components/`, which the extraction would
+  otherwise have forced), the export reads the overlay through a ref instead
+  of a global `document.querySelector(".fvd-eds-overlay-canvas canvas")`, and
+  the shared components lost their EDS names — `EdsMapOverlay`/`EdsMapMontage`
+  /`EdsElementList` → `MapOverlay`/`MapMontage`/`ElementList`, since the EELS
+  tab was importing all three under an EDS name. 17 new tests; frontend gate
+  1241 vitest / 167 files, tsc + build clean.
 
 - ~~**#3 Modality-driven species list + #12 Edge picker + #15 EELS composite
   + #16 Background auto-place**~~ (2026-08-11, merged `bc3e8b3`; sonnet

@@ -44,6 +44,9 @@ function fourdMeta(id = "d1", detShape: [number, number] = [640, 640]): FourDMet
       { scale: 1, origin: 0, units: "" },
     ],
     nav_available: true,
+  n_frames: 0,
+  scan_shape_from_file: true,
+  scan_shape_options: [],
   };
 }
 

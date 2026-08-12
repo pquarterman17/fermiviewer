@@ -5,14 +5,12 @@
 // shows where nothing is mapped, with a legend naming each colour. The legend
 // is not decoration — without it a multi-element overlay is unreadable.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import { compositeChannels, type CompositeRaster } from "../../lib/composite";
 import { useElementColors } from "../../lib/elemental/elementColors";
-import { formatCountTick } from "../../lib/edsSpectrumDisplay";
-import { tileKey, type MapTile } from "./MapMontage";
-
-export type LegendValue = "none" | "net" | "atomic";
+import { legendDetail, type LegendValue } from "../../lib/elemental/mapLegend";
+import { tileKey, tileLabel, type MapTile } from "../../lib/elemental/mapTile";
 
 /** Normalize a float map to the 0–65535 the compositor windows against. */
 function toRaster(tile: MapTile): CompositeRaster {
@@ -35,7 +33,7 @@ function toRaster(tile: MapTile): CompositeRaster {
   return { w, h, data };
 }
 
-export default function EdsMapOverlay({
+export default function MapOverlay({
   tiles,
   gains,
   onGain,
@@ -46,6 +44,7 @@ export default function EdsMapOverlay({
   legendValue,
   onLegendValue,
   quantBySymbol,
+  canvasRef: externalCanvasRef,
 }: {
   tiles: MapTile[];
   /** Per-tile brightness, tileKey(tile) → 0–2 — not bare symbol, since one
@@ -61,9 +60,15 @@ export default function EdsMapOverlay({
   legendValue: LegendValue;
   onLegendValue: (value: LegendValue) => void;
   quantBySymbol?: Record<string, number>;
+  /** Handed the composited canvas so the figure export can read it back.
+   *  A ref rather than a document query: the export used to reach for
+   *  `.fvd-eds-overlay-canvas canvas` globally, which silently exports
+   *  whichever overlay the DOM happens to hold first. */
+  canvasRef?: RefObject<HTMLCanvasElement | null>;
 }) {
   const colors = useElementColors();
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const ownCanvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasRef = externalCanvasRef ?? ownCanvasRef;
   const [blend, setBlend] = useState<"add" | "max">("add");
   const [surveyLevel, setSurveyLevel] = useState(0.45);
 
@@ -93,17 +98,6 @@ export default function EdsMapOverlay({
   }, [blend, colors, gains, rasters, survey, surveyLevel, tiles]);
 
   if (tiles.length === 0) return null;
-
-  const detail = (tile: MapTile): string => {
-    if (legendValue === "atomic") {
-      const pct = quantBySymbol?.[tile.symbol];
-      return pct == null ? "" : `${pct.toFixed(1)} at%`;
-    }
-    if (legendValue === "net") {
-      return formatCountTick(tile.totalCounts);
-    }
-    return "";
-  };
 
   return (
     <section className="fvd-eds-overlay" aria-label="Element overlay">
@@ -169,7 +163,7 @@ export default function EdsMapOverlay({
 
       <ul className="fvd-eds-legend">
         {tiles.map((tile) => {
-          const value = detail(tile);
+          const value = legendDetail(tile, legendValue, quantBySymbol);
           return (
             <li key={tileKey(tile)}>
               <span
@@ -178,7 +172,7 @@ export default function EdsMapOverlay({
                 aria-hidden="true"
               />
               <span style={{ color: colors(tile.symbol) }}>
-                {tile.caption ?? `${tile.symbol} ${tile.line}α`}
+                {tileLabel(tile)}
               </span>
               {value && <span className="k">{value}</span>}
             </li>

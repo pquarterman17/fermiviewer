@@ -16,6 +16,45 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Tell FermiViewer what shape your Merlin scan was.** A `.mib` file records
+  its frames and nothing about the raster that produced them, so every
+  headerless Merlin acquisition opened as a single-row line scan — a
+  ten-pixel navigation strip. The 4D-STEM Viewer now has a scan-shape control:
+  type rows × columns, or click one of the suggested factorisations (squarest
+  first, since STEM scans usually are), and the file re-opens under that
+  raster with the dataset, probe and aperture selection intact. A file that
+  records its own scan axes, like HyperSpy 4D, does not offer this.
+- **Log intensity on the diffraction pattern**, on by default. A 4D pattern
+  runs from a saturated direct beam to Bragg disks a thousand times fainter;
+  on the previous linear ramp everything but the direct beam was black. This
+  changes the display only — computed virtual-detector maps are unaffected.
+- **Window width presets, on both spectroscopies.** Narrow / standard / wide
+  now sit under the spectrum in Explore. On EDS they are multiples of the
+  detector's own resolution at that line (1.0 / 1.5 / 2.0 × FWHM, capturing
+  76 / 92 / 98 % of the peak), so "standard" means the same thing at carbon
+  and at copper — a fixed ±85 eV does not. On EELS they are integration
+  widths past the edge onset (30 / 50 / 100 eV), and the pre-edge background
+  window re-places itself underneath.
+- **Fit width** measures the peak's real width in the spectrum you are
+  looking at and fits the window to it — useful when the detector is not
+  performing to spec or the line is an unresolved pair. If there is no
+  resolved peak to measure it says so and leaves your window alone.
+- **Lock to line.** With an element picked, the EDS window stays centred on
+  its line: dragging an edge widens it symmetrically instead of walking it
+  off the peak, and the element stays selected. Fitting re-anchors to the
+  line as measured here, so a later resize does not snap back to a tabulated
+  energy this spectrum disagrees with. Untick it and the window moves freely,
+  exactly as before.
+- **The exported elemental figure now carries a scale bar.** Export figure
+  bakes a round scale bar onto the combined overlay panel — or onto the first
+  map when you export the montage-only view, which previously produced a
+  figure with no bar at all. A cube with no spatial calibration gets no bar
+  rather than one asserting a length nobody measured. The bar is worded by
+  the same rule as the on-screen Stage bar, so a 0.2 nm length reads "2 Å" in
+  both places.
+- **EELS figures caption their maps.** The EELS export used to drop the
+  net-counts / at% detail the on-screen legend was showing; both modalities
+  now export exactly the legend you selected.
 - **Drag the energy window on the spectrum.** Grab either edge of the
   highlighted window to resize it, or its middle to slide it — the
   integration readout follows live, and the element map refreshes once on
@@ -61,6 +100,20 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   identifier uses — the missing half of an EELS Maps workflow.
 
 ### Fixed
+- **The synthetic test-data generator was not a valid quantification oracle.**
+  `tools/make_synthetic_si.py` planted EDS line areas from an invented
+  energy-dependent weighting unrelated to Cliff–Lorimer, so quantifying its
+  own cubes returned carbon at 21 at% against a planted 9.4. Line and edge
+  intensities now come from the application's own models — Cliff–Lorimer
+  weights for EDS, the same differential cross-section the EELS model fit
+  refines for EELS — so both EELS quantifiers now recover a four-edge
+  composition to within 0.4 at% and agree with each other. Three further bugs
+  fell out: the cube silently wrapped `uint16` for bright heavy elements
+  (tantalum's 6.2 at% came back as 0.7); the EELS preset's energy axis started
+  too close to its lowest edge for that edge's background fit window to fit on
+  it (silicon's 46 at% came back as 3); and the planted core-loss edges sat
+  twenty orders of magnitude below the background, so the cube was effectively
+  a bare power law.
 - `calc/eels.extract_map` no longer casts the whole SI cube to float64:
   only the signal- and background-window channels are promoted, so
   extracting one edge map from a multi-GB cube allocates a few channels'

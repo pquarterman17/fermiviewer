@@ -7,11 +7,43 @@ import { compositeChannels, type CompositeRaster } from "../../../lib/composite"
 import type { FourDAperture } from "../../../store/fourd";
 import type { Raster16 } from "../../../lib/api";
 
+/** Contrast of the log stretch: display ∝ log(1 + g·I) with g = 1000, which
+ *  brings roughly three decades of diffraction intensity into one 8-bit
+ *  screen ramp. Chosen for the job it does — a 4D-STEM pattern routinely runs
+ *  from a saturated direct beam to Bragg disks a thousand times fainter, and
+ *  on a linear ramp everything but the direct beam is black. */
+export const LOG_STRETCH_GAIN = 1000;
+
+/** Log-stretched copy of a normalized 0–65535 raster.
+ *
+ *  A DISPLAY transform only — nothing downstream of the canvas sees it, and
+ *  the virtual-detector maps the server computes are unaffected. Negative or
+ *  non-finite samples clamp to zero rather than producing NaN: this feeds a
+ *  LUT index, and one NaN pixel would otherwise render as an arbitrary
+ *  colour rather than as the absent signal it represents.
+ */
+export function logStretchRaster(raster: Raster16): Raster16 {
+  const denom = Math.log1p(LOG_STRETCH_GAIN);
+  const data = new Uint16Array(raster.data.length);
+  for (let i = 0; i < data.length; i++) {
+    const v = raster.data[i];
+    const t = Number.isFinite(v) && v > 0 ? v / 65535 : 0;
+    data[i] = Math.round((Math.log1p(LOG_STRETCH_GAIN * t) / denom) * 65535);
+  }
+  return { ...raster, data };
+}
+
 /** Draw a single-channel Raster16 onto a canvas as grayscale, sizing the
  *  canvas to the raster's native pixel dims (CSS sizing/scaling is the
- *  caller's job, same division of labor as ChannelComposite). */
-export function drawRaster16(canvas: HTMLCanvasElement, raster: Raster16): void {
-  const cr: CompositeRaster = { w: raster.w, h: raster.h, data: raster.data };
+ *  caller's job, same division of labor as ChannelComposite). `log` applies
+ *  the diffraction log stretch above. */
+export function drawRaster16(
+  canvas: HTMLCanvasElement,
+  raster: Raster16,
+  options: { log?: boolean } = {},
+): void {
+  const shown = options.log ? logStretchRaster(raster) : raster;
+  const cr: CompositeRaster = { w: shown.w, h: shown.h, data: shown.data };
   const { w, h, rgba } = compositeChannels(
     [cr],
     [{ color: "#ffffff", intensity: 1, visible: true, cmap: "gray" }],

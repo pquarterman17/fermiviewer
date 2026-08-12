@@ -31,6 +31,7 @@ import {
 import { useViewer } from "../../store/viewer";
 import EdsElementPicker from "../elemental/ElementPicker";
 import EdsElementMap from "./EdsElementMap";
+import EdsWindowControls from "./EdsWindowControls";
 import EdsIntegrationPanel from "../spectrum/IntegrationPanel";
 import EdsSpectrumPanel from "../spectrum/SpectrumPanel";
 import EdsSpectrumSourcePicker from "./EdsSpectrumSourcePicker";
@@ -38,6 +39,7 @@ import SpectrumPlot from "../spectrum/SpectrumPlot";
 import EdsSpectrumZoomBar from "../spectrum/SpectrumZoomBar";
 import type { Rect1 } from "./RegionPicker";
 import { useEdsDerivedMap } from "./useEdsDerivedMap";
+import { useEdsEnergyWindow } from "./useEdsEnergyWindow";
 import { type EdsMapBackground, useEdsElementMap } from "./useEdsElementMap";
 import { useEdsSpectrumSource } from "./useEdsSpectrumSource";
 
@@ -79,9 +81,7 @@ export default function EdsSpectrumImage() {
   const setCaptureMode = useViewer((s) => s.setCaptureMode);
   const specnavPixel = useViewer((s) => s.specnavPixel);
 
-  // energy window state
-  const [eLo, setELo] = useState(0.5);
-  const [eHi, setEHi] = useState(1.5);
+  // energy window state (the window itself lives in useEdsEnergyWindow)
   const [bgMode, setBgMode] = useState<EdsMapBackground>("linear");
   const [e0Kev, setE0Kev] = useState(30); // beam energy for bremsstrahlung bg
 
@@ -128,6 +128,14 @@ export default function EdsSpectrumImage() {
     onStatus: reportEds,
   });
 
+  const energyWindow = useEdsEnergyWindow({
+    bgMode,
+    recomputeMap,
+    onUnbind: () => setSelElem("(custom)"),
+    onStatus: (message) => reportEds(activeId, message),
+  });
+  const { eLo, eHi } = energyWindow;
+
   // When the active cube is removed or switched away, clear the status line if
   // it still shows the message this explorer last wrote: an EDS error must not
   // outlive the file it referred to (the reported "errors didn't clear" bug).
@@ -150,35 +158,32 @@ export default function EdsSpectrumImage() {
   const handleElementChange = useCallback(
     (sym: string) => {
       setSelElem(sym);
-      if (sym === "(custom)") return;
+      if (sym === "(custom)") {
+        energyWindow.release(eLo, eHi);
+        return;
+      }
       const id = activeId;
       edsLineEnergy(sym)
         .then(({ energy_kev, line }) => {
           if (!stillOpen(id)) return;
-          const lo = energy_kev - HALF_WIN;
-          const hi = energy_kev + HALF_WIN;
-          setELo(lo);
-          setEHi(hi);
-          recomputeMap(lo, hi, bgMode);
+          energyWindow.anchor(energy_kev, energy_kev - HALF_WIN, energy_kev + HALF_WIN);
           reportEds(id, `EDS: ${sym} ${line}α at ${energy_kev.toFixed(3)} keV`);
         })
         .catch((e: Error) => reportEds(id, `EDS line-energy: ${e.message}`));
     },
-    [activeId, bgMode, recomputeMap, reportEds, stillOpen],
+    [activeId, eHi, eLo, energyWindow, reportEds, stillOpen],
   );
 
   const onSpectrumLoaded = useCallback(() => {
     if (elements.length > 0) {
       handleElementChange(elements[0]);
     } else {
-      setELo(0.5);
-      setEHi(1.5);
-      recomputeMap(0.5, 1.5, "linear");
+      energyWindow.release(0.5, 1.5, "linear");
     }
     // `elements` is derived fresh each render from meta; keying on its content
     // keeps this from re-running the window init on unrelated re-renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [elements.join(","), handleElementChange, recomputeMap]);
+  }, [elements.join(","), handleElementChange, energyWindow.release]);
 
   const { displaySpectrum, label, source, busy, showSum, showRegion } =
     useEdsSpectrumSource({
@@ -214,21 +219,10 @@ export default function EdsSpectrumImage() {
     [displaySpectrum, eLo, eHi, bgMode, e0Kev],
   );
 
-  const handleWindowChange = (lo: number, hi: number) => {
-    const lo2 = Math.min(lo, hi);
-    const hi2 = Math.max(lo, hi);
-    setELo(lo2);
-    setEHi(hi2);
-    setSelElem("(custom)");
-    recomputeMap(lo2, hi2, bgMode);
-  };
-
+  const handleWindowChange = energyWindow.commit;
   // Mid-drag frames: the overlay and the client-side integration follow the
-  // cursor; the element map waits for the commit above.
-  const handleWindowLive = (lo: number, hi: number) => {
-    setELo(Math.min(lo, hi));
-    setEHi(Math.max(lo, hi));
-  };
+  // cursor; the element map waits for the commit.
+  const handleWindowLive = energyWindow.live;
 
   const handleBgChange = (mode: EdsMapBackground) => {
     setBgMode(mode);
@@ -245,11 +239,12 @@ export default function EdsSpectrumImage() {
   // Restoring a pinned region puts its window back and frames it, so the
   // number in the table and the peak on screen are the same measurement.
   const restoreRegion = (region: IntegrationRegion) => {
-    setELo(region.eLo);
-    setEHi(region.eHi);
     setSelElem(region.label.match(/^[A-Z][a-z]?$/) ? region.label : "(custom)");
     setBgMode(region.bg);
-    recomputeMap(region.eLo, region.eHi, region.bg);
+    // Restoring a pinned region means "put exactly THIS window back", so it
+    // arrives unanchored: a stale line from a previously picked element would
+    // otherwise let the lock yank the restored window off its own position.
+    energyWindow.release(region.eLo, region.eHi, region.bg);
     setXRange(frameWindow(region.eLo, region.eHi, bounds, minSpan));
   };
 
@@ -360,88 +355,28 @@ export default function EdsSpectrumImage() {
         />
       </div>
 
-      {/* Energy window */}
-      <div className="fvd-ws-row">
-        <span className="k">Window (keV)</span>
-        <input
-          type="number"
-          step={0.05}
-          value={eLo.toFixed(3)}
-          style={{ width: 72 }}
-          onChange={(e) => handleWindowChange(Number(e.target.value), eHi)}
-          title="Energy window low (keV)"
-        />
-        <span style={{ padding: "0 4px" }}>–</span>
-        <input
-          type="number"
-          step={0.05}
-          value={eHi.toFixed(3)}
-          style={{ width: 72 }}
-          onChange={(e) => handleWindowChange(eLo, Number(e.target.value))}
-          title="Energy window high (keV)"
-        />
-        <button
-          className="fvd-btn"
-          title="Zoom the spectrum to the current energy window"
-          onClick={() => setXRange(frameWindow(eLo, eHi, bounds, minSpan))}
-        >
-          Zoom to window
-        </button>
-      </div>
-
-      {/* Background mode toggle */}
-      <div className="fvd-ws-row">
-        <span className="k">Background</span>
-        <div className="fvd-seg">
-          {(["linear", "none", "bremsstrahlung"] as const).map((m) => (
-            <button
-              key={m}
-              className={`fvd-seg-btn${bgMode === m ? " active" : ""}`}
-              title={
-                m === "bremsstrahlung"
-                  ? "Physical Kramers continuum (per-pixel amplitude fit)"
-                  : `${m} background`
-              }
-              onClick={() => handleBgChange(m)}
-            >
-              {m === "bremsstrahlung" ? "brems" : m}
-            </button>
-          ))}
-        </div>
-        {bgMode === "bremsstrahlung" && (
-          <>
-            <span className="k">E₀ (keV)</span>
-            <input
-              type="number"
-              value={e0Kev}
-              style={{ width: 56 }}
-              title="Beam energy — Duane–Hunt continuum cutoff"
-              onChange={(e) => {
-                const v = Number(e.target.value) || 0;
-                setE0Kev(v);
-                if (v > eHi) recomputeMap(eLo, eHi, "bremsstrahlung", v);
-              }}
-            />
-          </>
-        )}
-        <label
-          className="k"
-          style={{
-            marginLeft: "auto",
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-          }}
-          title="Label characteristic X-ray peaks on the spectrum (Si Kα, Fe Kα…)"
-        >
-          <input
-            type="checkbox"
-            checked={showPeaks}
-            onChange={(e) => setShowPeaks(e.target.checked)}
-          />
-          Label peaks
-        </label>
-      </div>
+      <EdsWindowControls
+        eLo={eLo}
+        eHi={eHi}
+        onWindow={handleWindowChange}
+        onZoomToWindow={() => setXRange(frameWindow(eLo, eHi, bounds, minSpan))}
+        anchorKev={energyWindow.anchorKev}
+        onPreset={energyWindow.applyPreset}
+        onFit={() => energyWindow.applyFit(displaySpectrum)}
+        fitDisabled={!displaySpectrum}
+        lineKev={energyWindow.lineKev}
+        locked={energyWindow.locked}
+        onLocked={energyWindow.setLocked}
+        bgMode={bgMode}
+        onBgMode={handleBgChange}
+        e0Kev={e0Kev}
+        onE0Kev={(v) => {
+          setE0Kev(v);
+          if (v > eHi) recomputeMap(eLo, eHi, "bremsstrahlung", v);
+        }}
+        showPeaks={showPeaks}
+        onShowPeaks={setShowPeaks}
+      />
 
       {mapResult && (
         <EdsElementMap

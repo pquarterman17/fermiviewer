@@ -52,35 +52,24 @@ re-verified against the code before folding).*
 *Parent: MAIN_PLAN.md. Status: Active. Counted by top-level numbered item —
 see the Dashboard note below for the counting convention.*
 
-### W1 — Shared spectrum core
-
-**Tier 1 — High Impact**
-7. **Shared composite** — verify whether MapOverlay reuse (which shipped
-   item 15) already covers this, or a distinct composite surface remains
-
-**Tier 2 — Medium Impact**
-5. **Width presets and FWHM auto-fit**
-6. **Numeric steppers with live net**
-
 ### W2 — EDS workspace
 
 **Tier 2 — Medium Impact**
 10. **Composite → library** — register the combined map as an RGB image
-    (gate resolved 2026-08-11: first-class library image)
+    (gate resolved 2026-08-11: first-class library image). Needs a data-model
+    decision + ADR first: the library is grayscale-only today
 11. **Retire the single-element Explore flow**
 
 ### W4 — Test data and verification
-
-**Tier 2 — Medium Impact**
-18. **Quantification golden tests against truth** — assert `/eds/quantify`
-    and `/eels/quantify` recover the synthetic composition within tolerance
 
 **Tier 3 — Nice-to-Have**
 19. **More presets** — diffusion-couple gradient, thickness ramp
 20. **Window overlap detection** (deselected 2026-07-29; revisit only if a
     real case produces a silently wrong answer)
 
-**Open items: 8** *(W3 — EELS workspace — completed in full 2026-08-11)*
+**Open items: 4** *(W1 — shared spectrum core, W3 — EELS workspace, and W4's
+Tier 2 are all complete: items 1–7 + 18 + 23 on 2026-08-12, items 12–16 + 22
+on 2026-08-11)*
 
 ---
 
@@ -103,9 +92,9 @@ live-audit usability follow-up list.*
 12. **Orientation / phase mapping (ACOM)**
 13. **More 4D formats + async ingest** — Gatan K2/K3, NCEM EMD 4D, blockfile
     `.blo`, job-queued batch virtual-detector
-14. **4D usability follow-ups** — scan-shape GUI for `.mib` (top item for
-    real Merlin users), log-intensity toggle, aperture radii in mrad,
-    main-Stage probe picking, dataset-list live refresh
+14. **4D usability follow-ups** — aperture radii in mrad, main-Stage probe
+    picking, dataset-list live refresh (the scan-shape GUI and the
+    log-intensity toggle shipped 2026-08-12)
 
 **Open items: 8**
 
@@ -116,16 +105,16 @@ live-audit usability follow-up list.*
 | Plan | Status | Open items |
 |---|---|---|
 | MAIN_PLAN.md | Active (root) | 9 |
-| SPECTRAL_WORKSPACE_PLAN.md | Active | 8 |
+| SPECTRAL_WORKSPACE_PLAN.md | Active | 4 |
 | PLAN_4DSTEM.md | Active | 8 |
 
-**Total open items:** 25
+**Total open items:** 21
 
 **Counting method:** top-level numbered items (the plan-format.md unit of a
 tracked work item) — not nested `- [ ]` sub-task checkboxes. Nested-checkbox
-counts by plan, for reference: MAIN_PLAN 5, SPECTRAL_WORKSPACE_PLAN 5,
-PLAN_4DSTEM 14 (24 total). A checkbox-based count would disagree with the
+counts by plan, for reference: MAIN_PLAN 5, SPECTRAL_WORKSPACE_PLAN 0,
+PLAN_4DSTEM 12 (17 total). A checkbox-based count would disagree with the
 open-items count above — pick one convention when reading this table and
 don't mix the two.
 
-**Last regenerated:** 2026-08-11
+**Last regenerated:** 2026-08-12

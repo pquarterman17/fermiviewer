@@ -13,6 +13,14 @@ generator with its own copy of the line energies would drift, and every
 window in the GUI snaps to the app's table — synthetic peaks have to land
 exactly there or the tool tests the wrong thing.
 
+Their INTENSITIES follow the same rule, and for the same reason: EDS line
+areas are inverted from ``cliff_lorimer``'s own weighting and EELS edges are
+planted as ``eels_model.edge_shape_fn``'s differential cross-section, so a
+quantifier run over one of these cubes should return the composition that
+built it. A generator that invents its own intensity model produces cubes
+that look right and quantify wrong — which is exactly what this one did
+until 2026-08-12.
+
 Usage
 -----
     python tools/make_synthetic_si.py --preset eds-layers
@@ -30,7 +38,10 @@ eds-overlap    The same stack at 10 kV, where the app's line selection drops
                be separated by simple integration.
 eds-particles  Al2O3 matrix with Ta-rich and C-rich discs of varying size.
 eels-layers    Core-loss cross-section over a power-law background:
-               Si L23 / C K / Ti L23 / O K, with white lines on the L edges.
+               Si L23 / C K / Ti L23 / O K. Edge SHAPES come from
+               calc.eels_model.edge_shape_fn — the same differential
+               cross-section the model fit refines — so both quantifiers
+               invert the model that produced the cube.
 
 Which line a synthetic peak lands on is decided by the app's own overvoltage
 rule, not by this file, so --beam-kv genuinely changes which lines appear.
@@ -49,8 +60,11 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from fermiviewer.calc.eds import line_energy  # noqa: E402
+from fermiviewer.calc.eds import K_FACTORS_200KV, line_energy  # noqa: E402
 from fermiviewer.calc.eels import EELS_EDGES  # noqa: E402
+from fermiviewer.calc.eels_model import edge_shape_fn  # noqa: E402
+from fermiviewer.calc.eels_quant import cross_section  # noqa: E402
+from fermiviewer.calc.elements import atomic_mass  # noqa: E402
 
 # Reference EDS detector resolution: FWHM at Mn Kα, and the standard
 # silicon-drift broadening law FWHM(E)² = FWHM_ref² + 2.5·(E − E_ref), all in
@@ -65,6 +79,59 @@ def detector_fwhm_kev(energy_kev: float) -> float:
     ev = energy_kev * 1000.0
     var = FWHM_MN_EV**2 + FANO_SLOPE * (ev - MN_KA_EV)
     return float(np.sqrt(max(var, 40.0**2)) / 1000.0)
+
+
+#: The EELS windows the generator plants against, and that the truth sidecar
+#: hands back per edge. Numerically the same convention the GUI seeds a fresh
+#: species with (`lib/spectrum/species.ts`) and that `/eels/auto-assign`
+#: scores against (`calc/eels_identify.py`): 50 eV of signal from the onset, a
+#: 50 eV pre-edge fit window ending 2 eV below it.
+EELS_SIGNAL_WIDTH_EV = 50.0
+EELS_BG_WIDTH_EV = 50.0
+EELS_BG_GAP_EV = 2.0
+#: Collection semi-angle the planted cross-sections assume. A quantification
+#: run at a different β is answering a different question, so the sidecar
+#: records it and the golden test passes it back.
+EELS_BETA_MRAD = 10.0
+#: Edge-jump ratio: how far the core-loss signal lifts the spectrum above the
+#: pre-edge background at the LOWEST planted onset. A partial ionization
+#: cross-section is ~1e-25 m² and the normalised background is ~1e-2, so
+#: planting dσ/dE at its own physical magnitude buries every edge 20-odd
+#: orders of magnitude under the background — a cube that looks like a bare
+#: power law and quantifies like one. ONE global factor rescales them, so
+#: every element's intensity keeps exactly the cross-section ratio that makes
+#: the cube an oracle; only the common signal-to-background level is set here.
+EELS_EDGE_JUMP = 0.6
+
+#: Largest channel mean the uint16 cube may carry. A Poisson draw at this mean
+#: has σ ≈ 245, so 12 σ of headroom remains below 65535 — the draw effectively
+#: never reaches the wrap point.
+_MAX_LAMBDA = 62000.0
+
+
+def _poisson_uint16(
+    lam: np.ndarray, rng: np.random.Generator
+) -> tuple[np.ndarray, float]:
+    """Poisson-sample `lam` into a uint16 cube, rescaling it to fit first.
+
+    `np.ndarray.astype(np.uint16)` WRAPS silently, and a synthetic cube is
+    exactly where that hides: the wrapped pixels look like ordinary dark
+    pixels in a noisy map. It is not hypothetical — planting line areas from
+    the real Cliff-Lorimer weights gave Ta (mass 181, k 1.75) a per-pixel peak
+    mean of ~2.6e5 at the default counts scale, and its quantified 6.2 at%
+    came back as 0.7 because most of its peak had wrapped to near zero.
+
+    Scaling down rather than clipping is what keeps the cube an oracle: every
+    ratio quantification reads is preserved exactly by a global factor, while
+    a clip would silently truncate the brightest element's intensity. The
+    factor is returned so the sidecar can record the counts scale that was
+    actually applied.
+    """
+    peak = float(np.max(lam)) if lam.size else 0.0
+    factor = _MAX_LAMBDA / peak if peak > _MAX_LAMBDA else 1.0
+    cube = rng.poisson(lam * factor)
+    assert cube.max() <= np.iinfo(np.uint16).max, "uint16 headroom exhausted"
+    return cube.astype(np.uint16), factor
 
 
 @dataclass
@@ -161,10 +228,15 @@ PRESETS: dict[str, Preset] = {
         name="eels-layers",
         modality="eels",
         description="Core-loss cross-section over a power-law background.",
-        # 0.5 eV/ch from 80 eV → 80–1103 eV. The start must sit BELOW the
+        # 0.5 eV/ch from 40 eV → 40–1063.5 eV. The start must sit below the
         # lowest edge used (Si L23 at 99 eV) or that element is silently
-        # dropped from the cube while still appearing in the phase list.
-        axis=(80.0, 0.5, 2048, "eV"),
+        # dropped from the cube while still appearing in the phase list — and
+        # far enough below it that the edge's whole PRE-EDGE FIT WINDOW is on
+        # the axis too. It used to start at 80 eV, leaving Si 19 eV of
+        # pre-edge against the 52 eV the background fit asks for; the
+        # truncated fit over-extrapolated and quantification returned Si at
+        # 3 at% against a truth of 46.
+        axis=(40.0, 0.5, 2048, "eV"),
         phases=[
             Phase("Si substrate", {"Si": 1.0}, slab=(0.60, 1.0, 0.0, 1.0)),
             Phase("SiO2", {"Si": 1.0, "O": 2.0}, slab=(0.44, 0.60, 0.0, 1.0)),
@@ -213,7 +285,9 @@ def _fraction_maps(
 
 def _eds_cube(
     preset: Preset, h: int, w: int, counts: float, rng: np.random.Generator
-) -> tuple[np.ndarray, dict[str, np.ndarray], list[dict[str, object]], list[dict]]:
+) -> tuple[
+    np.ndarray, dict[str, np.ndarray], list[dict[str, object]], list[dict], float
+]:
     energy = _energy_axis(preset)
     fractions, occupied, rows = _fraction_maps(preset, h, w)
     e0 = preset.beam_kv
@@ -248,16 +322,27 @@ def _eds_cube(
         sigma = detector_fwhm_kev(e_line) / 2.3548
         shape = np.exp(-0.5 * ((energy - e_line) / sigma) ** 2)
         shape /= shape.sum() or 1.0
-        # Heavier elements fluoresce more efficiently at a fixed beam energy;
-        # a mild Z weighting keeps a trace heavy element from vanishing.
-        yield_weight = 1.0 + 0.5 * np.log1p(e_line)
-        signal += fraction_map[:, :, None] * yield_weight * shape[None, None, :]
+        # Per-element line intensity, inverted from the app's OWN Cliff-Lorimer
+        # model rather than invented here. cliff_lorimer computes weight
+        # fractions w_i ∝ k_i·I_i and then at_i ∝ w_i/M_i, so a cube whose
+        # atomic fractions are recoverable must plant I_i ∝ f_i·M_i/k_i.
+        #
+        # This replaces a `1 + 0.5·log1p(E)` "heavier elements fluoresce more"
+        # weighting, which was plausible-looking and unrelated to anything the
+        # quantifier inverts: quantifying the old eds-layers cube returned C at
+        # 21 at% against a truth of 9.4 and Al at 5.0 against 10.0. The
+        # generator's whole premise is that its numbers come from the
+        # application's tables, never a second copy — that already governed
+        # peak POSITIONS (line_energy) and now governs their AREAS too.
+        weight = atomic_mass(symbol) / K_FACTORS_200KV.get(symbol, 1.0)
+        signal += fraction_map[:, :, None] * weight * shape[None, None, :]
         lines.append(
             {
                 "symbol": symbol,
                 "line": line,
                 "energy_kev": round(float(e_line), 4),
                 "fwhm_kev": round(detector_fwhm_kev(e_line), 4),
+                "k_factor": round(float(K_FACTORS_200KV.get(symbol, 1.0)), 4),
                 "mean_atomic_fraction": round(float(fraction_map.mean()), 6),
             }
         )
@@ -265,13 +350,15 @@ def _eds_cube(
     peak_total = signal.sum(axis=2, keepdims=True)
     background = occupied[:, :, None] * continuum[None, None, :] * peak_total * 0.6
     lam = (signal + background) * counts
-    cube = rng.poisson(lam).astype(np.uint16)
-    return cube, fractions, rows, lines
+    cube, applied = _poisson_uint16(lam, rng)
+    return cube, fractions, rows, lines, applied
 
 
 def _eels_cube(
     preset: Preset, h: int, w: int, counts: float, rng: np.random.Generator
-) -> tuple[np.ndarray, dict[str, np.ndarray], list[dict[str, object]], list[dict]]:
+) -> tuple[
+    np.ndarray, dict[str, np.ndarray], list[dict[str, object]], list[dict], float
+]:
     energy = _energy_axis(preset)
     fractions, occupied, rows = _fraction_maps(preset, h, w)
 
@@ -291,33 +378,50 @@ def _eels_cube(
         if not candidates:
             continue
         edge = min(candidates, key=lambda e: e.onset_ev)
-        above = energy >= edge.onset_ev
-        shape = np.zeros_like(energy)
-        # Hydrogenic-style sawtooth: sharp onset, power-law decay after it.
-        shape[above] = (energy[above] / edge.onset_ev) ** -2.6
-        if edge.edge.startswith("L"):
-            # L23 white lines — the sharp pair right at the onset
-            for offset, weight in ((1.5, 1.0), (7.0, 0.55)):
-                centre = edge.onset_ev + offset
-                shape += weight * 1.6 * np.exp(-0.5 * ((energy - centre) / 2.2) ** 2)
-        total = shape.sum()
-        if total <= 0:
+        shell = "K" if edge.edge.startswith("K") else "L"
+        sig_lo = float(edge.onset_ev)
+        sig_hi = sig_lo + EELS_SIGNAL_WIDTH_EV
+        shape = edge_shape_fn(
+            edge.z, shell, preset.beam_kv, EELS_BETA_MRAD, sig_lo
+        )(energy)
+        sigma_x = cross_section(
+            edge.z, shell, preset.beam_kv, EELS_BETA_MRAD,
+            EELS_SIGNAL_WIDTH_EV, sig_lo,
+        )
+        if not np.any(shape > 0):
             continue
-        shape /= total
         signal += fraction_map[:, :, None] * shape[None, None, :]
         edges.append(
             {
                 "symbol": symbol,
                 "edge": edge.edge,
+                "shell": shell,
+                "z": int(edge.z),
                 "onset_ev": float(edge.onset_ev),
+                "signal_window": [sig_lo, sig_hi],
+                "bg_window": [
+                    sig_lo - EELS_BG_GAP_EV - EELS_BG_WIDTH_EV,
+                    sig_lo - EELS_BG_GAP_EV,
+                ],
+                "cross_section_m2": float(sigma_x),
                 "mean_atomic_fraction": round(float(fraction_map.mean()), 6),
             }
         )
 
+    # Lift the whole signal to a realistic edge jump (see EELS_EDGE_JUMP).
+    # Measured at the lowest onset, where the background is strongest and an
+    # edge is hardest to see.
     thickness = occupied[:, :, None].astype(float)
-    lam = (signal * 0.35 + thickness * background[None, None, :]) * counts
-    cube = rng.poisson(lam).astype(np.uint16)
-    return cube, fractions, rows, edges
+    signal_scale = 1.0
+    if edges:
+        lowest = min(float(e["onset_ev"]) for e in edges)
+        at = int(np.argmin(np.abs(energy - lowest)))
+        mean_signal = float(signal.mean(axis=(0, 1))[at])
+        if mean_signal > 0:
+            signal_scale = EELS_EDGE_JUMP * float(background[at]) / mean_signal
+    lam = (signal * signal_scale + thickness * background[None, None, :]) * counts
+    cube, applied = _poisson_uint16(lam, rng)
+    return cube, fractions, rows, edges, applied
 
 
 def write_hspy(
@@ -354,7 +458,9 @@ def build(
     h, w = shape
     rng = np.random.default_rng(seed)
     make = _eds_cube if preset.modality == "eds" else _eels_cube
-    cube, fractions, phase_rows, species = make(preset, h, w, counts, rng)
+    cube, fractions, phase_rows, species, counts_applied = make(
+        preset, h, w, counts, rng
+    )
 
     elements = sorted(fractions)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -375,7 +481,11 @@ def build(
             "range": [offset, offset + scale * (channels - 1)],
         },
         "beam_kv": preset.beam_kv,
+        "beta_mrad": EELS_BETA_MRAD if preset.modality == "eels" else None,
         "counts_scale": counts,
+        # What the generator actually used: `counts_scale` scaled down if the
+        # brightest channel would not have fit uint16 (see _poisson_uint16).
+        "counts_scale_applied": round(counts * counts_applied, 4),
         "seed": seed,
         "elements": elements,
         "species": species,
@@ -384,11 +494,27 @@ def build(
             symbol: round(float(fraction.mean()) * 100, 4)
             for symbol, fraction in sorted(fractions.items())
         },
+        # The same composition renormalised to sum to 100 — what a
+        # quantifier reports, because it measures the MATERIAL and knows
+        # nothing about how much of the field was vacuum. Comparing a
+        # quantification to `field_mean_atomic_percent` on a cube with any
+        # empty area is an apples-to-oranges error of exactly the vacuum
+        # fraction (6.25 % of eds-layers, 9.4 % of eels-layers).
+        "material_atomic_percent": _renormalised(fractions),
         "total_counts": int(cube.sum()),
     }
     truth_path = cube_path.with_suffix(".truth.json")
     truth_path.write_text(json.dumps(truth, indent=2) + "\n")
     return cube_path, truth
+
+
+def _renormalised(fractions: dict[str, np.ndarray]) -> dict[str, float]:
+    """Field-mean atomic fractions rescaled to sum to 100 percent."""
+    means = {symbol: float(f.mean()) for symbol, f in sorted(fractions.items())}
+    total = sum(means.values())
+    if total <= 0:
+        return {symbol: 0.0 for symbol in means}
+    return {symbol: round(100.0 * v / total, 4) for symbol, v in means.items()}
 
 
 def _report(path: Path, truth: dict) -> None:

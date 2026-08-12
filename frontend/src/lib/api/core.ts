@@ -67,6 +67,15 @@ export interface FourDMeta {
   scan_axes: AxisCalOut[];
   det_axes: AxisCalOut[];
   nav_available: boolean;
+  /** Probe positions in the file — what any re-raster has to preserve. */
+  n_frames: number;
+  /** False when the format records no raster (Merlin `.mib`): the current
+   *  `scan_shape` is then the parser's fallback, not the acquisition, and
+   *  `reshapeFourD` is how the user corrects it. */
+  scan_shape_from_file: boolean;
+  /** Plausible `[rows, cols]` re-rasterings, squarest first. Empty when the
+   *  shape came from the file. */
+  scan_shape_options: number[][];
 }
 
 export function isFourDMeta(m: ImageMeta | FourDMeta): m is FourDMeta {

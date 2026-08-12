@@ -120,7 +120,12 @@ export function renderFigure(
       ctx.globalAlpha = 1;
     }
 
-    if (placed.overlay && scaleBar) {
+    // The bar belongs on the combined panel, which is the one a reader takes
+    // in as "the image". With no overlay (montage-only export) it falls to
+    // the first tile rather than being dropped — a figure with no scale bar
+    // is not publishable, and that was the silent outcome before.
+    const barHere = placed.overlay || (!overlay && placed.index === 0);
+    if (barHere && scaleBar) {
       const barW = Math.round(placed.w * scaleBar.fraction);
       const barX = placed.x + placed.w - barW - 12;
       const barY = placed.y + placed.h - 18;

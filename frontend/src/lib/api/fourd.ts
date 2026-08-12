@@ -60,6 +60,18 @@ export function fetchFourDMeanPattern(
   return fetchRaster16(`/api/fourd/${id}/mean-pattern`, options);
 }
 
+/** Re-raster a headerless acquisition (Merlin `.mib`) to `rows × cols`.
+ *  The server RE-OPENS the file under the new shape, keeping the same 4D id,
+ *  and returns the updated meta. 422 when rows × cols is not the frame count
+ *  or the format states its own raster. */
+export function reshapeFourD(
+  id: string,
+  rows: number,
+  cols: number,
+): Promise<FourDMeta> {
+  return post(`/api/fourd/${id}/reshape`, { rows, cols });
+}
+
 export type ApertureShape = "circle" | "annulus";
 
 export interface VirtualDetectorRequest {
