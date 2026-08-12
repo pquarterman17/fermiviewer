@@ -6,7 +6,11 @@ plan in `plans/` declares this file as its parent.
 
 **Status:** Active
 **Created:** 2026-08-09
-**Updated:** 2026-08-11
+**Updated:** 2026-08-11 — legacy-plan consolidation: PORT_PLAN,
+PLAN_DIFFRACTION, PLAN_SPECTRAL_QUANT, CROSS_SECTION_LAYERS and
+FEATURE_AUDIT_2026-06-21 folded up/archived (each verified against the code
+first — several claimed-open items were already shipped); PLAN_4DSTEM
+adopted as a live sub-plan; 9 items opened (6–14)
 
 ---
 
@@ -20,15 +24,18 @@ guarded by `tests/test_repo_integrity.py`'s layering test and 500-line
 module ratchet) and a React/zustand frontend (`frontend/src` — same
 500-line ratchet with pinned legacy caps that only move down). Two
 campaigns are live, one per sub-plan: making the spectral (EDS/EELS)
-workspaces usable for routine elemental analysis, and making the imaging
-side usable for many-sample project studies (import, browsing, area
-measurement, project hierarchy).
+workspaces usable for routine elemental analysis, and 4D-STEM beyond its
+shipped Phase 1 (owner-deferred DPC tier + usability follow-ups). The
+many-sample project-workflow campaign completed 2026-08-10; this root
+plan additionally carries the fold-up residue of five archived legacy
+plans (items 6–14).
 
 ### Plan tree
 
 | Sub-plan | Scope | Status | Why its own file |
 |---|---|---|---|
 | SPECTRAL_WORKSPACE_PLAN.md | EDS+EELS shared spectrum core, species lists, batch maps, composites, synthetic-SI verification | Active (15 open items / 14 sub-task boxes, W1–W4) | Independent lifecycle, four workstreams of its own |
+| PLAN_4DSTEM.md | Lazy 4D-STEM dataset model (`FourDDataset`), MIB/HyperSpy-4D ingest, virtual-detector imaging (Phase 1 shipped 2026-08-02); COM/DPC/iDPC (owner-deferred), usability follow-ups, and parked strain/ptychography/ACOM | Active (8 open items / 14 sub-task boxes, Tier 2–3) | Independent lifecycle and its own architectural decision (Option B: 4D data is a source, not a `DataStruct`) with memory-streaming constraints the other two plans don't share |
 | ~~PROJECT_WORKFLOW_PLAN.md~~ | Folder import, constant-physical-scale browsing, area measurement, project/sample hierarchy + comparison deliverables, and the `.fvp` project file format | **Complete 2026-08-10** → `plans/archive/` | 27 items shipped, 6 gates resolved. Kept for the decision record: ADR 0002's rationale, the `py/path-injection` triage, and the ratchet outcomes (`store/viewer.ts` graduated 575→444) |
 
 ### Cross-plan dependencies
@@ -53,6 +60,9 @@ measurement, project hierarchy).
   Stage.tsx / MeasureOverlay.tsx / Filmstrip.tsx caps. Sequence those
   before any other work touches the same files (see that plan's
   cross-cutting priorities table).
+- PLAN_4DSTEM is file-disjoint from the other two: it owns `calc/fourd/`,
+  `routes/fourd.py`, `io/fourd/`, and `FourDWorkshop.tsx` alone. No conflict
+  with spectral or project-workflow work.
 
 ---
 
@@ -65,6 +75,15 @@ measurement, project hierarchy).
 1. ~~**Pin-graduation campaign**~~ — shipped 2026-08-10, see Completed
 
 2. ~~**BACKLOG.md dashboard**~~ — shipped 2026-08-10, see Completed
+
+10. **Hartree-Slater / GOS cross-sections for EELS** — was
+    PLAN_SPECTRAL_QUANT.md #3, its only remaining item (folded 2026-08-11
+    when the plan archived). Only hydrogenic K/L cross-sections exist
+    (`calc/eels_quant.py`); GOS is needed for transition-metal L and
+    rare-earth M edges. **Blocked** on sourcing an Apache-compatible /
+    public-domain GOS table — cannot vendor HyperSpy's GPL table, cannot
+    fabricate one (verified 2026-08-11: no `calc/eels_gos.py` or GOS data
+    file exists yet). Revisit if a permissively-licensed table surfaces.
 
 ## Tier 3 — Nice-to-Have
 
@@ -91,6 +110,76 @@ measurement, project hierarchy).
    bulge, again.
 
 5. ~~**`AxisCal.scale` writes raw NaN into a `.fvp` manifest**~~ — shipped 2026-08-10, see Completed
+
+6. **Manual owner sign-offs outstanding** — two long-standing manual
+   verification actions, not engineering work:
+   - [ ] was PORT_PLAN.md #31 — human side-by-side MATLAB parity session
+         (the automated halves — golden/realdata/oracle comparison — closed
+         long ago via `tests/golden/` + the rsciio oracle harness; only the
+         manual sit-down remains)
+   - [ ] was CROSS_SECTION_LAYERS.md — live visual sign-off (overlay
+         alignment, drag feel) on the layer-analysis stage overlay; all 13
+         engineering items in that plan shipped
+   Folded 2026-08-11 when both source plans archived. Neither is blocked on
+   code; both are owner actions whenever convenient.
+
+7. **Code signing** — was PORT_PLAN.md (open since 2026-06-08, deferred by
+   owner decision). Windows/macOS installers are unsigned. Verified
+   2026-08-11: `.github/workflows/release.yml` only signs the Tauri
+   **updater** manifest (`TAURI_SIGNING_PRIVATE_KEY`, an Ed25519
+   update-signature key that lets the app trust its own auto-updates) —
+   that is a different mechanism from an Authenticode/Developer-ID
+   code-signing certificate, and no such certificate is configured
+   anywhere. Revisit if the cost-vs-SmartScreen-warning calculus changes.
+
+8. **Additional AFM parsers** — was PORT_PLAN.md #50 follow-up (2026-06-14).
+   Bruker Nanoscope is the only AFM format read (`io/nanoscope.py`); Asylum
+   Igor `.ibw`, Gwyddion `.gwy`, and JPK/NT-MDT/Park `.tiff`-based formats
+   remain unimplemented (verified 2026-08-11: no matching files in
+   `src/fermiviewer/io/`, no matching commits since). No user demand
+   signalled since; parked.
+
+9. **Advanced dynamical diffraction (Kikuchi / CBED / multislice)** — was
+   PLAN_DIFFRACTION.md #5–7, its only remaining items (folded 2026-08-11
+   when the plan archived — Tier 1–2 there shipped 2026-06-21 in full,
+   including the calibrate route, CIF import/delete routes, and the
+   Doyle–Turner scattering-factor UI selector this audit re-verified live
+   in `routes/diffraction_setup.py` and `DiffractionPanels.tsx` — the
+   plan's own "Deferred" notes on those three items were stale). Each of
+   the three needs a dynamical, not kinematic, intensity model:
+   - [ ] Kikuchi line simulation + band-based orientation indexing
+   - [ ] CBED thickness/symmetry (two-beam dynamical minimum)
+   - [ ] Full dynamical (multislice/Bloch-wave) pattern simulation
+   Parked pending real user demand — the kinematic + real-scattering-factor
+   path already covers the common quantitative-SAED/NBED workflow.
+
+11. **Non-rigid / sub-pixel drift (scan-distortion) correction** — was
+    FEATURE_AUDIT_2026-06-21.md GAP-19 (landscape #19). Stack align is
+    integer-pixel FFT cross-correlation only; picometer metrology and
+    revolving-STEM averaging need non-rigid + sub-pixel registration. No
+    implementation exists (verified 2026-08-11: no match for
+    non-rigid/scan-distortion/elastic-registration in `src/`). Medium
+    effort, no concrete request yet; parked.
+
+12. **Advanced atom-column analysis** — was FEATURE_AUDIT_2026-06-21.md
+    GAP-26/27 (landscape #26 multi-sublattice iterative refinement +
+    polarization/displacement maps; #27 quantitative HAADF atom-counting
+    via GMM). `calc/atoms.py` has single-pass Gaussian-fit detection +
+    strain only; neither extension exists (verified 2026-08-11). Combined
+    into one item since both extend the same module. atomap/StatSTEM-class
+    work; parked.
+
+13. **3D volume rendering for tomography/stacks** — was
+    FEATURE_AUDIT_2026-06-21.md GAP-32 (landscape #32). No isosurface/
+    volume viewer exists (verified 2026-08-11: no match in
+    `frontend/src`); also no 3D-volume data model — the same architectural
+    gap 4D-STEM had before its `FourDDataset` decision. Multi-week,
+    speculative; parked.
+
+14. **Dose/detector calibration** — was FEATURE_AUDIT_2026-06-21.md GAP-36
+    (landscape #36): counts→electrons, gain/dark, MTF/DQE for dose-aware
+    quantitative imaging. No implementation exists (verified 2026-08-11).
+    Medium effort, no concrete request; parked.
 
 ## Completed
 
