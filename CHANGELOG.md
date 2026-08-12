@@ -31,6 +31,15 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   the elemental map integrates, with a σ that includes the fit's
   extrapolation uncertainty.
 
+- **The EELS Maps workflow now exists end to end.** Open an EELS cube and
+  the Maps tab identifies every core-loss edge the energy axis supports,
+  lists them with net ± σ and a confidence band — one row per edge, so
+  Si K and Si L2,3 stay distinct — and ticking rows produces the montage
+  of per-edge maps plus the combined colour overlay with its legend and
+  one-click figure export: the same deliverable the EDS side has, from the
+  same shared components. Background windows auto-place just below each
+  onset (the same pre-edge region the identifier fits) and stay fully
+  adjustable.
 - **EELS Explore is direct manipulation now.** The Explore tab shows both
   the signal window (blue) and the pre-edge background window (amber) on
   the spectrum itself — drag an edge to resize, the middle to slide, with

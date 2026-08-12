@@ -55,9 +55,8 @@ see the Dashboard note below for the counting convention.*
 ### W1 — Shared spectrum core
 
 **Tier 1 — High Impact**
-3. **Species list wiring into the shared shell** — one list component fed by
-   either K/L/M lines or edge onsets
-7. **Shared composite** — generalise `EdsComposite` to a second caller
+7. **Shared composite** — verify whether MapOverlay reuse (which shipped
+   item 15) already covers this, or a distinct composite surface remains
 
 **Tier 2 — Medium Impact**
 5. **Width presets and FWHM auto-fit**
@@ -67,19 +66,8 @@ see the Dashboard note below for the counting convention.*
 
 **Tier 2 — Medium Impact**
 10. **Composite → library** — register the combined map as an RGB image
-    (owner gate: first-class library image vs. panel-local canvas)
+    (gate resolved 2026-08-11: first-class library image)
 11. **Retire the single-element Explore flow**
-
-### W3 — EELS workspace
-
-**Tier 1 — High Impact**
-12. **Edge picker** — species list backed by `EELS_EDGES`, element + edge
-    choice
-15. **EELS composite** — the capability EELS has never had
-
-**Tier 2 — Medium Impact**
-16. **Background-window auto-placement** (owner gate: auto-place from onset
-    vs. always user-set)
 
 ### W4 — Test data and verification
 
@@ -92,7 +80,7 @@ see the Dashboard note below for the counting convention.*
 20. **Window overlap detection** (deselected 2026-07-29; revisit only if a
     real case produces a silently wrong answer)
 
-**Open items: 12**
+**Open items: 8** *(W3 — EELS workspace — completed in full 2026-08-11)*
 
 ---
 
@@ -128,15 +116,15 @@ live-audit usability follow-up list.*
 | Plan | Status | Open items |
 |---|---|---|
 | MAIN_PLAN.md | Active (root) | 9 |
-| SPECTRAL_WORKSPACE_PLAN.md | Active | 12 |
+| SPECTRAL_WORKSPACE_PLAN.md | Active | 8 |
 | PLAN_4DSTEM.md | Active | 8 |
 
-**Total open items:** 29
+**Total open items:** 25
 
 **Counting method:** top-level numbered items (the plan-format.md unit of a
 tracked work item) — not nested `- [ ]` sub-task checkboxes. Nested-checkbox
-counts by plan, for reference: MAIN_PLAN 5, SPECTRAL_WORKSPACE_PLAN 8,
-PLAN_4DSTEM 14 (27 total). A checkbox-based count would disagree with the
+counts by plan, for reference: MAIN_PLAN 5, SPECTRAL_WORKSPACE_PLAN 5,
+PLAN_4DSTEM 14 (24 total). A checkbox-based count would disagree with the
 open-items count above — pick one convention when reading this table and
 don't mix the two.
 

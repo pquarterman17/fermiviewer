@@ -8,9 +8,10 @@ implementation so a feature cannot land in one and rot in the other.
 **Status:** Active
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-07-29
-**Updated:** 2026-08-11 — items 2, 4, 13, 14 and 22 shipped (window model,
-draggable edges, EELS Explore direct manipulation, EELS batch maps +
-auto-ID backend); both owner gates resolved; 12 items open
+**Updated:** 2026-08-11 — items 2, 3, 4, 12, 13, 14, 15, 16 and 22 all
+shipped today: the W1 foundation is complete and **W3 (EELS workspace) is
+COMPLETE** — Maps workflow, Explore direct manipulation, batch maps and
+auto-ID. 8 items open (W1 polish, W2 retirement, W4 verification)
 
 ---
 
@@ -53,11 +54,13 @@ quantification the user may not want.
 
 ### Dependency map
 
-- Item 3 is the remaining foundation piece (1 and 2 shipped); W3 lands on it
-- Items 5 and 6 are independent of each other now that 2 exists (4 shipped)
+- The W1 foundation (items 1–4) and all of W3 are complete
+- Items 5 and 6 are independent of each other (both build on item 2's core)
 - Item 8 unblocks 9; item 14 unblocks 15 (both 8 and 14 have now shipped)
-- Item 7 (shared composite) is a generalisation of the existing EDS composite —
-  do it with 15, not before, so it is written against two real callers
+- Item 7 (shared composite) now has its second caller: item 15 shipped by
+  reusing MapOverlay for EELS, so the remaining question is whether a
+  distinct `EdsComposite`/`ChannelComposite` surface still needs unifying —
+  verify against the code before starting
 - W4 item 17 is done and is the verification substrate for everything else
 - Item 11 is last: retiring the old flow needs the new one proven
 
@@ -106,17 +109,13 @@ quantification the user may not want.
 | ~~1~~ | ~~Species model~~ | W1 — Core | Shipped 2026-08-10 |
 | ~~8~~ | ~~`/eds/element-maps` endpoint~~ | W2 — EDS | Shipped 2026-08-10 — item 9 is now unblocked |
 | ~~4~~ | ~~Draggable window edges~~ | W1 — Core | Shipped 2026-08-11, with item 2 under it |
-| 3 | SpectrumWorkspace shell | W1 — Core | Where EELS stops being second-class |
+| ~~3~~ | ~~SpectrumWorkspace shell~~ | W1 — Core | Shipped 2026-08-11 — EELS is no longer second-class (all of W3 landed with it) |
 
 ---
 
 ## W1 — Shared spectrum core
 
 ### Tier 1 — High Impact
-
-3. **Species list wiring into the shared shell** — the shell exists (item 21);
-   what remains is making the species list itself modality-driven
-   - [ ] One list component fed by either K/L/M lines or edge onsets
 
 7. **Shared composite** — N species → one RGBA raster, for either modality
    - [ ] Generalise `EdsComposite` once item 15 gives it a second caller
@@ -151,24 +150,10 @@ workflow is complete end to end. What remains is polish and retirement.*
 
 ## W3 — EELS workspace
 
-The shared shell now shows EELS a **Maps** tab that states plainly what is
-missing rather than faking it. The backend halves (items 14 and 22) shipped
-2026-08-11; what remains is the frontend workflow that consumes them.
-
-### Tier 1 — High Impact
-
-12. **Edge picker** — species list backed by `EELS_EDGES`
-    - [ ] Element + edge choice (Si L23 vs Si K), not just element
-    - [ ] Same periodic-table affordance as EDS, filtered to elements with an
-          edge inside the cube's energy range
-
-15. **EELS composite** — the capability EELS has never had
-
-### Tier 2 — Medium Impact
-
-16. **Background-window auto-placement** — derive a sensible pre-edge fit
-    region from the onset, user-adjustable (gate resolved 2026-08-11: yes,
-    auto-place; the window stays visible and draggable)
+**COMPLETE 2026-08-11** — every item (12–16, 22) shipped; see Completed.
+EELS now has the full Maps workflow (auto-ID → species list → montage +
+composite overlay + figure export) and direct-manipulation Explore, from
+the same shared components as EDS.
 
 ---
 
@@ -192,6 +177,31 @@ missing rather than faking it. The backend halves (items 14 and 22) shipped
 ---
 
 ## Completed
+
+- ~~**#3 Modality-driven species list + #12 Edge picker + #15 EELS composite
+  + #16 Background auto-place**~~ (2026-08-11, merged `bc3e8b3`; sonnet
+  worktree agent) — the EELS Maps tab is real: `/eels/auto-assign` evidence
+  feeds the SHARED list/store/montage/overlay/figure pipeline, so the EDS
+  deliverable (montage + colour overlay with legend + one-click figure) now
+  exists for EELS from the same components.
+  **The type split did the heavy lifting:** `IdentifiedElement` became a
+  modality-neutral `Evidence` base + EDS extension, `speciesRows` keys by
+  `symbol|transition` (Si-K and Si-L23 are distinct rows), and
+  `seedSpeciesFrom` was RENAMED to `seedEdsSpeciesFrom` so the compiler
+  found every call site — the narrowing-a-shared-type rule applied by the
+  agent unprompted. Montage/overlay React keys and per-tile gain moved to
+  `tileKey()` (`symbol-line`) for the same one-element-two-edges reason.
+  **Edge choice** (#12): auto-assign scores EVERY in-range edge, so the
+  table needs no separate line lookup — clicking an element adds each of
+  its in-range edges as its own row, disambiguated by the transition cell;
+  choice is per-row visibility/removal. **#16**: `eelsDefaultWindows`
+  auto-places background `[onset−52, onset−2]` eV, constants in documented
+  lockstep with `calc/eels_identify.py`. **#15 delivered by reuse:**
+  MapOverlay's blend/max compositing, legend, survey underlay and per-tile
+  gain all worked for EELS after the collision-safety fix.
+  Known benign gap: montage tile-focus resolves a two-edge element to its
+  first row (nothing consumes the callback today). Merged-tree gate: 1224
+  vitest / 165 files, tsc + build clean.
 
 - ~~**#13 EELS zoom, colours and integration**~~ (2026-08-11, merged
   `927dab3` + fix `694812e`; sonnet worktree agent) — the Explore tab now
