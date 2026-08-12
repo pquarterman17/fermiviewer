@@ -13,9 +13,21 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.27] - 2026-08-12
 
 ### Added
+- **The combined colour overlay can be saved to the library.** Save to
+  library, beside Export figure on both Maps tabs, registers the composite
+  exactly as you see it — colours, per-species gains, survey underlay — as
+  a first-class image. It appears in the filmstrip in colour, opens on the
+  Stage and in both compare modes, inherits the cube's spatial calibration
+  so the scale bar keeps working, survives project save/load, and records
+  its species list and windows as provenance. Colour is colour, not data:
+  intensity readouts see a standard luminance of it, and the Adjust card
+  says so instead of offering a contrast window that means nothing for
+  colour. One caveat: a project containing a saved composite needs this
+  version or newer — an older build refuses the project by name rather
+  than opening it wrong.
 - **Tell FermiViewer what shape your Merlin scan was.** A `.mib` file records
   its frames and nothing about the raster that produced them, so every
   headerless Merlin acquisition opened as a single-row line scan — a
