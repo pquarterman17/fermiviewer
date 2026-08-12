@@ -8,12 +8,11 @@ implementation so a feature cannot land in one and rot in the other.
 **Status:** Active
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-07-29
-**Updated:** 2026-08-12 — **W1 (shared spectrum core) and W4's Tier 2 are
-both COMPLETE**: items 7, 5, 6, 18 and 23 all shipped today. The goldens
-required rebuilding the synthetic oracle — it planted intensities the
-quantifiers do not invert, wrapped uint16, buried its EELS edges under the
-background, and was compared against the wrong truth. Both EELS quantifiers
-now recover the planted composition to 0.4 pp. 4 items open (W2 retirement,
+**Updated:** 2026-08-12 — item 10 shipped: the composite is a first-class
+library image. It forced the data-model decision the item was gated on,
+recorded as **ADR 0003** (`DataKind.RGB_IMAGE`, uint8 [H,W,3] with spatial
+axes only, luma at one raster boundary); en route the 13 copied `_raster`
+adapters consolidated onto `calc/raster.py`. 3 items open (W2 retirement,
 W4 Tier 3)
 
 ---
@@ -57,13 +56,13 @@ quantification the user may not want.
 
 ### Dependency map
 
-- All of W1 (items 1–7) and all of W3 are complete
+- All of W1 (items 1–7), all of W3, and item 10 are complete
 - Item 8 unblocks 9; item 14 unblocks 15 (both 8 and 14 have now shipped)
-- Item 10 (composite → library) is the one open item with an unanswered
-  architectural question: `DataStruct` is grayscale-only (`_to_gray` collapses
-  every RGB input on load) and `DataKind.IMAGE` is asserted in ~69 places, so
-  "register the composite as an RGB library image" needs a data-model decision
-  and an ADR before code — not a wiring job
+- Item 10's data-model question is answered by **ADR 0003**
+  (docs/adr/0003-rgb-composite-images.md): a fourth `DataKind.RGB_IMAGE`,
+  chosen over a metadata sidecar (persistence brings the cost back anyway)
+  and over a FourDDataset-style separate store (filmstrip/compare/export all
+  read the one library)
 - W4 item 17 is done and is the verification substrate for everything else
 - Item 11 is last: retiring the old flow needs the new one proven
 - Items 18 and 23 shipped together: the synthetic cubes now invert the app's
@@ -131,13 +130,10 @@ strip, and one composite + one figure export for both modalities.
 ## W2 — EDS workspace
 
 *Tier 1 is empty — items 8 and 9 both shipped 2026-08-10, so the EDS Maps
-workflow is complete end to end. What remains is polish and retirement.*
+workflow is complete end to end. Item 10 shipped 2026-08-12; what remains
+is retirement.*
 
 ### Tier 2 — Medium Impact
-
-10. **Composite → library** — register the combined map as an RGB image so it
-    reaches the filmstrip, comparison and export (gate resolved 2026-08-11:
-    first-class library image)
 
 11. **Retire the single-element Explore flow** — once the species list covers
     it, remove the duplicate controls rather than leaving both
@@ -168,6 +164,47 @@ the same shared components as EDS.
 ---
 
 ## Completed
+
+- ~~**#10 Composite → library**~~ (2026-08-12) — the combined colour overlay
+  registers as a first-class library image reaching the filmstrip, compare
+  stages, project save and export. The data-model gate became **ADR 0003**:
+  a fourth `DataKind.RGB_IMAGE` (uint8 [H,W,3], SPATIAL axes only — a
+  channel axis has no calibration semantics), chosen over a metadata
+  sidecar (a first-class composite must survive `.fvp` round-trip as
+  colour, so persistence brings the schema cost back anyway and a sidecar
+  only adds a path that can forget it) and over a FourDDataset-style
+  disjoint store (the owner's three surfaces all read the ONE library —
+  a second namespace means every one of them merges two sources).
+  **The "~69 assertion sites" defused to a bounded cost**: 13 of the ~30
+  consumers were near-verbatim copies of the same `_raster()` helper,
+  consolidated FIRST as a behaviour-preserving refactor onto
+  `calc/raster.py::raster_of` (gated green alone, before the new kind
+  existed); the 8 strict rejecters use `is not IMAGE` and rejected the new
+  kind with zero edits; the 7 spectral gates flipped to a positive
+  `kind not in SPECTRAL_KINDS` check so future kinds are excluded from
+  spectral math by default. RGB collapses to BT.601 luma at that one
+  boundary — measure/FFT/histogram see a defensible scalar with no
+  per-site decision, and `io/metadata.to_grayscale` now delegates to the
+  same weights instead of carrying its own copy.
+  **Composed once, client-side.** The registration endpoint
+  (`POST /composite/register`, new `routes/composite.py`) stores the
+  pixels of the SAME overlay canvas the figure export reads — one blend
+  implementation, "what the user was looking at" — with the parent cube's
+  spatial calibration inherited (422 on dim mismatch rather than a
+  dishonest scale) and the recipe as provenance metadata. Serving:
+  `/render` returns colour PNG (filmstrip/gallery colour with zero client
+  changes), new `/rgb8` is the raw colour sibling of `/data16`, and
+  data16/tiles REFUSE the kind rather than silently de-colouring — the
+  looks-right-and-is-wrong trap called out in the ADR. One `u_rgb` shader
+  branch covers Stage, CompareStage and SideBySideStage because all three
+  load through the new `gl/loadPixels.ts`; AdjustPanel replaces its
+  controls with an explanation (no window/level story for colour is a
+  deliberate scope fence, like the parsers still collapsing file colour
+  at load). Save-to-library buttons on BOTH Maps tabs. Old builds reject
+  a composite-bearing project loudly by schema (`images[i].kind`) —
+  accepted, identical for any kind ever added. Backend 1935 passed
+  (+10), frontend 1296 vitest (+21), tsc + build clean, luma weights and
+  the stale-upload race both mutation-pinned.
 
 - ~~**#18 Quantification golden tests against truth + #23 synthetic edge
   shapes from `calc/eels_model`**~~ (2026-08-12) — `tests/test_quant_golden.py`
