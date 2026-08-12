@@ -459,7 +459,8 @@ def _material_weight_fractions(
         at = at / at_sum
     w = at * np.array([atomic_mass(s) for s in elements])
     w_sum = w.sum()
-    return w / w_sum if w_sum > 0 else w
+    weights: np.ndarray = w / w_sum if w_sum > 0 else w
+    return weights
 
 
 def _thickness_za_maps(
@@ -796,13 +797,13 @@ def build(
     # Both keys are omitted entirely (not written as null) for every preset
     # that does not use them, so the four pre-existing presets' truth files
     # stay byte-identical (test_existing_presets_unchanged pins this).
-    gradient_phase = next((p for p in preset.phases if p.gradient is not None), None)
-    if gradient_phase is not None:
+    gradient = next((p.gradient for p in preset.phases if p.gradient is not None), None)
+    if gradient is not None:
         occupied = _occupied_from_fractions(fractions)
         truth["profile"] = {
-            "axis": gradient_phase.gradient.axis,
+            "axis": gradient.axis,
             "material_atomic_percent_per_row": _profile_per_line(
-                fractions, occupied, gradient_phase.gradient.axis
+                fractions, occupied, gradient.axis
             ),
         }
     if preset.thickness is not None:
