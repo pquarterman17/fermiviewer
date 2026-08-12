@@ -11,12 +11,23 @@
 // up per row and allowed to be missing — a hand-added element nothing detected
 // a peak for still gets a row, it just has no net or confidence to show. See
 // lib/elemental/speciesRows.ts for why the two are not one object.
+//
+// A row also carries a window-conflict badge (item 20) — an ADVISORY the
+// shared list computes once so both EDS and EELS Maps tabs get it from one
+// implementation. It never disables a row: the checkbox, colour swatch and
+// remove button all keep working on a conflicted row, exactly as they do on
+// any other.
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { setElementColor, useElementColors } from "../../lib/elemental/elementColors";
 import type { Confidence } from "../../lib/elemental/identify";
 import type { SpeciesRow } from "../../lib/elemental/speciesRows";
+import {
+  conflictsFor,
+  detectWindowConflicts,
+  type WindowConflict,
+} from "../../lib/elemental/windowConflicts";
 import { formatCountTick } from "../../lib/edsSpectrumDisplay";
 import PeriodicTable from "./PeriodicTable";
 
@@ -26,6 +37,22 @@ const CONFIDENCE_LABEL: Record<Confidence, string> = {
   weak: "weak",
   trace: "trace?",
 };
+
+/** The row's own warning badge — absent (not just hidden) when there is
+ *  nothing to say, so it never claims a table cell it does not need. */
+function RowConflictBadge({ conflicts }: { conflicts: WindowConflict[] }) {
+  if (conflicts.length === 0) return null;
+  return (
+    <span
+      className="fvd-eds-conflict"
+      role="img"
+      aria-label="window conflict"
+      title={conflicts.map((c) => c.detail).join(" ")}
+    >
+      ⚠
+    </span>
+  );
+}
 
 export default function ElementList({
   rows,
@@ -58,6 +85,14 @@ export default function ElementList({
   const colors = useElementColors();
   const [adding, setAdding] = useState(false);
   const shown = rows.filter((r) => r.species.visible).length;
+  const conflicts = useMemo(
+    () => detectWindowConflicts(rows.map((r) => r.species)),
+    [rows],
+  );
+  const conflictedCount = useMemo(
+    () => new Set(conflicts.flatMap((c) => [c.aId, c.bId])).size,
+    [conflicts],
+  );
 
   return (
     <section className="fvd-eds-elements" aria-label="Identified elements">
@@ -67,6 +102,16 @@ export default function ElementList({
           {busy
             ? "Identifying…"
             : `${rows.length} found · ${shown} shown`}
+          {/* a conflict is always between two distinct species, so this
+              count is 0 or >= 2 — never the awkward singular */}
+          {conflictedCount > 0 && (
+            <>
+              {" · "}
+              <span className="fvd-eds-conflict-count">
+                {conflictedCount} windows interfere
+              </span>
+            </>
+          )}
         </span>
         <div className="fvd-eds-elements-actions">
           <button
@@ -166,6 +211,7 @@ export default function ElementList({
                 {/* the anchor line/onset, not the window midpoint — they
                     differ once the user tunes the window */}
                 <span className="fvd-eds-element-energy">{energyLabel}</span>
+                <RowConflictBadge conflicts={conflictsFor(conflicts, species.id)} />
                 <span className="fvd-eds-element-net">
                   {atPct != null
                     ? `${atPct.toFixed(1)} at%`

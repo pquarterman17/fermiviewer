@@ -15,7 +15,7 @@ raster boundary); en route the 13 copied `_raster` adapters consolidated
 onto `calc/raster.py`. Item 19 added the diffusion-gradient and
 thickness-ramp presets, extracting `zaf_correction`'s Z/A math into
 `calc/eds_absorption.py` so the generator imports the app's own absorption
-model rather than transcribing it. 2 items open (W2 retirement, W4 item 20)
+model rather than transcribing it. **1 item open: #11 (retire Explore), whose precondition is not met.** Item 20 closed the last standing owner gate by measuring the Ta M / Si K silent failure rather than asserting it, and ships as a non-blocking advisory
 
 ---
 
@@ -155,14 +155,54 @@ the same shared components as EDS.
 
 *Tier 2 is empty — items 18 and 23 both shipped 2026-08-12; see Completed.*
 
-### Tier 3 — Nice-to-Have
-
-20. **Window overlap detection** — flag species whose windows interfere
-    (deselected 2026-07-29; see Owner gates)
+**COMPLETE 2026-08-12** — items 17, 18, 19, 20 and 23 all shipped; see
+Completed. The synthetic cubes invert the app's own forward models, and the
+last of them (item 20) closed the standing overlap-detection gate by
+measurement.
 
 ---
 
 ## Completed
+
+- ~~**#20 Window overlap detection**~~ (2026-08-12) — a non-blocking
+  advisory closes the owner gate this item was deselected under. Owner gate
+  status: revisit condition MEASURED, not asserted — `tests/test_quant_golden.py`
+  had never actually built the eds-overlap cube, so the case had never been
+  run. Built at the golden suite's own shape/counts, `/eds/quantify` returns
+  Ta at 0.00 at% against a truth of 6.67, sigma 0.000, no warning field
+  anywhere in the response — a silent wrong answer, on synthetic data,
+  in exactly the case the gate named. New pure `lib/elemental/windowConflicts.ts`
+  (three rules: signal-window overlap for both modalities; EDS unresolvable
+  lines via the existing `fanoFwhmKev` port, independent of where the windows
+  are drawn; EELS background-through-edge) renders as a ⚠ badge in the SHARED
+  `ElementList`, so both EDS and EELS Maps tabs get it from one implementation
+  with zero per-tab changes. Nothing is narrowed, refused, or filtered —
+  verified by mutation: a "disable the row's controls when conflicted" creep
+  reddens the non-blocking-guarantee test.
+  **A real defect found while writing the module's own tests.** The initial
+  implementation built each conflict's `aId`/`bId` from a stable
+  species-id sort, but built its `detail` tooltip text from the raw (a, b)
+  call-order parameters — so two species could report the SAME conflicting
+  pair with a DIFFERENT tooltip wording ("Ta M ... and Si K ..." vs "Si K
+  ... and Ta M ...") depending purely on which one `detectWindowConflicts`'
+  internal loop happened to visit first, which itself depends on the input
+  array's order. None of the plan's own listed mutations would have caught
+  this; it surfaced only from writing an explicit "the result must not
+  depend on input array order" test and hitting a real, non-deterministic-
+  looking failure. Every rule now sorts its pair before building anything
+  from it.
+  Backend: one golden test (`test_eds_overlap_quantifies_ta_to_zero_silently`)
+  pins the measured silent failure — including a correction to the item's own
+  opening measurement: Si is measurably wrong but DEFLATED, not inflated as
+  first guessed, because carbon's already-documented light-element bias (see
+  `test_eds_light_element_bias_is_bounded_and_documented`) dominates the
+  renormalisation Ta's near-total absence gets folded into. That numeric
+  assertion proved extremely robust — neither a 6x wider default window, nor
+  disabling background subtraction entirely, nor a 57x k-factor override
+  moved Ta off ~0, which is itself evidence for how completely buried the
+  signal is, not a weak test. 11 new tests (8 pure `windowConflicts` + 2
+  `ElementList` + 1 golden), all verified red by mutation; frontend gate
+  1299 vitest / 172 files, tsc + build clean; backend gate 1900 passed.
 
 - ~~**#19 More presets: diffusion-couple gradient + thickness ramp**~~
   (2026-08-12) — `eds-diffusion` (a linear Cu -> Ni composition `Gradient`

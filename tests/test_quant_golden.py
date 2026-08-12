@@ -99,7 +99,7 @@ def cubes(tmp_path_factory) -> dict[str, tuple[Path, dict]]:
         name: gen.build(gen.PRESETS[name], SHAPE, COUNTS, 0, out)
         for name in (
             "eds-particles", "eds-layers", "eels-layers",
-            "eds-diffusion", "eds-thickness",
+            "eds-diffusion", "eds-thickness", "eds-overlap",
         )
     }
 
@@ -254,6 +254,42 @@ def test_eds_reports_an_uncertainty_alongside_every_percentage(client, cubes) ->
     # Counting statistics at this many counts are small next to the method
     # bias above -- worth stating, so nobody reads sigma as total accuracy.
     assert max(sigma) < 5.0, sigma
+
+
+def test_eds_overlap_quantifies_ta_to_zero_silently(client, cubes) -> None:
+    """SPECTRAL_WORKSPACE_PLAN owner gate #20 was reopened by this exact
+    measurement (2026-08-12): Ta M (1.710 keV) sits 0.030 keV from Si K
+    (1.740), closer than the default +-0.085 keV windows are wide and closer
+    than the detector's own FWHM at that energy — no amount of window
+    placement can separate them by integration alone. Quantifying the
+    eds-overlap cube with plain Cliff-Lorimer returns Ta at effectively 0 at%
+    against a truth of 6.67, sigma effectively 0, and the response carries no
+    field that could tell a caller anything went wrong. That silent wrong
+    answer is the evidence the gate asked for; item 20's advisory (a ⚠ badge
+    in ElementList, see lib/elemental/windowConflicts.ts) is the response,
+    and this pin is what makes deconvolution landing later a conversation
+    instead of an unnoticed regression.
+
+    Si is measurably wrong too, but DEFLATED, not inflated as the item's
+    opening measurement guessed: carbon's well-documented light-element bias
+    (see test_eds_light_element_bias_is_bounded_and_documented) roughly
+    doubles C's apparent share, and Cliff-Lorimer's per-pixel renormalisation
+    depresses every other element to make room for it -- Ta's near-total
+    absence is folded into that same redistribution, not a separate inflation
+    of its neighbour.
+    """
+    body, truth = _eds_quantify(client, "eds-overlap", cubes)
+    by_symbol = dict(zip(body["elements"], body["mean_atomic_pct"], strict=True))
+    sigma_by_symbol = dict(
+        zip(body["elements"], body["mean_atomic_pct_error"], strict=True)
+    )
+    assert by_symbol["Ta"] < 1.0, by_symbol
+    assert sigma_by_symbol["Ta"] < 0.01, sigma_by_symbol
+    si_err = by_symbol["Si"] - truth["material_atomic_percent"]["Si"]
+    assert si_err < -2.0, si_err       # measurably wrong, and DEFLATED
+    # No warning-shaped field exists anywhere in the response -- the silence
+    # the gate is about, not just Ta's number.
+    assert not any("warn" in str(k).lower() for k in body), body.keys()
 
 
 # -- EELS --------------------------------------------------------------

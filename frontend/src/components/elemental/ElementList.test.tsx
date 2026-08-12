@@ -134,4 +134,38 @@ describe("ElementList", () => {
     expect(screen.queryByText("L23α")).toBeNull();
     expect(screen.getByText("708 eV")).toBeVisible();
   });
+
+  it("badges conflicted rows, counts them in the header, and never disables their controls", () => {
+    // Item 20 (advisory only). row() puts every symbol on the same 1.74 keV
+    // line by default, which trivially overlaps AND is unresolved — a real
+    // three-species conflict fixture. Three species pairwise conflicting
+    // fires 3 pairs x 2 rules = 6 conflict INSTANCES but involves only 3
+    // distinct species — deliberately using three, not two, so the header
+    // count (species) cannot be confused with the conflict-instance count.
+    const ta = row("Ta", 500_000, "clear");
+    const si = row("Si", 3_100_000, "strong");
+    const fe = row("Fe", 200_000, "weak");
+    const props = renderList({ rows: [ta, si, fe] });
+
+    expect(screen.getByText("3 windows interfere")).toBeVisible();
+    expect(screen.getAllByLabelText("window conflict")).toHaveLength(3);
+
+    const checkbox = screen.getByLabelText("Show Ta");
+    const colorInput = screen.getByLabelText("Colour for Ta");
+    const removeBtn = screen.getByLabelText("Remove Ta");
+    expect(checkbox).not.toBeDisabled();
+    expect(colorInput).not.toBeDisabled();
+    expect(removeBtn).not.toBeDisabled();
+
+    fireEvent.click(checkbox);
+    expect(props.onToggle).toHaveBeenCalledWith(ta.species.id, false);
+    fireEvent.click(removeBtn);
+    expect(props.onRemove).toHaveBeenCalledWith(ta.species.id);
+  });
+
+  it("shows no conflict badge or count when nothing conflicts", () => {
+    renderList(); // default fixture: Si visible, Cu hidden -> no overlap
+    expect(screen.queryByLabelText("window conflict")).toBeNull();
+    expect(screen.queryByText(/interfere/)).toBeNull();
+  });
 });

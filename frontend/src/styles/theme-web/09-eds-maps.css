@@ -116,6 +116,20 @@
 .fvd-eds-conf.weak { color: var(--warn); }
 .fvd-eds-conf.trace { color: var(--text-faint); font-style: italic; }
 
+/* Window-conflict advisory (item 20) — amber, the same colour convention
+   the EELS pre-edge background window already paints on the spectrum
+   (SpectrumPlot.tsx's #d97706). Advisory only: this never disables the row
+   it sits on. */
+.fvd-eds-conflict {
+  color: var(--warn);
+  font-size: 12px;
+  cursor: help;
+}
+
+.fvd-eds-conflict-count {
+  color: var(--warn);
+}
+
 /* ── map montage ──────────────────────────────────────────────────── */
 
 .fvd-eds-montage {

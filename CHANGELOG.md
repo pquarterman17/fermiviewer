@@ -29,6 +29,18 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   copy.
 
 ### Fixed
+- **A ⚠ badge warns when two species' windows interfere.** The Elements list
+  (both EDS and EELS Maps tabs) now flags a pair when their integration
+  windows overlap, when their lines sit closer together than the detector
+  can resolve regardless of how the windows are drawn, or — on EELS — when
+  one edge's background-fit window runs through another edge's onset.
+  Hovering the badge explains which species and why. It is advisory only:
+  nothing is narrowed, refused, or auto-corrected, and every row keeps
+  working exactly as before — the fix (a different window, a different
+  beam energy, or Model fit for lines the detector genuinely cannot
+  separate) is yours to make.
+
+### Fixed
 
 ## [0.1.27] - 2026-08-12
 
