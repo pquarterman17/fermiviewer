@@ -35,6 +35,7 @@ __all__ = [
     "evaluate",
     "fit_spectrum",
     "gaussian",
+    "gaussian_area",
     "linear_background",
     "polynomial_background",
     "power_law",
@@ -302,6 +303,11 @@ def gaussian(
         (amp_bounds[0], center_bounds[0], sigma_bounds[0]),
         (amp_bounds[1], center_bounds[1], sigma_bounds[1]),
     )
+
+
+def gaussian_area(amp: float, sigma: float) -> float:
+    """Analytic net area of :func:`gaussian`: amp·sigma·√(2π)."""
+    return float(amp) * float(sigma) * math.sqrt(2.0 * math.pi)
 
 
 def power_law(
