@@ -274,8 +274,17 @@ def image_render(
     gamma: float = 1.0,
 ) -> Response:
     """Windowed 8-bit grayscale PNG. (Client-side WebGL LUT supersedes
-    this for interactive contrast; this is the simple/export path.)"""
-    raster = _raster(_get(img_id))
+    this for interactive contrast; this is the simple/export path.)
+
+    An rgb_image renders as colour: its uint8 pixels ARE the display
+    values (ADR 0003 §2), so window/gamma params are ignored — the
+    filmstrip, gallery and minimap get colour with no client changes."""
+    ds = _get(img_id)
+    if ds.kind is DataKind.RGB_IMAGE:
+        png = io.BytesIO()
+        Image.fromarray(np.asarray(ds.data), mode="RGB").save(png, format="PNG")
+        return Response(content=png.getvalue(), media_type="image/png")
+    raster = _raster(ds)
     buf8 = to_display(raster, lo, hi, gamma)
     png = io.BytesIO()
     Image.fromarray(buf8, mode="L").save(png, format="PNG")
@@ -316,6 +325,10 @@ def image_data16(img_id: str, frame: int | None = None) -> Response:
     client can build the stepper without a separate metadata call.
     """
     ds = _get(img_id)
+    if ds.kind is DataKind.RGB_IMAGE:
+        # a silent luma fallback here is the looks-right-and-is-wrong trap
+        # ADR 0003 rejects — the interactive path for colour is /rgb8
+        raise HTTPException(400, "rgb_image has no scalar raster — use /rgb8")
     n_frames: int | None = None
     if ds.kind is DataKind.SPECTRUM_IMAGE:
         n_frames = int(ds.data.shape[2])
@@ -330,6 +343,20 @@ def image_data16(img_id: str, frame: int | None = None) -> Response:
         raster = _raster(ds)
     extra = {"X-N-Frames": str(n_frames)} if n_frames is not None else None
     return encode_raster_u16(raster, extra)
+
+
+@router.get("/image/{img_id}/rgb8")
+def image_rgb8(img_id: str) -> Response:
+    """Raw uint8 RGB pixels, row-major — the colour sibling of /data16
+    (ADR 0003 §4). X-Shape is `H,W,3`."""
+    ds = _get(img_id)
+    if ds.kind is not DataKind.RGB_IMAGE:
+        raise HTTPException(400, "not an rgb_image — use /data16")
+    return Response(
+        content=np.ascontiguousarray(ds.data).tobytes(),
+        media_type="application/octet-stream",
+        headers={"X-Shape": f"{ds.data.shape[0]},{ds.data.shape[1]},3"},
+    )
 
 
 _TILE_SIZE = 256
@@ -357,7 +384,12 @@ def _pyramid_level(img_id: str, z: int) -> np.ndarray:
     cached = _LEVEL_CACHE.get(key)
     if cached is not None:
         return cached
-    raster = _raster(_get(img_id))
+    ds = _get(img_id)
+    if ds.kind is DataKind.RGB_IMAGE:
+        # composites are map-sized; serving a LUMA pyramid would silently
+        # de-colour the deep-zoom path (ADR 0003 §4)
+        raise HTTPException(400, "rgb_image is served whole via /rgb8 — no tiles")
+    raster = _raster(ds)
     buf8 = to_display(raster)
     if z > 0:
         f = 1 << z
@@ -378,7 +410,10 @@ def _pyramid_level(img_id: str, z: int) -> np.ndarray:
 
 @router.get("/image/{img_id}/tile-info")
 def tile_info(img_id: str) -> dict[str, int]:
-    raster = _raster(_get(img_id))
+    ds = _get(img_id)
+    if ds.kind is DataKind.RGB_IMAGE:
+        raise HTTPException(400, "rgb_image is served whole via /rgb8 — no tiles")
+    raster = _raster(ds)
     h, w = raster.shape
     levels = 1
     while (max(h, w) >> (levels - 1)) > _TILE_SIZE:

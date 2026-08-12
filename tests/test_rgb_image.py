@@ -124,6 +124,129 @@ def test_spectral_endpoints_reject_rgb_with_400() -> None:
         store.close(img_id)
 
 
+# ── registration + serving ───────────────────────────────────────────
+
+
+def _parent_cube() -> DataStruct:
+    cube = np.random.default_rng(7).integers(
+        0, 1000, size=(3, 4, 16)
+    ).astype(np.uint16)
+    return DataStruct(
+        data=cube,
+        kind=DataKind.SPECTRUM_IMAGE,
+        axes=(
+            AxisCal(0.5, units="nm"),
+            AxisCal(0.5, units="nm"),
+            AxisCal(10.0, units="eV"),
+        ),
+    )
+
+
+def _register_composite(client: TestClient, parent_id: str, rgb: np.ndarray):
+    import base64
+
+    return client.post(
+        "/api/composite/register",
+        json={
+            "parent_id": parent_id,
+            "name": "Composite — Fe, Cu",
+            "width": rgb.shape[1],
+            "height": rgb.shape[0],
+            "pixels_b64": base64.b64encode(rgb.tobytes()).decode(),
+            "recipe": {"channels": [{"symbol": "Fe"}, {"symbol": "Cu"}]},
+        },
+    )
+
+
+def test_composite_registers_and_serves_colour() -> None:
+    client = TestClient(create_app())
+    parent_id = store.add_parsed(_parent_cube(), "cube.hspy")
+    ids = [parent_id]
+    try:
+        rgb = _rgb()
+        r = _register_composite(client, parent_id, rgb)
+        assert r.status_code == 200
+        meta = r.json()
+        assert meta["kind"] == "rgb_image"
+        ids.append(meta["id"])
+        # inherited spatial calibration → the scale bar works
+        assert meta["pixel_size"] == pytest.approx(0.5)
+
+        # /render is a colour PNG of exactly the posted pixels
+        png = client.get(f"/api/image/{meta['id']}/render")
+        assert png.status_code == 200
+        im = Image.open(io.BytesIO(png.content))
+        assert im.mode == "RGB"
+        np.testing.assert_array_equal(np.asarray(im), rgb)
+
+        # /rgb8 round-trips the raw bytes
+        raw = client.get(f"/api/image/{meta['id']}/rgb8")
+        assert raw.status_code == 200
+        assert raw.headers["X-Shape"] == f"{rgb.shape[0]},{rgb.shape[1]},3"
+        assert raw.content == rgb.tobytes()
+
+        # the scalar/tile paths refuse rather than silently de-colour
+        assert client.get(f"/api/image/{meta['id']}/data16").status_code == 400
+        assert client.get(f"/api/image/{meta['id']}/tile-info").status_code == 400
+        assert client.get(f"/api/image/{meta['id']}/tile").status_code == 400
+
+        # histogram is DELIBERATELY the luma histogram (raster boundary):
+        # harmless, and better than a 500 from an overlooked caller
+        assert client.get(f"/api/image/{meta['id']}/histogram").status_code == 200
+    finally:
+        for img_id in ids:
+            store.close(img_id)
+
+
+def test_composite_register_rejects_bad_payloads() -> None:
+    import base64
+
+    client = TestClient(create_app())
+    parent_id = store.add_parsed(_parent_cube(), "cube.hspy")
+    spectrum_id = store.add_parsed(
+        DataStruct(
+            np.arange(8, dtype=np.float64),
+            DataKind.SPECTRUM,
+            (AxisCal(0.01, units="keV"),),
+        ),
+        "spec.msa",
+    )
+    try:
+        good = base64.b64encode(_rgb().tobytes()).decode()
+        base = {
+            "parent_id": parent_id,
+            "name": "c",
+            "width": 4,
+            "height": 3,
+            "pixels_b64": good,
+        }
+        r = client.post(
+            "/api/composite/register", json={**base, "parent_id": "nope"}
+        )
+        assert r.status_code == 404
+        r = client.post(
+            "/api/composite/register", json={**base, "parent_id": spectrum_id}
+        )
+        assert r.status_code == 400
+        # dims that disagree with the parent's scan are a client bug
+        r = client.post(
+            "/api/composite/register", json={**base, "width": 5, "height": 3}
+        )
+        assert r.status_code == 422
+        r = client.post(
+            "/api/composite/register", json={**base, "pixels_b64": "not-base64!!"}
+        )
+        assert r.status_code == 422
+        short = base64.b64encode(b"\x00" * 5).decode()
+        r = client.post(
+            "/api/composite/register", json={**base, "pixels_b64": short}
+        )
+        assert r.status_code == 422
+    finally:
+        store.close(parent_id)
+        store.close(spectrum_id)
+
+
 # ── persistence ──────────────────────────────────────────────────────
 
 
