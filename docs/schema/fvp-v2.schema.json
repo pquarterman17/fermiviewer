@@ -63,13 +63,13 @@
           },
           "name": { "type": "string", "description": "Display name." },
           "kind": {
-            "enum": ["image", "spectrum", "spectrum_image"],
-            "description": "DataKind value; mirrors fermiviewer.datastruct.DataKind."
+            "enum": ["image", "rgb_image", "spectrum", "spectrum_image"],
+            "description": "DataKind value; mirrors fermiviewer.datastruct.DataKind. rgb_image (ADR 0003) is an [H, W, 3] uint8 colour composite."
           },
           "axes": {
             "type": "array",
             "minItems": 1,
-            "description": "One AxisCal per data dimension. An axis is calibrated iff scale is finite and non-zero AND units is non-empty.",
+            "description": "One AxisCal per data dimension, except rgb_image which carries its two SPATIAL axes only (the channel dim has no calibration semantics — ADR 0003). An axis is calibrated iff scale is finite and non-zero AND units is non-empty.",
             "items": {
               "type": "object",
               "required": ["scale", "origin", "units"],

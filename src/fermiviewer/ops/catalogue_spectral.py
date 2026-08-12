@@ -31,7 +31,7 @@ from fermiviewer.calc.eels import extract_map
 from fermiviewer.calc.eels_quant import ElementEdge, quantify
 from fermiviewer.calc.energy_units import to_kev
 from fermiviewer.calc.radial import radial_profile
-from fermiviewer.datastruct import DataKind, DataStruct
+from fermiviewer.datastruct import SPECTRAL_KINDS, DataKind, DataStruct
 from fermiviewer.ops.base import OpParam, OpResult, OpSpec
 from fermiviewer.ops.catalogue import raster_of
 from fermiviewer.ops.registry import register
@@ -104,7 +104,7 @@ register(OpSpec(
 
 
 def _eels_quantify(ds: DataStruct, params: dict[str, Any]) -> OpResult:
-    if ds.kind is DataKind.IMAGE:
+    if ds.kind not in SPECTRAL_KINDS:
         raise ValueError("eels_quantify requires spectral input (got a 2D image)")
     elements = _split_csv(params["elements"])
     shells = _split_csv(params["shells"])

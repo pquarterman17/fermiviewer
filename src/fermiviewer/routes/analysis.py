@@ -26,7 +26,7 @@ from fermiviewer.calc.eels_advanced import (
 from fermiviewer.calc.eels_quant import ElementEdge, quantify, quantify_map
 from fermiviewer.calc.phase_registry import registry as _phase_registry
 from fermiviewer.calc.uncertainty import eels_atomic_sigma
-from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
+from fermiviewer.datastruct import SPECTRAL_KINDS, AxisCal, DataKind, DataStruct
 from fermiviewer.jobs import JobQueueFullError, jobs
 from fermiviewer.models import ImageMeta
 from fermiviewer.session import UnknownImageError, store
@@ -43,7 +43,7 @@ def _get(img_id: str) -> DataStruct:
 
 def _spectral(img_id: str) -> DataStruct:
     ds = _get(img_id)
-    if ds.kind is DataKind.IMAGE:
+    if ds.kind not in SPECTRAL_KINDS:
         raise HTTPException(400, "image has no spectral axis")
     return ds
 

@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from fermiviewer.calc.raster import NoRasterError, raster_of
 from fermiviewer.calc.render import histogram, to_display, to_uint16_norm
-from fermiviewer.datastruct import DataKind, DataStruct
+from fermiviewer.datastruct import SPECTRAL_KINDS, DataKind, DataStruct
 from fermiviewer.io.registry import UnsupportedFormatError, load_auto, supported_extensions
 from fermiviewer.models import FourDMeta, ImageMeta, OpenRequest
 from fermiviewer.routes._open_paths import open_paths_as_metas
@@ -422,7 +422,7 @@ def image_spectrum(
     EELS/EDS workshop plots. Optional 1-based inclusive rect → the
     region-summed spectrum (SI explorer: pixel/ROI spectra)."""
     ds = _get(img_id)
-    if ds.kind is DataKind.IMAGE:
+    if ds.kind not in SPECTRAL_KINDS:
         raise HTTPException(400, "2D images have no spectral axis")
     energy = ds.energy_axis
     region = None

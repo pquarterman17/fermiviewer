@@ -24,7 +24,7 @@ from fermiviewer.calc.eels_identify import (
     EDGE_SIGNAL_WIDTH_EV,
     identify_edges,
 )
-from fermiviewer.datastruct import DataKind, DataStruct
+from fermiviewer.datastruct import SPECTRAL_KINDS, DataStruct
 from fermiviewer.session import UnknownImageError, store
 
 router = APIRouter(prefix="/api")
@@ -35,7 +35,7 @@ def _spectral(img_id: str) -> DataStruct:
         ds = store.get(img_id)
     except UnknownImageError:
         raise HTTPException(404, f"unknown image id: {img_id}") from None
-    if ds.kind is DataKind.IMAGE:
+    if ds.kind not in SPECTRAL_KINDS:
         raise HTTPException(400, "image has no spectral axis")
     return ds
 

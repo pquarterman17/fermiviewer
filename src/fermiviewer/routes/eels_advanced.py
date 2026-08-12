@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from fermiviewer.calc.eels_advanced import align_zlp, richardson_lucy
-from fermiviewer.datastruct import DataKind, DataStruct
+from fermiviewer.datastruct import SPECTRAL_KINDS, DataKind, DataStruct
 from fermiviewer.models import ImageMeta
 from fermiviewer.session import UnknownImageError, store
 
@@ -37,7 +37,7 @@ def _cube(img_id: str) -> DataStruct:
 
 def _spectral(img_id: str) -> DataStruct:
     ds = _get(img_id)
-    if ds.kind is DataKind.IMAGE:
+    if ds.kind not in SPECTRAL_KINDS:
         raise HTTPException(400, "image has no spectral axis")
     return ds
 

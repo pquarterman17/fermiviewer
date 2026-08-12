@@ -19,15 +19,14 @@ from typing import Any
 
 import numpy as np
 
+from fermiviewer.calc.raster import rgb_luma
+
 __all__ = [
     "databar_content_rows",
     "get_stage_tilt",
     "stage_tilt_from_image_tags",
     "to_grayscale",
 ]
-
-# BT.601 luma weights (the MATLAB getGrayscale convention)
-_LUMA = (0.299, 0.587, 0.114)
 
 # keys searched, in priority order; (key, assume_radians_if_small)
 _TILT_KEYS = (
@@ -89,13 +88,17 @@ def databar_content_rows(metadata: Mapping[str, Any], n_rows: int) -> int | None
 
 
 def to_grayscale(pixels: np.ndarray) -> np.ndarray:
-    """RGB(A) → grayscale via BT.601 luma; passthrough for 2-D input."""
+    """RGB(A) → grayscale via BT.601 luma; passthrough for 2-D input.
+
+    The luma weights live once in `calc.raster.rgb_luma` (the raster
+    boundary, ADR 0003) — this wrapper keeps the passthrough/validation
+    contract its callers rely on.
+    """
     arr = np.asarray(pixels, dtype=np.float64)
     if arr.ndim == 2:
         return arr
     if arr.ndim == 3 and arr.shape[2] >= 3:
-        r, g, b = arr[..., 0], arr[..., 1], arr[..., 2]
-        return _LUMA[0] * r + _LUMA[1] * g + _LUMA[2] * b
+        return rgb_luma(arr)
     raise ValueError(f"unsupported pixel array shape {arr.shape}")
 
 

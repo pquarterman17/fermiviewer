@@ -35,8 +35,8 @@ def recalibrate(ds: DataStruct, pixel_size: float, unit: str) -> DataStruct:
     axes: tuple[AxisCal, ...]
     if ds.kind is DataKind.SPECTRUM_IMAGE:
         axes = (cal, cal, ds.axes[2])
-    elif ds.kind is DataKind.IMAGE:
-        axes = (cal, cal)
+    elif ds.kind is DataKind.IMAGE or ds.kind is DataKind.RGB_IMAGE:
+        axes = (cal, cal)  # rgb_image carries spatial axes only (ADR 0003)
     else:
         raise HTTPException(400, "1D spectra have no spatial calibration")
     return DataStruct(

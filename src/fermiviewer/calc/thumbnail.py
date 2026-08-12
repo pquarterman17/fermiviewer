@@ -55,11 +55,18 @@ def render_thumbnail_png(
     empty array. The caller writes no `thumbs/` entry in that case, rather
     than embedding a placeholder image.
     """
-    raster = raster_for_thumbnail(data, kind)
-    if raster is None or raster.ndim != 2 or raster.size == 0:
-        return None
-    buf8 = to_display(raster)  # same auto full-range window as the render route
-    img = Image.fromarray(buf8, mode="L")
+    if kind is DataKind.RGB_IMAGE:
+        # colour thumbnails stay colour — no windowing, the composite's
+        # uint8 pixels ARE the display values (ADR 0003 §2)
+        if data.size == 0:
+            return None
+        img = Image.fromarray(np.asarray(data), mode="RGB")
+    else:
+        raster = raster_for_thumbnail(data, kind)
+        if raster is None or raster.ndim != 2 or raster.size == 0:
+            return None
+        buf8 = to_display(raster)  # same auto full-range window as /render
+        img = Image.fromarray(buf8, mode="L")
     scale = max_edge / max(img.width, img.height)
     if scale < 1.0:
         size = (max(1, round(img.width * scale)), max(1, round(img.height * scale)))

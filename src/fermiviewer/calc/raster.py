@@ -23,11 +23,23 @@ import numpy as np
 
 from fermiviewer.datastruct import DataKind, DataStruct
 
-__all__ = ["NoRasterError", "raster_from", "raster_of"]
+__all__ = ["NoRasterError", "raster_from", "raster_of", "rgb_luma"]
+
+#: BT.601 luma weights — the app's one RGB→scalar rule. io/metadata.py's
+#: `to_grayscale` delegates here; io/images.py's load-time channel MEAN is
+#: deliberately different (a verbatim MATLAB port, see its docstring).
+_LUMA = (0.299, 0.587, 0.114)
 
 
 class NoRasterError(ValueError):
     """The dataset kind has no 2D raster (a 1D spectrum)."""
+
+
+def rgb_luma(arr: np.ndarray) -> np.ndarray:
+    """BT.601 luma of an [H, W, 3+] colour array (extra channels ignored),
+    as float64."""
+    a = np.asarray(arr, dtype=np.float64)
+    return _LUMA[0] * a[..., 0] + _LUMA[1] * a[..., 1] + _LUMA[2] * a[..., 2]
 
 
 def raster_from(
@@ -48,6 +60,11 @@ def raster_from(
     if kind is DataKind.SPECTRUM_IMAGE:
         summed: np.ndarray = np.asarray(np.sum(data, axis=2, dtype=np.float64))
         return summed
+    if kind is DataKind.RGB_IMAGE:
+        # every analysis consumer sees a defensible scalar (ADR 0003 §3);
+        # the display path never comes through here — it serves the colour
+        # pixels directly
+        return rgb_luma(data)
     raise NoRasterError(f"{kind.value} data has no 2D raster")
 
 

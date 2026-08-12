@@ -28,7 +28,7 @@ else:  # py<3.11 shim — delete when 3.10 support is dropped
         __str__ = str.__str__
         __format__ = str.__format__
 
-__all__ = ["AxisCal", "DataKind", "DataStruct"]
+__all__ = ["SPECTRAL_KINDS", "AxisCal", "DataKind", "DataStruct"]
 
 
 class DataKind(StrEnum):
@@ -36,11 +36,25 @@ class DataKind(StrEnum):
     # value membership (`"image" in DataKind`) only works on CPython 3.12+;
     # on the supported 3.10/3.11 floor it raises TypeError.
     IMAGE = "image"                    # 2D [H, W]
+    RGB_IMAGE = "rgb_image"            # 3D [H, W, 3] uint8 colour (ADR 0003)
     SPECTRUM = "spectrum"              # 1D [n_channels]
     SPECTRUM_IMAGE = "spectrum_image"  # 3D [Ny, Nx, n_channels]
 
 
-_EXPECTED_NDIM = {DataKind.IMAGE: 2, DataKind.SPECTRUM: 1, DataKind.SPECTRUM_IMAGE: 3}
+#: Kinds with an energy axis (always the LAST dim). Spectral gates check
+#: `kind not in SPECTRAL_KINDS`, so a future kind is excluded from spectral
+#: math until someone deliberately adds it, never included by accident.
+SPECTRAL_KINDS = frozenset({DataKind.SPECTRUM, DataKind.SPECTRUM_IMAGE})
+
+# (data ndim, axes count) per kind. rgb_image carries SPATIAL axes only —
+# a channel axis has no calibration semantics (ADR 0003 §1), so its 3D data
+# pairs with 2 axes and `pixel_cal` keeps meaning the x axis.
+_EXPECTED = {
+    DataKind.IMAGE: (2, 2),
+    DataKind.RGB_IMAGE: (3, 2),
+    DataKind.SPECTRUM: (1, 1),
+    DataKind.SPECTRUM_IMAGE: (3, 3),
+}
 
 
 @dataclass(frozen=True)
@@ -86,15 +100,30 @@ class DataStruct:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        expected = _EXPECTED_NDIM[self.kind]
-        if self.data.ndim != expected:
+        expected_ndim, expected_axes = _EXPECTED[self.kind]
+        if self.data.ndim != expected_ndim:
             raise ValueError(
-                f"{self.kind.value} requires {expected}D data, got {self.data.ndim}D"
+                f"{self.kind.value} requires {expected_ndim}D data, "
+                f"got {self.data.ndim}D"
             )
-        if len(self.axes) != self.data.ndim:
+        if len(self.axes) != expected_axes:
             raise ValueError(
-                f"axes count {len(self.axes)} != data ndim {self.data.ndim}"
+                f"{self.kind.value} axes count {len(self.axes)} != "
+                f"expected {expected_axes}"
             )
+        if self.kind is DataKind.RGB_IMAGE:
+            # Presentation-grade colour, composed client-side from scalar
+            # rasters (ADR 0003 §2) — exactly 3 channels (producers drop
+            # alpha at the boundary) and uint8 (there is no window/level
+            # story for float colour, so the contract refuses it).
+            if self.data.shape[-1] != 3:
+                raise ValueError(
+                    f"rgb_image requires [H, W, 3] data, got {self.data.shape}"
+                )
+            if self.data.dtype != np.uint8:
+                raise ValueError(
+                    f"rgb_image requires uint8 data, got {self.data.dtype}"
+                )
         if self.data.size == 0:
             raise ValueError("empty data array")
         # Freeze the payload: a frozen dataclass can't stop in-place ndarray
@@ -104,7 +133,7 @@ class DataStruct:
     # ── spectral conveniences ─────────────────────────────────────────
     @property
     def energy_cal(self) -> AxisCal:
-        if self.kind is DataKind.IMAGE:
+        if self.kind not in SPECTRAL_KINDS:
             raise ValueError("images have no energy axis")
         return self.axes[-1]
 
@@ -114,7 +143,7 @@ class DataStruct:
 
     @property
     def n_channels(self) -> int:
-        if self.kind is DataKind.IMAGE:
+        if self.kind not in SPECTRAL_KINDS:
             raise ValueError("images have no energy axis")
         return int(self.data.shape[-1])
 

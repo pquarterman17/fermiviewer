@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import BaseModel
 
 from fermiviewer.calc.fourd.scanshape import scan_shape_candidates
-from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
+from fermiviewer.datastruct import SPECTRAL_KINDS, AxisCal, DataKind, DataStruct
 from fermiviewer.io.metadata import databar_content_rows, get_stage_tilt
 
 if TYPE_CHECKING:
@@ -78,7 +78,7 @@ class ImageMeta(BaseModel):
 
     @classmethod
     def from_datastruct(cls, img_id: str, name: str, ds: DataStruct) -> ImageMeta:
-        spectral = ds.kind is not DataKind.IMAGE
+        spectral = ds.kind in SPECTRAL_KINDS
         px = None
         unit = ""
         if ds.kind is not DataKind.SPECTRUM and ds.pixel_cal.calibrated:

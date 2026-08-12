@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from fermiviewer.calc.eels_model import fit_edges, fit_edges_map
 from fermiviewer.calc.eels_quant import ElementEdge
 from fermiviewer.calc.uncertainty import atomic_fraction_sigma
-from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
+from fermiviewer.datastruct import SPECTRAL_KINDS, AxisCal, DataKind, DataStruct
 from fermiviewer.models import ImageMeta
 from fermiviewer.session import UnknownImageError, store
 
@@ -79,7 +79,7 @@ def eels_fit(req: EelsFitRequest) -> dict:
     overlay on the spectrum plot.
     """
     ds = _get(req.image_id)
-    if ds.kind is DataKind.IMAGE:
+    if ds.kind not in SPECTRAL_KINDS:
         raise HTTPException(400, "image has no spectral axis")
     energy = ds.energy_axis
     spectrum = ds.sum_spectrum()

@@ -28,7 +28,7 @@ from fermiviewer.calc.eds_zeta import dose_electrons, zeta_from_k_factors, zeta_
 from fermiviewer.calc.energy_units import kev_factor, to_kev
 from fermiviewer.calc.spectral_fit import Component, linear_background
 from fermiviewer.calc.uncertainty import cliff_lorimer_uncertainty
-from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
+from fermiviewer.datastruct import SPECTRAL_KINDS, AxisCal, DataStruct
 from fermiviewer.models import ImageMeta
 from fermiviewer.session import UnknownImageError, store
 
@@ -41,7 +41,7 @@ def _spectral(img_id: str) -> DataStruct:
         ds = store.get(img_id)
     except UnknownImageError:
         raise HTTPException(404, f"unknown image id: {img_id}") from None
-    if ds.kind is DataKind.IMAGE:
+    if ds.kind not in SPECTRAL_KINDS:
         raise HTTPException(400, "image has no spectral axis")
     return ds
 
