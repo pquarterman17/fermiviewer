@@ -14,10 +14,24 @@ import { mapDisplayRange, renderElementMap } from "../../lib/edsMapDisplay";
 export interface MapTile {
   symbol: string;
   line: string;
+  /** Full caption override. When absent, the montage/overlay/legend fall
+   *  back to "{symbol} {line}α" — the EDS X-ray-line convention. EELS tiles
+   *  (edges, not lines) set this explicitly so the caption never grows a
+   *  meaningless "α" suffix. */
+  caption?: string;
   /** H×W background-subtracted counts. */
   map: number[][];
   shape: [number, number];
   totalCounts: number;
+}
+
+/** Stable per-tile identity for React keys and the overlay's per-tile gain
+ *  map. `symbol` alone collides when one element carries two species — EELS'
+ *  Si-K and Si-L23 (see useEelsMaps.ts) — so every keyed usage goes through
+ *  this instead. Safe for EDS too: its species list never repeats a symbol,
+ *  so the key is unchanged in effect, just spelled "Fe-K" instead of "Fe". */
+export function tileKey(tile: MapTile): string {
+  return `${tile.symbol}-${tile.line}`;
 }
 
 function Tile({
@@ -50,18 +64,19 @@ function Tile({
     ctx.putImageData(image, 0, 0);
   }, [color, h, highPct, lowPct, tile.map, w]);
 
+  const label = tile.caption ?? `${tile.symbol} ${tile.line}α`;
   return (
     <figure className="fvd-eds-tile">
       <button
         type="button"
         className="fvd-eds-tile-btn"
         onClick={onFocus}
-        title={`Focus ${tile.symbol} ${tile.line}α`}
+        title={`Focus ${label}`}
       >
         <canvas ref={ref} />
       </button>
       <figcaption style={{ color }}>
-        {tile.symbol} {tile.line}α
+        {label}
         <span className="k">{formatCountTick(tile.totalCounts)}</span>
       </figcaption>
     </figure>
@@ -85,7 +100,7 @@ export default function EdsMapMontage({
     <div className="fvd-eds-montage" role="group" aria-label="Element map montage">
       {tiles.map((tile) => (
         <Tile
-          key={tile.symbol}
+          key={tileKey(tile)}
           tile={tile}
           color={colors(tile.symbol)}
           lowPct={lowPct}

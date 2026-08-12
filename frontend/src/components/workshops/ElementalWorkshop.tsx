@@ -20,6 +20,7 @@ import {
   type SpectralModality,
 } from "../../lib/spectralModality";
 import { useViewer } from "../../store/viewer";
+import EelsMapsTab from "../elemental/EelsMapsTab";
 import MapsTab from "../elemental/MapsTab";
 import EdsModelFit from "./EdsModelFit";
 import EdsQuantifyPanel from "./EdsQuantifyPanel";
@@ -112,22 +113,7 @@ export default function ElementalWorkshop() {
 
       {isEels ? (
         tab === "maps" ? (
-          <div className="fvd-ws-empty">
-            <p>
-              <strong>Elemental maps are not wired for EELS yet.</strong>
-            </p>
-            <p>
-              The list, montage, overlay and legend are shared and ready; what
-              is missing is EELS-side: edge identification (there is no
-              equivalent of the EDS auto-assign endpoint), batch edge-map
-              extraction returning inline rasters, and a fix to
-              <code> calc/eels.extract_map</code>, which still casts the whole
-              cube to float64.
-            </p>
-            <p className="k">
-              Use <strong>Explore</strong> for single edge maps meanwhile.
-            </p>
-          </div>
+          <EelsMapsTab />
         ) : (
           <EelsWorkshop tab={EELS_TAB[tab]} />
         )

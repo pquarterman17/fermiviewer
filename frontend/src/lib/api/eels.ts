@@ -292,3 +292,96 @@ export function eelsFitMap(
     fit_range: fitRange,
   });
 }
+
+// ── EELS edge auto-ID + batch maps (SPECTRAL_WORKSPACE_PLAN #22/#14) ────
+// The Maps workflow's EELS half: identify() calls eelsAutoAssign once per
+// cube, eelsMaps() extracts the ticked species in one round trip. Mirrors
+// edsAutoAssign/edsElementMaps (lib/api/structure.ts, lib/api/eds.ts) in
+// shape; see routes/eels_identify.py and routes/eels_maps.py for the
+// response contracts these types describe.
+
+export type EelsEdgeConfidence = "strong" | "clear" | "weak" | "trace";
+
+export interface EelsAutoAssignEdge {
+  element: string;
+  edge: string;
+  /** Combined "Fe-L23" label — element + edge joined by a dash. */
+  symbol: string;
+  onset_ev: number;
+  fit_window: [number, number];
+  signal_window: [number, number];
+  net: number;
+  sigma: number;
+  significance: number;
+  confidence: EelsEdgeConfidence;
+}
+
+export interface EelsAutoAssignResult {
+  edges: EelsAutoAssignEdge[];
+}
+
+/** Edge-jump significance for every tabulated EELS edge the cube's energy
+ *  axis can support — the EELS analogue of `edsAutoAssign`. Unlike EDS's
+ *  candidate-only response, this one already carries net/sigma/significance/
+ *  confidence per edge (see calc/eels_identify.py), sorted strongest first. */
+export function eelsAutoAssign(
+  id: string,
+  opts: {
+    fitWidthEv?: number;
+    signalWidthEv?: number;
+    fitGapEv?: number;
+    method?: "powerlaw" | "exponential";
+  } = {},
+): Promise<EelsAutoAssignResult> {
+  const body: Record<string, unknown> = { image_id: id };
+  if (opts.fitWidthEv != null) body.fit_width_ev = opts.fitWidthEv;
+  if (opts.signalWidthEv != null) body.signal_width_ev = opts.signalWidthEv;
+  if (opts.fitGapEv != null) body.fit_gap_ev = opts.fitGapEv;
+  if (opts.method != null) body.method = opts.method;
+  return post("/api/eels/auto-assign", body);
+}
+
+/** One requested species for the batch maps endpoint — a label plus its
+ *  integration windows, taken as given (no server-side line-energy lookup
+ *  the way EDS's batch endpoint has). */
+export interface EelsMapSpecRequest {
+  label: string;
+  signal: { lo: number; hi: number };
+  background?: { lo: number; hi: number };
+  method?: string;
+}
+
+/** One row of the batch response, aligned with the request by position. */
+export interface EelsMapEntry {
+  label: string;
+  signal_window: [number, number] | null;
+  background_window: [number, number] | null;
+  method: string;
+  map: number[][] | null;
+  total_counts: number | null;
+  map_meta: ImageMeta | null;
+  /** Why this species could not be mapped, when it could not. Null on
+   *  success — the row is kept either way. */
+  error: string | null;
+}
+
+export interface EelsMapsResult {
+  image_id: string;
+  shape: [number, number];
+  maps: EelsMapEntry[];
+}
+
+/** N species → N rasters in ONE request, without a full quantification —
+ *  the EELS analogue of `edsElementMaps`. Prefer this over N concurrent
+ *  `eelsMap` calls when populating a montage/overlay. */
+export function eelsMaps(
+  id: string,
+  species: EelsMapSpecRequest[],
+  opts: { saveDerived?: boolean; signal?: AbortSignal } = {},
+): Promise<EelsMapsResult> {
+  return post(
+    "/api/eels/maps",
+    { image_id: id, species, save_derived: opts.saveDerived ?? false },
+    { signal: opts.signal },
+  );
+}

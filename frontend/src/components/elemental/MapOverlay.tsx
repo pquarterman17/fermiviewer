@@ -10,7 +10,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { compositeChannels, type CompositeRaster } from "../../lib/composite";
 import { useElementColors } from "../../lib/elemental/elementColors";
 import { formatCountTick } from "../../lib/edsSpectrumDisplay";
-import type { MapTile } from "./MapMontage";
+import { tileKey, type MapTile } from "./MapMontage";
 
 export type LegendValue = "none" | "net" | "atomic";
 
@@ -48,9 +48,10 @@ export default function EdsMapOverlay({
   quantBySymbol,
 }: {
   tiles: MapTile[];
-  /** Per-element brightness, symbol → 0–2. */
+  /** Per-tile brightness, tileKey(tile) → 0–2 — not bare symbol, since one
+   *  element can carry two tiles (EELS' Si-K and Si-L23). */
   gains: Record<string, number>;
-  onGain: (symbol: string, gain: number) => void;
+  onGain: (tileKey: string, gain: number) => void;
   /** Greyscale survey / HAADF raster for the chosen underlay image. */
   survey: CompositeRaster | null;
   /** Library images whose spatial size matches the cube. */
@@ -76,7 +77,7 @@ export default function EdsMapOverlay({
       rasters,
       tiles.map((t) => ({
         color: colors(t.symbol),
-        intensity: gains[t.symbol] ?? 1,
+        intensity: gains[tileKey(t)] ?? 1,
         visible: true,
       })),
       blend,
@@ -93,14 +94,13 @@ export default function EdsMapOverlay({
 
   if (tiles.length === 0) return null;
 
-  const detail = (symbol: string): string => {
+  const detail = (tile: MapTile): string => {
     if (legendValue === "atomic") {
-      const pct = quantBySymbol?.[symbol];
+      const pct = quantBySymbol?.[tile.symbol];
       return pct == null ? "" : `${pct.toFixed(1)} at%`;
     }
     if (legendValue === "net") {
-      const tile = tiles.find((t) => t.symbol === symbol);
-      return tile ? formatCountTick(tile.totalCounts) : "";
+      return formatCountTick(tile.totalCounts);
     }
     return "";
   };
@@ -169,16 +169,16 @@ export default function EdsMapOverlay({
 
       <ul className="fvd-eds-legend">
         {tiles.map((tile) => {
-          const value = detail(tile.symbol);
+          const value = detail(tile);
           return (
-            <li key={tile.symbol}>
+            <li key={tileKey(tile)}>
               <span
                 className="fvd-eds-legend-swatch"
                 style={{ background: colors(tile.symbol) }}
                 aria-hidden="true"
               />
               <span style={{ color: colors(tile.symbol) }}>
-                {tile.symbol} {tile.line}α
+                {tile.caption ?? `${tile.symbol} ${tile.line}α`}
               </span>
               {value && <span className="k">{value}</span>}
             </li>
@@ -188,26 +188,30 @@ export default function EdsMapOverlay({
 
       <details className="fvd-eds-overlay-gains">
         <summary className="k">Per-element brightness</summary>
-        {tiles.map((tile) => (
-          <div className="fvd-ws-row" key={tile.symbol}>
-            <span className="k" style={{ width: 32, color: colors(tile.symbol) }}>
-              {tile.symbol}
-            </span>
-            <input
-              type="range"
-              min={0}
-              max={2}
-              step={0.05}
-              style={{ flex: 1 }}
-              value={gains[tile.symbol] ?? 1}
-              aria-label={`Brightness for ${tile.symbol}`}
-              onChange={(e) => onGain(tile.symbol, Number(e.target.value))}
-            />
-            <span className="k" style={{ width: 34, textAlign: "right" }}>
-              {(gains[tile.symbol] ?? 1).toFixed(2)}
-            </span>
-          </div>
-        ))}
+        {tiles.map((tile) => {
+          const key = tileKey(tile);
+          const label = tile.caption ?? tile.symbol;
+          return (
+            <div className="fvd-ws-row" key={key}>
+              <span className="k" style={{ width: 32, color: colors(tile.symbol) }}>
+                {label}
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={2}
+                step={0.05}
+                style={{ flex: 1 }}
+                value={gains[key] ?? 1}
+                aria-label={`Brightness for ${label}`}
+                onChange={(e) => onGain(key, Number(e.target.value))}
+              />
+              <span className="k" style={{ width: 34, textAlign: "right" }}>
+                {(gains[key] ?? 1).toFixed(2)}
+              </span>
+            </div>
+          );
+        })}
       </details>
     </section>
   );

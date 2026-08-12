@@ -8,6 +8,9 @@ import ElementalWorkshop from "./ElementalWorkshop";
 vi.mock("../elemental/MapsTab", () => ({
   default: () => <div>Maps surface</div>,
 }));
+vi.mock("../elemental/EelsMapsTab", () => ({
+  default: () => <div>EELS maps surface</div>,
+}));
 vi.mock("./EdsSpectrumImage", () => ({
   default: () => <div>EDS explore surface</div>,
 }));
@@ -89,10 +92,10 @@ describe("ElementalWorkshop", () => {
     expect(screen.getByRole("tab", { name: "Advanced" })).toBeVisible();
   });
 
-  it("says plainly that EELS maps are not wired yet, rather than faking them", () => {
+  it("renders the EELS maps tab for an EELS cube, not the EDS one", () => {
     open(cube({ id: "e3", energy_first: 100, energy_last: 900, energy_units: "eV" }));
     render(<ElementalWorkshop />);
-    expect(screen.getByText(/not wired for EELS yet/)).toBeVisible();
+    expect(screen.getByText("EELS maps surface")).toBeVisible();
     expect(screen.queryByText("Maps surface")).toBeNull();
   });
 

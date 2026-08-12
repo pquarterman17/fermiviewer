@@ -1,73 +1,59 @@
-// The Maps workflow: identify → confirm → colour-coded maps.
+// The EELS half of the Maps workflow (SPECTRAL_WORKSPACE_PLAN #3/#12/#16).
 //
-// Opening a cube identifies its elements and shows them as a checkable list.
-// Ticking elements produces a montage of single-element maps plus a combined
-// overlay with a colour legend, and one button exports the assembled figure.
-// This is the path the workspace is built around; Explore remains for tuning
-// a single window by hand.
+// Mirrors MapsTab.tsx's identify → confirm → colour-coded maps shape, reusing
+// its shared pieces (ElementList, MapMontage, MapOverlay, the figure-export
+// path) rather than forking them. The two real differences from EDS: (1)
+// /eels/auto-assign scores every tabulated edge server-side, so there is no
+// client-side spectrum re-fetch/re-integration to do — identify() is one
+// request; (2) one element can carry two species at once (Si K and Si L23),
+// so "pick Fe" from the periodic table adds/removes every edge auto-assign
+// found for that symbol, not a single looked-up line.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import {
-  edsAutoAssign,
-  edsLineEnergy,
-  fetchData16,
-  fetchSpectrum,
-  type Spectrum,
-} from "../../lib/api";
+import { eelsAutoAssign, fetchData16 } from "../../lib/api";
 import type { CompositeRaster } from "../../lib/composite";
-import { elementColor } from "../../lib/elemental/elementColors";
+import { buildElementLut, elementColor } from "../../lib/elemental/elementColors";
+import { eelsEvidenceFrom, type EelsEdgeEvidence } from "../../lib/elemental/eelsIdentify";
 import { renderFigure, type FigureSource } from "../../lib/elemental/figure";
 import {
-  identifyElements,
-  measureElement,
-  type IdentifiedElement,
-} from "../../lib/elemental/identify";
-import {
   buildRows,
-  seedEdsSpeciesFrom,
+  seedEelsSpeciesFrom,
   visibleSpecies,
   type SpeciesRow,
 } from "../../lib/elemental/speciesRows";
-import { edsSpecies } from "../../lib/spectrum/species";
-import { speciesOf, useSpecies } from "../../store/species";
-import { buildElementLut } from "../../lib/elemental/elementColors";
-import { normalizeEdsSpectrum } from "../../lib/edsSpectrumDisplay";
 import { mapDisplayRange, renderElementMap } from "../../lib/edsMapDisplay";
+import { eelsSpecies } from "../../lib/spectrum/species";
+import { speciesOf, useSpecies } from "../../store/species";
 import { useViewer } from "../../store/viewer";
 import EdsElementList from "./ElementList";
 import EdsMapMontage, { type MapTile } from "./MapMontage";
 import EdsMapOverlay, { type LegendValue } from "./MapOverlay";
-import type { EdsMapBackground } from "../workshops/useEdsElementMap";
-import { useEdsElementMaps } from "./useElementMaps";
+import { useEelsElementMaps } from "./useEelsMaps";
 
 type View = "both" | "montage" | "overlay";
+type Method = "powerlaw" | "exponential";
 
-function tileToFigureSource(tile: MapTile, detail: string): FigureSource {
+function tileToFigureSource(tile: MapTile): FigureSource {
   const [h, w] = tile.shape;
   const color = elementColor(tile.symbol);
   const range = mapDisplayRange(tile.map, 1, 99);
   return {
-    label: `${tile.symbol} ${tile.line}α`,
+    label: tile.caption ?? `${tile.symbol} ${tile.line}`,
     color,
-    detail,
     rgba: renderElementMap(tile.map, w, h, range, buildElementLut(color)),
     w,
     h,
   };
 }
 
-export default function EdsMapsTab({
-  bg,
-  e0Kev,
-  quantBySymbol,
+export default function EelsMapsTab({
   onFocusElement,
   onHoverElement,
 }: {
-  bg: EdsMapBackground;
-  e0Kev: number;
-  quantBySymbol?: Record<string, number>;
-  /** Frame this species' window on the Explore spectrum. */
+  /** Frame this species' window on the EELS spectrum, once that surface can
+   *  consume it. Unwired for now: the spectrum view lives in EelsWorkshop,
+   *  developed separately — see the module header. */
   onFocusElement?: (row: SpeciesRow) => void;
   onHoverElement?: (symbol: string | null) => void;
 }) {
@@ -82,16 +68,16 @@ export default function EdsMapsTab({
   const setAllVisible = useSpecies((s) => s.setAllVisible);
   const species = speciesOf(byImage, activeId);
 
-  // EVIDENCE ONLY. What the user decided lives in the species store, keyed by
-  // image, so it survives switching cubes and a re-identification.
-  const [evidence, setEvidence] = useState<IdentifiedElement[]>([]);
+  // EVIDENCE ONLY — what the user decided lives in the species store, keyed
+  // by image, so it survives switching cubes and a re-identification.
+  const [evidence, setEvidence] = useState<EelsEdgeEvidence[]>([]);
   const [idBusy, setIdBusy] = useState(false);
+  const [method, setMethod] = useState<Method>("powerlaw");
   const [view, setView] = useState<View>("both");
   const [gains, setGains] = useState<Record<string, number>>({});
   const [legendValue, setLegendValue] = useState<LegendValue>("net");
   const [surveyId, setSurveyId] = useState<string | null>(null);
   const [survey, setSurvey] = useState<CompositeRaster | null>(null);
-  const sumSpectrum = useRef<Spectrum | null>(null);
 
   const stillOpen = useCallback(
     (id: string | null): id is string =>
@@ -108,56 +94,48 @@ export default function EdsMapsTab({
   const meta = activeId ? images[activeId] : null;
   const cubeShape = meta?.shape;
 
-  /** Identify from the whole-cube spectrum; the cube's own sum is the only
-   *  spectrum with enough counts to judge a trace element against noise. */
+  /** /eels/auto-assign scores every tabulated edge server-side, so unlike
+   *  EDS's identify() there is no spectrum to fetch or re-integrate here. */
   const identify = useCallback(async () => {
     const id = activeId;
     if (!id) return;
     setIdBusy(true);
     try {
-      const [auto, raw] = await Promise.all([
-        edsAutoAssign(id),
-        sumSpectrum.current
-          ? Promise.resolve(sumSpectrum.current)
-          : fetchSpectrum(id),
-      ]);
+      const auto = await eelsAutoAssign(id, { method });
       if (!stillOpen(id)) return;
-      sumSpectrum.current = raw;
-      const spectrum = normalizeEdsSpectrum(raw);
-      const found = identifyElements(auto, spectrum, { background: bg, e0Kev });
+      const found = eelsEvidenceFrom(auto);
       setEvidence(found);
-      // Seed only when this image has no species yet. On a return visit, or a
-      // re-ID, the user's decisions win and only the measured numbers refresh.
-      const seeded = seedEdsSpeciesFrom(found, speciesOf(useSpecies.getState().byImage, id));
+      // Seed only when this image has no species yet — a return visit or a
+      // re-ID must leave the user's decisions alone.
+      const seeded = seedEelsSpeciesFrom(found, speciesOf(useSpecies.getState().byImage, id));
       if (seeded) setSpecies(id, seeded);
       const current = seeded ?? speciesOf(useSpecies.getState().byImage, id);
       const shown = current.filter((sp) => sp.visible).length;
       report(
         id,
         found.length === 0
-          ? "EDS: no elements identified — add them manually"
-          : `EDS: identified ${found.length} element${
+          ? "EELS: no edges identified — add them manually"
+          : `EELS: identified ${found.length} edge${
               found.length === 1 ? "" : "s"
             }, ${shown} showing${seeded ? " (above trace)" : " (your list)"}`,
       );
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      report(id, `EDS identify: ${message}`);
+      report(id, `EELS identify: ${message}`);
     } finally {
       setIdBusy(false);
     }
-  }, [activeId, bg, e0Kev, report, stillOpen]);
+  }, [activeId, method, report, stillOpen]);
 
   // Auto-ID when a cube becomes active: the user should never face a blank
-  // element box on a dataset whose elements are sitting in its own spectrum.
+  // edge box on a dataset whose edges are sitting in its own spectrum.
   useEffect(() => {
-    sumSpectrum.current = null;
     setEvidence([]);
     setGains({});
     setSurveyId(null);
     setSurvey(null);
     if (activeId) void identify();
-    // identify() changes identity with bg/e0Kev; re-running on those would
+    // identify() changes identity with `method`; re-running on that would
     // re-identify mid-session and discard the user's ticks.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId]);
@@ -165,11 +143,10 @@ export default function EdsMapsTab({
   const rows = useMemo(() => buildRows(species, evidence), [species, evidence]);
   const shownSpecies = useMemo(() => visibleSpecies(rows), [rows]);
 
-  const { tiles, mapsBusy } = useEdsElementMaps({
+  const { tiles, mapsBusy } = useEelsElementMaps({
     imageId: activeId,
     species: shownSpecies,
-    bg,
-    e0Kev,
+    method,
     isOpen: stillOpen,
     onStatus: report,
   });
@@ -200,53 +177,47 @@ export default function EdsMapsTab({
       .then((raster) => {
         if (!stale) setSurvey(raster);
       })
-      .catch((error: Error) => report(activeId, `EDS underlay: ${error.message}`));
+      .catch((error: Error) => report(activeId, `EELS underlay: ${error.message}`));
     return () => {
       stale = true;
     };
   }, [activeId, report, surveyId]);
 
-  /** Picking an element in the table toggles it: already on the list → remove,
-   *  otherwise measure it against the spectrum and add it. Matches what the
-   *  multi-select picker looks like it does. */
+  /** Picking an element in the table toggles ALL its edges at once: if any
+   *  species with that symbol is showing, every one of them is removed;
+   *  otherwise every edge auto-assign found for it (there is no separate
+   *  single-edge lookup the way EDS has edsLineEnergy — the last identify
+   *  pass already scored every in-range edge, so it IS the lookup). */
   const addElement = (symbol: string) => {
     const id = activeId;
     if (!id) return;
-    const existing = species.find((sp) => sp.symbol === symbol);
-    if (existing) {
-      removeSpecies(id, existing.id);
+    const existingForSymbol = species.filter((sp) => sp.symbol === symbol);
+    if (existingForSymbol.length > 0) {
+      existingForSymbol.forEach((sp) => removeSpecies(id, sp.id));
       return;
     }
-    const spectrum = sumSpectrum.current;
-    if (!spectrum) return;
-    edsLineEnergy(symbol)
-      .then(({ energy_kev, line }) => {
-        if (!stillOpen(id)) return;
-        addSpecies(id, edsSpecies(symbol, line, energy_kev));
-        // Measure it too, so the new row shows net and confidence like the
-        // identified ones rather than a blank strength bar.
-        const measured = measureElement(
-          symbol, line, energy_kev,
-          normalizeEdsSpectrum(spectrum), evidence,
-          { background: bg, e0Kev },
-        );
-        if (measured) setEvidence((prev) => [...prev, measured]);
-      })
-      .catch((error: Error) => report(id, `EDS add: ${error.message}`));
+    const matches = evidence.filter((e) => e.symbol === symbol);
+    if (matches.length === 0) {
+      report(id, `EELS: no ${symbol} edge in this cube's energy range`);
+      return;
+    }
+    matches.forEach((e) =>
+      addSpecies(
+        id,
+        eelsSpecies(e.symbol, e.transition, e.energy, {
+          visible: true,
+          windows: {
+            signal: { lo: e.windowLo, hi: e.windowHi },
+            background: { lo: e.fitWindow[0], hi: e.fitWindow[1] },
+          },
+        }),
+      ),
+    );
   };
 
   const exportFigure = () => {
     if (tiles.length === 0) return;
-    const detailOf = (symbol: string) => {
-      if (legendValue === "atomic") {
-        const pct = quantBySymbol?.[symbol];
-        return pct == null ? "" : `${pct.toFixed(1)} at%`;
-      }
-      return "";
-    };
-    const sources = tiles.map((tile) =>
-      tileToFigureSource(tile, detailOf(tile.symbol)),
-    );
+    const sources = tiles.map(tileToFigureSource);
     const overlayCanvas = document.querySelector<HTMLCanvasElement>(
       ".fvd-eds-overlay-canvas canvas",
     );
@@ -271,7 +242,7 @@ export default function EdsMapsTab({
     }
     const canvas = document.createElement("canvas");
     renderFigure(canvas, sources, {
-      title: meta?.name ?? "Elemental maps",
+      title: meta?.name ?? "EELS elemental maps",
       overlay,
       columns: Math.min(4, Math.max(2, Math.ceil(Math.sqrt(tiles.length + 1)))),
     });
@@ -280,10 +251,10 @@ export default function EdsMapsTab({
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = "eds-element-maps.png";
+      anchor.download = "eels-element-maps.png";
       anchor.click();
       URL.revokeObjectURL(url);
-      report(activeId, `EDS: exported figure with ${tiles.length} maps`);
+      report(activeId, `EELS: exported figure with ${tiles.length} maps`);
     }, "image/png");
   };
 
@@ -292,7 +263,6 @@ export default function EdsMapsTab({
       <EdsElementList
         rows={rows}
         busy={idBusy}
-        quantBySymbol={quantBySymbol}
         onToggle={(speciesId, visible) =>
           activeId && setVisible(activeId, speciesId, visible)
         }
@@ -316,6 +286,13 @@ export default function EdsMapsTab({
             </button>
           ))}
         </div>
+        <label className="k" title="Pre-edge background fit model">
+          Fit
+          <select value={method} onChange={(e) => setMethod(e.target.value as Method)}>
+            <option value="powerlaw">power law</option>
+            <option value="exponential">exponential</option>
+          </select>
+        </label>
         <span className="k">
           {mapsBusy ? "Extracting maps…" : `${tiles.length} maps`}
         </span>
@@ -332,7 +309,7 @@ export default function EdsMapsTab({
 
       {tiles.length === 0 && !mapsBusy && (
         <div className="fvd-ws-empty">
-          Tick species above to extract their maps.
+          Tick edges above to extract their maps.
         </div>
       )}
 
@@ -350,16 +327,13 @@ export default function EdsMapsTab({
         <EdsMapOverlay
           tiles={tiles}
           gains={gains}
-          onGain={(symbol, gain) =>
-            setGains((prev) => ({ ...prev, [symbol]: gain }))
-          }
+          onGain={(key, gain) => setGains((prev) => ({ ...prev, [key]: gain }))}
           survey={survey}
           surveyOptions={surveyOptions}
           surveyId={surveyId}
           onSurveyId={setSurveyId}
           legendValue={legendValue}
           onLegendValue={setLegendValue}
-          quantBySymbol={quantBySymbol}
         />
       )}
     </div>

@@ -118,9 +118,18 @@ export default function EdsElementList({
         <ul className="fvd-eds-element-rows" onMouseLeave={() => onHover(null)}>
           {rows.map((row) => {
             const { species, evidence } = row;
-            const { symbol, transition, energy, visible } = species;
+            const { symbol, transition, energy, visible, modality } = species;
             const color = colors(symbol);
             const atPct = quantBySymbol?.[symbol];
+            // EDS lines are "Kα"/"Lα"; EELS edges have no such notation
+            // (the row already carries the edge — "L23", not "L23-alpha") —
+            // and the anchor is keV for EDS, eV for EELS, so the energy cell
+            // needs its own unit rather than EDS's bare decimal.
+            const isEels = modality === "eels";
+            const transitionLabel = isEels ? transition : `${transition}α`;
+            const energyLabel = isEels
+              ? `${Math.round(energy)} eV`
+              : energy.toFixed(3);
             return (
               <li
                 key={species.id}
@@ -144,17 +153,19 @@ export default function EdsElementList({
                   type="button"
                   className="fvd-eds-element-name"
                   style={{ color }}
-                  title={`Frame ${symbol} ${transition}α on the spectrum`}
+                  title={
+                    isEels
+                      ? `Frame ${symbol}-${transition} edge on the spectrum`
+                      : `Frame ${symbol} ${transition}α on the spectrum`
+                  }
                   onClick={() => onFocus(row)}
                 >
                   {symbol}
                 </button>
-                <span className="k fvd-eds-element-line">{transition}α</span>
-                {/* the anchor line, not the window midpoint — they differ once
-                    the user tunes the window */}
-                <span className="fvd-eds-element-energy">
-                  {energy.toFixed(3)}
-                </span>
+                <span className="k fvd-eds-element-line">{transitionLabel}</span>
+                {/* the anchor line/onset, not the window midpoint — they
+                    differ once the user tunes the window */}
+                <span className="fvd-eds-element-energy">{energyLabel}</span>
                 <span className="fvd-eds-element-net">
                   {atPct != null
                     ? `${atPct.toFixed(1)} at%`

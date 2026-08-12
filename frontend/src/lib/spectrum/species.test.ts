@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   EDS_HALF_WINDOW_KEV,
+  EELS_BG_FIT_GAP_EV,
+  EELS_BG_FIT_WIDTH_EV,
   EELS_SIGNAL_WIDTH_EV,
   edsDefaultWindows,
   edsSpecies,
@@ -37,8 +39,16 @@ describe("default windows", () => {
     expect(signal.hi).toBe(708 + EELS_SIGNAL_WIDTH_EV);
   });
 
-  it("leaves the EELS background window unset (item 16 is an owner gate)", () => {
-    expect(eelsDefaultWindows(532).background).toBeUndefined();
+  it("auto-places the EELS background immediately below the onset (item 16)", () => {
+    // Same window /eels/auto-assign fits its pre-edge power-law against
+    // (calc/eels_identify.py's EDGE_FIT_WIDTH_EV / EDGE_FIT_GAP_EV) — a
+    // species built here and an edge the server scored must agree without
+    // being told.
+    const { background } = eelsDefaultWindows(532);
+    expect(background).toEqual({
+      lo: 532 - EELS_BG_FIT_GAP_EV - EELS_BG_FIT_WIDTH_EV,
+      hi: 532 - EELS_BG_FIT_GAP_EV,
+    });
   });
 
   it("treats a negative width as its magnitude", () => {
@@ -46,6 +56,21 @@ describe("default windows", () => {
       edsDefaultWindows(6.4, 0.1).signal,
     );
     expect(eelsDefaultWindows(500, -30).signal.hi).toBe(530);
+    expect(eelsDefaultWindows(500, 50, -10, -3).background).toEqual({
+      lo: 500 - 3 - 10,
+      hi: 500 - 3,
+    });
+  });
+});
+
+describe("eelsSpecies windows override", () => {
+  it("uses an exact measured window instead of recomputing a default", () => {
+    // Mirrors edsSpecies' halfWindowKev escape hatch: a seeded species'
+    // window must be the one auto-ID actually measured, so displayed net
+    // counts and the map's extraction window agree.
+    const windows = { signal: { lo: 700, hi: 750 }, background: { lo: 640, hi: 698 } };
+    const species = eelsSpecies("Fe", "L23", 708, { windows });
+    expect(species.windows).toEqual(windows);
   });
 });
 
