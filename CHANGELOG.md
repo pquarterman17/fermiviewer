@@ -88,6 +88,15 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   identifier uses — the missing half of an EELS Maps workflow.
 
 ### Fixed
+- **The synthetic test-data generator was not a valid quantification oracle.**
+  `tools/make_synthetic_si.py` planted EDS line areas from an invented
+  energy-dependent weighting unrelated to Cliff–Lorimer, so quantifying its
+  own cubes returned carbon at 21 at% against a planted 9.4. Line and edge
+  intensities now come from the application's own models. Two further bugs
+  fell out: the cube silently wrapped `uint16` for bright heavy elements
+  (tantalum's 6.2 at% came back as 0.7), and the EELS preset's energy axis
+  started too close to its lowest edge for that edge's background fit window
+  to fit on it (silicon's 46 at% came back as 3).
 - `calc/eels.extract_map` no longer casts the whole SI cube to float64:
   only the signal- and background-window channels are promoted, so
   extracting one edge map from a multi-GB cube allocates a few channels'

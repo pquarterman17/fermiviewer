@@ -63,8 +63,9 @@ see the Dashboard note below for the counting convention.*
 ### W4 — Test data and verification
 
 **Tier 2 — Medium Impact**
-18. **Quantification golden tests against truth** — assert `/eds/quantify`
-    and `/eels/quantify` recover the synthetic composition within tolerance
+23. **Synthetic edge SHAPES from `calc/eels_model`** — opened 2026-08-12 by
+    item 18; without them `/eels/fit` has nothing to match and cannot be
+    golden-tested against the synthetic truth
 
 **Tier 3 — Nice-to-Have**
 19. **More presets** — diffusion-couple gradient, thickness ramp
@@ -72,7 +73,9 @@ see the Dashboard note below for the counting convention.*
     real case produces a silently wrong answer)
 
 **Open items: 5** *(W1 — shared spectrum core — and W3 — EELS workspace —
-are both complete: items 1–7 on 2026-08-12, items 12–16 + 22 on 2026-08-11)*
+are both complete: items 1–7 on 2026-08-12, items 12–16 + 22 on 2026-08-11.
+Item 18 closed 2026-08-12 and opened item 23 in doing so, so the count is
+unchanged.)*
 
 ---
 
