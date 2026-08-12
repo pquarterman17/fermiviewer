@@ -193,6 +193,53 @@ describe("EdsSpectrumPlot", () => {
     expect(mock.setSelect).not.toHaveBeenCalled();
   });
 
+  it("drags a window edge without shift: live stream, then one commit", () => {
+    const onDragWindow = vi.fn();
+    const onDragWindowLive = vi.fn();
+    render(
+      <SpectrumPlot
+        spec={WIDE}
+        label="Sum spectrum"
+        eLo={9}
+        eHi={11}
+        onDragWindow={onDragWindow}
+        onDragWindowLive={onDragWindowLive}
+      />,
+    );
+
+    // identity posToVal/valToPos: the hi edge sits at 11 px
+    fireEvent.mouseDown(plot().over, { clientX: 11, button: 0 });
+    fireEvent.mouseMove(document, { clientX: 15 });
+    expect(onDragWindowLive).toHaveBeenLastCalledWith(9, 15);
+    expect(onDragWindow).not.toHaveBeenCalled();
+
+    fireEvent.mouseUp(document);
+    expect(onDragWindow).toHaveBeenCalledTimes(1);
+    expect(onDragWindow).toHaveBeenCalledWith(9, 15);
+  });
+
+  it("nudges the window one channel with arrows, committing on key-up", () => {
+    const onDragWindow = vi.fn();
+    const onDragWindowLive = vi.fn();
+    render(
+      <SpectrumPlot
+        spec={WIDE}
+        label="Sum spectrum"
+        eLo={9}
+        eHi={11}
+        onDragWindow={onDragWindow}
+        onDragWindowLive={onDragWindowLive}
+      />,
+    );
+
+    const host = plot().over.parentElement!;
+    // WIDE's channel width is 5
+    fireEvent.keyDown(host, { key: "ArrowRight" });
+    expect(onDragWindowLive).toHaveBeenLastCalledWith(14, 16);
+    fireEvent.keyUp(host, { key: "ArrowRight" });
+    expect(onDragWindow).toHaveBeenCalledWith(14, 16);
+  });
+
   it("wheels a zoom about the energy under the cursor", () => {
     const onXRangeChange = vi.fn<(next: unknown) => void>();
     render(

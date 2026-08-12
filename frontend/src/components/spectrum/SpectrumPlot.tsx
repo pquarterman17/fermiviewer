@@ -3,9 +3,12 @@
 //
 // Gesture split (EdsSpectrumZoomBar carries the visible affordances):
 //   drag         → zoom the energy axis (uPlot's native drag-select)
+//   drag window edge / body → resize / slide the energy window
+//                  (claimed in spectrumWindowGestures.ts before uPlot's zoom)
 //   shift + drag → set the element-map energy window
 //   wheel        → zoom about the energy under the cursor
 //   double-click → reset to the full range (uPlot native)
+//   ← / →        → nudge the window one channel (shift: ten), plot focused
 //
 // The window handler previously bound mousedown/mouseup to the <canvas>. uPlot
 // builds its wrap as under → canvas → over, and `.u-over` is absolutely
@@ -29,6 +32,7 @@ import type { PeakMarker } from "../../lib/eds/peakMarkers";
 import { zoomAbout, type XRange } from "../../lib/spectrum/zoomRange";
 import { formatCountTick } from "../../lib/edsSpectrumDisplay";
 import PlotContextSurface from "../plots/PlotContextSurface";
+import { attachWindowGestures } from "./spectrumWindowGestures";
 
 const WHEEL_STEP = 1.25;
 
@@ -45,12 +49,17 @@ export default function SpectrumPlot({
   xRange = null,
   minSpan = 0,
   onXRangeChange,
+  onDragWindowLive,
 }: {
   spec: Spectrum;
   label: string;
   eLo: number;
   eHi: number;
+  /** Committed window change — release of a drag/nudge, or a shift-drag. */
   onDragWindow: (lo: number, hi: number) => void;
+  /** Streaming window change while an edge/body drag or key-nudge is live.
+   *  Client-side readouts only; the commit callback is where to refetch. */
+  onDragWindowLive?: (lo: number, hi: number) => void;
   markers?: PeakMarker[];
   height?: number;
   logScale?: boolean;
@@ -73,8 +82,8 @@ export default function SpectrumPlot({
   // render keeps them current without making them build-effect dependencies.
   const live = useRef({ eLo, eHi, markers, elementColors, xRange, minSpan });
   live.current = { eLo, eHi, markers, elementColors, xRange, minSpan };
-  const callbacks = useRef({ onDragWindow, onXRangeChange });
-  callbacks.current = { onDragWindow, onXRangeChange };
+  const callbacks = useRef({ onDragWindow, onDragWindowLive, onXRangeChange });
+  callbacks.current = { onDragWindow, onDragWindowLive, onXRangeChange };
 
   useEffect(() => {
     const host = hostRef.current;
@@ -235,12 +244,32 @@ export default function SpectrumPlot({
     over?.addEventListener("mousedown", onDown);
     over?.addEventListener("wheel", onWheel, { passive: false });
 
+    // Direct manipulation of the energy window (edges resize, body slides,
+    // arrows nudge). Live updates stream to the cheap client-side readout;
+    // the commit lands on the same callback a shift-drag uses.
+    const detachGestures = over
+      ? attachWindowGestures(u, host, {
+          getWindows: () => ({
+            signal: { lo: live.current.eLo, hi: live.current.eHi },
+          }),
+          onLive: (w) =>
+            callbacks.current.onDragWindowLive?.(w.signal.lo, w.signal.hi),
+          onCommit: (w) =>
+            callbacks.current.onDragWindow(w.signal.lo, w.signal.hi),
+          nudgeStep: () =>
+            energy.length > 1
+              ? (energy[energy.length - 1] - energy[0]) / (energy.length - 1)
+              : 0,
+        })
+      : undefined;
+
     const ro = new ResizeObserver(() => {
       if (host.clientWidth > 0) u.setSize({ width: host.clientWidth, height });
     });
     ro.observe(host);
     return () => {
       ro.disconnect();
+      detachGestures?.();
       over?.removeEventListener("mousedown", onDown);
       over?.removeEventListener("wheel", onWheel);
       u.destroy();

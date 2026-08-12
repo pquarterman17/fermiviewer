@@ -223,6 +223,13 @@ export default function EdsSpectrumImage() {
     recomputeMap(lo2, hi2, bgMode);
   };
 
+  // Mid-drag frames: the overlay and the client-side integration follow the
+  // cursor; the element map waits for the commit above.
+  const handleWindowLive = (lo: number, hi: number) => {
+    setELo(Math.min(lo, hi));
+    setEHi(Math.max(lo, hi));
+  };
+
   const handleBgChange = (mode: EdsMapBackground) => {
     setBgMode(mode);
     recomputeMap(eLo, eHi, mode);
@@ -308,6 +315,7 @@ export default function EdsSpectrumImage() {
               eLo={eLo}
               eHi={eHi}
               onDragWindow={handleWindowChange}
+              onDragWindowLive={handleWindowLive}
               markers={peakMarkers}
               height={spectrumExpanded ? 360 : 260}
               logScale={logScale}

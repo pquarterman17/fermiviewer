@@ -15,6 +15,22 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Drag the energy window on the spectrum.** Grab either edge of the
+  highlighted window to resize it, or its middle to slide it — the
+  integration readout follows live, and the element map refreshes once on
+  release rather than per frame. With the plot focused, arrow keys nudge the
+  window one channel (Shift: ten). Plain drag-zoom, shift-drag to draw a
+  fresh window, and wheel zoom all behave exactly as before; the resize and
+  grab cursors show which gesture you are about to get.
+- **One window model over both spectroscopies.** EDS's single window with
+  inferred flanking background and EELS's explicit pre-edge + signal pair
+  now expose the same integration call and the same drag handles, so window
+  editing never branches on modality. The EELS half is a client-side port of
+  the backend's power-law background fit — the readout is the same quantity
+  the elemental map integrates, with a σ that includes the fit's
+  extrapolation uncertainty.
+
 ### Security
 - **Every path that arrives over the local API now goes through one policy.**
   `io/user_paths.py` canonicalises a request-supplied path once — resolving
