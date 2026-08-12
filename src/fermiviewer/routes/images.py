@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Response, UploadFile
 from PIL import Image
 from pydantic import BaseModel
 
+from fermiviewer.calc.raster import NoRasterError, raster_of
 from fermiviewer.calc.render import histogram, to_display, to_uint16_norm
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.io.registry import UnsupportedFormatError, load_auto, supported_extensions
@@ -33,13 +34,13 @@ def _get(img_id: str) -> DataStruct:
 
 
 def _raster(ds: DataStruct) -> np.ndarray:
-    """2D view of any kind: image as-is; SI cube summed over energy."""
-    if ds.kind is DataKind.IMAGE:
-        return ds.data
-    if ds.kind is DataKind.SPECTRUM_IMAGE:
-        summed: np.ndarray = np.asarray(ds.data, dtype=np.float64).sum(axis=2)
-        return summed
-    raise HTTPException(400, "1D spectra have no raster — use the spectrum endpoints")
+    """2D view of any kind: image as-is (native dtype); SI summed over energy."""
+    try:
+        return raster_of(ds, native=True)
+    except NoRasterError:
+        raise HTTPException(
+            400, "1D spectra have no raster — use the spectrum endpoints"
+        ) from None
 
 
 @router.post("/session/open")

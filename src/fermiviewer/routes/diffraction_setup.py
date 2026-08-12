@@ -16,7 +16,7 @@ from fermiviewer.calc import diffraction_calib as dcal
 from fermiviewer.calc.cif import CIFParseError, parse_cif
 from fermiviewer.calc.crystal import PHASES, d_spacing
 from fermiviewer.calc.phase_registry import registry
-from fermiviewer.datastruct import DataKind
+from fermiviewer.calc.raster import NoRasterError, raster_of
 from fermiviewer.session import UnknownImageError, store
 
 router = APIRouter(prefix="/api")
@@ -27,14 +27,10 @@ def _raster(image_id: str) -> np.ndarray:
         ds = store.get(image_id)
     except UnknownImageError:
         raise HTTPException(404, f"unknown image id: {image_id}") from None
-    if ds.kind is DataKind.IMAGE:
-        img: np.ndarray = np.asarray(ds.data, dtype=np.float64)
-        return img
-    if ds.kind is DataKind.SPECTRUM_IMAGE:
-        # accumulate into float64 rather than casting the whole cube first
-        summed: np.ndarray = np.asarray(np.sum(ds.data, axis=2, dtype=np.float64))
-        return summed
-    raise HTTPException(400, "calibration needs a 2D diffraction image")
+    try:
+        return raster_of(ds)
+    except NoRasterError:
+        raise HTTPException(400, "calibration needs a 2D diffraction image") from None
 
 
 # ── elliptical-distortion + camera-constant calibration ──────────────

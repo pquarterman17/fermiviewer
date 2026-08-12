@@ -15,6 +15,7 @@ from fermiviewer.calc.profiles import (
     polyline_profile,
     roi_stats,
 )
+from fermiviewer.calc.raster import NoRasterError, raster_of
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.models import ImageMeta
 from fermiviewer.session import UnknownImageError, store
@@ -27,11 +28,10 @@ def _raster(img_id: str) -> tuple[DataStruct, np.ndarray]:
         ds = store.get(img_id)
     except UnknownImageError:
         raise HTTPException(404, f"unknown image id: {img_id}") from None
-    if ds.kind is DataKind.IMAGE:
-        return ds, ds.data
-    if ds.kind is DataKind.SPECTRUM_IMAGE:
-        return ds, np.asarray(ds.data, dtype=np.float64).sum(axis=2)
-    raise HTTPException(400, "1D spectra have no raster")
+    try:
+        return ds, raster_of(ds, native=True)
+    except NoRasterError:
+        raise HTTPException(400, "1D spectra have no raster") from None
 
 
 class ProfileRequest(BaseModel):

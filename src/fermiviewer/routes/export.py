@@ -26,7 +26,8 @@ from fermiviewer.calc.export import (
     render_u16,
     scale_bar_geometry,
 )
-from fermiviewer.datastruct import DataKind, DataStruct
+from fermiviewer.calc.raster import NoRasterError, raster_of
+from fermiviewer.datastruct import DataStruct
 from fermiviewer.routes._export_render import (
     build_svg,
     composite_colorbar,
@@ -117,12 +118,10 @@ class ExportRequest(BaseModel):
 
 
 def _raster(ds: DataStruct) -> np.ndarray:
-    if ds.kind is DataKind.IMAGE:
-        return np.asarray(ds.data, dtype=np.float64)
-    if ds.kind is DataKind.SPECTRUM_IMAGE:
-        summed: np.ndarray = np.asarray(ds.data, dtype=np.float64).sum(axis=2)
-        return summed
-    raise HTTPException(400, "1D spectra have no raster to export")
+    try:
+        return raster_of(ds)
+    except NoRasterError:
+        raise HTTPException(400, "1D spectra have no raster to export") from None
 
 
 def _window_bounds(raster: np.ndarray, lo_n: float,

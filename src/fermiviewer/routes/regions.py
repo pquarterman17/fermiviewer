@@ -26,8 +26,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from fermiviewer.calc.contours import trace_outer_contour
+from fermiviewer.calc.raster import NoRasterError, raster_of
 from fermiviewer.calc.segment import label_components, morph_op, multi_otsu
-from fermiviewer.datastruct import DataKind, DataStruct
+from fermiviewer.datastruct import DataStruct
 from fermiviewer.session import UnknownImageError, store
 
 router = APIRouter(prefix="/api")
@@ -63,12 +64,10 @@ class ProposeRegionResponse(BaseModel):
 
 
 def _raster(ds: DataStruct) -> np.ndarray:
-    if ds.kind is DataKind.IMAGE:
-        return np.asarray(ds.data, dtype=np.float64)
-    if ds.kind is DataKind.SPECTRUM_IMAGE:
-        summed: np.ndarray = np.asarray(ds.data, dtype=np.float64).sum(axis=2)
-        return summed
-    raise HTTPException(400, "1D spectra have no raster to segment")
+    try:
+        return raster_of(ds)
+    except NoRasterError:
+        raise HTTPException(400, "1D spectra have no raster to segment") from None
 
 
 def _window(

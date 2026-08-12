@@ -28,6 +28,7 @@ from typing import Any
 import numpy as np
 
 from fermiviewer import ops as _ops
+from fermiviewer.calc.raster import raster_of
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.io.registry import load_auto
 from fermiviewer.ops.provenance import ProvenanceLog, ProvenanceStep
@@ -257,11 +258,7 @@ class Image:
             from fermiviewer.calc.export import render_rgb
         except ImportError:  # pragma: no cover
             return None
-        raster = (
-            np.asarray(self._ds.data, dtype=np.float64)
-            if self._ds.kind is DataKind.IMAGE
-            else np.asarray(self._ds.data, dtype=np.float64).sum(axis=2)
-        )
+        raster = raster_of(self._ds)
         rgb = render_rgb(raster, None, None, 1.0, "gray", 1)
         buf = _io.BytesIO()
         _PILImage.fromarray(rgb, mode="RGB").save(buf, format="PNG")

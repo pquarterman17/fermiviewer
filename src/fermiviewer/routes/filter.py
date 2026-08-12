@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from fermiviewer.calc import filters
+from fermiviewer.calc.raster import NoRasterError, raster_of
 from fermiviewer.calc.segment import morph_op, multi_otsu
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.io.metadata import databar_content_rows
@@ -126,12 +127,10 @@ def apply_filter(req: FilterRequest) -> ImageMeta:
         ds = store.get(req.image_id)
     except UnknownImageError:
         raise HTTPException(404, f"unknown image id: {req.image_id}") from None
-    if ds.kind is DataKind.IMAGE:
-        raster = np.asarray(ds.data, dtype=np.float64)
-    elif ds.kind is DataKind.SPECTRUM_IMAGE:
-        raster = np.asarray(ds.data, dtype=np.float64).sum(axis=2)
-    else:
-        raise HTTPException(400, "1D spectra have no raster to filter")
+    try:
+        raster = raster_of(ds)
+    except NoRasterError:
+        raise HTTPException(400, "1D spectra have no raster to filter") from None
 
     fn = _FILTERS.get(req.kind)
     if fn is None:

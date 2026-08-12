@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 
 from fermiviewer.calc.export import ScaleBar
 from fermiviewer.calc.montage_physical import montage_physical_scale
+from fermiviewer.calc.raster import NoRasterError, raster_of
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.models import ImageMeta
 from fermiviewer.routes._arrays import value_error_as_422
@@ -36,12 +37,10 @@ def _raster(img_id: str) -> tuple[DataStruct, np.ndarray]:
         ds = store.get(img_id)
     except UnknownImageError:
         raise HTTPException(404, f"unknown image id: {img_id}") from None
-    if ds.kind is DataKind.IMAGE:
-        return ds, np.asarray(ds.data, dtype=np.float64)
-    if ds.kind is DataKind.SPECTRUM_IMAGE:
-        summed: np.ndarray = np.asarray(ds.data, dtype=np.float64).sum(axis=2)
-        return ds, summed
-    raise HTTPException(400, f"image {img_id} has no 2-D raster")
+    try:
+        return ds, raster_of(ds)
+    except NoRasterError:
+        raise HTTPException(400, f"image {img_id} has no 2-D raster") from None
 
 
 def _scale_bar_dict(bar: ScaleBar) -> dict[str, object]:

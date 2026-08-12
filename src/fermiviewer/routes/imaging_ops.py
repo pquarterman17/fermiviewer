@@ -17,6 +17,7 @@ from fermiviewer.calc.lattice import lattice_measure
 from fermiviewer.calc.montage import montage as calc_montage
 from fermiviewer.calc.profiles import fit_interface_width
 from fermiviewer.calc.radial import azimuthal_integrate, radial_profile
+from fermiviewer.calc.raster import NoRasterError, raster_of
 from fermiviewer.calc.roi import extract_rect_roi
 from fermiviewer.calc.roughness import surface_roughness
 from fermiviewer.datastruct import DataKind, DataStruct
@@ -32,12 +33,10 @@ def _raster(img_id: str) -> tuple[DataStruct, np.ndarray]:
         ds = store.get(img_id)
     except UnknownImageError:
         raise HTTPException(404, f"unknown image id: {img_id}") from None
-    if ds.kind is DataKind.IMAGE:
-        return ds, np.asarray(ds.data, dtype=np.float64)
-    if ds.kind is DataKind.SPECTRUM_IMAGE:
-        summed: np.ndarray = np.asarray(ds.data, dtype=np.float64).sum(axis=2)
-        return ds, summed
-    raise HTTPException(400, "1D spectra have no raster")
+    try:
+        return ds, raster_of(ds)
+    except NoRasterError:
+        raise HTTPException(400, "1D spectra have no raster") from None
 
 
 def _register(
@@ -424,12 +423,10 @@ def analyze_montage(req: MontageRequest) -> dict:
             ds = store.get(img_id)
         except UnknownImageError:
             raise HTTPException(404, f"unknown image id: {img_id}") from None
-        if ds.kind is DataKind.IMAGE:
-            raster = np.asarray(ds.data, dtype=np.float64)
-        elif ds.kind is DataKind.SPECTRUM_IMAGE:
-            raster = np.asarray(ds.data, dtype=np.float64).sum(axis=2)
-        else:
-            raise HTTPException(400, f"image {img_id} has no 2-D raster")
+        try:
+            raster = raster_of(ds)
+        except NoRasterError:
+            raise HTTPException(400, f"image {img_id} has no 2-D raster") from None
         pairs.append((ds, raster))
 
     frames = [r for _, r in pairs]

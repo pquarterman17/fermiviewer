@@ -16,6 +16,7 @@ from typing import Any
 import numpy as np
 
 from fermiviewer.calc import filters
+from fermiviewer.calc.raster import raster_of
 from fermiviewer.calc.roughness import surface_roughness
 from fermiviewer.calc.segment import morph_op, multi_otsu
 from fermiviewer.calc.texture import noise_estimate
@@ -23,20 +24,10 @@ from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.ops.base import OpParam, OpResult, OpSpec
 from fermiviewer.ops.registry import register
 
+# raster_of lives in calc/raster.py now (the one raster boundary, ADR 0003);
+# re-exported here because catalogue_spectral and the op tests import it from
+# this module.
 __all__ = ["raster_of"]
-
-
-def raster_of(ds: DataStruct) -> np.ndarray:
-    """The 2D raster to operate on: an image directly, or a SI's summed map
-    (mirrors routes/filter.py). 1D spectra have no raster."""
-    if ds.kind is DataKind.IMAGE:
-        img: np.ndarray = np.asarray(ds.data, dtype=np.float64)
-        return img
-    if ds.kind is DataKind.SPECTRUM_IMAGE:
-        # accumulate into float64 rather than casting the whole cube first
-        summed: np.ndarray = np.asarray(np.sum(ds.data, axis=2, dtype=np.float64))
-        return summed
-    raise ValueError("operation needs a 2D raster (got a 1D spectrum)")
 
 
 def _scaled_axes(ds: DataStruct, fr: float, fc: float) -> tuple[AxisCal, AxisCal]:

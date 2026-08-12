@@ -23,6 +23,7 @@ import io
 import numpy as np
 from PIL import Image
 
+from fermiviewer.calc.raster import NoRasterError, raster_from
 from fermiviewer.calc.render import to_display
 from fermiviewer.datastruct import DataKind
 
@@ -35,16 +36,14 @@ THUMBNAIL_MAX_EDGE = 256
 def raster_for_thumbnail(data: np.ndarray, kind: DataKind) -> np.ndarray | None:
     """2D view of `data` for a thumbnail, or None when `kind` has no raster.
 
-    Mirrors `routes/images.py`'s `_raster`: an image is used as-is; a
-    spectrum_image cube is summed over its energy (last) axis; a 1D spectrum
-    has nothing to rasterize.
+    The shape logic is `calc.raster.raster_from` (the one raster boundary);
+    this wrapper keeps the None-not-raise contract the `.fvp` writer relies
+    on — no `thumbs/` entry for a 1D spectrum, rather than a failed save.
     """
-    if kind is DataKind.IMAGE:
-        return data
-    if kind is DataKind.SPECTRUM_IMAGE:
-        summed: np.ndarray = np.asarray(data, dtype=np.float64).sum(axis=2)
-        return summed
-    return None
+    try:
+        return raster_from(data, kind, native=True)
+    except NoRasterError:
+        return None
 
 
 def render_thumbnail_png(

@@ -29,6 +29,7 @@ from fermiviewer.calc.grains import (
     split_grain,
 )
 from fermiviewer.calc.particles import particle_analysis
+from fermiviewer.calc.raster import NoRasterError, raster_of
 from fermiviewer.calc.roi import embed_rect_roi, extract_rect_roi, parse_rect_roi
 from fermiviewer.calc.stack import align_stack, image_math, mip
 from fermiviewer.calc.stitch import stitch_images
@@ -47,12 +48,10 @@ def _raster(img_id: str) -> tuple[DataStruct, np.ndarray]:
         ds = store.get(img_id)
     except UnknownImageError:
         raise HTTPException(404, f"unknown image id: {img_id}") from None
-    if ds.kind is DataKind.IMAGE:
-        return ds, np.asarray(ds.data, dtype=np.float64)
-    if ds.kind is DataKind.SPECTRUM_IMAGE:
-        summed: np.ndarray = np.asarray(ds.data, dtype=np.float64).sum(axis=2)
-        return ds, summed
-    raise HTTPException(400, "1D spectra have no raster")
+    try:
+        return ds, raster_of(ds)
+    except NoRasterError:
+        raise HTTPException(400, "1D spectra have no raster") from None
 
 
 def _register(
