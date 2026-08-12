@@ -8,8 +8,9 @@ implementation so a feature cannot land in one and rot in the other.
 **Status:** Active
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-07-29
-**Updated:** 2026-08-11 — items 2 and 4 shipped (window model + draggable
-window edges); both owner gates resolved; 15 items open
+**Updated:** 2026-08-11 — items 2, 4, 14 and 22 shipped (window model,
+draggable edges, EELS batch maps + auto-ID backend); both owner gates
+resolved; 13 items open
 
 ---
 
@@ -54,7 +55,7 @@ quantification the user may not want.
 
 - Item 3 is the remaining foundation piece (1 and 2 shipped); W3 lands on it
 - Items 5 and 6 are independent of each other now that 2 exists (4 shipped)
-- Item 8 unblocks 9; item 14 unblocks 15
+- Item 8 unblocks 9; item 14 unblocks 15 (both 8 and 14 have now shipped)
 - Item 7 (shared composite) is a generalisation of the existing EDS composite —
   do it with 15, not before, so it is written against two real callers
 - W4 item 17 is done and is the verification substrate for everything else
@@ -151,7 +152,8 @@ workflow is complete end to end. What remains is polish and retirement.*
 ## W3 — EELS workspace
 
 The shared shell now shows EELS a **Maps** tab that states plainly what is
-missing rather than faking it. These four items are what fills it.
+missing rather than faking it. The backend halves (items 14 and 22) shipped
+2026-08-11; what remains is the frontend workflow that consumes them.
 
 ### Tier 1 — High Impact
 
@@ -162,22 +164,6 @@ missing rather than faking it. These four items are what fills it.
 
 13. **EELS zoom, colours and integration** — via the shared core from W1
     - [ ] Replaces the four typed `bgLo/bgHi/sigLo/sigHi` fields
-
-14. **`/eels/maps` batch endpoint** — N edges → N rasters, mirroring item 8
-    - [ ] Built on `calc/eels.extract_map`, decoupled from `quantify_map`
-    - [ ] Return inline rasters; `/eels/map` returns a registered ImageMeta,
-          which the montage and overlay cannot consume directly
-    - [ ] Fix `extract_map`'s `np.asarray(cube, dtype=np.float64)` — it
-          materialises a float64 copy of the whole cube, the exact memory bug
-          the EDS path already fixed. Making EELS maps a primary workflow
-          would expose it on multi-GB cubes.
-
-22. **EELS edge identification** — the auto-ID half of the Maps workflow
-    - [ ] There is no `/eels/auto-assign`; EDS gets its element list for free
-          and EELS cannot
-    - [ ] Edge-jump significance over every `EELS_EDGES` entry inside the
-          cube's range gives the same net/σ confidence banding the EDS list
-          already uses
 
 15. **EELS composite** — the capability EELS has never had
 
@@ -209,6 +195,23 @@ missing rather than faking it. These four items are what fills it.
 ---
 
 ## Completed
+
+- ~~**#14 `/eels/maps` batch endpoint + #22 EELS edge identification**~~
+  (2026-08-11, merged `bb572ca`; sonnet worktree agent) — the backend half of
+  the EELS Maps workflow. `POST /api/eels/maps` (`routes/eels_maps.py`, 180):
+  N species → N inline rasters with per-species signal + optional background
+  windows and per-row error reporting (a hand-picked edge never vanishes
+  unexplained; a wholly-failed list is still 200 — item 8's contract,
+  mirrored). `POST /api/eels/auto-assign` (`routes/eels_identify.py`, 110 +
+  pure `calc/eels_identify.py`, 165): edge-jump significance for every
+  `EELS_EDGES` entry the axis supports — pre-edge power-law fit (50 eV window,
+  2 eV gap below onset so the rising edge cannot bias the fit), 50 eV
+  post-onset integration, net/σ/significance with the SAME confidence
+  thresholds (100/30/10) as the EDS identifier, kept in numeric lockstep
+  since calc/ cannot import from frontend/. Also fixed `extract_map`'s
+  float64 whole-cube cast — only windowed channels are promoted now, guarded
+  by a tracemalloc allocation-delta test. 32 new tests, edges planted via
+  `EELS_EDGES` itself. Gate on the merged tree: 1892 passed / 0 skipped.
 
 - ~~**#4 Draggable window edges**~~ (2026-08-11) — grab an edge to resize, the
   body to slide, arrows to nudge (shift ×10, commit on key-up). The gesture is

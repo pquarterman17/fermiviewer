@@ -76,10 +76,6 @@ see the Dashboard note below for the counting convention.*
 12. **Edge picker** — species list backed by `EELS_EDGES`, element + edge
     choice
 13. **EELS zoom, colours and integration** — via the shared W1 core
-14. **`/eels/maps` batch endpoint** — mirrors item 8; also fixes
-    `extract_map`'s whole-cube float64 copy
-22. **EELS edge identification** — the auto-ID half of the Maps workflow;
-    no `/eels/auto-assign` exists yet
 15. **EELS composite** — the capability EELS has never had
 
 **Tier 2 — Medium Impact**
@@ -97,7 +93,7 @@ see the Dashboard note below for the counting convention.*
 20. **Window overlap detection** (deselected 2026-07-29; revisit only if a
     real case produces a silently wrong answer)
 
-**Open items: 15**
+**Open items: 13**
 
 ---
 
@@ -133,15 +129,15 @@ live-audit usability follow-up list.*
 | Plan | Status | Open items |
 |---|---|---|
 | MAIN_PLAN.md | Active (root) | 9 |
-| SPECTRAL_WORKSPACE_PLAN.md | Active | 15 |
+| SPECTRAL_WORKSPACE_PLAN.md | Active | 13 |
 | PLAN_4DSTEM.md | Active | 8 |
 
-**Total open items:** 32
+**Total open items:** 30
 
 **Counting method:** top-level numbered items (the plan-format.md unit of a
 tracked work item) — not nested `- [ ]` sub-task checkboxes. Nested-checkbox
-counts by plan, for reference: MAIN_PLAN 5, SPECTRAL_WORKSPACE_PLAN 14,
-PLAN_4DSTEM 14 (33 total). A checkbox-based count would disagree with the
+counts by plan, for reference: MAIN_PLAN 5, SPECTRAL_WORKSPACE_PLAN 9,
+PLAN_4DSTEM 14 (28 total). A checkbox-based count would disagree with the
 open-items count above — pick one convention when reading this table and
 don't mix the two.
 

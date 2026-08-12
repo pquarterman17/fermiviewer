@@ -31,6 +31,30 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   the elemental map integrates, with a σ that includes the fit's
   extrapolation uncertainty.
 
+- **EELS elemental maps no longer require a quantification.** `POST
+  /api/eels/maps` extracts N edge maps in one request — per-species signal
+  and optional pre-edge background windows, per-row error reporting so a
+  hand-picked edge never vanishes unexplained — and returns inline rasters
+  a montage or overlay can consume directly, unlike `/eels/map`'s
+  registered-image reply.
+- **EELS edge auto-identification.** `POST /api/eels/auto-assign` scores
+  every tabulated core-loss edge the cube's energy axis can support
+  (pre-edge power-law fit, post-onset integration on the sum spectrum) and
+  returns net, σ, significance and the same confidence bands the EDS
+  identifier uses — the missing half of an EELS Maps workflow.
+
+### Fixed
+- `calc/eels.extract_map` no longer casts the whole SI cube to float64:
+  only the signal- and background-window channels are promoted, so
+  extracting one edge map from a multi-GB cube allocates a few channels'
+  worth of memory rather than a second copy of the cube. Guarded by a
+  tracemalloc allocation-delta test.
+- `POST /api/eds/element-maps` builds its per-row `error` string itself
+  rather than stringifying a caught exception, so the reason an element could
+  not be mapped is the curated one and nothing incidental can ride along with
+  it. `calc.eds_maps.element_window` is the non-raising form the route uses;
+  `resolve_element_window` keeps raising for the callers that want that.
+
 ### Security
 - **Every path that arrives over the local API now goes through one policy.**
   `io/user_paths.py` canonicalises a request-supplied path once — resolving
@@ -56,13 +80,6 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   a shared or unattended lab machine and every request-supplied path must
   resolve inside one of the listed roots. Containment is per path component,
   so a root of `/data` never claims `/database`.
-
-### Fixed
-- `POST /api/eds/element-maps` builds its per-row `error` string itself
-  rather than stringifying a caught exception, so the reason an element could
-  not be mapped is the curated one and nothing incidental can ride along with
-  it. `calc.eds_maps.element_window` is the non-raising form the route uses;
-  `resolve_element_window` keeps raising for the callers that want that.
 
 ## [0.1.26] - 2026-08-10
 
