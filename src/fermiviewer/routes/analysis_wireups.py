@@ -20,11 +20,17 @@ from fermiviewer.calc.eds import (
     line_energy,
     lines_in_range,
 )
-from fermiviewer.calc.eds_maps import composition_profile, element_map
+from fermiviewer.calc.eds_maps import (
+    composition_profile,
+    composition_profile_sigma,
+    element_map,
+    extract_element_maps,
+)
 from fermiviewer.calc.eels_quant import elnes
 from fermiviewer.calc.energy_units import to_kev
 from fermiviewer.calc.phase_registry import registry
 from fermiviewer.calc.tomo import back_project
+from fermiviewer.calc.uncertainty import default_k_factors
 from fermiviewer.datastruct import DataKind
 from fermiviewer.models import ImageMeta
 from fermiviewer.routes.analysis import _cube, _get, _register_map, _spectral
@@ -65,7 +71,8 @@ def analyze_back_project(req: BackProjectRequest) -> ImageMeta:
 # ── A4 Composition Profile (EDS SI) ──────────────────────────────────
 
 class CompositionProfileRequest(BaseModel):
-    image_id: str            # unused by the handler; kept for API symmetry
+    image_id: str             # SI cube id — used to recompute per-point 1σ;
+                               # the profile itself still comes from map_ids
     map_ids: list[str]       # derived at% map image IDs (from /eds/quantify)
     elements: list[str]      # element symbols, same order as map_ids
     x1: float                # 1-based pixel coords
@@ -74,6 +81,7 @@ class CompositionProfileRequest(BaseModel):
     y2: float
     n_points: int = 200
     width: float = 1.0       # averaging width (px)
+    half_window_kev: float = 0.085   # must match the /eds/quantify call
 
 
 @router.post("/analyze/composition-profile")
@@ -82,7 +90,9 @@ def analyze_composition_profile(req: CompositionProfileRequest) -> dict:
 
     map_ids must point to at% maps (derived from /eds/quantify or
     /eels/quantify-map) with the same spatial extent. Returns (distance,
-    atomic_pct) arrays — one series per element — ready for uPlot.
+    atomic_pct) arrays — one series per element — ready for uPlot, plus
+    per-point ``atomic_percent_error`` (1σ, same shape) whenever image_id
+    resolves to the SI cube those at% maps came from (see `_profile_sigma`).
     """
     if len(req.map_ids) != len(req.elements):
         raise HTTPException(422, "map_ids and elements must have equal length")
@@ -111,12 +121,48 @@ def analyze_composition_profile(req: CompositionProfileRequest) -> dict:
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
     unit = "nm" if np.isfinite(ps) else "px"
-    return {
+    out: dict = {
         "distance": dist.tolist(),
         "atomic_pct": pct.T.tolist(),   # [n_elements, n_points]
         "elements": req.elements,
         "unit": unit,
     }
+    sigma = _profile_sigma(req)
+    if sigma is not None:
+        out["atomic_percent_error"] = sigma.T.tolist()   # [n_elements, n_points]
+    return out
+
+
+def _profile_sigma(req: CompositionProfileRequest) -> np.ndarray | None:
+    """Per-point 1σ via the SAME Poisson/Cliff-Lorimer core `/eds/quantify`
+    uses (`composition_profile_sigma` → `cliff_lorimer_uncertainty`), or
+    None when image_id isn't a resolvable SI cube whose energy axis still
+    carries every requested element's line — sigma is a best-effort
+    addition, never a reason to fail the profile itself."""
+    try:
+        ds = _cube(req.image_id)
+    except HTTPException:
+        return None
+    energy_kev = to_kev(ds.energy_axis, ds.energy_cal.units)
+    entries = {
+        e.symbol: e
+        for e in extract_element_maps(
+            ds.data, energy_kev, req.elements, half_window=req.half_window_kev
+        )
+    }
+    if set(entries) != set(req.elements):
+        return None
+    net_maps = [entries[s].map for s in req.elements]
+    gross_maps = [
+        element_map(ds.data, energy_kev, entries[s].window[0], entries[s].window[1],
+                    bg="none")
+        for s in req.elements
+    ]
+    return composition_profile_sigma(
+        net_maps, gross_maps, req.elements, default_k_factors(req.elements),
+        req.x1, req.y1, req.x2, req.y2,
+        n_points=req.n_points, width=req.width,
+    )
 
 
 # ── A5 ELNES fingerprint ──────────────────────────────────────────────

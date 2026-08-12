@@ -222,9 +222,14 @@ export interface CompositionProfileResult {
   atomic_pct: number[][];   // [n_elements][n_points]
   elements: string[];
   unit: string;
+  /** Per-point 1σ (percentage points), same shape as atomic_pct — present
+   *  whenever cubeId resolves to the SI cube the at% maps were quantified
+   *  from (ANALYSIS_PRESENTATION_PLAN #3). */
+  atomic_percent_error?: number[][];
 }
 
 export function analyzeCompositionProfile(
+  cubeId: string,
   mapIds: string[],
   elements: string[],
   a: { x: number; y: number },
@@ -232,7 +237,7 @@ export function analyzeCompositionProfile(
   opts: { nPoints?: number; width?: number } = {},
 ): Promise<CompositionProfileResult> {
   return post("/api/analyze/composition-profile", {
-    image_id: mapIds[0] ?? "",
+    image_id: cubeId,   // the SI cube — also used server-side to derive σ
     map_ids: mapIds,
     elements,
     x1: a.x + 1,   // 0-based → 1-based
