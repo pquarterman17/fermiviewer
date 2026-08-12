@@ -26,6 +26,10 @@ vi.mock("../../lib/api", async (importActual) => {
     }),
     eelsQuantifyMapAsync: vi.fn(),
     runJob: vi.fn(),
+    // ElementalWorkshop opens on the Maps tab, which mounts the real
+    // EelsMapsTab and auto-identifies immediately — without this, every test
+    // here would fire a real, unmocked fetch to /api/eels/auto-assign.
+    eelsAutoAssign: vi.fn().mockResolvedValue({ edges: [] }),
   };
 });
 
