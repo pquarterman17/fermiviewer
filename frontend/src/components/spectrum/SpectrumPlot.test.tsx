@@ -97,6 +97,33 @@ beforeEach(() => {
 });
 
 describe("EdsSpectrumPlot", () => {
+  it("keeps the same plot instance across re-renders without overlays", () => {
+    // A live drag sets parent state every frame, re-rendering with new
+    // eLo/eHi. If the `overlays` default ever becomes a fresh `[]` again,
+    // the build effect (which depends on overlays) rebuilds the plot per
+    // frame and tears down the drag session mid-gesture.
+    const { rerender } = render(
+      <SpectrumPlot
+        spec={WIDE}
+        label="Sum spectrum"
+        eLo={9}
+        eHi={11}
+        onDragWindow={() => {}}
+      />,
+    );
+    const first = plot();
+    rerender(
+      <SpectrumPlot
+        spec={WIDE}
+        label="Sum spectrum"
+        eLo={9}
+        eHi={12}
+        onDragWindow={() => {}}
+      />,
+    );
+    expect(plot()).toBe(first);
+  });
+
   it("reserves a readable count gutter and uses compact y ticks", () => {
     render(
       <SpectrumPlot

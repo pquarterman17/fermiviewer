@@ -62,6 +62,15 @@ export interface SpectrumOverlay {
   dash?: number[];
 }
 
+/** Stable default for `overlays`. A `= []` default parameter would mint a
+ *  fresh array every render, and `overlays` sits in the build effect's
+ *  dependency array — so every parent re-render (INCLUDING every live drag
+ *  frame, which sets parent state) would destroy and rebuild the uPlot,
+ *  tearing down the drag session mid-gesture. Same defect class as the
+ *  zustand stable-snapshot rule; callers that do pass overlays must pass a
+ *  memoized array for the same reason (EelsExploreTab useMemo's its). */
+const NO_OVERLAYS: SpectrumOverlay[] = [];
+
 export default function SpectrumPlot({
   spec,
   label,
@@ -79,7 +88,7 @@ export default function SpectrumPlot({
   background = null,
   onDragWindowsLive,
   onDragWindowsCommit,
-  overlays = [],
+  overlays = NO_OVERLAYS,
 }: {
   spec: Spectrum;
   label: string;
