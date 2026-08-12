@@ -1,7 +1,11 @@
 // Seeding of the EELS background/signal fit windows from a spectrum's energy
 // range. Extracted from EelsWorkshop so the workshop keeps shrinking.
 
-function fmtNum(v: number): string {
+/** Shared window-string precision: 4 significant figures, trailing zeros
+ *  trimmed. Also used to format a dragged window edge back into the
+ *  text-field state (EelsExploreTab), so a drag and a fresh seed produce
+ *  strings in the same style. */
+export function fmtNum(v: number): string {
   return Number(v.toPrecision(4)).toString();
 }
 

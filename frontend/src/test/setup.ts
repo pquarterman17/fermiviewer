@@ -63,6 +63,23 @@ if (typeof globalThis.matchMedia === "undefined") {
   });
 }
 
+// jsdom has no ResizeObserver; SpectrumPlot uses one to keep its uPlot sized
+// to its host div. Reachable from any workshop's Explore tab now (item 13
+// generalised it to EELS too), not just the one test file that used to stub
+// it locally — a global, guarded stub mirrors the matchMedia polyfill above
+// and yields to a test's own stub (e.g. SpectrumPlot.test.tsx's mock plot).
+if (typeof globalThis.ResizeObserver === "undefined") {
+  class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  }
+  Object.defineProperty(globalThis, "ResizeObserver", {
+    configurable: true,
+    value: ResizeObserverStub,
+  });
+}
+
 beforeEach(() => {
   localStorage.clear();
 });

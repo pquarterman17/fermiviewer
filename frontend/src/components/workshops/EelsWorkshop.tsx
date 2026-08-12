@@ -16,6 +16,7 @@ import {
 import { useViewer } from "../../store/viewer";
 import EelsAdvanced from "./EelsAdvanced";
 import { type EdgeRow } from "./EelsEdgeEditor";
+import EelsExploreTab from "./eels/EelsExploreTab";
 import { KNOWN_EDGES, type EelsTab } from "./eels/eelsEdges";
 import EelsQuantifyPanel from "./eels/EelsQuantifyPanel";
 import {
@@ -29,8 +30,7 @@ import {
   type EelsRunnersCtx,
 } from "./eels/eelsRunners";
 import { seedFitWindows } from "./eelsWindows";
-import RegionPicker, { type Rect1 } from "./RegionPicker";
-import SpectrumNavigationControl from "./SpectrumNavigationControl";
+import type { Rect1 } from "./RegionPicker";
 import { useProbeRegionToken } from "./useProbeRegionToken";
 import PlotContextSurface from "../plots/PlotContextSurface";
 import { useSpectrumProbe } from "./useSpectrumProbe";
@@ -68,8 +68,6 @@ export default function EelsWorkshop({
   const [e0Kv, setE0Kv] = useState(200);
   const [betaMrad, setBetaMrad] = useState(10);
   const [quantMethod, setQuantMethod] = useState("powerlaw");
-  const [explore, setExplore] = useState(false);
-  const [pickMode, setPickMode] = useState<"region" | "pixel">("region");
   const [region, setRegion] = useState<Rect1 | null>(null);
   const plotHost = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
@@ -109,8 +107,6 @@ export default function EelsWorkshop({
   useEffect(() => {
     probeRegion.clear(); // a token from the previous image is meaningless
     setRegion(null);
-    setExplore(false);
-    setPickMode("region");
   }, [activeId]);
 
   useSpectrumProbe({
@@ -128,10 +124,15 @@ export default function EelsWorkshop({
     onError: (e) => setStatus(`EELS: ${e.message}`),
   });
 
-  // (re)build the plot when spectrum or fit changes
+  // (re)build the bespoke plot when spectrum, fit, or the active tab's
+  // visibility changes. The host div exists only for Quantify / Model-fit —
+  // Explore renders the shared SpectrumPlot instead (EelsExploreTab) — so a
+  // tab switch away must destroy this instance rather than leave a uPlot
+  // bound to a host React has unmounted; a tab switch back must rebuild it.
+  const showBespokePlot = tab === "Quantify" || tab === "Model fit";
   useEffect(() => {
     const host = plotHost.current;
-    if (!host || !spectrum) return;
+    if (!host || !spectrum || !showBespokePlot) return;
     plotRef.current?.destroy();
     const styles = getComputedStyle(document.documentElement);
     const accent = styles.getPropertyValue("--accent").trim() || "#a78bfa";
@@ -222,7 +223,7 @@ export default function EelsWorkshop({
       plotRef.current?.destroy();
       plotRef.current = null;
     };
-  }, [spectrum, fit, fitResult, showEdges, elementFilter]);
+  }, [spectrum, fit, fitResult, showEdges, elementFilter, showBespokePlot]);
 
   // built fresh each render (these were already plain non-memoized consts,
   // so the factory call sites below are semantically unchanged)
@@ -266,121 +267,43 @@ export default function EelsWorkshop({
 
   return (
     <div className="fvd-ws">
-      <PlotContextSurface ref={plotHost} plotRef={plotRef} label="EELS spectrum" filename="eels-spectrum.png" className="fvd-ws-plot" />
-      {tab === "Explore" && (
-        <>
-      <div className="fvd-ws-row">
-        <label className="fvd-check">
-          <input
-            type="checkbox"
-            checked={showEdges}
-            onChange={(e) => setShowEdges(e.target.checked)}
-          />
-          Edge IDs
-        </label>
-        <span className="k">element</span>
-        <input
-          placeholder="all"
-          value={elementFilter}
-          style={{ width: 44 }}
-          onChange={(e) => setElementFilter(e.target.value.trim())}
+      {showBespokePlot && (
+        <PlotContextSurface
+          ref={plotHost}
+          plotRef={plotRef}
+          label="EELS spectrum"
+          filename="eels-spectrum.png"
+          className="fvd-ws-plot"
         />
-        {isCube && (
-          <label className="fvd-check">
-            <input
-              type="checkbox"
-              checked={explore}
-              onChange={(e) => {
-                setExplore(e.target.checked);
-                if (!e.target.checked) setRegion(null);
-              }}
-            />
-            Region explorer
-          </label>
-        )}
-        {region && (
-          <span className="k">
-            {region[0] === region[2] && region[1] === region[3]
-              ? `px [${region[0]},${region[1]}]`
-              : `[${region[0]},${region[1]}]–[${region[2]},${region[3]}]`}
-          </span>
-        )}
-      </div>
-      {isCube && (
-        <SpectrumNavigationControl
-          active={captureMode === "specnav"}
-          pixel={specnavPixel}
-          onToggle={() =>
+      )}
+      {tab === "Explore" && (
+        <EelsExploreTab
+          activeId={activeId}
+          spectrum={spectrum}
+          fit={fit}
+          isCube={isCube}
+          bgLo={bgLo}
+          bgHi={bgHi}
+          sigLo={sigLo}
+          sigHi={sigHi}
+          setBgLo={setBgLo}
+          setBgHi={setBgHi}
+          setSigLo={setSigLo}
+          setSigHi={setSigHi}
+          runFit={runFit}
+          runMap={runMap}
+          showEdges={showEdges}
+          setShowEdges={setShowEdges}
+          elementFilter={elementFilter}
+          setElementFilter={setElementFilter}
+          region={region}
+          setRegion={setRegion}
+          captureMode={captureMode}
+          onToggleLive={() =>
             setCaptureMode(captureMode === "specnav" ? "none" : "specnav")
           }
+          specnavPixel={specnavPixel}
         />
-      )}
-      {explore && isCube && (
-        <div className="fvd-ws-row">
-          <span className="k">pick</span>
-          <div className="fvd-seg">
-            {(["region", "pixel"] as const).map((m) => (
-              <button
-                key={m}
-                className={`fvd-seg-btn${pickMode === m ? " active" : ""}`}
-                title={
-                  m === "pixel"
-                    ? "click a single pixel to read its spectrum"
-                    : "drag a box to average a region"
-                }
-                onClick={() => {
-                  setPickMode(m);
-                  setRegion(null); // switching mode starts fresh (full image)
-                }}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-      {explore && activeId && (
-        <RegionPicker
-          id={activeId}
-          onRegion={setRegion}
-          pixelMode={pickMode === "pixel"}
-        />
-      )}
-      <div className="fvd-ws-row">
-        <span className="k">Background</span>
-        <input value={bgLo} onChange={(e) => setBgLo(e.target.value)} />
-        <span>–</span>
-        <input value={bgHi} onChange={(e) => setBgHi(e.target.value)} />
-        <span className="k">{spectrum?.units ?? "eV"}</span>
-        <button
-          className="fvd-btn"
-          onClick={runFit}
-          title="Fit the power-law background over the selected window"
-        >
-          Fit
-        </button>
-      </div>
-      {fit && (
-        <div className="fvd-ws-note">
-          power-law A·E<sup>−r</sup>: r = {fit.params["r"]?.toFixed(3)}
-        </div>
-      )}
-      <div className="fvd-ws-row">
-        <span className="k">Signal</span>
-        <input value={sigLo} onChange={(e) => setSigLo(e.target.value)} />
-        <span>–</span>
-        <input value={sigHi} onChange={(e) => setSigHi(e.target.value)} />
-        <span className="k">{spectrum?.units ?? "eV"}</span>
-        <button
-          className="fvd-btn"
-          onClick={runMap}
-          disabled={!isCube}
-          title="Extract a signal-intensity map over the signal window (SI cube)"
-        >
-          Map
-        </button>
-      </div>
-        </>
       )}
       {(tab === "Quantify" || tab === "Model fit") && (
         <EelsQuantifyPanel
