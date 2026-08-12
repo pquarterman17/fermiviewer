@@ -32,7 +32,13 @@ fv_example_output/
 # machines and sessions with git history. Note this repo is public — treat
 # plan contents as publicly visible and keep credentials, unpublished
 # results and private-corpus paths out of them.
+#
+# plans/archive/ stays per-machine and UNTRACKED (the 2026-08-09 opt-in
+# covered the live plan tree only; archived legacy plans predate the
+# public-visibility scrub). Ignored explicitly so a broad `git add` can
+# never sweep them into a public commit.
 design/
+plans/archive/
 
 # IDE / OS
 .idea/
