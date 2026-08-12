@@ -11,7 +11,10 @@ DECLINED general-graphing/statistics list lives in that doc and is out).
 **Status:** Active
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-08-12
-**Updated:** 2026-08-12
+**Updated:** 2026-08-12 — items 1 (peak shapes), 2 (residuals + R²) and 5
+(Savitzky–Golay) shipped the same day the plan was booked, via three
+file-disjoint sonnet worktree agents; merged-tree gate 1994 backend /
+1319 vitest, all green
 
 ---
 
@@ -51,34 +54,23 @@ every new verb ─> ops registration ─> #8 batch/scripting reach for free
 
 ### Dependency map
 
-- Items 1 (shapes), 5 (Savitzky–Golay), and 2 (residuals) are
-  independent and file-disjoint: 1 owns `calc/spectral_fit.py` +
-  `calc/eds_peakfit.py`, 5 owns a new `calc/smoothing.py` +
-  `ops/catalogue_spectral.py`, 2 owns `routes/spectral_fit.py` /
-  `routes/eds_advanced.py` + frontend fit views.
-- Item 3 (σ bands) should follow 2 — the residual/quality payload and
-  the band payload want one serialisation convention.
-- Item 7 (fit report CSV) consumes what 2 serialises; sequence after.
+- Items 1, 2 and 5 shipped 2026-08-12 (see Completed) — items 3 and 7
+  are now unblocked.
+- Item 3 (σ bands) follows 2's serialisation conventions (scalars
+  server-side over the fit window; traces derived client-side from
+  curves already on the wire).
+- Item 7 (fit report CSV) consumes what 2 serialises.
 - Item 4 (vector chart export) is independent of all of the above.
 - Item 6 (population histograms) is independent; its backend half is a
   new `calc/distributions.py`.
-- Item 8 (batch/scripting reach) is a sweep item — do last, after the
-  new verbs from 1/5/6 exist, so the sweep covers them too.
+- Item 8 (batch/scripting reach) is a sweep item — do last, after item
+  6's new verbs exist, so the sweep covers them too (items 1 and 5
+  already registered theirs: the spectral-fit shapes ride the existing
+  fit routes, and savgol landed as ops from day one).
 
 ---
 
 ## Tier 1 — High Impact
-
-1. **Voigt / Lorentzian / pseudo-Voigt in the spectral engine** (was
-   audit R3) — Gaussian-only today (`calc/spectral_fit.py`); Voigt noted
-   as a follow-up in `eds_peakfit.py`'s own header. `scipy.special.
-   voigt_profile` costs nothing. Each shape needs its own analytic net
-   area where `eds_peakfit` integrates `amp·σ·√(2π)`.
-
-2. **Surface residuals + R² on existing fits** (was audit R4) —
-   `FitResult.residual` and covariance are computed but never serialised
-   or plotted; χ²ᵣ only. A residual trace under the fit and a quality
-   readout in the fit summary, for `/eels/fit` and the EDS peak-fit path.
 
 3. **Error bars / ±σ bands on existing analysis charts** (was audit R1)
    — uncertainty is computed everywhere and rendered only as
@@ -90,10 +82,6 @@ every new verb ─> ops registration ─> #8 batch/scripting reach for free
    resolution; the image stage already has a vector pipeline to reuse.
 
 ## Tier 2 — Medium Impact
-
-5. **Savitzky–Golay smoothing + derivative for spectra/profiles** (was
-   audit R5) — zero `savgol` hits in the tree; only a hardcoded box-3
-   in `calc/eds.py`. Register as ops so batch/scripting get it free.
 
 6. **Population histograms + distribution fitting for measured objects**
    (was audit R6) — particle/grain/measure populations export as raw
@@ -129,4 +117,53 @@ schedule)*
 
 ## Completed
 
-*(nothing yet)*
+- ~~**#1 Voigt / Lorentzian / pseudo-Voigt in the spectral engine**~~
+  (2026-08-12) — new pure `calc/peak_shapes.py` (194 lines): `lorentzian`,
+  `pseudo_voigt`, `voigt` Component builders in `gaussian`'s exact style
+  (amp = peak height at center, documented σ↔γ FWHM matching for
+  pseudo-Voigt, true Voigt height-normalised over
+  `scipy.special.voigt_profile`) plus one analytic net-area helper per
+  shape — the Voigt area is `amp/profile(0)`, falling straight out of
+  scipy's unit-area normalisation. `spectral_fit.py` gained only
+  `gaussian_area`; `eds_peakfit`'s hardcoded `amp·σ·√(2π)` now calls it
+  (behaviour-preserving, original 11 tests pass unmodified), and
+  `element_peak_component`/`fit_peaks`/`quantify_peaks` gained opt-in
+  `lorentzian_hwhm_kev` (default 0.0 = byte-identical Gaussian path,
+  pinned by test; >0 = fixed-γ Voigt with area accounting switched to
+  `voigt_area`, amp-error propagated through the same linear scale).
+  Tests: numeric-vs-analytic areas <0.5% via `np.trapezoid`, η=0/1 and
+  γ→0 pointwise limits, a >1e10 tail-ratio mutation guard at 5×FWHM,
+  Voigt/pseudo-Voigt fit round-trips, and a real S-K/Mo-L Voigt overlap
+  (which needs `beam_kv=15` — at 200 kV Mo resolves to its K line).
+
+- ~~**#2 Surface residuals + R² on existing fits**~~ (2026-08-12) —
+  `/eels/fit`, `/eds/peakfit` and `/eds/zeta` now return `r_squared`;
+  the residual trace is derived CLIENT-side (`lib/spectrum/fitQuality.ts`)
+  from the measured/model curves already on the wire — a third array
+  would duplicate them — while R² stays SERVER-side because it must be
+  computed over the actual fit window, which the client cannot always
+  reconstruct (EELS `fit_range` is a strict subset of the returned axis).
+  New pure `calc/fit_quality.py` (plain unweighted 1−SS_res/SS_tot,
+  `ctf.py`'s existing convention; degenerate SS_tot=0 → 0.0 not NaN, and
+  the docstring pins the fit-window contract). UI: R² readout + residual
+  sub-plot in `EelsResults` (own small uPlot with `time:false` — a shared
+  y-axis with the spectrum would flatten residuals invisible), scalar
+  readout row in `EdsModelFit`. +8 backend / +13 frontend tests, R² sign
+  and residual subtraction verified by mutation on both sides.
+
+- ~~**#5 Savitzky–Golay smoothing + derivative for spectra/profiles**~~
+  (2026-08-12) — new pure `calc/smoothing.py` wrapping
+  `scipy.signal.savgol_filter` (`savgol_smooth`, `savgol_derivative`;
+  window/polyorder/order/delta validation, float64 out) + two ops in a
+  new `"spectral"` category (`savgol`, `savgol_derivative`) so batch
+  recipes, macros and `fermiviewer.api` scripting reach them with no
+  further wiring. A SPECTRUM_IMAGE cube reduces via `sum_spectrum()`
+  (the `eels_quantify` convention); the derivative's `delta` is op-layer
+  policy — energy-axis scale when calibrated, else 1.0/channel,
+  documented. Tests pin the classic polynomial-reproduction property
+  (with a negative quartic check against a vacuous pass-through),
+  analytic derivative with non-unit delta, and op-vs-calc parity on a
+  2.0 eV/channel fixture so a `delta=1.0` regression fails.
+  `docs/api-reference.md` regenerated. GUI exposure (a smooth/derivative
+  toggle on the spectrum plots) is NOT part of this item — if wanted, it
+  rides item 3's chart work.

@@ -95,16 +95,14 @@ live-audit usability follow-up list.*
 *Parent: MAIN_PLAN.md. Status: Active — booked 2026-08-12 from the merged
 OriginPro/JMP gap audit (`docs/originpro-jmp-gap-audit.md`), each item
 re-verified against main before booking. Scope rule: image-derived results
-only; the audit's DECLINED general-graphing list is out.*
+only; the audit's DECLINED general-graphing list is out. Items 1, 2 and 5
+(peak shapes, residuals + R², Savitzky–Golay) shipped 2026-08-12.*
 
 **Tier 1 — High Impact**
-1. **Voigt / Lorentzian / pseudo-Voigt in the spectral engine** (was R3)
-2. **Surface residuals + R² on existing fits** (was R4)
 3. **Error bars / ±σ bands on existing analysis charts** (was R1)
 4. **Vector (SVG) chart export + DPI control for analysis plots** (was R2)
 
 **Tier 2 — Medium Impact**
-5. **Savitzky–Golay smoothing + derivative for spectra/profiles** (was R5)
 6. **Population histograms + distribution fitting** (was R6)
 7. **Fit-report export to CSV** (was R8)
 8. **Batch + scripting reach for existing analyses** (was R7)
@@ -115,7 +113,7 @@ only; the audit's DECLINED general-graphing list is out.*
 11. **Baseline options: SNIP / anchor spline** (was R11)
 12. **Chart dark-mode theming** (was R12)
 
-**Open items: 12**
+**Open items: 9**
 
 ---
 
@@ -126,9 +124,9 @@ only; the audit's DECLINED general-graphing list is out.*
 | MAIN_PLAN.md | Active (root) | 9 |
 | SPECTRAL_WORKSPACE_PLAN.md | Active | 1 |
 | PLAN_4DSTEM.md | Active | 8 |
-| ANALYSIS_PRESENTATION_PLAN.md | Active | 12 |
+| ANALYSIS_PRESENTATION_PLAN.md | Active | 9 |
 
-**Total open items:** 30
+**Total open items:** 27
 
 **Counting method:** top-level numbered items (the plan-format.md unit of a
 tracked work item) — not nested `- [ ]` sub-task checkboxes. Nested-checkbox
@@ -137,4 +135,5 @@ PLAN_4DSTEM 12, ANALYSIS_PRESENTATION_PLAN 0 (17 total). A checkbox-based
 count would disagree with the open-items count above — pick one convention
 when reading this table and don't mix the two.
 
-**Last regenerated:** 2026-08-12 (ANALYSIS_PRESENTATION_PLAN booked: +12)
+**Last regenerated:** 2026-08-12 (ANALYSIS_PRESENTATION_PLAN booked +12,
+then its items 1, 2 and 5 shipped same day: −3)
