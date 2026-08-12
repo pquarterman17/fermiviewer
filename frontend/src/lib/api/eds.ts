@@ -105,6 +105,10 @@ export interface EdsPeakfitResult {
   model: number[];
   elements: EdsPeakfitElement[];
   reduced_chi2: number;
+  /** Plain unweighted R² (1 − SS_res/SS_tot), calc/fit_quality.py. Peak
+   *  fits never window (fit_peaks has no fit_range), so this is over the
+   *  full `spectrum`/`model` arrays above. */
+  r_squared: number;
   success: boolean;
   quant?: EdsPeakfitQuant;
   artifacts?: EdsArtifactMark[];

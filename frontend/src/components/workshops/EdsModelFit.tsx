@@ -236,7 +236,10 @@ export default function EdsModelFit({
         const ratios = r.elements
           .map((el) => `${el.symbol} ${el.net_area.toPrecision(3)}`)
           .join(" · ");
-        setStatus(`EDS peakfit · χ²ᵣ ${r.reduced_chi2.toExponential(2)} · ${ratios}${rho}`);
+        setStatus(
+          `EDS peakfit · χ²ᵣ ${r.reduced_chi2.toExponential(2)} · ` +
+            `R² ${r.r_squared.toFixed(3)} · ${ratios}${rho}`,
+        );
       })
       .catch((e: Error) => setStatus(`EDS peakfit: ${e.message}`))
       .finally(() => setBusy(""));
@@ -407,6 +410,14 @@ export default function EdsModelFit({
       </div>
 
       {(cont || peakfit) && <ModelFitPlot cont={cont} peakfit={peakfit} />}
+
+      {peakfit && (
+        <div className="fvd-ws-row k" style={{ fontSize: 11 }}>
+          χ²ᵣ {peakfit.reduced_chi2.toExponential(2)} · R²{" "}
+          {peakfit.r_squared.toFixed(3)}
+          {peakfit.success ? "" : " · (not converged)"}
+        </div>
+      )}
 
       {zetaQuant && (
         <div className="fvd-ws-row k" style={{ fontSize: 11 }}>

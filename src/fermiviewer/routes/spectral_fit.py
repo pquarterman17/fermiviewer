@@ -113,6 +113,11 @@ def eels_fit(req: EelsFitRequest) -> dict:
         "background": res.background.tolist(),
         "edges": edges_out,
         "reduced_chi2": res.reduced_chi2,
+        # plain unweighted R² over the fit window (audit R4 / #2); the
+        # residual trace itself is NOT serialised — "energy"/"spectrum"/
+        # "model" above already carry everything needed to derive
+        # observed − model client-side (frontend lib/spectrum/fitQuality.ts).
+        "r_squared": res.r_squared,
         "success": res.success,
     }
 

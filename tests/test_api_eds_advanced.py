@@ -115,6 +115,29 @@ def test_peakfit_recovers_area_ratio(client, cube_id) -> None:
     # Cu:Fe area ratio is 6000:4000 = 1.5 regardless of the pixel-count scale
     assert areas["Cu"] / areas["Fe"] == pytest.approx(1.5, rel=0.05)
     assert all(e["curve"] is not None for e in body["elements"])
+    # fit-quality readout (#2 / audit R4): noiseless synthetic spectrum
+    # generated from the same continuum + Gaussian forms the model fits,
+    # with the matching bremsstrahlung background — should explain nearly
+    # all of the spectrum's variance.
+    assert "r_squared" in body
+    assert body["r_squared"] <= 1.0 + 1e-9
+    assert body["r_squared"] == pytest.approx(1.0, abs=0.02)
+
+
+def test_peakfit_r_squared_lower_with_missing_background(client, cube_id) -> None:
+    # background="none" leaves the Kramers continuum entirely unmodeled —
+    # a deliberately wrong model that should explain distinctly less of
+    # the spectrum's variance than the matching bremsstrahlung background.
+    good = client.post("/api/eds/peakfit", json={
+        "image_id": cube_id, "elements": ["Fe", "Cu"],
+        "background": "bremsstrahlung", "e0_kev": E0_KEV, "weights": None,
+    }).json()
+    bad = client.post("/api/eds/peakfit", json={
+        "image_id": cube_id, "elements": ["Fe", "Cu"],
+        "background": "none", "weights": None,
+    }).json()
+    assert bad["r_squared"] <= 1.0 + 1e-9
+    assert bad["r_squared"] < good["r_squared"] - 0.3
 
 
 def test_peakfit_quantify_returns_composition(client, cube_id) -> None:
@@ -257,6 +280,11 @@ def test_zeta_composition_and_mass_thickness(client, cube_id) -> None:
     assert q["absorption_factors"] == [1.0, 1.0]
     for key in ("atomic_percent_error", "weight_percent_error"):
         assert all(np.isfinite(s) and s >= 0 for s in q[key])
+    # ζ shares /eds/peakfit's fit_peaks() call, so it gets the same
+    # r_squared scalar (#2 / audit R4)
+    body = r.json()
+    assert body["r_squared"] <= 1.0 + 1e-9
+    assert body["r_squared"] == pytest.approx(1.0, abs=0.02)
 
 
 def test_zeta_from_zeta_si_scales_k_table(client, cube_id) -> None:

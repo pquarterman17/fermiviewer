@@ -20,6 +20,7 @@ const BASE: EdsPeakfitResult = {
     },
   ],
   reduced_chi2: 1.25,
+  r_squared: 0.987,
   success: true,
   quant: {
     elements: ["Fe", "Cu"],
