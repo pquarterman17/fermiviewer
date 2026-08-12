@@ -20,6 +20,7 @@ from fermiviewer.calc.eels import EELS_EDGES, extract_map
 from fermiviewer.calc.eels_quant import ElementEdge, quantify
 from fermiviewer.calc.energy_units import to_kev
 from fermiviewer.calc.radial import radial_profile
+from fermiviewer.calc.smoothing import savgol_derivative, savgol_smooth
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.ops.base import ParamError
 from fermiviewer.ops.catalogue import raster_of
@@ -435,3 +436,111 @@ def test_unknown_param_still_rejected_for_spectral_ops() -> None:
     ds, _, _ = _eds_cube()
     with pytest.raises(ParamError, match="unknown param"):
         ops.run("eds_quantify", ds, {"elements": "Fe", "typo": 1})
+
+
+# ── Smoothing (Savitzky-Golay) ───────────────────────────────────────
+
+def test_smoothing_ops_are_registered_with_expected_category() -> None:
+    by_name = {s.name: s for s in ops.list_ops()}
+    assert by_name["savgol"].category == "spectral"
+    assert by_name["savgol_derivative"].category == "spectral"
+    # both produce a derived spectrum, not a value
+    assert not by_name["savgol"].produces_value
+    assert not by_name["savgol_derivative"].produces_value
+
+
+def test_savgol_op_matches_direct_calc_call_on_a_1d_spectrum() -> None:
+    ds = _eels_cube()
+    spec = DataStruct(
+        data=ds.sum_spectrum(), kind=DataKind.SPECTRUM, axes=(ds.axes[-1],),
+    )
+    expected = savgol_smooth(spec.sum_spectrum(), window=11, polyorder=3)
+    result = ops.run("savgol", spec, {"window": 11, "polyorder": 3})
+    assert result.produces_image  # derived DataStruct, even though kind is SPECTRUM
+    assert result.derived.kind is DataKind.SPECTRUM
+    np.testing.assert_allclose(result.derived.data, expected)
+
+
+def test_savgol_op_on_a_spectrum_image_cube_sums_spatially_first() -> None:
+    """A SPECTRUM_IMAGE cube must be reduced via sum_spectrum() before the
+    1-D calc call — matching eels_quantify's convention for cube input."""
+    ds = _eels_cube()
+    expected = savgol_smooth(ds.sum_spectrum(), window=11, polyorder=3)
+    result = ops.run("savgol", ds, {"window": 11, "polyorder": 3})
+    np.testing.assert_allclose(result.derived.data, expected)
+    assert result.derived.data.shape == (ds.n_channels,)
+
+
+def test_savgol_op_defaults_are_window_11_polyorder_3() -> None:
+    ds = _eels_cube()
+    expected = savgol_smooth(ds.sum_spectrum(), window=11, polyorder=3)
+    result = ops.run("savgol", ds)
+    np.testing.assert_allclose(result.derived.data, expected)
+
+
+def test_savgol_op_rejects_a_plain_image() -> None:
+    img = DataStruct(
+        data=np.zeros((4, 4)), kind=DataKind.IMAGE,
+        axes=(AxisCal(), AxisCal()),
+    )
+    with pytest.raises(ValueError, match="spectral"):
+        ops.run("savgol", img)
+
+
+def test_savgol_op_propagates_calc_validation_errors() -> None:
+    ds = _eels_cube()  # 400 channels
+    with pytest.raises(ValueError, match="window must be odd"):
+        ops.run("savgol", ds, {"window": 10, "polyorder": 3})
+
+
+def test_savgol_derivative_op_matches_direct_calc_call_using_axis_scale_as_delta() -> None:
+    """The EELS fixture's energy axis has scale=2.0 (eV/channel) — a
+    non-unit delta, so a bug that hardcoded delta=1.0 in the op would
+    produce a result exactly 2x the correct one and this test would fail."""
+    ds = _eels_cube()
+    assert ds.energy_cal.scale == pytest.approx(2.0)  # pin the non-unit delta
+    expected = savgol_derivative(
+        ds.sum_spectrum(), window=11, polyorder=3, order=1, delta=ds.energy_cal.scale,
+    )
+    result = ops.run("savgol_derivative", ds, {"window": 11, "polyorder": 3, "order": 1})
+    assert result.derived.kind is DataKind.SPECTRUM
+    np.testing.assert_allclose(result.derived.data, expected)
+
+
+def test_savgol_derivative_op_falls_back_to_delta_1_when_axis_uncalibrated() -> None:
+    """The axis's scale is 5.0, but units="" makes it uncalibrated —
+    _savgol_delta must fall back to 1.0, not read the (misleading) scale.
+    A bug that read cal.scale unconditionally would fail this test."""
+    cube = np.tile(np.linspace(0.0, 100.0, 50) ** 2, (2, 2, 1))
+    ds = DataStruct(
+        data=cube, kind=DataKind.SPECTRUM_IMAGE,
+        axes=(AxisCal(), AxisCal(), AxisCal(scale=5.0, units="")),  # uncalibrated
+    )
+    assert not ds.energy_cal.calibrated
+    expected = savgol_derivative(ds.sum_spectrum(), window=11, polyorder=3, order=1, delta=1.0)
+    result = ops.run("savgol_derivative", ds, {"window": 11, "polyorder": 3, "order": 1})
+    np.testing.assert_allclose(result.derived.data, expected)
+
+
+def test_savgol_derivative_op_defaults_order_to_1() -> None:
+    ds = _eels_cube()
+    expected = savgol_derivative(
+        ds.sum_spectrum(), window=11, polyorder=3, order=1, delta=ds.energy_cal.scale,
+    )
+    result = ops.run("savgol_derivative", ds, {"window": 11, "polyorder": 3})
+    np.testing.assert_allclose(result.derived.data, expected)
+
+
+def test_savgol_derivative_op_rejects_a_plain_image() -> None:
+    img = DataStruct(
+        data=np.zeros((4, 4)), kind=DataKind.IMAGE,
+        axes=(AxisCal(), AxisCal()),
+    )
+    with pytest.raises(ValueError, match="spectral"):
+        ops.run("savgol_derivative", img)
+
+
+def test_savgol_derivative_op_propagates_calc_validation_errors() -> None:
+    ds = _eels_cube()
+    with pytest.raises(ValueError, match=r"1 <= order <= polyorder"):
+        ops.run("savgol_derivative", ds, {"window": 11, "polyorder": 3, "order": 4})

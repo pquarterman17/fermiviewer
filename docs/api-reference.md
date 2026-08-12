@@ -249,7 +249,7 @@ The registered operation catalogue: name, category, summary, params.
 
 ## Operation catalogue
 
-22 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
+24 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
 
 ### analysis
 
@@ -457,4 +457,25 @@ The registered operation catalogue: name, category, summary, params.
 *category: `geometry` · produces: derived image*
 
 *(no parameters)*
+
+### spectral
+
+#### `savgol` — Savitzky-Golay smoothing of a spectrum (a SPECTRUM_IMAGE cube is spatially summed first, like eels_quantify)
+
+*category: `spectral` · produces: derived image*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `window` | `int` | 11 | no |  | [1, ] | filter window length (odd, samples); must be <= trace length |
+| `polyorder` | `int` | 3 | no |  | [0, ] | fitted polynomial degree; must be < window |
+
+#### `savgol_derivative` — Savitzky-Golay derivative of a spectrum; delta is the energy axis's calibrated scale when calibrated, else 1.0/channel. Output y-units are d(counts)/d(energy unit), unlike the input's raw counts -- see the module docstring's units note
+
+*category: `spectral` · produces: derived image*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `window` | `int` | 11 | no |  | [1, ] | filter window length (odd, samples); must be <= trace length |
+| `polyorder` | `int` | 3 | no |  | [0, ] | fitted polynomial degree; must be < window |
+| `order` | `int` | 1 | no |  | [1, ] | derivative order; must satisfy 1 <= order <= polyorder |
 

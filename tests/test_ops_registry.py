@@ -36,7 +36,7 @@ def test_catalogue_registers_expected_ops() -> None:
 def test_every_op_runs_on_a_synthetic_image() -> None:
     ds = _image()
     for spec in ops.list_ops():
-        if spec.category in ("eels", "eds"):
+        if spec.category in ("eels", "eds", "spectral"):
             # these need a spectrum/spectrum-image input (and several have
             # required list-shaped params with no sensible image-only
             # default) — covered by their own fixtures in test_ops_spectral.py

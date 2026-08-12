@@ -31,6 +31,7 @@ from fermiviewer.calc.eels import extract_map
 from fermiviewer.calc.eels_quant import ElementEdge, quantify
 from fermiviewer.calc.energy_units import to_kev
 from fermiviewer.calc.radial import radial_profile
+from fermiviewer.calc.smoothing import savgol_derivative, savgol_smooth
 from fermiviewer.datastruct import SPECTRAL_KINDS, DataKind, DataStruct
 from fermiviewer.ops.base import OpParam, OpResult, OpSpec
 from fermiviewer.ops.catalogue import raster_of
@@ -284,4 +285,99 @@ register(OpSpec(
         "normalize": OpParam(bool, False, doc="rescale both profiles to [0, 1]"),
     },
     fn=_diffraction_radial_profile,
+))
+
+
+# ── Smoothing (Savitzky-Golay, ANALYSIS_PRESENTATION_PLAN.md #5) ──────
+#
+# calc/smoothing.py's savgol_smooth/savgol_derivative are deliberately
+# 1-D only, so a SPECTRUM_IMAGE cube is reduced to its spatially-summed
+# trace first via ds.sum_spectrum() — the same reduction eels_quantify
+# uses to accept both SPECTRUM and SPECTRUM_IMAGE input above. The
+# derived result is a SPECTRUM DataStruct on the input's own energy
+# axis, not a per-pixel cube.
+#
+# delta (the derivative's sample spacing) is an op-layer policy, not a
+# calc/ decision: taken from the energy axis's calibration
+# (AxisCal.scale, e.g. eV/channel or keV/channel) when the axis is
+# calibrated, else 1.0 per channel — so an uncalibrated spectrum still
+# gets a well-defined (per-channel) derivative instead of an error.
+#
+# Units note: savgol_derivative's output is d(counts)/d(energy unit), a
+# different physical quantity from the input's raw counts. DataStruct
+# has no separate "value units" field for any op in this catalogue
+# (eels_map's background-subtracted counts and eds_element_map's summed
+# counts are equally unlabeled) — so leaving the derivative's y-values
+# unlabeled beyond the op's own summary/label matches existing
+# convention rather than inventing a new metadata scheme here.
+
+def _savgol_delta(ds: DataStruct) -> float:
+    cal = ds.energy_cal
+    return cal.scale if cal.calibrated else 1.0
+
+
+def _savgol(ds: DataStruct, params: dict[str, Any]) -> OpResult:
+    if ds.kind not in SPECTRAL_KINDS:
+        raise ValueError(f"savgol requires spectral input (got {ds.kind.value})")
+    smoothed = savgol_smooth(
+        ds.sum_spectrum(), window=params["window"], polyorder=params["polyorder"]
+    )
+    derived = DataStruct(
+        data=smoothed, kind=DataKind.SPECTRUM, axes=(ds.energy_cal,),
+        metadata={"parser": "derived", "source": "savgol"},
+    )
+    return OpResult(op="savgol", params=params,
+                    label="Savitzky-Golay smoothed spectrum", derived=derived)
+
+
+register(OpSpec(
+    name="savgol", category="spectral",
+    summary="Savitzky-Golay smoothing of a spectrum (a SPECTRUM_IMAGE cube "
+            "is spatially summed first, like eels_quantify)",
+    params={
+        "window": OpParam(int, 11, minimum=1,
+                          doc="filter window length (odd, samples); must be <= trace length"),
+        "polyorder": OpParam(int, 3, minimum=0,
+                             doc="fitted polynomial degree; must be < window"),
+    },
+    fn=_savgol,
+))
+
+
+def _savgol_derivative(ds: DataStruct, params: dict[str, Any]) -> OpResult:
+    if ds.kind not in SPECTRAL_KINDS:
+        raise ValueError(
+            f"savgol_derivative requires spectral input (got {ds.kind.value})"
+        )
+    delta = _savgol_delta(ds)
+    deriv = savgol_derivative(
+        ds.sum_spectrum(), window=params["window"], polyorder=params["polyorder"],
+        order=params["order"], delta=delta,
+    )
+    derived = DataStruct(
+        data=deriv, kind=DataKind.SPECTRUM, axes=(ds.energy_cal,),
+        metadata={"parser": "derived", "source": "savgol_derivative", "delta": delta},
+    )
+    return OpResult(
+        op="savgol_derivative", params=params,
+        label=f"Savitzky-Golay order-{params['order']} derivative spectrum",
+        derived=derived,
+    )
+
+
+register(OpSpec(
+    name="savgol_derivative", category="spectral",
+    summary="Savitzky-Golay derivative of a spectrum; delta is the energy "
+            "axis's calibrated scale when calibrated, else 1.0/channel. "
+            "Output y-units are d(counts)/d(energy unit), unlike the input's "
+            "raw counts -- see the module docstring's units note",
+    params={
+        "window": OpParam(int, 11, minimum=1,
+                          doc="filter window length (odd, samples); must be <= trace length"),
+        "polyorder": OpParam(int, 3, minimum=0,
+                             doc="fitted polynomial degree; must be < window"),
+        "order": OpParam(int, 1, minimum=1,
+                         doc="derivative order; must satisfy 1 <= order <= polyorder"),
+    },
+    fn=_savgol_derivative,
 ))
