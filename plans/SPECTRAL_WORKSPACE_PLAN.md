@@ -8,9 +8,9 @@ implementation so a feature cannot land in one and rot in the other.
 **Status:** Active
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-07-29
-**Updated:** 2026-08-11 — items 2, 4, 14 and 22 shipped (window model,
-draggable edges, EELS batch maps + auto-ID backend); both owner gates
-resolved; 13 items open
+**Updated:** 2026-08-11 — items 2, 4, 13, 14 and 22 shipped (window model,
+draggable edges, EELS Explore direct manipulation, EELS batch maps +
+auto-ID backend); both owner gates resolved; 12 items open
 
 ---
 
@@ -162,9 +162,6 @@ missing rather than faking it. The backend halves (items 14 and 22) shipped
     - [ ] Same periodic-table affordance as EDS, filtered to elements with an
           edge inside the cube's energy range
 
-13. **EELS zoom, colours and integration** — via the shared core from W1
-    - [ ] Replaces the four typed `bgLo/bgHi/sigLo/sigHi` fields
-
 15. **EELS composite** — the capability EELS has never had
 
 ### Tier 2 — Medium Impact
@@ -195,6 +192,25 @@ missing rather than faking it. The backend halves (items 14 and 22) shipped
 ---
 
 ## Completed
+
+- ~~**#13 EELS zoom, colours and integration**~~ (2026-08-11, merged
+  `927dab3` + fix `694812e`; sonnet worktree agent) — the Explore tab now
+  drives BOTH windows by direct manipulation on a generalised SpectrumPlot:
+  optional `background` window (amber, the old fit-series colour), full
+  `SpeciesWindows` live/commit callbacks coexisting with the EDS pair
+  contract (unchanged when background is absent — all prior tests pass
+  unmodified), and an `overlays` prop for the Fit button's power-law curves.
+  Live net ± σ via `integrateEdge`, zoom bar + wheel zoom, edge-onset
+  markers in registry colours, four typed bounds kept as synced steppers.
+  New `eels/EelsExploreTab.tsx` (327); EelsWorkshop 422 → 345, its bespoke
+  uPlot now serves only Quantify/Model-fit.
+  **Review caught one real defect before merge:** the agent's `overlays = []`
+  default parameter sat in the build-effect dependency array — a fresh array
+  per render, so every live-drag frame would have destroyed and rebuilt the
+  uPlot and killed the drag mid-gesture (invisible to jsdom). Fixed with a
+  module-level `NO_OVERLAYS` constant (stable-snapshot rule, prop form) and
+  a regression test verified by mutation. Frontend gate: 1205 vitest, tsc +
+  build clean.
 
 - ~~**#14 `/eels/maps` batch endpoint + #22 EELS edge identification**~~
   (2026-08-11, merged `bb572ca`; sonnet worktree agent) — the backend half of

@@ -31,6 +31,14 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   the elemental map integrates, with a σ that includes the fit's
   extrapolation uncertainty.
 
+- **EELS Explore is direct manipulation now.** The Explore tab shows both
+  the signal window (blue) and the pre-edge background window (amber) on
+  the spectrum itself — drag an edge to resize, the middle to slide, with
+  wheel/drag zoom and the zoom bar, and a live net ± σ readout computed
+  client-side from the same power-law model the backend fits. The four
+  typed bounds remain as synced precision inputs, the Fit button's curves
+  draw over the spectrum, and edge-onset markers carry each element's
+  registry colour.
 - **EELS elemental maps no longer require a quantification.** `POST
   /api/eels/maps` extracts N edge maps in one request — per-species signal
   and optional pre-edge background windows, per-row error reporting so a
