@@ -8,12 +8,14 @@ implementation so a feature cannot land in one and rot in the other.
 **Status:** Active
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-07-29
-**Updated:** 2026-08-12 — item 10 shipped: the composite is a first-class
-library image. It forced the data-model decision the item was gated on,
-recorded as **ADR 0003** (`DataKind.RGB_IMAGE`, uint8 [H,W,3] with spatial
-axes only, luma at one raster boundary); en route the 13 copied `_raster`
-adapters consolidated onto `calc/raster.py`. 3 items open (W2 retirement,
-W4 Tier 3)
+**Updated:** 2026-08-12 — items 10 and 19 shipped. Item 10 forced the
+data-model decision it was gated on, recorded as **ADR 0003**
+(`DataKind.RGB_IMAGE`, uint8 [H,W,3] with spatial axes only, luma at one
+raster boundary); en route the 13 copied `_raster` adapters consolidated
+onto `calc/raster.py`. Item 19 added the diffusion-gradient and
+thickness-ramp presets, extracting `zaf_correction`'s Z/A math into
+`calc/eds_absorption.py` so the generator imports the app's own absorption
+model rather than transcribing it. 2 items open (W2 retirement, W4 item 20)
 
 ---
 
@@ -155,15 +157,53 @@ the same shared components as EDS.
 
 ### Tier 3 — Nice-to-Have
 
-19. **More presets** — a diffusion-couple gradient and a thickness ramp, for
-    testing profiles and absorption corrections
-
 20. **Window overlap detection** — flag species whose windows interfere
     (deselected 2026-07-29; see Owner gates)
 
 ---
 
 ## Completed
+
+- ~~**#19 More presets: diffusion-couple gradient + thickness ramp**~~
+  (2026-08-12) — `eds-diffusion` (a linear Cu -> Ni composition `Gradient`
+  along y) and `eds-thickness` (a per-pixel `ThicknessRamp` that scales
+  signal AND plants absorption via a new `calc/eds_absorption.py` —
+  `zaf_correction`'s Z/A math extracted so the generator can import it
+  instead of transcribing it; `zaf_correction` now calls the extraction and
+  the full backend suite stayed green with zero test edits, confirming the
+  move was behaviour-preserving).
+  **The planned preset didn't work, and measuring it — not the plan's
+  a-priori physics — is what this item shipped.** The plan's own NiO/50-400 nm
+  choice was tried first: this app's MAC formula has no absorption edges to
+  cap Z^4 growth, so O's z*a factor for a Ni matrix exceeds 100 within a few
+  nm, saturating plain Cliff-Lorimer to a near-single-element answer and
+  defeating ZAF's iterative refinement (verified directly against
+  `zaf_correction`, both planting directions tried, both fail). Al2O3 over a
+  10-100 nm ramp keeps z*a in the 1-5x range, where Cliff-Lorimer shows a
+  real, growing bias and ZAF genuinely removes most of it — and the bias
+  runs the OPPOSITE direction from the plan's guess (O is increasingly
+  OVER-reported with thickness under this app's own forward-model
+  convention, not under-reported; Al carries the mirrored deficit).
+  **Results, measured and asserted as ceilings** (golden module's
+  convention): eds-thickness plain Cliff-Lorimer shows a +21 pp thick-minus-
+  thin O bias (bounded 15-30 pp); `method="zaf"` at the true mid-column
+  thickness cuts the max |at% error| from ~18 pp to <1 pp on the same cube.
+  eds-diffusion's row-recovered profile matches the truth's per-row array to
+  <1 pp at the pure ends and the middle, and the `/analyze/composition-profile`
+  route reproduces the graded zone as a straight line to within 0.6 pp.
+  The four original presets are untouched (`total_counts` pinned byte-for-
+  byte; `profile`/`thickness` keys omitted from their truth files).
+  Two mutation-testing gaps found and closed while verifying: a row-mean-only
+  check for the gradient's row/col axis could not tell a correctly-oriented
+  gradient from one interpolated along the wrong axis (both average out to
+  the same per-row numbers) — closed with a within-row spatial-uniformity
+  assertion. And `zaf_factors`' own formula is invisible to a mutation
+  (dropping `csc` from χ) because the generator and the route both import
+  the SAME function — planting and correcting drift together, not apart —
+  so ZAF's mutation instead targets the route's thickness/take-off wiring,
+  which the shared-import property cannot protect. 9 new tests (1 extraction
+  lockstep, 4 generator-invariant, 4 golden); backend gate 1899 passed (was
+  1890), frontend unaffected (no frontend changes) at 1289 vitest / 171 files.
 
 - ~~**#10 Composite → library**~~ (2026-08-12) — the combined colour overlay
   registers as a first-class library image reaching the filmstrip, compare

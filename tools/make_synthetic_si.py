@@ -21,6 +21,19 @@ built it. A generator that invents its own intensity model produces cubes
 that look right and quantify wrong — which is exactly what this one did
 until 2026-08-12.
 
+Two presets (``eds-diffusion``, ``eds-thickness``) plant a per-pixel property
+instead of a per-phase constant. ``eds-diffusion``'s ``Gradient`` interpolates
+a phase's composition linearly toward a second one along one axis, and its
+oracle is a per-row/column truth array (there is no single composition for a
+graded phase). ``eds-thickness``'s ``ThicknessRamp`` scales per-pixel signal
+by thickness AND plants absorption via ``calc.eds_absorption.zaf_factors`` —
+the app's own ZAF forward model, imported rather than re-derived, so the cube
+becomes a real test of the correction machinery rather than of an invented
+attenuation curve. Both are EDS-only: EELS thickness would need t/λ plural
+scattering, which the forward model here does not have, and a linear ramp
+planted anyway would produce a cube that LOOKS like a thickness series and
+physically is not (future work, not this item).
+
 Usage
 -----
     python tools/make_synthetic_si.py --preset eds-layers
@@ -61,10 +74,18 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from fermiviewer.calc.eds import K_FACTORS_200KV, line_energy  # noqa: E402
+from fermiviewer.calc.eds_absorption import mac_matrix, zaf_factors  # noqa: E402
 from fermiviewer.calc.eels import EELS_EDGES  # noqa: E402
 from fermiviewer.calc.eels_model import edge_shape_fn  # noqa: E402
 from fermiviewer.calc.eels_quant import cross_section  # noqa: E402
 from fermiviewer.calc.elements import atomic_mass  # noqa: E402
+
+#: Take-off angle the thickness-ramp absorption is planted at. Fixed to the
+#: same value `/eds/quantify`'s ZAF method defaults to (routes/eds_quant.py's
+#: EdsQuantifyRequest.take_off_angle_deg), so a golden test that does not
+#: override the route's default is asking ZAF to invert exactly the geometry
+#: the cube was planted at.
+EDS_THICKNESS_TAKEOFF_DEG = 20.0
 
 # Reference EDS detector resolution: FWHM at Mn Kα, and the standard
 # silicon-drift broadening law FWHM(E)² = FWHM_ref² + 2.5·(E − E_ref), all in
@@ -135,16 +156,55 @@ def _poisson_uint16(
 
 
 @dataclass
+class Gradient:
+    """A linear composition ramp along one axis of a slab, replacing the
+    phase's single `composition` with a lerp between it (the NEAR edge) and
+    `end_composition` (the FAR edge).
+
+    Both ends are normalised independently and interpolated per element
+    linearly in fractional position within the slab — the lerp of two
+    normalised compositions is itself normalised (the sum interpolates
+    1 -> 1), so painting needs no renormalisation pass. Deliberately linear,
+    not an erf/tanh interdiffusion profile: the oracle is the RECORDED
+    per-row truth either way, and a straight line makes deviations maximally
+    legible (curvature in the recovered profile is a bug, not a physical
+    parameter to fit).
+    """
+
+    end_composition: dict[str, float]
+    axis: str = "y"   # "y": near = row_lo edge, far = row_hi; "x": col_lo/col_hi
+
+
+@dataclass
+class ThicknessRamp:
+    """A linear per-pixel thickness, constant along the axis it does not
+    vary on. Scales total per-pixel signal (thin-film intensity is linear in
+    thickness) AND plants absorption via `calc.eds_absorption.zaf_factors`
+    evaluated at the phase's true composition and the local thickness — see
+    `_thickness_za_maps`."""
+
+    axis: str = "x"
+    lo_nm: float = 50.0
+    hi_nm: float = 400.0
+    #: the thickness at which the un-ramped intensity scale (`counts`) applies
+    ref_nm: float = 100.0
+
+
+@dataclass
 class Phase:
     """A material region: a name, its composition, and where it sits."""
 
     name: str
-    #: element symbol → atomic fraction (need not be normalised)
+    #: element symbol → atomic fraction (need not be normalised). The near
+    #: edge of `gradient`, when one is set.
     composition: dict[str, float]
     #: (row_lo, row_hi, col_lo, col_hi) fractional bounds, or None for discs
     slab: tuple[float, float, float, float] | None = None
     #: (row, col, radius) fractional discs
     discs: list[tuple[float, float, float]] = field(default_factory=list)
+    #: linear composition ramp across this phase's slab; requires a slab and
+    #: no discs (a disc has no axis to be "along")
+    gradient: Gradient | None = None
 
     def mask(self, h: int, w: int) -> np.ndarray:
         yy, xx = np.mgrid[0:h, 0:w]
@@ -167,6 +227,8 @@ class Preset:
     #: energy axis: (offset, scale, channels, units)
     axis: tuple[float, float, int, str] = (0.0, 0.01, 2048, "keV")
     description: str = ""
+    #: per-pixel thickness ramp; EDS only (see module docstring)
+    thickness: ThicknessRamp | None = None
 
 
 def normalised(composition: dict[str, float]) -> dict[str, float]:
@@ -245,12 +307,68 @@ PRESETS: dict[str, Preset] = {
             Phase("vacuum", {}, slab=(0.0, 0.08, 0.0, 1.0)),
         ],
     ),
+    "eds-diffusion": Preset(
+        name="eds-diffusion",
+        modality="eds",
+        description="Cu -> Ni diffusion couple; a linear composition gradient.",
+        phases=[
+            Phase("Cu", {"Cu": 1.0}, slab=(0.0, 0.30, 0.0, 1.0)),
+            # Cu Kα 8.048 / Ni Kα 7.478 keV, ~3.5 detector FWHM apart at 200 kV
+            # — deliberately non-overlapping, so profile-recovery errors are
+            # attributable to the gradient machinery and not to line
+            # interference (that case is eds-overlap's job).
+            Phase(
+                "Cu-Ni gradient", {"Cu": 1.0}, slab=(0.30, 0.70, 0.0, 1.0),
+                gradient=Gradient(end_composition={"Ni": 1.0}, axis="y"),
+            ),
+            Phase("Ni", {"Ni": 1.0}, slab=(0.70, 1.0, 0.0, 1.0)),
+        ],
+    ),
+    "eds-thickness": Preset(
+        name="eds-thickness",
+        modality="eds",
+        description="Uniform Al2O3 slab under a thickness ramp; tests ZAF absorption.",
+        # O Kα (0.525 keV) is the soft line here, so its planted A-factor grows
+        # with thickness. MEASURED (not guessed — see test_quant_golden.py's
+        # T7/T8 docstrings): a Ni matrix was tried first and its Z^4-scaled MAC
+        # for O-in-Ni is so large (this app's MAC formula has no absorption
+        # edges to cap it) that the resulting z*a exceeds 100 within the first
+        # few nm, which saturates plain Cliff-Lorimer to a near-single-element
+        # answer and defeats ZAF's iterative refinement (it starts from that
+        # saturated guess and cannot climb back out). Al2O3 keeps z*a in the
+        # 1-5x range across a 10-100 nm ramp, where plain Cliff-Lorimer shows
+        # a real, growing bias and ZAF genuinely reduces it every step — a
+        # working absorption story, not just a plausible-sounding one.
+        phases=[Phase("Al2O3", {"Al": 2.0, "O": 3.0}, slab=(0.0, 1.0, 0.0, 1.0))],
+        thickness=ThicknessRamp(axis="x", lo_nm=10.0, hi_nm=100.0, ref_nm=50.0),
+    ),
 }
 
 
 def _energy_axis(preset: Preset) -> np.ndarray:
     offset, scale, channels, _ = preset.axis
     return offset + scale * np.arange(channels, dtype=np.float64)
+
+
+def _gradient_position(
+    slab: tuple[float, float, float, float], axis: str, h: int, w: int
+) -> np.ndarray:
+    """Per-pixel fractional position t in [0, 1] along `axis` within `slab`,
+    using the same `(index + 0.5) / n` pixel-centre convention as
+    `Phase.mask` — t=0 at the near edge (row_lo/col_lo), t=1 at the far edge.
+    """
+    yy, xx = np.mgrid[0:h, 0:w]
+    fy, fx = (yy + 0.5) / h, (xx + 0.5) / w
+    r0, r1, c0, c1 = slab
+    if axis == "y":
+        span = r1 - r0
+        t = (fy - r0) / span if span else np.zeros((h, w))
+    elif axis == "x":
+        span = c1 - c0
+        t = (fx - c0) / span if span else np.zeros((h, w))
+    else:
+        raise ValueError(f"gradient axis must be 'y' or 'x', got {axis!r}")
+    return np.clip(t, 0.0, 1.0)
 
 
 def _fraction_maps(
@@ -268,6 +386,34 @@ def _fraction_maps(
         mask = phase.mask(h, w)
         for existing in fractions.values():
             existing[mask] = 0.0
+        if phase.gradient is not None:
+            if phase.slab is None or phase.discs:
+                raise ValueError(
+                    f"phase '{phase.name}': gradient requires a slab and no "
+                    "discs (a disc has no axis to be 'along')"
+                )
+            near = normalised(phase.composition)
+            far = normalised(phase.gradient.end_composition)
+            t = _gradient_position(phase.slab, phase.gradient.axis, h, w)
+            for symbol in sorted(set(near) | set(far)):
+                frac = (1 - t) * near.get(symbol, 0.0) + t * far.get(symbol, 0.0)
+                fractions.setdefault(symbol, np.zeros((h, w)))[mask] = frac[mask]
+            if near or far:
+                occupied |= mask
+            rows.append(
+                {
+                    "phase": phase.name,
+                    "pixels": int(mask.sum()),
+                    "atomic_percent": {k: round(v * 100, 4) for k, v in near.items()},
+                    "gradient": {
+                        "axis": phase.gradient.axis,
+                        "end_atomic_percent": {
+                            k: round(v * 100, 4) for k, v in far.items()
+                        },
+                    },
+                }
+            )
+            continue
         composition = normalised(phase.composition)
         for symbol, fraction in composition.items():
             fractions.setdefault(symbol, np.zeros((h, w)))[mask] = fraction
@@ -281,6 +427,71 @@ def _fraction_maps(
             }
         )
     return fractions, occupied, rows
+
+
+def _thickness_map(ramp: ThicknessRamp, h: int, w: int) -> np.ndarray:
+    """Per-pixel thickness (nm): linear along `ramp.axis`, constant along the
+    other, using the same `(index + 0.5) / n` pixel-centre convention as
+    `Phase.mask`."""
+    if ramp.axis == "x":
+        idx = (np.arange(w, dtype=np.float64) + 0.5) / w
+        line = ramp.lo_nm + (ramp.hi_nm - ramp.lo_nm) * idx
+        return np.tile(line[None, :], (h, 1))
+    if ramp.axis == "y":
+        idx = (np.arange(h, dtype=np.float64) + 0.5) / h
+        line = ramp.lo_nm + (ramp.hi_nm - ramp.lo_nm) * idx
+        return np.tile(line[:, None], (1, w))
+    raise ValueError(f"thickness axis must be 'x' or 'y', got {ramp.axis!r}")
+
+
+def _material_weight_fractions(
+    fractions: dict[str, np.ndarray], occupied: np.ndarray, elements: list[str]
+) -> np.ndarray:
+    """Mean weight fraction of each element over the occupied field —
+    `zaf_factors`' `w_mean`, derived from the atomic fractions the same way
+    `cliff_lorimer`'s w/M inversion implies (w_i ∝ at_i · M_i), not a second
+    copy of that relationship."""
+    if not occupied.any():
+        return np.full(len(elements), 1.0 / len(elements))
+    at = np.array([float(fractions[s][occupied].mean()) for s in elements])
+    at_sum = at.sum()
+    if at_sum > 0:
+        at = at / at_sum
+    w = at * np.array([atomic_mass(s) for s in elements])
+    w_sum = w.sum()
+    return w / w_sum if w_sum > 0 else w
+
+
+def _thickness_za_maps(
+    ramp: ThicknessRamp,
+    t_map: np.ndarray,
+    elements: list[str],
+    w_mean: np.ndarray,
+) -> dict[str, np.ndarray]:
+    """Per-element z·a absorption-factor map, evaluated at the material's
+    true weight fractions and the LOCAL thickness — one `zaf_factors` call
+    per unique thickness value along the ramp axis (<=64 for the shapes this
+    generator uses), never per pixel. Imported from `calc.eds_absorption`
+    rather than re-derived: the fixtures rule is import-don't-transcribe, and
+    planting the app's own correction is what makes this cube a real ZAF
+    oracle rather than an invented attenuation curve.
+    """
+    h, w = t_map.shape
+    line = t_map[0, :] if ramp.axis == "x" else t_map[:, 0]
+    mac = mac_matrix(elements)
+    za_line = np.empty((len(elements), line.size))
+    for i, t_nm in enumerate(line):
+        z_f, a_f = zaf_factors(
+            elements, w_mean, float(t_nm), EDS_THICKNESS_TAKEOFF_DEG, mac=mac,
+        )
+        za_line[:, i] = z_f * a_f
+    maps: dict[str, np.ndarray] = {}
+    for k, symbol in enumerate(elements):
+        maps[symbol] = (
+            np.tile(za_line[k][None, :], (h, 1)) if ramp.axis == "x"
+            else np.tile(za_line[k][:, None], (1, w))
+        )
+    return maps
 
 
 def _eds_cube(
@@ -313,7 +524,23 @@ def _eds_cube(
     continuum *= 1.0 / (1.0 + np.exp(-(energy - 0.20) / 0.035))
     continuum /= continuum.sum() or 1.0
 
+    # Thickness ramp (eds-thickness only): a per-element z*a absorption map
+    # evaluated at the material's true composition, applied on top of the
+    # base line intensity below; the background is derived from the UNramped
+    # total (`signal_for_bg`) so its own t/ref scaling stays pure — the ZAF
+    # absorption is a per-LINE effect, not a Bremsstrahlung one.
+    ramp = preset.thickness
+    za_by_symbol: dict[str, np.ndarray] = {}
+    t_ratio: np.ndarray | None = None
+    if ramp is not None:
+        t_map = _thickness_map(ramp, h, w)
+        t_ratio = t_map / ramp.ref_nm
+        elements = sorted(fractions)
+        w_mean = _material_weight_fractions(fractions, occupied, elements)
+        za_by_symbol = _thickness_za_maps(ramp, t_map, elements, w_mean)
+
     signal = np.zeros((h, w, energy.size))
+    signal_for_bg = np.zeros((h, w, energy.size))
     lines: list[dict] = []
     for symbol, fraction_map in sorted(fractions.items()):
         e_line, line = line_energy(symbol, beam_kv=e0)
@@ -335,7 +562,13 @@ def _eds_cube(
         # application's tables, never a second copy — that already governed
         # peak POSITIONS (line_energy) and now governs their AREAS too.
         weight = atomic_mass(symbol) / K_FACTORS_200KV.get(symbol, 1.0)
-        signal += fraction_map[:, :, None] * weight * shape[None, None, :]
+        contribution = fraction_map[:, :, None] * weight * shape[None, None, :]
+        signal_for_bg += contribution
+        za = za_by_symbol.get(symbol)
+        if za is not None:
+            signal += contribution * za[:, :, None]
+        else:
+            signal += contribution
         lines.append(
             {
                 "symbol": symbol,
@@ -347,8 +580,11 @@ def _eds_cube(
             }
         )
 
-    peak_total = signal.sum(axis=2, keepdims=True)
+    peak_total = signal_for_bg.sum(axis=2, keepdims=True)
     background = occupied[:, :, None] * continuum[None, None, :] * peak_total * 0.6
+    if t_ratio is not None:
+        signal = signal * t_ratio[:, :, None]
+        background = background * t_ratio[:, :, None]
     lam = (signal + background) * counts
     cube, applied = _poisson_uint16(lam, rng)
     return cube, fractions, rows, lines, applied
@@ -452,9 +688,63 @@ def write_hspy(
         exp.create_group("metadata/General").attrs["title"] = preset.name
 
 
+def _occupied_from_fractions(fractions: dict[str, np.ndarray]) -> np.ndarray:
+    """Reconstruct the occupancy mask `_fraction_maps` computed, from the
+    fractions alone: every material phase's normalised composition sums to 1
+    at each pixel it paints, and `_fraction_maps` zeroes every element at a
+    vacuum pixel, so the field sum is exactly 1 on material and 0 on vacuum
+    regardless of how many phases (uniform or gradient) painted it."""
+    shape = next(iter(fractions.values())).shape
+    total = np.zeros(shape)
+    for f in fractions.values():
+        total += f
+    return total > 1e-9
+
+
+def _profile_per_line(
+    fractions: dict[str, np.ndarray], occupied: np.ndarray, axis: str
+) -> dict[str, list[float]]:
+    """Per-row (`axis="y"`) or per-column (`axis="x"`) material at%: each
+    line's mean elemental fractions over its occupied pixels, renormalised to
+    sum to 100 — the same field-vs-material distinction
+    `material_atomic_percent` makes (see `_renormalised`), resolved per line
+    instead of over the whole field. This IS the gradient's oracle: a graded
+    phase has no single composition, so a consumer checks against this array
+    rather than re-deriving the lerp.
+    """
+    symbols = sorted(fractions)
+    line_axis = 0 if axis == "y" else 1
+    n_lines = occupied.shape[line_axis]
+    means = {s: np.zeros(n_lines) for s in symbols}
+    for i in range(n_lines):
+        sel = occupied[i, :] if axis == "y" else occupied[:, i]
+        if not sel.any():
+            continue
+        for s in symbols:
+            line = fractions[s][i, :] if axis == "y" else fractions[s][:, i]
+            means[s][i] = float(line[sel].mean())
+    totals = sum(means.values())
+    totals_safe = np.where(totals > 0, totals, 1.0)
+    return {
+        s: [round(100.0 * v / t, 4) for v, t in zip(means[s], totals_safe, strict=True)]
+        for s in symbols
+    }
+
+
 def build(
     preset: Preset, shape: tuple[int, int], counts: float, seed: int, out_dir: Path
 ) -> tuple[Path, dict]:
+    if preset.modality == "eels":
+        if any(p.gradient is not None for p in preset.phases):
+            raise ValueError(
+                f"preset '{preset.name}': EELS gradient presets are not "
+                "supported (see module docstring — t/λ plural scattering)"
+            )
+        if preset.thickness is not None:
+            raise ValueError(
+                f"preset '{preset.name}': EELS thickness ramps are not "
+                "supported (see module docstring — t/λ plural scattering)"
+            )
     h, w = shape
     rng = np.random.default_rng(seed)
     make = _eds_cube if preset.modality == "eds" else _eels_cube
@@ -503,6 +793,30 @@ def build(
         "material_atomic_percent": _renormalised(fractions),
         "total_counts": int(cube.sum()),
     }
+    # Both keys are omitted entirely (not written as null) for every preset
+    # that does not use them, so the four pre-existing presets' truth files
+    # stay byte-identical (test_existing_presets_unchanged pins this).
+    gradient_phase = next((p for p in preset.phases if p.gradient is not None), None)
+    if gradient_phase is not None:
+        occupied = _occupied_from_fractions(fractions)
+        truth["profile"] = {
+            "axis": gradient_phase.gradient.axis,
+            "material_atomic_percent_per_row": _profile_per_line(
+                fractions, occupied, gradient_phase.gradient.axis
+            ),
+        }
+    if preset.thickness is not None:
+        t_map = _thickness_map(preset.thickness, h, w)
+        line = t_map[0, :] if preset.thickness.axis == "x" else t_map[:, 0]
+        key = "nm_per_column" if preset.thickness.axis == "x" else "nm_per_row"
+        truth["thickness"] = {
+            "axis": preset.thickness.axis,
+            "lo_nm": preset.thickness.lo_nm,
+            "hi_nm": preset.thickness.hi_nm,
+            "ref_nm": preset.thickness.ref_nm,
+            "take_off_angle_deg": EDS_THICKNESS_TAKEOFF_DEG,
+            key: [round(float(v), 4) for v in line],
+        }
     truth_path = cube_path.with_suffix(".truth.json")
     truth_path.write_text(json.dumps(truth, indent=2) + "\n")
     return cube_path, truth
@@ -529,6 +843,15 @@ def _report(path: Path, truth: dict) -> None:
         print(
             f"  {s['symbol']:<3} {marker:<4} {s[key]:>8.3f} {unit}"
             f"   field at% {pct:6.2f}"
+        )
+    if "profile" in truth:
+        ax = truth["profile"]["axis"]
+        print(f"  gradient along {ax}: {truth['description']}")
+    if "thickness" in truth:
+        t = truth["thickness"]
+        print(
+            f"  thickness ramp along {t['axis']}: {t['lo_nm']:.0f}-{t['hi_nm']:.0f} nm"
+            f" (ref {t['ref_nm']:.0f} nm, {t['take_off_angle_deg']:.0f}° take-off)"
         )
     print(f"  ground truth → {path.with_suffix('.truth.json').name}")
 

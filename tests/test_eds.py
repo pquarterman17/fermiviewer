@@ -13,6 +13,7 @@ from fermiviewer.calc.eds import (
     mass_absorption_coeff,
     zaf_correction,
 )
+from fermiviewer.calc.eds_absorption import zaf_factors
 from fermiviewer.calc.elements import atomic_mass
 
 pytestmark = pytest.mark.eds
@@ -83,6 +84,35 @@ def test_zaf_reduces_to_cl_at_zero_absorption() -> None:
     np.testing.assert_allclose(res.a_factors, 1.0, atol=1e-4)
     np.testing.assert_allclose(res.mean_weight_pct, res.uncorrected.mean_weight_pct,
                                rtol=1e-6)
+
+
+def test_zaf_factors_extraction_is_the_one_zaf_uses() -> None:
+    """SPECTRAL_WORKSPACE_PLAN #19: `calc.eds_absorption.zaf_factors` was
+    extracted FROM `zaf_correction`'s iteration loop, not written alongside
+    it — so a generator-side copy of the Z/A formulas is structurally
+    impossible; this pins that `zaf_correction` actually routes through the
+    extraction rather than a second inline copy drifting back in.
+
+    With `iterations=1`, the loop runs exactly once against the INITIAL
+    w_mean (Cliff-Lorimer's own mean weight percent, normalised) — the same
+    value computable from outside the function — so `zaf_factors` called
+    directly on that w_mean must reproduce the z/a factors `zaf_correction`
+    reports on its result.
+    """
+    rng = np.random.default_rng(3)
+    elements = ["Fe", "O", "Si"]
+    maps = [rng.uniform(50, 150, (6, 5)) for _ in elements]
+
+    cl = cliff_lorimer(maps, elements)
+    w0 = np.maximum(cl.mean_weight_pct / 100, 0)
+    s0 = w0.sum()
+    w0 = w0 / s0 if s0 > 0 else np.full(len(elements), 1 / len(elements))
+    z_expected, a_expected = zaf_factors(elements, w0, 120.0, 25.0)
+
+    res = zaf_correction(maps, elements, thickness_nm=120.0,
+                         take_off_angle_deg=25.0, iterations=1)
+    np.testing.assert_allclose(res.z_factors, z_expected)
+    np.testing.assert_allclose(res.a_factors, a_expected)
 
 
 # ── golden (vs frozen MATLAB outputs) ────────────────────────────────
