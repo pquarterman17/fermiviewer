@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from scipy.special import voigt_profile
 
 from fermiviewer.calc.eds import line_energy
 from fermiviewer.calc.eds_calib import fano_sigma_kev
-from fermiviewer.calc.eds_peakfit import fit_peaks, quantify_peaks
+from fermiviewer.calc.eds_peakfit import element_peak_component, fit_peaks, quantify_peaks
 from fermiviewer.calc.spectral_fit import linear_background
 
 pytestmark = pytest.mark.eds
@@ -23,6 +24,14 @@ def _gauss(energy: np.ndarray, area: float, center: float) -> np.ndarray:
     sigma = fano_sigma_kev(center)
     amp = area / (sigma * _SQRT_2PI)
     return amp * np.exp(-0.5 * ((energy - center) / sigma) ** 2)
+
+
+def _voigt(energy: np.ndarray, area: float, center: float, gamma: float) -> np.ndarray:
+    """Synthesize a Voigt-shaped peak of known net AREA (not amp)."""
+    sigma = fano_sigma_kev(center)
+    norm = voigt_profile(0.0, sigma, gamma)
+    amp = area * norm  # so that amp / norm (voigt_area's inverse) == area
+    return amp * voigt_profile(energy - center, sigma, gamma) / norm
 
 
 def test_single_peak_net_area_recovered() -> None:
@@ -119,3 +128,69 @@ def test_all_unknown_lines_raises() -> None:
     with pytest.warns(UserWarning, match="no characteristic line"):
         with pytest.raises(ValueError, match="no fittable element lines"):
             fit_peaks(e, counts, ["Xx", "Yy"], weights=None)
+
+
+# ── opt-in Voigt path (lorentzian_hwhm_kev) ─────────────────────────────
+
+
+def test_lorentzian_hwhm_zero_is_byte_identical_to_omitted() -> None:
+    # The default (0.0) must be EXACTLY the original Gaussian-only path —
+    # not just close. Compare the component curve directly, not just the
+    # fitted result, so a stray branch difference can't hide behind the
+    # optimizer converging to the same place.
+    center, sigma, amp0 = 6.404, fano_sigma_kev(6.404), 123.0
+    default = element_peak_component("Fe", center, sigma, amp0)
+    explicit_zero = element_peak_component(
+        "Fe", center, sigma, amp0, lorentzian_hwhm_kev=0.0
+    )
+    e = _axis()
+    np.testing.assert_array_equal(
+        default.func(e, np.array([amp0])), explicit_zero.func(e, np.array([amp0]))
+    )
+
+    e = _axis()
+    counts = _gauss(e, 5000.0, 6.404)
+    pf_default = fit_peaks(e, counts, ["Fe"], weights=None)
+    pf_explicit = fit_peaks(e, counts, ["Fe"], weights=None, lorentzian_hwhm_kev=0.0)
+    assert pf_default.net_areas["Fe"] == pf_explicit.net_areas["Fe"]
+    assert pf_default.net_area_errors["Fe"] == pf_explicit.net_area_errors["Fe"]
+    # and pinned against the pre-existing Gaussian-path expectation
+    assert pf_default.net_areas["Fe"] == pytest.approx(5000.0, rel=1e-3)
+
+
+def test_voigt_path_recovers_single_peak_net_area() -> None:
+    e = _axis()
+    gamma = 0.002  # a realistic natural-linewidth HWHM, keV
+    counts = _voigt(e, area=5000.0, center=6.404, gamma=gamma)
+    pf = fit_peaks(e, counts, ["Fe"], weights=None, lorentzian_hwhm_kev=gamma)
+    assert pf.net_areas["Fe"] == pytest.approx(5000.0, rel=1e-3)
+
+
+def test_voigt_path_separates_overlapping_two_element_synthetic() -> None:
+    # S-K / Mo-L: the classic ~14 eV overlap that window integration
+    # mis-assigns (only appears at lower beam energy — at 200 kV Mo picks
+    # its K line instead, ~17 keV away).
+    e = _axis()
+    beam_kv = 15.0
+    gamma = 0.002
+    e_s, fam_s = line_energy("S", beam_kv=beam_kv)
+    e_mo, fam_mo = line_energy("Mo", beam_kv=beam_kv)
+    assert fam_s == "K" and fam_mo == "L"  # sanity: this IS the overlap case
+    areas = {"S": 3000.0, "Mo": 5000.0}
+    counts = _voigt(e, areas["S"], e_s, gamma) + _voigt(e, areas["Mo"], e_mo, gamma)
+    pf = fit_peaks(
+        e, counts, ["S", "Mo"], beam_kv=beam_kv, weights=None,
+        lorentzian_hwhm_kev=gamma,
+    )
+    assert pf.fit.success
+    for sym, area in areas.items():
+        assert pf.net_areas[sym] == pytest.approx(area, rel=0.05)
+
+    # quantify_peaks forwards the kwarg through and yields a sensible
+    # (nonzero, ordered) composition for the deconvolved areas.
+    pf2, cl = quantify_peaks(
+        e, counts, ["S", "Mo"], beam_kv=beam_kv, weights=None,
+        lorentzian_hwhm_kev=gamma, k_factors=np.array([1.0, 1.0]),
+    )
+    assert cl.mean_weight_pct[1] > cl.mean_weight_pct[0]  # Mo (5000) > S (3000)
+    assert np.isclose(np.sum(cl.mean_weight_pct), 100.0)
