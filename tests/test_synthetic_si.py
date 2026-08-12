@@ -189,3 +189,83 @@ def test_overlap_preset_really_overlaps() -> None:
         f"Ta {ta_line} and Si {si_line} are {separation:.3f} keV apart, which is "
         "wider than the detector resolution — no longer an interference case"
     )
+
+
+# ── item 19: gradient + thickness-ramp presets ─────────────────────────
+
+def test_existing_presets_unchanged(tmp_path) -> None:
+    """Gradient/ThicknessRamp support landed in the SAME `_fraction_maps` /
+    `_eds_cube` / `build` functions the four original presets already run
+    through. `total_counts` folds in every per-pixel intensity the Poisson
+    draw touched, so a leaked default (a ref_nm scale applied
+    unconditionally, a za map defaulting to something other than 1) would
+    move it — pinned against the pre-item-19 value."""
+    path, truth = gen.build(gen.PRESETS["eds-layers"], (24, 16), 4000.0, 0, tmp_path)
+    assert "profile" not in truth
+    assert "thickness" not in truth
+    assert truth["total_counts"] == 63889136
+
+
+def test_gradient_endpoints_and_midpoint(tmp_path) -> None:
+    """eds-diffusion's Cu -> Ni gradient: the truth's per-row profile starts
+    at pure Cu, ends at pure Ni, and crosses ~50/50 near the middle of the
+    graded zone — AND actually varies across that zone rather than sitting
+    at a constant 50/50 throughout, which is what a lerp using `t` for both
+    ends produces (near and far cancel identically at every row, not just
+    the midpoint — the endpoint/midpoint checks alone cannot tell that
+    apart from a correct lerp, since both interpretations agree there)."""
+    _, truth = gen.build(gen.PRESETS["eds-diffusion"], (32, 24), 4000.0, 0, tmp_path)
+    prof = truth["profile"]["material_atomic_percent_per_row"]
+    assert prof["Cu"][0] == pytest.approx(100.0, abs=0.5)
+    assert prof["Ni"][0] == pytest.approx(0.0, abs=0.5)
+    assert prof["Cu"][-1] == pytest.approx(0.0, abs=0.5)
+    assert prof["Ni"][-1] == pytest.approx(100.0, abs=0.5)
+    mid = len(prof["Cu"]) // 2
+    assert prof["Cu"][mid] == pytest.approx(50.0, abs=5.0)
+    graded = [v for v in prof["Cu"] if 1.0 < v < 99.0]
+    assert len(graded) > 5, "the graded zone should span several rows"
+    assert max(graded) - min(graded) > 50.0, (
+        "the graded zone must vary, not sit flat at one composition"
+    )
+
+
+def test_gradient_rows_sum_to_material(tmp_path) -> None:
+    """Every row of `material_atomic_percent_per_row` sums to 100, and the
+    row AVERAGE reproduces the scalar `material_atomic_percent` — the two
+    truths must never disagree, the same guarantee
+    `test_the_material_truth_is_the_field_truth_without_the_vacuum` makes in
+    test_quant_golden.py for the field/material split."""
+    _, truth = gen.build(gen.PRESETS["eds-diffusion"], (32, 24), 4000.0, 0, tmp_path)
+    prof = truth["profile"]["material_atomic_percent_per_row"]
+    n = len(prof["Cu"])
+    for i in range(n):
+        total = sum(prof[s][i] for s in prof)
+        assert total == pytest.approx(100.0, abs=0.02), i
+    for symbol, scalar in truth["material_atomic_percent"].items():
+        row_avg = sum(prof[symbol]) / n
+        assert row_avg == pytest.approx(scalar, abs=0.1)
+
+
+def test_thickness_ramp_scales_intensity_not_composition(tmp_path) -> None:
+    """eds-thickness's ramp must move total signal, not each pixel's element
+    balance on its own — a PURE intensity scale would cancel identically in
+    Cliff-Lorimer's per-pixel normalisation (the algebraic reason item 19
+    rejected a pure ramp and plants absorption instead; see the module
+    docstring). The observed thick/thin ratio EXCEEDS the pure geometric
+    ramp ratio because the planted z*a absorption factor also grows with
+    thickness, on top of — not instead of — the t/ref scale.
+
+    Measured at the golden fixture's shape/counts/seed (deterministic:
+    fixed seed, no tolerance needed beyond the bound itself)."""
+    path, truth = gen.build(gen.PRESETS["eds-thickness"], (32, 24), 40000.0, 0, tmp_path)
+    ds = load_hspy(path)
+    col_totals = ds.data.sum(axis=(0, 2)).astype(np.float64)
+    assert np.all(np.diff(col_totals) > 0), "thicker columns must carry more signal"
+    nm = truth["thickness"]["nm_per_column"]
+    ramp_ratio = nm[-1] / nm[0]
+    observed_ratio = col_totals[-1] / col_totals[0]
+    # Comfortably above the PURE geometric ratio (measured 1.54x it) so a
+    # dropped za contribution — which leaves observed_ratio barely above
+    # ramp_ratio, ~1.001x it — fails this bound instead of slipping through.
+    assert observed_ratio > 1.2 * ramp_ratio
+    assert observed_ratio < 3 * ramp_ratio

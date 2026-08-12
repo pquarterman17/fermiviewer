@@ -14,7 +14,8 @@ from typing import Any
 
 import numpy as np
 
-from fermiviewer.calc.elements import ELEMENTS, atomic_mass, bulk_density
+from fermiviewer.calc.eds_absorption import mac_matrix, zaf_factors
+from fermiviewer.calc.elements import ELEMENTS, atomic_mass
 
 __all__ = [
     "K_FACTORS_200KV",
@@ -272,22 +273,10 @@ def zaf_correction(
 
     z_num = np.array([float(ELEMENTS[s][0]) if s in ELEMENTS else 1.0 for s in elements])
     masses = np.array([atomic_mass(s) if s in ELEMENTS else 1.0 for s in elements])
-    dens = np.array(
-        [bulk_density(s) if s in ELEMENTS and bulk_density(s) else 5.0 for s in elements],
-        dtype=np.float64,
-    )
-    dens[~np.isfinite(dens) | (dens <= 0)] = 5.0
-
-    csc = 1.0 / np.sin(np.deg2rad(take_off_angle_deg))
-    t_cm = thickness_nm * 1e-7
-
-    mac = np.empty((n, n))
-    for i, em in enumerate(elements):
-        for j, ab in enumerate(elements):
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                mac[i, j] = mass_absorption_coeff(em, ab)
-    mac[~np.isfinite(mac)] = 100.0
+    # The mac matrix and Z-numbers are fixed by `elements` alone (independent
+    # of the current w_mean), so they are built once here and handed to every
+    # iteration below rather than rebuilt inside `zaf_factors` each time.
+    mac = mac_matrix(elements)
 
     w_mean = np.maximum(cl.mean_weight_pct / 100, 0)
     s0 = w_mean.sum()
@@ -301,20 +290,10 @@ def zaf_correction(
     valid = mask.ravel()
 
     for _ in range(max(1, int(round(iterations)))):
-        mean_z = float((w_mean * z_num).sum())
-        z_scale = 1 - np.exp(-thickness_nm / 200)
-        z_f = np.where(z_num > 0, 1 + (mean_z / z_num - 1) * z_scale, 1.0)
-
-        rho = density if np.isfinite(density) and density > 0 else float(
-            (w_mean * dens).sum()
+        z_f, a_f = zaf_factors(
+            elements, w_mean, thickness_nm, take_off_angle_deg, density,
+            mac=mac, z_numbers=z_num,
         )
-        if not np.isfinite(rho) or rho <= 0:
-            rho = 5.0
-
-        chi = (mac @ w_mean) * rho * t_cm * csc
-        a_f = np.ones(n)
-        big = np.abs(chi) >= 1e-6
-        a_f[big] = chi[big] / (1 - np.exp(-chi[big]))
 
         zaf = np.maximum(z_f * a_f * f_f, np.finfo(np.float64).eps)
         w_scaled = w_cl / zaf

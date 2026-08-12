@@ -13,6 +13,35 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Two more synthetic presets, for testing composition profiles and ZAF
+  absorption correction.** `tools/make_synthetic_si.py --preset eds-diffusion`
+  plants a linear Cu → Ni composition gradient with a per-row ground truth, so
+  `/analyze/composition-profile` has a known straight line to recover.
+  `--preset eds-thickness` plants a thickness-dependent absorption bias from
+  the app's own ZAF forward model, so `method="zaf"` quantification has a
+  real bias to correct instead of the zero-thickness no-op every other
+  preset exercises. The Z/A math ZAF quantification and this preset both use
+  now lives in one place (`calc/eds_absorption.py`), extracted out of
+  `zaf_correction` so the generator imports it instead of keeping a second
+  copy.
+
+### Fixed
+- **A ⚠ badge warns when two species' windows interfere.** The Elements list
+  (both EDS and EELS Maps tabs) now flags a pair when their integration
+  windows overlap, when their lines sit closer together than the detector
+  can resolve regardless of how the windows are drawn, or — on EELS — when
+  one edge's background-fit window runs through another edge's onset.
+  Hovering the badge explains which species and why. It is advisory only:
+  nothing is narrowed, refused, or auto-corrected, and every row keeps
+  working exactly as before — the fix (a different window, a different
+  beam energy, or Model fit for lines the detector genuinely cannot
+  separate) is yours to make.
+
+### Fixed
+
 ## [0.1.27] - 2026-08-12
 
 ### Added
@@ -110,8 +139,6 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   (pre-edge power-law fit, post-onset integration on the sum spectrum) and
   returns net, σ, significance and the same confidence bands the EDS
   identifier uses — the missing half of an EELS Maps workflow.
-
-### Fixed
 - **The synthetic test-data generator was not a valid quantification oracle.**
   `tools/make_synthetic_si.py` planted EDS line areas from an invented
   energy-dependent weighting unrelated to Cliff–Lorimer, so quantifying its

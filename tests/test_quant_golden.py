@@ -97,7 +97,10 @@ def cubes(tmp_path_factory) -> dict[str, tuple[Path, dict]]:
     out = tmp_path_factory.mktemp("quant-golden")
     return {
         name: gen.build(gen.PRESETS[name], SHAPE, COUNTS, 0, out)
-        for name in ("eds-particles", "eds-layers", "eels-layers")
+        for name in (
+            "eds-particles", "eds-layers", "eels-layers",
+            "eds-diffusion", "eds-thickness", "eds-overlap",
+        )
     }
 
 
@@ -105,6 +108,17 @@ def _open(client: TestClient, path: Path) -> str:
     r = client.post("/api/session/open", json={"paths": [str(path)]})
     assert r.status_code == 200, r.text
     return r.json()[0]["id"]
+
+
+def _decode_data16(resp) -> np.ndarray:
+    """Reconstruct real values from `/image/{id}/data16`'s normalised uint16
+    payload — the same X-Min/X-Max the WebGL render path decodes. 16-bit
+    quantisation over the map's own range is far finer than the pp-level
+    tolerances below, so this loses nothing the tests care about."""
+    shape = tuple(int(n) for n in resp.headers["X-Shape"].split(","))
+    vmin, vmax = float(resp.headers["X-Min"]), float(resp.headers["X-Max"])
+    u16 = np.frombuffer(resp.content, dtype="<u2").reshape(shape)
+    return vmin + (u16.astype(np.float64) / 65535.0) * (vmax - vmin)
 
 
 def _errors(
@@ -242,6 +256,42 @@ def test_eds_reports_an_uncertainty_alongside_every_percentage(client, cubes) ->
     assert max(sigma) < 5.0, sigma
 
 
+def test_eds_overlap_quantifies_ta_to_zero_silently(client, cubes) -> None:
+    """SPECTRAL_WORKSPACE_PLAN owner gate #20 was reopened by this exact
+    measurement (2026-08-12): Ta M (1.710 keV) sits 0.030 keV from Si K
+    (1.740), closer than the default +-0.085 keV windows are wide and closer
+    than the detector's own FWHM at that energy — no amount of window
+    placement can separate them by integration alone. Quantifying the
+    eds-overlap cube with plain Cliff-Lorimer returns Ta at effectively 0 at%
+    against a truth of 6.67, sigma effectively 0, and the response carries no
+    field that could tell a caller anything went wrong. That silent wrong
+    answer is the evidence the gate asked for; item 20's advisory (a ⚠ badge
+    in ElementList, see lib/elemental/windowConflicts.ts) is the response,
+    and this pin is what makes deconvolution landing later a conversation
+    instead of an unnoticed regression.
+
+    Si is measurably wrong too, but DEFLATED, not inflated as the item's
+    opening measurement guessed: carbon's well-documented light-element bias
+    (see test_eds_light_element_bias_is_bounded_and_documented) roughly
+    doubles C's apparent share, and Cliff-Lorimer's per-pixel renormalisation
+    depresses every other element to make room for it -- Ta's near-total
+    absence is folded into that same redistribution, not a separate inflation
+    of its neighbour.
+    """
+    body, truth = _eds_quantify(client, "eds-overlap", cubes)
+    by_symbol = dict(zip(body["elements"], body["mean_atomic_pct"], strict=True))
+    sigma_by_symbol = dict(
+        zip(body["elements"], body["mean_atomic_pct_error"], strict=True)
+    )
+    assert by_symbol["Ta"] < 1.0, by_symbol
+    assert sigma_by_symbol["Ta"] < 0.01, sigma_by_symbol
+    si_err = by_symbol["Si"] - truth["material_atomic_percent"]["Si"]
+    assert si_err < -2.0, si_err       # measurably wrong, and DEFLATED
+    # No warning-shaped field exists anywhere in the response -- the silence
+    # the gate is about, not just Ta's number.
+    assert not any("warn" in str(k).lower() for k in body), body.keys()
+
+
 # -- EELS --------------------------------------------------------------
 
 def test_eels_window_integration_recovers_the_planted_edges(client, cubes) -> None:
@@ -299,6 +349,153 @@ def test_eels_windows_come_from_the_truth_sidecar(cubes) -> None:
         # at 80 eV, giving Si L23 19 eV of pre-edge and a 3 at% answer against
         # a truth of 46).
         assert bg_lo >= truth["energy_axis"]["range"][0]
+
+
+# -- item 19: gradient + thickness-ramp presets -------------------------
+#
+# eds-thickness's tolerances below were MEASURED, not the item's a-priori
+# guess. The plan that opened this item expected a Ni-O matrix to show a
+# CL "deficit" for O; built and measured (2026-08-12), Ni's Z^4-scaled MAC
+# for O's line is so large (this app's MAC formula has no absorption edges
+# to cap it — see calc/eds.py's docstring) that z*a exceeds 100 within a
+# few nm, which saturates plain Cliff-Lorimer to a near-single-element
+# answer and defeats ZAF's iterative refinement (it starts from that
+# saturated guess and cannot climb back out — verified directly against
+# calc.eds.zaf_correction, not asserted from theory). Al2O3 keeps z*a in
+# the 1-5x range across the 10-100 nm ramp this preset actually uses,
+# where plain Cliff-Lorimer shows a real, growing bias and ZAF genuinely
+# reduces it — and where the bias runs the OPPOSITE direction from the
+# original guess: O is increasingly OVER-reported with thickness, not
+# under-reported (Al carries the mirrored deficit). Both directions are
+# real absorption stories; this is the one this app's own ZAF model
+# actually produces for a reachable thin-film range.
+#
+#   eds-thickness (`/eds/quantify`, plain Cliff-Lorimer)
+#     thick-end minus thin-end O at%: +21 pp (bounded 15-30 pp)
+#   eds-thickness (`method="zaf"`, mid-column thickness)
+#     max |at% error| over Al/O: <1 pp, vs plain CL's ~18 pp on the same cube
+
+def test_eds_diffusion_recovers_the_profile(client, cubes) -> None:
+    """`/eds/quantify` on eds-diffusion: the recovered Cu at% map, read back
+    row by row, reproduces the truth's per-row profile at the pure ends and
+    the middle, and falls monotonically across the graded zone."""
+    path, truth = cubes["eds-diffusion"]
+    body, _ = _eds_quantify(client, "eds-diffusion", cubes)
+    maps = dict(zip(body["elements"], body["maps"], strict=True))
+    cu = _decode_data16(client.get(f"/api/image/{maps['Cu']['id']}/data16"))
+
+    prof = truth["profile"]["material_atomic_percent_per_row"]
+    row_means = cu.mean(axis=1)
+    n = len(prof["Cu"])
+    mid = n // 2
+    assert row_means[0] == pytest.approx(prof["Cu"][0], abs=2.0)
+    assert row_means[mid] == pytest.approx(prof["Cu"][mid], abs=2.0)
+    assert row_means[-1] == pytest.approx(prof["Cu"][-1], abs=2.0)
+    graded_idx = [i for i, v in enumerate(prof["Cu"]) if 1.0 < v < 99.0]
+    graded_rows = row_means[graded_idx]
+    assert np.all(np.diff(graded_rows) <= 0.5), (
+        "Cu must fall monotonically across the gradient zone"
+    )
+    # The gradient runs along y only: a row-mean check alone cannot tell a
+    # correct row-wise gradient from one that varies along x instead (row
+    # means would still land near truth by coincidence — measured). Pin
+    # spatial uniformity ACROSS one graded row directly.
+    within_row_spread = cu[graded_idx[len(graded_idx) // 2], :].std()
+    assert within_row_spread < 3.0, within_row_spread
+
+
+def test_composition_profile_route_recovers_a_straight_line(client, cubes) -> None:
+    """`/analyze/composition-profile` along the gradient axis, over the
+    registered at% maps, reproduces the endpoints and stays close to the
+    straight line joining them — the deliverable the gradient preset exists
+    to test.
+
+    Swept over just the graded zone, not the whole field: the field also
+    contains the two PURE flanking phases, which flatten the swept profile
+    into a plateau-ramp-plateau shape no straight line fits — that shape is
+    real (`test_eds_diffusion_recovers_the_profile` covers the plateaus),
+    it just is not what this test is checking.
+    """
+    path, truth = cubes["eds-diffusion"]
+    img_id = _open(client, path)
+    r = client.post(
+        "/api/eds/quantify",
+        json={"image_id": img_id, "elements": truth["elements"]},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    maps = dict(zip(body["elements"], body["maps"], strict=True))
+    w = truth["shape"][1]
+    prof = truth["profile"]["material_atomic_percent_per_row"]["Cu"]
+    graded_idx = [i for i, v in enumerate(prof) if 1.0 < v < 99.0]
+    y1, y2 = graded_idx[0] + 1, graded_idx[-1] + 1   # 1-based rows
+
+    r2 = client.post(
+        "/api/analyze/composition-profile",
+        json={
+            "image_id": img_id,
+            "map_ids": [maps["Cu"]["id"], maps["Ni"]["id"]],
+            "elements": ["Cu", "Ni"],
+            "x1": w // 2, "y1": y1, "x2": w // 2, "y2": y2,
+            "n_points": len(graded_idx),
+        },
+    )
+    assert r2.status_code == 200, r2.text
+    pbody = r2.json()
+    cu_profile = np.array(pbody["atomic_pct"][pbody["elements"].index("Cu")])
+    truth_cu = [prof[i] for i in graded_idx]
+    assert cu_profile[0] == pytest.approx(truth_cu[0], abs=2.0)
+    assert cu_profile[-1] == pytest.approx(truth_cu[-1], abs=2.0)
+    line = np.linspace(cu_profile[0], cu_profile[-1], len(cu_profile))
+    assert np.max(np.abs(cu_profile - line)) < 3.0
+
+
+def test_thickness_cl_bias_is_real_and_bounded(client, cubes) -> None:
+    """Plain Cliff-Lorimer on eds-thickness: O at% grows with thickness.
+
+    Asserted as a floor AND a ceiling, not a target — see the tolerance
+    table above this section for the measured direction and why it runs
+    opposite the item's original guess.
+    """
+    path, truth = cubes["eds-thickness"]
+    body, _ = _eds_quantify(client, "eds-thickness", cubes)
+    maps = dict(zip(body["elements"], body["maps"], strict=True))
+    o = _decode_data16(client.get(f"/api/image/{maps['O']['id']}/data16"))
+    col_means = o.mean(axis=0)
+    bias = col_means[-1] - col_means[0]
+    assert bias > 15.0, bias
+    assert bias < 30.0, bias
+
+
+def test_thickness_zaf_beats_cl(client, cubes) -> None:
+    """`method="zaf"`, given the true mid-column thickness, recovers
+    eds-thickness far better than plain Cliff-Lorimer over the SAME cube —
+    the ramp cube exercising `zaf_correction`'s correction machinery, not
+    just its no-op zero-thickness limit."""
+    path, truth = cubes["eds-thickness"]
+    cl_body, _ = _eds_quantify(client, "eds-thickness", cubes)
+    cl_err = _errors(cl_body["elements"], cl_body["mean_atomic_pct"], truth)
+
+    t = truth["thickness"]
+    mid_nm = t["nm_per_column"][len(t["nm_per_column"]) // 2]
+    r = client.post(
+        "/api/eds/quantify",
+        json={
+            "image_id": _open(client, path),
+            "elements": truth["elements"],
+            "method": "zaf",
+            "thickness_nm": mid_nm,
+            "take_off_angle_deg": t["take_off_angle_deg"],
+        },
+    )
+    assert r.status_code == 200, r.text
+    zaf_body = r.json()
+    zaf_err = _errors(zaf_body["elements"], zaf_body["mean_atomic_pct"], truth)
+
+    cl_max = max(abs(v) for v in cl_err.values())
+    zaf_max = max(abs(v) for v in zaf_err.values())
+    assert zaf_max < cl_max, (zaf_err, cl_err)
+    assert zaf_max < 1.0, zaf_err
 
 
 # -- the generator's own invariants ------------------------------------

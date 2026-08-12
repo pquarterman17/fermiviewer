@@ -57,16 +57,8 @@ see the Dashboard note below for the counting convention.*
 **Tier 2 — Medium Impact**
 11. **Retire the single-element Explore flow**
 
-### W4 — Test data and verification
-
-**Tier 3 — Nice-to-Have**
-19. **More presets** — diffusion-couple gradient, thickness ramp
-20. **Window overlap detection** (deselected 2026-07-29; revisit only if a
-    real case produces a silently wrong answer)
-
-**Open items: 3** *(W1 — shared spectrum core, W3 — EELS workspace, W4's
-Tier 2 and item 10 are all complete: item 10 on 2026-08-12 via ADR 0003,
-items 1–7 + 18 + 23 on 2026-08-12, items 12–16 + 22 on 2026-08-11)*
+**Open items: 1** *(everything else in this plan is complete: W1, W3 and
+W4 in full, plus W2's item 10. Items 10 + 19 + 20 shipped 2026-08-12.)*
 
 ---
 
@@ -102,10 +94,10 @@ live-audit usability follow-up list.*
 | Plan | Status | Open items |
 |---|---|---|
 | MAIN_PLAN.md | Active (root) | 9 |
-| SPECTRAL_WORKSPACE_PLAN.md | Active | 3 |
+| SPECTRAL_WORKSPACE_PLAN.md | Active | 1 |
 | PLAN_4DSTEM.md | Active | 8 |
 
-**Total open items:** 20
+**Total open items:** 18
 
 **Counting method:** top-level numbered items (the plan-format.md unit of a
 tracked work item) — not nested `- [ ]` sub-task checkboxes. Nested-checkbox
@@ -114,4 +106,4 @@ PLAN_4DSTEM 12 (17 total). A checkbox-based count would disagree with the
 open-items count above — pick one convention when reading this table and
 don't mix the two.
 
-**Last regenerated:** 2026-08-12
+**Last regenerated:** 2026-08-12 (items 19 and 20 closed)
