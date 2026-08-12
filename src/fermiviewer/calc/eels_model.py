@@ -29,6 +29,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from fermiviewer.calc.eels_quant import ElementEdge
+from fermiviewer.calc.fit_quality import r_squared
 from fermiviewer.calc.spectral_fit import (
     Component,
     fit_spectrum,
@@ -112,6 +113,12 @@ class EdgeFitResult:
     edge_curves: np.ndarray      # [M, nE] fitted per-edge contributions
     model: np.ndarray            # [nE] total fitted model
     reduced_chi2: float
+    # plain unweighted R² (calc/fit_quality.r_squared) over the ACTUAL fit
+    # window (the same mask fit_spectrum optimised against) — see #2 of
+    # ANALYSIS_PRESENTATION_PLAN.md (audit R4). Not reduced_chi2's 1/σ²
+    # weighting; answers "how much of the window's own variance does the
+    # model explain".
+    r_squared: float
     success: bool
 
 
@@ -187,6 +194,12 @@ def fit_edges(
         weights=weights, fit_range=fit_range,
     )
 
+    # R² over the SAME window fit_spectrum actually optimised against —
+    # recomputing the mask here (rather than exposing it from FitResult,
+    # which spectral_fit.py doesn't) mirrors fit_spectrum's own mask logic.
+    fit_mask = (energy >= fit_range[0]) & (energy <= fit_range[1])
+    r_sq = r_squared(spectrum[fit_mask], res.model[fit_mask])
+
     syms = [el.element for el in elements]
     amps = np.array([res.params[f"{c.name}_n"] for c in edge_comps])
     amp_err = np.array([res.errors[f"{c.name}_n"] for c in edge_comps])
@@ -203,6 +216,7 @@ def fit_edges(
         edge_curves=edge_curves,
         model=res.model,
         reduced_chi2=res.reduced_chi2,
+        r_squared=r_sq,
         success=res.success,
     )
 

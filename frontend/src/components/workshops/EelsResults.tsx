@@ -1,13 +1,16 @@
 import type { EelsFitResult, EelsQuantResult } from "../../lib/api";
 import { formatPlusMinus } from "../../lib/formatUncertainty";
+import EelsFitResidualPlot from "./eels/EelsFitResidualPlot";
 
 export function EelsFitResults({ result }: { result: EelsFitResult }) {
   return (
     <>
       <div className="fvd-ws-note">
-        Model fit · χ²ᵣ {result.reduced_chi2.toExponential(2)}
+        Model fit · χ²ᵣ {result.reduced_chi2.toExponential(2)} · R²{" "}
+        {result.r_squared.toFixed(3)}
         {result.success ? "" : " · (not converged)"}
       </div>
+      <EelsFitResidualPlot result={result} />
       <table className="fvd-ws-table">
         <thead>
           <tr>

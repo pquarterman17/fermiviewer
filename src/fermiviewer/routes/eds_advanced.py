@@ -26,6 +26,7 @@ from fermiviewer.calc.eds_continuum import bremsstrahlung_component, fit_continu
 from fermiviewer.calc.eds_peakfit import PeakFitResult, fit_peaks
 from fermiviewer.calc.eds_zeta import dose_electrons, zeta_from_k_factors, zeta_quantify
 from fermiviewer.calc.energy_units import kev_factor, to_kev
+from fermiviewer.calc.fit_quality import r_squared
 from fermiviewer.calc.spectral_fit import Component, linear_background
 from fermiviewer.calc.uncertainty import cliff_lorimer_uncertainty
 from fermiviewer.datastruct import SPECTRAL_KINDS, AxisCal, DataStruct
@@ -223,6 +224,11 @@ def eds_peakfit(req: EdsPeakfitRequest) -> dict:
         "model": pf.fit.model.tolist(),
         "elements": elements_out,
         "reduced_chi2": pf.fit.reduced_chi2,
+        # plain unweighted R² (audit R4 / #2). fit_peaks never passes a
+        # fit_range to fit_spectrum, so the fitted window IS the full
+        # "spectrum"/"model" arrays above — no extra masking needed (unlike
+        # /eels/fit, which windows to a sub-range of the returned axis).
+        "r_squared": r_squared(spectrum, pf.fit.model),
         "success": pf.fit.success,
     }
     if removal is not None:
@@ -342,6 +348,9 @@ def eds_zeta(req: EdsZetaRequest) -> dict:
             for s in req.elements
         ],
         "reduced_chi2": pf.fit.reduced_chi2,
+        # see /eds/peakfit above — same fit_peaks call, same "whole array
+        # is the fit window" reasoning.
+        "r_squared": r_squared(spectrum, pf.fit.model),
         "success": pf.fit.success,
         "quant": {
             "elements": list(req.elements),

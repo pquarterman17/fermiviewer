@@ -249,6 +249,11 @@ export interface EelsFitResult {
   background: number[];
   edges: EelsFitEdge[];
   reduced_chi2: number;
+  /** Plain unweighted R² (1 − SS_res/SS_tot) over the ACTUAL fit window
+   *  (calc/fit_quality.py via calc/eels_model.fit_edges) — not necessarily
+   *  the full `energy` axis above. The residual trace itself is derived
+   *  client-side from `spectrum`/`model` (lib/spectrum/fitQuality.ts). */
+  r_squared: number;
   success: boolean;
 }
 

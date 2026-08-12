@@ -79,6 +79,47 @@ def test_eels_fit_endpoint(client, fit_cube_id) -> None:
     assert len(body["background"]) == 512
     assert len(body["edges"][0]["curve"]) == 512
     assert body["success"] is True
+    # fit-quality readout (#2 / audit R4): R² is never above 1 (up to fp
+    # slop) and this is a noiseless synthetic spectrum generated from the
+    # model's own edge shapes, so the fit should explain nearly all of it
+    assert "r_squared" in body
+    assert body["r_squared"] <= 1.0 + 1e-9
+    assert body["r_squared"] == pytest.approx(1.0, abs=0.02)
+
+
+@pytest.fixture()
+def noise_cube_id(client, tmp_path) -> str:
+    """Same shape/axis as fit_cube_id but pure noise — no edge or
+    background structure at all, so a model fit should explain little of
+    its variance. Used to show r_squared is DISTINCTLY lower than the
+    clean fit's, not just to demonstrate the value moves at all."""
+    ny, nx, ne = 3, 4, 512
+    rng = np.random.default_rng(42)
+    spec = rng.uniform(1.0, 100.0, ne)
+    flat = np.repeat(spec.astype(np.float32), ny * nx)
+    f = write_mini_dm4(
+        tmp_path / "noise_si.dm4", dims=[nx, ny, ne], data=flat, data_type=2,
+        cal=[
+            {"scale": 1, "origin": 0, "units": "nm"},
+            {"scale": 1, "origin": 0, "units": "nm"},
+            {"scale": 0.5862, "origin": -682.36, "units": "eV"},
+        ],
+    )
+    return _open(client, f)
+
+
+def test_eels_fit_r_squared_lower_for_noise(
+    client, fit_cube_id, noise_cube_id
+) -> None:
+    clean = client.post("/api/eels/fit", json={
+        "image_id": fit_cube_id, "edges": _EDGES, "e0_kv": 200, "beta_mrad": 10,
+    }).json()
+    noisy = client.post("/api/eels/fit", json={
+        "image_id": noise_cube_id, "edges": _EDGES, "e0_kv": 200, "beta_mrad": 10,
+    }).json()
+    assert noisy["r_squared"] <= 1.0 + 1e-9
+    assert noisy["r_squared"] < 0.5
+    assert noisy["r_squared"] < clean["r_squared"] - 0.3
 
 
 def test_eels_fit_map_registers_maps(client, fit_cube_id) -> None:

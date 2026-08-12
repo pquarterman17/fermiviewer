@@ -73,6 +73,10 @@ def test_recovers_at_percent_two_edges() -> None:
     np.testing.assert_allclose(
         r.model, r.background + r.edge_curves.sum(axis=0), rtol=1e-9
     )
+    # fit-quality readout (#2 / audit R4): noiseless synthetic spectrum
+    # generated from the model's own edge shapes → near-perfect R²
+    assert r.r_squared <= 1.0 + 1e-9
+    assert r.r_squared == pytest.approx(1.0, abs=0.02)
 
 
 def test_resolves_overlapping_edges() -> None:

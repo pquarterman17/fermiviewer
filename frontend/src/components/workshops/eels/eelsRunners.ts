@@ -155,7 +155,7 @@ export function makeRunModelFit(ctx: EelsRunnersCtx) {
         if (useViewer.getState().activeId !== startId) return;
         setFitResult(r);
         setStatus(
-          `EELS fit · χ²ᵣ ${r.reduced_chi2.toExponential(2)} · ` +
+          `EELS fit · χ²ᵣ ${r.reduced_chi2.toExponential(2)} · R² ${r.r_squared.toFixed(3)} · ` +
             r.edges
               .map((ed) => `${ed.element} ${ed.atomic_percent.toFixed(1)}%`)
               .join(" · "),
