@@ -98,6 +98,7 @@ def eels_fit(req: EelsFitRequest) -> dict:
         {
             "element": el,
             "shell": req.edges[k].shell,
+            "onset_ev": req.edges[k].onset_ev,
             "atomic_percent": float(res.atomic_percent[k]),
             "atomic_percent_error": float(at_err[k]),
             "amplitude": float(res.amplitudes[k]),
@@ -119,6 +120,11 @@ def eels_fit(req: EelsFitRequest) -> dict:
         # observed − model client-side (frontend lib/spectrum/fitQuality.ts).
         "r_squared": res.r_squared,
         "success": res.success,
+        # (e_lo, e_hi) actually optimised against (ANALYSIS_PRESENTATION_PLAN
+        # #7 / audit R8 — the fit-report CSV export's header wants the real
+        # fit window, which the client cannot always reconstruct: it is a
+        # resolved default when the request left fit_range unset).
+        "fit_range": list(res.fit_range),
     }
 
 

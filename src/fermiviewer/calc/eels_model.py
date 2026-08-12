@@ -120,6 +120,11 @@ class EdgeFitResult:
     # model explain".
     r_squared: float
     success: bool
+    # (e_lo, e_hi) actually optimised against — the resolved default when
+    # the caller passed None (ANALYSIS_PRESENTATION_PLAN.md #7 / audit R8:
+    # the fit-report CSV export needs this, and a client can't always
+    # reconstruct it — see r_squared's docstring above for why).
+    fit_range: tuple[float, float]
 
 
 def _seed_background(
@@ -218,6 +223,7 @@ def fit_edges(
         reduced_chi2=res.reduced_chi2,
         r_squared=r_sq,
         success=res.success,
+        fit_range=fit_range,
     )
 
 

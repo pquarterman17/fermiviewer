@@ -1,8 +1,16 @@
 import type { EelsFitResult, EelsQuantResult } from "../../lib/api";
+import { csvBaseName, downloadCsv } from "../../lib/eelsQuantCsv";
 import { formatPlusMinus } from "../../lib/formatUncertainty";
+import { eelsFitReportToCsv } from "../../lib/spectrum/fitReport";
 import EelsFitResidualPlot from "./eels/EelsFitResidualPlot";
 
-export function EelsFitResults({ result }: { result: EelsFitResult }) {
+export function EelsFitResults({
+  result,
+  imageName,
+}: {
+  result: EelsFitResult;
+  imageName?: string;
+}) {
   return (
     <>
       <div className="fvd-ws-note">
@@ -11,6 +19,20 @@ export function EelsFitResults({ result }: { result: EelsFitResult }) {
         {result.success ? "" : " · (not converged)"}
       </div>
       <EelsFitResidualPlot result={result} />
+      <div className="fvd-ws-row">
+        <button
+          className="fvd-btn"
+          title="Download the fitted edges (amplitude/at% ± 1σ) and fit-quality stats as CSV (#7)"
+          onClick={() =>
+            downloadCsv(
+              `${csvBaseName(imageName)}_eels_fit_report.csv`,
+              eelsFitReportToCsv(result, { imageName: imageName ?? "image" }),
+            )
+          }
+        >
+          Export fit report (CSV)
+        </button>
+      </div>
       <table className="fvd-ws-table">
         <thead>
           <tr>

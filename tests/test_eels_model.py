@@ -77,6 +77,21 @@ def test_recovers_at_percent_two_edges() -> None:
     # generated from the model's own edge shapes → near-perfect R²
     assert r.r_squared <= 1.0 + 1e-9
     assert r.r_squared == pytest.approx(1.0, abs=0.02)
+    # fit_range (#7 / audit R8): default is (min bg_window[0], energy.max())
+    # — O's bg_window is (452, 522), Fe's is (628, 698); the lower bound is
+    # the smaller of the two starts, the upper bound the axis end.
+    assert r.fit_range == pytest.approx((452.0, 950.0))
+
+
+def test_fit_edges_explicit_fit_range_is_echoed_back() -> None:
+    energy = np.linspace(250.0, 950.0, 700)
+    edges = [_edge("O", "K", 8, 532.0), _edge("Fe", "L", 26, 708.0)]
+    spec = _synth(energy, edges, areal=[2.0e27, 1.0e27])
+    r = fit_edges(
+        energy, spec, edges, e0_kv=200.0, beta_mrad=10.0,
+        fit_range=(500.0, 900.0),
+    )
+    assert r.fit_range == (500.0, 900.0)
 
 
 def test_resolves_overlapping_edges() -> None:

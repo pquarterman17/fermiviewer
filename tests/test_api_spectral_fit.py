@@ -67,6 +67,9 @@ def test_eels_fit_endpoint(client, fit_cube_id) -> None:
     assert r.status_code == 200
     body = r.json()
     assert [e["element"] for e in body["edges"]] == ["O", "Mn"]
+    # onset_ev is echoed back per edge (#7 / audit R8 fit-report export)
+    assert body["edges"][0]["onset_ev"] == 532.0
+    assert body["edges"][1]["onset_ev"] == 640.0
     assert body["edges"][0]["atomic_percent"] == pytest.approx(66.7, abs=3.0)
     assert body["edges"][1]["atomic_percent"] == pytest.approx(33.3, abs=3.0)
     assert body["edges"][0]["amplitude_error"] >= 0
@@ -85,6 +88,14 @@ def test_eels_fit_endpoint(client, fit_cube_id) -> None:
     assert "r_squared" in body
     assert body["r_squared"] <= 1.0 + 1e-9
     assert body["r_squared"] == pytest.approx(1.0, abs=0.02)
+    # fit_range (#7 / audit R8): resolved default window actually optimised
+    # against — non-degenerate, upper bound is the axis end (no bg_window
+    # was supplied on these edges, so the lower bound resolves to 0.0 —
+    # see fit_edges' default: min(el.bg_window[0]), which is (0.0, 0.0)
+    # unless a request sets it).
+    assert len(body["fit_range"]) == 2
+    assert body["fit_range"][0] < body["fit_range"][1]
+    assert body["fit_range"][1] == pytest.approx(body["energy"][-1])
 
 
 @pytest.fixture()

@@ -7,15 +7,13 @@
 // the result table exports to CSV. Renders the summed spectrum + fitted
 // curves straight from the endpoint response.
 
-import { useEffect, useRef, useState } from "react";
-import uPlot from "uplot";
+import { useState } from "react";
 
 import {
   edsContinuum,
   edsPeakfit,
   edsRecalibrate,
   edsZeta,
-  type EdsArtifactMark,
   type EdsContinuumResult,
   type EdsPeakfitResult,
   type EdsRecalibrateResult,
@@ -25,133 +23,12 @@ import {
 import { csvBaseName, downloadCsv } from "../../lib/eelsQuantCsv";
 import { edsModelFitToCsv } from "../../lib/edsQuantCsv";
 import { formatPlusMinus } from "../../lib/formatUncertainty";
+import { edsFitReportToCsv } from "../../lib/spectrum/fitReport";
 import { useViewer } from "../../store/viewer";
-import { useElementColors } from "../../lib/elemental/elementColors";
-import PlotContextSurface from "../plots/PlotContextSurface";
+import EdsModelFitPlot from "./eds/EdsModelFitPlot";
 
 type Background = "none" | "linear" | "bremsstrahlung";
 type QuantMethod = "cl" | "zeta";
-
-const MARK_COLOR: Record<EdsArtifactMark["status"], string> = {
-  measured: "#a3e635", // fitted freely — trustworthy
-  modeled: "#f59e0b", // fraction × parent — an estimate
-  skipped: "#ef4444", // blocked sum peak left in the data — beware
-};
-
-/** Summed spectrum + fitted-curve overlay (continuum or model + peaks). */
-function ModelFitPlot({
-  cont,
-  peakfit,
-}: {
-  cont: EdsContinuumResult | null;
-  peakfit: EdsPeakfitResult | EdsZetaResult | null;
-}) {
-  const hostRef = useRef<HTMLDivElement>(null);
-  const plotRef = useRef<uPlot | null>(null);
-  const colors = useElementColors();
-
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host) return;
-    plotRef.current?.destroy();
-    plotRef.current = null;
-
-    const base = cont ?? peakfit;
-    if (!base) return;
-
-    const series: uPlot.Series[] = [
-      { label: "E (keV)" },
-      { label: "spectrum", stroke: "#9ca3af", width: 1, points: { show: false } },
-    ];
-    const data: number[][] = [base.energy, base.spectrum];
-
-    if (cont) {
-      series.push({ label: "continuum", stroke: "#d97706", width: 1.5, points: { show: false } });
-      data.push(cont.continuum);
-    }
-    if (peakfit) {
-      series.push({ label: "model", stroke: "#22d3ee", width: 1.5, dash: [4, 2], points: { show: false } });
-      data.push(peakfit.model);
-      peakfit.elements.forEach((el) => {
-        if (!el.curve) return;
-        series.push({
-          label: el.symbol,
-          stroke: colors(el.symbol),
-          width: 1,
-          points: { show: false },
-        });
-        data.push(el.curve);
-      });
-    }
-    const marks = peakfit?.artifacts ?? [];
-
-    plotRef.current = new uPlot(
-      {
-        width: host.clientWidth || 300,
-        height: 180,
-        scales: { x: { time: false } }, // x is keV energy, not a timestamp
-        series,
-        axes: [
-          { stroke: "#888", grid: { stroke: "rgba(128,128,128,0.15)" } },
-          { stroke: "#888", grid: { stroke: "rgba(128,128,128,0.15)" } },
-        ],
-        legend: { show: true },
-        cursor: { y: false },
-        hooks: {
-          draw: [
-            (u) => {
-              // artifact markers: dashed verticals at predicted energies,
-              // coloured by how the artifact was handled (#8)
-              if (marks.length === 0) return;
-              const ctx = u.ctx;
-              ctx.save();
-              ctx.setLineDash([3, 3]);
-              ctx.lineWidth = 1;
-              ctx.font = "9px sans-serif";
-              ctx.textAlign = "center";
-              marks.forEach((m, i) => {
-                const x = u.valToPos(m.energy_kev, "x", true);
-                if (x < u.bbox.left || x > u.bbox.left + u.bbox.width) return;
-                ctx.strokeStyle = MARK_COLOR[m.status];
-                ctx.fillStyle = MARK_COLOR[m.status];
-                ctx.beginPath();
-                ctx.moveTo(x, u.bbox.top);
-                ctx.lineTo(x, u.bbox.top + u.bbox.height);
-                ctx.stroke();
-                // stagger labels on two rows so neighbours stay legible
-                ctx.fillText(m.label, x, u.bbox.top + 10 + (i % 2) * 10);
-              });
-              ctx.restore();
-            },
-          ],
-        },
-      },
-      data as uPlot.AlignedData,
-      host,
-    );
-    const ro = new ResizeObserver(() => {
-      if (plotRef.current && host.clientWidth > 0) {
-        plotRef.current.setSize({ width: host.clientWidth, height: 180 });
-      }
-    });
-    ro.observe(host);
-    return () => {
-      ro.disconnect();
-      plotRef.current?.destroy();
-      plotRef.current = null;
-    };
-  }, [cont, peakfit, colors]);
-
-  return (
-    <PlotContextSurface
-      ref={hostRef}
-      plotRef={plotRef}
-      label="EDS model fit"
-      filename="eds-model-fit.png"
-      className="fvd-ws-plot"
-    />
-  );
-}
 
 export default function EdsModelFit({
   activeId,
@@ -275,6 +152,14 @@ export default function EdsModelFit({
     downloadCsv(
       `${csvBaseName(imageName)}_eds_quant.csv`,
       edsModelFitToCsv(peakfit, { imageName: imageName ?? "image" }),
+    );
+  };
+
+  const exportFitReport = () => {
+    if (!peakfit) return;
+    downloadCsv(
+      `${csvBaseName(imageName)}_eds_fit_report.csv`,
+      edsFitReportToCsv(peakfit, { imageName: imageName ?? "image" }),
     );
   };
 
@@ -407,9 +292,18 @@ export default function EdsModelFit({
             Export CSV
           </button>
         )}
+        {peakfit && (
+          <button
+            className="fvd-btn"
+            title="Export the fitted peaks (net area ± 1σ), fit window and fit-quality stats (χ²ᵣ, R²) as CSV (#7)"
+            onClick={exportFitReport}
+          >
+            Export fit report (CSV)
+          </button>
+        )}
       </div>
 
-      {(cont || peakfit) && <ModelFitPlot cont={cont} peakfit={peakfit} />}
+      {(cont || peakfit) && <EdsModelFitPlot cont={cont} peakfit={peakfit} />}
 
       {peakfit && (
         <div className="fvd-ws-row k" style={{ fontSize: 11 }}>

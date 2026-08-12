@@ -162,7 +162,7 @@ export default function EelsQuantifyPanel({
         )}
       </div>
       {tab === "Model fit" && fitResult && (
-        <EelsFitResults result={fitResult} />
+        <EelsFitResults result={fitResult} imageName={meta?.name} />
       )}
       {tab === "Model fit" && elnes && (
         <div className="fvd-ws-note">

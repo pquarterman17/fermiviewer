@@ -26,7 +26,16 @@ vi.mock("../../lib/api", async (importActual) => {
   return { ...actual, edsPeakfit: vi.fn() };
 });
 
+// mock the download seam the "Export fit report (CSV)" / "Export CSV"
+// buttons use — same module every other workshop's CSV export mocks
+vi.mock("../../lib/eelsQuantCsv", async (importActual) => {
+  const actual =
+    await importActual<typeof import("../../lib/eelsQuantCsv")>();
+  return { ...actual, downloadCsv: vi.fn() };
+});
+
 import { edsPeakfit } from "../../lib/api";
+import { downloadCsv } from "../../lib/eelsQuantCsv";
 import EdsModelFit from "./EdsModelFit";
 
 const RESULT: EdsPeakfitResult = {
@@ -80,5 +89,29 @@ describe("EdsModelFit", () => {
     await waitFor(() => expect(edsPeakfit).toHaveBeenCalled());
 
     expect(await screen.findByText(/not converged/)).toBeInTheDocument();
+  });
+
+  it("has no fit-report export button before a fit is run", () => {
+    render(<EdsModelFit activeId="img1" elements="Fe" />);
+    expect(
+      screen.queryByRole("button", { name: "Export fit report (CSV)" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("downloads a fit report CSV after a peakfit (#7)", async () => {
+    vi.mocked(edsPeakfit).mockResolvedValue(RESULT);
+    render(<EdsModelFit activeId="img1" elements="Fe" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Deconvolve peaks" }));
+    await waitFor(() => expect(edsPeakfit).toHaveBeenCalled());
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Export fit report (CSV)" }),
+    );
+    expect(downloadCsv).toHaveBeenCalledOnce();
+    const [filename, csv] = vi.mocked(downloadCsv).mock.calls[0];
+    expect(filename).toBe("image_eds_fit_report.csv");
+    expect(csv).toContain("# fermiviewer EDS fit report");
+    expect(csv).toContain("Fe,Ka,6.404,4000,12.3,,,,");
   });
 });

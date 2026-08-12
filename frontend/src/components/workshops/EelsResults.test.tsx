@@ -1,7 +1,15 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { EelsFitResult } from "../../lib/api";
+
+// mock the download seam the "Export fit report (CSV)" button uses — the
+// same module every other workshop's CSV export mocks in its tests
+vi.mock("../../lib/eelsQuantCsv", async (importActual) => {
+  const actual =
+    await importActual<typeof import("../../lib/eelsQuantCsv")>();
+  return { ...actual, downloadCsv: vi.fn() };
+});
 
 // Mirrors SpectrumPlot.test.tsx's uPlot mock: records what
 // EelsFitResidualPlot passes to `new uPlot(...)` without touching
@@ -29,6 +37,7 @@ const mock = vi.hoisted(() => {
 });
 vi.mock("uplot", () => ({ default: mock.Plot }));
 
+import { downloadCsv } from "../../lib/eelsQuantCsv";
 import { EelsFitResults } from "./EelsResults";
 
 const RESULT: EelsFitResult = {
@@ -40,6 +49,7 @@ const RESULT: EelsFitResult = {
     {
       element: "O",
       shell: "K",
+      onset_ev: 532,
       atomic_percent: 66.7,
       atomic_percent_error: 1.2,
       amplitude: 5.1e6,
@@ -50,11 +60,13 @@ const RESULT: EelsFitResult = {
   reduced_chi2: 1.234,
   r_squared: 0.987,
   success: true,
+  fit_range: [400, 700],
 };
 
 beforeEach(() => {
   mock.state.options = {};
   mock.state.data = undefined;
+  vi.mocked(downloadCsv).mockClear();
 });
 
 describe("EelsFitResults", () => {
@@ -87,5 +99,27 @@ describe("EelsFitResults", () => {
     );
     // no uPlot instance should have been built for this render
     expect(mock.state.data).toBeUndefined();
+  });
+
+  it("downloads a fit report CSV with the fit stats and per-edge rows (#7)", () => {
+    render(<EelsFitResults result={RESULT} imageName="sample.dm4" />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Export fit report (CSV)" }),
+    );
+    expect(downloadCsv).toHaveBeenCalledOnce();
+    const [filename, csv] = vi.mocked(downloadCsv).mock.calls[0];
+    expect(filename).toBe("sample_eels_fit_report.csv");
+    expect(csv).toContain("# fermiviewer EELS fit report");
+    expect(csv).toContain("# fit_range_ev: 400-700");
+    expect(csv).toContain("O,K,532,5100000,120000,66.7,1.2");
+  });
+
+  it("falls back to a generic name when no image name is given", () => {
+    render(<EelsFitResults result={RESULT} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Export fit report (CSV)" }),
+    );
+    const [filename] = vi.mocked(downloadCsv).mock.calls[0];
+    expect(filename).toBe("image_eels_fit_report.csv");
   });
 });

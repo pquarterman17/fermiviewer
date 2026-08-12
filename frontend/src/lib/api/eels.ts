@@ -234,6 +234,9 @@ export function eelsQuantifyMapAsync(
 export interface EelsFitEdge {
   element: string;
   shell: string;
+  /** Onset energy (eV), echoed back from the request (#7 / audit R8 —
+   *  the fit-report CSV export's "center/onset" column). */
+  onset_ev: number;
   atomic_percent: number;
   /** 1σ on at% from the fit covariance (percentage points). */
   atomic_percent_error: number;
@@ -255,6 +258,11 @@ export interface EelsFitResult {
    *  client-side from `spectrum`/`model` (lib/spectrum/fitQuality.ts). */
   r_squared: number;
   success: boolean;
+  /** (e_lo, e_hi) actually optimised against — the resolved default when
+   *  the request left `fit_range` unset (#7 / audit R8: the fit-report CSV
+   *  export's header needs the real fit window, which is not always
+   *  reconstructable client-side from `energy` alone). */
+  fit_range: [number, number];
 }
 
 /** Simultaneous background + multi-edge model fit of the summed spectrum.
