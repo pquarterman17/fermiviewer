@@ -450,6 +450,157 @@ def test_composition_profile_route_recovers_a_straight_line(client, cubes) -> No
     assert np.max(np.abs(cu_profile - line)) < 3.0
 
 
+def _composition_profile(
+    client: TestClient, image_id: str, maps: dict, elements: list[str],
+    x1: float, y1: float, x2: float, y2: float, n_points: int,
+) -> dict:
+    r = client.post(
+        "/api/analyze/composition-profile",
+        json={
+            "image_id": image_id,
+            "map_ids": [maps[e]["id"] for e in elements],
+            "elements": elements,
+            "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+            "n_points": n_points,
+        },
+    )
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+#: `_poisson_uint16`'s uint16 rescale (see make_synthetic_si.py) caps the
+#: brightest channel's Poisson mean at 62000 -- and this preset/shape's
+#: peak already exceeds that at the module `COUNTS` (40000), so a 4x cube
+#: built at COUNTS would be rescaled straight back down to the SAME
+#: effective counts (measured: `counts_scale_applied` identical for 40000
+#: and 160000). These two stay clear of that ceiling (measured unsaturated
+#: up to 20000 for this preset/shape) so the pair is a genuine 4x counts
+#: difference, not two draws collapsed onto one ceiling.
+_SIGMA_SCALING_LOW_COUNTS = 4000.0
+_SIGMA_SCALING_HIGH_COUNTS = 16000.0
+
+
+@pytest.fixture(scope="module")
+def diffusion_counts_pair(tmp_path_factory) -> dict[str, tuple[Path, dict]]:
+    """Two independent eds-diffusion draws (different seeds), 4x apart in
+    counts, both below the uint16 rescale ceiling -- for the sigma-scaling
+    test to exercise the real Poisson sampling path end to end.
+
+    Separate output dirs: `build()` always writes the preset's fixed
+    filename (`synthetic_eds_diffusion.hspy`), so sharing one dir would let
+    the second `build()` silently overwrite the first and leave both
+    entries pointing at the same (last-written) file.
+    """
+    return {
+        "lo": gen.build(gen.PRESETS["eds-diffusion"], SHAPE,
+                        _SIGMA_SCALING_LOW_COUNTS, 0,
+                        tmp_path_factory.mktemp("quant-golden-counts-lo")),
+        "hi": gen.build(gen.PRESETS["eds-diffusion"], SHAPE,
+                        _SIGMA_SCALING_HIGH_COUNTS, 1,
+                        tmp_path_factory.mktemp("quant-golden-counts-hi")),
+    }
+
+
+def test_composition_profile_sigma_is_present_and_positive(client, cubes) -> None:
+    """ANALYSIS_PRESENTATION_PLAN #3: every point of the recovered profile
+    carries a real, positive 1sigma. eds-diffusion has no vacuum (three
+    slabs tile the whole field top to bottom), so sweeping the WHOLE column
+    covers pure Cu, the graded zone and pure Ni -- all of it material."""
+    path, truth = cubes["eds-diffusion"]
+    img_id = _open(client, path)
+    r = client.post(
+        "/api/eds/quantify",
+        json={"image_id": img_id, "elements": truth["elements"]},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    maps = dict(zip(body["elements"], body["maps"], strict=True))
+    h, w, _ = truth["shape"]
+
+    pbody = _composition_profile(
+        client, img_id, maps, ["Cu", "Ni"], w // 2, 1, w // 2, h, h,
+    )
+    sigma = pbody.get("atomic_percent_error")
+    assert sigma is not None, "no per-point sigma in the response"
+    pct = pbody["atomic_pct"]
+    assert len(sigma) == len(pct) == 2
+    for row in sigma:
+        assert len(row) == h
+        arr = np.array(row)
+        assert np.all(np.isfinite(arr)), row
+        assert np.all(arr > 0), row
+
+
+def test_composition_profile_sigma_scales_with_counting_statistics(
+    client, diffusion_counts_pair,
+) -> None:
+    """Quantifying the SAME cube geometry at 4x the counts should shrink the
+    per-point relative sigma by roughly the counting-statistics factor of 2
+    (sigma ~ 1/sqrt(N)). Asserted as a bounded ratio, not an exact factor --
+    Cliff-Lorimer's per-pixel renormalisation and the profile's bilinear
+    interpolation both perturb the pure Poisson prediction."""
+    path_lo, truth_lo = diffusion_counts_pair["lo"]
+    path_hi, truth_hi = diffusion_counts_pair["hi"]
+
+    def mean_relative_sigma(path: Path, truth: dict) -> float:
+        img_id = _open(client, path)
+        r = client.post(
+            "/api/eds/quantify",
+            json={"image_id": img_id, "elements": truth["elements"]},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        maps = dict(zip(body["elements"], body["maps"], strict=True))
+        h, w, _ = truth["shape"]
+        pbody = _composition_profile(
+            client, img_id, maps, ["Cu", "Ni"], w // 2, 1, w // 2, h, h,
+        )
+        pct = np.array(pbody["atomic_pct"])
+        sigma = np.array(pbody["atomic_percent_error"])
+        # Only where the element carries real signal (>5 at%): relative
+        # sigma on a near-zero denominator is a divide-by-noise artefact,
+        # not a counting-statistics measurement.
+        mask = pct > 5.0
+        return float(np.mean(sigma[mask] / pct[mask]))
+
+    rel_lo = mean_relative_sigma(path_lo, truth_lo)
+    rel_hi = mean_relative_sigma(path_hi, truth_hi)
+    ratio = rel_lo / rel_hi
+    # sqrt(4) == 2 is the exact Poisson prediction.
+    assert 1.3 < ratio < 3.0, (rel_lo, rel_hi, ratio)
+
+
+def test_composition_profile_truth_within_3sigma_at_pure_ends(client, cubes) -> None:
+    """Calibration-honesty check: at the pure Cu/Ni ends, the recovered at%
+    must fall within +-3sigma of the planted truth. If this ever fails, the
+    sigma is too small -- report it, do not widen the tolerance to force a
+    pass (SPECTRAL_WORKSPACE_PLAN's calibration-honesty convention)."""
+    path, truth = cubes["eds-diffusion"]
+    img_id = _open(client, path)
+    r = client.post(
+        "/api/eds/quantify",
+        json={"image_id": img_id, "elements": truth["elements"]},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    maps = dict(zip(body["elements"], body["maps"], strict=True))
+    h, w, _ = truth["shape"]
+    prof = truth["profile"]["material_atomic_percent_per_row"]["Cu"]
+
+    pbody = _composition_profile(
+        client, img_id, maps, ["Cu", "Ni"], w // 2, 1, w // 2, h, h,
+    )
+    cu_i = pbody["elements"].index("Cu")
+    cu_pct = np.array(pbody["atomic_pct"][cu_i])
+    cu_sigma = np.array(pbody["atomic_percent_error"][cu_i])
+    assert abs(cu_pct[0] - prof[0]) < 3.0 * cu_sigma[0], (
+        cu_pct[0], cu_sigma[0], prof[0],
+    )
+    assert abs(cu_pct[-1] - prof[-1]) < 3.0 * cu_sigma[-1], (
+        cu_pct[-1], cu_sigma[-1], prof[-1],
+    )
+
+
 def test_thickness_cl_bias_is_real_and_bounded(client, cubes) -> None:
     """Plain Cliff-Lorimer on eds-thickness: O at% grows with thickness.
 

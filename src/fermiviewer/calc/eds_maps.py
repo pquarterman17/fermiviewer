@@ -8,16 +8,19 @@ cube column-sum (the BCF sum-spectrum invariant).
 from __future__ import annotations
 
 import warnings
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
 
 from fermiviewer.calc.eds import line_energy
+from fermiviewer.calc.uncertainty import cliff_lorimer_uncertainty
 
 __all__ = [
     "ElementMapEntry",
     "UnusableElementError",
     "composition_profile",
+    "composition_profile_sigma",
     "element_map",
     "element_window",
     "extract_element_maps",
@@ -323,6 +326,65 @@ def virtual_dark_field(
     return out
 
 
+def _sample_maps_along_line(
+    maps: list[np.ndarray],
+    x1: float,
+    y1: float,
+    x2: float,
+    y2: float,
+    n_points: int,
+    width: float,
+) -> tuple[float, np.ndarray]:
+    """Width-averaged bilinear sampling of same-shape 2-D maps along a line.
+
+    Shared by `composition_profile` and `composition_profile_sigma` so the
+    at% maps and the intensity/variance maps used for the uncertainty band
+    are walked through the EXACT same line/offset geometry — a caller must
+    never sample the two through independent code paths that could drift
+    apart pixel-for-pixel.
+
+    Coordinates are 1-based (x=col, y=row), matching the MATLAB interp2 call
+    this ports. Returns ``(line_len, values[n_points, len(maps)])``;
+    ``line_len == 0`` for a degenerate (zero-length) segment, with ``values``
+    all zero — the same degenerate behaviour `composition_profile` has
+    always had.
+    """
+    from scipy.ndimage import map_coordinates
+
+    h, w = maps[0].shape
+    for m in maps[1:]:
+        if m.shape != (h, w):
+            raise ValueError("all maps must be the same size")
+
+    xi = np.linspace(x1, x2, n_points)
+    yi = np.linspace(y1, y2, n_points)
+    dx = x2 - x1
+    dy = y2 - y1
+    line_len = float(np.hypot(dx, dy))
+    if line_len == 0:
+        return 0.0, np.zeros((n_points, len(maps)))
+
+    perp_x = -dy / line_len
+    perp_y = dx / line_len
+    n_off = max(1, round(width))
+    offsets = (
+        np.array([0.0])
+        if n_off == 1
+        else np.linspace(-(n_off - 1) / 2, (n_off - 1) / 2, n_off)
+    )
+
+    out = np.zeros((n_points, len(maps)))
+    for i, mp in enumerate(maps):
+        acc = np.zeros(n_points)
+        for off in offsets:
+            xq = np.clip(xi + off * perp_x, 1, w)
+            yq = np.clip(yi + off * perp_y, 1, h)
+            # 1-based coords -> 0-based for map_coordinates (bilinear)
+            acc += map_coordinates(mp, [yq - 1, xq - 1], order=1)
+        out[:, i] = acc / n_off
+    return line_len, out
+
+
 def composition_profile(
     atomic_pct_maps: list[np.ndarray],
     elements: list[str],
@@ -339,43 +401,75 @@ def composition_profile(
     Coordinates are 1-based (x=col, y=row) like the MATLAB interp2 call.
     Returns (distance, atomic_pct[M, n_elements]).
     """
-    from scipy.ndimage import map_coordinates
-
     if len(atomic_pct_maps) != len(elements):
         raise ValueError("maps and elements must have the same length")
     maps = [np.asarray(m, dtype=np.float64) for m in atomic_pct_maps]
-    h, w = maps[0].shape
-    for m in maps[1:]:
-        if m.shape != (h, w):
-            raise ValueError("all maps must be the same size")
-
     m_pts = int(n_points)
-    xi = np.linspace(x1, x2, m_pts)
-    yi = np.linspace(y1, y2, m_pts)
-    dx = x2 - x1
-    dy = y2 - y1
-    line_len = float(np.hypot(dx, dy))
-    if line_len == 0:
-        return np.zeros(m_pts), np.zeros((m_pts, len(maps)))
-
-    perp_x = -dy / line_len
-    perp_y = dx / line_len
-    n_off = max(1, round(width))
-    offsets = (
-        np.array([0.0])
-        if n_off == 1
-        else np.linspace(-(n_off - 1) / 2, (n_off - 1) / 2, n_off)
-    )
-
-    out = np.zeros((m_pts, len(maps)))
-    for i, mp in enumerate(maps):
-        acc = np.zeros(m_pts)
-        for off in offsets:
-            xq = np.clip(xi + off * perp_x, 1, w)
-            yq = np.clip(yi + off * perp_y, 1, h)
-            # 1-based coords -> 0-based for map_coordinates (bilinear)
-            acc += map_coordinates(mp, [yq - 1, xq - 1], order=1)
-        out[:, i] = acc / n_off
-
+    line_len, out = _sample_maps_along_line(maps, x1, y1, x2, y2, m_pts, width)
     distance = np.linspace(0, line_len, m_pts) * pixel_size
     return distance, out
+
+
+def composition_profile_sigma(
+    net_intensity_maps: list[np.ndarray],
+    gross_count_maps: list[np.ndarray],
+    elements: list[str],
+    k_factors: np.ndarray | Sequence[float],
+    x1: float,
+    y1: float,
+    x2: float,
+    y2: float,
+    n_points: int = 200,
+    width: float = 1.0,
+) -> np.ndarray:
+    """Per-point 1σ (percentage points) on a Cliff-Lorimer at% profile.
+
+    Companion to `composition_profile`: samples the SAME per-element net
+    intensity and gross-count maps that fed the at% maps' Cliff-Lorimer
+    quantification (`calc.eds.cliff_lorimer`), through the identical
+    line/width-average geometry (`_sample_maps_along_line`), then propagates
+    Poisson counting statistics through the SAME delta-method core
+    `/eds/quantify` uses for its field-aggregate error bar
+    (`calc.uncertainty.cliff_lorimer_uncertainty`) — evaluated per point
+    instead of once over the field sum.
+
+    ``net_intensity_maps`` are the background-subtracted per-element maps
+    (`ElementMapEntry.map` / `element_map(..., bg=...)`) that
+    `cliff_lorimer()` normalised into the at% maps. ``gross_count_maps`` are
+    the SAME windows with ``bg="none"`` — their value at each point is used
+    as the Poisson variance of the net intensity there
+    (``var(I_net) ≈ I_gross``, Egerton's leading-order approximation, the
+    same one `calc.uncertainty`'s module docstring documents and
+    `/eds/quantify` already relies on).
+
+    Returns an ``[n_points, n_elements]`` array. A point is NaN for every
+    element when every element's sampled gross count is zero there (nothing
+    was collected at that position — no counting-statistics claim can be
+    made), matching `composition_profile`'s degenerate-line zero-fill only
+    where physically no signal exists.
+    """
+    n = len(elements)
+    if not (len(net_intensity_maps) == len(gross_count_maps) == n):
+        raise ValueError(
+            "net_intensity_maps, gross_count_maps, elements length mismatch"
+        )
+    k = np.asarray(k_factors, dtype=np.float64).ravel()
+    if k.size != n:
+        raise ValueError("k_factors must match elements length")
+
+    net_maps = [np.asarray(m, dtype=np.float64) for m in net_intensity_maps]
+    gross_maps = [np.asarray(m, dtype=np.float64) for m in gross_count_maps]
+    m_pts = int(n_points)
+    _, net_sampled = _sample_maps_along_line(net_maps, x1, y1, x2, y2, m_pts, width)
+    _, gross_sampled = _sample_maps_along_line(
+        gross_maps, x1, y1, x2, y2, m_pts, width
+    )
+
+    sigma = np.full((m_pts, n), np.nan, dtype=np.float64)
+    for p in range(m_pts):
+        var_p = np.maximum(gross_sampled[p], 0.0)
+        if not np.any(var_p > 0):
+            continue
+        unc = cliff_lorimer_uncertainty(net_sampled[p], var_p, elements, k)
+        sigma[p] = unc.atomic_pct_sigma
+    return sigma

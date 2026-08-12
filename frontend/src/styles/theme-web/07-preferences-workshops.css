@@ -252,6 +252,16 @@
   min-height: 180px;
 }
 
+/* ANALYSIS_PRESENTATION_PLAN #3 — sigmaBand.ts's hi/lo band-boundary series
+   are real uPlot series (a band's fill only draws when both its edges are
+   `show: true`) but carry no information of their own, so their legend rows
+   are hidden here instead of via uPlot's own on/off styling. display:none
+   also removes them from pointer-event hit testing, so a hidden row cannot
+   capture a legend click. */
+.fvd-ws-plot tr.fvd-band-row {
+  display: none;
+}
+
 .fvd-ws-row {
   display: flex;
   align-items: center;

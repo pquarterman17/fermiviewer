@@ -15,13 +15,18 @@ import {
   type CompositionProfileResult,
   type EdsQuantResult,
 } from "../../lib/api";
+import { sigmaBand } from "../../lib/charts/sigmaBand";
 import { useElementColors } from "../../lib/elemental/elementColors";
 import { formatPlusMinus } from "../../lib/formatUncertainty";
 import { useViewer } from "../../store/viewer";
 import PlotContextSurface from "../plots/PlotContextSurface";
 
-/** Per-element at% line plot for the composition profile (#46/A4). */
-function CompProfilePlot({ r }: { r: CompositionProfileResult }) {
+/** Per-element at% line plot for the composition profile (#46/A4), each line
+ *  wearing a shaded ±1σ band (ANALYSIS_PRESENTATION_PLAN #3) whenever the
+ *  route could recompute per-point sigma. Exported (not just used locally)
+ *  so it can be tested directly off a `CompositionProfileResult` fixture,
+ *  without mounting the whole panel's store/API-dependent parent. */
+export function CompProfilePlot({ r }: { r: CompositionProfileResult }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
   const colors = useElementColors();
@@ -30,21 +35,49 @@ function CompProfilePlot({ r }: { r: CompositionProfileResult }) {
     const host = hostRef.current;
     if (!host) return;
     plotRef.current?.destroy();
+
+    const n = r.elements.length;
+    // Main lines occupy series[1..n] — the SAME indices they always have,
+    // so legend-click → series toggling for an element is unaffected by
+    // whether bands get appended after them.
+    const mainSeries: uPlot.Series[] = r.elements.map((el) => ({
+      label: el,
+      stroke: colors(el),
+      width: 1.5,
+      points: { show: false },
+    }));
+
+    const sigmaRows = r.atomic_percent_error;
+    const bandSeries: uPlot.Series[] = [];
+    const bandData: (number | null)[][] = [];
+    const bands: uPlot.Band[] = [];
+    if (sigmaRows) {
+      r.elements.forEach((el, i) => {
+        const hiIdx = 1 + n + bandSeries.length;
+        const loIdx = hiIdx + 1;
+        const cfg = sigmaBand(r.atomic_pct[i], sigmaRows[i], colors(el), hiIdx, loIdx, {
+          label: `${el} ±1σ`,
+        });
+        bandSeries.push(...cfg.series);
+        bandData.push(...cfg.data);
+        bands.push(cfg.band);
+      });
+    }
+
     const series: uPlot.Series[] = [
       { label: `d (${r.unit})` },
-      ...r.elements.map((el) => ({
-        label: el,
-        stroke: colors(el),
-        width: 1.5,
-        points: { show: false },
-      })),
+      ...mainSeries,
+      ...bandSeries,
     ];
+    const data = [r.distance, ...r.atomic_pct, ...bandData] as uPlot.AlignedData;
+
     plotRef.current = new uPlot(
       {
         width: host.clientWidth || 300,
         height: 160,
         scales: { x: { time: false } }, // x is distance, not a timestamp
         series,
+        bands,
         axes: [
           { stroke: "#888", grid: { stroke: "rgba(128,128,128,0.15)" } },
           { stroke: "#888", grid: { stroke: "rgba(128,128,128,0.15)" } },
@@ -52,7 +85,7 @@ function CompProfilePlot({ r }: { r: CompositionProfileResult }) {
         legend: { show: true },
         cursor: { y: false },
       },
-      [r.distance, ...r.atomic_pct] as uPlot.AlignedData,
+      data,
       host,
     );
     const ro = new ResizeObserver(() => {
@@ -131,6 +164,7 @@ export default function EdsQuantifyPanel({
     const b = { x: line.pts[1].x * w, y: line.pts[1].y * h };
     setCompBusy(true);
     analyzeCompositionProfile(
+      activeId,
       quantMaps.map((c) => c.m.id),
       quantMaps.map((c) => c.el),
       a,
