@@ -3,7 +3,7 @@
 // aperture rendered as an SVG ring overlay — a preview only; the server
 // computes the authoritative mask when Compute map runs.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { isAxisCalibrated, type FourDMeta } from "../../../lib/api";
 import { useFourD, type FourDAperture, type FourDProbe } from "../../../store/fourd";
@@ -57,11 +57,15 @@ export default function FourDPatternPanel({ meta }: { meta: FourDMeta | null }) 
   const probe = useFourD((s) => s.probe);
   const aperture = useFourD((s) => s.aperture);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Log intensity is the field-standard default in a 4D browser: a pattern
+  // runs from a saturated direct beam to Bragg disks three decades fainter,
+  // and on a linear ramp only the direct beam is visible at all.
+  const [logScale, setLogScale] = useState(true);
 
   useEffect(() => {
     if (!patternRaster || !canvasRef.current) return;
-    drawRaster16(canvasRef.current, patternRaster);
-  }, [patternRaster]);
+    drawRaster16(canvasRef.current, patternRaster, { log: logScale });
+  }, [patternRaster, logScale]);
 
   if (!patternRaster) {
     return (
@@ -96,6 +100,19 @@ export default function FourDPatternPanel({ meta }: { meta: FourDMeta | null }) 
             <ApertureRing aperture={aperture} center={center} scale={scale} />
           </svg>
         )}
+      </div>
+      <div className="fvd-ws-row">
+        <label
+          className="fvd-check"
+          title="Display intensity as log(1 + 1000·I) — a diffraction pattern spans decades, and a linear ramp shows only the direct beam"
+        >
+          <input
+            type="checkbox"
+            checked={logScale}
+            onChange={(e) => setLogScale(e.target.checked)}
+          />
+          Log intensity
+        </label>
       </div>
       <div className="fvd-ws-note">
         {probeLabel(probe, meta)}

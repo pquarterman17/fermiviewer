@@ -308,6 +308,10 @@ def load_mib(
         "num_chips": header.num_chips,
         "dtype_tag": header.dtype_tag,
         "n_frames": n_frames,
+        # Merlin records no raster: every (rows, cols) with rows*cols ==
+        # n_frames is equally consistent with this file, so the scan shape is
+        # a user decision and /fourd/{id}/reshape exists to take it.
+        "scan_shape_from_file": False,
     }
     return FourDDataset(
         handle=handle,

@@ -98,9 +98,9 @@ live-audit usability follow-up list.*
 12. **Orientation / phase mapping (ACOM)**
 13. **More 4D formats + async ingest** — Gatan K2/K3, NCEM EMD 4D, blockfile
     `.blo`, job-queued batch virtual-detector
-14. **4D usability follow-ups** — scan-shape GUI for `.mib` (top item for
-    real Merlin users), log-intensity toggle, aperture radii in mrad,
-    main-Stage probe picking, dataset-list live refresh
+14. **4D usability follow-ups** — aperture radii in mrad, main-Stage probe
+    picking, dataset-list live refresh (the scan-shape GUI and the
+    log-intensity toggle shipped 2026-08-12)
 
 **Open items: 8**
 
@@ -119,7 +119,7 @@ live-audit usability follow-up list.*
 **Counting method:** top-level numbered items (the plan-format.md unit of a
 tracked work item) — not nested `- [ ]` sub-task checkboxes. Nested-checkbox
 counts by plan, for reference: MAIN_PLAN 5, SPECTRAL_WORKSPACE_PLAN 2,
-PLAN_4DSTEM 14 (21 total). A checkbox-based count would disagree with the
+PLAN_4DSTEM 12 (19 total). A checkbox-based count would disagree with the
 open-items count above — pick one convention when reading this table and
 don't mix the two.
 

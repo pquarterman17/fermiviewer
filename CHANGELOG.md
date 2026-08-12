@@ -16,6 +16,18 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Tell FermiViewer what shape your Merlin scan was.** A `.mib` file records
+  its frames and nothing about the raster that produced them, so every
+  headerless Merlin acquisition opened as a single-row line scan — a
+  ten-pixel navigation strip. The 4D-STEM Viewer now has a scan-shape control:
+  type rows × columns, or click one of the suggested factorisations (squarest
+  first, since STEM scans usually are), and the file re-opens under that
+  raster with the dataset, probe and aperture selection intact. A file that
+  records its own scan axes, like HyperSpy 4D, does not offer this.
+- **Log intensity on the diffraction pattern**, on by default. A 4D pattern
+  runs from a saturated direct beam to Bragg disks a thousand times fainter;
+  on the previous linear ramp everything but the direct beam was black. This
+  changes the display only — computed virtual-detector maps are unaffected.
 - **Window width presets, on both spectroscopies.** Narrow / standard / wide
   now sit under the spectrum in Explore. On EDS they are multiples of the
   detector's own resolution at that line (1.0 / 1.5 / 2.0 × FWHM, capturing

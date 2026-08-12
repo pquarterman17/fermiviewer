@@ -16,10 +16,17 @@ become a runtime dependency — all math is reimplemented from primary reference
 all shipped + live-verified same day, `f6141b2..b4826b0`; remaining:
 Tier 2 #7–#9 COM/DPC/iDPC — note #7's core math `com_shift_maps`
 already landed in calc/fourd/virtual.py as a stretch goal — and parked
-Tier 3)
+Tier 3. Item #14's first two usability follow-ups — the .mib scan-shape
+GUI and the pattern-panel log toggle — shipped 2026-08-12; three remain)
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-06-21
-**Updated:** 2026-08-02 — REAL CORPUS SECURED (owner gate cleared: "no
+**Updated:** 2026-08-12 — item #14's top two usability follow-ups shipped:
+the `.mib` scan-shape GUI (`POST /fourd/{id}/reshape` + a workshop control
+with ranked factorisation suggestions — the parser always accepted a
+`scan_shape` and nothing exposed it, so every headerless Merlin file opened
+as a 10-px nav strip) and the pattern panel's log-intensity toggle.
+
+**Previously, 2026-08-02** — REAL CORPUS SECURED (owner gate cleared: "no
 point building if we don't have real data"): `../test-data/4dstem/` now
 holds the pyxem demo set (Zenodo 10.5281/zenodo.15490547, CC BY 4.0):
 `test_data.mib` (Merlin RAW R64 quad, 132 frames, 768-byte MQ1 headers)
@@ -318,12 +325,9 @@ for completeness and to record the architectural runway; not scheduled.)*
     objective defects it found were fixed same day: modal z-layering,
     nav contain-fit, true auto-center preview, watch-folder guidance,
     DELETE /api/fourd/{id}); these remain, in value order:
-    - [ ] **Scan-shape GUI for .mib** — the parser accepts `scan_shape` but
-      nothing exposes it; headerless Merlin data always lands 1×N (nav is a
-      10px strip). Workshop input w/ divisor suggestions for n_frames + a
-      reopen/reshape route. THE top item for real Merlin users.
-    - [ ] Log-intensity toggle on the pattern panel (diffraction dynamic
-      range; field-standard in 4D browsers).
+    - [x] **Scan-shape GUI for .mib** — shipped 2026-08-12, see Completed
+    - [x] Log-intensity toggle on the pattern panel — shipped 2026-08-12,
+      see Completed
     - [ ] Aperture radii in mrad when detector calibration allows.
     - [ ] Main-Stage probe picking via a specnav-style capture mode (the
       flagged v2 of #4).
@@ -334,4 +338,46 @@ for completeness and to record the architectural runway; not scheduled.)*
 
 ## Completed
 
-*(none yet)*
+- ~~**#14 Scan-shape GUI for `.mib`**~~ (2026-08-12) — the top item for real
+  Merlin users, and it was never a missing capability: `load_mib` has always
+  accepted a `scan_shape`, and nothing anywhere exposed it. Every headerless
+  acquisition therefore opened as a 1×N line-scan whose nav image is a
+  ten-pixel strip.
+  `POST /api/fourd/{id}/reshape` RE-OPENS the file under the requested raster
+  rather than mutating the dataset: the scan shape reaches into the handle's
+  frame indexing, the cached nav image and the cached mean pattern, and a
+  partial update leaves a dataset that disagrees with itself. The 4D **id is
+  kept** — the workshop selection, the probe and the registered nav image are
+  all keyed by it, and a fresh id would silently deselect the dataset the user
+  is looking at — while `FourDStore.replace` closes the old memmap (a reshape
+  that leaked one per attempt would fail exactly on the large files this
+  exists for) and drops the stale nav-image association, since that raster
+  described the old shape.
+  **`scan_shape_from_file` is the discriminator, set by the parsers**, not
+  sniffed from a parser name in the route: `.mib` records no raster, `.hspy`
+  has its navigation axes in the file, and re-rastering the latter would
+  invite the user to contradict the acquisition (422). `FourDMeta` gained
+  `n_frames` and `scan_shape_options` — `calc/fourd/scanshape.py` ranks the
+  exact factorisations by squareness, because STEM scans overwhelmingly are,
+  so 16384 frames offers 128×128 first rather than the 1×16384 the user came
+  here to change. Both orientations are offered (nothing in the file
+  distinguishes a 64-row scan from a 64-column one) and the 1×N line-scan
+  always survives the list cap, being both a real acquisition mode and the
+  parser default.
+  The workshop control takes typed rows × cols with a live "must multiply to
+  N frames (got M)" readout — naming the product so the user can see WHICH
+  number to change — plus one-click suggestion chips that keep the typed
+  fields in sync. Pinned by a value check, not a shape check: frame k must
+  land at `(k // cols, k % cols)`, because a transposed re-raster produces a
+  nav image that looks entirely plausible and is wrong. 14 backend + 10
+  frontend tests.
+
+- ~~**#14 Log-intensity toggle on the pattern panel**~~ (2026-08-12) —
+  display ∝ log(1 + 1000·I), on by default. A 4D pattern runs from a
+  saturated direct beam to Bragg disks three decades fainter; on the linear
+  ramp the panel shipped with, everything except the direct beam is black.
+  A pure `logStretchRaster` (display-only — the virtual-detector maps the
+  server computes are untouched) that clamps negative/non-finite samples to
+  zero rather than emitting a NaN LUT index, and copies rather than mutating
+  the fetched raster. 5 tests, including monotonicity: a stretch that
+  reordered intensities would be a lie about the diffraction pattern.

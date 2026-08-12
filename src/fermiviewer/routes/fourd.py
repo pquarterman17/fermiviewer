@@ -41,6 +41,7 @@ from fermiviewer.calc.fourd.dataset import FourDDataset
 from fermiviewer.calc.fourd.geometry import aperture_mask, pattern_center
 from fermiviewer.calc.fourd.virtual import virtual_detector
 from fermiviewer.datastruct import DataKind, DataStruct
+from fermiviewer.io.fourd.mib import load_mib
 from fermiviewer.models import FourDMeta, ImageMeta
 from fermiviewer.routes._arrays import value_error_as_422
 from fermiviewer.routes.images import encode_raster_u16
@@ -90,6 +91,61 @@ def close_fourd(fourd_id: str) -> dict[str, str]:
     _get(fourd_id)
     fourd_store.close(fourd_id)
     return {"status": "closed"}
+
+
+class ReshapeRequest(BaseModel):
+    rows: int
+    cols: int
+
+
+@router.post("/fourd/{fourd_id}/reshape")
+def fourd_reshape(fourd_id: str, req: ReshapeRequest) -> FourDMeta:
+    """Re-raster a headerless acquisition to `(rows, cols)` (PLAN_4DSTEM #14).
+
+    Merlin `.mib` records frames back to back and nothing about the scan that
+    produced them, so the parser defaults to a 1xN line-scan and every such
+    dataset opens as a 10-px nav strip. This is the only way to tell it what
+    the acquisition actually was.
+
+    The file is RE-OPENED under the new shape rather than the existing
+    dataset being mutated: the scan shape reaches into the handle's frame
+    indexing, the cached nav image and the cached mean pattern, and a partial
+    update would leave a dataset that disagrees with itself. Re-opening keeps
+    the same 4D id, so the workshop's selection and probe survive; the old
+    memmap is released by the store.
+
+    422 when `rows * cols` does not equal the frame count, or when the
+    format states its own raster — re-rastering a file that records its scan
+    axes would be inviting the user to contradict the acquisition.
+    """
+    ds4 = _get(fourd_id)
+    if ds4.metadata.get("scan_shape_from_file", True):
+        raise HTTPException(
+            422,
+            f"{fourd_store.name(fourd_id)} records its own scan shape "
+            f"{list(ds4.scan_shape)}; it cannot be re-rastered",
+        )
+    path = fourd_store.source_path(fourd_id) or ds4.metadata.get("source")
+    if not path:
+        raise HTTPException(422, "dataset has no source file to re-open")
+    if req.rows <= 0 or req.cols <= 0:
+        raise HTTPException(
+            422, f"scan shape must be positive, got ({req.rows}, {req.cols})"
+        )
+    n_frames = ds4.scan_shape[0] * ds4.scan_shape[1]
+    if req.rows * req.cols != n_frames:
+        raise HTTPException(
+            422,
+            f"scan shape ({req.rows}, {req.cols}) = {req.rows * req.cols} "
+            f"probe positions does not match {n_frames} frames in the file",
+        )
+
+    try:
+        reshaped = load_mib(str(path), scan_shape=(req.rows, req.cols))
+    except (OSError, ValueError) as exc:
+        raise HTTPException(422, f"re-opening {path}: {exc}") from None
+    fourd_store.replace(fourd_id, reshaped)
+    return FourDMeta.from_dataset(fourd_id, fourd_store.name(fourd_id), reshaped)
 
 
 @router.get("/fourd/{fourd_id}/nav")
