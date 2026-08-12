@@ -8,7 +8,8 @@ implementation so a feature cannot land in one and rot in the other.
 **Status:** Active
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-07-29
-**Updated:** 2026-08-11
+**Updated:** 2026-08-11 — items 2 and 4 shipped (window model + draggable
+window edges); both owner gates resolved; 15 items open
 
 ---
 
@@ -51,8 +52,8 @@ quantification the user may not want.
 
 ### Dependency map
 
-- Items 1–3 are the foundation; nothing else in W1–W3 lands cleanly before them
-- Items 4, 5, 6 are independent of each other once 2 exists (parallelizable)
+- Item 3 is the remaining foundation piece (1 and 2 shipped); W3 lands on it
+- Items 5 and 6 are independent of each other now that 2 exists (4 shipped)
 - Item 8 unblocks 9; item 14 unblocks 15
 - Item 7 (shared composite) is a generalisation of the existing EDS composite —
   do it with 15, not before, so it is written against two real callers
@@ -101,9 +102,9 @@ quantification the user may not want.
 
 | # | Item | Workstream | Why first |
 |---|------|------------|-----------|
-| 1 | Species model | W1 — Core | Every other item reads or writes it |
+| ~~1~~ | ~~Species model~~ | W1 — Core | Shipped 2026-08-10 |
 | ~~8~~ | ~~`/eds/element-maps` endpoint~~ | W2 — EDS | Shipped 2026-08-10 — item 9 is now unblocked |
-| 4 | Draggable window edges | W1 — Core | The single biggest usability win per line of code |
+| ~~4~~ | ~~Draggable window edges~~ | W1 — Core | Shipped 2026-08-11, with item 2 under it |
 | 3 | SpectrumWorkspace shell | W1 — Core | Where EELS stops being second-class |
 
 ---
@@ -112,22 +113,9 @@ quantification the user may not want.
 
 ### Tier 1 — High Impact
 
-2. **Window model abstraction** — one interface over two different window
-   shapes
-   - [ ] EDS: one signal window; flanking background inferred (`_side_windows`)
-   - [ ] EELS: explicit background window + signal window
-   - [ ] Both expose the same `integrate()` and the same drag targets, so the
-         editing UI does not branch on modality
-
 3. **Species list wiring into the shared shell** — the shell exists (item 21);
    what remains is making the species list itself modality-driven
    - [ ] One list component fed by either K/L/M lines or edge onsets
-
-4. **Draggable window edges** — grab an edge to resize, the middle to slide
-   - [ ] Hit-testing with a grab tolerance in pixels, not energy units
-   - [ ] Cursor feedback (`ew-resize` on edges, `grab` in the middle)
-   - [ ] Arrow-key nudge / shift+arrow coarse nudge for keyboard parity
-   - [ ] Must not fight the existing drag-zoom or shift-drag gestures
 
 7. **Shared composite** — N species → one RGBA raster, for either modality
    - [ ] Generalise `EdsComposite` once item 15 gives it a second caller
@@ -221,6 +209,35 @@ missing rather than faking it. These four items are what fills it.
 ---
 
 ## Completed
+
+- ~~**#4 Draggable window edges**~~ (2026-08-11) — grab an edge to resize, the
+  body to slide, arrows to nudge (shift ×10, commit on key-up). The gesture is
+  claimed by a CAPTURE-phase mousedown on the plot HOST: uPlot binds its
+  zoom-select directly on `.u-over` and same-element listener order cannot be
+  beaten, but an ancestor's capture phase runs first — that one line of DOM
+  mechanics is the whole "must not fight drag-zoom" requirement. Shift-drag,
+  right-click, wheel and plain zoom-drags away from the window fall through
+  untouched. Live frames drive only the client-side readout (new
+  `onDragWindowLive` prop); the element-map refetch stays on the commit
+  callback, once per gesture, and arrow-key nudge commits on key-up so a held
+  key streams frames but requests one map. `ew-resize`/`grab` cursors carry
+  the discoverability. 9 gesture tests + 2 plot-integration tests.
+
+- ~~**#2 Window model abstraction**~~ (2026-08-11) —
+  `lib/spectrum/windowModel.ts`: `integrateWindows()` returns one readout
+  (net ± σ) over both window shapes, dispatching to `lib/eds/integrate.ts`
+  and a NEW `lib/eels/integrate.ts` — a deliberate client-side port of
+  `calc/eels.py::background` (power-law / exponential pre-edge fit) whose σ
+  includes the fit's extrapolation variance via the delta method.
+  `dragTargets` / `applyDrag` / `nudge` / `hitTest` are the modality-blind
+  editing surface item 4 consumes: edges before bodies, pixel-space grab
+  tolerance, nearest-edge tie-break so a 3-px-wide window can still be
+  resized from either side. Same honesty rules as the EDS port: net is
+  UNCLAMPED (an over-subtracted window is information), and a degenerate fit
+  window degrades to a noted direct sum instead of raising, because mid-drag
+  windows pass through every bad state on the way to a good one. Verified
+  against constructed truths — an exact power law must integrate to ~zero
+  net and recover its own (A, r). 29 tests across the two modules.
 
 - ~~**#9 Species list wired to EDS**~~ (2026-08-10) — the species store now has
   its consumer, and every loose end item 1 left is closed.

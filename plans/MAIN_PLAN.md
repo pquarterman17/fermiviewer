@@ -28,7 +28,7 @@ measurement, project hierarchy).
 
 | Sub-plan | Scope | Status | Why its own file |
 |---|---|---|---|
-| SPECTRAL_WORKSPACE_PLAN.md | EDS+EELS shared spectrum core, species lists, batch maps, composites, synthetic-SI verification | Active (17 open items / 21 sub-task boxes, W1–W4) | Independent lifecycle, four workstreams of its own |
+| SPECTRAL_WORKSPACE_PLAN.md | EDS+EELS shared spectrum core, species lists, batch maps, composites, synthetic-SI verification | Active (15 open items / 14 sub-task boxes, W1–W4) | Independent lifecycle, four workstreams of its own |
 | ~~PROJECT_WORKFLOW_PLAN.md~~ | Folder import, constant-physical-scale browsing, area measurement, project/sample hierarchy + comparison deliverables, and the `.fvp` project file format | **Complete 2026-08-10** → `plans/archive/` | 27 items shipped, 6 gates resolved. Kept for the decision record: ADR 0002's rationale, the `py/path-injection` triage, and the ratchet outcomes (`store/viewer.ts` graduated 575→444) |
 
 ### Cross-plan dependencies

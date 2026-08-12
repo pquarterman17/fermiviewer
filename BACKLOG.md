@@ -36,11 +36,8 @@ see the Dashboard note below for the counting convention.*
 ### W1 — Shared spectrum core
 
 **Tier 1 — High Impact**
-2. **Window model abstraction** — one interface over EDS's single-window and
-   EELS's background+signal window shapes
 3. **Species list wiring into the shared shell** — one list component fed by
    either K/L/M lines or edge onsets
-4. **Draggable window edges** — grab-to-resize, slide, keyboard nudge
 7. **Shared composite** — generalise `EdsComposite` to a second caller
 
 **Tier 2 — Medium Impact**
@@ -81,7 +78,7 @@ see the Dashboard note below for the counting convention.*
 20. **Window overlap detection** (deselected 2026-07-29; revisit only if a
     real case produces a silently wrong answer)
 
-**Open items: 17**
+**Open items: 15**
 
 ---
 
@@ -90,15 +87,15 @@ see the Dashboard note below for the counting convention.*
 | Plan | Status | Open items |
 |---|---|---|
 | MAIN_PLAN.md | Active (root) | 0 |
-| SPECTRAL_WORKSPACE_PLAN.md | Active | 17 |
+| SPECTRAL_WORKSPACE_PLAN.md | Active | 15 |
 
-**Total open items:** 17
+**Total open items:** 15
 
 **Counting method:** top-level numbered items (the plan-format.md unit of a
 tracked work item) — not nested `- [ ]` sub-task checkboxes. The spectral
-plan's 17 open items carry 21 nested unchecked checkboxes across them
+plan's 15 open items carry 14 nested unchecked checkboxes across them
 (MAIN_PLAN's plan-tree table states both figures). A checkbox-based count
-would report 21 there instead of 17 — pick one convention when reading this
+would report 14 there instead of 15 — pick one convention when reading this
 table and don't mix the two.
 
 **Last regenerated:** 2026-08-11
