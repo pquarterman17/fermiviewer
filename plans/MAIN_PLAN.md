@@ -6,11 +6,16 @@ plan in `plans/` declares this file as its parent.
 
 **Status:** Active
 **Created:** 2026-08-09
-**Updated:** 2026-08-11 — legacy-plan consolidation: PORT_PLAN,
-PLAN_DIFFRACTION, PLAN_SPECTRAL_QUANT, CROSS_SECTION_LAYERS and
-FEATURE_AUDIT_2026-06-21 folded up/archived (each verified against the code
-first — several claimed-open items were already shipped); PLAN_4DSTEM
-adopted as a live sub-plan; 9 items opened (6–14)
+**Updated:** 2026-08-12 — ANALYSIS_PRESENTATION_PLAN adopted as a live
+sub-plan: the never-merged OriginPro/JMP gap-audit branch
+(`claude/feature-gaps-originpro-jump-9h32ai`) was merged
+(`docs/originpro-jmp-gap-audit.md`), its R1–R12 BUILD list re-verified
+against main, and booked as 12 items. Previous update 2026-08-11 —
+legacy-plan consolidation: PORT_PLAN, PLAN_DIFFRACTION,
+PLAN_SPECTRAL_QUANT, CROSS_SECTION_LAYERS and FEATURE_AUDIT_2026-06-21
+folded up/archived (each verified against the code first — several
+claimed-open items were already shipped); PLAN_4DSTEM adopted as a live
+sub-plan; 9 items opened (6–14)
 
 ---
 
@@ -36,6 +41,7 @@ plans (items 6–14).
 |---|---|---|---|
 | SPECTRAL_WORKSPACE_PLAN.md | EDS+EELS shared spectrum core, species lists, batch maps, composites, synthetic-SI verification | Active (4 open items / 0 sub-task boxes; W1 + W4 Tier 2 complete 2026-08-12, W3 complete 2026-08-11) | Independent lifecycle, four workstreams of its own |
 | PLAN_4DSTEM.md | Lazy 4D-STEM dataset model (`FourDDataset`), MIB/HyperSpy-4D ingest, virtual-detector imaging (Phase 1 shipped 2026-08-02); COM/DPC/iDPC (owner-deferred), usability follow-ups, and parked strain/ptychography/ACOM | Active (8 open items / 14 sub-task boxes, Tier 2–3) | Independent lifecycle and its own architectural decision (Option B: 4D data is a source, not a `DataStruct`) with memory-streaming constraints the other two plans don't share |
+| ANALYSIS_PRESENTATION_PLAN.md | Presenting/quantifying the app's own results: peak shapes (Voigt), fit residuals + R², σ bands on charts, vector chart export, Savitzky–Golay, population histograms, fit reports, batch/scripting reach | Active (12 open items, booked 2026-08-12 from `docs/originpro-jmp-gap-audit.md`) | Coherent campaign with its own scope rule (image-derived results only; general graphing/statistics DECLINED per the audit) and its own sequencing |
 | ~~PROJECT_WORKFLOW_PLAN.md~~ | Folder import, constant-physical-scale browsing, area measurement, project/sample hierarchy + comparison deliverables, and the `.fvp` project file format | **Complete 2026-08-10** → `plans/archive/` | 27 items shipped, 6 gates resolved. Kept for the decision record: ADR 0002's rationale, the `py/path-injection` triage, and the ratchet outcomes (`store/viewer.ts` graduated 575→444) |
 
 ### Cross-plan dependencies
