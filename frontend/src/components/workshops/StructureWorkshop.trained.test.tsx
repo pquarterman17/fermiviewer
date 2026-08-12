@@ -74,6 +74,8 @@ function grainResult(labelsId: string): GrainResult {
     areas_px: [100, 90],
     perimeters_px: [40, 38],
     eccentricity: [0.3, 0.4],
+    equiv_diameter_px: [11.3, 10.7],
+    diameter_calibrated: [null, null],
     unit: "px",
   };
 }

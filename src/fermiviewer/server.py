@@ -158,6 +158,7 @@ def create_app() -> FastAPI:
     from fermiviewer.routes.defect_ops import router as defect_ops_router
     from fermiviewer.routes.dev import router as dev_router
     from fermiviewer.routes.diffraction_setup import router as diffraction_setup_router
+    from fermiviewer.routes.distributions import router as distributions_router
     from fermiviewer.routes.eds_advanced import router as eds_advanced_router
     from fermiviewer.routes.eds_maps import router as eds_maps_router
     from fermiviewer.routes.eds_quant import router as eds_quant_router
@@ -215,7 +216,7 @@ def create_app() -> FastAPI:
         eels_identify_router, eels_maps_router,
         layers_router, watch_router,
         fourd_router, folders_router, regions_router, montage_compare_router,
-        project_io_router,
+        project_io_router, distributions_router,
     ):
         app.include_router(_router)
 

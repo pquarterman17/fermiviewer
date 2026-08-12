@@ -49,6 +49,15 @@ export interface GroupStats {
   std: number;
   min: number;
   max: number;
+  /** Linear-interpolation median/quartiles (#6/audit R6) — same method as
+   *  calc/distributions.py's PopulationSummary (numpy's default percentile
+   *  method), so a group's spread reads consistently whether it came from
+   *  a handful of manual measurements here or a particle/grain population
+   *  from PopulationHistogram. NaN for an empty group (never reached: the
+   *  caller only pushes a group when count >= 1). */
+  median: number;
+  q1: number;
+  q3: number;
   /** Individual values (sorted ascending) — used for the MATLAB rank plot. */
   values: number[];
 }
@@ -82,6 +91,19 @@ export function meanSd(values: number[]): { mean: number; std: number; n: number
   return { mean, std, n };
 }
 
+/** Linear-interpolation percentile over an ALREADY-SORTED ascending array
+ *  (numpy's default `np.percentile` method — "Type 7" in Hyndman & Fan
+ *  1996 — the same convention calc/distributions.py's summarize() uses). */
+function percentile(sorted: number[], p: number): number {
+  const n = sorted.length;
+  if (n === 0) return NaN;
+  const rank = (p / 100) * (n - 1);
+  const lo = Math.floor(rank);
+  const hi = Math.ceil(rank);
+  if (lo === hi) return sorted[lo];
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (rank - lo);
+}
+
 function groupOf(values: number[], label: string, unit: string): GroupStats {
   const sorted = [...values].sort((a, b) => a - b);
   const { mean, std } = meanSd(sorted);
@@ -93,6 +115,9 @@ function groupOf(values: number[], label: string, unit: string): GroupStats {
     std,
     min: sorted[0],
     max: sorted[sorted.length - 1],
+    median: percentile(sorted, 50),
+    q1: percentile(sorted, 25),
+    q3: percentile(sorted, 75),
     values: sorted,
   };
 }

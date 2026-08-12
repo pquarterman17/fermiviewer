@@ -22,6 +22,7 @@ import {
 } from "../../../lib/grainsCsv";
 import { buildClassicGrainParams, grainSourceId } from "../../../lib/grainWorkflow";
 import { assessGrainQuality } from "../../../lib/analysisQuality";
+import { pickSizeValues } from "../../../lib/populationHistogram";
 import { useAnalysisRoi } from "../../../hooks/useAnalysisRoi";
 import { useScribble } from "../../../store/scribble";
 import {
@@ -29,6 +30,7 @@ import {
 } from "../../../store/crossSection";
 import { useViewer } from "../../../store/viewer";
 import { useResults } from "../../overlays/ResultsWindow";
+import PopulationHistogram from "../../analysis/PopulationHistogram";
 import AnalysisRegionSelect from "../AnalysisRegionSelect";
 import { AnalysisQualityCard, GrainMetrics } from "../AnalysisQualityCard";
 import Preview from "../StructurePreview";
@@ -400,6 +402,17 @@ export function GrainsMode({ id }: { id: string }) {
         </div>
       )}
       {grainResult && <GrainMetrics r={grainResult} />}
+      {grainResult && grainResult.equiv_diameter_px.length > 0 && (
+        <PopulationHistogram
+          {...pickSizeValues(
+            grainResult.equiv_diameter_px,
+            grainResult.diameter_calibrated,
+            grainResult.unit,
+          )}
+          title="Grain size distribution"
+          filename="grain_size_distribution.png"
+        />
+      )}
       {grainQuality && (
         <AnalysisQualityCard
           value={grainQuality}

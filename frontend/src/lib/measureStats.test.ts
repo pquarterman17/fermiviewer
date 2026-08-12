@@ -148,6 +148,14 @@ describe("computeMeasureStats — mixed types", () => {
     expect(g.values).toEqual([10, 20]);  // sorted ascending
   });
 
+  it("Distance group: median/quartiles (#6/audit R6, linear-interpolation)", () => {
+    const g = stats.groups.find((x) => x.label === "Distance")!;
+    // np.percentile([10, 20], [25, 50, 75]) == [12.5, 15, 17.5]
+    expect(g.median).toBeCloseTo(15, 5);
+    expect(g.q1).toBeCloseTo(12.5, 5);
+    expect(g.q3).toBeCloseTo(17.5, 5);
+  });
+
   it("Angle group: 90°", () => {
     const g = stats.groups.find((x) => x.label === "Angle")!;
     expect(g.count).toBe(1);
@@ -189,6 +197,24 @@ describe("computeMeasureStats — tilt-corrected distances", () => {
   it("applies tilt correction: 10 px × 1/sin(30°) = 20 px", () => {
     const g = stats.groups[0];
     expect(g.mean).toBeCloseTo(20, 4);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Case 4b: median/quartiles against a numpy-verifiable reference (#6/audit R6)
+// ---------------------------------------------------------------------------
+
+describe("computeMeasureStats — median/quartiles on a 10-value population", () => {
+  // np.percentile([1..10], [25, 50, 75]) == [3.25, 5.5, 7.75] (linear method)
+  const measures = Array.from({ length: 10 }, (_, i) => distMeasure(`d${i}`, i + 1));
+  const stats = computeMeasureStats(base({ measures }));
+
+  it("matches numpy's linear-interpolation percentile", () => {
+    const g = stats.groups[0];
+    expect(g.count).toBe(10);
+    expect(g.q1).toBeCloseTo(3.25, 6);
+    expect(g.median).toBeCloseTo(5.5, 6);
+    expect(g.q3).toBeCloseTo(7.75, 6);
   });
 });
 

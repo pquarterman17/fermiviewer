@@ -21,6 +21,7 @@ function grains(overrides: Partial<GrainResult> = {}): GrainResult {
     boundary_network_calibrated: null, n_boundary_segments: 1,
     n_triple_junctions: 5, astm_grain_size: null,
     areas_px: Array(20).fill(1000), perimeters_px: [], eccentricity: [], unit: "px",
+    equiv_diameter_px: Array(20).fill(20), diameter_calibrated: Array(20).fill(null),
     ...overrides,
   };
 }

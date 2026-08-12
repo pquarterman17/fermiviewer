@@ -200,6 +200,9 @@ def _grains_payload(
         "areas_px": stats.area_px.tolist(),
         "perimeters_px": stats.perimeter_crofton_px.tolist(),
         "eccentricity": stats.eccentricity.tolist(),
+        # per-grain diameter feeds a size-distribution histogram (#6/R6)
+        "equiv_diameter_px": stats.equiv_diameter_px.tolist(),
+        "diameter_calibrated": [_nan_none(d) for d in stats.diameter_calibrated],
         "unit": unit,
     }
 
