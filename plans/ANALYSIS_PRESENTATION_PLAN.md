@@ -11,10 +11,12 @@ DECLINED general-graphing/statistics list lives in that doc and is out).
 **Status:** Active
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-08-12
-**Updated:** 2026-08-12 — items 1 (peak shapes), 2 (residuals + R²) and 5
-(Savitzky–Golay) shipped the same day the plan was booked, via three
-file-disjoint sonnet worktree agents; merged-tree gate 1994 backend /
-1319 vitest, all green
+**Updated:** 2026-08-12 — wave 2 same day: items 6 (population
+histograms) and 7 (fit-report CSV) shipped, item 3 landed its first
+chart (composition-profile ±1σ band) plus the reusable band helper.
+Wave-2 merged-tree gate 2026 backend / 1374 vitest, all green. Earlier
+the same day: items 1, 2, 5 (wave 1, gate 1994/1319). Both waves via
+file-disjoint sonnet worktree agents
 
 ---
 
@@ -74,8 +76,16 @@ every new verb ─> ops registration ─> #8 batch/scripting reach for free
 
 3. **Error bars / ±σ bands on existing analysis charts** (was audit R1)
    — uncertainty is computed everywhere and rendered only as
-   `value ± err` text (`lib/formatUncertainty.ts`); no uPlot band/fill
-   anywhere. Start with charts whose payload already carries σ.
+   `value ± err` text (`lib/formatUncertainty.ts`).
+   **First chart SHIPPED 2026-08-12:** the composition profile draws a
+   real ±1σ band per element (see Completed for the machinery — the
+   reusable `lib/charts/sigmaBand.ts` helper and the backend σ
+   propagation pattern). Remaining: the other σ-carrying charts —
+   - [ ] EELS/EDS fit views: model-confidence band from the covariance
+         (needs a serialisation decision consistent with item 2's)
+   - [ ] radial/line-profile charts where a σ series exists or is cheap
+   - [ ] spectrum integration readouts stay text (scalars, not series) —
+         explicitly out
 
 4. **Vector (SVG) chart export + DPI control for analysis plots** (was
    audit R2) — charts export via `canvas.toBlob("image/png")` at screen
@@ -83,18 +93,11 @@ every new verb ─> ops registration ─> #8 batch/scripting reach for free
 
 ## Tier 2 — Medium Impact
 
-6. **Population histograms + distribution fitting for measured objects**
-   (was audit R6) — particle/grain/measure populations export as raw
-   rows; no median/quartiles, no normal/log-normal/Weibull fit
-   (`scipy.stats.*.fit`). The one JMP-shaped feature squarely in-mission.
-
-7. **Fit-report export: params ± σ + fit stats to CSV** (was audit R8) —
-   CSV exists for quant tables only; completes the provenance story for
-   fits the app already runs.
-
 8. **Batch + scripting reach for existing analyses** (was audit R7) —
    op catalogue ≈18 ops, no spectral fitting; `fermiviewer.api` reaches a
-   fraction of server capabilities. Sweep after 1/5/6 land their verbs.
+   fraction of server capabilities. Now unblocked: items 1/5/6 landed
+   their verbs (peak shapes ride the fit routes, savgol landed as ops,
+   distributions has `/analyze/distribution`) — the sweep can cover them.
 
 ## Tier 3 — Nice-to-Have
 
@@ -116,6 +119,64 @@ schedule)*
     ignores the app theme; cosmetic.
 
 ## Completed
+
+- ~~**#6 Population histograms + distribution fitting**~~ (2026-08-12) —
+  new pure `calc/distributions.py` (summary stats; normal/lognormal/
+  weibull via `scipy.stats` with `floc=0` for the latter two so all fits
+  have k=2; `best` by lowest AIC; KS statistic + p per fit;
+  Freedman–Diaconis bins with degenerate-IQR fallback; N≥8 to fit,
+  non-finite values dropped and counted) + thin `POST
+  /api/analyze/distribution` (`routes/distributions.py`). Shared
+  `PopulationHistogram.tsx` (bars + pdf overlay scaled `pdf·N·binWidth`,
+  mutation-pinned; selector defaults to Best; <8 objects auto-falls back
+  to histogram-only) wired into BOTH particle and grain results on
+  equivalent diameter — calibrated units only when EVERY object has one,
+  else px, never a fake unit or a mix. **Grains needed a payload fix the
+  audit-style verification exposed:** per-grain `equiv_diameter_px` was
+  computed but never serialised (only the scalar mean was), so the
+  distribution genuinely could not be drawn before. Quartiles are
+  Hyndman–Fan Type 7 in all three implementations (calc, chart lib,
+  `measureStats.ts` — which finally gained median/quartiles).
+  +36 backend / +25 frontend tests, AIC-selection and pdf-scaling
+  mutation-verified both sides. NOTE: `routes/structure.py` sits at
+  exactly 500/500 after the payload addition — the next touch there MUST
+  extract, not shave.
+
+- ~~**#7 Fit-report export: params ± σ + fit stats to CSV**~~
+  (2026-08-12) — pure `lib/spectrum/fitReport.ts`
+  (`eelsFitReportToCsv`/`edsFitReportToCsv`) sharing the quant exports'
+  exact precision-7 formatter and `downloadCsv` seam, so a number
+  appearing in both exports cannot render two ways. Header: image, fit
+  window, R², χ²ᵣ, convergence; one row per edge/element with fitted
+  param ± 1σ, net area, at%/wt% when present. Buttons in `EelsResults`
+  and `EdsModelFit` (the latter's plot extracted to `EdsModelFitPlot.tsx`
+  — 504 → 380, the ratchet forcing a module again). Backend additive:
+  `/eels/fit` now serialises `onset_ev` and `fit_range` (computed
+  internally, never exposed — the report needed both; χ²ᵣ/R² were
+  already there from item 2). +3 backend / +9 frontend tests,
+  value/error column swap mutation-verified.
+
+- **#3 (first slice): composition-profile ±1σ band** (2026-08-12; item
+  stays OPEN for the remaining charts) — `composition_profile_sigma()`
+  in `calc/eds_maps.py` reuses `calc/uncertainty.py`'s
+  `cliff_lorimer_uncertainty` (the SAME delta-method core `/eds/quantify`
+  uses — no second error model), sampling net + gross (`bg="none"`)
+  count maps through identical line geometry with `var(I_net) ≈ I_gross`
+  (the module's documented Egerton approximation). Route serialises
+  `atomic_percent_error` additively and best-effort (σ failure never
+  fails the profile; only cube-resolution HTTPException is caught).
+  Reusable `lib/charts/sigmaBand.ts` (uPlot bands + hidden hi/lo series,
+  NaN-σ → no band at that point) so item 3's remaining charts inherit
+  the machinery. **Two real bugs found:** the frontend was passing a
+  derived at% MAP id as the route's `image_id` (the SI cube was never
+  reachable from that call — fixed, `analyzeCompositionProfile` now
+  takes an explicit `cubeId`), and the synthetic generator's uint16
+  rescale ceiling collapses any cube with peak λ > 62000 to the same
+  effective counts (plus `build()`'s fixed output filename silently
+  overwrites across builds). Honesty checks: truth within ±3σ at the
+  pure ends (no widening needed); σ scales as counting statistics
+  (measured 2.002 vs theoretical 2.0 on a ×4-counts cube). +3 backend /
+  +21 frontend tests, band pairing and σ positivity mutation-verified.
 
 - ~~**#1 Voigt / Lorentzian / pseudo-Voigt in the spectral engine**~~
   (2026-08-12) — new pure `calc/peak_shapes.py` (194 lines): `lorentzian`,

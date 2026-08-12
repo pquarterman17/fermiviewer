@@ -95,17 +95,19 @@ live-audit usability follow-up list.*
 *Parent: MAIN_PLAN.md. Status: Active — booked 2026-08-12 from the merged
 OriginPro/JMP gap audit (`docs/originpro-jmp-gap-audit.md`), each item
 re-verified against main before booking. Scope rule: image-derived results
-only; the audit's DECLINED general-graphing list is out. Items 1, 2 and 5
-(peak shapes, residuals + R², Savitzky–Golay) shipped 2026-08-12.*
+only; the audit's DECLINED general-graphing list is out. Shipped
+2026-08-12 in two waves: items 1, 2, 5 (wave 1) and 6, 7 + item 3's first
+chart (wave 2).*
 
 **Tier 1 — High Impact**
-3. **Error bars / ±σ bands on existing analysis charts** (was R1)
+3. **Error bars / ±σ bands on existing analysis charts** (was R1) —
+   composition-profile band + reusable `sigmaBand.ts` shipped 2026-08-12;
+   remaining: fit-view confidence bands, radial/line-profile charts
 4. **Vector (SVG) chart export + DPI control for analysis plots** (was R2)
 
 **Tier 2 — Medium Impact**
-6. **Population histograms + distribution fitting** (was R6)
-7. **Fit-report export to CSV** (was R8)
-8. **Batch + scripting reach for existing analyses** (was R7)
+8. **Batch + scripting reach for existing analyses** (was R7) — now
+   unblocked (items 1/5/6 landed their verbs)
 
 **Tier 3 — Nice-to-Have**
 9. **Two-sample population comparison** (was R9) — only if 6 gets real use
@@ -113,7 +115,7 @@ only; the audit's DECLINED general-graphing list is out. Items 1, 2 and 5
 11. **Baseline options: SNIP / anchor spline** (was R11)
 12. **Chart dark-mode theming** (was R12)
 
-**Open items: 9**
+**Open items: 7**
 
 ---
 
@@ -124,16 +126,17 @@ only; the audit's DECLINED general-graphing list is out. Items 1, 2 and 5
 | MAIN_PLAN.md | Active (root) | 9 |
 | SPECTRAL_WORKSPACE_PLAN.md | Active | 1 |
 | PLAN_4DSTEM.md | Active | 8 |
-| ANALYSIS_PRESENTATION_PLAN.md | Active | 9 |
+| ANALYSIS_PRESENTATION_PLAN.md | Active | 7 |
 
-**Total open items:** 27
+**Total open items:** 25
 
 **Counting method:** top-level numbered items (the plan-format.md unit of a
 tracked work item) — not nested `- [ ]` sub-task checkboxes. Nested-checkbox
 counts by plan, for reference: MAIN_PLAN 5, SPECTRAL_WORKSPACE_PLAN 0,
-PLAN_4DSTEM 12, ANALYSIS_PRESENTATION_PLAN 0 (17 total). A checkbox-based
+PLAN_4DSTEM 12, ANALYSIS_PRESENTATION_PLAN 3 (20 total). A checkbox-based
 count would disagree with the open-items count above — pick one convention
 when reading this table and don't mix the two.
 
 **Last regenerated:** 2026-08-12 (ANALYSIS_PRESENTATION_PLAN booked +12,
-then its items 1, 2 and 5 shipped same day: −3)
+then items 1/2/5 shipped in wave 1 and 6/7 + item 3's first chart in
+wave 2: −5)
