@@ -6,7 +6,12 @@
 
 import { useRef, type RefObject } from "react";
 
-import { imageToScreen, niceScaleLength, type Size } from "../../lib/geometry";
+import {
+  formatScaleLength,
+  imageToScreen,
+  niceScaleLength,
+  type Size,
+} from "../../lib/geometry";
 import { loadPrefs } from "../../lib/prefs";
 import { useViewer, type View } from "../../store/viewer";
 
@@ -103,9 +108,7 @@ export default function ScaleBarOverlay({
         return `${Number(converted.toPrecision(3))} ${unitOverride}`;
       }
     }
-    return phys >= 1
-      ? `${Number(phys.toPrecision(3))} ${unit}`
-      : fmtSub(phys, unit);
+    return formatScaleLength(phys, unit);
   })();
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -146,29 +149,4 @@ export default function ScaleBarOverlay({
       <div className="label">{label}</div>
     </div>
   );
-}
-
-function fmtSub(phys: number, unit: string): string {
-  // step down through the first sub-unit that lands ≥ 1; Å preferred
-  // over pm for sub-nm lengths (EM convention)
-  const chains: Record<string, [string, number][]> = {
-    µm: [
-      ["nm", 1e3],
-      ["Å", 1e4],
-    ],
-    um: [
-      ["nm", 1e3],
-      ["Å", 1e4],
-    ],
-    nm: [
-      ["Å", 10],
-      ["pm", 1e3],
-    ],
-  };
-  for (const [u, f] of chains[unit] ?? []) {
-    if (phys * f >= 1) {
-      return `${Number((phys * f).toPrecision(3))} ${u}`;
-    }
-  }
-  return `${Number(phys.toPrecision(3))} ${unit}`;
 }

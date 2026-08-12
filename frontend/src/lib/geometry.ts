@@ -371,6 +371,35 @@ export function unitToNm(u: string): number | null {
   return null;
 }
 
+/** Scale-bar label for a physical length in `unit`: sub-1 lengths step down
+ *  to the first sub-unit that lands ≥ 1 (Å preferred over pm below a
+ *  nanometre — the EM convention). Shared by the draggable Stage bar and the
+ *  bar baked into the elemental figure so the two cannot word a length
+ *  differently; the Python side's `_bar_label_with_unit` is the third copy
+ *  this pairs with and deliberately mirrors. */
+export function formatScaleLength(phys: number, unit: string): string {
+  const chains: Record<string, [string, number][]> = {
+    µm: [
+      ["nm", 1e3],
+      ["Å", 1e4],
+    ],
+    um: [
+      ["nm", 1e3],
+      ["Å", 1e4],
+    ],
+    nm: [
+      ["Å", 10],
+      ["pm", 1e3],
+    ],
+  };
+  if (phys < 1) {
+    for (const [u, f] of chains[unit] ?? []) {
+      if (phys * f >= 1) return `${Number((phys * f).toPrecision(3))} ${u}`;
+    }
+  }
+  return `${Number(phys.toPrecision(3))} ${unit}`;
+}
+
 /** Nice round scale-bar length: largest of 1/2/5×10ⁿ below `maxPhys`. */
 export function niceScaleLength(maxPhys: number): number {
   const exp = Math.floor(Math.log10(maxPhys));

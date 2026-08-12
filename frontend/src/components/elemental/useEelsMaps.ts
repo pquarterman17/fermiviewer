@@ -14,7 +14,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { eelsMaps } from "../../lib/api";
 import type { Species } from "../../lib/spectrum/species";
-import type { MapTile } from "./MapMontage";
+import type { MapTile } from "../../lib/elemental/mapTile";
 
 function keyOf(s: Species, method: string): string {
   const { lo, hi } = s.windows.signal;

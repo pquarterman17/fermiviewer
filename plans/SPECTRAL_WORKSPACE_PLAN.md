@@ -8,10 +8,10 @@ implementation so a feature cannot land in one and rot in the other.
 **Status:** Active
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-07-29
-**Updated:** 2026-08-11 — items 2, 3, 4, 12, 13, 14, 15, 16 and 22 all
-shipped today: the W1 foundation is complete and **W3 (EELS workspace) is
-COMPLETE** — Maps workflow, Explore direct manipulation, batch maps and
-auto-ID. 8 items open (W1 polish, W2 retirement, W4 verification)
+**Updated:** 2026-08-12 — item 7 closed: the composite was already shared,
+but verifying that exposed a forked figure export (fixed, one path now) and
+a figure shipping with no scale bar (fixed). 7 items open (W1 polish, W2
+retirement, W4 verification); W1 Tier 1 and W3 are both complete
 
 ---
 
@@ -54,13 +54,14 @@ quantification the user may not want.
 
 ### Dependency map
 
-- The W1 foundation (items 1–4) and all of W3 are complete
+- The W1 foundation (items 1–4, 7) and all of W3 are complete
 - Items 5 and 6 are independent of each other (both build on item 2's core)
 - Item 8 unblocks 9; item 14 unblocks 15 (both 8 and 14 have now shipped)
-- Item 7 (shared composite) now has its second caller: item 15 shipped by
-  reusing MapOverlay for EELS, so the remaining question is whether a
-  distinct `EdsComposite`/`ChannelComposite` surface still needs unifying —
-  verify against the code before starting
+- Item 10 (composite → library) is the one open item with an unanswered
+  architectural question: `DataStruct` is grayscale-only (`_to_gray` collapses
+  every RGB input on load) and `DataKind.IMAGE` is asserted in ~69 places, so
+  "register the composite as an RGB library image" needs a data-model decision
+  and an ADR before code — not a wiring job
 - W4 item 17 is done and is the verification substrate for everything else
 - Item 11 is last: retiring the old flow needs the new one proven
 
@@ -115,10 +116,7 @@ quantification the user may not want.
 
 ## W1 — Shared spectrum core
 
-### Tier 1 — High Impact
-
-7. **Shared composite** — N species → one RGBA raster, for either modality
-   - [ ] Generalise `EdsComposite` once item 15 gives it a second caller
+*Tier 1 is empty — item 7 shipped 2026-08-12; see Completed.*
 
 ### Tier 2 — Medium Impact
 
@@ -177,6 +175,40 @@ the same shared components as EDS.
 ---
 
 ## Completed
+
+- ~~**#7 Shared composite**~~ (2026-08-12) — the composite itself was already
+  shared: `EdsComposite` no longer exists (item 21 renamed the generic
+  surface to `ChannelComposite` in 2026-07-30), `lib/composite.ts` is the one
+  blend both it and `MapOverlay` call, and item 15 landed the EELS caller by
+  reusing `MapOverlay` whole. `ChannelComposite` stays separate on purpose —
+  its channel is a filename, not an element, and its own header records the
+  bug that conflating the two caused. So this item closed as a **verification
+  plus the residue that verification exposed**, which was real:
+  **the figure export had already forked.** Both Maps tabs carried a ~40-line
+  copy, and the copies had drifted — the EDS figure captioned at% and only
+  at%, the EELS figure captioned nothing, while both on-screen legends showed
+  net counts. The one rule now lives in `lib/elemental/mapLegend.ts` and the
+  one assembly in `lib/elemental/figureExport.ts`; EELS gained the caption
+  detail it never had, and both modalities now honour the legend selector the
+  user actually set.
+  **The exported figure gained its scale bar** — `renderFigure` had supported
+  one since it was written and neither caller passed it, so the deliverable
+  this plan exists to produce was going out unpublishable. It is drawn on the
+  combined panel, or on the first tile when the montage-only view is exported
+  (previously that view silently produced no bar at all — mutation-verified).
+  An uncalibrated cube gets NO bar rather than a default-scaled one: a bar is
+  an assertion about physical length and there is nothing to assert.
+  `formatScaleLength` moved out of `ScaleBarOverlay` into `lib/geometry.ts`
+  beside `niceScaleLength`, so the Stage bar and the figure bar cannot word a
+  length differently.
+  Also: `MapTile`/`tileKey` moved to `lib/elemental/mapTile.ts` (a `lib/`
+  module must not import from `components/`, which the extraction would
+  otherwise have forced), the export reads the overlay through a ref instead
+  of a global `document.querySelector(".fvd-eds-overlay-canvas canvas")`, and
+  the shared components lost their EDS names — `EdsMapOverlay`/`EdsMapMontage`
+  /`EdsElementList` → `MapOverlay`/`MapMontage`/`ElementList`, since the EELS
+  tab was importing all three under an EDS name. 17 new tests; frontend gate
+  1241 vitest / 167 files, tsc + build clean.
 
 - ~~**#3 Modality-driven species list + #12 Edge picker + #15 EELS composite
   + #16 Background auto-place**~~ (2026-08-11, merged `bc3e8b3`; sonnet

@@ -16,6 +16,16 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **The exported elemental figure now carries a scale bar.** Export figure
+  bakes a round scale bar onto the combined overlay panel — or onto the first
+  map when you export the montage-only view, which previously produced a
+  figure with no bar at all. A cube with no spatial calibration gets no bar
+  rather than one asserting a length nobody measured. The bar is worded by
+  the same rule as the on-screen Stage bar, so a 0.2 nm length reads "2 Å" in
+  both places.
+- **EELS figures caption their maps.** The EELS export used to drop the
+  net-counts / at% detail the on-screen legend was showing; both modalities
+  now export exactly the legend you selected.
 - **Drag the energy window on the spectrum.** Grab either edge of the
   highlighted window to resize it, or its middle to slide it — the
   integration readout follows live, and the element map refreshes once on

@@ -27,7 +27,7 @@ const CONFIDENCE_LABEL: Record<Confidence, string> = {
   trace: "trace?",
 };
 
-export default function EdsElementList({
+export default function ElementList({
   rows,
   busy,
   quantBySymbol,
