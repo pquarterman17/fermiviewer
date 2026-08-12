@@ -10,8 +10,9 @@
 
 import { useEffect, type Dispatch, type SetStateAction } from "react";
 
+import { loadImagePixels } from "../../gl/loadPixels";
 import type { GLRenderer } from "../../gl/render";
-import { fetchData16, type Raster16 } from "../../lib/api";
+import { type Raster16 } from "../../lib/api";
 import { autoWindow } from "../../lib/display";
 import { type Size } from "../../lib/geometry";
 import { loadPrefs } from "../../lib/prefs";
@@ -72,14 +73,19 @@ export function useStageImageLoad({
     // frame < 0 → omit the param so the backend returns the energy sum
     const frameArg = isStack && stackFrame >= 0 ? stackFrame : undefined;
     let alive = true;
-    fetchData16(activeId, frameArg)
-      .then((r) => {
-        if (!alive || !glRef.current) return;
-        glRef.current.setImage16(r.data, r.w, r.h);
+    // the getter returns null once this effect is stale, so a late response
+    // can never upload an outdated image over the current one
+    loadImagePixels(() => (alive ? glRef.current : null), activeId, meta?.kind, frameArg)
+      .then((loaded) => {
+        if (!alive || !loaded) return;
+        const { w, h, raster: r } = loaded;
         rasterRef.current = r;
         setRaster(r);
-        setNFrames(r.nFrames);
-        setImgSize({ w: r.w, h: r.h });
+        setNFrames(r?.nFrames ?? null);
+        setImgSize({ w, h });
+        // colour composites have no window to seed — their pixels ARE the
+        // display values (ADR 0003), so the whole seeding block is scalar-only
+        if (!r) return;
         // honor DM-saved display window on first load (checklist I)
         const st = useViewer.getState();
         if (!st.display[activeId] && st.images[activeId]) {

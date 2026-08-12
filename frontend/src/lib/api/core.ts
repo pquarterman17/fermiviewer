@@ -3,7 +3,7 @@
 
 import { json } from "./transport";
 
-export type DataKind = "image" | "spectrum" | "spectrum_image";
+export type DataKind = "image" | "rgb_image" | "spectrum" | "spectrum_image";
 
 export interface ImageMeta {
   id: string;
@@ -179,6 +179,58 @@ export async function fetchData16(id: string, frame?: number): Promise<Raster16>
   const res = await fetch(`/api/image/${id}/data16${q}`);
   if (!res.ok) throw new Error(`data16 failed: ${res.status}`);
   return decodeRaster16(res);
+}
+
+export interface Rgb8 {
+  /** Raw uint8 RGB, row-major, length h*w*3. */
+  data: Uint8Array;
+  w: number;
+  h: number;
+}
+
+/** Raw colour pixels for an rgb_image — the colour sibling of fetchData16
+ *  (ADR 0003 §4). The scalar endpoints 400 for this kind on purpose. */
+export async function fetchRgb8(id: string): Promise<Rgb8> {
+  const res = await fetch(`/api/image/${id}/rgb8`);
+  if (!res.ok) throw new Error(`rgb8 failed: ${res.status}`);
+  const [h, w] = (res.headers.get("X-Shape") ?? "0,0,3").split(",").map(Number);
+  const buf = await res.arrayBuffer();
+  return { data: new Uint8Array(buf), w, h };
+}
+
+/** Register a client-composed colour composite as a library image
+ *  (ADR 0003 §2: composed once client-side, stored verbatim with the
+ *  parent's spatial calibration; the recipe rides along as provenance). */
+export async function registerComposite(req: {
+  parentId: string;
+  name: string;
+  width: number;
+  height: number;
+  /** Raw uint8 RGB, row-major, exactly height*width*3 bytes. */
+  pixels: Uint8Array;
+  recipe?: Record<string, unknown>;
+}): Promise<ImageMeta> {
+  // btoa on a binary string — chunked so a large map doesn't blow the
+  // argument limit of String.fromCharCode
+  let bin = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < req.pixels.length; i += CHUNK) {
+    bin += String.fromCharCode(...req.pixels.subarray(i, i + CHUNK));
+  }
+  return json(
+    await fetch("/api/composite/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        parent_id: req.parentId,
+        name: req.name,
+        width: req.width,
+        height: req.height,
+        pixels_b64: btoa(bin),
+        recipe: req.recipe ?? {},
+      }),
+    }),
+  );
 }
 
 export type ProfileReduce = "mean" | "sum";

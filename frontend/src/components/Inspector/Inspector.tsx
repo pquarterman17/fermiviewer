@@ -84,6 +84,7 @@ function fmtEnergy(meta: ImageMeta): string | null {
 
 const KIND_LABEL: Record<ImageMeta["kind"], string> = {
   image: "Image",
+  rgb_image: "Colour composite",
   spectrum: "Spectrum",
   spectrum_image: "Spectrum image",
 };

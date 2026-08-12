@@ -70,6 +70,9 @@ export default function AdjustPanel() {
     return at > 0;
   });
   const raster = useStageInfo((s) => s.raster);
+  const isRgb = useViewer((s) =>
+    s.activeId ? s.images[s.activeId]?.kind === "rgb_image" : false,
+  );
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hist, setHist] = useState<Histogram | null>(null);
@@ -195,6 +198,20 @@ export default function AdjustPanel() {
 
   const fmtReal = (norm: number) =>
     raster ? Number(toReal(norm, raster).toPrecision(5)).toString() : "—";
+
+  // A colour composite's pixels ARE its display values (ADR 0003) —
+  // window/gamma/colormap have no meaning the app defines for it, and a
+  // visibly absent control is honest where a quietly-ignored one is not.
+  if (isRgb) {
+    return (
+      <Card title="Adjust" defaultOpen={false}>
+        <div className="k" style={{ padding: "4px 0" }}>
+          Colour composite — its saved colours are shown as-is. Adjust the
+          per-species gains where it was composed instead.
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card title="Adjust" defaultOpen={false}>

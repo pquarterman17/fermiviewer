@@ -40,6 +40,25 @@ beforeEach(() => {
   useViewer.getState().ingest([image]);
 });
 
+describe("AdjustPanel for colour composites (ADR 0003)", () => {
+  it("replaces the controls with an explanation — colour has no window", () => {
+    const rgb = {
+      ...image,
+      id: "c",
+      name: "Composite — Fe, Cu",
+      kind: "rgb_image",
+      shape: [10, 10, 3],
+    } as ImageMeta;
+    act(() => {
+      useViewer.getState().ingest([rgb]);
+      useViewer.setState({ activeId: "c" });
+    });
+    render(<AdjustPanel />);
+    expect(screen.getByText(/Colour composite/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Auto/ })).toBeNull();
+  });
+});
+
 describe("AdjustPanel reset corrections (WS5a)", () => {
   it("is disabled at the Opened step and reverts corrections when clicked", () => {
     render(<AdjustPanel />);

@@ -16,6 +16,11 @@ import type { CompositeRaster } from "../../lib/composite";
 import { eelsEvidenceFrom, type EelsEdgeEvidence } from "../../lib/elemental/eelsIdentify";
 import { exportElementalFigure } from "../../lib/elemental/figureExport";
 import type { LegendValue } from "../../lib/elemental/mapLegend";
+import { tileKey } from "../../lib/elemental/mapTile";
+import {
+  compositeName,
+  saveCompositeToLibrary,
+} from "../../lib/elemental/saveComposite";
 import {
   buildRows,
   seedEelsSpeciesFrom,
@@ -46,6 +51,7 @@ export default function EelsMapsTab({
   const activeId = useViewer((s) => s.activeId);
   const images = useViewer((s) => s.images);
   const setStatus = useViewer((s) => s.setStatus);
+  const ingest = useViewer((s) => s.ingest);
   const byImage = useSpecies((s) => s.byImage);
   const setSpecies = useSpecies((s) => s.setSpecies);
   const addSpecies = useSpecies((s) => s.addSpecies);
@@ -202,6 +208,39 @@ export default function EelsMapsTab({
     );
   };
 
+  const saveComposite = () => {
+    const id = activeId;
+    if (!id) return;
+    saveCompositeToLibrary({
+      canvas: overlayCanvas.current,
+      parentId: id,
+      name: compositeName(
+        tiles.map((t) => t.symbol),
+        meta?.name,
+      ),
+      recipe: {
+        modality: "eels",
+        method,
+        channels: tiles.map((t) => ({
+          symbol: t.symbol,
+          edge: t.line,
+          gain: gains[tileKey(t)] ?? 1,
+        })),
+        legend: legendValue,
+        survey: surveyId,
+      },
+    })
+      .then((saved) => {
+        if (!saved) {
+          report(id, "EELS: no composite to save yet");
+          return;
+        }
+        ingest([saved]);
+        report(id, `EELS: "${saved.name}" added to the library`);
+      })
+      .catch((error: Error) => report(id, `EELS composite: ${error.message}`));
+  };
+
   const exportFigure = () => {
     const id = activeId;
     void exportElementalFigure({
@@ -261,8 +300,16 @@ export default function EelsMapsTab({
           {mapsBusy ? "Extracting maps…" : `${tiles.length} maps`}
         </span>
         <button
-          className="fvd-btn primary"
+          className="fvd-btn"
           style={{ marginLeft: "auto" }}
+          disabled={tiles.length === 0 || view === "montage"}
+          title="Register the colour overlay as a library image — it reaches the filmstrip, comparison and export like any other image"
+          onClick={saveComposite}
+        >
+          Save to library
+        </button>
+        <button
+          className="fvd-btn primary"
           disabled={tiles.length === 0}
           title="Export the montage, overlay and legend as one figure"
           onClick={exportFigure}

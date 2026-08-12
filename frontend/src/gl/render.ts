@@ -33,12 +33,18 @@ precision highp float;
 #else
 precision mediump float;
 #endif
-uniform sampler2D u_tex;       // packed 16-bit: R=hi byte, G=lo byte
+uniform sampler2D u_tex;       // packed 16-bit: R=hi byte, G=lo byte — or real colour
 uniform sampler2D u_lut;       // 256×1 colormap
 uniform vec4 u_window;         // lo, hi, gamma, invert — normalized units
+uniform float u_rgb;           // 1.0 = texture is real colour (rgb_image, ADR 0003)
 varying vec2 v_uv;
 void main() {
   vec4 p = texture2D(u_tex, v_uv);
+  if (u_rgb > 0.5) {
+    // composite pixels ARE display values — no window/LUT story for colour
+    gl_FragColor = vec4(p.rgb, 1.0);
+    return;
+  }
   float v = (p.r * 255.0 * 256.0 + p.g * 255.0) / 65535.0;
   float t = clamp((v - u_window.x) / max(u_window.y - u_window.x, 1e-6), 0.0, 1.0);
   t = pow(t, 1.0 / max(u_window.z, 1e-3));
@@ -59,6 +65,8 @@ export class GLRenderer {
   private tex: WebGLTexture | null = null;
   private lut: WebGLTexture | null = null;
   private imgSize: Size = { w: 0, h: 0 };
+  /** Set by setImageRgb8/setImage16 — selects the shader's colour branch. */
+  private isRgb = false;
 
   constructor(private canvas: HTMLCanvasElement) {
     const gl = canvas.getContext("webgl", { premultipliedAlpha: false });
@@ -109,9 +117,22 @@ export class GLRenderer {
     return prog;
   }
 
+  /** Upload raw uint8 RGB pixels (row-major, h*w*3) as a colour texture —
+   *  drawn through the shader's u_rgb branch, bypassing window/LUT. */
+  setImageRgb8(data: Uint8Array, w: number, h: number): void {
+    const rgba = new Uint8Array(w * h * 4);
+    for (let i = 0; i < w * h; i++) {
+      rgba[i * 4] = data[i * 3];
+      rgba[i * 4 + 1] = data[i * 3 + 1];
+      rgba[i * 4 + 2] = data[i * 3 + 2];
+      rgba[i * 4 + 3] = 255;
+    }
+    this.isRgb = true;
+    this.uploadRgba(rgba, w, h);
+  }
+
   /** Upload a normalized uint16 raster (row-major) as a packed texture. */
   setImage16(data: Uint16Array, w: number, h: number): void {
-    const { gl } = this;
     const rgba = new Uint8Array(w * h * 4);
     for (let i = 0; i < w * h; i++) {
       const v = data[i];
@@ -119,6 +140,12 @@ export class GLRenderer {
       rgba[i * 4 + 1] = v & 0xff; // G = lo byte
       rgba[i * 4 + 3] = 255;
     }
+    this.isRgb = false;
+    this.uploadRgba(rgba, w, h);
+  }
+
+  private uploadRgba(rgba: Uint8Array, w: number, h: number): void {
+    const { gl } = this;
     if (this.tex) gl.deleteTexture(this.tex);
     this.tex = gl.createTexture();
     gl.activeTexture(gl.TEXTURE0);
@@ -176,6 +203,7 @@ export class GLRenderer {
       this.tex = null;
     }
     this.imgSize = { w: 0, h: 0 };
+    this.isRgb = false;
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
   }
@@ -191,7 +219,8 @@ export class GLRenderer {
     gl.viewport(0, 0, pw, ph);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    if (!this.tex || !this.lut || this.imgSize.w === 0) return;
+    // colour images need no LUT (the shader's u_rgb branch never samples it)
+    if (!this.tex || (!this.lut && !this.isRgb) || this.imgSize.w === 0) return;
 
     // pixel-exact above 1:1, smooth below (EM: never invent intensities)
     gl.activeTexture(gl.TEXTURE0);
@@ -199,8 +228,10 @@ export class GLRenderer {
     const filter = view.z * dpr >= 1 ? gl.NEAREST : gl.LINEAR;
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, this.lut);
+    if (this.lut) {
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, this.lut);
+    }
 
     gl.uniform2f(this.u("u_imgSize"), this.imgSize.w, this.imgSize.h);
     gl.uniform2f(this.u("u_vpSize"), vp.w, vp.h);
@@ -212,6 +243,7 @@ export class GLRenderer {
       win.gamma,
       win.invert ? 1.0 : 0.0,
     );
+    gl.uniform1f(this.u("u_rgb"), this.isRgb ? 1.0 : 0.0);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   }
 

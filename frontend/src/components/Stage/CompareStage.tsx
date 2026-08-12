@@ -6,8 +6,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { loadImagePixels } from "../../gl/loadPixels";
 import { GLRenderer } from "../../gl/render";
-import { fetchData16 } from "../../lib/api";
 import { buildLut } from "../../lib/colormaps";
 import { resolveScaleView, zoomAbout, type Size } from "../../lib/geometry";
 import { useBrowseScale } from "../../store/browseScale";
@@ -195,10 +195,10 @@ function ComparePanel({
   useEffect(() => {
     let alive = true;
     setLoaded(false);
-    fetchData16(id)
+    const kind = useViewer.getState().images[id]?.kind;
+    loadImagePixels(() => (alive ? glRef.current : null), id, kind)
       .then((r) => {
-        if (!alive || !glRef.current) return;
-        glRef.current.setImage16(r.data, r.w, r.h);
+        if (!alive || !r) return;
         setLoaded(true);
       })
       .catch((e: Error) => setStatus(`compare load failed: ${e.message}`));

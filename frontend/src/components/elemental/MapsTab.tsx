@@ -17,6 +17,11 @@ import {
 } from "../../lib/api";
 import type { CompositeRaster } from "../../lib/composite";
 import { exportElementalFigure } from "../../lib/elemental/figureExport";
+import { tileKey } from "../../lib/elemental/mapTile";
+import {
+  compositeName,
+  saveCompositeToLibrary,
+} from "../../lib/elemental/saveComposite";
 import type { LegendValue } from "../../lib/elemental/mapLegend";
 import {
   identifyElements,
@@ -58,6 +63,7 @@ export default function EdsMapsTab({
   const activeId = useViewer((s) => s.activeId);
   const images = useViewer((s) => s.images);
   const setStatus = useViewer((s) => s.setStatus);
+  const ingest = useViewer((s) => s.ingest);
   const byImage = useSpecies((s) => s.byImage);
   const setSpecies = useSpecies((s) => s.setSpecies);
   const addSpecies = useSpecies((s) => s.addSpecies);
@@ -220,6 +226,38 @@ export default function EdsMapsTab({
       .catch((error: Error) => report(id, `EDS add: ${error.message}`));
   };
 
+  const saveComposite = () => {
+    const id = activeId;
+    if (!id) return;
+    saveCompositeToLibrary({
+      canvas: overlayCanvas.current,
+      parentId: id,
+      name: compositeName(
+        tiles.map((t) => t.symbol),
+        meta?.name,
+      ),
+      recipe: {
+        modality: "eds",
+        channels: tiles.map((t) => ({
+          symbol: t.symbol,
+          line: t.line,
+          gain: gains[tileKey(t)] ?? 1,
+        })),
+        legend: legendValue,
+        survey: surveyId,
+      },
+    })
+      .then((saved) => {
+        if (!saved) {
+          report(id, "EDS: no composite to save yet");
+          return;
+        }
+        ingest([saved]);
+        report(id, `EDS: "${saved.name}" added to the library`);
+      })
+      .catch((error: Error) => report(id, `EDS composite: ${error.message}`));
+  };
+
   const exportFigure = () => {
     const id = activeId;
     void exportElementalFigure({
@@ -274,8 +312,16 @@ export default function EdsMapsTab({
           {mapsBusy ? "Extracting maps…" : `${tiles.length} maps`}
         </span>
         <button
-          className="fvd-btn primary"
+          className="fvd-btn"
           style={{ marginLeft: "auto" }}
+          disabled={tiles.length === 0 || view === "montage"}
+          title="Register the colour overlay as a library image — it reaches the filmstrip, comparison and export like any other image"
+          onClick={saveComposite}
+        >
+          Save to library
+        </button>
+        <button
+          className="fvd-btn primary"
           disabled={tiles.length === 0}
           title="Export the montage, overlay and legend as one figure"
           onClick={exportFigure}
