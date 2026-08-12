@@ -121,8 +121,15 @@ def extract_map(
 
     Vectorized per-pixel pre-edge fit via a single least-squares solve;
     without background_window the signal window is summed directly.
+
+    Only the signal-window and (when given) background-window channels are
+    ever promoted to float64 — sliced from ``cube`` at its native dtype
+    first, then cast. Casting the whole cube up front (the previous
+    approach) allocated and copied a float64 copy of the ENTIRE multi-GB SI
+    to touch a narrow energy window — the same trap already fixed in
+    calc/eds_maps.py's element_map.
     """
-    cube = np.asarray(cube, dtype=np.float64)
+    cube = np.asarray(cube)
     energy = np.asarray(energy, dtype=np.float64).ravel()
     ny, nx, ne = cube.shape
     if energy.size != ne:
@@ -133,12 +140,20 @@ def extract_map(
         raise ValueError("signal window contains no channels")
 
     if background_window is None:
-        direct: np.ndarray = cube[:, :, sig_mask].sum(axis=2)
+        direct: np.ndarray = cube[:, :, sig_mask].sum(axis=2, dtype=np.float64)
         return direct
 
     fit_mask, _ = _fit_window_mask(energy, background_window)
-    spec = cube.reshape(ny * nx, ne).T                     # [nE, Np]
-    i_fit = np.maximum(spec[fit_mask], _EPS)               # [K, Np]
+
+    def windowed_pixels(mask: np.ndarray) -> np.ndarray:
+        # [K, Np] float64 — select the mask's channels at native dtype
+        # FIRST, then promote, so the float64 allocation is K*Np samples
+        # (a handful of channels), never ny*nx*ne (the whole cube).
+        return cube[:, :, mask].reshape(ny * nx, -1).T.astype(np.float64)
+
+    spec_fit = windowed_pixels(fit_mask)                    # [K, Np]
+    spec_sig = windowed_pixels(sig_mask)                    # [Ks, Np]
+    i_fit = np.maximum(spec_fit, _EPS)                      # [K, Np]
     e_sig = np.maximum(energy[sig_mask], _EPS)[:, None]    # [Ks, 1]
 
     if method == "powerlaw":
@@ -157,7 +172,7 @@ def extract_map(
     else:
         raise ValueError("method must be 'powerlaw' or 'exponential'")
 
-    resid = np.maximum(spec[sig_mask] - bg_sig, 0.0)
+    resid = np.maximum(spec_sig - bg_sig, 0.0)
     resid[~np.isfinite(resid)] = 0.0
     out: np.ndarray = resid.sum(axis=0).reshape(ny, nx)
     return out

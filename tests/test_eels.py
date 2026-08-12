@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import tracemalloc
+
 import numpy as np
 import pytest
 
@@ -66,6 +68,68 @@ def test_extract_map_background_subtracted() -> None:
     m = extract_map(cube, e, (532, 600), background_window=(420, 520))
     n_sig_above = int(((e >= 532) & (e <= 600) & (e > 532)).sum())
     np.testing.assert_allclose(m / (500 * n_sig_above), weights, rtol=1e-2)
+
+
+def test_extract_map_dtype_agnostic_float64_promotion() -> None:
+    """Selecting the signal/background channels before promoting to float64
+    must not change the result versus casting the whole cube up front —
+    the memory-safety fix must be bit-identical, direct-sum and
+    background-fit branches both."""
+    e = np.linspace(400, 700, 300)
+    rng = np.random.default_rng(3)
+    cube_u16 = rng.integers(0, 4000, size=(5, 6, 300)).astype(np.uint16)
+    cube_f64 = cube_u16.astype(np.float64)
+
+    for bg_window, method in (
+        (None, "powerlaw"),
+        ((420, 520), "powerlaw"),
+        ((420, 520), "exponential"),
+    ):
+        m_u16 = extract_map(cube_u16, e, (532, 600), bg_window, method)
+        m_f64 = extract_map(cube_f64, e, (532, 600), bg_window, method)
+        np.testing.assert_array_equal(m_u16, m_f64)
+        assert m_u16.dtype == np.float64
+
+
+def test_extract_map_does_not_materialize_the_whole_cube() -> None:
+    """Peak allocation must scale with the selected channels, not the whole
+    cube. Guards the class of defect this repo keeps re-finding: casting a
+    multi-gigabyte spectrum image to float64 to read a narrow energy
+    window. numpy reports its data allocations to tracemalloc, so a
+    regression to a full-cube cast shows up directly as peak memory."""
+    tracemalloc.start()
+    try:
+        probe = np.empty(2_000_000, dtype=np.float64)  # 16 MB
+        _, probe_peak = tracemalloc.get_traced_memory()
+        del probe
+        if probe_peak < 8_000_000:  # pragma: no cover - platform dependent
+            pytest.skip("tracemalloc does not observe numpy data allocations here")
+
+        # A wide axis (1900 eV over 8192 channels) with narrow windows (a
+        # few percent of the axis) — proportioned like the EDS memory-guard
+        # test (tests/test_eds_maps.py), so a full-cube cast dwarfs a
+        # correctly-scoped one instead of being comparable to it.
+        e = np.linspace(100, 2000, 8192)
+        rng = np.random.default_rng(4)
+        cube = rng.integers(0, 4000, size=(32, 32, 8192)).astype(np.uint16)
+        full_cast = cube.size * 8  # bytes a float64 copy of the cube would need
+
+        for call in (
+            lambda: extract_map(cube, e, (532, 572)),
+            lambda: extract_map(cube, e, (532, 572), (462, 512), "powerlaw"),
+            lambda: extract_map(cube, e, (532, 572), (462, 512), "exponential"),
+        ):
+            tracemalloc.reset_peak()
+            baseline, _ = tracemalloc.get_traced_memory()
+            call()
+            _, peak = tracemalloc.get_traced_memory()
+            transient = peak - baseline
+            assert transient < full_cast // 4, (
+                f"call allocated {transient / 1e6:.1f} MB, approaching a full "
+                f"float64 cube copy ({full_cast / 1e6:.1f} MB) - the cast is back"
+            )
+    finally:
+        tracemalloc.stop()
 
 
 def test_align_zlp_recovers_known_shifts() -> None:
