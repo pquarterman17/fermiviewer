@@ -31,8 +31,7 @@ reaches Complete and moves to `plans/archive/` is dropped from this file.
 ## SPECTRAL_WORKSPACE_PLAN.md
 
 *Parent: MAIN_PLAN.md. Status: Active. Counted by top-level numbered item —
-see the Dashboard note below for why that differs from MAIN_PLAN's own
-"~30 open sub-tasks" description of this same plan.*
+see the Dashboard note below for the counting convention.*
 
 ### W1 — Shared spectrum core
 
@@ -97,9 +96,9 @@ see the Dashboard note below for why that differs from MAIN_PLAN's own
 
 **Counting method:** top-level numbered items (the plan-format.md unit of a
 tracked work item) — not nested `- [ ]` sub-task checkboxes. The spectral
-plan's 20 open items carry roughly 30 nested checkboxes across them, which is
-what MAIN_PLAN's own plan-tree table means by "~30 open sub-tasks" for the
-same plan. A checkbox-based count would report ~30 there instead of 20 —
-pick one convention when reading this table and don't mix the two.
+plan's 17 open items carry 21 nested unchecked checkboxes across them
+(MAIN_PLAN's plan-tree table states both figures). A checkbox-based count
+would report 21 there instead of 17 — pick one convention when reading this
+table and don't mix the two.
 
-**Last regenerated:** 2026-08-10
+**Last regenerated:** 2026-08-11

@@ -6,7 +6,7 @@ plan in `plans/` declares this file as its parent.
 
 **Status:** Active
 **Created:** 2026-08-09
-**Updated:** 2026-08-10
+**Updated:** 2026-08-11
 
 ---
 
@@ -28,7 +28,7 @@ measurement, project hierarchy).
 
 | Sub-plan | Scope | Status | Why its own file |
 |---|---|---|---|
-| SPECTRAL_WORKSPACE_PLAN.md | EDS+EELS shared spectrum core, species lists, batch maps, composites, synthetic-SI verification | Active (~30 open sub-tasks, W1–W4) | Independent lifecycle, four workstreams of its own |
+| SPECTRAL_WORKSPACE_PLAN.md | EDS+EELS shared spectrum core, species lists, batch maps, composites, synthetic-SI verification | Active (17 open items / 21 sub-task boxes, W1–W4) | Independent lifecycle, four workstreams of its own |
 | ~~PROJECT_WORKFLOW_PLAN.md~~ | Folder import, constant-physical-scale browsing, area measurement, project/sample hierarchy + comparison deliverables, and the `.fvp` project file format | **Complete 2026-08-10** → `plans/archive/` | 27 items shipped, 6 gates resolved. Kept for the decision record: ADR 0002's rationale, the `py/path-injection` triage, and the ratchet outcomes (`store/viewer.ts` graduated 575→444) |
 
 ### Cross-plan dependencies
@@ -107,6 +107,9 @@ measurement, project hierarchy).
   **Two caps remain and are NOT drift:** `Stage.tsx` 584/617 and
   `MeasureOverlay.tsx` 533/562 both shrank this campaign but stay above the
   500 ceiling, so they keep their pins legitimately.
+  This campaign also closed the last open item of the per-machine
+  REPO_HEALTH_2026-07-07 plan (#33 god-module split — residue accepted as
+  pinned debt), which is now Complete and archived (2026-08-11).
 - ~~**#5 `AxisCal.scale` writes raw NaN into a `.fvp` manifest**~~ (2026-08-10,
   PR #147) — non-finite `scale`/`origin` now write `0.0`. Lossless, not lossy:
   `AxisCal.calibrated` is `isfinite(scale) and scale != 0 and units != ""` and
