@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { IdentifiedElement } from "../../lib/elemental/identify";
 import type { SpeciesRow } from "../../lib/elemental/speciesRows";
-import { edsSpecies } from "../../lib/spectrum/species";
+import { edsSpecies, eelsSpecies } from "../../lib/spectrum/species";
 import EdsElementList from "./ElementList";
 
 function evidenceFor(
@@ -14,10 +14,10 @@ function evidenceFor(
 ): IdentifiedElement {
   return {
     symbol,
-    line: "K",
-    energyKev: 1.74,
-    eLo: 1.655,
-    eHi: 1.825,
+    transition: "K",
+    energy: 1.74,
+    windowLo: 1.655,
+    windowHi: 1.825,
     net,
     sigma: net / 200,
     significance: 200,
@@ -121,5 +121,17 @@ describe("EdsElementList", () => {
   it("explains itself when nothing was identified", () => {
     renderList({ rows: [] });
     expect(screen.getByText(/No elements identified/)).toBeVisible();
+  });
+
+  it("shows the edge and eV energy for an EELS species, without the EDS alpha suffix", () => {
+    // Item 6: the row must carry the EDGE, not just the element — Si K and
+    // Si L23 are distinct rows for the same symbol, distinguished only by
+    // this cell.
+    renderList({
+      rows: [{ species: eelsSpecies("Fe", "L23", 708), evidence: null }],
+    });
+    expect(screen.getByText("L23")).toBeVisible();
+    expect(screen.queryByText("L23α")).toBeNull();
+    expect(screen.getByText("708 eV")).toBeVisible();
   });
 });
