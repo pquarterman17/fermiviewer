@@ -89,6 +89,8 @@ function makeGrains(overrides: Partial<GrainResult> = {}): GrainResult {
     areas_px: [],
     perimeters_px: [],
     eccentricity: [],
+    equiv_diameter_px: [],
+    diameter_calibrated: [],
     unit: "px",
     ...overrides,
   };

@@ -20,6 +20,8 @@ function makeResult(overrides: Partial<GrainResult> = {}): GrainResult {
     areas_px: [100, 200, 150],
     perimeters_px: [40, 55, 48],
     eccentricity: [0.3, 0.7, 0.5],
+    equiv_diameter_px: [11.3, 16.0, 13.8],
+    diameter_calibrated: [null, null, null],
     unit: "px",
     ...overrides,
   };

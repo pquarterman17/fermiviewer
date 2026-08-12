@@ -5,7 +5,9 @@
 import { useEffect, useRef, useState } from "react";
 
 import { analyzeParticles, fetchData16, type Raster16 } from "../../lib/api";
+import { pickSizeValues } from "../../lib/populationHistogram";
 import { useViewer } from "../../store/viewer";
+import PopulationHistogram from "../analysis/PopulationHistogram";
 import { useResults } from "../overlays/ResultsWindow";
 
 const VIEW_W = 300;
@@ -23,11 +25,17 @@ export default function ParticlesMode({ id }: { id: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rasterRef = useRef<Raster16 | null>(null);
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
+  // size-distribution feed (#6/audit R6): equivalent diameter, calibrated
+  // when the image has a pixel size, else px — see pickSizeValues
+  const [sizePop, setSizePop] = useState<{ values: number[]; unit: string } | null>(
+    null,
+  );
 
   // fetch the raw raster once per image
   useEffect(() => {
     rasterRef.current = null;
     setDims(null);
+    setSizePop(null);
     let stale = false;
     fetchData16(id)
       .then((r) => {
@@ -81,6 +89,13 @@ export default function ParticlesMode({ id }: { id: string }) {
         const s = useViewer.getState();
         s.ingestDerived([res.labels]);
         s.setStatus(`particles: ${res.n_particles} found`);
+        setSizePop(
+          pickSizeValues(
+            res.particles.map((p) => p.equiv_diameter),
+            res.particles.map((p) => p.diameter_calibrated),
+            res.unit,
+          ),
+        );
         useResults.getState().show({
           title: `Particles (${res.n_particles}) — ${res.unit}`,
           columns: ["id", "area", "equiv ⌀", "mean I", "cx", "cy"],
@@ -164,6 +179,14 @@ export default function ParticlesMode({ id }: { id: string }) {
         />
         Split touching particles
       </label>
+      {sizePop && sizePop.values.length > 0 && (
+        <PopulationHistogram
+          values={sizePop.values}
+          unit={sizePop.unit}
+          title="Particle size distribution"
+          filename="particle_size_distribution.png"
+        />
+      )}
     </>
   );
 }

@@ -182,6 +182,12 @@ export interface GrainResult {
   areas_px: number[];
   perimeters_px: number[];
   eccentricity: number[];
+  /** per-grain equivalent diameter (px) — feeds the size-distribution
+   *  histogram (#6/audit R6); one value per grain. */
+  equiv_diameter_px: number[];
+  /** per-grain equivalent diameter in `unit`; null per-grain when the
+   *  image has no pixel calibration. */
+  diameter_calibrated: (number | null)[];
   unit: string;
 }
 

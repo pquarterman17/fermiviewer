@@ -256,6 +256,14 @@ def test_grains_endpoint(client, tmp_path) -> None:
     assert body["boundary_network_px"] > 0
     assert "n_triple_junctions" in body
     assert len(body["eccentricity"]) == body["n_grains"]
+    # per-grain equivalent diameter (#6/audit R6 population-histogram feed) —
+    # one value per grain; _open calibrates at 0.5 nm/px, so calibrated ==
+    # px * 0.5 (matching the calibrated-vs-px convention region_stats uses)
+    assert len(body["equiv_diameter_px"]) == body["n_grains"]
+    assert all(d > 0 for d in body["equiv_diameter_px"])
+    assert len(body["diameter_calibrated"]) == body["n_grains"]
+    for px, cal in zip(body["equiv_diameter_px"], body["diameter_calibrated"], strict=True):
+        assert cal == pytest.approx(px * 0.5)
     assert client.get(
         f"/api/image/{body['labels']['id']}/render"
     ).status_code == 200
