@@ -62,20 +62,14 @@ see the Dashboard note below for the counting convention.*
 
 ### W4 — Test data and verification
 
-**Tier 2 — Medium Impact**
-23. **Synthetic edge SHAPES from `calc/eels_model`** — opened 2026-08-12 by
-    item 18; without them `/eels/fit` has nothing to match and cannot be
-    golden-tested against the synthetic truth
-
 **Tier 3 — Nice-to-Have**
 19. **More presets** — diffusion-couple gradient, thickness ramp
 20. **Window overlap detection** (deselected 2026-07-29; revisit only if a
     real case produces a silently wrong answer)
 
-**Open items: 5** *(W1 — shared spectrum core — and W3 — EELS workspace —
-are both complete: items 1–7 on 2026-08-12, items 12–16 + 22 on 2026-08-11.
-Item 18 closed 2026-08-12 and opened item 23 in doing so, so the count is
-unchanged.)*
+**Open items: 4** *(W1 — shared spectrum core, W3 — EELS workspace, and W4's
+Tier 2 are all complete: items 1–7 + 18 + 23 on 2026-08-12, items 12–16 + 22
+on 2026-08-11)*
 
 ---
 
@@ -111,15 +105,15 @@ live-audit usability follow-up list.*
 | Plan | Status | Open items |
 |---|---|---|
 | MAIN_PLAN.md | Active (root) | 9 |
-| SPECTRAL_WORKSPACE_PLAN.md | Active | 5 |
+| SPECTRAL_WORKSPACE_PLAN.md | Active | 4 |
 | PLAN_4DSTEM.md | Active | 8 |
 
-**Total open items:** 22
+**Total open items:** 21
 
 **Counting method:** top-level numbered items (the plan-format.md unit of a
 tracked work item) — not nested `- [ ]` sub-task checkboxes. Nested-checkbox
-counts by plan, for reference: MAIN_PLAN 5, SPECTRAL_WORKSPACE_PLAN 2,
-PLAN_4DSTEM 12 (19 total). A checkbox-based count would disagree with the
+counts by plan, for reference: MAIN_PLAN 5, SPECTRAL_WORKSPACE_PLAN 0,
+PLAN_4DSTEM 12 (17 total). A checkbox-based count would disagree with the
 open-items count above — pick one convention when reading this table and
 don't mix the two.
 

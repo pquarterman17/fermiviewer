@@ -104,11 +104,16 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   `tools/make_synthetic_si.py` planted EDS line areas from an invented
   energy-dependent weighting unrelated to Cliff–Lorimer, so quantifying its
   own cubes returned carbon at 21 at% against a planted 9.4. Line and edge
-  intensities now come from the application's own models. Two further bugs
+  intensities now come from the application's own models — Cliff–Lorimer
+  weights for EDS, the same differential cross-section the EELS model fit
+  refines for EELS — so both EELS quantifiers now recover a four-edge
+  composition to within 0.4 at% and agree with each other. Three further bugs
   fell out: the cube silently wrapped `uint16` for bright heavy elements
-  (tantalum's 6.2 at% came back as 0.7), and the EELS preset's energy axis
-  started too close to its lowest edge for that edge's background fit window
-  to fit on it (silicon's 46 at% came back as 3).
+  (tantalum's 6.2 at% came back as 0.7); the EELS preset's energy axis started
+  too close to its lowest edge for that edge's background fit window to fit on
+  it (silicon's 46 at% came back as 3); and the planted core-loss edges sat
+  twenty orders of magnitude below the background, so the cube was effectively
+  a bare power law.
 - `calc/eels.extract_map` no longer casts the whole SI cube to float64:
   only the signal- and background-window channels are promoted, so
   extracting one edge map from a multi-GB cube allocates a few channels'

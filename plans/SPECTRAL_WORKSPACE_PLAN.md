@@ -8,11 +8,13 @@ implementation so a feature cannot land in one and rot in the other.
 **Status:** Active
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-07-29
-**Updated:** 2026-08-12 — **W1 (shared spectrum core) is COMPLETE** (items 7,
-5 and 6 all shipped today) and item 18's quantification goldens landed, which
-required fixing the synthetic oracle itself — it was planting intensities the
-quantifiers do not invert, and wrapping uint16. 5 items open (W2 retirement,
-W4 verification); item 23 opened by item 18
+**Updated:** 2026-08-12 — **W1 (shared spectrum core) and W4's Tier 2 are
+both COMPLETE**: items 7, 5, 6, 18 and 23 all shipped today. The goldens
+required rebuilding the synthetic oracle — it planted intensities the
+quantifiers do not invert, wrapped uint16, buried its EELS edges under the
+background, and was compared against the wrong truth. Both EELS quantifiers
+now recover the planted composition to 0.4 pp. 4 items open (W2 retirement,
+W4 Tier 3)
 
 ---
 
@@ -64,9 +66,9 @@ quantification the user may not want.
   and an ADR before code — not a wiring job
 - W4 item 17 is done and is the verification substrate for everything else
 - Item 11 is last: retiring the old flow needs the new one proven
-- Item 23 was opened by item 18 and gates any golden test of `/eels/fit`:
-  the synthetic edge shape is hand-rolled, so the model fit has nothing to
-  match
+- Items 18 and 23 shipped together: the synthetic cubes now invert the app's
+  own forward models, so both EELS quantifiers recover the planted composition
+  to 0.4 pp and agree with each other
 
 ### Resolved decisions
 
@@ -153,20 +155,7 @@ the same shared components as EDS.
 
 ## W4 — Test data and verification
 
-### Tier 2 — Medium Impact
-
-23. **Synthetic edge SHAPES from `calc/eels_model`** — opened 2026-08-12 by
-    item 18. The generator takes edge POSITIONS from `EELS_EDGES` and edge
-    AREAS from `eels_quant.cross_section`, but its edge shape is a hand-rolled
-    sawtooth + white-line pair. So `/eels/fit` — the simultaneous multi-edge
-    model that should beat window integration on a stacked-edge cube — has
-    nothing to match and returns 50 pp against a truth the window integrator
-    gets to 26 pp. That is a gap in the generator, not evidence about the fit.
-    - [ ] Plant `eels_model`'s own differential cross-section as the edge shape
-          (the `edge_shape_fn` seam already exists), keeping the white lines as
-          an additive extra
-    - [ ] Extend the item-18 goldens to assert `/eels/fit` beats
-          `/eels/quantify` on `eels-layers` — the claim that module exists for
+*Tier 2 is empty — items 18 and 23 both shipped 2026-08-12; see Completed.*
 
 ### Tier 3 — Nice-to-Have
 
@@ -180,42 +169,54 @@ the same shared components as EDS.
 
 ## Completed
 
-- ~~**#18 Quantification golden tests against truth**~~ (2026-08-12) —
-  `tests/test_quant_golden.py` runs `/eds/quantify` and `/eels/quantify` on
-  cubes of known composition and compares against the `.truth.json` sidecar.
-  **The oracle did not work and had to be made to.** The generator planted EDS
-  line areas from an invented `1 + 0.5·log1p(E)` "heavier elements fluoresce
-  more" weighting, unrelated to anything the quantifier inverts: quantifying
-  `eds-layers` returned C at 21 at% against a truth of 9.4 and Al at 5.0
-  against 10.0. Line intensities now come from the app's OWN Cliff-Lorimer
-  model (`I ∝ f·M/k`, since `cliff_lorimer` computes `w ∝ k·I` then
-  `at ∝ w/M`) and EELS edge areas from `eels_quant.cross_section` — the same
-  rule that already governed peak POSITIONS, applied to their areas.
-  **Two real generator bugs fell out.** `astype(np.uint16)` WRAPS: with the
-  correct weights, Ta's per-pixel peak mean reached ~2.6e5 and most of its
-  peak wrapped to near zero, quantifying 6.2 at% as 0.7. Poisson sampling now
-  rescales into range first (a global factor, so every ratio is preserved,
-  where a clip would have truncated the brightest element). And `eels-layers`
-  started its axis at 80 eV, leaving Si L23 at 99 eV only 19 eV of pre-edge
-  against the 52 eV its background fit asks for — the truncated fit
-  over-extrapolated and Si came back at 3 at% against a truth of 46. The axis
-  starts at 40 eV now, and a test asserts every edge's whole fit window is on
-  the axis.
-  **The tolerances are measured, stated in the module docstring, and asserted
-  as ceilings** so an improvement fails the test and forces the table to be
-  tightened. EDS majors land within 0.6 pp (`eds-particles`); the light-element
-  case is 11.8 pp, because a flanking LINEAR background under-subtracts the
-  steep convex Kramers continuum at C-Kα. That is a floor of window
-  integration, not a hardcoded-wrong-model bug: running the same quantification
-  with the `bremsstrahlung` background was measured and is WORSE (25.6 pp).
-  EELS is within 0.2 pp for the edge with nothing above it and up to 26 pp for
-  the stacked ones, for the reason real EELS strips edges sequentially.
-  Scope stated honestly in the docstring: planting and inverting with the same
-  table cannot test the table, so the k-factors and cross-sections themselves
-  are NOT under test — everything between the cube and the answer is.
-  Verified by mutation: restoring either the old intensity weighting or the
-  uint16 wrap reddens the suite. Opened item 23 for the one thing this could
-  not assert. 7 new tests; backend gate 1872 passed / 0 failed.
+- ~~**#18 Quantification golden tests against truth + #23 synthetic edge
+  shapes from `calc/eels_model`**~~ (2026-08-12) — `tests/test_quant_golden.py`
+  runs `/eds/quantify`, `/eels/quantify` and `/eels/fit` on cubes of known
+  composition. **Every EELS number below is a same-day correction of a first
+  pass that shipped wrong**, which is recorded here rather than tidied away:
+  the first attempt scaled the planted edges to their own physical
+  cross-section magnitude (~1e-25 m²) against a background normalised to ~1e-2,
+  burying every edge twenty-odd orders of magnitude under it. The "EELS
+  quantifies to 26 pp" figure that first booked this item was measuring
+  background residue, not edges.
+  **The oracle did not work and had to be made to — four defects.** (1) EDS
+  line areas came from an invented `1 + 0.5·log1p(E)` weighting unrelated to
+  anything the quantifier inverts: C came back at 21 at% against a truth of
+  9.4, Al at 5.0 against 10.0. Areas now come from the app's own Cliff-Lorimer
+  model (`I ∝ f·M/k`) and EELS edges from `eels_model.edge_shape_fn` — item
+  23's deliverable, and the rule that already governed peak POSITIONS applied
+  to their shapes and areas. (2) `astype(np.uint16)` WRAPS: with correct
+  weights, Ta's per-pixel peak mean reached ~2.6e5 and most of its peak wrapped
+  to near zero, quantifying 6.2 at% as 0.7. Sampling now rescales into range
+  first — a global factor, so every ratio survives, where a clip would have
+  truncated the brightest element. (3) `eels-layers` started its axis at 80 eV,
+  leaving Si L23 at 99 eV only 19 eV of pre-edge against the 52 eV its
+  background fit asks for; the truncated fit over-extrapolated and Si came back
+  at 3 at% against 46. (4) The planted edges needed ONE global scale to a
+  realistic edge jump (0.6 of the background at the lowest onset) — one factor,
+  so the cross-section ratios that make the cube an oracle are untouched.
+  **And a comparison error in the test itself:** it compared against
+  `field_mean_atomic_percent`, which averages over the whole raster including
+  vacuum, while a quantifier measures the MATERIAL and normalises to 100. That
+  is a silent bias of exactly the empty fraction (6.25 % of eds-layers). The
+  sidecar now carries `material_atomic_percent` too, and a test asserts the two
+  are one scale factor apart so they cannot drift.
+  **Results, all measured and asserted as ceilings** so an improvement fails
+  the test and forces the docstring's table to be tightened. EDS: Al and O land
+  within **0.02 pp** on eds-layers, which is what makes the remaining carbon
+  error attributable to carbon rather than to a loose pipeline. That error —
+  C 21.2 vs 10.0 — is the flanking LINEAR background under a steep convex
+  Kramers continuum, and the `bremsstrahlung` alternative was measured and is
+  WORSE (25.6 pp), so it is a floor of window integration, not a hardcoded
+  wrong model. EELS: BOTH quantifiers now recover the four-edge composition to
+  **0.4 pp**, and agree with each other to 0.5 pp — the check that the cube is
+  a real oracle rather than two methods failing the same way.
+  Scope stated in the docstring rather than implied: planting and inverting
+  with the same table cannot test the table, so the k-factors and
+  cross-sections themselves are NOT under test; everything between the cube and
+  the answer is. Verified by mutation — restoring the old intensity weighting,
+  the uint16 wrap, the edge-jump scale, or the field-vs-material comparison
+  each reddens the suite. 11 tests; backend gate 1890 passed.
 
 - ~~**#5 Width presets and FWHM auto-fit + #6 Numeric steppers with live
   net**~~ (2026-08-12) — shipped together because they are one control strip:

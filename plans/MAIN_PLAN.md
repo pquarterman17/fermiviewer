@@ -34,7 +34,7 @@ plans (items 6–14).
 
 | Sub-plan | Scope | Status | Why its own file |
 |---|---|---|---|
-| SPECTRAL_WORKSPACE_PLAN.md | EDS+EELS shared spectrum core, species lists, batch maps, composites, synthetic-SI verification | Active (5 open items / 2 sub-task boxes; W1 complete 2026-08-12, W3 complete 2026-08-11) | Independent lifecycle, four workstreams of its own |
+| SPECTRAL_WORKSPACE_PLAN.md | EDS+EELS shared spectrum core, species lists, batch maps, composites, synthetic-SI verification | Active (4 open items / 0 sub-task boxes; W1 + W4 Tier 2 complete 2026-08-12, W3 complete 2026-08-11) | Independent lifecycle, four workstreams of its own |
 | PLAN_4DSTEM.md | Lazy 4D-STEM dataset model (`FourDDataset`), MIB/HyperSpy-4D ingest, virtual-detector imaging (Phase 1 shipped 2026-08-02); COM/DPC/iDPC (owner-deferred), usability follow-ups, and parked strain/ptychography/ACOM | Active (8 open items / 14 sub-task boxes, Tier 2–3) | Independent lifecycle and its own architectural decision (Option B: 4D data is a source, not a `DataStruct`) with memory-streaming constraints the other two plans don't share |
 | ~~PROJECT_WORKFLOW_PLAN.md~~ | Folder import, constant-physical-scale browsing, area measurement, project/sample hierarchy + comparison deliverables, and the `.fvp` project file format | **Complete 2026-08-10** → `plans/archive/` | 27 items shipped, 6 gates resolved. Kept for the decision record: ADR 0002's rationale, the `py/path-injection` triage, and the ratchet outcomes (`store/viewer.ts` graduated 575→444) |
 

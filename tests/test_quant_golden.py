@@ -1,59 +1,47 @@
 """Quantification against the synthetic truth (SPECTRAL_WORKSPACE_PLAN #18).
 
-`/eds/quantify` and `/eels/quantify` are run on cubes whose composition is
-known exactly, and their answers compared to the `.truth.json` sidecar. The
-cubes are built by `tools/make_synthetic_si.py`, which plants line and edge
+`/eds/quantify`, `/eels/quantify` and `/eels/fit` are run on cubes whose
+composition is known exactly, and their answers compared to the
+`.truth.json` sidecar. `tools/make_synthetic_si.py` plants line and edge
 intensities by INVERTING the application's own forward models — Cliff-Lorimer
-weights for EDS, partial ionization cross-sections for EELS — so a perfect
-implementation would return the planted composition exactly and every
-deviation below is a real property of the method.
+weights for EDS, `eels_model.edge_shape_fn`'s differential cross-section for
+EELS — so a perfect implementation would return the planted composition
+exactly and every deviation below is a real property of the method.
+
+Compared against `material_atomic_percent`, NOT `field_mean_atomic_percent`:
+a quantifier measures the material and knows nothing about how much of the
+field was vacuum, so comparing to the field mean is off by exactly the vacuum
+fraction (6.25 % of eds-layers, 9.4 % of eels-layers).
 
 What that scopes this to, honestly: the k-factors and cross-sections
-themselves are NOT under test here (planting and inverting with the same
-table cannot check the table). What IS under test is everything between the
-cube and the answer — window placement, background subtraction, per-pixel
-normalisation, map assembly and the route's own plumbing — which is where
-these pipelines actually break.
+themselves are NOT under test (planting and inverting with the same table
+cannot check the table). What IS under test is everything between the cube
+and the answer — window placement, background subtraction, per-pixel
+normalisation, map assembly and the routes' own plumbing.
 
 TOLERANCES THIS SUITE MEASURES (atomic percent, absolute, at the fixtures'
-counts scale). They are asserted as ceilings so a regression fails; they are
-NOT targets, and a method that improves must tighten them:
+counts scale). Asserted as ceilings so a regression fails; NOT targets, and a
+method that improves must tighten them:
 
-  EDS, Cliff-Lorimer over integrated windows
-    eds-particles   Al 36.2 vs 36.1, O 55.4 vs 55.9  → majors within 0.6 pp
-                    C   5.8 vs  3.6, Ta 2.6 vs  4.3  → minors within 2.2 pp
-    eds-layers      C  21.2 vs  9.4                  → 11.8 pp, see below
+  EDS, Cliff-Lorimer over integrated windows (`/eds/quantify`)
+    eds-particles   max 2.2 pp; Al 36.20 vs 36.15, O 55.41 vs 55.93
+    eds-layers      Al and O within 0.02 pp — but C 21.2 vs 10.0
 
-    The light-element bias is the flanking LINEAR background under a Kramers
-    continuum. At C-Kα (0.277 keV) the continuum is steep and convex, so a
+    That light-element error is the flanking LINEAR background under a Kramers
+    continuum. At C-Kalpha (0.277 keV) the continuum is steep and convex, so a
     straight line between the flanking windows sits well below the true
-    background and the net comes back roughly double. Switching the same
-    quantification to the `bremsstrahlung` background makes it WORSE (25.6 pp
-    on eds-layers, 21.5 on eds-particles) — measured, not assumed — so this is
-    not a matter of the endpoint hardcoding the wrong model. Model-based peak
-    fitting (`/eds/peakfit`) is the answer for light elements on a steep
-    continuum; window integration has this floor.
+    background and the net comes back roughly double; the normalisation then
+    deflates everything else (Si 38.0 vs 45.6). Switching the same
+    quantification to the `bremsstrahlung` background makes it WORSE (measured:
+    25.6 pp on eds-layers) — so this is not the endpoint hardcoding the wrong
+    model. Model-based peak fitting is the answer for a light element on a
+    steep continuum; window integration has this floor.
 
-  EELS, power-law pre-edge fit per edge (`/eels/quantify`)
-    eels-layers     four stacked edges → up to 26 pp; O, the edge with no
-                    other onset above it, within 0.2 pp
+  EELS (`/eels/quantify` window integration, `/eels/fit` simultaneous model)
+    eels-layers     both within 0.4 pp of the truth, on four stacked edges
 
-    Every edge sits on the tails of the edges below it, and a sum of power
-    laws with different exponents is not a power law, so a single pre-edge fit
-    cannot remove them exactly. The residue inflates the upper edges and (by
-    the normalisation) deflates the lower ones — the known reason real EELS
-    quantification strips edges sequentially rather than window-integrating
-    them independently.
-
-    NOT asserted here: the model-based `/eels/fit`, which fits one background
-    plus every edge simultaneously and is the method that should beat the
-    above. It returns 50 pp on this cube, because the generator's edge SHAPE
-    is a hand-rolled sawtooth-plus-white-lines rather than the application's
-    own differential cross-section — so the model has nothing to match. That
-    is a gap in the GENERATOR, not evidence about the fit: the same rule that
-    already makes it take line positions from `calc.eds.line_energy` should
-    make it take edge shapes from `calc.eels_model`. Booked in the plan; until
-    then this cube cannot be an oracle for the model fit.
+    They agree with each other to 0.5 pp as well, which is the check that the
+    cube is a real oracle rather than two methods failing the same way.
 """
 
 from __future__ import annotations
@@ -104,7 +92,7 @@ def client() -> TestClient:
 
 @pytest.fixture(scope="module")
 def cubes(tmp_path_factory) -> dict[str, tuple[Path, dict]]:
-    """One cube per preset used here, built once (Poisson sampling a 32×24×2048
+    """One cube per preset used here, built once (Poisson sampling a 32x24x2048
     cube is the slow part of this module)."""
     out = tmp_path_factory.mktemp("quant-golden")
     return {
@@ -119,6 +107,17 @@ def _open(client: TestClient, path: Path) -> str:
     return r.json()[0]["id"]
 
 
+def _errors(
+    elements: list[str], percents: list[float], truth: dict
+) -> dict[str, float]:
+    """Signed at% error per element, so a test can name the element it means."""
+    want = truth["material_atomic_percent"]
+    return {
+        sym: float(pct) - want[sym]
+        for sym, pct in zip(elements, percents, strict=True)
+    }
+
+
 def _eds_quantify(client: TestClient, name: str, cubes) -> tuple[dict, dict]:
     path, truth = cubes[name]
     r = client.post(
@@ -129,29 +128,62 @@ def _eds_quantify(client: TestClient, name: str, cubes) -> tuple[dict, dict]:
     return r.json(), truth
 
 
-def _errors(body: dict, truth: dict, key: str, got_key: str) -> dict[str, float]:
-    """Signed at% error per element, so a test can name the element it means."""
-    want = truth["field_mean_atomic_percent"]
-    return {
-        sym: float(pct) - want[sym]
-        for sym, pct in zip(body[key], body[got_key], strict=True)
-    }
+def _eels_edges(truth: dict) -> list[dict]:
+    """The windows the intensities were planted against — part of the ground
+    truth, not a reader's choice: the planted edge area IS the cross-section
+    integrated over exactly this window."""
+    return [
+        {
+            "element": s["symbol"],
+            "shell": s["shell"],
+            "z": s["z"],
+            "onset_ev": s["onset_ev"],
+            "signal_window": s["signal_window"],
+            "bg_window": s["bg_window"],
+        }
+        for s in truth["species"]
+    ]
 
 
-# ── EDS ───────────────────────────────────────────────────────────────
+def _eels_post(client: TestClient, route: str, cubes) -> tuple[dict, dict]:
+    path, truth = cubes["eels-layers"]
+    r = client.post(
+        route,
+        json={
+            "image_id": _open(client, path),
+            "edges": _eels_edges(truth),
+            "e0_kv": truth["beam_kv"],
+            "beta_mrad": truth["beta_mrad"],
+        },
+    )
+    assert r.status_code == 200, r.text
+    return r.json(), truth
+
+
+# -- EDS ---------------------------------------------------------------
 
 def test_eds_recovers_the_synthetic_composition(client, cubes) -> None:
     """The headline: a cube of known composition quantifies back to it."""
     body, truth = _eds_quantify(client, "eds-particles", cubes)
-    err = _errors(body, truth, "elements", "mean_atomic_pct")
+    err = _errors(body["elements"], body["mean_atomic_pct"], truth)
 
     # Every element the generator planted comes back, none invented.
     assert set(body["elements"]) == set(truth["elements"])
-    # The majors — the numbers anyone would quote — to better than 1 pp.
+    # The majors -- the numbers anyone would quote -- to better than 1 pp.
     assert abs(err["Al"]) < 1.0, err
     assert abs(err["O"]) < 1.0, err
     # And nothing is wrong by more than a couple of points.
     assert max(abs(v) for v in err.values()) < 3.0, err
+
+
+def test_eds_recovers_the_majors_of_a_layer_stack_almost_exactly(client, cubes):
+    """Al and O land within 0.02 pp on eds-layers -- worth pinning, because it
+    is what makes the carbon error below attributable to carbon rather than to
+    the pipeline being loose everywhere."""
+    body, truth = _eds_quantify(client, "eds-layers", cubes)
+    err = _errors(body["elements"], body["mean_atomic_pct"], truth)
+    assert abs(err["Al"]) < 0.3, err
+    assert abs(err["O"]) < 0.3, err
 
 
 def test_eds_ranks_the_elements_correctly(client, cubes) -> None:
@@ -160,7 +192,7 @@ def test_eds_ranks_the_elements_correctly(client, cubes) -> None:
     table even when the totals still sum to 100."""
     for name in ("eds-particles", "eds-layers"):
         body, truth = _eds_quantify(client, name, cubes)
-        want = truth["field_mean_atomic_percent"]
+        want = truth["material_atomic_percent"]
         got_order = [
             s for _, s in sorted(
                 zip(body["mean_atomic_pct"], body["elements"], strict=True),
@@ -179,20 +211,24 @@ def test_eds_ranks_the_elements_correctly(client, cubes) -> None:
 
 
 def test_eds_light_element_bias_is_bounded_and_documented(client, cubes) -> None:
-    """C-Kα sits on the steep part of the Kramers continuum, where the flanking
-    LINEAR background under-subtracts and the net comes back roughly double.
+    """C-Kalpha sits on the steep part of the Kramers continuum, where the
+    flanking LINEAR background under-subtracts and the net comes back roughly
+    double.
 
     Asserted as a ceiling, not a target. If a change improves this, the test
     fails and the module docstring's tolerance table must be tightened with
-    it — that is the intended way to find out that it got better.
+    it -- that is the intended way to find out that it got better.
     """
     body, truth = _eds_quantify(client, "eds-layers", cubes)
-    err = _errors(body, truth, "elements", "mean_atomic_pct")
+    err = _errors(body["elements"], body["mean_atomic_pct"], truth)
     assert err["C"] > 0, "the bias direction is over-reporting; re-derive if it flips"
-    assert err["C"] < 14.0, err
-    # Everything that is not the light element stays close.
+    assert err["C"] < 13.0, err
+    # Everything else is deflated by the normalisation that inflated C, so
+    # their errors are that one error redistributed -- bounded, and all of one
+    # sign, not independent.
     others = {k: v for k, v in err.items() if k != "C"}
-    assert max(abs(v) for v in others.values()) < 6.0, others
+    assert all(v < 0.3 for v in others.values()), others
+    assert max(abs(v) for v in others.values()) < 9.0, others
 
 
 def test_eds_reports_an_uncertainty_alongside_every_percentage(client, cubes) -> None:
@@ -202,47 +238,49 @@ def test_eds_reports_an_uncertainty_alongside_every_percentage(client, cubes) ->
     assert len(sigma) == len(body["elements"])
     assert all(np.isfinite(s) and s >= 0 for s in sigma), sigma
     # Counting statistics at this many counts are small next to the method
-    # bias above — worth stating, so nobody reads sigma as total accuracy.
+    # bias above -- worth stating, so nobody reads sigma as total accuracy.
     assert max(sigma) < 5.0, sigma
 
 
-# ── EELS ──────────────────────────────────────────────────────────────
+# -- EELS --------------------------------------------------------------
 
-def test_eels_recovers_the_planted_edges(client, cubes) -> None:
-    path, truth = cubes["eels-layers"]
-    r = client.post(
-        "/api/eels/quantify",
-        json={
-            "image_id": _open(client, path),
-            "edges": [
-                {
-                    "element": s["symbol"],
-                    "shell": s["shell"],
-                    "z": s["z"],
-                    "onset_ev": s["onset_ev"],
-                    "signal_window": s["signal_window"],
-                    "bg_window": s["bg_window"],
-                }
-                for s in truth["species"]
-            ],
-            "e0_kv": truth["beam_kv"],
-            "beta_mrad": truth["beta_mrad"],
-        },
-    )
-    assert r.status_code == 200, r.text
-    body = r.json()
-    err = _errors(body, truth, "elements", "atomic_percent")
+def test_eels_window_integration_recovers_the_planted_edges(client, cubes) -> None:
+    body, truth = _eels_post(client, "/api/eels/quantify", cubes)
+    err = _errors(body["elements"], body["atomic_percent"], truth)
 
     assert set(body["elements"]) == set(truth["elements"])
     assert sum(body["atomic_percent"]) == pytest.approx(100.0, abs=1e-6)
-    # Every edge is detected as present — none collapses to zero, which is
-    # what a mis-placed window or a runaway background fit produces.
-    assert all(pct > 1.0 for pct in body["atomic_percent"]), body["atomic_percent"]
-    # The stacked-edge ceiling from the docstring. A ceiling, not a target.
-    assert max(abs(v) for v in err.values()) < 30.0, err
-    # O sits above every other edge's onset and is the one the pre-edge fit
-    # handles cleanly; it is the tightest claim this cube supports.
-    assert abs(err["O"]) < 3.0, err
+    assert max(abs(v) for v in err.values()) < 1.0, err
+
+
+def test_eels_model_fit_recovers_the_planted_edges(client, cubes) -> None:
+    """The simultaneous multi-edge fit, on the same four stacked edges.
+
+    This is what SPECTRAL #23 was opened for: the cube's edge shapes are now
+    `eels_model`'s own differential cross-section, so the model has something
+    to match. Before that they were a hand-rolled sawtooth and this route
+    returned 50 pp -- evidence about the generator, not about the fit.
+    """
+    body, truth = _eels_post(client, "/api/eels/fit", cubes)
+    assert body["success"] is True
+    elements = [e["element"] for e in body["edges"]]
+    percents = [e["atomic_percent"] for e in body["edges"]]
+    err = _errors(elements, percents, truth)
+    assert max(abs(v) for v in err.values()) < 1.0, err
+    assert all(e["atomic_percent_error"] >= 0 for e in body["edges"])
+
+
+def test_the_two_eels_methods_agree(client, cubes) -> None:
+    """Independent inversions of the same cube -- one integrating windows over
+    a per-edge power-law background, one fitting every edge and one background
+    simultaneously. Agreement is the check that the cube is a real oracle
+    rather than two methods failing the same way; it is also the claim that
+    would break first if the planted edge shape drifted from the model."""
+    window, _ = _eels_post(client, "/api/eels/quantify", cubes)
+    model, _ = _eels_post(client, "/api/eels/fit", cubes)
+    by_element = {e["element"]: e["atomic_percent"] for e in model["edges"]}
+    for symbol, pct in zip(window["elements"], window["atomic_percent"], strict=True):
+        assert by_element[symbol] == pytest.approx(pct, abs=1.0), (symbol, by_element)
 
 
 def test_eels_windows_come_from_the_truth_sidecar(cubes) -> None:
@@ -263,7 +301,7 @@ def test_eels_windows_come_from_the_truth_sidecar(cubes) -> None:
         assert bg_lo >= truth["energy_axis"]["range"][0]
 
 
-# ── the generator's own invariants ────────────────────────────────────
+# -- the generator's own invariants ------------------------------------
 
 def test_cube_never_wraps_uint16(cubes) -> None:
     """`astype(np.uint16)` wraps silently, and a wrapped peak looks exactly
@@ -273,3 +311,17 @@ def test_cube_never_wraps_uint16(cubes) -> None:
         applied = truth["counts_scale_applied"]
         assert 0 < applied <= truth["counts_scale"], name
 
+
+def test_the_material_truth_is_the_field_truth_without_the_vacuum(cubes) -> None:
+    """Two truths, and using the wrong one is a silent error of exactly the
+    empty fraction. `material_atomic_percent` sums to 100 and is what a
+    quantifier reports; `field_mean_atomic_percent` averages over the whole
+    raster, vacuum included."""
+    for name, (_, truth) in cubes.items():
+        material = truth["material_atomic_percent"]
+        field = truth["field_mean_atomic_percent"]
+        assert sum(material.values()) == pytest.approx(100.0, abs=0.02), name
+        assert material.keys() == field.keys(), name
+        # Same composition, one scale factor apart.
+        ratios = [material[k] / field[k] for k in material if field[k] > 0]
+        assert max(ratios) == pytest.approx(min(ratios), rel=1e-3), name

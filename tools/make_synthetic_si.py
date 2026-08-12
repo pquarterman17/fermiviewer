@@ -13,6 +13,14 @@ generator with its own copy of the line energies would drift, and every
 window in the GUI snaps to the app's table — synthetic peaks have to land
 exactly there or the tool tests the wrong thing.
 
+Their INTENSITIES follow the same rule, and for the same reason: EDS line
+areas are inverted from ``cliff_lorimer``'s own weighting and EELS edges are
+planted as ``eels_model.edge_shape_fn``'s differential cross-section, so a
+quantifier run over one of these cubes should return the composition that
+built it. A generator that invents its own intensity model produces cubes
+that look right and quantify wrong — which is exactly what this one did
+until 2026-08-12.
+
 Usage
 -----
     python tools/make_synthetic_si.py --preset eds-layers
@@ -30,7 +38,10 @@ eds-overlap    The same stack at 10 kV, where the app's line selection drops
                be separated by simple integration.
 eds-particles  Al2O3 matrix with Ta-rich and C-rich discs of varying size.
 eels-layers    Core-loss cross-section over a power-law background:
-               Si L23 / C K / Ti L23 / O K, with white lines on the L edges.
+               Si L23 / C K / Ti L23 / O K. Edge SHAPES come from
+               calc.eels_model.edge_shape_fn — the same differential
+               cross-section the model fit refines — so both quantifiers
+               invert the model that produced the cube.
 
 Which line a synthetic peak lands on is decided by the app's own overvoltage
 rule, not by this file, so --beam-kv genuinely changes which lines appear.
@@ -51,6 +62,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from fermiviewer.calc.eds import K_FACTORS_200KV, line_energy  # noqa: E402
 from fermiviewer.calc.eels import EELS_EDGES  # noqa: E402
+from fermiviewer.calc.eels_model import edge_shape_fn  # noqa: E402
 from fermiviewer.calc.eels_quant import cross_section  # noqa: E402
 from fermiviewer.calc.elements import atomic_mass  # noqa: E402
 
@@ -81,6 +93,15 @@ EELS_BG_GAP_EV = 2.0
 #: run at a different β is answering a different question, so the sidecar
 #: records it and the golden test passes it back.
 EELS_BETA_MRAD = 10.0
+#: Edge-jump ratio: how far the core-loss signal lifts the spectrum above the
+#: pre-edge background at the LOWEST planted onset. A partial ionization
+#: cross-section is ~1e-25 m² and the normalised background is ~1e-2, so
+#: planting dσ/dE at its own physical magnitude buries every edge 20-odd
+#: orders of magnitude under the background — a cube that looks like a bare
+#: power law and quantifies like one. ONE global factor rescales them, so
+#: every element's intensity keeps exactly the cross-section ratio that makes
+#: the cube an oracle; only the common signal-to-background level is set here.
+EELS_EDGE_JUMP = 0.6
 
 #: Largest channel mean the uint16 cube may carry. A Poisson draw at this mean
 #: has σ ≈ 245, so 12 σ of headroom remains below 65535 — the draw effectively
@@ -357,38 +378,18 @@ def _eels_cube(
         if not candidates:
             continue
         edge = min(candidates, key=lambda e: e.onset_ev)
-        above = energy >= edge.onset_ev
-        shape = np.zeros_like(energy)
-        # Hydrogenic-style sawtooth: sharp onset, power-law decay after it.
-        shape[above] = (energy[above] / edge.onset_ev) ** -2.6
-        if edge.edge.startswith("L"):
-            # L23 white lines — the sharp pair right at the onset
-            for offset, weight in ((1.5, 1.0), (7.0, 0.55)):
-                centre = edge.onset_ev + offset
-                shape += weight * 1.6 * np.exp(-0.5 * ((energy - centre) / 2.2) ** 2)
-        total = shape.sum()
-        if total <= 0:
-            continue
-        shape /= total
-        # Per-edge intensity inverted from the app's OWN quantifier, the same
-        # way the EDS side inverts Cliff-Lorimer. `quantify` reads
-        # N_X ∝ I_X/σ_X, so a cube whose atomic fractions are recoverable must
-        # plant I_X = f_X·σ_X, where I_X is the trapezoid integral over the
-        # SIGNAL WINDOW the quantifier will use. The window is therefore part
-        # of the ground truth, not a choice the reader makes afterwards, and
-        # the sidecar records it per edge.
         shell = "K" if edge.edge.startswith("K") else "L"
         sig_lo = float(edge.onset_ev)
         sig_hi = sig_lo + EELS_SIGNAL_WIDTH_EV
+        shape = edge_shape_fn(
+            edge.z, shell, preset.beam_kv, EELS_BETA_MRAD, sig_lo
+        )(energy)
         sigma_x = cross_section(
             edge.z, shell, preset.beam_kv, EELS_BETA_MRAD,
             EELS_SIGNAL_WIDTH_EV, sig_lo,
         )
-        window = (energy >= sig_lo) & (energy <= sig_hi)
-        in_window = float(np.trapezoid(shape[window], energy[window]))
-        if in_window <= 0:
+        if not np.any(shape > 0):
             continue
-        shape *= sigma_x / in_window
         signal += fraction_map[:, :, None] * shape[None, None, :]
         edges.append(
             {
@@ -407,8 +408,18 @@ def _eels_cube(
             }
         )
 
+    # Lift the whole signal to a realistic edge jump (see EELS_EDGE_JUMP).
+    # Measured at the lowest onset, where the background is strongest and an
+    # edge is hardest to see.
     thickness = occupied[:, :, None].astype(float)
-    lam = (signal * 0.35 + thickness * background[None, None, :]) * counts
+    signal_scale = 1.0
+    if edges:
+        lowest = min(float(e["onset_ev"]) for e in edges)
+        at = int(np.argmin(np.abs(energy - lowest)))
+        mean_signal = float(signal.mean(axis=(0, 1))[at])
+        if mean_signal > 0:
+            signal_scale = EELS_EDGE_JUMP * float(background[at]) / mean_signal
+    lam = (signal * signal_scale + thickness * background[None, None, :]) * counts
     cube, applied = _poisson_uint16(lam, rng)
     return cube, fractions, rows, edges, applied
 
@@ -483,11 +494,27 @@ def build(
             symbol: round(float(fraction.mean()) * 100, 4)
             for symbol, fraction in sorted(fractions.items())
         },
+        # The same composition renormalised to sum to 100 — what a
+        # quantifier reports, because it measures the MATERIAL and knows
+        # nothing about how much of the field was vacuum. Comparing a
+        # quantification to `field_mean_atomic_percent` on a cube with any
+        # empty area is an apples-to-oranges error of exactly the vacuum
+        # fraction (6.25 % of eds-layers, 9.4 % of eels-layers).
+        "material_atomic_percent": _renormalised(fractions),
         "total_counts": int(cube.sum()),
     }
     truth_path = cube_path.with_suffix(".truth.json")
     truth_path.write_text(json.dumps(truth, indent=2) + "\n")
     return cube_path, truth
+
+
+def _renormalised(fractions: dict[str, np.ndarray]) -> dict[str, float]:
+    """Field-mean atomic fractions rescaled to sum to 100 percent."""
+    means = {symbol: float(f.mean()) for symbol, f in sorted(fractions.items())}
+    total = sum(means.values())
+    if total <= 0:
+        return {symbol: 0.0 for symbol in means}
+    return {symbol: round(100.0 * v / total, 4) for symbol, v in means.items()}
 
 
 def _report(path: Path, truth: dict) -> None:
