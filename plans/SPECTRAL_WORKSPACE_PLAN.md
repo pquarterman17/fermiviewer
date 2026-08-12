@@ -8,7 +8,7 @@ implementation so a feature cannot land in one and rot in the other.
 **Status:** Active
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-07-29
-**Updated:** 2026-08-10
+**Updated:** 2026-08-11
 
 ---
 
@@ -81,16 +81,19 @@ quantification the user may not want.
 - (2026-07-30) Backend `calc/` and `routes/` keep their EDS/EELS names — the
   physics genuinely differs and a shared name would hide that. Sharing happens
   at the interface (item 2), not the filename.
+- (2026-08-11) **Composite becomes a first-class library image** (item 10
+  gate resolved): registered as an RGB image reaching filmstrip, comparison
+  and export — matching the figure convention MAIN_PLAN books for the
+  sample montage.
+- (2026-08-11) **EELS background window auto-places from the onset,
+  user-adjustable** (item 16 gate resolved): the DM/HyperSpy convention.
+  Wrong-guess risk is mitigated by the window staying visible and draggable
+  (item 4), never hidden.
 
 ### Owner gates
 
-- Should the combined composite become a first-class library image (item 10),
-  or stay a panel-local canvas with PNG export?
 - Overlap detection (item 20) was explicitly deselected. Revisit only if the
   Ta M / Si K case in real work produces a wrong answer silently.
-- EELS quantification currently needs a background *and* signal window per
-  edge. Should the species list auto-place the background window from the
-  onset (item 16), or always require the user to set it?
 
 ---
 
@@ -149,7 +152,8 @@ workflow is complete end to end. What remains is polish and retirement.*
 ### Tier 2 — Medium Impact
 
 10. **Composite → library** — register the combined map as an RGB image so it
-    reaches the filmstrip, comparison and export (owner gate above)
+    reaches the filmstrip, comparison and export (gate resolved 2026-08-11:
+    first-class library image)
 
 11. **Retire the single-element Explore flow** — once the species list covers
     it, remove the duplicate controls rather than leaving both
@@ -192,7 +196,8 @@ missing rather than faking it. These four items are what fills it.
 ### Tier 2 — Medium Impact
 
 16. **Background-window auto-placement** — derive a sensible pre-edge fit
-    region from the onset, user-adjustable (owner gate above)
+    region from the onset, user-adjustable (gate resolved 2026-08-11: yes,
+    auto-place; the window stays visible and draggable)
 
 ---
 
