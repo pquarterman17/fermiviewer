@@ -17,29 +17,54 @@ import { integrateWindow } from "../eds/integrate";
 
 export type Confidence = "strong" | "clear" | "weak" | "trace";
 
-export interface IdentifiedElement {
+/**
+ * What auto-ID measured for one candidate species — the vocabulary shared by
+ * EDS (computed client-side here, against a displayed spectrum, because
+ * `/eds/auto-assign` only returns candidate matches) and EELS (computed
+ * server-side by `/eels/auto-assign`, which scores every tabulated edge
+ * directly — see `lib/elemental/eelsIdentify.ts`). Field names mirror
+ * `Species` (`symbol`/`transition`/`energy`) so a row's evidence and its
+ * species describe the same species in the same vocabulary.
+ *
+ * This is the base shape `speciesRows.ts` and `ElementList.tsx` consume;
+ * modality-specific extras (EDS's `deltaKev` below, EELS's `fitWindow` in
+ * `EelsEdgeEvidence`) live on an extending interface rather than being
+ * widened onto this one.
+ */
+export interface Evidence {
   symbol: string;
-  /** "K" | "L" | "M" — the shell whose line explained the peak. */
-  line: string;
-  energyKev: number;
-  eLo: number;
-  eHi: number;
+  /** EDS: the shell whose line explained the peak ("K"|"L"|"M"). EELS: the
+   *  edge label ("L23"). Matches `Species.transition`. */
+  transition: string;
+  /** Reference/anchor energy, in the species' own unit. Matches
+   *  `Species.energy`. */
+  energy: number;
+  /** The window this evidence was actually measured over. */
+  windowLo: number;
+  windowHi: number;
   net: number;
   sigma: number;
-  /** net / σ — how many standard deviations the peak stands above noise. */
+  /** net / σ — how many standard deviations the signal stands above noise. */
   significance: number;
   confidence: Confidence;
-  /** Distance from the detected peak to the tabulated line (keV). */
-  deltaKev: number;
-  /** net relative to the strongest element, for the strength bar. */
+  /** net relative to the strongest species in this identify pass, for the
+   *  strength bar. */
   relative: number;
   /**
-   * Auto-ID's RECOMMENDATION that this element is worth mapping — true for
+   * Auto-ID's RECOMMENDATION that this species is worth mapping — true for
    * everything but `trace`. It is a seeding hint, not state: whether a
    * species is actually shown lives on the Species in `store/species.ts`, so
    * that a re-identification cannot silently retick what the user untucked.
    */
   recommended: boolean;
+}
+
+export interface IdentifiedElement extends Evidence {
+  /** EDS only: distance from the detected peak to the tabulated line (keV).
+   *  EELS has no analogue — auto-assign scores directly against the
+   *  tabulated onset, there is no separate "detected peak" to compare
+   *  against it. */
+  deltaKev: number;
 }
 
 /** Counting-statistics bands. A peak at 100σ in a whole-cube sum spectrum is
@@ -108,10 +133,10 @@ export function identifyElements(
     const confidence = confidenceOf(significance);
     rows.push({
       symbol,
-      line: match.line,
-      energyKev: match.energy,
-      eLo,
-      eHi,
+      transition: match.line,
+      energy: match.energy,
+      windowLo: eLo,
+      windowHi: eHi,
       net: integration.net,
       sigma: integration.sigma,
       significance,
@@ -154,10 +179,10 @@ export function measureElement(
   const strongest = Math.max(...reference.map((r) => r.net), integration.net, 1e-9);
   return {
     symbol,
-    line,
-    energyKev,
-    eLo: energyKev - half,
-    eHi: energyKev + half,
+    transition: line,
+    energy: energyKev,
+    windowLo: energyKev - half,
+    windowHi: energyKev + half,
     net: integration.net,
     sigma: integration.sigma,
     significance,

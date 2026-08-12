@@ -25,7 +25,7 @@ import {
 } from "../../lib/elemental/identify";
 import {
   buildRows,
-  seedSpeciesFrom,
+  seedEdsSpeciesFrom,
   visibleSpecies,
   type SpeciesRow,
 } from "../../lib/elemental/speciesRows";
@@ -128,7 +128,7 @@ export default function EdsMapsTab({
       setEvidence(found);
       // Seed only when this image has no species yet. On a return visit, or a
       // re-ID, the user's decisions win and only the measured numbers refresh.
-      const seeded = seedSpeciesFrom(found, speciesOf(useSpecies.getState().byImage, id));
+      const seeded = seedEdsSpeciesFrom(found, speciesOf(useSpecies.getState().byImage, id));
       if (seeded) setSpecies(id, seeded);
       const current = seeded ?? speciesOf(useSpecies.getState().byImage, id);
       const shown = current.filter((sp) => sp.visible).length;
