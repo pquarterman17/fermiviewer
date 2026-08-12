@@ -35,8 +35,8 @@ export interface EnergyWindow {
  */
 export interface SpeciesWindows {
   signal: EnergyWindow;
-  /** EELS only, and only once set — see `eelsDefaultWindows` on why it starts
-   *  undefined rather than auto-placed. */
+  /** EELS only. Auto-placed by `eelsDefaultWindows` (item 16) and always
+   *  user-adjustable afterward — see that function for where it goes. */
   background?: EnergyWindow;
 }
 
@@ -89,6 +89,14 @@ export const EDS_HALF_WINDOW_KEV = 0.085;
  *  one in a crowded spectrum. */
 export const EELS_SIGNAL_WIDTH_EV = 50;
 
+/** Pre-edge background-fit window width (eV), and its gap below the onset.
+ *  Numerically the SAME values as the backend's EDGE_FIT_WIDTH_EV /
+ *  EDGE_FIT_GAP_EV (calc/eels_identify.py) — kept in lockstep so a species
+ *  built here and an edge scored by /eels/auto-assign agree on where the
+ *  background comes from without being told. */
+export const EELS_BG_FIT_WIDTH_EV = 50;
+export const EELS_BG_FIT_GAP_EV = 2;
+
 /** EDS default window: the principal line ± half-window. `lineKev` comes from
  *  the backend's own `line_energy` (via `/eds/line-energy`), never a
  *  transcribed table, so it cannot drift from the window the map is cut on. */
@@ -102,20 +110,30 @@ export function edsDefaultWindows(
 
 /**
  * EELS default windows: the signal window runs from the edge onset to
- * `onset + width`.
+ * `onset + width`; the background window auto-places immediately below it,
+ * from `onset - bgGap - bgWidth` to `onset - bgGap` — the same pre-edge
+ * window `/eels/auto-assign` fits its power-law background against.
  *
- * `background` is deliberately left UNSET. Auto-placing a pre-edge fit region
- * from the onset is item 16 and is an open owner gate ("auto-place from onset
- * vs. always user-set") — guessing it here would answer that question by
- * accident, and a silently wrong background window produces a quantification
- * that looks fine and is not.
+ * Item 16 (resolved 2026-08-11): auto-place, user-adjustable. The prior
+ * "leave it unset pending an owner gate" behaviour is retired — guessing was
+ * the risk before the gate was answered; now that the answer is "auto-place
+ * from the onset, with the same width/gap the backend uses", leaving it
+ * unset would just make every fresh species start unusable until the user
+ * manually set a window nothing told them to expect.
  */
 export function eelsDefaultWindows(
   onsetEv: number,
   widthEv: number = EELS_SIGNAL_WIDTH_EV,
+  bgWidthEv: number = EELS_BG_FIT_WIDTH_EV,
+  bgGapEv: number = EELS_BG_FIT_GAP_EV,
 ): SpeciesWindows {
   const width = Math.abs(widthEv);
-  return { signal: { lo: onsetEv, hi: onsetEv + width } };
+  const bgWidth = Math.abs(bgWidthEv);
+  const bgGap = Math.abs(bgGapEv);
+  return {
+    signal: { lo: onsetEv, hi: onsetEv + width },
+    background: { lo: onsetEv - bgGap - bgWidth, hi: onsetEv - bgGap },
+  };
 }
 
 /** Normalise a window to lo <= hi. Edge-dragging (item 4) can invert one by
@@ -147,12 +165,16 @@ export function edsSpecies(
   };
 }
 
-/** Build an EELS species at an edge onset. */
+/** Build an EELS species at an edge onset. Pass `windows` to use an exact
+ *  measured pair (e.g. from auto-ID evidence) instead of recomputing a
+ *  default from `widthEv` — the same escape hatch `edsSpecies`' `halfWindowKev`
+ *  gives EDS, so a seeded species' window matches the one its displayed net
+ *  counts were actually measured over. */
 export function eelsSpecies(
   symbol: string,
   transition: string,
   onsetEv: number,
-  opts: { widthEv?: number; visible?: boolean } = {},
+  opts: { widthEv?: number; visible?: boolean; windows?: SpeciesWindows } = {},
 ): Species {
   return {
     id: newId(),
@@ -160,7 +182,7 @@ export function eelsSpecies(
     transition,
     modality: "eels",
     energy: onsetEv,
-    windows: eelsDefaultWindows(onsetEv, opts.widthEv),
+    windows: opts.windows ?? eelsDefaultWindows(onsetEv, opts.widthEv),
     visible: opts.visible ?? true,
   };
 }
