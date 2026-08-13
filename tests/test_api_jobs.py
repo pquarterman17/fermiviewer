@@ -259,7 +259,7 @@ def test_job_shutdown_cancels_queued_then_restarts() -> None:
 
 
 def test_grains_returns_429_when_queue_full(client, tmp_path, monkeypatch) -> None:
-    from fermiviewer.routes import structure as structure_routes
+    from fermiviewer.routes import structure_grains as structure_routes
 
     f = write_mini_dm4(tmp_path / "q.dm4", dims=[8, 8], data=np.arange(64))
     img_id = client.post(

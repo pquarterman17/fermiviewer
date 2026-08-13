@@ -3,8 +3,9 @@
 Thin adapter over calc.grains_trained: the frontend paints class strokes on
 an image, posts them here, and gets back an editable grain-label map (the
 same payload shape as /analyze/grains, so merge/split editing works on the
-result). Lives in its own module because routes/structure.py is at the
-500-line ceiling.
+result). Lives in its own module for the same reason grain segmentation
+itself lives in routes/structure_grains.py rather than routes/structure.py
+— it keeps every module comfortably under the 500-line ceiling.
 """
 
 from __future__ import annotations
@@ -22,7 +23,8 @@ from fermiviewer.calc.grains_trained import (
     train_from_scribbles,
 )
 from fermiviewer.calc.roi import embed_rect_roi, extract_rect_roi, roi_slices
-from fermiviewer.routes.structure import _grains_payload, _raster, _register
+from fermiviewer.routes.structure import _raster, _register
+from fermiviewer.routes.structure_grains import _grains_payload
 from fermiviewer.session import store
 
 router = APIRouter(prefix="/api")
