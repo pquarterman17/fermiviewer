@@ -2,8 +2,7 @@
 // power-law background fit, signal-map extraction, edge quantify table.
 // Operates on the active image (needs a spectral kind).
 
-import { useEffect, useRef, useState } from "react";
-import uPlot from "uplot";
+import { useEffect, useState } from "react";
 
 import {
   fetchSpectrum,
@@ -17,7 +16,8 @@ import { useViewer } from "../../store/viewer";
 import EelsAdvanced from "./EelsAdvanced";
 import { type EdgeRow } from "./EelsEdgeEditor";
 import EelsExploreTab from "./eels/EelsExploreTab";
-import { KNOWN_EDGES, type EelsTab } from "./eels/eelsEdges";
+import EelsFitOverlayPlot from "./eels/EelsFitOverlayPlot";
+import { type EelsTab } from "./eels/eelsEdges";
 import EelsQuantifyPanel from "./eels/EelsQuantifyPanel";
 import {
   makeAddEdge,
@@ -32,7 +32,6 @@ import {
 import { seedFitWindows } from "./eelsWindows";
 import type { Rect1 } from "./RegionPicker";
 import { useProbeRegionToken } from "./useProbeRegionToken";
-import PlotContextSurface from "../plots/PlotContextSurface";
 import { useSpectrumProbe } from "./useSpectrumProbe";
 import { useEelsQuantMapJob } from "./useEelsQuantMapJob";
 
@@ -69,8 +68,6 @@ export default function EelsWorkshop({
   const [betaMrad, setBetaMrad] = useState(10);
   const [quantMethod, setQuantMethod] = useState("powerlaw");
   const [region, setRegion] = useState<Rect1 | null>(null);
-  const plotHost = useRef<HTMLDivElement>(null);
-  const plotRef = useRef<uPlot | null>(null);
 
   const spectral = meta !== null && meta.kind !== "image";
   const isCube = meta?.kind === "spectrum_image";
@@ -124,106 +121,12 @@ export default function EelsWorkshop({
     onError: (e) => setStatus(`EELS: ${e.message}`),
   });
 
-  // (re)build the bespoke plot when spectrum, fit, or the active tab's
-  // visibility changes. The host div exists only for Quantify / Model-fit —
-  // Explore renders the shared SpectrumPlot instead (EelsExploreTab) — so a
-  // tab switch away must destroy this instance rather than leave a uPlot
-  // bound to a host React has unmounted; a tab switch back must rebuild it.
+  // The bespoke plot (EelsFitOverlayPlot) only mounts for Quantify /
+  // Model-fit — Explore renders the shared SpectrumPlot instead
+  // (EelsExploreTab) — so a tab switch away must unmount it rather than
+  // leave a uPlot bound to a host React has unmounted; a tab switch back
+  // remounts it.
   const showBespokePlot = tab === "Quantify" || tab === "Model fit";
-  useEffect(() => {
-    const host = plotHost.current;
-    if (!host || !spectrum || !showBespokePlot) return;
-    plotRef.current?.destroy();
-    const styles = getComputedStyle(document.documentElement);
-    const accent = styles.getPropertyValue("--accent").trim() || "#a78bfa";
-    const series: uPlot.Series[] = [
-      {},
-      { label: "spectrum", stroke: "#8888aa", width: 1 },
-    ];
-    const data: uPlot.AlignedData = [spectrum.energy, spectrum.counts];
-    if (
-      fit &&
-      fit.background.length === spectrum.energy.length &&
-      fit.signal.length === spectrum.energy.length
-    ) {
-      series.push({ label: "background", stroke: "#d97706", width: 1 });
-      series.push({ label: "signal", stroke: accent, width: 1.5 });
-      (data as unknown as number[][]).push(fit.background, fit.signal);
-    }
-    // model-fit overlay (#2): total model + power-law bg + per-edge components,
-    // shown on the same energy axis as the summed spectrum
-    if (fitResult && fitResult.energy.length === spectrum.energy.length) {
-      series.push({ label: "model", stroke: accent, width: 1.5, dash: [4, 2] });
-      series.push({
-        label: "bg (fit)",
-        stroke: "#d97706",
-        width: 1,
-        dash: [2, 2],
-      });
-      (data as unknown as number[][]).push(
-        fitResult.model,
-        fitResult.background,
-      );
-      const palette = ["#22d3ee", "#f472b6", "#fbbf24", "#34d399", "#c084fc"];
-      fitResult.edges.forEach((ed, k) => {
-        series.push({
-          label: ed.element,
-          stroke: palette[k % palette.length],
-          width: 1,
-        });
-        (data as unknown as number[][]).push(ed.curve);
-      });
-    }
-    plotRef.current = new uPlot(
-      {
-        width: host.clientWidth,
-        height: 180,
-        scales: { x: { time: false } }, // x is eV energy-loss, not a timestamp
-        series,
-        axes: [
-          { stroke: "#888", grid: { stroke: "rgba(128,128,128,0.15)" } },
-          { stroke: "#888", grid: { stroke: "rgba(128,128,128,0.15)" } },
-        ],
-        legend: { show: false },
-        cursor: { y: false },
-        hooks: {
-          draw: [
-            (u) => {
-              if (!showEdges) return;
-              // edge-ID overlay: vertical markers at known onsets
-              const ctx = u.ctx;
-              const sc = u.scales["x"];
-              const lo = sc?.min ?? 0;
-              const hi = sc?.max ?? 0;
-              ctx.save();
-              ctx.strokeStyle = "rgba(244, 63, 94, 0.55)";
-              ctx.fillStyle = "rgba(244, 63, 94, 0.9)";
-              ctx.font = "10px monospace";
-              const efLower = elementFilter.toLowerCase();
-              for (const [name, ev] of KNOWN_EDGES) {
-                if (efLower && !name.toLowerCase().startsWith(efLower))
-                  continue;
-                if (ev < lo || ev > hi) continue;
-                const x = u.valToPos(ev, "x", true);
-                ctx.beginPath();
-                ctx.moveTo(x, u.bbox.top);
-                ctx.lineTo(x, u.bbox.top + u.bbox.height);
-                ctx.stroke();
-                ctx.fillText(name, x + 2, u.bbox.top + 10);
-              }
-              ctx.restore();
-            },
-          ],
-        },
-      },
-      data,
-      host,
-    );
-    return () => {
-      plotRef.current?.destroy();
-      plotRef.current = null;
-    };
-  }, [spectrum, fit, fitResult, showEdges, elementFilter, showBespokePlot]);
 
   // built fresh each render (these were already plain non-memoized consts,
   // so the factory call sites below are semantically unchanged)
@@ -267,13 +170,13 @@ export default function EelsWorkshop({
 
   return (
     <div className="fvd-ws">
-      {showBespokePlot && (
-        <PlotContextSurface
-          ref={plotHost}
-          plotRef={plotRef}
-          label="EELS spectrum"
-          filename="eels-spectrum.png"
-          className="fvd-ws-plot"
+      {showBespokePlot && spectrum && (
+        <EelsFitOverlayPlot
+          spectrum={spectrum}
+          fit={fit}
+          fitResult={fitResult}
+          showEdges={showEdges}
+          elementFilter={elementFilter}
         />
       )}
       {tab === "Explore" && (

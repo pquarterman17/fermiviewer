@@ -263,6 +263,15 @@ export interface EelsFitResult {
    *  export's header needs the real fit window, which is not always
    *  reconstructable client-side from `energy` alone). */
   fit_range: [number, number];
+  /** Per-point 1σ of the total fitted model (delta method through the fit
+   *  covariance + component Jacobian, calc/spectral_fit.model_sigma) — same
+   *  length as `energy`/`model` above. `null` when the covariance was
+   *  unusable (non-finite, or the fit didn't converge). Served rather than
+   *  derived client-side (ANALYSIS_PRESENTATION_PLAN #3, following #2's
+   *  convention): unlike the residual trace, a confidence band needs the
+   *  covariance matrix and isn't reconstructable from what's already on
+   *  the wire. */
+  model_sigma: number[] | null;
 }
 
 /** Simultaneous background + multi-edge model fit of the summed spectrum.

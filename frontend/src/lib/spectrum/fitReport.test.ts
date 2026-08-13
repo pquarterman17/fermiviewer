@@ -37,6 +37,7 @@ const EELS: EelsFitResult = {
   r_squared: 0.987,
   success: true,
   fit_range: [452, 950],
+  model_sigma: null,
 };
 
 describe("eelsFitReportToCsv", () => {
@@ -72,6 +73,7 @@ const EDS: EdsPeakfitResult = {
   energy: [0, 1, 2],
   spectrum: [10, 20, 30],
   model: [9, 19, 31],
+  model_sigma: null,
   elements: [
     {
       symbol: "Fe", line: "K", energy_kev: 6.404,

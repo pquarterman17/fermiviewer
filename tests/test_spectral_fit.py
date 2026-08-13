@@ -7,15 +7,19 @@ the core is the EELS/EDS model-fit foundation (PLAN_SPECTRAL_QUANT #1).
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
 from fermiviewer.calc.spectral_fit import (
     Component,
+    FitResult,
     evaluate,
     fit_spectrum,
     gaussian,
     linear_background,
+    model_sigma,
     polynomial_background,
     power_law,
 )
@@ -183,6 +187,91 @@ def test_single_data_point_clamps_dof_to_one() -> None:
     r = fit_spectrum(e, y, [linear_background("bg", intercept=10.0, slope=0.0)])
     assert r.success
     assert np.isfinite(r.reduced_chi2)
+
+
+# ── model_sigma (ANALYSIS_PRESENTATION_PLAN #3) ──────────────────────
+
+
+def test_model_sigma_matches_linear_closed_form() -> None:
+    # y = a + b·E has an EXACT delta-method closed form:
+    #   σ²(E) = var_a + E²·var_b + 2·E·cov_ab
+    # This pins the numerical Jacobian (must recover [1, E] exactly — a
+    # linear model has zero curvature, so central differences carry no
+    # truncation error), the einsum contraction, and the parameter
+    # ordering all at once.
+    rng = np.random.default_rng(1)
+    e = np.linspace(0.0, 100.0, 50)
+    truth = 5.0 + 0.3 * e
+    noisy = truth + rng.normal(0.0, 0.5, size=e.shape)
+    comp = linear_background("bg", intercept=1.0, slope=0.0)
+    r = fit_spectrum(e, noisy, [comp], weights=None)
+    assert r.success
+    assert r.param_order == ("bg_intercept", "bg_slope")
+
+    sigma = model_sigma([comp], e, r)
+    assert sigma is not None
+
+    var_a, var_b = r.covariance[0, 0], r.covariance[1, 1]
+    cov_ab = r.covariance[0, 1]
+    expected = np.sqrt(var_a + e**2 * var_b + 2.0 * e * cov_ab)
+    np.testing.assert_allclose(sigma, expected, rtol=1e-9, atol=1e-12)
+
+
+def test_model_sigma_gaussian_shape_sanity() -> None:
+    rng = np.random.default_rng(7)
+    e = np.linspace(0.0, 100.0, 400)
+    clean = 200.0 * np.exp(-0.5 * ((e - 50.0) / 6.0) ** 2) + 20.0
+    noisy = rng.poisson(clean).astype(float)
+    comps = [
+        linear_background("bg", intercept=20.0, slope=0.0),
+        gaussian("peak", amp=150.0, center=48.0, sigma=4.0),
+    ]
+    r = fit_spectrum(e, noisy, comps, weights="poisson")
+    assert r.success
+
+    sigma = model_sigma(comps, e, r)
+    assert sigma is not None
+    assert sigma.shape == e.shape
+    assert np.all(np.isfinite(sigma))
+    assert np.all(sigma >= 0.0)
+    assert np.any(sigma > 0.0)
+
+    # a flank point (~1 fitted σ from the fitted center) is far more
+    # sensitive to the peak's own parameters than a point deep in the flat
+    # background tail, where every parameter's Jacobian entry is small (the
+    # Gaussian has decayed to ~0 and the linear background barely moves
+    # near E=0) — shape sanity, not a magic-number pin.
+    flank_e = r.params["peak_center"] - r.params["peak_sigma"]
+    flank_idx = int(np.argmin(np.abs(e - flank_e)))
+    tail_idx = int(np.argmin(np.abs(e - 2.0)))
+    assert sigma[flank_idx] > sigma[tail_idx]
+
+
+def test_model_sigma_none_on_failed_fit() -> None:
+    e = np.linspace(0.0, 10.0, 20)
+    comp = linear_background("bg")
+    r = fit_spectrum(e, 5.0 + 0.1 * e, [comp])
+    failed = replace(r, success=False)
+    assert model_sigma([comp], e, failed) is None
+
+
+def test_model_sigma_none_on_non_finite_covariance() -> None:
+    e = np.linspace(0.0, 10.0, 20)
+    comp = linear_background("bg")
+    r = fit_spectrum(e, 5.0 + 0.1 * e, [comp])
+    bad_cov = r.covariance.copy()
+    bad_cov[0, 0] = np.nan
+    corrupted = replace(r, covariance=bad_cov)
+    assert model_sigma([comp], e, corrupted) is None
+
+
+def test_model_sigma_none_when_no_parameters() -> None:
+    r = FitResult(
+        params={}, errors={}, param_order=(), model=np.zeros(5),
+        component_curves={}, residual=np.zeros(5), reduced_chi2=1.0,
+        covariance=np.zeros((0, 0)), success=True,
+    )
+    assert model_sigma([], np.linspace(0.0, 1.0, 5), r) is None
 
 
 def test_nan_counts_raise_from_the_optimizer() -> None:

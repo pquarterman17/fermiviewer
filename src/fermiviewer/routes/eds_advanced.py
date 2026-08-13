@@ -194,6 +194,10 @@ def eds_peakfit(req: EdsPeakfitRequest) -> dict:
     net areas + 1σ errors + fitted curves; with ``quantify`` the at%/wt%
     from the deconvolved areas. ``remove_artifacts`` runs the escape/sum
     pre-pass (#8) and refits on the corrected spectrum.
+
+    ``model_sigma`` (#3) is the fitted MODEL's per-point ±1σ, served rather
+    than derived client-side — see ``spectral_fit.eels_fit``'s docstring
+    for the full reasoning (same delta-method core).
     """
     ds = _spectral(req.image_id)
     energy = to_kev(ds.energy_axis, ds.energy_cal.units)
@@ -230,6 +234,8 @@ def eds_peakfit(req: EdsPeakfitRequest) -> dict:
         # /eels/fit, which windows to a sub-range of the returned axis).
         "r_squared": r_squared(spectrum, pf.fit.model),
         "success": pf.fit.success,
+        # model-confidence band (#3, null when the covariance is unusable)
+        "model_sigma": pf.model_sigma.tolist() if pf.model_sigma is not None else None,
     }
     if removal is not None:
         resp["artifacts"] = _artifact_block(removal)
@@ -352,6 +358,8 @@ def eds_zeta(req: EdsZetaRequest) -> dict:
         # is the fit window" reasoning.
         "r_squared": r_squared(spectrum, pf.fit.model),
         "success": pf.fit.success,
+        # model-confidence band (#3) — same fit_peaks call as /eds/peakfit
+        "model_sigma": pf.model_sigma.tolist() if pf.model_sigma is not None else None,
         "quant": {
             "elements": list(req.elements),
             "atomic_percent": zr.mean_atomic_pct.tolist(),

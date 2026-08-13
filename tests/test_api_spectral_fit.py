@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
+import fermiviewer.routes.spectral_fit as spectral_fit_routes
 from fermiviewer.calc.eels_model import edge_shape_fn
 from fermiviewer.server import create_app
 from fermiviewer.session import store
@@ -96,6 +99,11 @@ def test_eels_fit_endpoint(client, fit_cube_id) -> None:
     assert len(body["fit_range"]) == 2
     assert body["fit_range"][0] < body["fit_range"][1]
     assert body["fit_range"][1] == pytest.approx(body["energy"][-1])
+    # model-confidence band (#3): a real 2-edge fit has a usable
+    # covariance, so model_sigma is a real per-channel array, not null.
+    assert body["model_sigma"] is not None
+    assert len(body["model_sigma"]) == 512
+    assert all(np.isfinite(v) and v >= 0.0 for v in body["model_sigma"])
 
 
 @pytest.fixture()
@@ -165,6 +173,25 @@ def test_eels_fit_requires_spectral(client, tmp_path) -> None:
     assert client.post("/api/eels/fit-map", json={
         "image_id": img_id, "edges": _EDGES,
     }).status_code == 400
+
+
+def test_eels_fit_model_sigma_null_when_unusable(
+    client, fit_cube_id, monkeypatch
+) -> None:
+    """The route must serialise `model_sigma: null` (never crash) when the
+    fit's covariance can't produce a σ — same best-effort-null contract as
+    #3's other chart (composition-profile atomic_percent_error)."""
+    real_fit_edges = spectral_fit_routes.fit_edges
+
+    def _unusable_sigma(*args, **kwargs):
+        return replace(real_fit_edges(*args, **kwargs), model_sigma=None)
+
+    monkeypatch.setattr(spectral_fit_routes, "fit_edges", _unusable_sigma)
+    r = client.post("/api/eels/fit", json={
+        "image_id": fit_cube_id, "edges": _EDGES, "e0_kv": 200, "beta_mrad": 10,
+    })
+    assert r.status_code == 200
+    assert r.json()["model_sigma"] is None
 
 
 def test_eels_fit_unknown_image(client) -> None:

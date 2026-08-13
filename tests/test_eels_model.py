@@ -81,6 +81,12 @@ def test_recovers_at_percent_two_edges() -> None:
     # — O's bg_window is (452, 522), Fe's is (628, 698); the lower bound is
     # the smaller of the two starts, the upper bound the axis end.
     assert r.fit_range == pytest.approx((452.0, 950.0))
+    # model-confidence band (#3): a real 2-edge fit has a usable covariance,
+    # so the per-point σ is populated, finite, and non-negative everywhere.
+    assert r.model_sigma is not None
+    assert r.model_sigma.shape == energy.shape
+    assert np.all(np.isfinite(r.model_sigma))
+    assert np.all(r.model_sigma >= 0.0)
 
 
 def test_fit_edges_explicit_fit_range_is_echoed_back() -> None:

@@ -110,6 +110,12 @@ export interface EdsPeakfitResult {
    *  full `spectrum`/`model` arrays above. */
   r_squared: number;
   success: boolean;
+  /** Per-point 1σ of the total fitted model (delta method, same length as
+   *  `energy`/`model` above); `null` when the fit covariance was unusable.
+   *  Served rather than derived client-side — see EelsFitResult's
+   *  `model_sigma` doc (ANALYSIS_PRESENTATION_PLAN #3) for the reasoning;
+   *  same delta-method core (`calc/spectral_fit.model_sigma`). */
+  model_sigma: number[] | null;
   quant?: EdsPeakfitQuant;
   artifacts?: EdsArtifactMark[];
 }

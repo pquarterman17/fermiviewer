@@ -33,6 +33,7 @@ from fermiviewer.calc.fit_quality import r_squared
 from fermiviewer.calc.spectral_fit import (
     Component,
     fit_spectrum,
+    model_sigma,
     power_law,
 )
 
@@ -125,6 +126,13 @@ class EdgeFitResult:
     # the fit-report CSV export needs this, and a client can't always
     # reconstruct it — see r_squared's docstring above for why).
     fit_range: tuple[float, float]
+    # [nE] per-CHANNEL 1σ of the total fitted model (delta method through
+    # the fit covariance, calc/spectral_fit.model_sigma) — None when the
+    # covariance is unusable (see that function's guards). Feeds the EELS
+    # fit plot's model-confidence band (ANALYSIS_PRESENTATION_PLAN.md #3);
+    # NOT client-derivable (needs the covariance + component Jacobian),
+    # unlike the residual trace above, which is just spectrum − model.
+    model_sigma: np.ndarray | None
 
 
 def _seed_background(
@@ -211,6 +219,7 @@ def fit_edges(
     total = amps.sum()
     at_pct = 100.0 * amps / total if total > 0 else np.zeros(len(elements))
     edge_curves = np.array([res.component_curves[c.name] for c in edge_comps])
+    sigma = model_sigma([bg, *edge_comps], energy, res)
 
     return EdgeFitResult(
         elements=syms,
@@ -224,6 +233,7 @@ def fit_edges(
         r_squared=r_sq,
         success=res.success,
         fit_range=fit_range,
+        model_sigma=sigma,
     )
 
 
