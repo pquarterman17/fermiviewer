@@ -59,6 +59,9 @@ export function analyzeRadial(
 ): Promise<{
   radii: number[];
   intensity: (number | null)[];
+  /** sem = std/sqrt(N) per ring (ANALYSIS_PRESENTATION_PLAN item 3) —
+   *  omitted for azimuthal integration and old cached results. */
+  intensity_sigma?: (number | null)[];
   unit: string;
 }> {
   return post("/api/analyze/radial", {

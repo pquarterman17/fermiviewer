@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 
+import { sigmaBand } from "../../lib/charts/sigmaBand";
 import {
   csvBaseName,
   downloadCsv,
@@ -48,19 +49,40 @@ export default function DockPlot() {
     const make = () => {
       plotRef.current?.destroy();
       const styles = getComputedStyle(document.documentElement);
+      const accent = styles.getPropertyValue("--accent").trim() || "#a78bfa";
+      const series: uPlot.Series[] = [
+        { label: `d (${profile.unit})` },
+        {
+          label: profile.reduce === "sum" ? "I (sum)" : "I",
+          stroke: accent,
+          width: 1.5,
+          points: { show: false },
+        },
+      ];
+      const data: (number[] | (number | null)[])[] = [
+        profile.dist,
+        profile.intensity.map((v) => (v === null ? NaN : v)),
+      ];
+      const bands: uPlot.Band[] = [];
+      // ±σ confidence band (item 3): shaded in the line's own colour,
+      // appended AFTER it so its series index (1) never shifts. Absent
+      // for old/cached results and for profiles with no honest σ (a
+      // single-pixel line, or a reduce='sum' integral) — the backend
+      // simply omits intensity_sigma in those cases.
+      if (profile.intensity_sigma) {
+        const cfg = sigmaBand(
+          profile.intensity, profile.intensity_sigma, accent, 2, 3,
+        );
+        series.push(...cfg.series);
+        data.push(...cfg.data);
+        bands.push(cfg.band);
+      }
       plotRef.current = new uPlot(
         {
           width: host.clientWidth,
           height: host.clientHeight,
-          series: [
-            { label: `d (${profile.unit})` },
-            {
-              label: profile.reduce === "sum" ? "I (sum)" : "I",
-              stroke: styles.getPropertyValue("--accent").trim() || "#a78bfa",
-              width: 1.5,
-              points: { show: false },
-            },
-          ],
+          series,
+          bands,
           // x is calibrated distance, not time — uPlot defaults to a time
           // axis, which renders 0–N nm as clock times (the bug this fixes)
           scales: { x: { time: false } },
@@ -75,10 +97,7 @@ export default function DockPlot() {
           legend: { show: false },
           cursor: { y: false },
         },
-        [
-          profile.dist,
-          profile.intensity.map((v) => (v === null ? NaN : v)),
-        ],
+        data as uPlot.AlignedData,
         host,
       );
     };

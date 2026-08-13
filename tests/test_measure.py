@@ -7,7 +7,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from fermiviewer.calc.fourier import compute_fft
-from fermiviewer.calc.profiles import box_integrate, line_profile, roi_stats
+from fermiviewer.calc.profiles import (
+    box_integrate,
+    line_profile,
+    line_profile_stats,
+    roi_stats,
+)
+from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.server import create_app
 from fermiviewer.session import store
 from fixtures.minidm4 import write_mini_dm4
@@ -199,6 +205,51 @@ def test_width_averaged_profile() -> None:
     np.testing.assert_allclose(edge, np.full(edge.size, 1.5), rtol=1e-12)
 
 
+# ── line_profile_stats (item 3: ±σ line-profile band, width-averaged only) ──
+
+
+def test_line_profile_stats_sem_analytic() -> None:
+    """img(y, x) = x → a vertical line's width=5 perpendicular offsets
+    sample 5 CONSECUTIVE integer columns (spacing 1, since the line is
+    exactly vertical): population std of 5 consecutive integers is a
+    known constant sqrt(2), independent of which 5 — pins sem = std/√5,
+    not std itself."""
+    img = np.tile(np.arange(0, 30, dtype=np.float64)[None, :], (20, 1))
+    dist, inten, sem = line_profile_stats(img, x1=15, y1=3, x2=15, y2=15, width=5)
+    assert sem is not None
+    assert np.all(np.isfinite(sem))
+    expected_sem = np.sqrt(2.0) / np.sqrt(5.0)
+    np.testing.assert_allclose(sem, expected_sem, rtol=1e-9)
+    # and NOT the raw std (mutation guard: serving std instead of sem
+    # must fail this)
+    assert not np.allclose(sem, np.sqrt(2.0))
+
+
+def test_line_profile_stats_matches_line_profile() -> None:
+    """dist/intensity are bit-identical to a bare line_profile() call."""
+    img = np.random.default_rng(5).random((20, 24))
+    d1, v1 = line_profile(img, 3, 4, 18, 4, width=3)
+    d2, v2, sem = line_profile_stats(img, 3, 4, 18, 4, width=3)
+    np.testing.assert_array_equal(d1, d2)
+    np.testing.assert_array_equal(v1, v2)
+    assert sem is not None
+
+
+def test_line_profile_stats_none_when_single_pixel() -> None:
+    """width=1 (default): one bilinear sample per point, no spread to
+    estimate — sem must be None, not a fabricated 0."""
+    img = np.random.default_rng(3).random((16, 16))
+    _, _, sem = line_profile_stats(img, 2, 2, 12, 12)
+    assert sem is None
+
+
+def test_line_profile_stats_none_when_reduce_sum() -> None:
+    """reduce='sum' plots an integral, not a mean — no honest sem."""
+    img = np.random.default_rng(4).random((16, 16))
+    _, _, sem = line_profile_stats(img, 2, 2, 12, 12, width=3, reduce="sum")
+    assert sem is None
+
+
 def test_polyline_profile_l_shape() -> None:
     from fermiviewer.calc.profiles import polyline_profile
 
@@ -284,3 +335,53 @@ def test_profile_endpoint_reduce_sum(client, ramp_id) -> None:
         "image_id": ramp_id, "a": [4, 2], "b": [4, 14], "width": 3,
     })
     assert r2.json()["reduce"] == "mean"
+
+
+# ── intensity_sigma (item 3: ±σ line-profile band) ─────────────────────
+
+
+@pytest.fixture()
+def xramp_id(client) -> str:
+    """img(y, x) = x, uncalibrated — a vertical line's width-averaging
+    samples consecutive ramp values, giving a known nonzero sem."""
+    img = np.tile(np.arange(0, 30, dtype=np.float64)[None, :], (20, 1))
+    ds = DataStruct(data=img, kind=DataKind.IMAGE, axes=(AxisCal(), AxisCal()))
+    return store.add_parsed(ds, "xramp.dm4")
+
+
+def test_measure_profile_intensity_sigma_width_averaged(client, xramp_id) -> None:
+    r = client.post("/api/measure/profile", json={
+        "image_id": xramp_id, "a": [3, 16], "b": [15, 16], "width": 5,
+    })
+    assert r.status_code == 200
+    body = r.json()
+    # additive: old fields unchanged
+    assert set(body) >= {"dist", "intensity", "length", "unit", "reduce"}
+    assert "intensity_sigma" in body
+    sems = body["intensity_sigma"]
+    assert all(v is not None for v in sems)
+    expected = (2.0**0.5) / (5.0**0.5)
+    # mutation guard: this is sem = std/sqrt(N), not std (sqrt(2)) itself
+    assert all(v == pytest.approx(expected, rel=1e-9) for v in sems)
+
+
+def test_measure_profile_intensity_sigma_absent_width1(client, xramp_id) -> None:
+    r = client.post("/api/measure/profile", json={
+        "image_id": xramp_id, "a": [3, 16], "b": [15, 16],
+    })
+    assert "intensity_sigma" not in r.json()
+
+
+def test_measure_profile_intensity_sigma_absent_reduce_sum(client, xramp_id) -> None:
+    r = client.post("/api/measure/profile", json={
+        "image_id": xramp_id, "a": [3, 16], "b": [15, 16], "width": 5, "reduce": "sum",
+    })
+    assert "intensity_sigma" not in r.json()
+
+
+def test_measure_profile_intensity_sigma_absent_polyline(client, xramp_id) -> None:
+    r = client.post("/api/measure/profile", json={
+        "image_id": xramp_id, "points": [[3, 16], [10, 16], [15, 16]], "width": 5,
+    })
+    assert r.status_code == 200
+    assert "intensity_sigma" not in r.json()

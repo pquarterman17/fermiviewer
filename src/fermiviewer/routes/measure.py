@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from fermiviewer.calc.fourier import compute_fft
 from fermiviewer.calc.profiles import (
     box_integrate,
-    line_profile,
+    line_profile_stats,
     measure_distance,
     polyline_profile,
     roi_stats,
@@ -48,8 +48,19 @@ class ProfileRequest(BaseModel):
 
 @router.post("/measure/profile")
 def measure_profile(req: ProfileRequest) -> dict:
+    """Two-point or polyline intensity profile.
+
+    The two-point (a+b) response additionally carries ``intensity_sigma``
+    (sem = std/sqrt(n), same "uncertainty of the mean" convention as
+    /analyze/radial) whenever the plotted value is a genuine per-point
+    average of >1 sample — width rounds to more than one perpendicular
+    line AND reduce=='mean'. Omitted for width=1 (a single bilinear
+    sample has no spread to estimate), for reduce='sum' (an integral, not
+    a mean), and for polyline (points) requests.
+    """
     ds, raster = _raster(req.image_id)
     px = ds.pixel_size if ds.kind is not DataKind.SPECTRUM else float("nan")
+    sem: np.ndarray | None = None
     try:
         if req.points is not None and len(req.points) >= 2:
             pts = np.asarray(req.points, dtype=np.float64)
@@ -58,7 +69,7 @@ def measure_profile(req: ProfileRequest) -> dict:
                 pixel_size=px, width=req.width, reduce=req.reduce,
             )
         elif req.a is not None and req.b is not None:
-            dist, inten = line_profile(
+            dist, inten, sem = line_profile_stats(
                 raster,
                 x1=req.a[1], y1=req.a[0], x2=req.b[1], y2=req.b[0],
                 pixel_size=px,
@@ -73,13 +84,18 @@ def measure_profile(req: ProfileRequest) -> dict:
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
     unit = ds.pixel_unit or "px"
-    return {
+    result: dict = {
         "dist": dist.tolist(),
         "intensity": [None if not np.isfinite(v) else v for v in inten],
         "length": float(dist[-1]),
         "unit": unit if np.isfinite(px) else "px",
         "reduce": req.reduce,
     }
+    if sem is not None:
+        result["intensity_sigma"] = [
+            None if not np.isfinite(v) else float(v) for v in sem
+        ]
+    return result
 
 
 class RoiRequest(BaseModel):

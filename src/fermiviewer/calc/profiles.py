@@ -17,6 +17,7 @@ __all__ = [
     "box_integrate",
     "fit_interface_width",
     "line_profile",
+    "line_profile_stats",
     "measure_distance",
     "polyline_profile",
     "roi_stats",
@@ -83,12 +84,9 @@ def measure_distance(
     >>> round(r.corrected_px, 4)   # 10 / sin(30) = 20.0
     20.0
 
-    References
-    ----------
-    Goldstein et al., "Scanning Electron Microscopy and X-Ray Microanalysis",
-    4th ed., Springer 2018, ch. 4 (geometric distortions).
-    Giannuzzi & Stevie, "Introduction to Focused Ion Beams", Springer 2005,
-    ch. 10 (cross-section metrology).
+    References: Goldstein et al., "Scanning Electron Microscopy and X-Ray
+    Microanalysis", 4th ed., Springer 2018, ch. 4; Giannuzzi & Stevie,
+    "Introduction to Focused Ion Beams", Springer 2005, ch. 10.
     """
     if not (-90 < tilt_angle_deg < 90):
         raise ValueError("tilt_angle_deg must be in (-90, 90) exclusive")
@@ -127,6 +125,26 @@ def measure_distance(
         tilt_axis=axis,
         geometry=geometry,
     )
+
+
+def _perp_stack(
+    arr: np.ndarray,
+    x1: float, y1: float, x2: float, y2: float,
+    n_lines: int, xs: np.ndarray, ys: np.ndarray, pixel_dist: float,
+) -> np.ndarray:
+    """n_lines bilinear samples along (x1,y1)-(x2,y2), offset by whole
+    pixels perpendicular to it — shared by line_profile's width>1
+    averaging and line_profile_stats' per-point spread."""
+    ux, uy = (x2 - x1) / pixel_dist, (y2 - y1) / pixel_dist
+    perp_x, perp_y = -uy, ux
+    offsets = np.arange(n_lines, dtype=np.float64) - (n_lines - 1) / 2
+    return np.stack([
+        map_coordinates(
+            arr, [ys + perp_y * o - 1, xs + perp_x * o - 1],
+            order=1, mode="constant", cval=np.nan,
+        )
+        for o in offsets
+    ])
 
 
 def line_profile(
@@ -169,17 +187,7 @@ def line_profile(
     if n_lines > 1:
         if pixel_dist == 0:
             raise ValueError("zero-length segment cannot have width")
-        ux, uy = (x2 - x1) / pixel_dist, (y2 - y1) / pixel_dist
-        perp_x, perp_y = -uy, ux
-        offsets = np.arange(n_lines, dtype=np.float64) - (n_lines - 1) / 2
-        rows = [
-            map_coordinates(
-                arr, [ys + perp_y * o - 1, xs + perp_x * o - 1],
-                order=1, mode="constant", cval=np.nan,
-            )
-            for o in offsets
-        ]
-        stacked = np.stack(rows)
+        stacked = _perp_stack(arr, x1, y1, x2, y2, n_lines, xs, ys, pixel_dist)
         with np.errstate(invalid="ignore"):
             if reduce == "sum":
                 # count only valid (non-NaN) samples to avoid inflating the
@@ -212,6 +220,53 @@ def line_profile(
     if np.isfinite(pixel_size):
         dist = dist * pixel_size
     return dist, intensity
+
+
+def line_profile_stats(
+    img: np.ndarray,
+    x1: float, y1: float, x2: float, y2: float,
+    pixel_size: float = float("nan"),
+    tilt_angle_deg: float = 0.0,
+    tilt_axis: str = "Y",
+    geometry: str = "cross-section",
+    width: float = 1.0,
+    reduce: str = "mean",
+) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+    """line_profile, plus the per-point sem across the averaging width —
+    additive sibling for the ±σ line-profile band (item 3). dist/intensity
+    come from calling line_profile() directly (bit-identical). sem is
+    populated ONLY for a genuine per-point average of >1 sample:
+    round(width) > 1 AND reduce=='mean'. Otherwise None — width=1 draws
+    one bilinear sample (no spread to estimate) and reduce='sum' plots an
+    integral, not a mean — neither has an honest σ; do not invent one.
+    """
+    dist, intensity = line_profile(
+        img, x1, y1, x2, y2,
+        pixel_size=pixel_size, tilt_angle_deg=tilt_angle_deg,
+        tilt_axis=tilt_axis, geometry=geometry, width=width, reduce=reduce,
+    )
+    n_lines = max(1, int(round(width)))
+    if n_lines <= 1 or reduce != "mean":
+        return dist, intensity, None
+
+    pixel_dist = float(np.hypot(x2 - x1, y2 - y1))
+    n = max(2, int(np.ceil(pixel_dist)) + 1)
+    xs, ys = np.linspace(x1, x2, n), np.linspace(y1, y2, n)
+    arr = np.asarray(img, dtype=np.float64)
+    stacked = _perp_stack(arr, x1, y1, x2, y2, n_lines, xs, ys, pixel_dist)
+    # sum/count, not np.nanmean/nanstd (those warn via `warnings`, not
+    # np.errstate, on an all-NaN column — trips filterwarnings=error)
+    finite = np.isfinite(stacked)
+    valid = finite.sum(axis=0).astype(np.float64)
+    zeroed = np.where(finite, stacked, 0.0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        mean = zeroed.sum(axis=0) / valid
+        mean_sq = (zeroed * zeroed).sum(axis=0) / valid
+        var = np.maximum(mean_sq - mean * mean, 0.0)
+        std = np.sqrt(var)
+        sem = std / np.sqrt(valid)
+    sem[valid == 0] = np.nan
+    return dist, intensity, sem
 
 
 def polyline_profile(

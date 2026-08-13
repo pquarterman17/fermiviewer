@@ -241,6 +241,12 @@ export interface ProfileResult {
   length: number;
   unit: string;
   reduce: ProfileReduce;
+  /** Standard error of the mean per point (ANALYSIS_PRESENTATION_PLAN
+   *  item 3) — present only when the profile is a genuine width>1
+   *  average (reduce='mean'); absent for width=1, reduce='sum',
+   *  polyline profiles, and old cached results. DockPlot shades
+   *  intensity ± intensity_sigma when present. */
+  intensity_sigma?: (number | null)[];
 }
 
 /** Line profile. a/b are 0-based image (x, y); backend wants 1-based (row, col). */

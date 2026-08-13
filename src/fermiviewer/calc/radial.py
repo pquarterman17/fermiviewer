@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import numpy as np
 
-__all__ = ["azimuthal_integrate", "radial_profile"]
+__all__ = ["azimuthal_integrate", "radial_profile", "radial_profile_stats"]
 
 
 def radial_profile(
@@ -30,6 +30,45 @@ def radial_profile(
 
     Returns (radii, avg_profile, max_profile); empty bins are NaN.
     """
+    radii, avg, mx, _std, _n = _radial_bin(img, center, n_bins, normalize)
+    return radii, avg, mx
+
+
+def radial_profile_stats(
+    img: np.ndarray,
+    center: tuple[float, float] | None = None,
+    n_bins: int = 0,
+    normalize: bool = False,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Like radial_profile, plus the per-ring standard deviation of pixel
+    values and the per-ring pixel count — additive sibling for the ±σ
+    radial-profile band (ANALYSIS_PRESENTATION_PLAN item 3).
+
+    Returns (radii, avg_profile, max_profile, std_profile, n_pixels).
+
+    std_profile is the population standard deviation (ddof=0) of the raw
+    pixel VALUES inside each ring — the ring's intensity SPREAD. That is
+    NOT the same quantity as the uncertainty of the ring's average: a
+    caller wanting the latter (the standard error of the mean, a much
+    narrower band) divides by sqrt(n_pixels) itself — see
+    routes/imaging_ops.py::analyze_radial, which does exactly that and
+    documents the distinction again at the wire boundary.
+
+    n_pixels is 0 for an empty ring (only possible for masked/NaN-heavy
+    callers; radial_profile's own bin geometry always assigns every pixel
+    to some ring); avg/max/std are NaN there, matching the existing
+    empty-bin convention.
+    """
+    return _radial_bin(img, center, n_bins, normalize)
+
+
+def _radial_bin(
+    img: np.ndarray,
+    center: tuple[float, float] | None,
+    n_bins: int,
+    normalize: bool,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Shared binning core for radial_profile / radial_profile_stats."""
     d = np.asarray(img, dtype=np.float64)
     h, w = d.shape
     cx, cy = center if center is not None else (w / 2 + 0.5, h / 2 + 0.5)
@@ -49,22 +88,39 @@ def radial_profile(
     flat_val = d.ravel()
     counts = np.bincount(flat_idx, minlength=n_bins).astype(np.float64)
     sums = np.bincount(flat_idx, weights=flat_val, minlength=n_bins)
+    sums_sq = np.bincount(
+        flat_idx, weights=flat_val * flat_val, minlength=n_bins
+    )
     with np.errstate(invalid="ignore"):
         avg = sums / counts
+        mean_sq = sums_sq / counts
     avg[counts == 0] = np.nan
+    # Population variance E[x^2] - E[x]^2; clamp the rare tiny negative
+    # from floating-point cancellation before the sqrt.
+    var = np.maximum(mean_sq - avg * avg, 0.0)
+    std = np.sqrt(var)
+    std[counts == 0] = np.nan
     mx = np.full(n_bins, -np.inf)
     np.maximum.at(mx, flat_idx, flat_val)
     mx[counts == 0] = np.nan
 
     if normalize:
-        for arr in (avg, mx):
-            lo, hi = np.nanmin(arr), np.nanmax(arr)
-            if hi > lo:
-                arr -= lo
-                arr /= hi - lo
-            else:
-                arr[:] = 0.0
-    return radii, avg, mx
+        lo, hi = np.nanmin(avg), np.nanmax(avg)
+        if hi > lo:
+            avg -= lo
+            avg /= hi - lo
+            std /= hi - lo
+        else:
+            avg[:] = 0.0
+            std[:] = 0.0
+        lo, hi = np.nanmin(mx), np.nanmax(mx)
+        if hi > lo:
+            mx -= lo
+            mx /= hi - lo
+        else:
+            mx[:] = 0.0
+
+    return radii, avg, mx, std, counts
 
 
 def azimuthal_integrate(

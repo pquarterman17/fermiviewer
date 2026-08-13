@@ -87,7 +87,7 @@ def test_analyze_radial_calc_value_error_is_422(
     def boom(*a, **kw):
         raise ValueError("degenerate raster")
 
-    monkeypatch.setattr(imaging_ops, "radial_profile", boom)
+    monkeypatch.setattr(imaging_ops, "radial_profile_stats", boom)
     r = client.post("/api/analyze/radial", json={"image_id": img_id})
     assert r.status_code == 422
     assert "degenerate raster" in r.json()["detail"]

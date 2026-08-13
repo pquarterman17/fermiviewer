@@ -294,3 +294,68 @@ def test_raster_helper_sums_spectrum_image(client) -> None:
     r = client.post("/api/analyze/noise", json={"image_id": si_id})
     assert r.status_code == 200
     assert r.json()["sigma"] >= 0
+
+
+# ── radial (item 3: ±σ radial-profile band) ─────────────────────────────
+
+
+def _checker_image_id(client) -> str:
+    """40x50 two-value column checkerboard — every populated ring is a
+    50/50 split, giving a known population std of |8-2|/2 = 3.0."""
+    h, w = 40, 50
+    img = np.empty((h, w))
+    img[:, ::2] = 2.0
+    img[:, 1::2] = 8.0
+    ds = DataStruct(data=img, kind=DataKind.IMAGE, axes=(AxisCal(), AxisCal()))
+    return store.add_parsed(ds, "checker.dm4")
+
+
+def test_analyze_radial_intensity_sigma_matches_sem_not_std(client) -> None:
+    from fermiviewer.calc.radial import radial_profile_stats
+
+    img_id = _checker_image_id(client)
+    r = client.post(
+        "/api/analyze/radial", json={"image_id": img_id, "n_bins": 7}
+    )
+    assert r.status_code == 200
+    body = r.json()
+    # additive: old fields unchanged
+    assert set(body) >= {"radii", "intensity", "max_intensity", "unit"}
+    assert "intensity_sigma" in body
+
+    h, w = 40, 50
+    img = np.empty((h, w))
+    img[:, ::2] = 2.0
+    img[:, 1::2] = 8.0
+    _, _, _, std, n = radial_profile_stats(img, n_bins=7)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        expected_sem = std / np.sqrt(n)
+
+    got = body["intensity_sigma"]
+    for g, e in zip(got, expected_sem, strict=True):
+        if not np.isfinite(e):
+            assert g is None
+        else:
+            assert g == pytest.approx(float(e), rel=1e-9)
+    # mutation guard: sem must differ from std wherever N > 1 — a route
+    # that regressed to serving std would pass every assertion above only
+    # by coincidence of N==1; this makes that impossible
+    multi = [
+        (g, s)
+        for g, s, ni in zip(got, std, n, strict=True)
+        if g is not None and ni > 1
+    ]
+    assert multi
+    assert any(abs(g - s) > 1e-6 for g, s in multi)
+
+
+def test_analyze_radial_azimuthal_has_no_intensity_sigma(client) -> None:
+    """The azimuthal branch doesn't compute per-ring stats — the field is
+    simply absent, same as an old cached result."""
+    img_id = _checker_image_id(client)
+    r = client.post(
+        "/api/analyze/radial",
+        json={"image_id": img_id, "azimuthal": True},
+    )
+    assert r.status_code == 200
+    assert "intensity_sigma" not in r.json()

@@ -32,7 +32,11 @@ from fermiviewer.calc.particles import (
     watershed,
 )
 from fermiviewer.calc.profiles import fit_interface_width
-from fermiviewer.calc.radial import azimuthal_integrate, radial_profile
+from fermiviewer.calc.radial import (
+    azimuthal_integrate,
+    radial_profile,
+    radial_profile_stats,
+)
 from fermiviewer.calc.roughness import surface_roughness
 from fermiviewer.calc.segment import (
     distance_transform,
@@ -273,6 +277,84 @@ def test_azimuthal_integrate(synth) -> None:
         g["wrap"]["intensitySum"], rel=REL
     )
     assert int(np.isnan(wrap).sum()) == g["wrap"]["nanCount"]
+
+
+# ── radial_profile_stats (item 3: ±σ radial-profile band) ─────────────
+
+
+def test_radial_profile_stats_matches_radial_profile() -> None:
+    """The stats sibling's radii/avg/max are bit-identical to the plain
+    radial_profile() call — additive, not a behaviour change."""
+    img = np.random.default_rng(11).random((40, 50))
+    radii1, avg1, mx1 = radial_profile(img, n_bins=8)
+    radii2, avg2, mx2, _std, _n = radial_profile_stats(img, n_bins=8)
+    np.testing.assert_array_equal(radii1, radii2)
+    np.testing.assert_array_equal(avg1, avg2)
+    np.testing.assert_array_equal(mx1, mx2)
+
+
+def test_radial_profile_stats_constant_image() -> None:
+    """A constant image has zero intensity spread in every populated
+    ring — std (and therefore sem) must read exactly 0, not NaN."""
+    img = np.full((30, 40), 7.0)
+    radii, avg, mx, std, n = radial_profile_stats(img, n_bins=6)
+    finite = np.isfinite(avg)
+    assert finite.any()
+    assert np.all(std[finite] == 0.0)
+    assert np.all(n[finite] > 0)
+    assert n.sum() == img.size          # N sums to the full pixel count
+
+
+def test_radial_profile_stats_checker_matches_independent_binning() -> None:
+    """A planted two-value checkerboard gives an analytically known
+    population std per ring (|a-b|/2); cross-check against an INDEPENDENT
+    re-binning (not radial_profile_stats' own code) so this isn't
+    circular."""
+    h, w = 40, 50
+    img = np.empty((h, w))
+    img[:, ::2] = 2.0
+    img[:, 1::2] = 8.0
+    n_bins = 7
+    radii, avg, mx, std, n = radial_profile_stats(img, n_bins=n_bins)
+
+    cx, cy = w / 2 + 0.5, h / 2 + 0.5
+    cols = np.arange(1, w + 1, dtype=np.float64)[None, :]
+    rows = np.arange(1, h + 1, dtype=np.float64)[:, None]
+    dist_map = np.hypot(cols - cx, rows - cy)
+    bin_width = dist_map.max() / n_bins
+    idx = np.minimum((dist_map / bin_width).astype(np.int64), n_bins - 1)
+
+    assert np.all(n > 0)                # every ring populated at this n_bins
+    for b in range(n_bins):
+        mask = idx == b
+        vals = img[mask]
+        assert n[b] == mask.sum()
+        assert avg[b] == pytest.approx(vals.mean())
+        assert std[b] == pytest.approx(vals.std(ddof=0))
+        assert std[b] == pytest.approx(3.0)   # |8-2|/2, every ring 50/50
+    assert n.sum() == img.size
+
+
+def test_radial_profile_stats_sem_formula_pinned() -> None:
+    """The route shades sem = std/sqrt(N) — the uncertainty of the ring
+    MEAN — not std itself (the ring's own spread, a much fatter,
+    different quantity). Pin the relationship: mutating the route to
+    serve std in place of sem must make this fail."""
+    h, w = 40, 50
+    img = np.empty((h, w))
+    img[:, ::2] = 2.0
+    img[:, 1::2] = 8.0
+    _, _, _, std, n = radial_profile_stats(img, n_bins=7)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        sem = std / np.sqrt(n)
+    finite = np.isfinite(sem) & (n > 0)
+    assert finite.any()
+    np.testing.assert_allclose(sem[finite], std[finite] / np.sqrt(n[finite]))
+    # sem is strictly narrower than std wherever N > 1 — the two are NOT
+    # interchangeable, which is exactly what a std-for-sem mutation breaks
+    multi = finite & (n > 1)
+    assert multi.any()
+    assert np.all(sem[multi] < std[multi])
 
 
 # ── tranche 2b ───────────────────────────────────────────────────────

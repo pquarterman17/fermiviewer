@@ -16,7 +16,7 @@ from fermiviewer.calc.gpa import geometric_phase_analysis
 from fermiviewer.calc.lattice import lattice_measure
 from fermiviewer.calc.montage import montage as calc_montage
 from fermiviewer.calc.profiles import fit_interface_width
-from fermiviewer.calc.radial import azimuthal_integrate, radial_profile
+from fermiviewer.calc.radial import azimuthal_integrate, radial_profile_stats
 from fermiviewer.calc.raster import NoRasterError, raster_of
 from fermiviewer.calc.roi import extract_rect_roi
 from fermiviewer.calc.roughness import surface_roughness
@@ -154,8 +154,24 @@ class RadialRequest(BaseModel):
 
 @router.post("/analyze/radial")
 def analyze_radial(req: RadialRequest) -> dict:
+    """Radial average/max profile, or (azimuthal=True) a sector-masked
+    azimuthal average.
+
+    The non-azimuthal response additionally carries ``intensity_sigma``:
+    the STANDARD ERROR OF THE MEAN per ring (sem = std/sqrt(n_pixels)) —
+    how precisely each ring's average intensity is known. This is NOT the
+    ring's own intensity spread (a much fatter quantity, sqrt(n) wider);
+    see calc/radial.py::radial_profile_stats for that distinction. The
+    frontend shades ``intensity`` ± ``intensity_sigma`` as a confidence
+    band on the ring average, matching the composition-profile and
+    fit-view bands (ANALYSIS_PRESENTATION_PLAN item 3). The field is
+    additive and omitted for the azimuthal-integration branch, which does
+    not compute per-ring statistics, and for old cached results — the
+    frontend treats its absence as "no band".
+    """
     ds, raster = _raster(req.image_id)
     px = ds.pixel_size if np.isfinite(ds.pixel_size) else 1.0
+    sem: np.ndarray | None = None
     with value_error_as_422():
         if req.azimuthal:
             radii, intensity = azimuthal_integrate(
@@ -166,13 +182,15 @@ def analyze_radial(req: RadialRequest) -> dict:
             avg = intensity
             mx = intensity
         else:
-            radii_px, avg, mx = radial_profile(
+            radii_px, avg, mx, std, n = radial_profile_stats(
                 raster, center=req.center, n_bins=req.n_bins
             )
             radii = radii_px * px
+            with np.errstate(invalid="ignore", divide="ignore"):
+                sem = std / np.sqrt(n)
     unit = ds.pixel_unit or "px"
     nan_to_none = [None if not np.isfinite(v) else float(v) for v in avg]
-    return {
+    result: dict = {
         "radii": radii.tolist(),
         "intensity": nan_to_none,
         "max_intensity": [
@@ -180,6 +198,11 @@ def analyze_radial(req: RadialRequest) -> dict:
         ],
         "unit": unit,
     }
+    if sem is not None:
+        result["intensity_sigma"] = [
+            None if not np.isfinite(v) else float(v) for v in sem
+        ]
+    return result
 
 
 # ── roughness ─────────────────────────────────────────────────────────

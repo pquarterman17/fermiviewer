@@ -317,6 +317,7 @@ export default function MenuBar({
           measureId: azimuthal ? "__azimuthal__" : "__radial__",
           dist: r.radii,
           intensity: r.intensity,
+          intensity_sigma: r.intensity_sigma,
           length: r.radii[r.radii.length - 1] ?? 0,
           unit: r.unit,
           reduce: "mean",
