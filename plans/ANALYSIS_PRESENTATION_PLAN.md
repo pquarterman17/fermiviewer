@@ -11,14 +11,13 @@ DECLINED general-graphing/statistics list lives in that doc and is out).
 **Status:** Active
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-08-12
-**Updated:** 2026-08-12 — wave 3 same day: items 4 (SVG/DPI chart
-export) and 8 (scripting-reach sweep) shipped; item 3 ticked its
-fit-view checkbox (model-confidence bands), leaving only its
-radial/line-profile checkbox open. Gate 2060 backend / 1424 vitest.
-Earlier waves same day: 1/2/5 (gate 1994/1319), then 6/7 + item 3's
-first chart (gate 2026/1374). All three waves via file-disjoint sonnet
-worktree agents. **Open: item 3's last checkbox + Tier 3 (9–12,
-build-on-demand only).**
+**Updated:** 2026-08-12 — item 3 CLOSED with its radial/line-profile
+checkbox (wave 4, gate 2074 backend / 1428 vitest). **All eight
+engineering items (1–8) shipped the same day the plan was booked**,
+across four waves of file-disjoint sonnet worktree agents (gates
+1994/1319 → 2026/1374 → 2060/1424 → 2074/1428). Open: Tier 3 only
+(9–12), which are build-on-demand by rule — this plan is effectively
+dormant until a Tier-3 need recurs or a new audit adds items.
 
 ---
 
@@ -76,18 +75,7 @@ every new verb ─> ops registration ─> #8 batch/scripting reach for free
 
 ## Tier 1 — High Impact
 
-3. **Error bars / ±σ bands on existing analysis charts** (was audit R1)
-   — uncertainty is computed everywhere and rendered only as
-   `value ± err` text (`lib/formatUncertainty.ts`).
-   **First chart SHIPPED 2026-08-12:** the composition profile draws a
-   real ±1σ band per element (see Completed for the machinery — the
-   reusable `lib/charts/sigmaBand.ts` helper and the backend σ
-   propagation pattern). Remaining: the other σ-carrying charts —
-   - [x] EELS/EDS fit views: model-confidence band from the covariance —
-         SHIPPED 2026-08-12, see the wave-3 Completed entry
-   - [ ] radial/line-profile charts where a σ series exists or is cheap
-   - [ ] spectrum integration readouts stay text (scalars, not series) —
-         explicitly out
+*(empty — items 1–4 all shipped 2026-08-12; see Completed)*
 
 
 ## Tier 2 — Medium Impact
@@ -115,8 +103,26 @@ schedule)*
 
 ## Completed
 
-- **#3 (fit-view checkbox): model-confidence bands** (2026-08-12; item
-  stays OPEN for radial/line-profile charts only) — new pure
+- ~~**#3 Error bars / ±σ bands on existing analysis charts**~~
+  (2026-08-12, closed by its third and final checkbox) — the
+  radial-profile chart now shades avg ± sem (new
+  `calc/radial.radial_profile_stats`, additive; `/analyze/radial`
+  serves `intensity_sigma = std/√N` with the docstring explicitly
+  distinguishing uncertainty-of-the-mean from the ring's intensity
+  SPREAD — the fat band a reader would misread). Line profile got the
+  band ONLY where σ is honest: width>1 with `reduce='mean'`
+  (perpendicular-stack averaging); width=1 (single-pixel — no σ exists)
+  and `reduce='sum'` (an integral, not a mean) get none, each pinned by
+  a dedicated test rather than asserted in prose. Both charts render
+  through the shared `DockPlot`, so one wiring covered them. sem-vs-std
+  verified by live mutation on both routes. Spectrum integration
+  readouts remain text by design (scalars, not series). +14 backend /
+  +4 frontend tests. WATCH: `calc/profiles.py` landed at exactly
+  500/500 (docstring trimmed to fit) — next touch must extract.
+  Checkbox history: composition-profile band (wave 2), fit-view
+  model-confidence bands (wave 3), radial/line-profile (wave 4).
+
+- **(was #3's wave-3 entry) fit-view model-confidence bands** — new pure
   `calc/spectral_fit.model_sigma()`: central-difference Jacobian
   (rel_step 1e-6, scipy's own heuristic) then
   `sqrt(diag(J·cov·Jᵀ))` via `np.einsum("ij,jk,ik->i", ...)` without
