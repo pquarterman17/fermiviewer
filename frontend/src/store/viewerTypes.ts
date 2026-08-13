@@ -231,6 +231,7 @@ export type CaptureMode =
   | "crop-save"
   | "calibrate"
   | "specnav" // click/drag the main image → drives the EELS/EDS spectrum
+  | "fourdnav" // click/drag the main image → moves the 4D-STEM probe (#14)
   | MeasureKind;
 export type Theme = "dark" | "light";
 /** Swappable accent scheme (kept in sync with lib/prefs Accent; no import

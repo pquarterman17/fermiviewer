@@ -108,8 +108,13 @@
   z-index: 6;
 }
 
-/* specnav (#10): crosshair ring at the pixel feeding the EELS/EDS spectrum */
-.fvd-specnav-mark {
+/* specnav (#10): crosshair ring at the pixel feeding the EELS/EDS spectrum.
+   fourdnav (#14) shares this exact visual language for the 4D-STEM probe
+   pixel — same "a probed pixel on the main Stage" marker, different capture
+   mode/store field/component (FourDProbeMarker.tsx), so the selectors are
+   extended rather than duplicated. */
+.fvd-specnav-mark,
+.fvd-fourdnav-mark {
   position: absolute;
   width: 16px;
   height: 16px;
@@ -124,14 +129,17 @@
 }
 
 .fvd-specnav-mark::before,
-.fvd-specnav-mark::after {
+.fvd-specnav-mark::after,
+.fvd-fourdnav-mark::before,
+.fvd-fourdnav-mark::after {
   content: "";
   position: absolute;
   background: var(--capture);
 }
 
 /* horizontal + vertical crosshair ticks through the ring centre */
-.fvd-specnav-mark::before {
+.fvd-specnav-mark::before,
+.fvd-fourdnav-mark::before {
   left: 50%;
   top: -5px;
   width: 1.5px;
@@ -139,7 +147,8 @@
   margin-left: -0.75px;
 }
 
-.fvd-specnav-mark::after {
+.fvd-specnav-mark::after,
+.fvd-fourdnav-mark::after {
   top: 50%;
   left: -5px;
   height: 1.5px;
@@ -147,7 +156,8 @@
   margin-top: -0.75px;
 }
 
-.fvd-specnav-label {
+.fvd-specnav-label,
+.fvd-fourdnav-label {
   position: absolute;
   left: 13px;
   top: -19px;
@@ -167,11 +177,13 @@
 
 /* The stage clips overflow, so flip the label inside when the probe sits
    near the top or right edge. */
-.fvd-specnav-label.flip-down {
+.fvd-specnav-label.flip-down,
+.fvd-fourdnav-label.flip-down {
   top: 9px;
 }
 
-.fvd-specnav-label.flip-left {
+.fvd-specnav-label.flip-left,
+.fvd-fourdnav-label.flip-left {
   left: auto;
   right: 13px;
 }

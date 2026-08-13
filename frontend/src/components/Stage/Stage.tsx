@@ -29,6 +29,7 @@ import CaptureBanner from "./CaptureBanner";
 import DockPlot from "./DockPlot";
 import EmptyStage from "./EmptyStage";
 import { FloatTools, ZoomChip } from "./FloatTools";
+import FourDProbeMarker from "./FourDProbeMarker";
 import LayersOverlay from "./LayersOverlay";
 import MeasureOverlay from "./MeasureOverlay";
 import Minimap from "./Minimap";
@@ -85,6 +86,8 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   const setCaptureMode = useViewer((s) => s.setCaptureMode);
   const setSpecnavPixel = useViewer((s) => s.setSpecnavPixel);
   const specnavPixel = useViewer((s) => s.specnavPixel);
+  const setFourdNavPixel = useViewer((s) => s.setFourdNavPixel);
+  const fourdNavPixel = useViewer((s) => s.fourdNavPixel);
   const fixedZoomW = useViewer((s) => s.fixedZoomW);
   const fixedZoomH = useViewer((s) => s.fixedZoomH);
   const panTool = useViewer((s) => s.panTool);
@@ -125,6 +128,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
   } | null>(null);
   const dragRef = useRef<{ last: Pt } | null>(null);
   const specnavRef = useRef(false); // dragging in specnav mode (#10)
+  const fourdnavRef = useRef(false); // dragging in fourdnav mode (#14)
   const rasterRef = useRef<Raster16 | null>(null);
 
   const rasterless = meta?.kind === "spectrum";
@@ -381,6 +385,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     scaleBarRef,
     dragRef,
     specnavRef,
+    fourdnavRef,
     paintingRef,
     view,
     imgSize,
@@ -402,6 +407,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
     setPanning,
     setCursor,
     setSpecnavPixel,
+    setFourdNavPixel,
     setMarquee,
     setPending,
     setGrainPending,
@@ -450,6 +456,13 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
           imgSize,
           vp,
         )
+      : null;
+
+  // screen-space crosshair for the fourdnav-picked pixel (#14) — same
+  // convention as specnavMarkPos above, for the 4D-STEM probe instead.
+  const fourdNavMarkPos =
+    captureMode === "fourdnav" && fourdNavPixel && view && imgSize
+      ? imageToScreen(fourdNavPixel[1] - 0.5, fourdNavPixel[0] - 0.5, view, imgSize, vp)
       : null;
 
   return (
@@ -521,6 +534,9 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
           )}
           {specnavMarkPos && specnavPixel && (
             <SpectrumProbeMarker position={specnavMarkPos} pixel={specnavPixel} viewport={vp} />
+          )}
+          {fourdNavMarkPos && fourdNavPixel && (
+            <FourDProbeMarker position={fourdNavMarkPos} pixel={fourdNavPixel} viewport={vp} />
           )}
           <Minimap
             imageId={activeId}

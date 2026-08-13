@@ -111,6 +111,10 @@ export interface ViewerState {
   // spectrum-navigation pixel (1-based [row, col]) picked on the main stage in
   // specnav mode; the EELS/EDS workshops watch it to drive their spectrum (#10)
   specnavPixel: [number, number] | null;
+  // 4D-STEM probe pixel (1-based [row, col]) picked on the main stage in
+  // fourdnav mode — same shape/convention as specnavPixel; the FourD
+  // workshop watches it (via useFourDNavProbeSync) to move the probe (#14)
+  fourdNavPixel: [number, number] | null;
   layersOverlay: LayersOverlayState | null;
   layersEdit: boolean;                 // stage interface-editing mode
   layersEditReq: number[] | null;      // positions requested by a stage edit
@@ -279,6 +283,7 @@ export interface ViewerState {
   setRoiStats: (measureId: string, stats: RoiStats) => void;
   setCaptureMode: (mode: CaptureMode) => void;
   setSpecnavPixel: (p: [number, number] | null) => void;
+  setFourdNavPixel: (p: [number, number] | null) => void;
   setLayersOverlay: (o: LayersOverlayState | null) => void;
   setLayersEdit: (b: boolean) => void;
   setLayersEditReq: (p: number[] | null) => void;

@@ -1,7 +1,19 @@
 // Aperture controls: BF/ABF/ADF/custom mode presets, radii + center fields,
 // auto-center toggle, and the Compute map action (POST /virtual-detector).
+//
+// Radii show a secondary calibrated-unit readout (mrad, typically) — and
+// accept typed input in it — whenever the dataset's detector axes are
+// calibrated (see mradConversion.ts); an uncalibrated dataset (bare .mib,
+// no .hdr sidecar) keeps the original px-only UI unchanged.
 
+import type { AxisCalOut } from "../../../lib/api";
 import { apertureError, useFourD, type ApertureMode } from "../../../store/fourd";
+import {
+  calibratedToPx,
+  detCalibration,
+  pxToCalibrated,
+  roundForDisplay,
+} from "./mradConversion";
 
 const MODES: { id: ApertureMode; label: string; title: string }[] = [
   { id: "bf", label: "BF", title: "Bright field — disk at the direct beam" },
@@ -10,10 +22,45 @@ const MODES: { id: ApertureMode; label: string; title: string }[] = [
   { id: "custom", label: "Custom", title: "Freely edit radii, shape and center" },
 ];
 
+/** The px readout plus, when calibrated, a paired editable field in the
+ *  calibrated unit — least-cluttered way to add a second unit to an
+ *  existing slider row without a mode toggle. */
+function CalibratedRadiusField({
+  px,
+  scale,
+  units,
+  onChangePx,
+}: {
+  px: number;
+  scale: number;
+  units: string;
+  onChangePx: (px: number) => void;
+}) {
+  const display = roundForDisplay(pxToCalibrated(px, scale));
+  return (
+    <>
+      <input
+        type="number"
+        step="any"
+        aria-label={`radius in ${units}`}
+        style={{ width: 64 }}
+        value={Number.isFinite(display) ? display : ""}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          if (Number.isFinite(v)) onChangePx(calibratedToPx(v, scale));
+        }}
+      />
+      <span className="k">{units}</span>
+    </>
+  );
+}
+
 export default function FourDApertureControls({
   detShape,
+  detAxes,
 }: {
   detShape: [number, number];
+  detAxes?: AxisCalOut[] | null;
 }) {
   const aperture = useFourD((s) => s.aperture);
   const setApertureMode = useFourD((s) => s.setApertureMode);
@@ -26,6 +73,7 @@ export default function FourDApertureControls({
 
   const maxR = Math.max(detShape[0], detShape[1]) / 2;
   const error = apertureError(aperture, detShape);
+  const cal = detCalibration(detAxes);
 
   return (
     <>
@@ -75,8 +123,16 @@ export default function FourDApertureControls({
             style={{ flex: 1 }}
           />
           <span className="k" style={{ width: 40, textAlign: "right" }}>
-            {aperture.innerR.toFixed(1)}
+            {aperture.innerR.toFixed(1)} px
           </span>
+          {cal && (
+            <CalibratedRadiusField
+              px={aperture.innerR}
+              scale={cal.scale}
+              units={cal.units}
+              onChangePx={(innerR) => setApertureField({ innerR })}
+            />
+          )}
         </div>
       )}
 
@@ -92,8 +148,16 @@ export default function FourDApertureControls({
           style={{ flex: 1 }}
         />
         <span className="k" style={{ width: 40, textAlign: "right" }}>
-          {aperture.outerR.toFixed(1)}
+          {aperture.outerR.toFixed(1)} px
         </span>
+        {cal && (
+          <CalibratedRadiusField
+            px={aperture.outerR}
+            scale={cal.scale}
+            units={cal.units}
+            onChangePx={(outerR) => setApertureField({ outerR })}
+          />
+        )}
       </div>
 
       <div className="fvd-ws-row">

@@ -108,6 +108,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   fixedZoomH: pref("fixedZoomH", 256),
   captureMode: "none",
   specnavPixel: null,
+  fourdNavPixel: null,
   layersOverlay: null,
   layersEdit: false,
   layersEditReq: null,
@@ -340,9 +341,16 @@ export const useViewer = create<ViewerState>((set, get) => ({
   setSelectedMulti: (selectedMulti) => set({ selectedMulti }),
 
   setCaptureMode: (mode) =>
-    // leaving specnav clears the picked pixel so a stale marker doesn't linger
-    set(mode === "specnav" ? { captureMode: mode } : { captureMode: mode, specnavPixel: null }),
+    // leaving specnav/fourdnav clears its picked pixel so a stale marker
+    // doesn't linger; entering either keeps a pixel already picked (e.g. a
+    // fresh pick from just before the mode switch landed).
+    set({
+      captureMode: mode,
+      ...(mode === "specnav" ? {} : { specnavPixel: null }),
+      ...(mode === "fourdnav" ? {} : { fourdNavPixel: null }),
+    }),
   setSpecnavPixel: (specnavPixel) => set({ specnavPixel }),
+  setFourdNavPixel: (fourdNavPixel) => set({ fourdNavPixel }),
   setLayersOverlay: (layersOverlay) => set({ layersOverlay }),
   setLayersEdit: (layersEdit) => set({ layersEdit }),
   setLayersEditReq: (layersEditReq) => set({ layersEditReq }),

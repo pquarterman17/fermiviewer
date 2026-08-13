@@ -77,6 +77,51 @@ def test_fourd_meta(client: TestClient) -> None:
     assert r.json()["id"] == fourd_id
 
 
+def test_det_axes_calibration_round_trips_through_the_wire(client: TestClient) -> None:
+    """PLAN_4DSTEM #14 (aperture radii in mrad): a calibrated diffraction
+    plane must reach the client through BOTH `/api/fourd` (list) and
+    `/api/fourd/{id}/meta` — the workshop's dataset picker uses the list
+    response, so calibration missing there specifically would silently
+    disable the mrad UI for every dataset opened via File > Open."""
+    rng = np.random.default_rng(0)
+    cube = rng.integers(0, 100, size=(2, 3, 4, 5)).astype(np.float64)
+    ds = FourDDataset(
+        handle=cube,
+        scan_shape=(2, 3),
+        det_shape=(4, 5),
+        scan_axes=(
+            AxisCal(scale=1.0, origin=0.0, units="nm"),
+            AxisCal(scale=1.0, origin=0.0, units="nm"),
+        ),
+        det_axes=(
+            AxisCal(scale=0.123, origin=0.0, units="mrad"),
+            AxisCal(scale=0.123, origin=0.0, units="mrad"),
+        ),
+        dtype=cube.dtype,
+        metadata={"source": "calibrated.hspy"},
+    )
+    fourd_id = fourd_store.add(ds, "calibrated.hspy")
+
+    for meta in (
+        client.get("/api/fourd").json()[0],
+        client.get(f"/api/fourd/{fourd_id}/meta").json(),
+    ):
+        assert meta["det_axes"][0]["units"] == "mrad"
+        assert meta["det_axes"][0]["scale"] == pytest.approx(0.123)
+        assert meta["det_axes"][1]["units"] == "mrad"
+        assert meta["det_axes"][1]["scale"] == pytest.approx(0.123)
+
+
+def test_det_axes_uncalibrated_is_not_disguised_as_mrad(client: TestClient) -> None:
+    """The default synthetic dataset (`_register_dataset`) has NO detector
+    calibration (`AxisCal()`, matching a bare .mib) — must reach the wire
+    as empty units, never a fabricated unit string."""
+    fourd_id, _cube = _register_dataset()
+    meta = client.get(f"/api/fourd/{fourd_id}/meta").json()
+    assert meta["det_axes"][0]["units"] == ""
+    assert meta["det_axes"][1]["units"] == ""
+
+
 def test_unknown_fourd_id_404s(client: TestClient) -> None:
     paths = (
         "/api/fourd/4d-999/meta",

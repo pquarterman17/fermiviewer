@@ -44,13 +44,27 @@ export function spansMinRegion(a: Pt, b: Pt): boolean {
   );
 }
 
-/** Image-space point → 1-based [row, col] pixel, clamped to the image
- *  (#10) — the pixel specnav publishes for the spectrum workshops. */
+/** Image-space point → 1-based [row, col] pixel, clamped to the image —
+ *  the pixel specnav (#10) publishes for the spectrum workshops, and
+ *  fourdnav (#14) for the 4D-STEM workshop's probe. */
 export function imagePointToPixel(ip: Pt, imgSize: Size): [number, number] {
   return [
     Math.min(imgSize.h, Math.max(1, Math.floor(ip.y) + 1)),
     Math.min(imgSize.w, Math.max(1, Math.floor(ip.x) + 1)),
   ];
+}
+
+/** fourdnav's 1-based [row, col] pixel → the 0-based {y, x} scan position
+ *  `FourDDataset`/`FourDProbe` use everywhere else (#14). The nav image
+ *  registered on the main Stage has exactly `scan_shape` pixels (it's the
+ *  detector-summed intensity at every probe position), so a fourdnav pixel
+ *  picked on it IS already a scan position — no calibration, just the
+ *  1-based → 0-based un-offset `imagePointToPixel` applied. */
+export function scanPositionFromPixel(pixel: [number, number]): {
+  y: number;
+  x: number;
+} {
+  return { y: pixel[0] - 1, x: pixel[1] - 1 };
 }
 
 /** The two image-space corners of a fixed W×H zoom box centred on `ip`

@@ -1,9 +1,17 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../../lib/api", () => ({ fetchFourDPattern: vi.fn() }));
+vi.mock("../../../lib/api", async (importActual) => {
+  const actual = await importActual<typeof import("../../../lib/api")>();
+  return { ...actual, fetchFourDPattern: vi.fn(), listFourD: vi.fn() };
+});
 
-import { fetchFourDPattern, type Raster16 } from "../../../lib/api";
+import {
+  fetchFourDPattern,
+  FourDNotFoundError,
+  listFourD,
+  type Raster16,
+} from "../../../lib/api";
 import { useFourD } from "../../../store/fourd";
 import { FOURD_PATTERN_DEBOUNCE_MS, useFourDPatternFetch } from "./useFourDPatternFetch";
 
@@ -14,6 +22,7 @@ function raster(): Raster16 {
 beforeEach(() => {
   vi.useFakeTimers();
   vi.mocked(fetchFourDPattern).mockReset().mockResolvedValue(raster());
+  vi.mocked(listFourD).mockReset().mockResolvedValue([]);
   useFourD.setState({
     probe: null,
     patternRaster: null,
@@ -85,6 +94,21 @@ describe("useFourDPatternFetch", () => {
 
     expect(useFourD.getState().status).toBe("pattern: boom");
     expect(useFourD.getState().busyPattern).toBe(false);
+  });
+
+  it("a stale/closed dataset (404) refreshes the list instead of leaving an error note", async () => {
+    vi.mocked(fetchFourDPattern).mockRejectedValue(new FourDNotFoundError("unknown 4D dataset id: ds1"));
+    renderHook(() => useFourDPatternFetch("ds1"));
+
+    act(() => {
+      useFourD.getState().setProbe({ y: 5, x: 5 });
+    });
+    await act(() => vi.advanceTimersByTimeAsync(FOURD_PATTERN_DEBOUNCE_MS));
+
+    expect(listFourD).toHaveBeenCalledOnce();
+    // not the raw error message — that's exactly the "red error toast loop"
+    // this branch exists to avoid
+    expect(useFourD.getState().status).not.toBe("pattern: unknown 4D dataset id: ds1");
   });
 
   it("an older probe's response resolving AFTER a newer one's does not clobber the newer result", async () => {

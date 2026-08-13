@@ -8,7 +8,7 @@
 
 import { useEffect } from "react";
 
-import { fetchFourDPattern } from "../../../lib/api";
+import { fetchFourDPattern, FourDNotFoundError } from "../../../lib/api";
 import { useFourD } from "../../../store/fourd";
 
 export const FOURD_PATTERN_DEBOUNCE_MS = 75;
@@ -29,6 +29,13 @@ export function useFourDPatternFetch(datasetId: string | null): void {
         })
         .catch((e: unknown) => {
           if (controller.signal.aborted) return;
+          if (e instanceof FourDNotFoundError) {
+            // the probed dataset is gone server-side — degrade to a
+            // refreshed list rather than an error note that keeps
+            // re-firing on every subsequent probe move (PLAN_4DSTEM #14)
+            void useFourD.getState().fetchDatasets();
+            return;
+          }
           setStatus(`pattern: ${(e as Error).message}`);
         })
         .finally(() => {

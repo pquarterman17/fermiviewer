@@ -18,6 +18,7 @@ import {
   pointInPolygon,
   polyFinishAction,
   polygonContainsRing,
+  scanPositionFromPixel,
   spansMinRegion,
 } from "./pointerDecisions";
 
@@ -262,6 +263,24 @@ describe("imagePointToPixel", () => {
     expect(imagePointToPixel({ x: -5, y: -5 }, IMG)).toEqual([1, 1]);
     expect(imagePointToPixel({ x: 99.9, y: 49.9 }, IMG)).toEqual([50, 100]);
     expect(imagePointToPixel({ x: 500, y: 500 }, IMG)).toEqual([50, 100]);
+  });
+});
+
+describe("scanPositionFromPixel", () => {
+  it("un-offsets imagePointToPixel's 1-basing back to a 0-based {y, x}", () => {
+    expect(scanPositionFromPixel([1, 1])).toEqual({ y: 0, x: 0 });
+    expect(scanPositionFromPixel([8, 42])).toEqual({ y: 7, x: 41 });
+  });
+
+  it("composes with imagePointToPixel to go straight from an image point to a scan position", () => {
+    const pixel = imagePointToPixel({ x: 41.2, y: 7.8 }, IMG);
+    expect(scanPositionFromPixel(pixel)).toEqual({ y: 7, x: 41 });
+  });
+
+  it("row maps to y and col maps to x — never swapped", () => {
+    // a broken axis order would make this pass one way and fail transposed
+    expect(scanPositionFromPixel([3, 9])).toEqual({ y: 2, x: 8 });
+    expect(scanPositionFromPixel([3, 9])).not.toEqual({ y: 8, x: 2 });
   });
 });
 

@@ -63,6 +63,7 @@ export interface StagePointersCtx {
   scaleBarRef: RefObject<HTMLDivElement>;
   dragRef: RefObject<{ last: Pt } | null>;
   specnavRef: RefObject<boolean>;
+  fourdnavRef: RefObject<boolean>;
   paintingRef: RefObject<boolean>;
 
   // per-render values
@@ -88,6 +89,7 @@ export interface StagePointersCtx {
   setPanning: (v: boolean) => void;
   setCursor: (p: Pt | null) => void;
   setSpecnavPixel: (pixel: [number, number]) => void;
+  setFourdNavPixel: (pixel: [number, number]) => void;
   setMarquee: (m: { a: Pt; b: Pt } | null) => void;
   setPending: (p: PendingMeasure | null) => void;
   setGrainPending: (p: Pt | null) => void;
@@ -106,6 +108,7 @@ export function useStagePointers(ctx: StagePointersCtx) {
     scaleBarRef,
     dragRef,
     specnavRef,
+    fourdnavRef,
     paintingRef,
     view,
     imgSize,
@@ -127,6 +130,7 @@ export function useStagePointers(ctx: StagePointersCtx) {
     setPanning,
     setCursor,
     setSpecnavPixel,
+    setFourdNavPixel,
     setMarquee,
     setPending,
     setGrainPending,
@@ -222,6 +226,15 @@ export function useStagePointers(ctx: StagePointersCtx) {
       e.currentTarget.setPointerCapture(e.pointerId);
       return;
     }
+    // #14 fourdnav: same as specnav, but for the 4D-STEM probe — click (or
+    // drag) the nav image on the main Stage to move the probed scan
+    // position (the open FourD workshop watches the published pixel).
+    if (captureMode === "fourdnav" && imgSize) {
+      setFourdNavPixel(imagePointToPixel(toImage(p), imgSize));
+      fourdnavRef.current = true;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      return;
+    }
     if (
       captureMode === "zoom" ||
       captureMode === "roi" ||
@@ -267,6 +280,11 @@ export function useStagePointers(ctx: StagePointersCtx) {
       setSpecnavPixel(imagePointToPixel(toImage(p), imgSize));
       return;
     }
+    // fourdnav drag: same, for the 4D-STEM probe pixel (#14)
+    if (fourdnavRef.current && view && imgSize) {
+      setFourdNavPixel(imagePointToPixel(toImage(p), imgSize));
+      return;
+    }
     if (dragRef.current && view && imgSize) {
       const { last } = dragRef.current;
       apply({
@@ -301,6 +319,11 @@ export function useStagePointers(ctx: StagePointersCtx) {
     }
     if (specnavRef.current) {
       specnavRef.current = false;
+      releaseCapture(e);
+      return;
+    }
+    if (fourdnavRef.current) {
+      fourdnavRef.current = false;
       releaseCapture(e);
       return;
     }

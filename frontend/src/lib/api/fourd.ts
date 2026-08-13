@@ -6,15 +6,42 @@
 // same shape `/fourd/{id}/nav` does, so both flow into the normal image
 // store via `useViewer().ingestDerived`.
 
+import { record } from "../macro";
 import { decodeRaster16, type FourDMeta, type ImageMeta, type Raster16 } from "./core";
-import { json, post } from "./transport";
+import { formatApiDetail, json } from "./transport";
+
+/** Thrown for a 404 from any per-id 4D endpoint — the dataset is unknown
+ *  server-side (closed elsewhere, or a stale selection surviving past this
+ *  store's last successful list fetch). A distinct type (rather than a
+ *  generic Error whose message happens to contain "unknown 4D dataset id")
+ *  is what lets store/fourd.ts degrade a stale selection to "cleared +
+ *  refreshed list" instead of leaving a per-dataset error note that just
+ *  keeps re-failing on every subsequent action (PLAN_4DSTEM #14). */
+export class FourDNotFoundError extends Error {}
+
+/** Like transport.ts's `json`, but a 404 raises `FourDNotFoundError`
+ *  instead of a plain `Error` so 4D-specific callers can tell "this
+ *  dataset id is gone" apart from any other failure. */
+async function fourdJson<T>(res: Response): Promise<T> {
+  if (res.status === 404) {
+    let detail = res.statusText;
+    try {
+      const body = (await res.json()) as { detail?: unknown };
+      detail = formatApiDetail(body.detail, detail);
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new FourDNotFoundError(detail);
+  }
+  return json<T>(res);
+}
 
 export async function listFourD(): Promise<FourDMeta[]> {
-  return json(await fetch("/api/fourd"));
+  return fourdJson(await fetch("/api/fourd"));
 }
 
 export async function fetchFourDMeta(id: string): Promise<FourDMeta> {
-  return json(await fetch(`/api/fourd/${id}/meta`));
+  return fourdJson(await fetch(`/api/fourd/${id}/meta`));
 }
 
 /** Close a 4D dataset server-side, releasing its file handle (it would
@@ -23,14 +50,14 @@ export async function fetchFourDMeta(id: string): Promise<FourDMeta> {
  *  the separate image store and are NOT affected — see
  *  routes/fourd.py's `close_fourd` docstring. */
 export async function closeFourD(id: string): Promise<void> {
-  await json(await fetch(`/api/fourd/${id}`, { method: "DELETE" }));
+  await fourdJson(await fetch(`/api/fourd/${id}`, { method: "DELETE" }));
 }
 
 /** Registers (idempotently) and returns the nav image's ImageMeta. Callers
  *  decide whether to also `useViewer().ingestDerived([meta])` to surface it
  *  on the main Stage/filmstrip — this alone does not touch the viewer store. */
 export async function fetchFourDNav(id: string): Promise<ImageMeta> {
-  return json(await fetch(`/api/fourd/${id}/nav`));
+  return fourdJson(await fetch(`/api/fourd/${id}/nav`));
 }
 
 async function fetchRaster16(
@@ -38,8 +65,33 @@ async function fetchRaster16(
   options?: { signal?: AbortSignal },
 ): Promise<Raster16> {
   const res = await fetch(url, options);
+  if (res.status === 404) {
+    let detail = res.statusText;
+    try {
+      const body = (await res.json()) as { detail?: unknown };
+      detail = formatApiDetail(body.detail, detail);
+    } catch {
+      /* binary/non-JSON error body */
+    }
+    throw new FourDNotFoundError(detail);
+  }
   if (!res.ok) throw new Error(`fourd request failed: ${res.status}`);
   return decodeRaster16(res);
+}
+
+/** Like transport.ts's `post`, but routes the response through `fourdJson`
+ *  so a 404 (a stale/closed dataset id) raises `FourDNotFoundError` here
+ *  too — `reshapeFourD`/`computeVirtualDetector` both target an existing
+ *  4D id and can 404 exactly like the GET endpoints above. */
+async function fourdPost<T>(url: string, body: unknown): Promise<T> {
+  record(url, body as Record<string, unknown>);
+  return fourdJson<T>(
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
 }
 
 /** One diffraction pattern at scan position (y, x), uint16-encoded. */
@@ -69,7 +121,7 @@ export function reshapeFourD(
   rows: number,
   cols: number,
 ): Promise<FourDMeta> {
-  return post(`/api/fourd/${id}/reshape`, { rows, cols });
+  return fourdPost(`/api/fourd/${id}/reshape`, { rows, cols });
 }
 
 export type ApertureShape = "circle" | "annulus";
@@ -91,5 +143,5 @@ export function computeVirtualDetector(
   id: string,
   body: VirtualDetectorRequest,
 ): Promise<ImageMeta> {
-  return post(`/api/fourd/${id}/virtual-detector`, body);
+  return fourdPost(`/api/fourd/${id}/virtual-detector`, body);
 }
