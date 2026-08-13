@@ -5,6 +5,7 @@
 // a browser download.
 
 import { exportImage, type ExportOptions } from "./api";
+import { loadPrefs } from "./prefs";
 import { DEFAULT_DISPLAY, OVERLAY_FONT_PX, useViewer } from "../store/viewer";
 
 export interface ExportNowOpts {
@@ -30,9 +31,17 @@ export interface ExportNowOpts {
 
 /** Build the /export request (id + options) from current store state.
  *  Shared by exportActive (download) and copyActive (clipboard) so the
- *  two can never drift on which overlays get baked into the picture. */
+ *  two can never drift on which overlays get baked into the picture.
+ *
+ *  `annotationDefault` is the fallback used ONLY when a caller omits
+ *  `scaleBar`/`measures` outright — an explicit true/false from the caller
+ *  (e.g. the Export dialog's checkboxes) always wins either way. Download
+ *  paths (exportActive/previewActive) always default true, matching the
+ *  historical behaviour; copyActive is the only caller that varies this,
+ *  from the "Copy Image includes annotations" preference. */
 function buildExportRequest(
   opts: ExportNowOpts,
+  annotationDefault = true,
 ): { id: string; options: ExportOptions } {
   const s = useViewer.getState();
   const id = s.activeId;
@@ -49,8 +58,8 @@ function buildExportRequest(
 
   const canBar = opts.format !== "tiff16" && meta.pixel_size !== null;
   const canMeasure = opts.format !== "tiff16" && measures.length > 0;
-  const wantBar = (opts.scaleBar ?? true) && canBar;
-  const wantMeasures = (opts.measures ?? true) && canMeasure;
+  const wantBar = (opts.scaleBar ?? annotationDefault) && canBar;
+  const wantMeasures = (opts.measures ?? annotationDefault) && canMeasure;
 
   const caption = opts.caption?.trim();
   const wantCaption = opts.format !== "tiff16" && !!caption;
@@ -148,18 +157,27 @@ export async function previewActive(opts: ExportNowOpts): Promise<Blob> {
   return blob;
 }
 
-/** Copy the active image to the clipboard as a PNG. Bakes in the scale
- *  bar + measurements by default (same overlay logic as exportActive) —
- *  pass scaleBar/measures: false to copy a bare image. Used by the radial
- *  right-click "Copy" item and the menu-bar "Copy to Clipboard". */
+/** Copy the active image to the clipboard as a PNG. Bakes in the scale bar
+ *  + on-screen measurements/annotations by default, governed by the
+ *  "Copy Image includes annotations" preference (prefs.copyIncludesAnnotations,
+ *  default ON) — pass scaleBar/measures explicitly to override the preference
+ *  for one call, in either direction. This preference affects ONLY the copy
+ *  path; exportActive/previewActive (the Export dialog + card) are untouched
+ *  and keep defaulting to true regardless of the preference. Used by the
+ *  radial right-click "Copy" item, the stage right-click "Copy Image" entry,
+ *  and the menu-bar "Copy to Clipboard". */
 export async function copyActive(
   opts: ExportNowOpts = { format: "png", scale: 1 },
 ): Promise<void> {
+  const annotationDefault = loadPrefs().copyIncludesAnnotations;
   // vector path: copy a true SVG (the SVG export embeds the pixels as a base64
   // PNG, so it pastes as an image everywhere AND stays vector where supported)
   if (opts.vector) {
     try {
-      const { id, options } = buildExportRequest({ ...opts, format: "svg" });
+      const { id, options } = buildExportRequest(
+        { ...opts, format: "svg" },
+        annotationDefault,
+      );
       const { blob } = await exportImage(id, options);
       await navigator.clipboard.write([
         new ClipboardItem({ "image/svg+xml": blob }),
@@ -169,7 +187,10 @@ export async function copyActive(
       // browser rejected SVG on the clipboard (Firefox) → fall back to PNG
     }
   }
-  const { id, options } = buildExportRequest({ ...opts, format: "png" });
+  const { id, options } = buildExportRequest(
+    { ...opts, format: "png" },
+    annotationDefault,
+  );
   const { blob } = await exportImage(id, options);
   await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
 }

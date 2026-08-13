@@ -123,6 +123,25 @@ describe("PrefsWindow", () => {
     expect(loadPrefs().lassoSimplifyPx).toBe(5);
   });
 
+  it("Copy-includes-annotations toggle (Export section): renders, flips, persists", () => {
+    render(<PrefsWindow />);
+    fireEvent.click(screen.getByText("Export"));
+    expect(
+      screen.getByText("Copied images include measurements & annotations"),
+    ).toBeInTheDocument();
+    expect(loadPrefs().copyIncludesAnnotations).toBe(true); // default ON
+
+    const row = screen
+      .getByText("Copied images include measurements & annotations")
+      .closest(".fvd-prefs-row");
+    const toggle = row!.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByText("Save"));
+    expect(loadPrefs().copyIncludesAnnotations).toBe(false);
+  });
+
   it("renders nothing when closed", () => {
     state.prefsOpen = false;
     const { container } = render(<PrefsWindow />);

@@ -57,4 +57,20 @@ describe("prefs", () => {
     localStorage.setItem("fv_prefs", "{not json");
     expect(loadPrefs().defaultCmap).toBe("gray");
   });
+
+  it("copyIncludesAnnotations defaults to true and round-trips", () => {
+    expect(loadPrefs().copyIncludesAnnotations).toBe(true);
+    savePrefs({ ...DEFAULTS, copyIncludesAnnotations: false });
+    expect(loadPrefs().copyIncludesAnnotations).toBe(false);
+  });
+
+  it("a legacy stored blob missing the copy-annotations key resolves to true", () => {
+    // simulates a prefs blob saved before this preference existed — it must
+    // NOT come back undefined/falsy, or Copy Image would silently go bare
+    localStorage.setItem(
+      "fv_prefs",
+      JSON.stringify({ defaultCmap: "viridis" }),
+    );
+    expect(loadPrefs().copyIncludesAnnotations).toBe(true);
+  });
 });

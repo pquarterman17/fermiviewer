@@ -2,8 +2,11 @@
 // buildCtxTarget classifies a right-click as scale bar / measure / empty;
 // Stage opens the radial capture ring for empty (and missed-measure)
 // clicks, while scale-bar hits open this dedicated menu wired to
-// hide/show + length/position controls (item #33).
+// hide/show + length/position controls (item #33), plus a top-of-menu
+// "Copy Image" entry so the scale-bar right-click also reaches the same
+// copyActive() clipboard path as the Edit menu and radial ring.
 
+import { copyActive } from "../../lib/export";
 import { niceScaleLength } from "../../lib/geometry";
 import { useViewer, type Measure } from "../../store/viewer";
 
@@ -31,9 +34,13 @@ export function ScaleBarCtxMenu({ x, y, onClose }: ScaleBarCtxProps) {
     s.activeId ? (s.images[s.activeId] ?? null) : null,
   );
   const setScaleBar = useViewer((s) => s.setScaleBar);
+  const setStatus = useViewer((s) => s.setStatus);
 
   const pixelSize = meta?.pixel_size ?? null;
   const unit = meta?.pixel_unit ?? "px";
+  // Copy only applies to a raster image (a 1-D spectrum has nothing to
+  // rasterize) — same gate as the radial ring's Copy tool.
+  const canCopy = !!activeId && !!meta && meta.kind !== "spectrum";
 
   // compute a couple of nice presets relative to current zoom
   const presets: number[] =
@@ -58,6 +65,23 @@ export function ScaleBarCtxMenu({ x, y, onClose }: ScaleBarCtxProps) {
         style={{ left: x, top: y }}
         onPointerDown={(e) => e.stopPropagation()}
       >
+        {canCopy && (
+          <>
+            <button
+              className="fvd-ctx-item"
+              title="Copy the image to the clipboard (includes on-screen annotations — see Preferences)"
+              onClick={() => {
+                onClose();
+                copyActive()
+                  .then(() => setStatus("copied to clipboard"))
+                  .catch((e: Error) => setStatus(`clipboard: ${e.message}`));
+              }}
+            >
+              Copy Image
+            </button>
+            <div className="fvd-ctx-sep" />
+          </>
+        )}
         <button
           className="fvd-ctx-item"
           title="Toggle the scale-bar overlay on this image"

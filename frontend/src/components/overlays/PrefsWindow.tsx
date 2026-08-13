@@ -334,6 +334,13 @@ export default function PrefsWindow() {
                 <Row label="Bake colorbar by default">
                   <Toggle checked={p.exportColorbar} onChange={(v) => set("exportColorbar", v)} />
                 </Row>
+                <SubHead>Copy</SubHead>
+                <Row
+                  label="Copied images include measurements & annotations"
+                  hint="right-click / Edit → Copy to Clipboard; the Export dialog's own checkboxes are unaffected"
+                >
+                  <Toggle checked={p.copyIncludesAnnotations} onChange={(v) => set("copyIncludesAnnotations", v)} />
+                </Row>
               </>
             )}
           </div>

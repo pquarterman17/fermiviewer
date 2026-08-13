@@ -38,6 +38,13 @@ vi.mock("./api", () => ({
   ),
 }));
 
+// copyActive reads the "Copy Image includes annotations" preference; default
+// it ON here (matching prefs.DEFAULTS) and let individual tests override.
+const prefsState = { copyIncludesAnnotations: true };
+vi.mock("./prefs", () => ({
+  loadPrefs: () => prefsState,
+}));
+
 import { exportImage } from "./api";
 import { copyActive, exportActive, previewActive } from "./export";
 
@@ -169,6 +176,7 @@ describe("copyActive", () => {
   const write = vi.fn(() => Promise.resolve());
   beforeEach(() => {
     vi.clearAllMocks();
+    prefsState.copyIncludesAnnotations = true; // reset to the default (ON)
     // jsdom ships neither clipboard.write nor ClipboardItem — stub both
     (globalThis as unknown as { ClipboardItem: unknown }).ClipboardItem =
       class {
@@ -181,7 +189,7 @@ describe("copyActive", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it("defaults to a PNG with scale bar + measurements baked in", async () => {
+  it("pref ON (default): bakes scale bar + measurements in", async () => {
     await copyActive();
     const [, opts] = (exportImage as unknown as { mock: { calls: unknown[][] } })
       .mock.calls[0] as [string, Record<string, unknown>];
@@ -190,11 +198,36 @@ describe("copyActive", () => {
     expect(write).toHaveBeenCalledTimes(1);
   });
 
+  it("pref OFF: omits scale bar + measurements by default", async () => {
+    prefsState.copyIncludesAnnotations = false;
+    await copyActive();
+    const [, opts] = (exportImage as unknown as { mock: { calls: unknown[][] } })
+      .mock.calls[0] as [string, Record<string, unknown>];
+    expect(opts.include).toEqual([]);
+  });
+
   it("respects explicit opt-outs", async () => {
     await copyActive({ format: "png", scale: 1, scaleBar: false, measures: false });
     const [, opts] = (exportImage as unknown as { mock: { calls: unknown[][] } })
       .mock.calls[0] as [string, Record<string, unknown>];
     expect(opts.include).toEqual([]);
+  });
+
+  it("explicit caller override beats the preference, both directions", async () => {
+    // pref ON, but explicit false wins
+    await copyActive({ format: "png", scale: 1, scaleBar: false, measures: false });
+    expect(
+      (exportImage as unknown as { mock: { calls: unknown[][] } }).mock
+        .calls[0][1] as Record<string, unknown>,
+    ).toMatchObject({ include: [] });
+
+    // pref OFF, but explicit true wins
+    prefsState.copyIncludesAnnotations = false;
+    vi.clearAllMocks();
+    await copyActive({ format: "png", scale: 1, scaleBar: true, measures: true });
+    const [, opts] = (exportImage as unknown as { mock: { calls: unknown[][] } })
+      .mock.calls[0] as [string, Record<string, unknown>];
+    expect(opts.include).toEqual(["scale_bar", "measurements"]);
   });
 
   it("vector mode requests SVG and writes an image/svg+xml ClipboardItem", async () => {

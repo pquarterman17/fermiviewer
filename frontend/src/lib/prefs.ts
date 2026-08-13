@@ -60,6 +60,11 @@ export interface Prefs {
   exportScaleBar: boolean;
   exportMeasures: boolean;
   exportColorbar: boolean;
+  /** Copy Image (Edit menu / radial ring / stage right-click) bakes the
+   *  scale bar + on-screen measurements/annotations into the clipboard
+   *  image by default. Governs ONLY the copy path's default — the Export
+   *  dialog's own checkboxes always win, on either path. */
+  copyIncludesAnnotations: boolean;
 
   // ── Advanced ──
   colorbarSide: "left" | "right" | "bottom";
@@ -99,6 +104,7 @@ export const DEFAULTS: Prefs = {
   exportScaleBar: true,
   exportMeasures: true,
   exportColorbar: false,
+  copyIncludesAnnotations: true,
   colorbarSide: "right",
   colorbarOnByDefault: false,
   fixedZoomW: 256,

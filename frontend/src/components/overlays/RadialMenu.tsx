@@ -48,7 +48,8 @@ export default function RadialMenu() {
   const pick = (t: RadialItem) => {
     setRadial(null);
     if (t.action === "copy") {
-      // bakes scale bar + measurements by default (copyActive defaults)
+      // bakes scale bar + measurements by default, per the "Copy Image
+      // includes annotations" preference (copyActive reads prefs.ts)
       copyActive()
         .then(() =>
           setStatus("copied to clipboard (scale bar + measurements)"),
