@@ -15,7 +15,7 @@ from fermiviewer.calc.fourier import fft_mask_inverse
 from fermiviewer.calc.gpa import geometric_phase_analysis
 from fermiviewer.calc.lattice import lattice_measure
 from fermiviewer.calc.montage import montage as calc_montage
-from fermiviewer.calc.profiles import fit_interface_width
+from fermiviewer.calc.profile_stats import fit_interface_width
 from fermiviewer.calc.radial import azimuthal_integrate, radial_profile_stats
 from fermiviewer.calc.raster import NoRasterError, raster_of
 from fermiviewer.calc.roi import extract_rect_roi

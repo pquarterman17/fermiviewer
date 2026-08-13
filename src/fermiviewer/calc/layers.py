@@ -26,7 +26,7 @@ from fermiviewer.calc.layers_detect import (
     detect_interfaces,
     detect_interfaces_scale_space,
 )
-from fermiviewer.calc.profiles import box_integrate, fit_interface_width
+from fermiviewer.calc.profile_stats import box_integrate, fit_interface_width
 from fermiviewer.calc.roi import extract_rect_roi
 from fermiviewer.calc.texture import structure_tensor
 from fermiviewer.calc.trace_roughness import (

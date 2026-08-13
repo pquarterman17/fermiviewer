@@ -7,12 +7,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from fermiviewer.calc.fourier import compute_fft
-from fermiviewer.calc.profiles import (
-    box_integrate,
-    line_profile,
-    line_profile_stats,
-    roi_stats,
-)
+from fermiviewer.calc.profile_stats import box_integrate, roi_stats
+from fermiviewer.calc.profiles import line_profile, line_profile_stats
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.server import create_app
 from fermiviewer.session import store

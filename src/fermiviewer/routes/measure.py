@@ -8,13 +8,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from fermiviewer.calc.fourier import compute_fft
-from fermiviewer.calc.profiles import (
-    box_integrate,
-    line_profile_stats,
-    measure_distance,
-    polyline_profile,
-    roi_stats,
-)
+from fermiviewer.calc.profile_stats import box_integrate, measure_distance, roi_stats
+from fermiviewer.calc.profiles import line_profile_stats, polyline_profile
 from fermiviewer.calc.raster import NoRasterError, raster_of
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.models import ImageMeta

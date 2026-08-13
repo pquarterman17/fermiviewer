@@ -18,7 +18,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from fermiviewer.calc.eds import assign_elements, detect_peaks
-from fermiviewer.calc.profiles import line_profile, measure_distance
+from fermiviewer.calc.profile_stats import measure_distance
+from fermiviewer.calc.profiles import line_profile
 from fermiviewer.server import create_app
 from fermiviewer.session import store
 from fixtures.minidm4 import write_mini_dm4

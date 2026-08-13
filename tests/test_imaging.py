@@ -31,7 +31,7 @@ from fermiviewer.calc.particles import (
     region_stats,
     watershed,
 )
-from fermiviewer.calc.profiles import fit_interface_width
+from fermiviewer.calc.profile_stats import fit_interface_width
 from fermiviewer.calc.radial import (
     azimuthal_integrate,
     radial_profile,

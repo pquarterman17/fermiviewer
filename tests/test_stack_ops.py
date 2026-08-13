@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from fermiviewer.calc.profiles import roi_stats
+from fermiviewer.calc.profile_stats import roi_stats
 from fermiviewer.calc.stack import align_stack, image_math, mip
 from fermiviewer.server import create_app
 from fermiviewer.session import store
