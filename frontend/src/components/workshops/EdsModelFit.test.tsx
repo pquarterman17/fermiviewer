@@ -55,6 +55,7 @@ const RESULT: EdsPeakfitResult = {
   reduced_chi2: 1.234,
   r_squared: 0.987,
   success: true,
+  model_sigma: null,
 };
 
 afterEach(() => {

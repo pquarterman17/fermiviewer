@@ -9,6 +9,7 @@ const BASE: EdsPeakfitResult = {
   energy: [0, 1],
   spectrum: [0, 0],
   model: [0, 0],
+  model_sigma: null,
   elements: [
     {
       symbol: "Fe", line: "K", energy_kev: 6.404,

@@ -84,6 +84,21 @@ def test_net_area_error_is_finite_and_positive() -> None:
     assert np.isfinite(pf.net_area_errors["Fe"]) and pf.net_area_errors["Fe"] > 0.0
 
 
+def test_model_sigma_is_populated_and_finite() -> None:
+    # model-confidence band (ANALYSIS_PRESENTATION_PLAN #3): a real fit
+    # with noise has a usable covariance, so the per-channel σ is present,
+    # finite and non-negative, same length as the fitted axis.
+    rng = np.random.default_rng(0)
+    e = _axis()
+    clean = _gauss(e, 8000.0, 6.404)
+    counts = clean + rng.normal(0.0, 5.0, size=e.shape)
+    pf = fit_peaks(e, counts, ["Fe"], weights=None)
+    assert pf.model_sigma is not None
+    assert pf.model_sigma.shape == e.shape
+    assert np.all(np.isfinite(pf.model_sigma))
+    assert np.all(pf.model_sigma >= 0.0)
+
+
 def test_quantify_peaks_equal_areas_to_composition() -> None:
     e = _axis()
     # equal net areas with k=1 → 50/50 weight; matches the cliff_lorimer oracle

@@ -33,7 +33,13 @@ from scipy.special import voigt_profile
 from fermiviewer.calc.eds import ClResult, cliff_lorimer, line_energy
 from fermiviewer.calc.eds_calib import fano_sigma_kev
 from fermiviewer.calc.peak_shapes import voigt_area
-from fermiviewer.calc.spectral_fit import Component, FitResult, fit_spectrum, gaussian_area
+from fermiviewer.calc.spectral_fit import (
+    Component,
+    FitResult,
+    fit_spectrum,
+    gaussian_area,
+    model_sigma,
+)
 
 __all__ = [
     "PeakFitResult",
@@ -134,6 +140,13 @@ class PeakFitResult:
     line_energies: dict[str, float]
     lines: dict[str, str]
     fit: FitResult
+    # [nE] per-CHANNEL 1σ of the total fitted model (delta method through
+    # the fit covariance, calc/spectral_fit.model_sigma) — None when the
+    # covariance is unusable. Feeds the EDS fit plot's model-confidence
+    # band (ANALYSIS_PRESENTATION_PLAN.md #3); not client-derivable (needs
+    # the covariance + component Jacobian, neither of which crosses the
+    # wire otherwise).
+    model_sigma: np.ndarray | None
 
 
 def _amp0(energy: np.ndarray, counts: np.ndarray, center: float, sigma: float) -> float:
@@ -220,6 +233,7 @@ def fit_peaks(
         raise ValueError("no fittable element lines")
 
     result = fit_spectrum(energy, counts, components, weights=weights)
+    model_sigma_curve = model_sigma(components, energy, result)
 
     net_areas: dict[str, float] = {}
     net_errs: dict[str, float] = {}
@@ -244,6 +258,7 @@ def fit_peaks(
         line_energies=line_e,
         lines=line_fam,
         fit=result,
+        model_sigma=model_sigma_curve,
     )
 
 

@@ -77,6 +77,16 @@ def eels_fit(req: EelsFitRequest) -> dict:
     Returns at% (from the fitted amplitude ratios), per-amplitude 1σ
     errors, and the fitted curves (model / background / per-edge) for an
     overlay on the spectrum plot.
+
+    Serialisation note (ANALYSIS_PRESENTATION_PLAN.md #3, following #2's
+    convention below): the fitted MODEL's ±1σ confidence band is served
+    here as a per-point ``model_sigma`` array rather than left for the
+    client to derive. #2's residual trace is safely client-derivable
+    because it is just "spectrum" − "model", both already on the wire; a
+    confidence band is NOT — it needs the parameter covariance matrix AND
+    the model's component functions to build a Jacobian
+    (calc/spectral_fit.model_sigma), neither of which crosses the wire, so
+    the delta-method σ is computed server-side and shipped as a curve.
     """
     ds = _get(req.image_id)
     if ds.kind not in SPECTRAL_KINDS:
@@ -125,6 +135,12 @@ def eels_fit(req: EelsFitRequest) -> dict:
         # fit window, which the client cannot always reconstruct: it is a
         # resolved default when the request left fit_range unset).
         "fit_range": list(res.fit_range),
+        # model-confidence band (#3) — see the docstring above for why this
+        # is served rather than derived client-side. null when the fit's
+        # covariance was unusable (see calc/spectral_fit.model_sigma).
+        "model_sigma": (
+            res.model_sigma.tolist() if res.model_sigma is not None else None
+        ),
     }
 
 

@@ -7,10 +7,13 @@ spectrum is a clean (N·pixel) version with known relative areas.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
+import fermiviewer.routes.eds_advanced as eds_advanced_routes
 from fermiviewer.calc.eds import line_energy
 from fermiviewer.calc.eds_calib import fano_sigma_kev
 from fermiviewer.calc.eds_continuum import kramers_continuum
@@ -122,6 +125,29 @@ def test_peakfit_recovers_area_ratio(client, cube_id) -> None:
     assert "r_squared" in body
     assert body["r_squared"] <= 1.0 + 1e-9
     assert body["r_squared"] == pytest.approx(1.0, abs=0.02)
+    # model-confidence band (#3): a real fit has a usable covariance, so
+    # model_sigma is a real per-channel array, not null.
+    assert body["model_sigma"] is not None
+    assert len(body["model_sigma"]) == NE
+    assert all(np.isfinite(v) and v >= 0.0 for v in body["model_sigma"])
+
+
+def test_peakfit_model_sigma_null_when_unusable(client, cube_id, monkeypatch) -> None:
+    """The route must serialise `model_sigma: null` (never crash) when the
+    fit's covariance can't produce a σ — same best-effort-null contract as
+    /eels/fit's (and #3's other chart, composition-profile)."""
+    real_fit_peaks = eds_advanced_routes.fit_peaks
+
+    def _unusable_sigma(*args, **kwargs):
+        return replace(real_fit_peaks(*args, **kwargs), model_sigma=None)
+
+    monkeypatch.setattr(eds_advanced_routes, "fit_peaks", _unusable_sigma)
+    r = client.post("/api/eds/peakfit", json={
+        "image_id": cube_id, "elements": ["Fe", "Cu"],
+        "background": "bremsstrahlung", "e0_kev": E0_KEV, "weights": None,
+    })
+    assert r.status_code == 200
+    assert r.json()["model_sigma"] is None
 
 
 def test_peakfit_r_squared_lower_with_missing_background(client, cube_id) -> None:
@@ -281,10 +307,12 @@ def test_zeta_composition_and_mass_thickness(client, cube_id) -> None:
     for key in ("atomic_percent_error", "weight_percent_error"):
         assert all(np.isfinite(s) and s >= 0 for s in q[key])
     # ζ shares /eds/peakfit's fit_peaks() call, so it gets the same
-    # r_squared scalar (#2 / audit R4)
+    # r_squared scalar (#2 / audit R4) and model_sigma band (#3)
     body = r.json()
     assert body["r_squared"] <= 1.0 + 1e-9
     assert body["r_squared"] == pytest.approx(1.0, abs=0.02)
+    assert body["model_sigma"] is not None
+    assert len(body["model_sigma"]) == NE
 
 
 def test_zeta_from_zeta_si_scales_k_table(client, cube_id) -> None:

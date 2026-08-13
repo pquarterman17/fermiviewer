@@ -61,6 +61,7 @@ const RESULT: EelsFitResult = {
   r_squared: 0.987,
   success: true,
   fit_range: [400, 700],
+  model_sigma: null,
 };
 
 beforeEach(() => {

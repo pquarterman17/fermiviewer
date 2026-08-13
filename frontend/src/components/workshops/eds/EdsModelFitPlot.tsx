@@ -12,6 +12,7 @@ import type {
   EdsPeakfitResult,
   EdsZetaResult,
 } from "../../../lib/api";
+import { sigmaBand } from "../../../lib/charts/sigmaBand";
 import { useElementColors } from "../../../lib/elemental/elementColors";
 import PlotContextSurface from "../../plots/PlotContextSurface";
 
@@ -20,6 +21,8 @@ const MARK_COLOR: Record<EdsArtifactMark["status"], string> = {
   modeled: "#f59e0b", // fraction × parent — an estimate
   skipped: "#ef4444", // blocked sum peak left in the data — beware
 };
+
+const MODEL_COLOR = "#22d3ee";
 
 export default function EdsModelFitPlot({
   cont,
@@ -45,14 +48,15 @@ export default function EdsModelFitPlot({
       { label: "E (keV)" },
       { label: "spectrum", stroke: "#9ca3af", width: 1, points: { show: false } },
     ];
-    const data: number[][] = [base.energy, base.spectrum];
+    const data: (number | null)[][] = [base.energy, base.spectrum];
+    const bands: uPlot.Band[] = [];
 
     if (cont) {
       series.push({ label: "continuum", stroke: "#d97706", width: 1.5, points: { show: false } });
       data.push(cont.continuum);
     }
     if (peakfit) {
-      series.push({ label: "model", stroke: "#22d3ee", width: 1.5, dash: [4, 2], points: { show: false } });
+      series.push({ label: "model", stroke: MODEL_COLOR, width: 1.5, dash: [4, 2], points: { show: false } });
       data.push(peakfit.model);
       peakfit.elements.forEach((el) => {
         if (!el.curve) return;
@@ -64,6 +68,21 @@ export default function EdsModelFitPlot({
         });
         data.push(el.curve);
       });
+      // model-confidence band (ANALYSIS_PRESENTATION_PLAN #3): shaded in
+      // the model line's own colour, appended AFTER every main line so
+      // legend-click → series toggling for spectrum/model/elements is
+      // unaffected by whether a band gets appended.
+      if (peakfit.model_sigma) {
+        const hiIdx = series.length;
+        const loIdx = hiIdx + 1;
+        const cfg = sigmaBand(
+          peakfit.model, peakfit.model_sigma, MODEL_COLOR, hiIdx, loIdx,
+          { label: "model ±1σ" },
+        );
+        series.push(...cfg.series);
+        data.push(...cfg.data);
+        bands.push(cfg.band);
+      }
     }
     const marks = peakfit?.artifacts ?? [];
 
@@ -73,6 +92,7 @@ export default function EdsModelFitPlot({
         height: 180,
         scales: { x: { time: false } }, // x is keV energy, not a timestamp
         series,
+        bands,
         axes: [
           { stroke: "#888", grid: { stroke: "rgba(128,128,128,0.15)" } },
           { stroke: "#888", grid: { stroke: "rgba(128,128,128,0.15)" } },

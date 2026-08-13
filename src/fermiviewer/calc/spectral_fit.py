@@ -37,6 +37,7 @@ __all__ = [
     "gaussian",
     "gaussian_area",
     "linear_background",
+    "model_sigma",
     "polynomial_background",
     "power_law",
 ]
@@ -255,6 +256,78 @@ def fit_spectrum(
         nfev=int(res.nfev),
         cost=sse,
     )
+
+
+def model_sigma(
+    components: Sequence[Component],
+    energy: np.ndarray,
+    result: FitResult,
+    *,
+    rel_step: float = 1e-6,
+) -> np.ndarray | None:
+    """Per-point 1σ of the fitted TOTAL model, via the delta method.
+
+    Used to draw a model-confidence band on a fit plot (unlike ``errors``,
+    which is per-PARAMETER, this is per-CHANNEL) — see
+    ANALYSIS_PRESENTATION_PLAN.md #3. ``components`` must be the exact
+    sequence (same order) that produced ``result`` via :func:`fit_spectrum`
+    — the slicing that maps ``result.param_order`` back onto each
+    component's parameters depends on it.
+
+    Method
+    ------
+    Builds a numerical Jacobian ``J[i, j] = ∂model_i/∂param_j`` at the
+    solution by CENTRAL DIFFERENCES, then returns
+    ``sqrt(diag(J · cov · Jᵀ))``. The diagonal is computed ROW-WISE via
+    ``np.einsum("ij,jk,ik->i", J, cov, J)`` rather than materialising the
+    full ``J · cov · Jᵀ`` — an n_points×n_points matrix that would be
+    gigabytes for a several-thousand-channel spectrum-image spectrum, when
+    only its diagonal is ever wanted. This costs O(n_points·n_params²)
+    instead of O(n_points²·n_params).
+
+    Step choice: each parameter's finite-difference step is
+    ``max(rel_step * |p|, rel_step)`` — a small ABSOLUTE floor so the step
+    does not collapse to zero for a parameter fitted to exactly 0 (a
+    common solution, e.g. an edge amplitude pinned at its 0 lower bound).
+    ``rel_step=1e-6`` mirrors ``scipy.optimize``'s own central-difference
+    heuristic (≈ EPS**(1/3) ≈ 6e-6 for float64): small enough that
+    truncation error (∝ step²) is negligible, large enough that roundoff
+    error (∝ eps/step) does not dominate.
+
+    Guards (return ``None`` — no band beats a garbage one):
+    a fit with zero parameters; a fit that did not converge
+    (``result.success`` is ``False``); or a covariance whose shape doesn't
+    match ``result.param_order`` or that carries any non-finite entry
+    (a failed/degenerate inversion). Tiny negative variances from roundoff
+    (``cov`` is only PSD up to floating-point error) are clamped to 0
+    before the square root.
+    """
+    n_param = len(result.param_order)
+    if n_param == 0 or not result.success:
+        return None
+    cov = np.asarray(result.covariance, dtype=np.float64)
+    if cov.shape != (n_param, n_param) or not np.all(np.isfinite(cov)):
+        return None
+
+    energy = np.asarray(energy, dtype=np.float64)
+    x0 = np.array(
+        [result.params[name] for name in result.param_order], dtype=np.float64
+    )
+
+    def total_model(p: np.ndarray) -> np.ndarray:
+        curves = evaluate(components, energy, p)
+        return np.asarray(np.sum(list(curves.values()), axis=0), dtype=np.float64)
+
+    jac = np.empty((energy.size, n_param), dtype=np.float64)
+    for j in range(n_param):
+        step = max(rel_step * abs(x0[j]), rel_step)
+        p_hi, p_lo = x0.copy(), x0.copy()
+        p_hi[j] += step
+        p_lo[j] -= step
+        jac[:, j] = (total_model(p_hi) - total_model(p_lo)) / (2.0 * step)
+
+    var = np.einsum("ij,jk,ik->i", jac, cov, jac)
+    return np.asarray(np.sqrt(np.clip(var, 0.0, None)), dtype=np.float64)
 
 
 def _covariance(
