@@ -60,7 +60,12 @@ def test_4d_loads_with_navigate_attrs(tmp_path: Path) -> None:
         assert ds.scan_axes[0].scale == pytest.approx(2.0)
         assert ds.scan_axes[0].units == "nm"
         assert ds.scan_axes[1].scale == pytest.approx(1.5)
+        # det_axes calibration (PLAN_4DSTEM #14): the aperture-radii-in-mrad
+        # UI needs the SCALE, not just the units label — pin both.
         assert ds.det_axes[0].units == "mrad"
+        assert ds.det_axes[0].scale == pytest.approx(0.1)
+        assert ds.det_axes[1].units == "mrad"
+        assert ds.det_axes[1].scale == pytest.approx(0.2)
         np.testing.assert_array_equal(ds.pattern(1, 2), data[1, 2])
         np.testing.assert_allclose(ds.nav_image, data.sum(axis=(2, 3)))
         assert ds.metadata["parser"] == "hspy4d"

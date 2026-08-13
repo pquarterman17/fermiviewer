@@ -21,6 +21,7 @@ import {
   fetchData16,
   fetchFourDMeanPattern,
   fetchFourDNav,
+  FourDNotFoundError,
   listFourD,
 } from "../lib/api";
 import { apertureError, apertureRadiiForMode, useFourD } from "./fourd";
@@ -433,5 +434,131 @@ describe("useFourD store", () => {
     );
     expect(useFourD.getState().selectedId).toBe("d1");
     expect(listFourD).not.toHaveBeenCalled();
+  });
+
+  // ── dataset-list live refresh + graceful stale-selection degrade (#14) ──
+
+  describe("fetchDatasets self-heals a stale selection", () => {
+    it("clears the selection and its per-dataset state when the selected id is no longer in the list", async () => {
+      useFourD.setState({
+        datasets: [fourdMeta("d1")],
+        selectedId: "d1",
+        navMeta: imageMeta("nav1"),
+        navRaster: raster(4, 5),
+        probe: { y: 1, x: 2 },
+        patternRaster: raster(8, 8),
+        meanRaster: raster(8, 8),
+      });
+      vi.mocked(listFourD).mockResolvedValue([]); // closed elsewhere
+
+      await useFourD.getState().fetchDatasets();
+
+      const s = useFourD.getState();
+      expect(s.datasets).toEqual([]);
+      expect(s.selectedId).toBeNull();
+      expect(s.navMeta).toBeNull();
+      expect(s.navRaster).toBeNull();
+      expect(s.probe).toBeNull();
+      expect(s.patternRaster).toBeNull();
+      expect(s.meanRaster).toBeNull();
+      expect(s.status).toMatch(/no longer open/);
+    });
+
+    it("leaves a still-present selection and status untouched", async () => {
+      useFourD.setState({
+        datasets: [fourdMeta("d1")],
+        selectedId: "d1",
+        patternRaster: raster(8, 8),
+      });
+      vi.mocked(listFourD).mockResolvedValue([fourdMeta("d1")]);
+
+      await useFourD.getState().fetchDatasets();
+
+      const s = useFourD.getState();
+      expect(s.selectedId).toBe("d1");
+      expect(s.patternRaster).toEqual(raster(8, 8));
+      expect(s.status).toBeNull();
+    });
+
+    it("does nothing special when there is no selection at all", async () => {
+      vi.mocked(listFourD).mockResolvedValue([fourdMeta("d1")]);
+      await useFourD.getState().fetchDatasets();
+      expect(useFourD.getState().selectedId).toBeNull();
+      expect(useFourD.getState().status).toBeNull();
+    });
+
+    it("closeDataset's own success path still ends with a null status, not fetchDatasets' generic message", async () => {
+      useFourD.setState({ datasets: [fourdMeta("d1")], selectedId: "d1" });
+      vi.mocked(closeFourD).mockResolvedValue(undefined);
+      vi.mocked(listFourD).mockResolvedValue([]);
+
+      await act(() => useFourD.getState().closeDataset("d1"));
+
+      // fetchDatasets (called internally by closeDataset) would set the
+      // "no longer open" message on its own — a deliberate, successful
+      // Close must not surface that as if the dataset vanished unexpectedly
+      expect(useFourD.getState().status).toBeNull();
+    });
+  });
+
+  describe("a 404 on a stale selection degrades instead of looping an error", () => {
+    it("fetchNavRaster refreshes the list on a stale-dataset 404 instead of setting a raw error status", async () => {
+      useFourD.setState({ datasets: [fourdMeta("d1")], selectedId: "d1" });
+      vi.mocked(fetchFourDNav).mockRejectedValue(
+        new FourDNotFoundError("unknown 4D dataset id: d1"),
+      );
+      vi.mocked(listFourD).mockResolvedValue([]);
+
+      await act(() => useFourD.getState().fetchNavRaster());
+
+      expect(listFourD).toHaveBeenCalledOnce();
+      expect(useFourD.getState().selectedId).toBeNull();
+      expect(useFourD.getState().status).not.toBe("nav image: unknown 4D dataset id: d1");
+    });
+
+    it("fetchMeanPattern refreshes the list on a stale-dataset 404", async () => {
+      useFourD.setState({ datasets: [fourdMeta("d1")], selectedId: "d1" });
+      vi.mocked(fetchFourDMeanPattern).mockRejectedValue(
+        new FourDNotFoundError("unknown 4D dataset id: d1"),
+      );
+      vi.mocked(listFourD).mockResolvedValue([]);
+
+      await act(() => useFourD.getState().fetchMeanPattern());
+
+      expect(listFourD).toHaveBeenCalledOnce();
+      expect(useFourD.getState().selectedId).toBeNull();
+    });
+
+    it("computeMap refreshes the list on a stale-dataset 404 instead of a raw error status", async () => {
+      useFourD.setState({
+        datasets: [fourdMeta("d1")],
+        selectedId: "d1",
+        aperture: {
+          centerKy: null, centerKx: null, autoCenter: true,
+          mode: "bf", innerR: 0, outerR: 80, shape: "circle",
+        },
+      });
+      vi.mocked(computeVirtualDetector).mockRejectedValue(
+        new FourDNotFoundError("unknown 4D dataset id: d1"),
+      );
+      vi.mocked(listFourD).mockResolvedValue([]);
+
+      await act(() => useFourD.getState().computeMap());
+
+      expect(listFourD).toHaveBeenCalledOnce();
+      expect(useFourD.getState().selectedId).toBeNull();
+      expect(useFourD.getState().status).not.toBe("virtual-detector: unknown 4D dataset id: d1");
+    });
+
+    it("a non-404 failure still surfaces its raw message (unchanged behaviour)", async () => {
+      useFourD.setState({ datasets: [fourdMeta("d1")], selectedId: "d1" });
+      vi.mocked(fetchFourDNav).mockRejectedValue(new Error("network error"));
+
+      await act(() => useFourD.getState().fetchNavRaster());
+
+      expect(listFourD).not.toHaveBeenCalled();
+      expect(useFourD.getState().status).toBe("nav image: network error");
+      expect(useFourD.getState().selectedId).toBe("d1");
+    });
   });
 });

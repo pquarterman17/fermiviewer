@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../lib/api", async (importActual) => {
@@ -270,5 +270,37 @@ describe("FourDWorkshop", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show nav image" }));
 
     await waitFor(() => expect(useViewer.getState().images.nav1).toBeDefined());
+  });
+
+  it("Probe on Stage shows the nav image, arms fourdnav, and a picked pixel drives the probe (#14 v2)", async () => {
+    vi.mocked(listFourD).mockResolvedValue([fourdMeta()]);
+    vi.mocked(fetchFourDMeanPattern).mockResolvedValue(raster(64, 64));
+    vi.mocked(fetchFourDNav).mockResolvedValue(imageMeta("nav1"));
+    vi.mocked(fetchData16).mockResolvedValue(raster(5, 4));
+    vi.mocked(fetchFourDPattern).mockResolvedValue(raster(64, 64));
+
+    render(<FourDWorkshop />);
+    fireEvent.change(await screen.findByLabelText("4D-STEM dataset"), {
+      target: { value: "d1" },
+    });
+    await screen.findByText("mean pattern");
+
+    fireEvent.click(screen.getByRole("button", { name: "Probe on Stage" }));
+
+    // showNavImage() ingests the nav image (making it the active Stage
+    // image) BEFORE fourdnav is armed — useFourDNavProbeSync gates on that
+    await waitFor(() => expect(useViewer.getState().images.nav1).toBeDefined());
+    await waitFor(() => expect(useViewer.getState().captureMode).toBe("fourdnav"));
+    expect(screen.getByRole("button", { name: "Stop probing" })).toBeVisible();
+
+    // a pixel published on the main Stage (as Stage.tsx's pointer handlers
+    // would via setFourdNavPixel) reaches this workshop's own probe state
+    act(() => {
+      useViewer.getState().setFourdNavPixel([8, 42]);
+    });
+    expect(useFourD.getState().probe).toEqual({ y: 7, x: 41 });
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop probing" }));
+    expect(useViewer.getState().captureMode).toBe("none");
   });
 });

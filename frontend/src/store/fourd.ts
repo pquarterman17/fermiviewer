@@ -21,6 +21,7 @@ import {
   fetchData16,
   fetchFourDMeanPattern,
   fetchFourDNav,
+  FourDNotFoundError,
   listFourD,
   reshapeFourD,
   type ApertureShape,
@@ -29,6 +30,14 @@ import {
   type Raster16,
 } from "../lib/api";
 import { useViewer } from "./viewer";
+
+/** A stale-selection 404 (dataset closed elsewhere, or a selection that
+ *  outlived this store's last successful list fetch) degrades to "clear +
+ *  refetch" (via `fetchDatasets`) instead of a status note that would just
+ *  keep re-failing on every subsequent action (PLAN_4DSTEM #14). */
+function isStaleDataset(e: unknown): boolean {
+  return e instanceof FourDNotFoundError;
+}
 
 export type ApertureMode = "bf" | "abf" | "adf" | "custom";
 
@@ -213,7 +222,25 @@ export const useFourD = create<FourDState>((set, get) => ({
     set({ busyList: true });
     try {
       const datasets = (await listFourD()).filter(isValidFourDMeta);
-      set({ datasets, status: null });
+      set((s) => {
+        if (!s.selectedId || datasets.some((d) => d.id === s.selectedId)) {
+          return { datasets, status: null };
+        }
+        // The selected dataset is gone server-side (closed elsewhere, or a
+        // stale selection surviving past this store's last successful list
+        // fetch) — degrade to "cleared selection + refreshed list" instead
+        // of leaving per-dataset state that keeps erroring on every action.
+        return {
+          datasets,
+          selectedId: null,
+          navMeta: null,
+          navRaster: null,
+          probe: null,
+          patternRaster: null,
+          meanRaster: null,
+          status: "the selected 4D dataset is no longer open — selection cleared",
+        };
+      });
     } catch (e) {
       set({ status: `4D datasets: ${(e as Error).message}` });
     } finally {
@@ -249,7 +276,9 @@ export const useFourD = create<FourDState>((set, get) => ({
     try {
       meta = await reshapeFourD(id, rows, cols);
     } catch (e) {
-      set({ status: `reshape: ${(e as Error).message}`, busyNav: false });
+      if (isStaleDataset(e)) await get().fetchDatasets();
+      else set({ status: `reshape: ${(e as Error).message}` });
+      set({ busyNav: false });
       return;
     }
     // The id is unchanged (routes/fourd.py keeps it deliberately), so the
@@ -277,7 +306,11 @@ export const useFourD = create<FourDState>((set, get) => ({
     // Derived nav/virtual-detector images live in the main viewer store and
     // are untouched server-side (routes/fourd.py's close_fourd docstring) —
     // only this workshop's own 4D-specific state needs clearing, and only
-    // when the closed dataset was the one being viewed.
+    // when the closed dataset was the one being viewed. fetchDatasets above
+    // already self-heals this (its refreshed list no longer contains `id`),
+    // but its generic "closed elsewhere" status would be misleading right
+    // after a close THIS action just performed — status: null restores the
+    // original (silent-success) behaviour for the deliberate-close path.
     if (wasSelected) {
       set({
         selectedId: null,
@@ -286,6 +319,7 @@ export const useFourD = create<FourDState>((set, get) => ({
         probe: null,
         patternRaster: null,
         meanRaster: null,
+        status: null,
       });
     }
   },
@@ -299,7 +333,8 @@ export const useFourD = create<FourDState>((set, get) => ({
       const navRaster = await fetchData16(meta.id);
       set({ navMeta: meta, navRaster, status: null });
     } catch (e) {
-      set({ status: `nav image: ${(e as Error).message}` });
+      if (isStaleDataset(e)) await get().fetchDatasets();
+      else set({ status: `nav image: ${(e as Error).message}` });
     } finally {
       set({ busyNav: false });
     }
@@ -318,7 +353,8 @@ export const useFourD = create<FourDState>((set, get) => ({
       if (!get().navRaster) set({ navRaster: await fetchData16(meta.id) });
       useViewer.getState().ingestDerived([meta]);
     } catch (e) {
-      set({ status: `nav image: ${(e as Error).message}` });
+      if (isStaleDataset(e)) await get().fetchDatasets();
+      else set({ status: `nav image: ${(e as Error).message}` });
     } finally {
       set({ busyNav: false });
     }
@@ -343,7 +379,8 @@ export const useFourD = create<FourDState>((set, get) => ({
       set({ meanRaster: raster });
       if (get().probe === null) set({ patternRaster: raster });
     } catch (e) {
-      set({ status: `mean pattern: ${(e as Error).message}` });
+      if (isStaleDataset(e)) await get().fetchDatasets();
+      else set({ status: `mean pattern: ${(e as Error).message}` });
     } finally {
       set({ busyPattern: false });
     }
@@ -386,7 +423,8 @@ export const useFourD = create<FourDState>((set, get) => ({
       useViewer.getState().ingestDerived([meta]);
       set({ status: `map computed → ${meta.name}` });
     } catch (e) {
-      set({ status: `virtual-detector: ${(e as Error).message}` });
+      if (isStaleDataset(e)) await get().fetchDatasets();
+      else set({ status: `virtual-detector: ${(e as Error).message}` });
     } finally {
       set({ busyCompute: false });
     }

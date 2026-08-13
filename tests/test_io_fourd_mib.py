@@ -113,6 +113,21 @@ def test_single_chip_passthrough(tmp_path: Path) -> None:
         np.testing.assert_array_equal(ds.pattern(0, k), expected)
 
 
+def test_det_axes_are_uncalibrated_without_an_hdr_sidecar(tmp_path: Path) -> None:
+    """PLAN_4DSTEM #14 (aperture radii in mrad): with no `.hdr` sidecar to
+    read a diffraction-plane calibration from, `.mib` must report det_axes
+    as UNCALIBRATED (empty units) rather than a fake mrad/px — the frontend
+    gates the mrad UI on exactly this (`isAxisCalibrated`)."""
+    rng = np.random.default_rng(2)
+    frame = _scramble(rng.integers(0, 255, size=(2, 16), dtype=np.uint8))
+    path = _write_mib(tmp_path / "uncal.mib", [frame], num_chips=1, chip_layout="1x1")
+    ds = load_mib(path)
+    assert ds.det_axes[0].units == ""
+    assert ds.det_axes[1].units == ""
+    assert ds.det_axes[0].calibrated is False
+    assert ds.det_axes[1].calibrated is False
+
+
 # ── 2x2 quad (num_chips=4): word-order fix + bottom-row 180 rotation ─────
 
 

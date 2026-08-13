@@ -12,21 +12,24 @@
 // pattern is one flat raster with no pan/zoom/measure needs of its own, so
 // the Stage's GPU pipeline would be pure overhead here.
 //
-// v1 scope: probe clicks are handled entirely on this workshop's own nav
-// minimap canvas — they do NOT hook the main Stage's capture modes
-// (captureMode/"specnav" in store/viewer.ts + useSpectrumProbe.ts). Wiring
-// "click the real nav image once it's showing on the main Stage to move the
-// 4D probe" is the natural v2 follow-up: it needs a new captureMode variant
-// plus a way for the Stage to know which open image is a 4D nav image,
-// neither of which exists yet.
+// v1 shipped probe clicks handled entirely on this workshop's own nav
+// minimap canvas. v2 (#14) additionally hooks the main Stage's capture
+// modes: a "fourdnav" mode (store/viewer.ts) publishes a pixel picked on
+// the nav image once it's showing on the Stage, useFourDNavProbeSync.ts
+// converts it to a scan position, and FourDProbeMarker.tsx draws the
+// on-stage crosshair — the same specnav/useSpectrumProbe.ts pattern the
+// EELS/EDS workshops use for their main-Stage spectrum probe.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { useFourD } from "../../store/fourd";
+import { useViewer } from "../../store/viewer";
 import FourDApertureControls from "./fourd/FourDApertureControls";
 import FourDNavPanel from "./fourd/FourDNavPanel";
 import FourDPatternPanel from "./fourd/FourDPatternPanel";
 import FourDScanShape from "./fourd/FourDScanShape";
+import { useFourDDatasetRefresh } from "./fourd/useFourDDatasetRefresh";
+import { useFourDNavProbeSync } from "./fourd/useFourDNavProbeSync";
 import { useFourDPatternFetch } from "./fourd/useFourDPatternFetch";
 
 export default function FourDWorkshop() {
@@ -36,15 +39,15 @@ export default function FourDWorkshop() {
   const busyNav = useFourD((s) => s.busyNav);
   const reshapeDataset = useFourD((s) => s.reshapeDataset);
   const status = useFourD((s) => s.status);
-  const fetchDatasets = useFourD((s) => s.fetchDatasets);
   const selectDataset = useFourD((s) => s.selectDataset);
   const closeDataset = useFourD((s) => s.closeDataset);
   const showNavImage = useFourD((s) => s.showNavImage);
+  const captureMode = useViewer((s) => s.captureMode);
+  const setCaptureMode = useViewer((s) => s.setCaptureMode);
   const [closing, setClosing] = useState(false);
 
-  useEffect(() => {
-    void fetchDatasets();
-  }, [fetchDatasets]);
+  // refetches on mount + whenever the tab regains focus/visibility (#14)
+  useFourDDatasetRefresh();
 
   const handleClose = async () => {
     if (!selectedId) return;
@@ -56,8 +59,21 @@ export default function FourDWorkshop() {
     }
   };
 
+  const fourdnavActive = captureMode === "fourdnav";
+  const handleToggleProbeOnStage = () => {
+    if (fourdnavActive) {
+      setCaptureMode("none");
+    } else {
+      // ensure the nav image is the active Stage image BEFORE arming the
+      // capture mode — useFourDNavProbeSync gates on exactly that match
+      void showNavImage().then(() => setCaptureMode("fourdnav"));
+    }
+  };
+
   // debounced probe → /pattern fetch; a no-op while no dataset is selected
   useFourDPatternFetch(selectedId);
+  // main-Stage fourdnav pixel → this workshop's probe (#14 v2)
+  useFourDNavProbeSync();
 
   const meta = datasets.find((d) => d.id === selectedId) ?? null;
 
@@ -114,6 +130,15 @@ export default function FourDWorkshop() {
           Show nav image
         </button>
         <button
+          className={`fvd-btn${fourdnavActive ? " active" : ""}`}
+          disabled={!selectedId || busyNav}
+          aria-pressed={fourdnavActive}
+          onClick={handleToggleProbeOnStage}
+          title="Click (or drag) the nav image on the main Stage to move the probe"
+        >
+          {fourdnavActive ? "Stop probing" : "Probe on Stage"}
+        </button>
+        <button
           className="fvd-btn danger"
           disabled={!selectedId || closing}
           onClick={() => void handleClose()}
@@ -136,6 +161,7 @@ export default function FourDWorkshop() {
           </div>
           <FourDApertureControls
             detShape={meta ? [meta.det_shape[0], meta.det_shape[1]] : [256, 256]}
+            detAxes={meta?.det_axes}
           />
         </>
       )}

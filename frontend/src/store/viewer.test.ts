@@ -236,6 +236,41 @@ describe("specnav pixel (#10 main-stage spectrum navigation)", () => {
   });
 });
 
+describe("fourdNavPixel (#14 main-Stage 4D-STEM probe picking)", () => {
+  it("defaults null; setFourdNavPixel stores a [row, col]", () => {
+    expect(useViewer.getState().fourdNavPixel).toBeNull();
+    useViewer.getState().setFourdNavPixel([7, 12]);
+    expect(useViewer.getState().fourdNavPixel).toEqual([7, 12]);
+  });
+
+  it("entering fourdnav keeps the pixel; leaving fourdnav clears it", () => {
+    const s = useViewer.getState();
+    s.setFourdNavPixel([3, 4]);
+    s.setCaptureMode("fourdnav"); // entering must not wipe a fresh pick
+    expect(useViewer.getState().fourdNavPixel).toEqual([3, 4]);
+    s.setCaptureMode("none"); // leaving clears the stale marker
+    expect(useViewer.getState().fourdNavPixel).toBeNull();
+  });
+
+  it("specnav and fourdnav pixels don't clobber each other across a mode switch", () => {
+    const s = useViewer.getState();
+    s.setSpecnavPixel([1, 1]);
+    s.setCaptureMode("specnav");
+    s.setFourdNavPixel([2, 2]);
+    // switching TO fourdnav clears the now-stale specnav pixel, but the
+    // fourdnav pixel just set survives the same setCaptureMode call
+    s.setCaptureMode("fourdnav");
+    expect(useViewer.getState().specnavPixel).toBeNull();
+    expect(useViewer.getState().fourdNavPixel).toEqual([2, 2]);
+
+    // and the reverse: switching back to specnav clears fourdnav
+    s.setSpecnavPixel([5, 5]);
+    s.setCaptureMode("specnav");
+    expect(useViewer.getState().fourdNavPixel).toBeNull();
+    expect(useViewer.getState().specnavPixel).toEqual([5, 5]);
+  });
+});
+
 describe("derivedTick lineage signal (#7 Live FFT)", () => {
   it("starts at 0 and bumps once per ingestDerived, not on plain ingest", () => {
     expect(useViewer.getState().derivedTick).toBe(0);
