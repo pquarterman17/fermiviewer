@@ -8,7 +8,23 @@ import {
 } from "react";
 import type uPlot from "uplot";
 
+import { svgToPngBlob } from "../../lib/charts/chartRaster";
+import { chartToSvg, specFromUplot } from "../../lib/charts/chartSvg";
 import { useViewer } from "../../store/viewer";
+
+/** Swap a filename's extension, or append one if there wasn't a recognised
+ *  image extension to swap (defensive — every caller today passes a
+ *  ".png" filename). */
+function withExtension(filename: string, ext: string): string {
+  return /\.(png|jpg|jpeg)$/i.test(filename)
+    ? filename.replace(/\.(png|jpg|jpeg)$/i, ext)
+    : `${filename}${ext}`;
+}
+
+/** Insert a "-300dpi" style suffix before the extension. */
+function withDpiSuffix(filename: string, dpi: number): string {
+  return withExtension(filename, `-${dpi}dpi.png`);
+}
 
 interface MenuPoint {
   x: number;
@@ -62,8 +78,9 @@ const PlotContextSurface = forwardRef<
 
   const openAt = (x: number, y: number) => {
     setMenu({
-      x: Math.min(x, Math.max(8, window.innerWidth - 190)),
-      y: Math.min(y, Math.max(8, window.innerHeight - 170)),
+      x: Math.min(x, Math.max(8, window.innerWidth - 210)),
+      // taller now: 6 items (up from 3) before the optional export-data row
+      y: Math.min(y, Math.max(8, window.innerHeight - 260)),
     });
   };
 
@@ -157,6 +174,47 @@ const PlotContextSurface = forwardRef<
     setMenu(null);
   };
 
+  // Vector + high-DPI export (ANALYSIS_PRESENTATION_PLAN item 4): built once
+  // from the live uPlot instance's PUBLIC state via lib/charts/chartSvg.ts,
+  // so every chart wrapped in this surface gets it with no per-chart wiring.
+  const downloadBlob = (blob: Blob, name: string) => {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = name;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportSvg = () => {
+    try {
+      const plot = plotRef.current;
+      if (!plot) throw new Error("plot is unavailable");
+      const svg = chartToSvg(specFromUplot(plot, { title: label }));
+      const name = withExtension(filename, ".svg");
+      downloadBlob(new Blob([svg], { type: "image/svg+xml" }), name);
+      report(`${label}: saved ${name}`);
+    } catch (error) {
+      report(`${label}: ${error instanceof Error ? error.message : "SVG export failed"}`);
+    }
+    setMenu(null);
+  };
+
+  const exportPngAtDpi = async (dpi: number) => {
+    try {
+      const plot = plotRef.current;
+      if (!plot) throw new Error("plot is unavailable");
+      const svg = chartToSvg(specFromUplot(plot, { title: label }));
+      const blob = await svgToPngBlob(svg, dpi / 96);
+      const name = withDpiSuffix(filename, dpi);
+      downloadBlob(blob, name);
+      report(`${label}: saved ${name}`);
+    } catch (error) {
+      report(`${label}: ${error instanceof Error ? error.message : `${dpi} dpi export failed`}`);
+    }
+    setMenu(null);
+  };
+
   return (
     <div
       ref={shellRef}
@@ -205,7 +263,31 @@ const PlotContextSurface = forwardRef<
               role="menuitem"
               onClick={() => void save()}
             >
-              Save plot PNG
+              Save plot PNG (screen)
+            </button>
+            <button
+              className="fvd-ctx-item"
+              role="menuitem"
+              disabled={!plotRef.current}
+              onClick={exportSvg}
+            >
+              Export SVG (vector)
+            </button>
+            <button
+              className="fvd-ctx-item"
+              role="menuitem"
+              disabled={!plotRef.current}
+              onClick={() => void exportPngAtDpi(300)}
+            >
+              Export PNG (300 dpi)
+            </button>
+            <button
+              className="fvd-ctx-item"
+              role="menuitem"
+              disabled={!plotRef.current}
+              onClick={() => void exportPngAtDpi(600)}
+            >
+              Export PNG (600 dpi)
             </button>
             {onExportData && (
               <>
