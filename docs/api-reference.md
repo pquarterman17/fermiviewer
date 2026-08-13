@@ -249,9 +249,18 @@ The registered operation catalogue: name, category, summary, params.
 
 ## Operation catalogue
 
-24 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
+29 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
 
 ### analysis
+
+#### `distribution_fit` — Population summary + histogram + normal/lognormal/weibull fit over a raw value list (calc/distributions.py) — for particle/grain size populations extracted elsewhere in a script
+
+*category: `analysis` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `values` | `str` |  | yes |  |  | comma-separated numeric values, e.g. particle equivalent diameters '12.3,45.6,78.9' |
+| `fit` | `str` | all | no | 'all', 'normal', 'lognormal', 'weibull', 'none' |  | 'all' fits + AIC-picks the best; a single kind fits only that one; 'none' returns summary + histogram only |
 
 #### `image_stats` — Raster mean/std/min/max
 
@@ -290,6 +299,24 @@ The registered operation catalogue: name, category, summary, params.
 
 ### eds
 
+#### `composition_profile` — Width-averaged element at% line profile through an EDS SI cube: quantifies (Cliff-Lorimer/ZAF) then samples calc/eds_maps.composition_profile along one line in a single call (the HTTP route samples pre-registered map images instead)
+
+*category: `eds` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `elements` | `str` |  | yes |  |  | comma-separated element symbols, e.g. 'Fe,O' |
+| `x1` | `float` |  | yes |  |  | line start column, 1-based (x) |
+| `y1` | `float` |  | yes |  |  | line start row, 1-based (y) |
+| `x2` | `float` |  | yes |  |  | line end column, 1-based (x) |
+| `y2` | `float` |  | yes |  |  | line end row, 1-based (y) |
+| `n_points` | `int` | 200 | no |  | [2, ] | samples along the line |
+| `width` | `float` | 1.0 | no |  | [1.0, ] | perpendicular averaging width (px) |
+| `half_window_kev` | `float` | 0.085 | no |  | [0.0, ] | line window half-width (keV) |
+| `method` | `str` | cliff-lorimer | no | 'cliff-lorimer', 'zaf' |  |  |
+| `thickness_nm` | `float` | 100.0 | no |  | [0.0, ] | specimen thickness (zaf only, nm) |
+| `take_off_angle_deg` | `float` | 20.0 | no |  | [0.1, 89.9] | detector take-off angle (zaf only, deg) |
+
 #### `eds_element_map` — EDS energy-window element map
 
 *category: `eds` · produces: derived image*
@@ -302,6 +329,28 @@ The registered operation catalogue: name, category, summary, params.
 | `bg_width` | `float` | nan | no |  |  | background window width (keV); NaN -> same as peak width |
 | `bg_gap` | `float` | 0.0 | no |  | [0.0, ] | gap between peak and background windows (keV) |
 | `e0_kev` | `float` | nan | no |  |  | beam energy (keV); required when bg='bremsstrahlung' |
+
+#### `eds_element_maps` — Batch per-element net intensity maps at each element's principal line (calc/eds_maps.extract_element_maps) — one call, every requested element's map, unlike eds_element_map's single window
+
+*category: `eds` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `elements` | `str` |  | yes |  |  | comma-separated element symbols, e.g. 'Fe,Si,O' |
+| `half_window_kev` | `float` | 0.085 | no |  | [0.0, ] | line window half-width (keV) |
+| `bg` | `str` | linear | no | 'none', 'linear' |  | background model subtracted from each window sum |
+
+#### `eds_peakfit` — Constrained multi-Gaussian/Voigt peak deconvolution + Cliff-Lorimer quantify (calc/eds_peakfit.quantify_peaks)
+
+*category: `eds` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `elements` | `str` |  | yes |  |  | comma-separated element symbols, e.g. 'Fe,Si' |
+| `beam_kv` | `float` | 200.0 | no |  | [0.0, ] | beam energy (kV), selects K/L/M line |
+| `center_tol_kev` | `float` | 0.0 | no |  | [0.0, ] | allow each peak center to wander +/- this (keV); 0 = fixed at the known line energy |
+| `lorentzian_hwhm_kev` | `float` | 0.0 | no |  | [0.0, ] | 0 = pure Gaussian peaks; >0 switches to a fixed-width Voigt profile |
+| `weights` | `str` | poisson | no | 'poisson', 'uniform' |  | fit weighting scheme |
 
 #### `eds_quantify` — EDS at%/wt% quantification (Cliff-Lorimer / ZAF)
 
@@ -316,6 +365,23 @@ The registered operation catalogue: name, category, summary, params.
 | `take_off_angle_deg` | `float` | 20.0 | no |  | [0.1, 89.9] | detector take-off angle (zaf only, deg) |
 
 ### eels
+
+#### `eels_fit` — Simultaneous background + multi-edge model fit (calc/eels_model.fit_edges)
+
+*category: `eels` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `elements` | `str` |  | yes |  |  | comma-separated element symbols, e.g. 'Fe,O' |
+| `shells` | `str` |  | yes |  |  | comma-separated shells matching elements, 'K'\|'L', e.g. 'L,K' |
+| `z` | `str` |  | yes |  |  | comma-separated atomic numbers matching elements, e.g. '26,8' |
+| `onset_ev` | `str` |  | yes |  |  | comma-separated edge onsets (eV), e.g. '708,532' |
+| `signal_windows` | `str` |  | yes |  |  | comma-separated 'lo:hi' signal windows (eV), e.g. '708:758,532:582' (unused by the fit itself, kept for parity with eels_quantify's edge schema) |
+| `bg_windows` | `str` |  | yes |  |  | comma-separated 'lo:hi' pre-edge windows (eV); the first edge's lower bound seeds the default fit range |
+| `e0_kv` | `float` | 200.0 | no |  | [0.0, ] | beam energy (kV) |
+| `beta_mrad` | `float` | 10.0 | no |  | [0.0, ] | collection semi-angle (mrad) |
+| `fit_range_lo` | `float` | nan | no |  |  | fit window lower edge (eV); leave unset (with fit_range_hi) to use the resolved default |
+| `fit_range_hi` | `float` | nan | no |  |  | fit window upper edge (eV) |
 
 #### `eels_map` — EELS background-subtracted elemental map
 

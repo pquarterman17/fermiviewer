@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from fermiviewer.ops import (
     catalogue,  # noqa: F401  (import registers ops)
+    catalogue_analysis,  # noqa: F401  (model-fit + distribution ops)
     catalogue_spectral,  # noqa: F401  (EELS/EDS/diffraction ops)
 )
 from fermiviewer.ops.base import OpParam, OpResult, OpSpec, ParamError

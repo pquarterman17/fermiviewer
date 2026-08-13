@@ -41,6 +41,11 @@ def test_every_op_runs_on_a_synthetic_image() -> None:
             # required list-shaped params with no sensible image-only
             # default) — covered by their own fixtures in test_ops_spectral.py
             continue
+        if any(p.required for p in spec.params.values()):
+            # a required param (e.g. distribution_fit's "values") has no
+            # sensible image-derived default — covered by its own fixtures
+            # in test_ops_analysis.py instead
+            continue
         result = ops.run(spec.name, ds)  # defaults only
         assert result.op == spec.name
         if result.produces_image:
