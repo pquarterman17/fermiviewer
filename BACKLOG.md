@@ -82,11 +82,9 @@ live-audit usability follow-up list.*
 12. **Orientation / phase mapping (ACOM)**
 13. **More 4D formats + async ingest** — Gatan K2/K3, NCEM EMD 4D, blockfile
     `.blo`, job-queued batch virtual-detector
-14. **4D usability follow-ups** — aperture radii in mrad, main-Stage probe
-    picking, dataset-list live refresh (the scan-shape GUI and the
-    log-intensity toggle shipped 2026-08-12)
 
-**Open items: 8**
+**Open items: 7** *(item 14 closed 2026-08-12 — all five usability
+follow-ups from the live audit shipped)*
 
 ---
 
@@ -115,17 +113,18 @@ only Tier 3 (build-on-demand by rule) remains.*
 |---|---|---|
 | MAIN_PLAN.md | Active (root) | 9 |
 | SPECTRAL_WORKSPACE_PLAN.md | Active | 1 |
-| PLAN_4DSTEM.md | Active | 8 |
+| PLAN_4DSTEM.md | Active | 7 |
 | ANALYSIS_PRESENTATION_PLAN.md | Active (Tier 3 residue only) | 4 |
 
-**Total open items:** 22
+**Total open items:** 21
 
 **Counting method:** top-level numbered items (the plan-format.md unit of a
 tracked work item) — not nested `- [ ]` sub-task checkboxes. Nested-checkbox
 counts by plan, for reference: MAIN_PLAN 5, SPECTRAL_WORKSPACE_PLAN 0,
-PLAN_4DSTEM 12, ANALYSIS_PRESENTATION_PLAN 0 (17 total). A checkbox-based
+PLAN_4DSTEM 7, ANALYSIS_PRESENTATION_PLAN 0 (12 total). A checkbox-based
 count would disagree with the open-items count above — pick one convention
 when reading this table and don't mix the two.
 
-**Last regenerated:** 2026-08-12 (ANALYSIS_PRESENTATION_PLAN booked +12,
-then four same-day waves shipped all eight engineering items: −8)
+**Last regenerated:** 2026-08-12 (ANALYSIS_PRESENTATION_PLAN booked +12 then
+fully shipped −8 across four waves; PLAN_4DSTEM #14 closed −1; plus the
+copy-annotations preference and the structure/profiles ceiling extractions)

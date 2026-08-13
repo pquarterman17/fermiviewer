@@ -20,7 +20,10 @@ Tier 3. Item #14's first two usability follow-ups — the .mib scan-shape
 GUI and the pattern-panel log toggle — shipped 2026-08-12; three remain)
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-06-21
-**Updated:** 2026-08-12 — item #14's top two usability follow-ups shipped:
+**Updated:** 2026-08-12 (later) — item #14 CLOSED: its last three boxes
+(mrad radii, main-Stage probe picking, dataset-list live refresh) shipped;
+open items now 7 (Tier 2 owner-deferred DPC trio + Tier 3 parked).
+Earlier the same day — item #14's top two usability follow-ups shipped:
 the `.mib` scan-shape GUI (`POST /fourd/{id}/reshape` + a workshop control
 with ranked factorisation suggestions — the parser always accepted a
 `scan_shape` and nothing exposed it, so every headerless Merlin file opened
@@ -321,22 +324,34 @@ for completeness and to record the architectural runway; not scheduled.)*
     ingest, and a job-queued virtual-detector batch for very large scans (ties
     into audit #34 batch-over-analysis).
 
-14. **4D usability follow-ups** — from the 2026-08-02 live audit (the five
-    objective defects it found were fixed same day: modal z-layering,
-    nav contain-fit, true auto-center preview, watch-folder guidance,
-    DELETE /api/fourd/{id}); these remain, in value order:
-    - [x] **Scan-shape GUI for .mib** — shipped 2026-08-12, see Completed
-    - [x] Log-intensity toggle on the pattern panel — shipped 2026-08-12,
-      see Completed
-    - [ ] Aperture radii in mrad when detector calibration allows.
-    - [ ] Main-Stage probe picking via a specnav-style capture mode (the
-      flagged v2 of #4).
-    - [ ] Dataset-list live refresh (a dataset closed server-side only
-      self-heals on next select/remount — flagged by the hardening pass).
-
 ---
 
 ## Completed
+
+- ~~**#14 4D usability follow-ups**~~ (2026-08-12, closed by its last three
+  boxes; the scan-shape GUI and log-intensity toggle had shipped earlier
+  the same day) —
+  **Aperture radii in mrad:** the calibration already flowed end-to-end
+  (`hspy4d.py` preserved axis scale/units into `FourDMeta.det_axes`) — it
+  was pinned with new io/route tests rather than "fixed", and the frontend
+  gained `fourd/mradConversion.ts` (requires BOTH detector axes calibrated
+  in the same unit before showing anything — never a fake unit) with a
+  paired editable mrad field beside each px radius in
+  `FourDApertureControls`; uncalibrated datasets keep the px-only UI
+  unchanged.
+  **Main-Stage probe picking:** new `"fourdnav"` capture mode mirroring
+  specnav's store semantics exactly (entry keeps a fresh pick, exit
+  clears), routed in `pointerDecisions.ts`/`useStagePointers.ts`, drawn by
+  `FourDProbeMarker.tsx` (shares specnav's CSS), bridged into the workshop
+  by `useFourDNavProbeSync.ts`. Stage.tsx grew 584→600 (pin 617 — under,
+  not raised): the marker needs Stage-local view state, wired identically
+  to specnav's own marker.
+  **Dataset-list live refresh:** event-driven (mount + visibilitychange +
+  focus refetch via `useFourDDatasetRefresh.ts`), no polling; new
+  `FourDNotFoundError` lets a stale per-id fetch self-heal to a cleared
+  selection + refreshed list instead of a repeating error status.
+  Gate on the merged tree: 2077 backend / 1485 vitest (+47). With this,
+  every item the 2026-08-02 live audit opened is closed.
 
 - ~~**#14 Scan-shape GUI for `.mib`**~~ (2026-08-12) — the top item for real
   Merlin users, and it was never a missing capability: `load_mib` has always
