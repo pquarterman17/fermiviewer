@@ -11,12 +11,14 @@ DECLINED general-graphing/statistics list lives in that doc and is out).
 **Status:** Active
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-08-12
-**Updated:** 2026-08-12 — wave 2 same day: items 6 (population
-histograms) and 7 (fit-report CSV) shipped, item 3 landed its first
-chart (composition-profile ±1σ band) plus the reusable band helper.
-Wave-2 merged-tree gate 2026 backend / 1374 vitest, all green. Earlier
-the same day: items 1, 2, 5 (wave 1, gate 1994/1319). Both waves via
-file-disjoint sonnet worktree agents
+**Updated:** 2026-08-12 — wave 3 same day: items 4 (SVG/DPI chart
+export) and 8 (scripting-reach sweep) shipped; item 3 ticked its
+fit-view checkbox (model-confidence bands), leaving only its
+radial/line-profile checkbox open. Gate 2060 backend / 1424 vitest.
+Earlier waves same day: 1/2/5 (gate 1994/1319), then 6/7 + item 3's
+first chart (gate 2026/1374). All three waves via file-disjoint sonnet
+worktree agents. **Open: item 3's last checkbox + Tier 3 (9–12,
+build-on-demand only).**
 
 ---
 
@@ -81,23 +83,16 @@ every new verb ─> ops registration ─> #8 batch/scripting reach for free
    real ±1σ band per element (see Completed for the machinery — the
    reusable `lib/charts/sigmaBand.ts` helper and the backend σ
    propagation pattern). Remaining: the other σ-carrying charts —
-   - [ ] EELS/EDS fit views: model-confidence band from the covariance
-         (needs a serialisation decision consistent with item 2's)
+   - [x] EELS/EDS fit views: model-confidence band from the covariance —
+         SHIPPED 2026-08-12, see the wave-3 Completed entry
    - [ ] radial/line-profile charts where a σ series exists or is cheap
    - [ ] spectrum integration readouts stay text (scalars, not series) —
          explicitly out
 
-4. **Vector (SVG) chart export + DPI control for analysis plots** (was
-   audit R2) — charts export via `canvas.toBlob("image/png")` at screen
-   resolution; the image stage already has a vector pipeline to reuse.
 
 ## Tier 2 — Medium Impact
 
-8. **Batch + scripting reach for existing analyses** (was audit R7) —
-   op catalogue ≈18 ops, no spectral fitting; `fermiviewer.api` reaches a
-   fraction of server capabilities. Now unblocked: items 1/5/6 landed
-   their verbs (peak shapes ride the fit routes, savgol landed as ops,
-   distributions has `/analyze/distribution`) — the sweep can cover them.
+*(empty — items 5–8 all shipped 2026-08-12; see Completed)*
 
 ## Tier 3 — Nice-to-Have
 
@@ -119,6 +114,61 @@ schedule)*
     ignores the app theme; cosmetic.
 
 ## Completed
+
+- **#3 (fit-view checkbox): model-confidence bands** (2026-08-12; item
+  stays OPEN for radial/line-profile charts only) — new pure
+  `calc/spectral_fit.model_sigma()`: central-difference Jacobian
+  (rel_step 1e-6, scipy's own heuristic) then
+  `sqrt(diag(J·cov·Jᵀ))` via `np.einsum("ij,jk,ik->i", ...)` without
+  materialising the point-space product. Pinned by a CLOSED-FORM test:
+  for y=a+b·E the band must equal `sqrt(var_a + E²·var_b + 2E·cov_ab)`
+  to rtol 1e-9 (linear ⇒ zero truncation error) — dropping the
+  covariance cross-term by mutation produced up to 169 % error and a red
+  test. Serialised additively as `model_sigma` on `/eels/fit`,
+  `/eds/peakfit`, `/eds/zeta` (null on failed fit / non-finite
+  covariance) — a covariance-derived trace is the one thing the client
+  cannot reconstruct, so serialising it IS item 2's rule, and the route
+  docstrings say so. Both fit plots shade model ±1σ via the existing
+  `sigmaBand.ts`. The EELS overlay turned out to live in
+  `EelsWorkshop.tsx`, not `EelsResults.tsx` — extracted to
+  `eels/EelsFitOverlayPlot.tsx` (EelsWorkshop 364 → 248), mirroring the
+  `EdsModelFitPlot` split. mypy caught a real variable-shadowing bug
+  (loop-local `sigma` colliding with the Fano width). +8 backend / +10
+  frontend tests. WATCH: `routes/eds_advanced.py` now 493/500.
+
+- ~~**#4 Vector (SVG) chart export + DPI control**~~ (2026-08-12) —
+  built ONCE inside `PlotContextSurface` (which already holds every
+  chart's live uPlot ref), so all analysis charts gained "Export SVG
+  (vector)" + 300/600 dpi PNG with ZERO per-chart wiring. New pure
+  `lib/charts/chartSvg.ts` (481) + `ticks.ts` (1-2-5 ladder, log ticks)
+  + `chartRaster.ts` (SVG→PNG at dpi scale) — reads only PUBLIC uPlot
+  state (data/series/scales incl. per-series stroke functions and
+  `distr:3` log detection; a real consumer, the PSD chart, is log-log),
+  resolves CSS `var(--token)` strokes via getComputedStyle, and uses a
+  fixed white/paper background regardless of app theme (the line-chart
+  publication convention; deliberately different from figureExport's
+  dark micrograph convention — both "fixed regardless of theme").
+  V1 limits documented in the module header, not silently divergent:
+  custom canvas draw-hooks (window shading, error caps) are not
+  reproduced, and σ-band boundary series are recognised and DROPPED
+  rather than drawn as spurious lines. Null-gap path-breaking and
+  invisible-series filtering mutation-verified. +35 frontend tests.
+
+- ~~**#8 Batch + scripting reach for existing analyses**~~ (2026-08-12)
+  — survey-first sweep: 5 new ops in a new `ops/catalogue_analysis.py`
+  (379): `eels_fit`, `eds_peakfit`, `eds_element_maps`,
+  `composition_profile` (compound: quantify + line-sample in one call,
+  since scripts have no pre-registered map ids), `distribution_fit`.
+  Shared `ops/_parsing.py` extracted from catalogue_spectral rather than
+  copied. Scripting reach VERIFIED, not assumed: `Image.__getattr__`
+  auto-dispatches registered ops, proven by an end-to-end test calling
+  `img.eds_peakfit(elements="Fe")` on a real .msa via `fv.open()`.
+  **The recorded boundary** (why the rest is not registered): `eds_zeta`
+  deferred (next natural op); per-pixel `fit_edges_map` doesn't fit the
+  one-derived-image OpResult contract; `eds_recalibrate` is stateful;
+  session/jobs/watch/project/export routes are stateful or have their
+  own scripting path (`Result.to_csv`). api-reference regenerated.
+  +26 backend tests (all op-vs-calc parity).
 
 - ~~**#6 Population histograms + distribution fitting**~~ (2026-08-12) —
   new pure `calc/distributions.py` (summary stats; normal/lognormal/

@@ -96,18 +96,14 @@ live-audit usability follow-up list.*
 OriginPro/JMP gap audit (`docs/originpro-jmp-gap-audit.md`), each item
 re-verified against main before booking. Scope rule: image-derived results
 only; the audit's DECLINED general-graphing list is out. Shipped
-2026-08-12 in two waves: items 1, 2, 5 (wave 1) and 6, 7 + item 3's first
-chart (wave 2).*
+2026-08-12 in three waves: items 1, 2, 5 (wave 1); 6, 7 + item 3's first
+chart (wave 2); 4, 8 + item 3's fit-view bands (wave 3).*
 
 **Tier 1 — High Impact**
 3. **Error bars / ±σ bands on existing analysis charts** (was R1) —
-   composition-profile band + reusable `sigmaBand.ts` shipped 2026-08-12;
-   remaining: fit-view confidence bands, radial/line-profile charts
-4. **Vector (SVG) chart export + DPI control for analysis plots** (was R2)
-
-**Tier 2 — Medium Impact**
-8. **Batch + scripting reach for existing analyses** (was R7) — now
-   unblocked (items 1/5/6 landed their verbs)
+   composition-profile band, `sigmaBand.ts` helper, and fit-view
+   model-confidence bands all shipped 2026-08-12; remaining:
+   radial/line-profile charts only
 
 **Tier 3 — Nice-to-Have**
 9. **Two-sample population comparison** (was R9) — only if 6 gets real use
@@ -115,7 +111,7 @@ chart (wave 2).*
 11. **Baseline options: SNIP / anchor spline** (was R11)
 12. **Chart dark-mode theming** (was R12)
 
-**Open items: 7**
+**Open items: 5**
 
 ---
 
@@ -126,17 +122,18 @@ chart (wave 2).*
 | MAIN_PLAN.md | Active (root) | 9 |
 | SPECTRAL_WORKSPACE_PLAN.md | Active | 1 |
 | PLAN_4DSTEM.md | Active | 8 |
-| ANALYSIS_PRESENTATION_PLAN.md | Active | 7 |
+| ANALYSIS_PRESENTATION_PLAN.md | Active | 5 |
 
-**Total open items:** 25
+**Total open items:** 23
 
 **Counting method:** top-level numbered items (the plan-format.md unit of a
 tracked work item) — not nested `- [ ]` sub-task checkboxes. Nested-checkbox
 counts by plan, for reference: MAIN_PLAN 5, SPECTRAL_WORKSPACE_PLAN 0,
-PLAN_4DSTEM 12, ANALYSIS_PRESENTATION_PLAN 3 (20 total). A checkbox-based
-count would disagree with the open-items count above — pick one convention
-when reading this table and don't mix the two.
+PLAN_4DSTEM 12, ANALYSIS_PRESENTATION_PLAN 3 (20 total; 1 of the 3 is
+ticked `[x]`). A checkbox-based count would disagree with the open-items
+count above — pick one convention when reading this table and don't mix
+the two.
 
 **Last regenerated:** 2026-08-12 (ANALYSIS_PRESENTATION_PLAN booked +12,
-then items 1/2/5 shipped in wave 1 and 6/7 + item 3's first chart in
-wave 2: −5)
+then three same-day waves shipped items 1/2/5, 6/7, 4/8 + two of item 3's
+three charts: −7)
