@@ -1,6 +1,9 @@
 """4D-STEM endpoints: list metadata, navigation image, single/mean pattern,
 virtual-detector imaging.
 
+The COM-derived phase-contrast family (COM/DPC/iDPC) lives in the sibling
+`routes/fourd_com.py`; shared helpers live in `routes/_fourd_common.py`.
+
 Thin adapters only — all real work (streamed reductions, lazy access) lives
 in `calc/fourd/dataset.py` and `calc/fourd/virtual.py`/`geometry.py`.
 Worst-case RAM per route:
@@ -15,7 +18,7 @@ Worst-case RAM per route:
   * `GET /api/fourd/{id}/mean-pattern` — streams row-blocks into one
     det_shape float64 accumulator; same per-block cost as `/nav`.
   * `POST /api/fourd/{id}/virtual-detector` — streams row-blocks (capped at
-    ~64 MB per in-flight block, see `_virtual_detector_block_rows`) into a
+    ~64 MB per in-flight block, see `_block_rows_for_byte_cap`) into a
     reciprocal-space-aperture reduction, then registers the resulting
     scan-shaped map the same way `/nav` does. A null center additionally
     streams the whole cube ONCE MORE via `ds4.mean_pattern` (cached after
@@ -37,26 +40,23 @@ import numpy as np
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 
-from fermiviewer.calc.fourd.dataset import FourDDataset
 from fermiviewer.calc.fourd.geometry import aperture_mask, pattern_center
 from fermiviewer.calc.fourd.virtual import virtual_detector
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.io.fourd.mib import load_mib
 from fermiviewer.models import FourDMeta, ImageMeta
 from fermiviewer.routes._arrays import value_error_as_422
+from fermiviewer.routes._fourd_common import (
+    block_rows_for_byte_cap,
+    get_fourd,
+    validate_optional_center,
+)
 from fermiviewer.routes.images import encode_raster_u16
 from fermiviewer.session import UnknownImageError
 from fermiviewer.session import store as image_store
-from fermiviewer.session_fourd import UnknownFourDError, fourd_store
+from fermiviewer.session_fourd import fourd_store
 
 router = APIRouter(prefix="/api")
-
-
-def _get(fourd_id: str) -> FourDDataset:
-    try:
-        return fourd_store.get(fourd_id)
-    except UnknownFourDError:
-        raise HTTPException(404, f"unknown 4D dataset id: {fourd_id}") from None
 
 
 @router.get("/fourd")
@@ -69,7 +69,7 @@ def list_fourd() -> list[FourDMeta]:
 
 @router.get("/fourd/{fourd_id}/meta")
 def fourd_meta(fourd_id: str) -> FourDMeta:
-    ds4 = _get(fourd_id)
+    ds4 = get_fourd(fourd_id)
     return FourDMeta.from_dataset(fourd_id, fourd_store.name(fourd_id), ds4)
 
 
@@ -88,7 +88,7 @@ def close_fourd(fourd_id: str) -> dict[str, str]:
     touch them; they stay open and usable, keyed only by their own image
     id, until the user closes them individually.
     """
-    _get(fourd_id)
+    get_fourd(fourd_id)
     fourd_store.close(fourd_id)
     return {"status": "closed"}
 
@@ -118,7 +118,7 @@ def fourd_reshape(fourd_id: str, req: ReshapeRequest) -> FourDMeta:
     format states its own raster — re-rastering a file that records its scan
     axes would be inviting the user to contradict the acquisition.
     """
-    ds4 = _get(fourd_id)
+    ds4 = get_fourd(fourd_id)
     if ds4.metadata.get("scan_shape_from_file", True):
         raise HTTPException(
             422,
@@ -158,7 +158,7 @@ def fourd_nav(fourd_id: str) -> ImageMeta:
     (re-registering only if the user has since closed it), rather than
     flooding the image store with a fresh derived image every call.
     """
-    ds4 = _get(fourd_id)
+    ds4 = get_fourd(fourd_id)
     existing = fourd_store.nav_image_id(fourd_id)
     if existing is not None:
         try:
@@ -190,7 +190,7 @@ def fourd_pattern(fourd_id: str, y: int, x: int) -> Response:
     the same way `/image/{id}/data16` is (see `encode_raster_u16`) —
     register-as-image-per-call would flood the store, so this returns the
     pixels directly instead."""
-    ds4 = _get(fourd_id)
+    ds4 = get_fourd(fourd_id)
     try:
         dp = ds4.pattern(y, x)
     except IndexError as e:
@@ -201,28 +201,13 @@ def fourd_pattern(fourd_id: str, y: int, x: int) -> Response:
 @router.get("/fourd/{fourd_id}/mean-pattern")
 def fourd_mean_pattern(fourd_id: str) -> Response:
     """The scan-averaged diffraction pattern, uint16-encoded like `/pattern`."""
-    ds4 = _get(fourd_id)
+    ds4 = get_fourd(fourd_id)
     return encode_raster_u16(np.asarray(ds4.mean_pattern, dtype=np.float64))
 
 
 # ── virtual-detector imaging (PLAN_4DSTEM #5) ──────────────────────────
 
 # One in-flight (rows, scan_x, det_ky, det_kx) block capped at ~64 MB,
-# computed per-dataset from det_shape/scan_x/dtype rather than a fixed row
-# count — a 4k direct-electron detector needs far fewer rows per block than
-# a small Merlin frame does for the same memory ceiling. (This is a
-# route-layer choice independent of FourDDataset's own default block_rows,
-# which is sized for its *unweighted* nav_image/mean_pattern reductions.)
-_VD_BLOCK_BYTES_CAP = 64 * 1024 * 1024
-
-
-def _virtual_detector_block_rows(ds4: FourDDataset) -> int:
-    scan_x = ds4.scan_shape[1]
-    det_ky, det_kx = ds4.det_shape
-    bytes_per_row = scan_x * det_ky * det_kx * ds4.dtype.itemsize
-    if bytes_per_row <= 0:
-        return ds4.scan_shape[0]
-    return max(1, _VD_BLOCK_BYTES_CAP // bytes_per_row)
 
 
 class VirtualDetectorRequest(BaseModel):
@@ -248,27 +233,7 @@ def _validate_virtual_detector_request(
         raise HTTPException(422, "outer_r must be > 0")
     if req.shape == "annulus" and not (0 <= req.inner_r < req.outer_r):
         raise HTTPException(422, "annulus requires 0 <= inner_r < outer_r")
-    has_center = (req.center_ky is not None, req.center_kx is not None)
-    if has_center[0] != has_center[1]:
-        raise HTTPException(
-            422,
-            "center_ky and center_kx must both be given, or both omitted "
-            "for auto-center",
-        )
-    if all(has_center):
-        assert req.center_ky is not None and req.center_kx is not None
-        if not (0 <= req.center_ky <= det_shape[0] - 1):
-            raise HTTPException(
-                422,
-                f"center_ky {req.center_ky} outside detector bounds "
-                f"[0, {det_shape[0] - 1}]",
-            )
-        if not (0 <= req.center_kx <= det_shape[1] - 1):
-            raise HTTPException(
-                422,
-                f"center_kx {req.center_kx} outside detector bounds "
-                f"[0, {det_shape[1] - 1}]",
-            )
+    validate_optional_center(req.center_ky, req.center_kx, det_shape)
 
 
 @router.post("/fourd/{fourd_id}/virtual-detector")
@@ -284,7 +249,7 @@ def fourd_virtual_detector(fourd_id: str, req: VirtualDetectorRequest) -> ImageM
     See the module docstring for the RAM budget and the `/analyze/vdf`
     naming-collision note (this endpoint is NEVER abbreviated "vdf").
     """
-    ds4 = _get(fourd_id)
+    ds4 = get_fourd(fourd_id)
     _validate_virtual_detector_request(req, ds4.det_shape)
 
     if req.center_ky is None or req.center_kx is None:
@@ -301,7 +266,7 @@ def fourd_virtual_detector(fourd_id: str, req: VirtualDetectorRequest) -> ImageM
             ds4.det_shape, (cy, cx), mask_inner_r, req.outer_r, shape=req.shape
         )
 
-    block_rows = _virtual_detector_block_rows(ds4)
+    block_rows = block_rows_for_byte_cap(ds4)
     map_arr = virtual_detector(ds4.iter_scan_rows(block_rows=block_rows), mask)
 
     base_name = fourd_store.name(fourd_id)

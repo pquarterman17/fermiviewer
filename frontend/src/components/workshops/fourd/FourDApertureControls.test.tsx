@@ -20,6 +20,7 @@ describe("FourDApertureControls — client-side aperture validation", () => {
       aperture: {
         centerKy: null, centerKx: null, autoCenter: true,
         mode: "custom", innerR: 40, outerR: 40, shape: "annulus",
+        mradPerPx: null, highPassCutoff: 0.02,
       },
     });
     render(<FourDApertureControls detShape={[640, 640]} />);
@@ -34,6 +35,7 @@ describe("FourDApertureControls — client-side aperture validation", () => {
       aperture: {
         centerKy: NaN, centerKx: 9, autoCenter: false,
         mode: "custom", innerR: 5, outerR: 20, shape: "annulus",
+        mradPerPx: null, highPassCutoff: 0.02,
       },
     });
     render(<FourDApertureControls detShape={[640, 640]} />);
@@ -50,6 +52,7 @@ describe("FourDApertureControls — client-side aperture validation", () => {
       aperture: {
         centerKy: null, centerKx: null, autoCenter: true,
         mode: "bf", innerR: 0, outerR: 80, shape: "circle",
+        mradPerPx: null, highPassCutoff: 0.02,
       },
     });
     render(<FourDApertureControls detShape={[640, 640]} />);
@@ -65,6 +68,7 @@ describe("FourDApertureControls — mrad readout (PLAN_4DSTEM #14)", () => {
       aperture: {
         centerKy: null, centerKx: null, autoCenter: true,
         mode: "custom", innerR: 20, outerR: 80, shape: "annulus",
+        mradPerPx: null, highPassCutoff: 0.02,
       },
     });
     render(
@@ -85,6 +89,7 @@ describe("FourDApertureControls — mrad readout (PLAN_4DSTEM #14)", () => {
       aperture: {
         centerKy: null, centerKx: null, autoCenter: false,
         mode: "custom", innerR: 20, outerR: 80, shape: "annulus",
+        mradPerPx: null, highPassCutoff: 0.02,
       },
     });
     render(
@@ -108,6 +113,7 @@ describe("FourDApertureControls — mrad readout (PLAN_4DSTEM #14)", () => {
       aperture: {
         centerKy: null, centerKx: null, autoCenter: true,
         mode: "custom", innerR: 0, outerR: 80, shape: "circle",
+        mradPerPx: null, highPassCutoff: 0.02,
       },
     });
     render(
@@ -131,6 +137,7 @@ describe("FourDApertureControls — mrad readout (PLAN_4DSTEM #14)", () => {
       aperture: {
         centerKy: null, centerKx: null, autoCenter: true,
         mode: "bf", innerR: 0, outerR: 80, shape: "circle",
+        mradPerPx: null, highPassCutoff: 0.02,
       },
     });
     render(
@@ -141,5 +148,156 @@ describe("FourDApertureControls — mrad readout (PLAN_4DSTEM #14)", () => {
     );
 
     expect(screen.queryByLabelText(/radius in /)).toBeNull();
+  });
+});
+
+describe("FourDApertureControls — COM/DPC/iDPC output modes (PLAN_4DSTEM #9)", () => {
+  it("lists BF/ABF/ADF/Custom/COM/DPC/iDPC as one segmented control", () => {
+    useFourD.setState({
+      selectedId: "d1",
+      aperture: {
+        centerKy: null, centerKx: null, autoCenter: true,
+        mode: "bf", innerR: 0, outerR: 80, shape: "circle",
+        mradPerPx: null, highPassCutoff: 0.02,
+      },
+    });
+    render(<FourDApertureControls detShape={[640, 640]} />);
+
+    for (const label of ["BF", "ABF", "ADF", "Custom", "COM", "DPC", "iDPC"]) {
+      expect(screen.getByRole("button", { name: label })).toBeVisible();
+    }
+  });
+
+  it("clicking COM switches the aperture's mode", () => {
+    useFourD.setState({
+      selectedId: "d1",
+      aperture: {
+        centerKy: null, centerKx: null, autoCenter: true,
+        mode: "bf", innerR: 0, outerR: 80, shape: "circle",
+        mradPerPx: null, highPassCutoff: 0.02,
+      },
+    });
+    render(<FourDApertureControls detShape={[640, 640]} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "COM" }));
+
+    expect(useFourD.getState().aperture.mode).toBe("com");
+  });
+
+  it("hides the aperture radii/shape rows for com/dpc/idpc — they take none", () => {
+    useFourD.setState({
+      selectedId: "d1",
+      aperture: {
+        centerKy: null, centerKx: null, autoCenter: true,
+        mode: "com", innerR: 0, outerR: 80, shape: "annulus",
+        mradPerPx: null, highPassCutoff: 0.02,
+      },
+    });
+    render(<FourDApertureControls detShape={[640, 640]} />);
+
+    expect(screen.queryByText(/outer r/i)).toBeNull();
+    expect(screen.queryByText(/inner r/i)).toBeNull();
+    expect(screen.queryByText(/^shape$/i)).toBeNull();
+  });
+
+  it("shows the aperture radii rows again for bf/abf/adf/custom", () => {
+    useFourD.setState({
+      selectedId: "d1",
+      aperture: {
+        centerKy: null, centerKx: null, autoCenter: true,
+        mode: "bf", innerR: 0, outerR: 80, shape: "circle",
+        mradPerPx: null, highPassCutoff: 0.02,
+      },
+    });
+    render(<FourDApertureControls detShape={[640, 640]} />);
+
+    expect(screen.getByText(/outer r/i)).toBeVisible();
+  });
+
+  it("still shows the shared center controls for com/dpc/idpc", () => {
+    useFourD.setState({
+      selectedId: "d1",
+      aperture: {
+        centerKy: null, centerKx: null, autoCenter: false,
+        mode: "com", innerR: 0, outerR: 80, shape: "circle",
+        mradPerPx: null, highPassCutoff: 0.02,
+      },
+    });
+    render(<FourDApertureControls detShape={[640, 640]} />);
+
+    expect(screen.getByText("center (ky, kx)")).toBeVisible();
+  });
+
+  it("com mode needs no calibration — Compute COM is enabled with just an auto center", () => {
+    useFourD.setState({
+      selectedId: "d1",
+      aperture: {
+        centerKy: null, centerKx: null, autoCenter: true,
+        mode: "com", innerR: 0, outerR: 80, shape: "circle",
+        mradPerPx: null, highPassCutoff: 0.02,
+      },
+    });
+    render(<FourDApertureControls detShape={[640, 640]} />);
+
+    expect(screen.getByRole("button", { name: "Compute COM" })).toBeEnabled();
+  });
+
+  it("dpc mode disables Compute DPC and explains why until mrad/px is set", () => {
+    useFourD.setState({
+      selectedId: "d1",
+      aperture: {
+        centerKy: null, centerKx: null, autoCenter: true,
+        mode: "dpc", innerR: 0, outerR: 80, shape: "circle",
+        mradPerPx: null, highPassCutoff: 0.02,
+      },
+    });
+    render(<FourDApertureControls detShape={[640, 640]} />);
+
+    expect(screen.getByRole("button", { name: "Compute DPC" })).toBeDisabled();
+    expect(screen.getByText(/mrad\/px/)).toBeVisible();
+  });
+
+  it("dpc mode enables Compute DPC once mrad/px is set", () => {
+    useFourD.setState({
+      selectedId: "d1",
+      aperture: {
+        centerKy: null, centerKx: null, autoCenter: true,
+        mode: "dpc", innerR: 0, outerR: 80, shape: "circle",
+        mradPerPx: 2.0, highPassCutoff: 0.02,
+      },
+    });
+    render(<FourDApertureControls detShape={[640, 640]} />);
+
+    expect(screen.getByRole("button", { name: "Compute DPC" })).toBeEnabled();
+  });
+
+  it("idpc mode shows the high-pass cutoff field and labels its button Compute iDPC", () => {
+    useFourD.setState({
+      selectedId: "d1",
+      aperture: {
+        centerKy: null, centerKx: null, autoCenter: true,
+        mode: "idpc", innerR: 0, outerR: 80, shape: "circle",
+        mradPerPx: 2.0, highPassCutoff: 0.02,
+      },
+    });
+    render(<FourDApertureControls detShape={[640, 640]} />);
+
+    expect(screen.getByRole("button", { name: "Compute iDPC" })).toBeEnabled();
+    expect(screen.getByLabelText(/high-pass cutoff/)).toBeVisible();
+  });
+
+  it("idpc mode disables Compute iDPC for a negative high-pass cutoff", () => {
+    useFourD.setState({
+      selectedId: "d1",
+      aperture: {
+        centerKy: null, centerKx: null, autoCenter: true,
+        mode: "idpc", innerR: 0, outerR: 80, shape: "circle",
+        mradPerPx: 2.0, highPassCutoff: -1,
+      },
+    });
+    render(<FourDApertureControls detShape={[640, 640]} />);
+
+    expect(screen.getByRole("button", { name: "Compute iDPC" })).toBeDisabled();
+    expect(screen.getByText("high-pass cutoff must be 0 or greater")).toBeVisible();
   });
 });

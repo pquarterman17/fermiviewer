@@ -16,6 +16,111 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Integrated DPC (iDPC) for 4D-STEM (`POST /api/fourd/{id}/idpc`,
+  PLAN_4DSTEM #9 — closes Tier 2).** New `calc/fourd/idpc.py` performs the
+  Fourier-space integration that turns a `/dpc`-style calibrated COM field
+  into a single light-element phase-contrast image, reimplemented from
+  Lazić, Bosch & Lazar, "Phase contrast STEM for thin samples: Integrated
+  differential phase contrast", Ultramicroscopy 160 (2016) 265-280. The
+  integration is a Frankot-Chellappa-style least-squares gradient inversion
+  in Fourier space (`F[psi] = -1j*(omega_y*F[field_y] + omega_x*F[field_x])
+  / (omega_y**2+omega_x**2)`), with `F[psi](0,0)` pinned at exactly 0 — the
+  DC/mean term of a reconstructed phase image is not, and cannot be,
+  recovered from a gradient field, so every iDPC image is a phase map up to
+  an unknown additive constant, by construction, not as an approximation.
+  A documented Gaussian high-pass (`high_pass_cutoff`, default `0.02`
+  cycles per scan pixel, always caller-overridable — never a hidden magic
+  number) suppresses the classic iDPC low-frequency "bowl" artifact the
+  `1/omega` reconstruction kernel is known to amplify. The image is in
+  MILLIRADIAN-SCAN-PIXELS, proportional to the projected potential — not an
+  absolute potential in volts, and not even an absolute phase in radians:
+  that would additionally need the accelerating voltage (electron
+  wavelength, via the interaction constant) and the physical scan-pixel
+  pitch along both scan axes, neither of which this module invents. The
+  unit carries a scan pixel because the integration is with respect to the
+  scan-pixel index — the mirror of `/dpc`'s divergence, which divides by
+  one — so the values scale with how finely the scan was sampled: imaging
+  the same region at half the scan step doubles every value. That is a
+  property of the measurement, not a defect, but it is the reason the map
+  is not labelled plain "mrad", which would read as a sampling-independent
+  physical quantity. `POST /api/fourd/{id}/idpc`
+  (thin, in `routes/fourd_com.py`, reusing `/com`/`/dpc`'s
+  center-resolution/streaming step) registers the ONE resulting map —
+  unlike `/com` (two images) and `/dpc` (three) — recording the resolved
+  descan center, the `mrad_per_px` calibration and the `high_pass_cutoff`
+  applied in its metadata. `routes/fourd_com.py` grew 276→354 lines (pin
+  500, still comfortable). 38 new backend tests (18 pure in
+  `test_fourd_idpc.py`, 20 route-level in `test_api_fourd_idpc.py`): the
+  pure suite reconstructs a hand-built sinusoidal potential — an exact DFT
+  bin, so the reconstruction is checked to near machine precision after
+  removing the mean from both sides (the required "up to an additive
+  constant" property) — and separately proves the high-pass filter actually
+  suppresses a deliberately low-frequency signal by a known, analytically
+  predicted factor; the route suite checks registration/metadata/units and
+  that the endpoint's wiring (center resolution, calibration and cutoff
+  pass-through) matches calling the calc layer directly on the same COM
+  field. Frontend: `FourDWorkshop`'s aperture-mode segmented control gains
+  three new buttons (COM/DPC/iDPC) alongside BF/ABF/ADF/Custom, each
+  routing to its own endpoint via a new `computeComOutput` store action
+  (`store/fourdComOutput.ts`, split out to keep `store/fourd.ts` under its
+  500-line ceiling) instead of the aperture path's `computeMap` — the two
+  families share the descan-center controls but not radii/shape, which are
+  hidden for com/dpc/idpc since those routes don't take them. A new
+  `FourDComOutputFields` control exposes the required `mrad_per_px`
+  calibration (dpc/idpc) and `high_pass_cutoff` (idpc only), showing but
+  never auto-filling the detector's own calibration when available — same
+  "never invent a physical constant" line the backend holds. 42 new
+  frontend tests across three files. Along the way, found and fixed a
+  latent bug in `setApertureMode`: switching directly into "custom" (or now
+  com/dpc/idpc) via the mode buttons silently failed to update the stored
+  mode, because `apertureRadiiForMode`'s pass-through case returns the
+  *entire* previous aperture object (needed for its own, deliberate,
+  reference-equality contract) including its own stale `mode` field, which
+  a spread-order bug then let win over the intended new mode; fixed by
+  spreading the new `mode` last, unconditionally.
+- **Differential phase contrast (DPC) for 4D-STEM (`POST /api/fourd/{id}/dpc`,
+  PLAN_4DSTEM #8).** New `calc/fourd/dpc.py` turns a `/com`-style COM shift
+  field into the standard DPC products: magnitude and direction of the
+  beam-deflection field, and the field's divergence — projected charge
+  density by Gauss's law, via a documented `numpy.gradient` finite-difference
+  scheme (central differences at interior scan positions, one-sided at the
+  boundary; both exact for a linear field). The detector's milliradians-per-
+  pixel calibration is what turns a COM shift in detector pixels into a
+  physical deflection angle, and it is NOT reliably available on every
+  `FourDDataset` (a bare `.mib` with no `.hdr` sidecar is uncalibrated) — so
+  `mrad_per_px` is a required argument on every calc function and a required
+  (`Field(gt=0)`) request field on the route, never silently defaulted to
+  `1.0`. `POST /api/fourd/{id}/dpc` is a separate route from `/com` (not a
+  response extension of it — #9's iDPC also lands in `routes/fourd_com.py`
+  and would otherwise share the same response schema), reusing `/com`'s
+  center-resolution/streaming step and registering magnitude/direction/
+  divergence as three ordinary derived 2D images, each recording the
+  resolved descan center and the calibration used. The divergence map is
+  named for what it measurably is — mrad per scan pixel — rather than
+  "charge density": it is *proportional* to projected charge density, but
+  the constant relating the two needs the specimen thickness, the
+  accelerating voltage and the physical scan pitch, none of which this
+  route has. That interpretation, and its caveat, ride in the map's
+  metadata instead of in a display name that would overstate the number. Tested against analytic
+  fields: a uniform field gives a constant magnitude/direction and EXACTLY
+  zero divergence; a linear ("radial", point-charge-like) field gives a
+  known non-zero constant divergence, exercising the charge-density path
+  itself rather than only its null case.
+- **Per-probe center-of-mass mapping for 4D-STEM (`POST /api/fourd/{id}/com`,
+  PLAN_4DSTEM #7).** Registers COMy and COMx as two ordinary derived 2D
+  images — the basis for the DPC/iDPC work that follows — through the same
+  `add_derived` path `/nav` and `/virtual-detector` use, so they inherit
+  LUT/measure/export for free. The actual per-probe intensity-centroid math
+  (Müller-Caspary et al., Ultramicroscopy 178 (2017)) already shipped in
+  `calc/fourd/virtual.py`'s `com_shift_maps` as part of #6; the new
+  `calc/fourd/com.py` adds only the center-resolution policy on top —
+  caller-supplied descan reference center when given, else auto-seeded from
+  `geometry.pattern_center(mean_pattern)` (the same auto-center policy
+  `/virtual-detector` uses) — then delegates. The route shares its
+  both-or-neither/in-bounds center validation with `/virtual-detector` via a
+  new `_validate_optional_center` helper. Both maps record the descan
+  reference center they were measured against — the *resolved* value, so an
+  auto-centred map stays reproducible instead of storing the request's null.
 - **Two more synthetic presets, for testing composition profiles and ZAF
   absorption correction.** `tools/make_synthetic_si.py --preset eds-diffusion`
   plants a linear Cu → Ni composition gradient with a per-row ground truth, so

@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { isAxisCalibrated, type FourDMeta } from "../../../lib/api";
 import { useFourD, type FourDAperture, type FourDProbe } from "../../../store/fourd";
+import { isComOutputMode } from "../../../store/fourdComOutput";
 import { apertureCenterPreview, drawRaster16 } from "./fourdRaster";
 
 const VIEW_W = 260;
@@ -95,7 +96,11 @@ export default function FourDPatternPanel({ meta }: { meta: FourDMeta | null }) 
           ref={canvasRef}
           style={{ width: VIEW_W, aspectRatio, imageRendering: "pixelated" }}
         />
-        {center && (
+        {/* COM/DPC/iDPC have no aperture (only a descan center) — the
+            outer/inner-radius ring left over from a prior BF/ABF/ADF/Custom
+            selection would mislead here, so it's only drawn for the
+            aperture-based modes. */}
+        {center && !isComOutputMode(aperture.mode) && (
           <svg width={VIEW_W} height={viewH} pointerEvents="none">
             <ApertureRing aperture={aperture} center={center} scale={scale} />
           </svg>
