@@ -17,23 +17,18 @@
 //   Pixel / ROI picker and CSV exports
 //
 // Spectrum acquisition lives in useEdsSpectrumSource; the energy window
-// itself now lives in the species store (via useEdsEnergyWindow), and
+// itself now lives in the species store (via useEdsEnergyWindow); the
+// pinned-regions lifecycle in useEdsPinnedRegions and the status-bar
+// hygiene in useEdsStatusReporter (both split out 2026-08-14); and
 // background/beam-energy live in edsSettingsByImage — this component wires
-// them together and owns only display state (zoom, log scale, pinned
-// regions).
+// them together and owns only display state (zoom, log scale).
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { type Spectrum } from "../../lib/api";
 import { useEdsPeakMarkers } from "../../hooks/useEdsPeakMarkers";
 import type { EdsMapBackground } from "../../lib/eds/background";
 import { integrateWindow } from "../../lib/eds/integrate";
-import {
-  makeRegion,
-  upsertRegion,
-  type IntegrationRegion,
-} from "../../lib/spectrum/regions";
-import { edsSpecies } from "../../lib/spectrum/species";
 import { frameWindow, type XRange } from "../../lib/spectrum/zoomRange";
 import {
   elementMapCsv,
@@ -59,13 +54,11 @@ import type { Rect1 } from "./RegionPicker";
 import { useEdsDerivedMap } from "./useEdsDerivedMap";
 import { useEdsEnergyWindow } from "./useEdsEnergyWindow";
 import { useEdsElementMap } from "./useEdsElementMap";
+import { useEdsPinnedRegions } from "./useEdsPinnedRegions";
 import { useEdsSpectrumSource } from "./useEdsSpectrumSource";
+import { useEdsStatusReporter } from "./useEdsStatusReporter";
 
 const MIN_ZOOM_CHANNELS = 6; // narrowest view the wheel / buttons may reach
-/** A region with no recorded transition (an older pin, or one restored
- *  without one) is re-created on the commonest EDS shell — better than
- *  leaving the species unlabelled, and correctable from Maps afterward. */
-const FALLBACK_TRANSITION = "K";
 
 // ── helpers ───────────────────────────────────────────────────────────
 
@@ -97,7 +90,6 @@ export default function EdsSpectrumImage() {
   const meta = useViewer((s) =>
     s.activeId ? (s.images[s.activeId] ?? null) : null,
   );
-  const setStatus = useViewer((s) => s.setStatus);
   const captureMode = useViewer((s) => s.captureMode);
   const setCaptureMode = useViewer((s) => s.setCaptureMode);
   const specnavPixel = useViewer((s) => s.specnavPixel);
@@ -107,8 +99,6 @@ export default function EdsSpectrumImage() {
   const byImage = useSpecies((s) => s.byImage);
   const selectedByImage = useSpecies((s) => s.selectedByImage);
   const selectSpeciesStore = useSpecies((s) => s.selectSpecies);
-  const addSpeciesStore = useSpecies((s) => s.addSpecies);
-  const setWindowStore = useSpecies((s) => s.setWindow);
   const edsSettingsByImage = useSpecies((s) => s.edsSettingsByImage);
   const setEdsSettingsStore = useSpecies((s) => s.setEdsSettings);
 
@@ -123,31 +113,11 @@ export default function EdsSpectrumImage() {
   const [spectrumExpanded, setSpectrumExpanded] = useState(false);
   const [showPeaks, setShowPeaks] = useState(true);
   const [xRange, setXRange] = useState<XRange | null>(null);
-  const [regions, setRegions] = useState<IntegrationRegion[]>([]);
 
   const isCube = meta?.kind === "spectrum_image";
 
-  // Only surface an EDS status/error for an image that is still open. A slow
-  // element-map or spectrum request over a big BCF cube can resolve or reject
-  // AFTER the user removed the file; without this guard its .then/.catch would
-  // strand a message in the global status bar that closeImage already cleared.
-  const stillOpen = useCallback(
-    (id: string | null): id is string =>
-      !!id && !!useViewer.getState().images[id],
-    [],
-  );
-  // Track the last status this explorer wrote so we can retract exactly it on
-  // teardown — never a message some other panel put in the bar.
-  const lastEdsStatus = useRef<string | null>(null);
-  const reportEds = useCallback(
-    (id: string | null, msg: string) => {
-      if (stillOpen(id)) {
-        lastEdsStatus.current = msg;
-        setStatus(msg);
-      }
-    },
-    [stillOpen, setStatus],
-  );
+  // Status hygiene (guard + teardown retraction) lives in the hook.
+  const { stillOpen, reportEds } = useEdsStatusReporter(activeId);
   const { mapResult, mapBusy, recomputeMap } = useEdsElementMap({
     imageId: activeId,
     e0Kev,
@@ -164,23 +134,10 @@ export default function EdsSpectrumImage() {
   });
   const { eLo, eHi } = energyWindow;
 
-  // When the active cube is removed or switched away, clear the status line if
-  // it still shows the message this explorer last wrote: an EDS error must not
-  // outlive the file it referred to (the reported "errors didn't clear" bug).
-  useEffect(() => {
-    return () => {
-      const st = useViewer.getState();
-      if (lastEdsStatus.current && st.status === lastEdsStatus.current) {
-        st.setStatus("ready");
-      }
-    };
-  }, [activeId]);
-
-  // A new cube brings a new energy axis and new pixels: neither the previous
-  // zoom nor the previous integrations describe it.
+  // A new cube brings a new energy axis: the previous zoom doesn't describe
+  // it. (The pinned integrations reset inside useEdsPinnedRegions.)
   useEffect(() => {
     setXRange(null);
-    setRegions([]);
   }, [activeId]);
 
   // Nothing selected on this image, but it has species? Pick the first
@@ -249,50 +206,17 @@ export default function EdsSpectrumImage() {
     recomputeMap(eLo, eHi, mode);
   };
 
-  const addRegion = () => {
-    if (!integration || !selected) return;
-    setRegions((prev) =>
-      upsertRegion(
-        prev,
-        makeRegion(integration, selected.symbol, label, selected.transition),
-      ),
-    );
-  };
-
-  // Restoring a pinned region puts its window back and frames it, so the
-  // number in the table and the peak on screen are the same measurement. The
-  // background model travels with it too — a region pinned under "none" must
-  // not silently re-render under whatever background happens to be active.
-  // Species-aware (task #11 Wave 2): a region names the species it was
-  // measured on, so restoring re-selects (or, if the user removed it since,
-  // re-creates) that species rather than mutating a "custom" free window.
-  const restoreRegion = (region: IntegrationRegion) => {
-    if (!activeId) return;
-    setEdsSettingsStore(activeId, { bg: region.bg });
-    setXRange(frameWindow(region.eLo, region.eHi, bounds, minSpan));
-    if (!region.symbol) return;
-
-    const list = speciesOf(useSpecies.getState().byImage, activeId);
-    let target = list.find(
-      (s) =>
-        s.symbol === region.symbol &&
-        (!region.transition || s.transition === region.transition),
-    );
-    if (!target) {
-      target = edsSpecies(
-        region.symbol,
-        region.transition ?? FALLBACK_TRANSITION,
-        (region.eLo + region.eHi) / 2,
-        { halfWindowKev: (region.eHi - region.eLo) / 2 },
-      );
-      addSpeciesStore(activeId, target);
-    }
-    selectSpeciesStore(activeId, target.id);
-    setWindowStore(activeId, target.id, "signal", {
-      lo: region.eLo,
-      hi: region.eHi,
-    });
-  };
+  // Pin / restore lifecycle (including restore's species re-creation and
+  // background handoff) lives in the hook.
+  const pins = useEdsPinnedRegions({
+    imageId: activeId,
+    integration,
+    selected,
+    sourceLabel: label,
+    bounds,
+    minSpan,
+    onFrame: setXRange,
+  });
 
   const { libraryBusy, addToLibrary } = useEdsDerivedMap({
     imageId: activeId,
@@ -395,22 +319,22 @@ export default function EdsSpectrumImage() {
 
       {/* Unconditional, even with nothing selected: the pinned-regions table
           is how a restore reaches a species the user removed — see
-          restoreRegion. Its own live-integration row already shows a quiet
-          "No channels…" state when `integration` is null (nothing selected,
-          or no spectrum yet), matching every other window-dependent surface
-          below. */}
+          useEdsPinnedRegions. Its own live-integration row already shows a
+          quiet "No channels…" state when `integration` is null (nothing
+          selected, or no spectrum yet), matching every other
+          window-dependent surface below. */}
       <EdsIntegrationPanel
         current={integration}
         element={selected?.symbol ?? "(custom)"}
         unit={unit}
         source={label}
-        regions={regions}
-        onAdd={addRegion}
-        onRemove={(id) => setRegions((prev) => prev.filter((r) => r.id !== id))}
-        onClear={() => setRegions([])}
-        onSelect={restoreRegion}
+        regions={pins.regions}
+        onAdd={pins.addRegion}
+        onRemove={pins.removeRegion}
+        onClear={pins.clearRegions}
+        onSelect={pins.restoreRegion}
         onExport={() =>
-          downloadCsv(integrationRegionsCsv(regions), "eds_integrations.csv")
+          downloadCsv(integrationRegionsCsv(pins.regions), "eds_integrations.csv")
         }
       />
 
