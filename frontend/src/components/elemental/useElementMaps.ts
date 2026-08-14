@@ -18,7 +18,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { edsElementMaps } from "../../lib/api";
 import type { Species } from "../../lib/spectrum/species";
 import type { MapTile } from "../../lib/elemental/mapTile";
-import type { EdsMapBackground } from "../workshops/useEdsElementMap";
+import type { EdsMapBackground } from "../../lib/eds/background";
 
 function keyOf(s: Species, bg: EdsMapBackground, e0Kev: number): string {
   const { lo, hi } = s.windows.signal;

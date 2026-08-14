@@ -169,3 +169,55 @@ describe("ElementList", () => {
     expect(screen.queryByText(/interfere/)).toBeNull();
   });
 });
+
+describe("live net (Wave 1, #11)", () => {
+  it("shows the live net ± sigma over the stale identification-time net when both are present", () => {
+    const si = row("Si", 3_100_000, "strong"); // evidence.net = 3.1M
+    renderList({
+      rows: [si],
+      liveNetById: { [si.species.id]: { net: 500, sigma: 10 } },
+    });
+    expect(screen.getByText("500 ± 10")).toBeVisible();
+    expect(screen.queryByText("3.1M")).toBeNull();
+  });
+
+  it("falls back to the identification-time net when nothing live is available for that row", () => {
+    const si = row("Si", 3_100_000, "strong");
+    renderList({ rows: [si], liveNetById: {} });
+    expect(screen.getByText("3.1M")).toBeVisible();
+  });
+
+  it("shows an em-dash when neither live nor measured", () => {
+    renderList({
+      rows: [{ species: edsSpecies("Ta", "L", 8.146), evidence: null }],
+      liveNetById: {},
+    });
+    expect(screen.getByText("—")).toBeVisible();
+  });
+
+  it("still shows quantified at% ahead of a live net", () => {
+    const si = row("Si", 3_100_000, "strong");
+    renderList({
+      rows: [si],
+      quantBySymbol: { Si: 33.25 },
+      liveNetById: { [si.species.id]: { net: 500, sigma: 10 } },
+    });
+    expect(screen.getByText("33.3 at%")).toBeVisible();
+    expect(screen.queryByText("500 ± 10")).toBeNull();
+  });
+});
+
+describe("row selection (Wave 1, #11)", () => {
+  it("highlights the row matching selectedId, and no other", () => {
+    const si = row("Si", 3_100_000, "strong");
+    const cu = row("Cu", 100_000, "trace", false);
+    renderList({ rows: [si, cu], selectedId: si.species.id });
+    expect(screen.getByLabelText("Show Si").closest("li")).toHaveClass("selected");
+    expect(screen.getByLabelText("Show Cu").closest("li")).not.toHaveClass("selected");
+  });
+
+  it("highlights nothing when selectedId is absent", () => {
+    renderList();
+    expect(screen.getByLabelText("Show Si").closest("li")).not.toHaveClass("selected");
+  });
+});

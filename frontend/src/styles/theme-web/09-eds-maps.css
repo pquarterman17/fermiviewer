@@ -67,6 +67,18 @@
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+/* The row a click framed on the spectrum (store/species.ts selectedByImage) —
+   distinct from `.on` (visible/ticked), which a selected row may or may not
+   also be. */
+.fvd-eds-element-row.selected {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.fvd-eds-element-row.selected:hover {
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
 .fvd-eds-element-name {
   min-width: 26px;
   padding: 0;
@@ -283,4 +295,50 @@
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+/* ── species chips (shared strip, mounted by Wave 2/3's Explore tabs) ──── */
+
+.fvd-species-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.fvd-species-chips-empty {
+  color: var(--text-faint);
+  font-size: var(--font-size-sm);
+  font-style: italic;
+}
+
+.fvd-species-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--surface-2) 82%, transparent);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.fvd-species-chip:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.fvd-species-chip.selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--text);
+}
+
+.fvd-species-chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
 }

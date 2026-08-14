@@ -16,6 +16,8 @@ import {
   type Spectrum,
 } from "../../lib/api";
 import type { CompositeRaster } from "../../lib/composite";
+import type { EdsMapBackground } from "../../lib/eds/background";
+import { integrateWindow } from "../../lib/eds/integrate";
 import { exportElementalFigure } from "../../lib/elemental/figureExport";
 import { tileKey } from "../../lib/elemental/mapTile";
 import {
@@ -38,10 +40,9 @@ import { edsSpecies } from "../../lib/spectrum/species";
 import { speciesOf, useSpecies } from "../../store/species";
 import { normalizeEdsSpectrum } from "../../lib/edsSpectrumDisplay";
 import { useViewer } from "../../store/viewer";
-import ElementList from "./ElementList";
+import ElementList, { type LiveNet } from "./ElementList";
 import MapMontage from "./MapMontage";
 import MapOverlay from "./MapOverlay";
-import type { EdsMapBackground } from "../workshops/useEdsElementMap";
 import { useEdsElementMaps } from "./useElementMaps";
 
 type View = "both" | "montage" | "overlay";
@@ -70,7 +71,10 @@ export default function EdsMapsTab({
   const removeSpecies = useSpecies((s) => s.removeSpecies);
   const setVisible = useSpecies((s) => s.setVisible);
   const setAllVisible = useSpecies((s) => s.setAllVisible);
+  const selectedByImage = useSpecies((s) => s.selectedByImage);
+  const selectSpecies = useSpecies((s) => s.selectSpecies);
   const species = speciesOf(byImage, activeId);
+  const selectedId = activeId ? (selectedByImage[activeId] ?? null) : null;
 
   // EVIDENCE ONLY. What the user decided lives in the species store, keyed by
   // image, so it survives switching cubes and a re-identification.
@@ -82,6 +86,11 @@ export default function EdsMapsTab({
   const [surveyId, setSurveyId] = useState<string | null>(null);
   const [survey, setSurvey] = useState<CompositeRaster | null>(null);
   const sumSpectrum = useRef<Spectrum | null>(null);
+  // sumSpectrum lives in a ref so identify()'s synchronous
+  // "already fetched?" check doesn't wait a render — but a memo can't depend
+  // on a ref's contents, so this counter is bumped every time the ref
+  // changes and stands in for it in dependency arrays below.
+  const [spectrumVersion, setSpectrumVersion] = useState(0);
   const overlayCanvas = useRef<HTMLCanvasElement | null>(null);
 
   const stillOpen = useCallback(
@@ -114,6 +123,7 @@ export default function EdsMapsTab({
       ]);
       if (!stillOpen(id)) return;
       sumSpectrum.current = raw;
+      setSpectrumVersion((v) => v + 1);
       const spectrum = normalizeEdsSpectrum(raw);
       const found = identifyElements(auto, spectrum, { background: bg, e0Kev });
       setEvidence(found);
@@ -143,6 +153,7 @@ export default function EdsMapsTab({
   // element box on a dataset whose elements are sitting in its own spectrum.
   useEffect(() => {
     sumSpectrum.current = null;
+    setSpectrumVersion((v) => v + 1);
     setEvidence([]);
     setGains({});
     setSurveyId(null);
@@ -155,6 +166,34 @@ export default function EdsMapsTab({
 
   const rows = useMemo(() => buildRows(species, evidence), [species, evidence]);
   const shownSpecies = useMemo(() => visibleSpecies(rows), [rows]);
+
+  // The spectrum a row's live net is measured against — read through the
+  // version counter rather than the ref directly, so this recomputes exactly
+  // when the ref's contents change and not on every unrelated re-render.
+  const normalizedSpectrum = useMemo(
+    () => (sumSpectrum.current ? normalizeEdsSpectrum(sumSpectrum.current) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [spectrumVersion],
+  );
+
+  /** Live net ± σ per row, from the sum spectrum and each species' CURRENT
+   *  window — unlike `evidence.net`, frozen at the last identify() pass,
+   *  this tracks a window the user just dragged without waiting for a
+   *  re-ID. Quantified at% still wins in the display (ElementList), and a
+   *  row with no channels in its window (or no spectrum yet) is simply
+   *  absent here, which ElementList reads as "nothing live to show". */
+  const liveNetById = useMemo(() => {
+    if (!normalizedSpectrum) return {};
+    const out: Record<string, LiveNet | undefined> = {};
+    for (const row of rows) {
+      const { lo, hi } = row.species.windows.signal;
+      const integration = integrateWindow(normalizedSpectrum, lo, hi, bg, { e0Kev });
+      if (integration) {
+        out[row.species.id] = { net: integration.net, sigma: integration.sigma };
+      }
+    }
+    return out;
+  }, [normalizedSpectrum, rows, bg, e0Kev]);
 
   const { tiles, mapsBusy } = useEdsElementMaps({
     imageId: activeId,
@@ -285,6 +324,8 @@ export default function EdsMapsTab({
         rows={rows}
         busy={idBusy}
         quantBySymbol={quantBySymbol}
+        liveNetById={liveNetById}
+        selectedId={selectedId}
         onToggle={(speciesId, visible) =>
           activeId && setVisible(activeId, speciesId, visible)
         }
@@ -293,7 +334,14 @@ export default function EdsMapsTab({
         onAdd={addElement}
         onRemove={(speciesId) => activeId && removeSpecies(activeId, speciesId)}
         onHover={(symbol) => onHoverElement?.(symbol)}
-        onFocus={(row) => onFocusElement?.(row)}
+        onFocus={(row) => {
+          // Clicking a row both selects it (for SpeciesChips and any other
+          // surface reading the store's selection) and keeps firing the
+          // optional montage-tile focus callback — the two are independent
+          // consumers of the same click.
+          if (activeId) selectSpecies(activeId, row.species.id);
+          onFocusElement?.(row);
+        }}
       />
 
       <div className="fvd-ws-row">

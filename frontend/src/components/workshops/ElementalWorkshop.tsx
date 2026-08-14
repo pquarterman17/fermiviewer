@@ -19,6 +19,7 @@ import {
   saveSpectralModality,
   type SpectralModality,
 } from "../../lib/spectralModality";
+import { edsSettingsOf, useSpecies } from "../../store/species";
 import { useViewer } from "../../store/viewer";
 import EelsMapsTab from "../elemental/EelsMapsTab";
 import MapsTab from "../elemental/MapsTab";
@@ -53,6 +54,11 @@ export default function ElementalWorkshop() {
   const [tab, setTab] = useState<Tab>("maps");
   const [elements, setElements] = useState("Fe, O");
   const [quant, setQuant] = useState<EdsQuantResult | null>(null);
+  // Maps' bg/beam-energy used to be hardcoded here; now they live in the
+  // species store, keyed per image, so a later Explore control writing to
+  // them (via setEdsSettings) reaches the same values Maps extracts with.
+  const edsSettingsByImage = useSpecies((s) => s.edsSettingsByImage);
+  const edsSettings = edsSettingsOf(edsSettingsByImage, meta?.id ?? null);
 
   // resolveSpectralModality returns the classification AND why, so the badge
   // can explain itself rather than looking like an arbitrary guess.
@@ -119,7 +125,13 @@ export default function ElementalWorkshop() {
         )
       ) : (
         <>
-          {tab === "maps" && <MapsTab bg="linear" e0Kev={30} quantBySymbol={quantBySymbol} />}
+          {tab === "maps" && (
+            <MapsTab
+              bg={edsSettings.bg}
+              e0Kev={edsSettings.e0Kev}
+              quantBySymbol={quantBySymbol}
+            />
+          )}
           {tab === "explore" && <EdsSpectrumImage />}
           {tab === "quantify" && (
             <EdsQuantifyPanel

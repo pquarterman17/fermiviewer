@@ -38,6 +38,16 @@ const CONFIDENCE_LABEL: Record<Confidence, string> = {
   trace: "trace?",
 };
 
+/** A row's net signal, recomputed live from the current spectrum and the
+ *  species' CURRENT window — as opposed to `evidence.net`, frozen at the
+ *  last identify() pass. Modality-neutral: EDS's `integrateWindow` and
+ *  EELS's `integrateEdge` both reduce to this shape, so a caller for either
+ *  modality can fill `liveNetById` the same way. */
+export interface LiveNet {
+  net: number;
+  sigma: number;
+}
+
 /** The row's own warning badge — absent (not just hidden) when there is
  *  nothing to say, so it never claims a table cell it does not need. */
 function RowConflictBadge({ conflicts }: { conflicts: WindowConflict[] }) {
@@ -58,6 +68,8 @@ export default function ElementList({
   rows,
   busy,
   quantBySymbol,
+  liveNetById,
+  selectedId,
   onToggle,
   onSetAll,
   onReidentify,
@@ -70,6 +82,16 @@ export default function ElementList({
   busy: boolean;
   /** Optional at% per symbol, shown instead of net once quantified. */
   quantBySymbol?: Record<string, number>;
+  /** Live net ± σ per species id, recomputed from the current spectrum and
+   *  each row's current window. Takes precedence over the stale
+   *  identification-time `evidence.net` when present; a row absent from
+   *  this map (no spectrum yet, or no channels in its window) falls back to
+   *  `evidence.net`, then to a placeholder. Optional so a caller with
+   *  nothing live to offer (e.g. today's EELS Maps tab) needs no change. */
+  liveNetById?: Record<string, LiveNet | undefined>;
+  /** The species id a row-click selected, for the row's highlight. Optional
+   *  — a caller not tracking selection simply highlights nothing. */
+  selectedId?: string | null;
   /** Toggle by species id, not symbol — two rows can share an element on
    *  different transitions (Fe-L2,3 and Fe-K are distinct measurements). */
   onToggle: (speciesId: string, visible: boolean) => void;
@@ -166,6 +188,7 @@ export default function ElementList({
             const { symbol, transition, energy, visible, modality } = species;
             const color = colors(symbol);
             const atPct = quantBySymbol?.[symbol];
+            const live = liveNetById?.[species.id];
             // EDS lines are "Kα"/"Lα"; EELS edges have no such notation
             // (the row already carries the edge — "L23", not "L23-alpha") —
             // and the anchor is keV for EDS, eV for EELS, so the energy cell
@@ -178,7 +201,9 @@ export default function ElementList({
             return (
               <li
                 key={species.id}
-                className={`fvd-eds-element-row${visible ? " on" : ""}`}
+                className={`fvd-eds-element-row${visible ? " on" : ""}${
+                  species.id === selectedId ? " selected" : ""
+                }`}
                 onMouseEnter={() => onHover(symbol)}
               >
                 <input
@@ -215,9 +240,11 @@ export default function ElementList({
                 <span className="fvd-eds-element-net">
                   {atPct != null
                     ? `${atPct.toFixed(1)} at%`
-                    : evidence
-                      ? formatCountTick(evidence.net)
-                      : "—"}
+                    : live
+                      ? `${formatCountTick(live.net)} ± ${formatCountTick(live.sigma)}`
+                      : evidence
+                        ? formatCountTick(evidence.net)
+                        : "—"}
                 </span>
                 <span
                   className="fvd-eds-strength"

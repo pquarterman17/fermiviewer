@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { edsElementMap, type EdsElementMapResult } from "../../lib/api";
+// Moved to lib/eds/background.ts (Wave 1, SPECTRAL_WORKSPACE_PLAN #11) so
+// store/species.ts's per-image map settings can use it without reaching
+// into components/workshops/. Imported (for this file's own local uses
+// below) and re-exported (so this file's existing importers — EdsSpectrumImage,
+// EdsWindowControls, useEdsDerivedMap, useEdsEnergyWindow — compile unchanged).
+import type { EdsMapBackground } from "../../lib/eds/background";
 
 export const EDS_MAP_DEBOUNCE_MS = 120;
-export type EdsMapBackground = "linear" | "none" | "bremsstrahlung";
+export type { EdsMapBackground };
 
 interface UseEdsElementMapOptions {
   imageId: string | null;

@@ -1,13 +1,24 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { edsSpecies, eelsSpecies } from "../lib/spectrum/species";
-import { NO_SPECIES, speciesOf, useSpecies } from "./species";
+import {
+  DEFAULT_EDS_SETTINGS,
+  edsSettingsOf,
+  NO_SPECIES,
+  selectedSpeciesOf,
+  speciesOf,
+  useSpecies,
+} from "./species";
 
 const IMG = "img1";
 const OTHER = "img2";
 
 beforeEach(() => {
-  useSpecies.setState({ byImage: {} });
+  useSpecies.setState({
+    byImage: {},
+    selectedByImage: {},
+    edsSettingsByImage: {},
+  });
 });
 
 const list = (id = IMG) => useSpecies.getState().byImage[id] ?? [];
@@ -143,5 +154,128 @@ describe("pruneClosed", () => {
     addSpecies(IMG, edsSpecies("Fe", "K", 6.404));
     pruneClosed([]);
     expect(useSpecies.getState().byImage).toEqual({});
+  });
+
+  it("also prunes selection and EDS settings for closed images", () => {
+    const { addSpecies, selectSpecies, setEdsSettings, pruneClosed } =
+      useSpecies.getState();
+    const fe = edsSpecies("Fe", "K", 6.404);
+    addSpecies(IMG, fe);
+    selectSpecies(IMG, fe.id);
+    setEdsSettings(IMG, { bg: "bremsstrahlung" });
+    addSpecies(OTHER, edsSpecies("Si", "K", 1.74));
+    selectSpecies(OTHER, "some-id");
+
+    pruneClosed([OTHER]);
+    expect(useSpecies.getState().selectedByImage).toEqual({ [OTHER]: "some-id" });
+    expect(useSpecies.getState().edsSettingsByImage).toEqual({});
+  });
+});
+
+describe("selectSpecies", () => {
+  it("selects one species per image, independent of other images", () => {
+    const { addSpecies, selectSpecies } = useSpecies.getState();
+    const fe = edsSpecies("Fe", "K", 6.404);
+    const si = edsSpecies("Si", "K", 1.74);
+    addSpecies(IMG, fe);
+    addSpecies(OTHER, si);
+
+    selectSpecies(IMG, fe.id);
+    selectSpecies(OTHER, si.id);
+    expect(useSpecies.getState().selectedByImage).toEqual({
+      [IMG]: fe.id,
+      [OTHER]: si.id,
+    });
+  });
+
+  it("resolves through selectedSpeciesOf to the Species object, or null", () => {
+    const { addSpecies, selectSpecies } = useSpecies.getState();
+    const fe = edsSpecies("Fe", "K", 6.404);
+    addSpecies(IMG, fe);
+    selectSpecies(IMG, fe.id);
+
+    const state = useSpecies.getState();
+    expect(selectedSpeciesOf(state, IMG)).toBe(fe);
+    expect(selectedSpeciesOf(state, OTHER)).toBeNull();
+    expect(selectedSpeciesOf(state, null)).toBeNull();
+  });
+
+  it("falls back to null when removeSpecies drops the selected species", () => {
+    // A selection must never be left pointing at a species that is gone.
+    const { addSpecies, selectSpecies, removeSpecies } = useSpecies.getState();
+    const fe = edsSpecies("Fe", "K", 6.404);
+    addSpecies(IMG, fe);
+    selectSpecies(IMG, fe.id);
+
+    removeSpecies(IMG, fe.id);
+    expect(useSpecies.getState().selectedByImage[IMG]).toBeNull();
+  });
+
+  it("leaves an unrelated selection alone when a different species is removed", () => {
+    const { addSpecies, selectSpecies, removeSpecies } = useSpecies.getState();
+    const fe = edsSpecies("Fe", "K", 6.404);
+    const si = edsSpecies("Si", "K", 1.74);
+    addSpecies(IMG, fe);
+    addSpecies(IMG, si);
+    selectSpecies(IMG, fe.id);
+
+    removeSpecies(IMG, si.id);
+    expect(useSpecies.getState().selectedByImage[IMG]).toBe(fe.id);
+  });
+
+  it("falls back to null when setSpecies replaces the list without the selected id", () => {
+    const { addSpecies, selectSpecies, setSpecies } = useSpecies.getState();
+    const fe = edsSpecies("Fe", "K", 6.404);
+    addSpecies(IMG, fe);
+    selectSpecies(IMG, fe.id);
+
+    setSpecies(IMG, [edsSpecies("Si", "K", 1.74)]);
+    expect(useSpecies.getState().selectedByImage[IMG]).toBeNull();
+  });
+
+  it("survives setSpecies when the replacement list still contains the id", () => {
+    const { addSpecies, selectSpecies, setSpecies } = useSpecies.getState();
+    const fe = edsSpecies("Fe", "K", 6.404);
+    addSpecies(IMG, fe);
+    selectSpecies(IMG, fe.id);
+
+    setSpecies(IMG, [fe, edsSpecies("Si", "K", 1.74)]);
+    expect(useSpecies.getState().selectedByImage[IMG]).toBe(fe.id);
+  });
+});
+
+describe("EDS map settings", () => {
+  it("returns the stable default snapshot for an image with no stored settings", () => {
+    const { edsSettingsByImage } = useSpecies.getState();
+    expect(edsSettingsOf(edsSettingsByImage, IMG)).toBe(DEFAULT_EDS_SETTINGS);
+    // Same reference across calls — a fresh default object here would
+    // re-render a selector's subscriber forever, the NO_SPECIES failure mode.
+    expect(edsSettingsOf(edsSettingsByImage, IMG)).toBe(
+      edsSettingsOf(edsSettingsByImage, "some-other-never-opened-image"),
+    );
+    expect(edsSettingsOf(edsSettingsByImage, null)).toBe(DEFAULT_EDS_SETTINGS);
+  });
+
+  it("merges a partial update onto the default, keeping the other field", () => {
+    const { setEdsSettings } = useSpecies.getState();
+    setEdsSettings(IMG, { e0Kev: 15 });
+    const settings = edsSettingsOf(useSpecies.getState().edsSettingsByImage, IMG);
+    expect(settings).toEqual({ bg: "linear", e0Kev: 15 });
+  });
+
+  it("merges a partial update onto the PREVIOUS stored value, not the default", () => {
+    const { setEdsSettings } = useSpecies.getState();
+    setEdsSettings(IMG, { bg: "bremsstrahlung", e0Kev: 20 });
+    setEdsSettings(IMG, { e0Kev: 25 });
+    const settings = edsSettingsOf(useSpecies.getState().edsSettingsByImage, IMG);
+    expect(settings).toEqual({ bg: "bremsstrahlung", e0Kev: 25 });
+  });
+
+  it("keeps settings isolated per image", () => {
+    const { setEdsSettings } = useSpecies.getState();
+    setEdsSettings(IMG, { bg: "none" });
+    const byImage = useSpecies.getState().edsSettingsByImage;
+    expect(edsSettingsOf(byImage, IMG)).toEqual({ bg: "none", e0Kev: 30 });
+    expect(edsSettingsOf(byImage, OTHER)).toBe(DEFAULT_EDS_SETTINGS);
   });
 });
