@@ -107,6 +107,28 @@ def test_com_auto_center_matches_manual_center(client: TestClient) -> None:
     np.testing.assert_array_equal(auto_x, manual_x)
 
 
+def test_com_records_the_resolved_center_on_the_auto_path(
+    client: TestClient,
+) -> None:
+    """The auto path must store the center it actually measured against,
+    not the request's null. Without it a COM map cannot be reproduced, and
+    #8's COM→mrad→field calibration has no reference to calibrate from —
+    `/virtual-detector` records the resolved value for the same reason.
+    """
+    fourd_id = _register_shifted_disk_dataset()
+    auto = client.post(
+        f"/api/fourd/{fourd_id}/com",
+        json={"center_ky": None, "center_kx": None, "name": None},
+    ).json()
+    for key in ("comy", "comx"):
+        meta = image_store.get(auto[key]["id"]).metadata
+        assert meta["center_ky"] is not None, f"{key} lost its descan center"
+        assert meta["center_kx"] is not None, f"{key} lost its descan center"
+        # and it is the SAME center the equivalent manual call uses
+        assert meta["center_ky"] == pytest.approx(10.0)
+        assert meta["center_kx"] == pytest.approx(10.0)
+
+
 def test_com_registers_two_normal_derived_images(client: TestClient) -> None:
     fourd_id = _register_shifted_disk_dataset()
     r = client.post(

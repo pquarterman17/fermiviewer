@@ -43,7 +43,7 @@ import numpy as np
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 
-from fermiviewer.calc.fourd.com import com_maps
+from fermiviewer.calc.fourd.com import com_maps, resolve_center
 from fermiviewer.calc.fourd.dataset import FourDDataset
 from fermiviewer.calc.fourd.geometry import aperture_mask, pattern_center
 from fermiviewer.calc.fourd.virtual import virtual_detector
@@ -386,21 +386,22 @@ def fourd_com(fourd_id: str, req: ComRequest) -> ComMapsResponse:
     ds4 = _get(fourd_id)
     _validate_optional_center(req.center_ky, req.center_kx, ds4.det_shape)
 
-    center: tuple[float, float] | None = None
-    mean_pattern: np.ndarray | None = None
+    # Resolve the center BEFORE computing so the maps can record the descan
+    # reference they were actually measured against — on the auto path
+    # `req.center_ky`/`kx` are null, and a stored null would lose it (the
+    # /virtual-detector route resolves-then-records for the same reason).
     if req.center_ky is not None and req.center_kx is not None:
-        center = (req.center_ky, req.center_kx)
+        cy, cx = req.center_ky, req.center_kx
     else:
         # only the auto-center path pays for a (possibly first-touch,
         # whole-cube) mean_pattern access — an explicit center never does.
-        mean_pattern = ds4.mean_pattern
+        with value_error_as_422():
+            cy, cx = resolve_center(None, ds4.mean_pattern)
 
     block_rows = _block_rows_for_byte_cap(ds4)
     with value_error_as_422():
         com_y, com_x = com_maps(
-            ds4.iter_scan_rows(block_rows=block_rows),
-            center=center,
-            mean_pattern=mean_pattern,
+            ds4.iter_scan_rows(block_rows=block_rows), center=(cy, cx)
         )
 
     base_name = fourd_store.name(fourd_id)
@@ -416,8 +417,8 @@ def fourd_com(fourd_id: str, req: ComRequest) -> ComMapsResponse:
                 "parser": "fourd-com",
                 "analysis": axis,
                 "fourd_id": fourd_id,
-                "center_ky": req.center_ky,
-                "center_kx": req.center_kx,
+                "center_ky": float(cy),
+                "center_kx": float(cx),
             },
         )
         img_id = image_store.add_derived(struct, name, fourd_id)

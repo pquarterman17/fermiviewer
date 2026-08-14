@@ -28,7 +28,9 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   `geometry.pattern_center(mean_pattern)` (the same auto-center policy
   `/virtual-detector` uses) — then delegates. The route shares its
   both-or-neither/in-bounds center validation with `/virtual-detector` via a
-  new `_validate_optional_center` helper.
+  new `_validate_optional_center` helper. Both maps record the descan
+  reference center they were measured against — the *resolved* value, so an
+  auto-centred map stays reproducible instead of storing the request's null.
 - **Two more synthetic presets, for testing composition profiles and ZAF
   absorption correction.** `tools/make_synthetic_si.py --preset eds-diffusion`
   plants a linear Cu → Ni composition gradient with a per-row ground truth, so

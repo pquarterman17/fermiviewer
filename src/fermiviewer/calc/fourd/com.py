@@ -25,7 +25,31 @@ import numpy as np
 from fermiviewer.calc.fourd.geometry import pattern_center
 from fermiviewer.calc.fourd.virtual import com_shift_maps
 
-__all__ = ["com_maps"]
+__all__ = ["com_maps", "resolve_center"]
+
+
+def resolve_center(
+    center: tuple[float, float] | None = None,
+    mean_pattern: np.ndarray | None = None,
+) -> tuple[float, float]:
+    """The descan reference center, resolved: caller-supplied wins, else
+    auto-seeded from ``geometry.pattern_center(mean_pattern)``.
+
+    Exposed separately from ``com_maps`` so a caller can RECORD the center
+    it actually used. The auto path resolves to a real number that the
+    returned shifts are measured relative to, and a caller that only sees
+    its own ``None`` cannot reconstruct it — `routes/fourd.py`'s
+    virtual-detector route already resolves-then-records for the same
+    reason, and #8's COM→mrad→field calibration needs the value.
+    """
+    if center is not None:
+        return center
+    if mean_pattern is None:
+        raise ValueError(
+            "center is None: pass mean_pattern to auto-seed one via "
+            "geometry.pattern_center, or pass an explicit center"
+        )
+    return pattern_center(mean_pattern)
 
 
 def com_maps(
@@ -63,11 +87,4 @@ def com_maps(
 
     Returns ``(com_y_shift, com_x_shift)``, each ``(scan_y, scan_x)``.
     """
-    if center is None:
-        if mean_pattern is None:
-            raise ValueError(
-                "center is None: pass mean_pattern to auto-seed one via "
-                "geometry.pattern_center, or pass an explicit center"
-            )
-        center = pattern_center(mean_pattern)
-    return com_shift_maps(blocks, center)
+    return com_shift_maps(blocks, resolve_center(center, mean_pattern))
