@@ -15,11 +15,17 @@ Worst-case RAM per route:
   * `GET /api/fourd/{id}/mean-pattern` — streams row-blocks into one
     det_shape float64 accumulator; same per-block cost as `/nav`.
   * `POST /api/fourd/{id}/virtual-detector` — streams row-blocks (capped at
-    ~64 MB per in-flight block, see `_virtual_detector_block_rows`) into a
+    ~64 MB per in-flight block, see `_block_rows_for_byte_cap`) into a
     reciprocal-space-aperture reduction, then registers the resulting
     scan-shaped map the same way `/nav` does. A null center additionally
     streams the whole cube ONCE MORE via `ds4.mean_pattern` (cached after
     first use) to seed an auto center — same per-block cost, an extra pass.
+  * `POST /api/fourd/{id}/com` — same `_block_rows_for_byte_cap` cap as
+    `/virtual-detector`, streamed once through `calc.fourd.com.com_maps`
+    into two scan-shaped maps (COMy, COMx), each registered the same way
+    `/nav` does. A null center likewise costs one extra whole-cube pass via
+    `ds4.mean_pattern` (cached after first use) to seed an auto center; an
+    explicit center never touches `ds4.mean_pattern` at all.
 
 NOTE naming: `routes/imaging_ops.py` has an UNRELATED `/analyze/vdf`
 endpoint (2D FFT-aperture masking of a single already-2D image). This
@@ -37,6 +43,7 @@ import numpy as np
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 
+from fermiviewer.calc.fourd.com import com_maps
 from fermiviewer.calc.fourd.dataset import FourDDataset
 from fermiviewer.calc.fourd.geometry import aperture_mask, pattern_center
 from fermiviewer.calc.fourd.virtual import virtual_detector
@@ -213,16 +220,48 @@ def fourd_mean_pattern(fourd_id: str) -> Response:
 # a small Merlin frame does for the same memory ceiling. (This is a
 # route-layer choice independent of FourDDataset's own default block_rows,
 # which is sized for its *unweighted* nav_image/mean_pattern reductions.)
-_VD_BLOCK_BYTES_CAP = 64 * 1024 * 1024
+# Shared by /virtual-detector and /com — both are single-pass streamed
+# reductions over the same block shape, just with a different per-pixel
+# weighting, so the same cap applies unchanged.
+_BLOCK_BYTES_CAP = 64 * 1024 * 1024
 
 
-def _virtual_detector_block_rows(ds4: FourDDataset) -> int:
+def _block_rows_for_byte_cap(ds4: FourDDataset, cap_bytes: int = _BLOCK_BYTES_CAP) -> int:
     scan_x = ds4.scan_shape[1]
     det_ky, det_kx = ds4.det_shape
     bytes_per_row = scan_x * det_ky * det_kx * ds4.dtype.itemsize
     if bytes_per_row <= 0:
         return ds4.scan_shape[0]
-    return max(1, _VD_BLOCK_BYTES_CAP // bytes_per_row)
+    return max(1, cap_bytes // bytes_per_row)
+
+
+def _validate_optional_center(
+    center_ky: float | None, center_kx: float | None, det_shape: tuple[int, int]
+) -> None:
+    """Both-or-neither + in-bounds validation for an optional detector
+    center. Shared by `/virtual-detector` and `/com` (PLAN_4DSTEM #7) —
+    both accept the same null-means-auto-center contract."""
+    has_center = (center_ky is not None, center_kx is not None)
+    if has_center[0] != has_center[1]:
+        raise HTTPException(
+            422,
+            "center_ky and center_kx must both be given, or both omitted "
+            "for auto-center",
+        )
+    if all(has_center):
+        assert center_ky is not None and center_kx is not None
+        if not (0 <= center_ky <= det_shape[0] - 1):
+            raise HTTPException(
+                422,
+                f"center_ky {center_ky} outside detector bounds "
+                f"[0, {det_shape[0] - 1}]",
+            )
+        if not (0 <= center_kx <= det_shape[1] - 1):
+            raise HTTPException(
+                422,
+                f"center_kx {center_kx} outside detector bounds "
+                f"[0, {det_shape[1] - 1}]",
+            )
 
 
 class VirtualDetectorRequest(BaseModel):
@@ -248,27 +287,7 @@ def _validate_virtual_detector_request(
         raise HTTPException(422, "outer_r must be > 0")
     if req.shape == "annulus" and not (0 <= req.inner_r < req.outer_r):
         raise HTTPException(422, "annulus requires 0 <= inner_r < outer_r")
-    has_center = (req.center_ky is not None, req.center_kx is not None)
-    if has_center[0] != has_center[1]:
-        raise HTTPException(
-            422,
-            "center_ky and center_kx must both be given, or both omitted "
-            "for auto-center",
-        )
-    if all(has_center):
-        assert req.center_ky is not None and req.center_kx is not None
-        if not (0 <= req.center_ky <= det_shape[0] - 1):
-            raise HTTPException(
-                422,
-                f"center_ky {req.center_ky} outside detector bounds "
-                f"[0, {det_shape[0] - 1}]",
-            )
-        if not (0 <= req.center_kx <= det_shape[1] - 1):
-            raise HTTPException(
-                422,
-                f"center_kx {req.center_kx} outside detector bounds "
-                f"[0, {det_shape[1] - 1}]",
-            )
+    _validate_optional_center(req.center_ky, req.center_kx, det_shape)
 
 
 @router.post("/fourd/{fourd_id}/virtual-detector")
@@ -301,7 +320,7 @@ def fourd_virtual_detector(fourd_id: str, req: VirtualDetectorRequest) -> ImageM
             ds4.det_shape, (cy, cx), mask_inner_r, req.outer_r, shape=req.shape
         )
 
-    block_rows = _virtual_detector_block_rows(ds4)
+    block_rows = _block_rows_for_byte_cap(ds4)
     map_arr = virtual_detector(ds4.iter_scan_rows(block_rows=block_rows), mask)
 
     base_name = fourd_store.name(fourd_id)
@@ -324,3 +343,87 @@ def fourd_virtual_detector(fourd_id: str, req: VirtualDetectorRequest) -> ImageM
     )
     img_id = image_store.add_derived(struct, name, fourd_id)
     return ImageMeta.from_datastruct(img_id, image_store.name(img_id), struct)
+
+
+# ── per-probe center-of-mass (PLAN_4DSTEM #7) ──────────────────────────
+
+
+class ComRequest(BaseModel):
+    """Descan reference center in 0-based ``(ky, kx)`` float pixels (see
+    `calc/fourd/geometry.py`). A null ``center_ky``/``center_kx`` pair
+    auto-seeds from ``pattern_center(mean_pattern)`` — the SAME auto-center
+    policy `/virtual-detector` uses, resolved inside
+    `calc.fourd.com.com_maps` rather than here (this route does no math)."""
+
+    center_ky: float | None = None
+    center_kx: float | None = None
+    name: str | None = None
+
+
+class ComMapsResponse(BaseModel):
+    """Both derived maps from one `/com` call, each an ordinary registered
+    2D image (own id, own metadata) — this wrapper is just the pair."""
+
+    comy: ImageMeta
+    comx: ImageMeta
+
+
+@router.post("/fourd/{fourd_id}/com")
+def fourd_com(fourd_id: str, req: ComRequest) -> ComMapsResponse:
+    """Per-probe center-of-mass shift maps — the basis for DPC/iDPC
+    (PLAN_4DSTEM #8/#9). Registers COMy and COMx as two ordinary derived 2D
+    images through the same `add_derived` path `/nav` and
+    `/virtual-detector` use, so they inherit LUT/measure/export for free
+    (same always-register convention as `/virtual-detector`: each call is a
+    distinct analysis, not deduplicated like `/nav`).
+
+    All center-resolution policy (caller-supplied vs.
+    ``pattern_center(mean_pattern)`` auto-seed) lives in
+    `calc.fourd.com.com_maps` — this route only validates the request,
+    streams the cube once, and registers the two results. See the module
+    docstring for the RAM budget.
+    """
+    ds4 = _get(fourd_id)
+    _validate_optional_center(req.center_ky, req.center_kx, ds4.det_shape)
+
+    center: tuple[float, float] | None = None
+    mean_pattern: np.ndarray | None = None
+    if req.center_ky is not None and req.center_kx is not None:
+        center = (req.center_ky, req.center_kx)
+    else:
+        # only the auto-center path pays for a (possibly first-touch,
+        # whole-cube) mean_pattern access — an explicit center never does.
+        mean_pattern = ds4.mean_pattern
+
+    block_rows = _block_rows_for_byte_cap(ds4)
+    with value_error_as_422():
+        com_y, com_x = com_maps(
+            ds4.iter_scan_rows(block_rows=block_rows),
+            center=center,
+            mean_pattern=mean_pattern,
+        )
+
+    base_name = fourd_store.name(fourd_id)
+
+    def _register(map_arr: np.ndarray, axis: str, label: str) -> ImageMeta:
+        name = f"{req.name} ({label})" if req.name else f"{label}({base_name})"
+        struct = DataStruct(
+            data=np.ascontiguousarray(map_arr),
+            kind=DataKind.IMAGE,
+            axes=(ds4.scan_axes[0], ds4.scan_axes[1]),
+            metadata={
+                "source": name,
+                "parser": "fourd-com",
+                "analysis": axis,
+                "fourd_id": fourd_id,
+                "center_ky": req.center_ky,
+                "center_kx": req.center_kx,
+            },
+        )
+        img_id = image_store.add_derived(struct, name, fourd_id)
+        return ImageMeta.from_datastruct(img_id, image_store.name(img_id), struct)
+
+    return ComMapsResponse(
+        comy=_register(com_y, "com_y", "COMy"),
+        comx=_register(com_x, "com_x", "COMx"),
+    )

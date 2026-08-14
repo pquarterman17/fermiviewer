@@ -13,16 +13,19 @@ and never assumes the whole cube is resident. py4DSTEM is **AGPL** and must NOT
 become a runtime dependency — all math is reimplemented from primary references.
 
 **Status:** Active (Tier 1 / Phase 1 COMPLETE 2026-08-02 — items #1–#6
-all shipped + live-verified same day, `f6141b2..b4826b0`; remaining:
-Tier 2 #7–#9 COM/DPC/iDPC — note #7's core math `com_shift_maps`
-already landed in calc/fourd/virtual.py as a stretch goal — and parked
-Tier 3. Item #14's first two usability follow-ups — the .mib scan-shape
-GUI and the pattern-panel log toggle — shipped 2026-08-12; three remain)
+all shipped + live-verified same day, `f6141b2..b4826b0`. Tier 2 #7
+(per-probe COM) shipped 2026-08-14; remaining: #8–#9 DPC/iDPC — #7's
+`com.py` and `POST /fourd/{id}/com` are the foundation both consume — and
+parked Tier 3. Item #14's first two usability follow-ups — the .mib
+scan-shape GUI and the pattern-panel log toggle — shipped 2026-08-12;
+three remain)
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-06-21
-**Updated:** 2026-08-12 (later) — item #14 CLOSED: its last three boxes
-(mrad radii, main-Stage probe picking, dataset-list live refresh) shipped;
-open items now 7 (Tier 2 owner-deferred DPC trio + Tier 3 parked).
+**Updated:** 2026-08-14 — item #7 (per-probe center-of-mass) CLOSED: all
+three boxes shipped (`calc/fourd/com.py`, `POST /api/fourd/{id}/com`,
+20 new tests). Deferral lifted the same day (below); #8/#9 remain open.
+Earlier: item #14 CLOSED 2026-08-12 (later) — its last three boxes
+(mrad radii, main-Stage probe picking, dataset-list live refresh) shipped.
 Earlier the same day — item #14's top two usability follow-ups shipped:
 the `.mib` scan-shape GUI (`POST /fourd/{id}/reshape` + a workshop control
 with ranked factorisation suggestions — the parser always accepted a
@@ -269,25 +272,46 @@ helper from #5. Headline STEM phase-contrast techniques.)*
 > **Deferral lifted 2026-08-14** — the work it was deferred in favor of is
 > done: item 14's live-audit usability list closed 2026-08-13 (c3df999).
 > #7's core math (`com_shift_maps`) is ALREADY in calc/fourd/virtual.py —
-> remaining work is route wiring, the analytic tests below, idpc.py, and a
-> workshop mode selector.
+> remaining work was route wiring, the analytic tests below, idpc.py, and a
+> workshop mode selector. **#7 shipped 2026-08-14 (below) — #8 and #9 remain.**
 >
-> **Sequencing (2026-08-14):** #7 is blocking — both #8 and #9 consume its
-> COM field, and #9 integrates COM directly (it does NOT depend on #8).
-> Land #7 first, then #8 and #9. Each adds a route to `routes/fourd.py`
-> (326/500 lines): if it nears the ceiling, split it the way
-> `server_routers.py` and `structure.py` were split rather than trimming.
-> Do NOT re-derive the centroid in `com.py` — delegate to
-> `virtual.com_shift_maps`, which is already covered by the 29 pure tests
-> from #6.
+> **Sequencing (2026-08-14):** #7 was blocking — both #8 and #9 consume its
+> COM field, and #9 integrates COM directly (it does NOT depend on #8). Now
+> that #7 has landed, #8 and #9 can proceed in either order. Each adds a
+> route to `routes/fourd.py` (429/500 lines after #7): if it nears the
+> ceiling, split it the way `server_routers.py` and `structure.py` were
+> split rather than trimming.
 
-7. **Per-probe center-of-mass (COMx, COMy)** — the basis for all DPC.
-   - [ ] `calc/fourd/com.py` — stream the cube; per pattern compute the intensity
+7. ~~**Per-probe center-of-mass (COMx, COMy)**~~ (2026-08-14) — the basis
+   for DPC/iDPC. `calc/fourd/com.py` is deliberately small: it does NOT
+   re-derive the centroid, only the center-resolution policy on top of
+   `com_shift_maps` (already landed in #6) — a caller-supplied descan
+   reference center wins outright, else one is auto-seeded from
+   `geometry.pattern_center(mean_pattern)` (the same auto-center policy
+   `/virtual-detector` already uses), then delegates unchanged.
+   `POST /api/fourd/{id}/com` (thin) streams the cube once (same 64 MiB
+   block cap as `/virtual-detector`) and registers COMy/COMx as two
+   ordinary derived 2D images through the standard `add_derived` path, so
+   they inherit LUT/measure/export for free; its both-or-neither/in-bounds
+   center validation is now shared with `/virtual-detector` via a new
+   `_validate_optional_center` helper (extracted, not duplicated).
+   `routes/fourd.py` grew 326→429 lines (pin 500 — under, not raised, so
+   #8/#9 still have room before a split is forced). 20 new tests (7 pure
+   in `test_fourd_com.py`, 13 route-level in `test_api_fourd_com.py`): a
+   synthetic shifted-disk cube tracks a known per-probe COM offset under
+   both the manual- and auto-center paths (symmetric shift pairs make the
+   cube's true mean pattern centroid land exactly on the manual center, so
+   the two paths are checked against the same expected maps — same trick
+   `test_api_fourd_virtual.py`'s disk/ring fixture uses), plus
+   `com_shift_maps`'s documented zero/non-positive-intensity → 0-shift
+   contract is re-exercised through `com.py`'s own delegation, not just at
+   the `virtual.py` level.
+   - [x] `calc/fourd/com.py` — stream the cube; per pattern compute the intensity
      centroid → two scan maps (COMx, COMy). Optional descan/center subtraction
      using `geometry.pattern_center`. Reimplement from Müller-Caspary et al.
      (no py4DSTEM)
-   - [ ] `POST /fourd/{id}/com` (THIN) → registers COMx/COMy as derived 2D images
-   - [ ] Tests: synthetic shifted-disk cube → COM tracks the known shift
+   - [x] `POST /fourd/{id}/com` (THIN) → registers COMx/COMy as derived 2D images
+   - [x] Tests: synthetic shifted-disk cube → COM tracks the known shift
 
 8. **Differential phase contrast (DPC) + charge-density / field maps** —
    from the COM vector field.

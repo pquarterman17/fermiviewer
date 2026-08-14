@@ -16,6 +16,19 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Per-probe center-of-mass mapping for 4D-STEM (`POST /api/fourd/{id}/com`,
+  PLAN_4DSTEM #7).** Registers COMy and COMx as two ordinary derived 2D
+  images — the basis for the DPC/iDPC work that follows — through the same
+  `add_derived` path `/nav` and `/virtual-detector` use, so they inherit
+  LUT/measure/export for free. The actual per-probe intensity-centroid math
+  (Müller-Caspary et al., Ultramicroscopy 178 (2017)) already shipped in
+  `calc/fourd/virtual.py`'s `com_shift_maps` as part of #6; the new
+  `calc/fourd/com.py` adds only the center-resolution policy on top —
+  caller-supplied descan reference center when given, else auto-seeded from
+  `geometry.pattern_center(mean_pattern)` (the same auto-center policy
+  `/virtual-detector` uses) — then delegates. The route shares its
+  both-or-neither/in-bounds center validation with `/virtual-detector` via a
+  new `_validate_optional_center` helper.
 - **Two more synthetic presets, for testing composition profiles and ZAF
   absorption correction.** `tools/make_synthetic_si.py --preset eds-diffusion`
   plants a linear Cu → Ni composition gradient with a per-row ground truth, so
