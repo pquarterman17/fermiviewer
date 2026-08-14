@@ -13,7 +13,7 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.28] - 2026-08-14
 
 ### Added
 - **Integrated DPC (iDPC) for 4D-STEM (`POST /api/fourd/{id}/idpc`,
