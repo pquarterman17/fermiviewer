@@ -338,7 +338,11 @@ def fourd_idpc(fourd_id: str, req: IdpcRequest) -> ImageMeta:
             "center_kx": float(cx),
             "mrad_per_px": float(req.mrad_per_px),
             "high_pass_cutoff": float(req.high_pass_cutoff),
-            "units": "mrad",
+            # mrad * scan px, NOT plain mrad: the integration is with
+            # respect to the scan-pixel index, so it multiplies by a scan
+            # pixel exactly as /dpc's divergence divides by one. The scale
+            # therefore depends on the scan step — see idpc.py's UNITS note.
+            "units": "mrad_scan_px",
             # What this measurably is, not what it is popularly called: see
             # calc/fourd/idpc.py's module docstring for the full accounting
             # of the accelerating-voltage/electron-wavelength and physical

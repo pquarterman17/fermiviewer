@@ -180,3 +180,51 @@ def test_idpc_rejects_invalid_high_pass_cutoff(bad: float) -> None:
     com_x = np.zeros((3, 3))
     with pytest.raises(ValueError, match="high_pass_cutoff"):
         idpc_image(com_y, com_x, mrad_per_px=1.0, high_pass_cutoff=bad)
+
+
+# ════════════════════════════════════════════════════════════════════
+# units: the output carries a scan pixel, so it scales with scan sampling
+# ════════════════════════════════════════════════════════════════════
+
+
+def test_output_scales_with_scan_sampling_because_the_unit_carries_a_pixel() -> None:
+    """The integration is with respect to the scan-pixel INDEX, so the
+    result is mrad * SCAN PIXEL, not plain mrad — and that unit is not
+    cosmetic: it predicts that sampling the SAME underlying continuous
+    field twice as finely doubles every value.
+
+    Two scans image one continuous sinusoid of fixed physical period.
+    The coarse scan samples it over `ny` points, the fine scan over
+    `2*ny` — same specimen, same field, half the scan step. The mrad
+    field sampled at each probe is IDENTICAL in value at matching
+    positions (a deflection angle is a physical quantity; it does not
+    care how finely you sample it), but the reconstructed potential
+    differs by exactly the step ratio, because each output value is an
+    integral accumulated per scan pixel.
+
+    A reconstruction genuinely in plain mrad would be invariant here.
+    This asserts it is NOT — pinning the documented unit against a
+    regression that would silently relabel a sampling-dependent number
+    as a physical one.
+    """
+    cycles = 2
+    amp_mrad = 1.0
+
+    def field_for(n: int) -> tuple[np.ndarray, np.ndarray]:
+        """One continuous sinusoidal deflection field, sampled at n points
+        across the same physical extent."""
+        y = np.arange(n, dtype=np.float64)[:, None]
+        field_y = amp_mrad * np.cos(2.0 * np.pi * cycles * y / n)
+        return np.broadcast_to(field_y, (n, n)).copy(), np.zeros((n, n))
+
+    coarse_y, coarse_x = field_for(64)
+    fine_y, fine_x = field_for(128)
+    # the sampled field itself is unchanged at matching probe positions
+    np.testing.assert_allclose(coarse_y[:, 0], fine_y[::2, 0], atol=1e-12)
+
+    coarse = idpc_image(coarse_y, coarse_x, mrad_per_px=1.0, high_pass_cutoff=0.0)
+    fine = idpc_image(fine_y, fine_x, mrad_per_px=1.0, high_pass_cutoff=0.0)
+
+    # halving the scan step doubles the reconstruction: one scan pixel of
+    # unit carried through the integration
+    assert np.ptp(fine) == pytest.approx(2.0 * np.ptp(coarse), rel=1e-9)

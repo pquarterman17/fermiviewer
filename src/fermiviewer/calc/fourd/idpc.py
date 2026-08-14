@@ -65,13 +65,26 @@ maps `com.com_maps` returns) and the required ``mrad_per_px`` calibration
 (see `dpc.py`'s module docstring for why this is never defaulted), this
 module calibrates them into the milliradian field via
 ``dpc.calibrated_field_mrad`` (reused, not re-derived) BEFORE integrating,
-so the returned image is in the SAME unit, MILLIRADIANS — the mirror image
-of `dpc.divergence_map`'s own "per scan-pixel" convention run in reverse:
-``divergence_map`` differentiates a mrad field with respect to the
-scan-pixel INDEX (unit spacing, not a physical length) to get
-mrad-per-scan-pixel; this module integrates a mrad field the same way, with
-respect to the scan-pixel INDEX, so the "per scan-pixel" cancels back out
-and the result is plain mrad again.
+so the returned image is in **MILLIRADIAN-SCAN-PIXELS** (mrad * scan px).
+
+The integration is with respect to the scan-pixel INDEX (unit spacing, not
+a physical length), so it MULTIPLIES by a scan pixel just as
+`dpc.divergence_map` DIVIDES by one. Both functions take the same mrad
+field: differentiating it gives mrad-per-scan-pixel, so integrating it
+gives mrad-times-scan-pixel. The two are mirror images in that the scan
+pixel appears with opposite exponent — NOT in the sense that the unit
+cancels back to plain mrad. (It cancels only for a caller integrating a
+mrad-per-scan-pixel field, which is not what this function is given.) The
+arithmetic is visible in the kernel below: ``-1j * omega * F[field] /
+omega**2`` is ``F[field] / omega``, and ``omega`` is radians PER SCAN
+PIXEL, so dividing by it multiplies the unit by a scan pixel.
+
+The practical consequence is that this image's scale depends on the scan
+SAMPLING: re-scanning the same specimen region with a finer scan step
+changes every value by the ratio of the steps. That is exactly what the
+"scan-pixel" in the unit is warning about, and exactly what a bare "mrad"
+would hide — multiply by the physical scan pitch (carried on the
+registered image's own ``axes``) to remove the dependence.
 
 This iDPC image is PROPORTIONAL to the specimen's projected potential (its
 phase image, up to the additive constant above) — it is NOT volts, and not
@@ -152,10 +165,12 @@ def idpc_image(
     2x2 (a single scan row/column carries no in-plane gradient information
     along that axis to integrate).
 
-    Returns a real-valued ``(scan_y, scan_x)`` array in MILLIRADIANS,
-    proportional to the projected potential up to an unrecoverable additive
-    constant (see the module docstring) — compare reconstructions with
-    their mean removed, never as absolute values.
+    Returns a real-valued ``(scan_y, scan_x)`` array in MILLIRADIAN-SCAN-
+    PIXELS (mrad * scan px — the integration multiplies by a scan pixel;
+    see the module docstring's UNITS note), proportional to the projected
+    potential up to an unrecoverable additive constant (see the module
+    docstring) — compare reconstructions with their mean removed, never as
+    absolute values, and only across scans of the same scan step.
     """
     _validate_high_pass_cutoff(high_pass_cutoff)
     com_y_arr = np.asarray(com_y_shift, dtype=np.float64)

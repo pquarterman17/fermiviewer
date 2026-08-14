@@ -401,11 +401,19 @@ helper from #5. Headline STEM phase-contrast techniques.)*
    cycles per scan pixel, always caller-overridable) suppresses the classic
    low-frequency "bowl" artifact the `1/omega` reconstruction kernel is
    known to amplify — reused, not reinvented, from `dpc.py`'s
-   `calibrated_field_mrad`, so the image is in MILLIRADIANS: proportional
-   to the projected potential, NOT an absolute potential in volts or even
-   an absolute phase in radians (that needs the accelerating voltage and
-   the physical scan-pixel pitch along both scan axes, neither invented
-   here). `POST /api/fourd/{id}/idpc` (thin, in `routes/fourd_com.py`,
+   `calibrated_field_mrad`, so the image is in MILLIRADIAN-SCAN-PIXELS:
+   proportional to the projected potential, NOT an absolute potential in
+   volts or even an absolute phase in radians (that needs the accelerating
+   voltage and the physical scan-pixel pitch along both scan axes, neither
+   invented here). The unit carries a scan pixel because the integration
+   runs over the scan-pixel INDEX — the mirror of #8's divergence, which
+   divides by one — so values scale with scan sampling (half the step,
+   double the value). Corrected on review: this shipped briefly documented
+   as plain "mrad" on a "the per-scan-pixel cancels back out" argument,
+   which does not hold — both functions consume the SAME mrad field, so
+   one divides by a scan pixel and the other multiplies by one. Pinned by
+   a test that samples one continuous field at two rates and asserts the
+   2x ratio, so a regression to a sampling-independent label fails. `POST /api/fourd/{id}/idpc` (thin, in `routes/fourd_com.py`,
    reusing `/com`/`/dpc`'s center-resolution/streaming step) registers the
    ONE resulting map — unlike `/com`/`/dpc`'s several — recording the
    resolved center, the calibration, and the cutoff applied.

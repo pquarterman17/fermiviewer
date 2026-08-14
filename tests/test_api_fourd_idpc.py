@@ -136,7 +136,7 @@ def test_idpc_registers_one_normal_derived_image(client: TestClient) -> None:
     assert body["meta"]["center_kx"] == pytest.approx(10.0)
     assert body["meta"]["mrad_per_px"] == pytest.approx(2.0)
     assert body["meta"]["high_pass_cutoff"] == pytest.approx(DEFAULT_HIGH_PASS_CUTOFF)
-    assert body["meta"]["units"] == "mrad"
+    assert body["meta"]["units"] == "mrad_scan_px"
     assert "additive constant" in body["meta"]["interpretation"]
     assert "accelerating voltage" in body["meta"]["interpretation"]
 

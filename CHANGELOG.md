@@ -32,11 +32,18 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   cycles per scan pixel, always caller-overridable — never a hidden magic
   number) suppresses the classic iDPC low-frequency "bowl" artifact the
   `1/omega` reconstruction kernel is known to amplify. The image is in
-  MILLIRADIANS, proportional to the projected potential — not an absolute
-  potential in volts, and not even an absolute phase in radians: that would
-  additionally need the accelerating voltage (electron wavelength, via the
-  interaction constant) and the physical scan-pixel pitch along both scan
-  axes, neither of which this module invents. `POST /api/fourd/{id}/idpc`
+  MILLIRADIAN-SCAN-PIXELS, proportional to the projected potential — not an
+  absolute potential in volts, and not even an absolute phase in radians:
+  that would additionally need the accelerating voltage (electron
+  wavelength, via the interaction constant) and the physical scan-pixel
+  pitch along both scan axes, neither of which this module invents. The
+  unit carries a scan pixel because the integration is with respect to the
+  scan-pixel index — the mirror of `/dpc`'s divergence, which divides by
+  one — so the values scale with how finely the scan was sampled: imaging
+  the same region at half the scan step doubles every value. That is a
+  property of the measurement, not a defect, but it is the reason the map
+  is not labelled plain "mrad", which would read as a sampling-independent
+  physical quantity. `POST /api/fourd/{id}/idpc`
   (thin, in `routes/fourd_com.py`, reusing `/com`/`/dpc`'s
   center-resolution/streaming step) registers the ONE resulting map —
   unlike `/com` (two images) and `/dpc` (three) — recording the resolved
