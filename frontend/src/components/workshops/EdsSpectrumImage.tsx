@@ -1,35 +1,53 @@
 // EDS Spectrum-Image explorer — UI parity with
 // fermi-viewer/+fermiViewer/+spectrumImage/openSpectrumImageWorkshop.m
 //
+// Species-connected (Wave 2, SPECTRAL_WORKSPACE_PLAN #11): the window this
+// tab tunes, the background model, and the beam energy are no longer local
+// state — they are the SELECTED species' `windows.signal` and the image's
+// shared `edsSettingsByImage`, the same values Maps extracts its montage
+// with. Tuning a window here changes what Maps shows; ticking a species in
+// Maps is what makes it available to tune here. `SpeciesChips` is the one
+// selector for both surfaces — there is no second element picker.
+//
 // Layout, top to bottom:
 //   Spectrum panel (source bar + uPlot) with zoom bar and integration readout
-//   Element picker (periodic table / dropdown) with that element's colour
-//   Window lo/hi spinners (keV) and the background-mode toggle
-//   Element map, tinted by the element's colour
+//   Species chips (selection — the connective tissue with Maps)
+//   Integration readout, window controls (lo/hi, presets, lock, background, E0)
+//   Element map, tinted by the selected species' colour
 //   Pixel / ROI picker and CSV exports
 //
-// Spectrum acquisition lives in useEdsSpectrumSource; the energy window,
-// background model, map extraction and integration stay here because they are
-// all views over whichever spectrum that hook has resolved.
+// Spectrum acquisition lives in useEdsSpectrumSource; the energy window
+// itself now lives in the species store (via useEdsEnergyWindow), and
+// background/beam-energy live in edsSettingsByImage — this component wires
+// them together and owns only display state (zoom, log scale, pinned
+// regions).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { edsLineEnergy, type Spectrum } from "../../lib/api";
+import { type Spectrum } from "../../lib/api";
 import { useEdsPeakMarkers } from "../../hooks/useEdsPeakMarkers";
+import type { EdsMapBackground } from "../../lib/eds/background";
 import { integrateWindow } from "../../lib/eds/integrate";
 import {
   makeRegion,
   upsertRegion,
   type IntegrationRegion,
 } from "../../lib/spectrum/regions";
+import { edsSpecies } from "../../lib/spectrum/species";
 import { frameWindow, type XRange } from "../../lib/spectrum/zoomRange";
 import {
   elementMapCsv,
   integrationRegionsCsv,
   spectrumCsv,
 } from "../../lib/edsExploreCsv";
+import {
+  edsSettingsOf,
+  selectedSpeciesOf,
+  speciesOf,
+  useSpecies,
+} from "../../store/species";
 import { useViewer } from "../../store/viewer";
-import EdsElementPicker from "../elemental/ElementPicker";
+import SpeciesChips from "../elemental/SpeciesChips";
 import EdsElementMap from "./EdsElementMap";
 import EdsWindowControls from "./EdsWindowControls";
 import EdsIntegrationPanel from "../spectrum/IntegrationPanel";
@@ -40,11 +58,14 @@ import EdsSpectrumZoomBar from "../spectrum/SpectrumZoomBar";
 import type { Rect1 } from "./RegionPicker";
 import { useEdsDerivedMap } from "./useEdsDerivedMap";
 import { useEdsEnergyWindow } from "./useEdsEnergyWindow";
-import { type EdsMapBackground, useEdsElementMap } from "./useEdsElementMap";
+import { useEdsElementMap } from "./useEdsElementMap";
 import { useEdsSpectrumSource } from "./useEdsSpectrumSource";
 
-const HALF_WIN = 0.085; // keV, default half-window (matches MATLAB halfWin)
 const MIN_ZOOM_CHANNELS = 6; // narrowest view the wheel / buttons may reach
+/** A region with no recorded transition (an older pin, or one restored
+ *  without one) is re-created on the commonest EDS shell — better than
+ *  leaving the species unlabelled, and correctable from Maps afterward. */
+const FALLBACK_TRANSITION = "K";
 
 // ── helpers ───────────────────────────────────────────────────────────
 
@@ -81,15 +102,21 @@ export default function EdsSpectrumImage() {
   const setCaptureMode = useViewer((s) => s.setCaptureMode);
   const specnavPixel = useViewer((s) => s.specnavPixel);
 
-  // energy window state (the window itself lives in useEdsEnergyWindow)
-  const [bgMode, setBgMode] = useState<EdsMapBackground>("linear");
-  const [e0Kev, setE0Kev] = useState(30); // beam energy for bremsstrahlung bg
+  // Species selection, windows and per-image EDS settings all come from the
+  // shared store — Maps and this tab read and write the same slice.
+  const byImage = useSpecies((s) => s.byImage);
+  const selectedByImage = useSpecies((s) => s.selectedByImage);
+  const selectSpeciesStore = useSpecies((s) => s.selectSpecies);
+  const addSpeciesStore = useSpecies((s) => s.addSpecies);
+  const setWindowStore = useSpecies((s) => s.setWindow);
+  const edsSettingsByImage = useSpecies((s) => s.edsSettingsByImage);
+  const setEdsSettingsStore = useSpecies((s) => s.setEdsSettings);
 
-  // element picker
-  const elements: string[] = Array.isArray(meta?.meta?.elements)
-    ? (meta.meta.elements as string[])
-    : [];
-  const [selElem, setSelElem] = useState("(custom)");
+  const species = speciesOf(byImage, activeId);
+  const selected = selectedSpeciesOf({ byImage, selectedByImage }, activeId);
+  const edsSettings = edsSettingsOf(edsSettingsByImage, activeId);
+  const bgMode = edsSettings.bg;
+  const e0Kev = edsSettings.e0Kev;
 
   // spectrum display
   const [logScale, setLogScale] = useState(false);
@@ -129,9 +156,10 @@ export default function EdsSpectrumImage() {
   });
 
   const energyWindow = useEdsEnergyWindow({
+    imageId: activeId,
+    species: selected,
     bgMode,
     recomputeMap,
-    onUnbind: () => setSelElem("(custom)"),
     onStatus: (message) => reportEds(activeId, message),
   });
   const { eLo, eHi } = energyWindow;
@@ -155,35 +183,15 @@ export default function EdsSpectrumImage() {
     setRegions([]);
   }, [activeId]);
 
-  const handleElementChange = useCallback(
-    (sym: string) => {
-      setSelElem(sym);
-      if (sym === "(custom)") {
-        energyWindow.release(eLo, eHi);
-        return;
-      }
-      const id = activeId;
-      edsLineEnergy(sym)
-        .then(({ energy_kev, line }) => {
-          if (!stillOpen(id)) return;
-          energyWindow.anchor(energy_kev, energy_kev - HALF_WIN, energy_kev + HALF_WIN);
-          reportEds(id, `EDS: ${sym} ${line}α at ${energy_kev.toFixed(3)} keV`);
-        })
-        .catch((e: Error) => reportEds(id, `EDS line-energy: ${e.message}`));
-    },
-    [activeId, eHi, eLo, energyWindow, reportEds, stillOpen],
-  );
-
-  const onSpectrumLoaded = useCallback(() => {
-    if (elements.length > 0) {
-      handleElementChange(elements[0]);
-    } else {
-      energyWindow.release(0.5, 1.5, "linear");
-    }
-    // `elements` is derived fresh each render from meta; keying on its content
-    // keeps this from re-running the window init on unrelated re-renders.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [elements.join(","), handleElementChange, energyWindow.release]);
+  // Nothing selected on this image, but it has species? Pick the first
+  // visible one — the same "never face a blank tab" rule Maps' auto-ID
+  // follows. A no-op once something is selected, so this is safe to run on
+  // every species-list change (window edits included).
+  useEffect(() => {
+    if (!activeId || selected || species.length === 0) return;
+    const next = species.find((s) => s.visible) ?? species[0];
+    selectSpeciesStore(activeId, next.id);
+  }, [activeId, selected, species, selectSpeciesStore]);
 
   const { displaySpectrum, label, source, busy, showSum, showRegion } =
     useEdsSpectrumSource({
@@ -193,12 +201,16 @@ export default function EdsSpectrumImage() {
       probeActive: captureMode === "specnav",
       isOpen: stillOpen,
       onStatus: reportEds,
-      onLoaded: onSpectrumLoaded,
+      // Window init used to happen here (anchor to the first acquisition
+      // element, or a free default). That is now the species store's job —
+      // the auto-select effect above runs independently of when the
+      // spectrum itself finishes loading.
+      onLoaded: () => {},
     });
 
   const peakMarkers = useEdsPeakMarkers(
     activeId,
-    selElem,
+    selected?.symbol ?? null,
     displaySpectrum?.energy ?? null,
     showPeaks && isCube,
   );
@@ -210,42 +222,76 @@ export default function EdsSpectrumImage() {
 
   // The integral of whatever spectrum is displayed, under the same background
   // model the element map uses — recomputed locally so dragging the window
-  // never costs a request.
+  // never costs a request. Null with nothing selected: there is no window to
+  // integrate over.
   const integration = useMemo(
     () =>
-      displaySpectrum
+      displaySpectrum && selected
         ? integrateWindow(displaySpectrum, eLo, eHi, bgMode, { e0Kev })
         : null,
-    [displaySpectrum, eLo, eHi, bgMode, e0Kev],
+    [displaySpectrum, selected, eLo, eHi, bgMode, e0Kev],
   );
 
-  const handleWindowChange = energyWindow.commit;
-  // Mid-drag frames: the overlay and the client-side integration follow the
-  // cursor; the element map waits for the commit.
-  const handleWindowLive = energyWindow.live;
+  const handleWindowsLive = useCallback(
+    (w: { signal: { lo: number; hi: number } }) =>
+      energyWindow.live(w.signal.lo, w.signal.hi),
+    [energyWindow],
+  );
+  const handleWindowsCommit = useCallback(
+    (w: { signal: { lo: number; hi: number } }) =>
+      energyWindow.commit(w.signal.lo, w.signal.hi),
+    [energyWindow],
+  );
 
   const handleBgChange = (mode: EdsMapBackground) => {
-    setBgMode(mode);
+    if (!activeId) return;
+    setEdsSettingsStore(activeId, { bg: mode });
     recomputeMap(eLo, eHi, mode);
   };
 
   const addRegion = () => {
-    if (!integration) return;
+    if (!integration || !selected) return;
     setRegions((prev) =>
-      upsertRegion(prev, makeRegion(integration, selElem, label)),
+      upsertRegion(
+        prev,
+        makeRegion(integration, selected.symbol, label, selected.transition),
+      ),
     );
   };
 
   // Restoring a pinned region puts its window back and frames it, so the
-  // number in the table and the peak on screen are the same measurement.
+  // number in the table and the peak on screen are the same measurement. The
+  // background model travels with it too — a region pinned under "none" must
+  // not silently re-render under whatever background happens to be active.
+  // Species-aware (task #11 Wave 2): a region names the species it was
+  // measured on, so restoring re-selects (or, if the user removed it since,
+  // re-creates) that species rather than mutating a "custom" free window.
   const restoreRegion = (region: IntegrationRegion) => {
-    setSelElem(region.label.match(/^[A-Z][a-z]?$/) ? region.label : "(custom)");
-    setBgMode(region.bg);
-    // Restoring a pinned region means "put exactly THIS window back", so it
-    // arrives unanchored: a stale line from a previously picked element would
-    // otherwise let the lock yank the restored window off its own position.
-    energyWindow.release(region.eLo, region.eHi, region.bg);
+    if (!activeId) return;
+    setEdsSettingsStore(activeId, { bg: region.bg });
     setXRange(frameWindow(region.eLo, region.eHi, bounds, minSpan));
+    if (!region.symbol) return;
+
+    const list = speciesOf(useSpecies.getState().byImage, activeId);
+    let target = list.find(
+      (s) =>
+        s.symbol === region.symbol &&
+        (!region.transition || s.transition === region.transition),
+    );
+    if (!target) {
+      target = edsSpecies(
+        region.symbol,
+        region.transition ?? FALLBACK_TRANSITION,
+        (region.eLo + region.eHi) / 2,
+        { halfWindowKev: (region.eHi - region.eLo) / 2 },
+      );
+      addSpeciesStore(activeId, target);
+    }
+    selectSpeciesStore(activeId, target.id);
+    setWindowStore(activeId, target.id, "signal", {
+      lo: region.eLo,
+      hi: region.eHi,
+    });
   };
 
   const { libraryBusy, addToLibrary } = useEdsDerivedMap({
@@ -254,7 +300,7 @@ export default function EdsSpectrumImage() {
     eHi,
     bg: bgMode,
     e0Kev,
-    element: selElem,
+    element: selected?.symbol ?? "(custom)",
     isOpen: stillOpen,
     onStatus: reportEds,
   });
@@ -279,6 +325,11 @@ export default function EdsSpectrumImage() {
   }
 
   const unit = displaySpectrum?.units || "keV";
+  // Nothing selected: park the plot's window marker at the left edge rather
+  // than feed it a meaningless committed value, and drop the drag handlers —
+  // there is no species to write a drag to.
+  const plotLo = selected ? eLo : bounds[0];
+  const plotHi = selected ? eHi : bounds[0];
 
   return (
     <div className="fvd-ws">
@@ -307,10 +358,14 @@ export default function EdsSpectrumImage() {
             <SpectrumPlot
               spec={displaySpectrum}
               label={label}
-              eLo={eLo}
-              eHi={eHi}
-              onDragWindow={handleWindowChange}
-              onDragWindowLive={handleWindowLive}
+              eLo={plotLo}
+              eHi={plotHi}
+              {...(selected
+                ? {
+                    onDragWindowsLive: handleWindowsLive,
+                    onDragWindowsCommit: handleWindowsCommit,
+                  }
+                : {})}
               markers={peakMarkers}
               height={spectrumExpanded ? 360 : 260}
               logScale={logScale}
@@ -330,9 +385,23 @@ export default function EdsSpectrumImage() {
         )}
       </EdsSpectrumPanel>
 
+      <div className="fvd-ws-row" style={{ alignItems: "flex-start" }}>
+        <span className="k">Species</span>
+        <SpeciesChips
+          imageId={activeId ?? ""}
+          emptyHint="No species yet — identify or add them in the Maps tab."
+        />
+      </div>
+
+      {/* Unconditional, even with nothing selected: the pinned-regions table
+          is how a restore reaches a species the user removed — see
+          restoreRegion. Its own live-integration row already shows a quiet
+          "No channels…" state when `integration` is null (nothing selected,
+          or no spectrum yet), matching every other window-dependent surface
+          below. */}
       <EdsIntegrationPanel
         current={integration}
-        element={selElem}
+        element={selected?.symbol ?? "(custom)"}
         unit={unit}
         source={label}
         regions={regions}
@@ -345,47 +414,50 @@ export default function EdsSpectrumImage() {
         }
       />
 
-      {/* Element picker — periodic table by default, dropdown via toggle */}
-      <div className="fvd-ws-row" style={{ alignItems: "flex-start" }}>
-        <span className="k">Element</span>
-        <EdsElementPicker
-          selected={selElem}
-          elements={elements}
-          onSelect={handleElementChange}
-        />
-      </div>
+      {selected ? (
+        <>
+          <EdsWindowControls
+            eLo={eLo}
+            eHi={eHi}
+            onWindow={energyWindow.commit}
+            onZoomToWindow={() =>
+              setXRange(frameWindow(eLo, eHi, bounds, minSpan))
+            }
+            anchorKev={energyWindow.anchorKev}
+            onPreset={energyWindow.applyPreset}
+            onFit={() => energyWindow.applyFit(displaySpectrum)}
+            fitDisabled={!displaySpectrum}
+            lineKev={selected.energy}
+            locked={energyWindow.locked}
+            onLocked={energyWindow.setLocked}
+            bgMode={bgMode}
+            onBgMode={handleBgChange}
+            e0Kev={e0Kev}
+            onE0Kev={(v) => {
+              if (!activeId) return;
+              setEdsSettingsStore(activeId, { e0Kev: v });
+              if (v > eHi) recomputeMap(eLo, eHi, "bremsstrahlung", v);
+            }}
+            showPeaks={showPeaks}
+            onShowPeaks={setShowPeaks}
+          />
 
-      <EdsWindowControls
-        eLo={eLo}
-        eHi={eHi}
-        onWindow={handleWindowChange}
-        onZoomToWindow={() => setXRange(frameWindow(eLo, eHi, bounds, minSpan))}
-        anchorKev={energyWindow.anchorKev}
-        onPreset={energyWindow.applyPreset}
-        onFit={() => energyWindow.applyFit(displaySpectrum)}
-        fitDisabled={!displaySpectrum}
-        lineKev={energyWindow.lineKev}
-        locked={energyWindow.locked}
-        onLocked={energyWindow.setLocked}
-        bgMode={bgMode}
-        onBgMode={handleBgChange}
-        e0Kev={e0Kev}
-        onE0Kev={(v) => {
-          setE0Kev(v);
-          if (v > eHi) recomputeMap(eLo, eHi, "bremsstrahlung", v);
-        }}
-        showPeaks={showPeaks}
-        onShowPeaks={setShowPeaks}
-      />
-
-      {mapResult && (
-        <EdsElementMap
-          result={mapResult}
-          element={selElem}
-          busy={mapBusy}
-          libraryBusy={libraryBusy}
-          onAddToLibrary={addToLibrary}
-        />
+          {mapResult && (
+            <EdsElementMap
+              result={mapResult}
+              element={selected.symbol}
+              busy={mapBusy}
+              libraryBusy={libraryBusy}
+              onAddToLibrary={addToLibrary}
+            />
+          )}
+        </>
+      ) : (
+        <div className="fvd-ws-empty">
+          {species.length === 0
+            ? "No species yet — add elements in the Maps tab, then tune their windows here."
+            : "Pick a species above to tune its window."}
+        </div>
       )}
 
       {activeId && (

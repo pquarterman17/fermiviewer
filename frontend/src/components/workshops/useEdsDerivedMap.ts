@@ -12,7 +12,7 @@ import { setCustomColormap, type ColormapName } from "../../lib/colormaps";
 import { elementColor } from "../../lib/elemental/elementColors";
 import { useViewer } from "../../store/viewer";
 import type { MapPaint } from "./EdsElementMap";
-import type { EdsMapBackground } from "./useEdsElementMap";
+import type { EdsMapBackground } from "../../lib/eds/background";
 
 interface Options {
   imageId: string | null;
