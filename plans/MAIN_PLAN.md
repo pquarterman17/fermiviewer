@@ -6,7 +6,11 @@ plan in `plans/` declares this file as its parent.
 
 **Status:** Active
 **Created:** 2026-08-09
-**Updated:** 2026-08-12 — ANALYSIS_PRESENTATION_PLAN adopted as a live
+**Updated:** 2026-08-13 — router-registration block extracted from
+`server.py` (490→443) into new `server_routers.py`, closing the
+cross-plan-dependencies note's standing "extract before the ceiling"
+instruction. Previous update 2026-08-12 — ANALYSIS_PRESENTATION_PLAN
+adopted as a live
 sub-plan: the never-merged OriginPro/JMP gap-audit branch
 (`claude/feature-gaps-originpro-jump-9h32ai`) was merged
 (`docs/originpro-jmp-gap-audit.md`), its R1–R12 BUILD list re-verified
@@ -47,9 +51,10 @@ plans (items 6–14).
 ### Cross-plan dependencies
 
 - The two sub-plans are file-disjoint almost everywhere. Both add
-  routers to `server.py` (476/500 — ~2 lines each; if it nears the
-  ceiling, extract the router-registration block into its own module
-  first). Trivial rebases only.
+  routers via `server_routers.py` (~2 lines each; the registration block
+  was extracted out of `server.py` on 2026-08-13 when it neared the
+  ceiling — new routers register there, never in `server.py`). Trivial
+  rebases only.
 - Figure outputs converge: spectral #7/#10 (shared composite → library)
   and project-workflow #25 (shared-scale sample montage) must keep one
   figure convention (labels, legend/scale bar, result registered as a
