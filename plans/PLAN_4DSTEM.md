@@ -264,11 +264,22 @@ detectors. Ship-blocking; nothing else in this plan works without these.)*
 *(Phase 2 — center-of-mass / DPC / iDPC. Requires the Phase-1 cube-streaming
 helper from #5. Headline STEM phase-contrast techniques.)*
 
-> **DEFERRED by owner 2026-08-02** ("I think we can defer that") in favor
-> of edge-case hardening + usability audit of the shipped surface. When
-> picked up: #7's core math (`com_shift_maps`) is ALREADY in
-> calc/fourd/virtual.py — remaining work is route wiring, the analytic
-> tests below, idpc.py, and a workshop mode selector.
+> ~~**DEFERRED by owner 2026-08-02**~~ ("I think we can defer that") in favor
+> of edge-case hardening + usability audit of the shipped surface.
+> **Deferral lifted 2026-08-14** — the work it was deferred in favor of is
+> done: item 14's live-audit usability list closed 2026-08-13 (c3df999).
+> #7's core math (`com_shift_maps`) is ALREADY in calc/fourd/virtual.py —
+> remaining work is route wiring, the analytic tests below, idpc.py, and a
+> workshop mode selector.
+>
+> **Sequencing (2026-08-14):** #7 is blocking — both #8 and #9 consume its
+> COM field, and #9 integrates COM directly (it does NOT depend on #8).
+> Land #7 first, then #8 and #9. Each adds a route to `routes/fourd.py`
+> (326/500 lines): if it nears the ceiling, split it the way
+> `server_routers.py` and `structure.py` were split rather than trimming.
+> Do NOT re-derive the centroid in `com.py` — delegate to
+> `virtual.com_shift_maps`, which is already covered by the 29 pure tests
+> from #6.
 
 7. **Per-probe center-of-mass (COMx, COMy)** — the basis for all DPC.
    - [ ] `calc/fourd/com.py` — stream the cube; per pattern compute the intensity
