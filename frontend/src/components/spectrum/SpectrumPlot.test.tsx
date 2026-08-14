@@ -108,7 +108,7 @@ describe("EdsSpectrumPlot", () => {
         label="Sum spectrum"
         eLo={9}
         eHi={11}
-        onDragWindow={() => {}}
+        onDragWindowsCommit={() => {}}
       />,
     );
     const first = plot();
@@ -118,7 +118,7 @@ describe("EdsSpectrumPlot", () => {
         label="Sum spectrum"
         eLo={9}
         eHi={12}
-        onDragWindow={() => {}}
+        onDragWindowsCommit={() => {}}
       />,
     );
     expect(plot()).toBe(first);
@@ -131,7 +131,7 @@ describe("EdsSpectrumPlot", () => {
         label="Sum spectrum"
         eLo={0.5}
         eHi={0.6}
-        onDragWindow={() => {}}
+        onDragWindowsCommit={() => {}}
       />,
     );
 
@@ -155,7 +155,7 @@ describe("EdsSpectrumPlot", () => {
         label="Sum spectrum"
         eLo={0.5}
         eHi={0.6}
-        onDragWindow={() => {}}
+        onDragWindowsCommit={() => {}}
       />,
     );
 
@@ -171,14 +171,14 @@ describe("EdsSpectrumPlot", () => {
   });
 
   it("shift+drag sets the energy window and suppresses the native zoom", () => {
-    const onDragWindow = vi.fn();
+    const onDragWindowsCommit = vi.fn();
     render(
       <SpectrumPlot
         spec={WIDE}
         label="Sum spectrum"
         eLo={9}
         eHi={11}
-        onDragWindow={onDragWindow}
+        onDragWindowsCommit={onDragWindowsCommit}
       />,
     );
 
@@ -190,7 +190,7 @@ describe("EdsSpectrumPlot", () => {
     plot().select = { left: 30, top: 0, width: 40, height: 200 };
     hooks().setSelect?.[0](plot());
 
-    expect(onDragWindow).toHaveBeenCalledWith(30, 70);
+    expect(onDragWindowsCommit).toHaveBeenCalledWith({ signal: { lo: 30, hi: 70 } });
     // and the selection rectangle is cleared without re-firing hooks
     expect(mock.setSelect).toHaveBeenCalledWith(
       { left: 0, top: 0, width: 0, height: 0 },
@@ -199,14 +199,14 @@ describe("EdsSpectrumPlot", () => {
   });
 
   it("leaves a plain drag to uPlot's zoom and never moves the window", () => {
-    const onDragWindow = vi.fn();
+    const onDragWindowsCommit = vi.fn();
     render(
       <SpectrumPlot
         spec={WIDE}
         label="Sum spectrum"
         eLo={9}
         eHi={11}
-        onDragWindow={onDragWindow}
+        onDragWindowsCommit={onDragWindowsCommit}
       />,
     );
 
@@ -216,55 +216,55 @@ describe("EdsSpectrumPlot", () => {
     plot().select = { left: 30, top: 0, width: 40, height: 200 };
     hooks().setSelect?.[0](plot());
 
-    expect(onDragWindow).not.toHaveBeenCalled();
+    expect(onDragWindowsCommit).not.toHaveBeenCalled();
     expect(mock.setSelect).not.toHaveBeenCalled();
   });
 
   it("drags a window edge without shift: live stream, then one commit", () => {
-    const onDragWindow = vi.fn();
-    const onDragWindowLive = vi.fn();
+    const onDragWindowsCommit = vi.fn();
+    const onDragWindowsLive = vi.fn();
     render(
       <SpectrumPlot
         spec={WIDE}
         label="Sum spectrum"
         eLo={9}
         eHi={11}
-        onDragWindow={onDragWindow}
-        onDragWindowLive={onDragWindowLive}
+        onDragWindowsCommit={onDragWindowsCommit}
+        onDragWindowsLive={onDragWindowsLive}
       />,
     );
 
     // identity posToVal/valToPos: the hi edge sits at 11 px
     fireEvent.mouseDown(plot().over, { clientX: 11, button: 0 });
     fireEvent.mouseMove(document, { clientX: 15 });
-    expect(onDragWindowLive).toHaveBeenLastCalledWith(9, 15);
-    expect(onDragWindow).not.toHaveBeenCalled();
+    expect(onDragWindowsLive).toHaveBeenLastCalledWith({ signal: { lo: 9, hi: 15 } });
+    expect(onDragWindowsCommit).not.toHaveBeenCalled();
 
     fireEvent.mouseUp(document);
-    expect(onDragWindow).toHaveBeenCalledTimes(1);
-    expect(onDragWindow).toHaveBeenCalledWith(9, 15);
+    expect(onDragWindowsCommit).toHaveBeenCalledTimes(1);
+    expect(onDragWindowsCommit).toHaveBeenCalledWith({ signal: { lo: 9, hi: 15 } });
   });
 
   it("nudges the window one channel with arrows, committing on key-up", () => {
-    const onDragWindow = vi.fn();
-    const onDragWindowLive = vi.fn();
+    const onDragWindowsCommit = vi.fn();
+    const onDragWindowsLive = vi.fn();
     render(
       <SpectrumPlot
         spec={WIDE}
         label="Sum spectrum"
         eLo={9}
         eHi={11}
-        onDragWindow={onDragWindow}
-        onDragWindowLive={onDragWindowLive}
+        onDragWindowsCommit={onDragWindowsCommit}
+        onDragWindowsLive={onDragWindowsLive}
       />,
     );
 
     const host = plot().over.parentElement!;
     // WIDE's channel width is 5
     fireEvent.keyDown(host, { key: "ArrowRight" });
-    expect(onDragWindowLive).toHaveBeenLastCalledWith(14, 16);
+    expect(onDragWindowsLive).toHaveBeenLastCalledWith({ signal: { lo: 14, hi: 16 } });
     fireEvent.keyUp(host, { key: "ArrowRight" });
-    expect(onDragWindow).toHaveBeenCalledWith(14, 16);
+    expect(onDragWindowsCommit).toHaveBeenCalledWith({ signal: { lo: 14, hi: 16 } });
   });
 
   it("wheels a zoom about the energy under the cursor", () => {
@@ -275,7 +275,7 @@ describe("EdsSpectrumPlot", () => {
         label="Sum spectrum"
         eLo={9}
         eHi={11}
-        onDragWindow={() => {}}
+        onDragWindowsCommit={() => {}}
         onXRangeChange={onXRangeChange}
       />,
     );
@@ -393,7 +393,7 @@ describe("EdsSpectrumPlot", () => {
         label="Sum spectrum"
         eLo={9}
         eHi={11}
-        onDragWindow={() => {}}
+        onDragWindowsCommit={() => {}}
         onXRangeChange={onXRangeChange}
       />,
     );

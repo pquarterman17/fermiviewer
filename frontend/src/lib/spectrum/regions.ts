@@ -13,6 +13,14 @@ export interface IntegrationRegion extends WindowIntegration {
   label: string;
   /** The spectrum this was measured on ("Sum spectrum", "ROI […]", …). */
   source: string;
+  /** The species this region was pinned from, when there was one — lets a
+   *  restore find (or recreate) the exact species rather than sniffing
+   *  `label` for something that looks like an element symbol. Undefined for
+   *  an unnamed/custom window. */
+  symbol?: string;
+  /** The species' shell/edge label, when it was recorded. Optional: a region
+   *  can be matched by symbol alone when the transition was never carried. */
+  transition?: string;
 }
 
 /** Identity of a region: same element, window and background model. Re-adding
@@ -31,15 +39,18 @@ export function makeRegion(
   integration: WindowIntegration,
   element: string,
   source: string,
+  transition?: string,
 ): IntegrationRegion {
-  const label =
-    element && element !== "(custom)"
-      ? element
-      : `${integration.eLo.toFixed(2)}–${integration.eHi.toFixed(2)}`;
+  const named = !!element && element !== "(custom)";
+  const label = named
+    ? element
+    : `${integration.eLo.toFixed(2)}–${integration.eHi.toFixed(2)}`;
   return {
     ...integration,
     label,
     source,
+    symbol: named ? element : undefined,
+    transition: named ? transition : undefined,
     id: regionId(label, integration.eLo, integration.eHi, integration.bg, source),
   };
 }

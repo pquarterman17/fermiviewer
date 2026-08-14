@@ -30,13 +30,12 @@
 // one exception: it rebuilds the plot, because a new series list needs a new
 // uPlot instance and fit curves change on button click, not on every frame.
 //
-// Two callback shapes coexist for back-compat: `onDragWindow`/`onDragWindowLive`
-// (single signal window, energy pair) is the original EDS contract and its
-// behaviour is unchanged when `background` is absent; `onDragWindowsLive`/
-// `onDragWindowsCommit` (full `SpeciesWindows`) is the new shape that also
-// reports the background window when present. Both fire together on every
-// signal-window change, so an EDS caller supplying only the old prop keeps
-// working untouched.
+// One callback shape: `onDragWindowsLive`/`onDragWindowsCommit` report the
+// full `SpeciesWindows` (signal, plus background when `background` is
+// supplied) on every drag/nudge/shift-drag. Both EDS and EELS Explore use
+// this shape now (Wave 2, SPECTRAL_WORKSPACE_PLAN #11) — the earlier
+// `onDragWindow`/`onDragWindowLive` energy-pair contract EDS alone used to
+// carry is retired.
 
 import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import uPlot from "uplot";
@@ -76,7 +75,6 @@ export default function SpectrumPlot({
   label,
   eLo,
   eHi,
-  onDragWindow,
   markers = [],
   height = 260,
   logScale = false,
@@ -84,7 +82,6 @@ export default function SpectrumPlot({
   xRange = null,
   minSpan = 0,
   onXRangeChange,
-  onDragWindowLive,
   background = null,
   onDragWindowsLive,
   onDragWindowsCommit,
@@ -94,13 +91,6 @@ export default function SpectrumPlot({
   label: string;
   eLo: number;
   eHi: number;
-  /** Committed signal-window change — release of a drag/nudge, or a
-   *  shift-drag. Optional so a caller driving purely off `onDragWindowsCommit`
-   *  (EELS, once both windows matter) need not supply a redundant handler. */
-  onDragWindow?: (lo: number, hi: number) => void;
-  /** Streaming signal-window change while a drag/nudge is live. Client-side
-   *  readouts only; the commit callback is where to refetch. */
-  onDragWindowLive?: (lo: number, hi: number) => void;
   markers?: PeakMarker[];
   height?: number;
   logScale?: boolean;
@@ -117,8 +107,7 @@ export default function SpectrumPlot({
    *  or null renders/drags exactly one window — the original EDS shape. */
   background?: EnergyWindow | null;
   /** Streaming/committed change reported as the FULL window set, whichever
-   *  window (signal or background) moved. Fires alongside the single-window
-   *  callbacks above, never instead of them. */
+   *  window (signal or background) moved. */
   onDragWindowsLive?: (windows: SpeciesWindows) => void;
   onDragWindowsCommit?: (windows: SpeciesWindows) => void;
   /** Extra curves on the same energy axis (e.g. a background/signal fit).
@@ -143,31 +132,25 @@ export default function SpectrumPlot({
   });
   live.current = { eLo, eHi, background, markers, elementColors, xRange, minSpan };
   const callbacks = useRef({
-    onDragWindow,
-    onDragWindowLive,
     onXRangeChange,
     onDragWindowsLive,
     onDragWindowsCommit,
   });
   callbacks.current = {
-    onDragWindow,
-    onDragWindowLive,
     onXRangeChange,
     onDragWindowsLive,
     onDragWindowsCommit,
   };
 
-  // A window-set change, reported through both callback shapes at once.
+  // A window-set change, carrying the background window along when present.
   const windowsOf = (signal: EnergyWindow): SpeciesWindows =>
     live.current.background
       ? { signal, background: live.current.background }
       : { signal };
   const dispatchLive = (w: SpeciesWindows) => {
-    callbacks.current.onDragWindowLive?.(w.signal.lo, w.signal.hi);
     callbacks.current.onDragWindowsLive?.(w);
   };
   const dispatchCommit = (w: SpeciesWindows) => {
-    callbacks.current.onDragWindow?.(w.signal.lo, w.signal.hi);
     callbacks.current.onDragWindowsCommit?.(w);
   };
 

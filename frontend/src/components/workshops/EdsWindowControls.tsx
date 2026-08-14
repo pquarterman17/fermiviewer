@@ -10,7 +10,7 @@
 // map, and a second copy of it here is exactly the drift these plans keep
 // paying for.
 
-import type { EdsMapBackground } from "./useEdsElementMap";
+import type { EdsMapBackground } from "../../lib/eds/background";
 import WindowPresetBar from "../spectrum/WindowPresetBar";
 import type { WindowPreset } from "../../lib/spectrum/windowPresets";
 
