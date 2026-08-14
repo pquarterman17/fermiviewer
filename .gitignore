@@ -33,12 +33,23 @@ fv_example_output/
 # plan contents as publicly visible and keep credentials, unpublished
 # results and private-corpus paths out of them.
 #
-# plans/archive/ stays per-machine and UNTRACKED (the 2026-08-09 opt-in
-# covered the live plan tree only; archived legacy plans predate the
-# public-visibility scrub). Ignored explicitly so a broad `git add` can
-# never sweep them into a public commit.
+# plans/archive/ is ignored by DEFAULT (the 2026-08-09 opt-in covered the
+# live plan tree only; legacy archived plans predate the public-visibility
+# scrub), so a broad `git add` can never sweep an un-reviewed archived plan
+# into a public commit. Archived plans that code comments cite by name are
+# un-ignored individually below: a plan is the provenance record for the
+# breadcrumbs in the modules it produced, so dropping it from the repo turns
+# every one of those comments into a dangling pointer for anyone who clones.
+# To un-ignore one, scrub it first (credentials, unpublished results,
+# private-corpus paths) — this repo is public.
+# NOTE the glob: `plans/archive/` would exclude the DIRECTORY, and git never
+# descends into an excluded directory, so the negations below would be dead
+# lines. `plans/archive/*` excludes the contents instead, leaving them
+# reachable.
 design/
-plans/archive/
+plans/archive/*
+!plans/archive/PROJECT_WORKFLOW_PLAN.md
+!plans/archive/SPECTRAL_WORKSPACE_PLAN.md
 
 # IDE / OS
 .idea/
