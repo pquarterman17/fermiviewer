@@ -51,15 +51,8 @@ re-verified against the code before folding).*
 ## PLAN_4DSTEM.md
 
 *Parent: MAIN_PLAN.md. Status: Active. Tier 1 / Phase 1 (items 1–6) shipped
-2026-08-02. Tier 2 (COM/DPC/iDPC) deferred by owner 2026-08-02 in favor of
-hardening — a decision, not an oversight; item 7's core math already landed
-as a stretch goal. Tier 3 is parked future work; item 14 is the 2026-08-02
-live-audit usability follow-up list.*
-
-**Tier 2 — Medium Impact** *(deferred by owner 2026-08-02)*
-7. **Per-probe center-of-mass (COMx, COMy)** — the basis for all DPC
-8. **Differential phase contrast (DPC) + charge-density / field maps**
-9. **Integrated DPC (iDPC)** — light-element phase imaging
+2026-08-02; Tier 2 (items 7–9, COM/DPC/iDPC) shipped 2026-08-14 (PR #153,
+released v0.1.28) and is CLOSED. Only parked Tier 3 remains.*
 
 **Tier 3 — Nice-to-Have**
 10. **Disk-detection strain mapping**
@@ -68,8 +61,8 @@ live-audit usability follow-up list.*
 13. **More 4D formats + async ingest** — Gatan K2/K3, NCEM EMD 4D, blockfile
     `.blo`, job-queued batch virtual-detector
 
-**Open items: 7** *(item 14 closed 2026-08-12 — all five usability
-follow-ups from the live audit shipped)*
+**Open items: 4** *(Tier 2 closed 2026-08-14 — items 7–9 shipped via
+PR #153, released v0.1.28)*
 
 ---
 
@@ -97,18 +90,18 @@ only Tier 3 (build-on-demand by rule) remains.*
 | Plan | Status | Open items |
 |---|---|---|
 | MAIN_PLAN.md | Active (root) | 9 |
-| PLAN_4DSTEM.md | Active | 7 |
+| PLAN_4DSTEM.md | Active (Tier 3 residue only) | 4 |
 | ANALYSIS_PRESENTATION_PLAN.md | Active (Tier 3 residue only) | 4 |
 
-**Total open items:** 20
+**Total open items:** 17
 
 **Counting method:** top-level numbered items (the plan-format.md unit of a
 tracked work item) — not nested `- [ ]` sub-task checkboxes. Nested-checkbox
-counts by plan, for reference: MAIN_PLAN 5, PLAN_4DSTEM 7,
-ANALYSIS_PRESENTATION_PLAN 0 (12 total). A checkbox-based
+counts by plan, for reference: MAIN_PLAN 5, PLAN_4DSTEM 0,
+ANALYSIS_PRESENTATION_PLAN 0 (5 total). A checkbox-based
 count would disagree with the open-items count above — pick one convention
 when reading this table and don't mix the two.
 
-**Last regenerated:** 2026-08-13 (SPECTRAL_WORKSPACE_PLAN #11 closed −1 and
-the plan reached Complete → archived, its section removed per the
-plan-hygiene archival rule)
+**Last regenerated:** 2026-08-14 (PLAN_4DSTEM items 7–9 closed −3 — Tier 2
+shipped via phone-session PR #153 and released as v0.1.28; the plan file
+was updated in that PR but this dashboard was not, reconciled here)
