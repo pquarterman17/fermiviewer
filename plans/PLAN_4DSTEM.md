@@ -14,16 +14,22 @@ become a runtime dependency — all math is reimplemented from primary reference
 
 **Status:** Active (Tier 1 / Phase 1 COMPLETE 2026-08-02 — items #1–#6
 all shipped + live-verified same day, `f6141b2..b4826b0`. Tier 2 #7
-(per-probe COM) shipped 2026-08-14; remaining: #8–#9 DPC/iDPC — #7's
-`com.py` and `POST /fourd/{id}/com` are the foundation both consume — and
-parked Tier 3. Item #14's first two usability follow-ups — the .mib
-scan-shape GUI and the pattern-panel log toggle — shipped 2026-08-12;
-three remain)
+(per-probe COM) and #8 (DPC + charge density) shipped 2026-08-14;
+remaining: #9 iDPC — #7's `com.py`/`POST /fourd/{id}/com` and #8's
+`dpc.py`/`POST /fourd/{id}/dpc` are both in place for it to build on — and
+parked Tier 3. Item #14's live-audit usability list is fully shipped and
+CLOSED 2026-08-12 (c3df999) — this line previously still read "three
+remain" from before its last three boxes landed, contradicting the
+Updated log below)
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-06-21
-**Updated:** 2026-08-14 — item #7 (per-probe center-of-mass) CLOSED: all
+**Updated:** 2026-08-14 (later) — item #8 (DPC + charge-density/field maps)
+CLOSED: all three boxes shipped (`calc/fourd/dpc.py`,
+`POST /api/fourd/{id}/dpc` in the newly-split `routes/fourd_com.py`, 37
+new tests). Only #9 (iDPC) remains open in Tier 2.
+Earlier the same day: item #7 (per-probe center-of-mass) CLOSED: all
 three boxes shipped (`calc/fourd/com.py`, `POST /api/fourd/{id}/com`,
-20 new tests). Deferral lifted the same day (below); #8/#9 remain open.
+20 new tests). Deferral lifted the same day (below).
 Earlier: item #14 CLOSED 2026-08-12 (later) — its last three boxes
 (mrad radii, main-Stage probe picking, dataset-list live refresh) shipped.
 Earlier the same day — item #14's top two usability follow-ups shipped:
@@ -280,7 +286,12 @@ helper from #5. Headline STEM phase-contrast techniques.)*
 > that #7 has landed, #8 and #9 can proceed in either order. Each adds a
 > route to `routes/fourd.py` (429/500 lines after #7): if it nears the
 > ceiling, split it the way `server_routers.py` and `structure.py` were
-> split rather than trimming.
+> split rather than trimming. **Split preemptively, same day:**
+> `routes/fourd.py` (430/500) was split into the Phase-1 surface (now 291
+> lines) plus a new `routes/fourd_com.py` (120 lines, the COM/DPC/iDPC
+> family) and `routes/_fourd_common.py` (86 lines, shared dataset
+> lookup/block-cap/center-validation helpers) — #8 landed straight into
+> `fourd_com.py` (below) with room to spare before #9.
 
 7. ~~**Per-probe center-of-mass (COMx, COMy)**~~ (2026-08-14) — the basis
    for DPC/iDPC. `calc/fourd/com.py` is deliberately small: it does NOT
@@ -313,14 +324,62 @@ helper from #5. Headline STEM phase-contrast techniques.)*
    - [x] `POST /fourd/{id}/com` (THIN) → registers COMx/COMy as derived 2D images
    - [x] Tests: synthetic shifted-disk cube → COM tracks the known shift
 
-8. **Differential phase contrast (DPC) + charge-density / field maps** —
-   from the COM vector field.
-   - [ ] In `calc/fourd/com.py` (or a sibling, watch the 500-line ceiling):
-     DPC magnitude/direction, divergence (→ charge density), curl-free
-     integration setup. Calibrate COM→mrad→field with the detector calibration
-   - [ ] Extend the `/com` route response (or a `/dpc` route) to return the
-     derived field maps as 2D images
-   - [ ] Tests vs an analytic field (e.g. uniform E-field → constant COM shift)
+8. ~~**Differential phase contrast (DPC) + charge-density / field maps**~~
+   (2026-08-14) — from the COM vector field. New `calc/fourd/dpc.py` (a
+   sibling of `com.py`, not an extension of it): `calibrated_field_mrad`
+   turns a `com_maps`-style COM shift (detector pixels) into a beam-
+   deflection-angle field in milliradians, `dpc_magnitude`/`dpc_direction`
+   give the field's magnitude (mrad) and direction (radians,
+   `atan2(field_y, field_x)` in this module's 0-based `(ky, kx)` convention
+   — calibration-scale invariant, so it is identical whether computed from
+   the raw pixel shift or the calibrated field), and `divergence_map` is
+   the field's divergence — projected charge density by Gauss's law — via
+   a DOCUMENTED `numpy.gradient` finite-difference scheme (central
+   differences at interior scan positions, one-sided at the boundary; both
+   are exact for a spatially linear field, which is why the tests below
+   can assert an EXACT zero/known-constant divergence rather than an
+   approximate one). `dpc_maps` composes all four into one call. The
+   mrad-per-pixel detector calibration is the one piece of physics this
+   endpoint needs and cannot guess: it is NOT reliably present on every
+   `FourDDataset` (a bare `.mib` with no `.hdr` sidecar is uncalibrated —
+   see #14's mrad work), so it is a required argument on every calc
+   function and a required (`pydantic.Field(gt=0)`) request field on the
+   route — never defaulted to `1.0`. No accelerating-voltage or specimen-
+   thickness constant is taken as input (not asked for, and inventing one
+   would fabricate physics), so the divergence map is named and documented
+   as mrad per scan-pixel — proportional to, not an absolute measure of,
+   charge density. It is registered as `DPCdivergence`, NOT
+   "ChargeDensity": a map on the Stage carrying the latter name in units
+   of mrad/scan-px invites exactly the misreading the calc layer takes
+   care to avoid, so the interpretation rides in metadata with its caveat
+   attached instead of in the display name. `curl-free integration setup` from the original bullet is
+   iDPC's job (#9's Fourier-space integration), not DPC's, and is left for
+   that item. `POST /api/fourd/{id}/dpc` (thin, in `routes/fourd_com.py`)
+   is a SEPARATE route from `/com`, not a response extension of it — #9
+   also lands in this module and would otherwise have to edit the same
+   shared response schema. It reuses `/com`'s center-resolution/streaming
+   step (factored into a shared `_resolve_and_stream_com` helper alongside
+   a shared `_register_fourd_map` registration helper, so `/com` and
+   `/dpc` stay near-identical thin wrappers) and registers magnitude/
+   direction/divergence as three ordinary derived 2D images, each
+   recording the resolved descan center AND the calibration used.
+   `routes/fourd_com.py` grew 120→276 lines (pin 500 — comfortable room
+   left for #9). 37 new tests (22 pure in `test_fourd_dpc.py`, 15
+   route-level in `test_api_fourd_dpc.py`): a uniform synthetic COM field
+   gives a constant magnitude/direction and EXACTLY zero divergence (a
+   uniform E-field's null case); a linear ("radial", point-charge-like)
+   field gives a known non-zero constant divergence, so the charge-density
+   path is exercised for real, not just its null case — both at the pure
+   calc layer (hand-built field arrays) and end-to-end through the route
+   (a synthetic shifted-disk 4D cube whose per-probe COM traces the same
+   linear field). A too-narrow scan shape (1 column) 422s instead of
+   500ing, since `divergence_map` needs >= 2 scan positions per axis.
+   - [x] `calc/fourd/dpc.py` — DPC magnitude/direction, divergence (→ charge
+     density). Calibrate COM→mrad→field with the detector calibration
+   - [x] `POST /fourd/{id}/dpc` (THIN) → registers magnitude/direction/
+     charge-density as derived 2D images
+   - [x] Tests vs an analytic field: uniform E-field → constant COM shift,
+     zero divergence; a radial field with known non-zero divergence
 
 9. **Integrated DPC (iDPC)** — light-element phase imaging via 2D integration of
    the COM field.

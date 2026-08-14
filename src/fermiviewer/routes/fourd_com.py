@@ -14,15 +14,24 @@ scan-shaped maps (COMy, COMx), each registered as an ordinary derived 2D
 image the same way `/nav` does. A null center costs one extra whole-cube
 pass via `ds4.mean_pattern` (cached after first use) to seed an auto
 center; an explicit center never touches `ds4.mean_pattern` at all.
+`POST /api/fourd/{id}/dpc` pays the exact same streamed cost to obtain the
+COM field, then runs `calc.fourd.dpc.dpc_maps` — pure numpy over three
+already-small `(scan_y, scan_x)` arrays, negligible next to the streamed
+pass. It is a SEPARATE route (not a `/com` response extension): #9 (iDPC)
+also lands in this module and would otherwise need to edit the same shared
+response schema, so each phase-contrast product gets its own route and
+response type instead.
 """
 
 from __future__ import annotations
 
 import numpy as np
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from fermiviewer.calc.fourd.com import com_maps, resolve_center
+from fermiviewer.calc.fourd.dataset import FourDDataset
+from fermiviewer.calc.fourd.dpc import DpcMaps, dpc_maps
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.models import ImageMeta
 from fermiviewer.routes._arrays import value_error_as_422
@@ -35,6 +44,31 @@ from fermiviewer.session import store as image_store
 from fermiviewer.session_fourd import fourd_store
 
 router = APIRouter(prefix="/api")
+
+
+def _resolve_and_stream_com(
+    ds4: FourDDataset, center_ky: float | None, center_kx: float | None
+) -> tuple[float, float, np.ndarray, np.ndarray]:
+    """Shared by `/com` and `/dpc`: resolve the descan center (recording
+    the RESOLVED value, never the request's null — see `ComRequest`'s
+    docstring for why), then stream the cube once into the COM maps.
+
+    Returns ``(center_ky, center_kx, com_y_shift, com_x_shift)``.
+    """
+    if center_ky is not None and center_kx is not None:
+        cy, cx = center_ky, center_kx
+    else:
+        # only the auto-center path pays for a (possibly first-touch,
+        # whole-cube) mean_pattern access — an explicit center never does.
+        with value_error_as_422():
+            cy, cx = resolve_center(None, ds4.mean_pattern)
+
+    block_rows = block_rows_for_byte_cap(ds4)
+    with value_error_as_422():
+        com_y, com_x = com_maps(
+            ds4.iter_scan_rows(block_rows=block_rows), center=(cy, cx)
+        )
+    return cy, cx, com_y, com_x
 
 
 class ComRequest(BaseModel):
@@ -58,6 +92,39 @@ class ComMapsResponse(BaseModel):
     comx: ImageMeta
 
 
+def _register_fourd_map(
+    map_arr: np.ndarray,
+    *,
+    fourd_id: str,
+    ds4: FourDDataset,
+    parser: str,
+    analysis: str,
+    label: str,
+    base_name: str,
+    req_name: str | None,
+    extra_metadata: dict[str, float | str],
+) -> ImageMeta:
+    """Register one scan-shaped derived map — shared by every `/com`/`/dpc`
+    output. ``analysis``/``extra_metadata`` land verbatim in the image's
+    metadata (surfaced to clients as `ImageMeta.meta`); ``label`` only
+    controls the default display name."""
+    name = f"{req_name} ({label})" if req_name else f"{label}({base_name})"
+    struct = DataStruct(
+        data=np.ascontiguousarray(map_arr),
+        kind=DataKind.IMAGE,
+        axes=(ds4.scan_axes[0], ds4.scan_axes[1]),
+        metadata={
+            "source": name,
+            "parser": parser,
+            "analysis": analysis,
+            "fourd_id": fourd_id,
+            **extra_metadata,
+        },
+    )
+    img_id = image_store.add_derived(struct, name, fourd_id)
+    return ImageMeta.from_datastruct(img_id, image_store.name(img_id), struct)
+
+
 @router.post("/fourd/{fourd_id}/com")
 def fourd_com(fourd_id: str, req: ComRequest) -> ComMapsResponse:
     """Per-probe center-of-mass shift maps — the basis for DPC/iDPC
@@ -75,46 +142,135 @@ def fourd_com(fourd_id: str, req: ComRequest) -> ComMapsResponse:
     """
     ds4 = get_fourd(fourd_id)
     validate_optional_center(req.center_ky, req.center_kx, ds4.det_shape)
-
-    # Resolve the center BEFORE computing so the maps can record the descan
-    # reference they were actually measured against — on the auto path
-    # `req.center_ky`/`kx` are null, and a stored null would lose it (the
-    # /virtual-detector route resolves-then-records for the same reason).
-    if req.center_ky is not None and req.center_kx is not None:
-        cy, cx = req.center_ky, req.center_kx
-    else:
-        # only the auto-center path pays for a (possibly first-touch,
-        # whole-cube) mean_pattern access — an explicit center never does.
-        with value_error_as_422():
-            cy, cx = resolve_center(None, ds4.mean_pattern)
-
-    block_rows = block_rows_for_byte_cap(ds4)
-    with value_error_as_422():
-        com_y, com_x = com_maps(
-            ds4.iter_scan_rows(block_rows=block_rows), center=(cy, cx)
-        )
+    cy, cx, com_y, com_x = _resolve_and_stream_com(ds4, req.center_ky, req.center_kx)
 
     base_name = fourd_store.name(fourd_id)
+    center_meta: dict[str, float | str] = {
+        "center_ky": float(cy),
+        "center_kx": float(cx),
+    }
 
     def _register(map_arr: np.ndarray, axis: str, label: str) -> ImageMeta:
-        name = f"{req.name} ({label})" if req.name else f"{label}({base_name})"
-        struct = DataStruct(
-            data=np.ascontiguousarray(map_arr),
-            kind=DataKind.IMAGE,
-            axes=(ds4.scan_axes[0], ds4.scan_axes[1]),
-            metadata={
-                "source": name,
-                "parser": "fourd-com",
-                "analysis": axis,
-                "fourd_id": fourd_id,
-                "center_ky": float(cy),
-                "center_kx": float(cx),
-            },
+        return _register_fourd_map(
+            map_arr,
+            fourd_id=fourd_id,
+            ds4=ds4,
+            parser="fourd-com",
+            analysis=axis,
+            label=label,
+            base_name=base_name,
+            req_name=req.name,
+            extra_metadata=center_meta,
         )
-        img_id = image_store.add_derived(struct, name, fourd_id)
-        return ImageMeta.from_datastruct(img_id, image_store.name(img_id), struct)
 
     return ComMapsResponse(
         comy=_register(com_y, "com_y", "COMy"),
         comx=_register(com_x, "com_x", "COMx"),
+    )
+
+
+# ── differential phase contrast (PLAN_4DSTEM #8) ───────────────────────
+
+
+class DpcRequest(BaseModel):
+    """Same descan-center contract as `ComRequest` (see its docstring), plus
+    the ONE calibration this whole endpoint exists to apply:
+    ``mrad_per_px`` — the detector's isotropic milliradians-per-pixel scale.
+
+    That calibration is not reliably available on every `FourDDataset` (a
+    bare `.mib` with no `.hdr` sidecar is uncalibrated) and is never
+    guessed here — required, with no default, so a client that has not
+    actually calibrated its detector cannot silently get a `1.0`-scaled
+    "field" that is really just the raw pixel-shift map relabeled. See
+    `calc/fourd/dpc.py`'s module docstring for the full rationale.
+    """
+
+    center_ky: float | None = None
+    center_kx: float | None = None
+    mrad_per_px: float = Field(gt=0)
+    name: str | None = None
+
+
+class DpcMapsResponse(BaseModel):
+    """Three derived maps from one `/dpc` call, each an ordinary registered
+    2D image. See `calc/fourd/dpc.py`'s `DpcMaps` for the units of each."""
+
+    magnitude: ImageMeta
+    direction: ImageMeta
+    divergence: ImageMeta
+
+
+@router.post("/fourd/{fourd_id}/dpc")
+def fourd_dpc(fourd_id: str, req: DpcRequest) -> DpcMapsResponse:
+    """Differential phase contrast: magnitude/direction of the calibrated
+    COM deflection field, plus its divergence (projected charge density by
+    Gauss's law). A SEPARATE route from `/com` (not a response extension of
+    it) — see the module docstring for why, and PLAN_4DSTEM #8.
+
+    All math lives in `calc.fourd.dpc.dpc_maps` — this route validates the
+    request, resolves the descan center and streams the cube exactly once
+    (identical cost to `/com`, see the module docstring for the RAM
+    budget), then registers the three results, recording the resolved
+    center AND the calibration used on every map's metadata.
+    """
+    ds4 = get_fourd(fourd_id)
+    validate_optional_center(req.center_ky, req.center_kx, ds4.det_shape)
+    cy, cx, com_y, com_x = _resolve_and_stream_com(ds4, req.center_ky, req.center_kx)
+
+    with value_error_as_422():
+        maps: DpcMaps = dpc_maps(com_y, com_x, req.mrad_per_px)
+
+    base_name = fourd_store.name(fourd_id)
+    shared_meta: dict[str, float | str] = {
+        "center_ky": float(cy),
+        "center_kx": float(cx),
+        "mrad_per_px": float(req.mrad_per_px),
+    }
+
+    def _register(
+        map_arr: np.ndarray,
+        axis: str,
+        label: str,
+        units: str,
+        interpretation: str | None = None,
+    ) -> ImageMeta:
+        extra: dict[str, float | str] = {**shared_meta, "units": units}
+        if interpretation is not None:
+            extra["interpretation"] = interpretation
+        return _register_fourd_map(
+            map_arr,
+            fourd_id=fourd_id,
+            ds4=ds4,
+            parser="fourd-dpc",
+            analysis=axis,
+            label=label,
+            base_name=base_name,
+            req_name=req.name,
+            extra_metadata=extra,
+        )
+
+    return DpcMapsResponse(
+        magnitude=_register(maps.magnitude_mrad, "dpc_magnitude", "DPCmagnitude", "mrad"),
+        direction=_register(maps.direction_rad, "dpc_direction", "DPCdirection", "rad"),
+        # Labelled for what it MEASURABLY is, not for its interpretation:
+        # this is the divergence of the deflection field, in mrad per scan
+        # pixel. It is proportional to projected charge density, but the
+        # constant relating them needs the specimen thickness, the
+        # accelerating voltage and the physical scan pitch, none of which
+        # this route has (see divergence_map's docstring). A map on the
+        # Stage reading "ChargeDensity" in units of mrad/scan-px invites
+        # exactly the misreading the calc layer is careful to avoid — the
+        # interpretation belongs in metadata, where it can carry its
+        # caveat, not in the name.
+        divergence=_register(
+            maps.divergence,
+            "dpc_divergence",
+            "DPCdivergence",
+            "mrad_per_scan_px",
+            interpretation=(
+                "proportional to projected charge density (Gauss's law); "
+                "absolute density needs specimen thickness, accelerating "
+                "voltage and the physical scan pixel pitch"
+            ),
+        ),
     )

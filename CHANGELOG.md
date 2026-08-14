@@ -16,6 +16,34 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Differential phase contrast (DPC) for 4D-STEM (`POST /api/fourd/{id}/dpc`,
+  PLAN_4DSTEM #8).** New `calc/fourd/dpc.py` turns a `/com`-style COM shift
+  field into the standard DPC products: magnitude and direction of the
+  beam-deflection field, and the field's divergence — projected charge
+  density by Gauss's law, via a documented `numpy.gradient` finite-difference
+  scheme (central differences at interior scan positions, one-sided at the
+  boundary; both exact for a linear field). The detector's milliradians-per-
+  pixel calibration is what turns a COM shift in detector pixels into a
+  physical deflection angle, and it is NOT reliably available on every
+  `FourDDataset` (a bare `.mib` with no `.hdr` sidecar is uncalibrated) — so
+  `mrad_per_px` is a required argument on every calc function and a required
+  (`Field(gt=0)`) request field on the route, never silently defaulted to
+  `1.0`. `POST /api/fourd/{id}/dpc` is a separate route from `/com` (not a
+  response extension of it — #9's iDPC also lands in `routes/fourd_com.py`
+  and would otherwise share the same response schema), reusing `/com`'s
+  center-resolution/streaming step and registering magnitude/direction/
+  divergence as three ordinary derived 2D images, each recording the
+  resolved descan center and the calibration used. The divergence map is
+  named for what it measurably is — mrad per scan pixel — rather than
+  "charge density": it is *proportional* to projected charge density, but
+  the constant relating the two needs the specimen thickness, the
+  accelerating voltage and the physical scan pitch, none of which this
+  route has. That interpretation, and its caveat, ride in the map's
+  metadata instead of in a display name that would overstate the number. Tested against analytic
+  fields: a uniform field gives a constant magnitude/direction and EXACTLY
+  zero divergence; a linear ("radial", point-charge-like) field gives a
+  known non-zero constant divergence, exercising the charge-density path
+  itself rather than only its null case.
 - **Per-probe center-of-mass mapping for 4D-STEM (`POST /api/fourd/{id}/com`,
   PLAN_4DSTEM #7).** Registers COMy and COMx as two ordinary derived 2D
   images — the basis for the DPC/iDPC work that follows — through the same
