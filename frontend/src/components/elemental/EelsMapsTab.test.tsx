@@ -1,14 +1,19 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { eelsAutoAssign, eelsMaps, type ImageMeta } from "../../lib/api";
+import { eelsAutoAssign, eelsMaps, fetchSpectrum, type ImageMeta } from "../../lib/api";
 import { useSpecies } from "../../store/species";
 import { useViewer } from "../../store/viewer";
 import EelsMapsTab from "./EelsMapsTab";
 
 vi.mock("../../lib/api", async (importActual) => {
   const actual = await importActual<typeof import("../../lib/api")>();
-  return { ...actual, eelsAutoAssign: vi.fn(), eelsMaps: vi.fn() };
+  return {
+    ...actual,
+    eelsAutoAssign: vi.fn(),
+    eelsMaps: vi.fn(),
+    fetchSpectrum: vi.fn(),
+  };
 });
 
 function cube(): ImageMeta {
@@ -63,6 +68,19 @@ function autoAssignReply() {
   };
 }
 
+/** Hand-computable synthetic spectrum for the live-net tests below: the
+ *  energy grid has no point inside Fe-L23's fit window [656,706] (auto-ID's
+ *  own pre-edge background window from `autoAssignReply`), so `integrateEdge`
+ *  takes its "< 2 channels — background skipped" path and net is exactly the
+ *  gross sum over the signal window — no power-law fit to hand-replicate. */
+function spectrumReply() {
+  return {
+    energy: [100, 300, 500, 708, 758, 900],
+    counts: [5, 5, 5, 300, 200, 5],
+    units: "eV",
+  };
+}
+
 function mapsReply(labels: string[]) {
   return {
     image_id: "cube",
@@ -90,7 +108,7 @@ beforeEach(() => {
 
 afterEach(() => {
   useViewer.setState({ images: {}, order: [], activeId: null, selected: [] });
-  useSpecies.setState({ byImage: {} });
+  useSpecies.setState({ byImage: {}, selectedByImage: {}, edsSettingsByImage: {} });
   vi.clearAllMocks();
 });
 
@@ -190,5 +208,56 @@ describe("EelsMapsTab", () => {
     await waitFor(() =>
       expect(screen.getAllByLabelText("Show Si")).toHaveLength(2),
     );
+  });
+});
+
+describe("EelsMapsTab live net", () => {
+  it("computes a hand-matching live net ± sigma, and updates it without a re-identify", async () => {
+    vi.mocked(eelsAutoAssign).mockResolvedValue(autoAssignReply());
+    vi.mocked(fetchSpectrum).mockResolvedValue(spectrumReply());
+    vi.mocked(eelsMaps).mockResolvedValue(mapsReply(["Fe-L23"]));
+
+    render(<EelsMapsTab />);
+
+    // signal [708,758] -> channels 708,758 -> gross 300+200=500, no
+    // background fit (0 channels in [656,706]) -> net=500, sqrt(500)=22.36.
+    await waitFor(() => expect(screen.getByText("500 ± 22")).toBeVisible());
+
+    // Drag the window wider directly through the store — the same thing
+    // EelsExploreTab's commitWindows does — WITHOUT calling identify again.
+    // Every channel now qualifies: 5+5+5+300+200+5 = 520, sqrt(520)=22.80.
+    const speciesId = useSpecies.getState().byImage.cube[0].id;
+    act(() => {
+      useSpecies.getState().setWindow("cube", speciesId, "signal", { lo: 100, hi: 900 });
+    });
+
+    await waitFor(() => expect(screen.getByText("520 ± 23")).toBeVisible());
+    // The stale identify-time net must be gone, not just superseded in the DOM.
+    expect(screen.queryByText("500 ± 22")).toBeNull();
+  });
+
+  it("shows the identifying placeholder, not a stale net, before the first identify resolves", () => {
+    vi.mocked(eelsAutoAssign).mockResolvedValue({ edges: [] });
+    vi.mocked(fetchSpectrum).mockResolvedValue(spectrumReply());
+    render(<EelsMapsTab />);
+    expect(screen.getByText("Identifying…")).toBeVisible();
+  });
+});
+
+describe("EelsMapsTab row selection", () => {
+  it("selects a row's species in the store when its symbol is clicked, and highlights it", async () => {
+    vi.mocked(eelsAutoAssign).mockResolvedValue(autoAssignReply());
+    vi.mocked(fetchSpectrum).mockResolvedValue(spectrumReply());
+    vi.mocked(eelsMaps).mockResolvedValue(mapsReply(["Fe-L23"]));
+
+    render(<EelsMapsTab />);
+    await waitFor(() => expect(screen.getByLabelText("Show Fe")).toBeVisible());
+
+    expect(useSpecies.getState().selectedByImage.cube).toBeUndefined();
+    fireEvent.click(screen.getByRole("button", { name: "Fe" }));
+
+    const speciesId = useSpecies.getState().byImage.cube[0].id;
+    expect(useSpecies.getState().selectedByImage.cube).toBe(speciesId);
+    expect(screen.getByLabelText("Show Fe").closest("li")).toHaveClass("selected");
   });
 });

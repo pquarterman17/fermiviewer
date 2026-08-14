@@ -2,16 +2,18 @@
 //
 // Mirrors MapsTab.tsx's identify → confirm → colour-coded maps shape, reusing
 // its shared pieces (ElementList, MapMontage, MapOverlay, the figure-export
-// path) rather than forking them. The two real differences from EDS: (1)
-// /eels/auto-assign scores every tabulated edge server-side, so there is no
-// client-side spectrum re-fetch/re-integration to do — identify() is one
-// request; (2) one element can carry two species at once (Si K and Si L23),
-// so "pick Fe" from the periodic table adds/removes every edge auto-assign
-// found for that symbol, not a single looked-up line.
+// path) rather than forking them. Two real differences from EDS: (1)
+// /eels/auto-assign scores every tabulated edge server-side, so finding the
+// edges needs no client-side spectrum fetch — the sum spectrum fetched here
+// (Wave 3) exists only to feed each row's LIVE net, mirroring the same
+// liveNetById pattern MapsTab.tsx uses for EDS; (2) one element can carry two
+// species at once (Si K and Si L23), so "pick Fe" from the periodic table
+// adds/removes every edge auto-assign found for that symbol, not a single
+// looked-up line.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { eelsAutoAssign, fetchData16 } from "../../lib/api";
+import { eelsAutoAssign, fetchData16, fetchSpectrum, type Spectrum } from "../../lib/api";
 import type { CompositeRaster } from "../../lib/composite";
 import { eelsEvidenceFrom, type EelsEdgeEvidence } from "../../lib/elemental/eelsIdentify";
 import { exportElementalFigure } from "../../lib/elemental/figureExport";
@@ -27,10 +29,11 @@ import {
   visibleSpecies,
   type SpeciesRow,
 } from "../../lib/elemental/speciesRows";
+import { integrateEdge } from "../../lib/eels/integrate";
 import { eelsSpecies } from "../../lib/spectrum/species";
 import { speciesOf, useSpecies } from "../../store/species";
 import { useViewer } from "../../store/viewer";
-import ElementList from "./ElementList";
+import ElementList, { type LiveNet } from "./ElementList";
 import MapMontage from "./MapMontage";
 import MapOverlay from "./MapOverlay";
 import { useEelsElementMaps } from "./useEelsMaps";
@@ -58,7 +61,10 @@ export default function EelsMapsTab({
   const removeSpecies = useSpecies((s) => s.removeSpecies);
   const setVisible = useSpecies((s) => s.setVisible);
   const setAllVisible = useSpecies((s) => s.setAllVisible);
+  const selectedByImage = useSpecies((s) => s.selectedByImage);
+  const selectSpecies = useSpecies((s) => s.selectSpecies);
   const species = speciesOf(byImage, activeId);
+  const selectedId = activeId ? (selectedByImage[activeId] ?? null) : null;
 
   // EVIDENCE ONLY — what the user decided lives in the species store, keyed
   // by image, so it survives switching cubes and a re-identification.
@@ -70,6 +76,12 @@ export default function EelsMapsTab({
   const [legendValue, setLegendValue] = useState<LegendValue>("net");
   const [surveyId, setSurveyId] = useState<string | null>(null);
   const [survey, setSurvey] = useState<CompositeRaster | null>(null);
+  const sumSpectrum = useRef<Spectrum | null>(null);
+  // sumSpectrum lives in a ref so identify()'s synchronous "already fetched?"
+  // check doesn't wait a render — but a memo can't depend on a ref's
+  // contents, so this counter is bumped every time the ref changes and
+  // stands in for it in dependency arrays below. Mirrors MapsTab.tsx (EDS).
+  const [spectrumVersion, setSpectrumVersion] = useState(0);
   const overlayCanvas = useRef<HTMLCanvasElement | null>(null);
 
   const stillOpen = useCallback(
@@ -87,15 +99,25 @@ export default function EelsMapsTab({
   const meta = activeId ? images[activeId] : null;
   const cubeShape = meta?.shape;
 
-  /** /eels/auto-assign scores every tabulated edge server-side, so unlike
-   *  EDS's identify() there is no spectrum to fetch or re-integrate here. */
+  /** /eels/auto-assign scores every tabulated edge server-side — no spectrum
+   *  is needed to find/seed the edges — but the row list's LIVE net (unlike
+   *  the frozen identify-time evidence) tracks a window the user just
+   *  edited, and that needs the sum spectrum client-side the same way EDS's
+   *  identify() fetches one. Cached in sumSpectrum across re-identify. */
   const identify = useCallback(async () => {
     const id = activeId;
     if (!id) return;
     setIdBusy(true);
     try {
-      const auto = await eelsAutoAssign(id, { method });
+      const [auto, raw] = await Promise.all([
+        eelsAutoAssign(id, { method }),
+        sumSpectrum.current
+          ? Promise.resolve(sumSpectrum.current)
+          : fetchSpectrum(id),
+      ]);
       if (!stillOpen(id)) return;
+      sumSpectrum.current = raw;
+      setSpectrumVersion((v) => v + 1);
       const found = eelsEvidenceFrom(auto);
       setEvidence(found);
       // Seed only when this image has no species yet — a return visit or a
@@ -123,6 +145,8 @@ export default function EelsMapsTab({
   // Auto-ID when a cube becomes active: the user should never face a blank
   // edge box on a dataset whose edges are sitting in its own spectrum.
   useEffect(() => {
+    sumSpectrum.current = null;
+    setSpectrumVersion((v) => v + 1);
     setEvidence([]);
     setGains({});
     setSurveyId(null);
@@ -135,6 +159,38 @@ export default function EelsMapsTab({
 
   const rows = useMemo(() => buildRows(species, evidence), [species, evidence]);
   const shownSpecies = useMemo(() => visibleSpecies(rows), [rows]);
+
+  // The spectrum a row's live net is measured against — read through the
+  // version counter rather than the ref directly, so this recomputes exactly
+  // when the ref's contents change and not on every unrelated re-render.
+  const liveSpectrum = useMemo(
+    () => sumSpectrum.current,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [spectrumVersion],
+  );
+
+  /** Live net ± σ per row, from the sum spectrum and each species' CURRENT
+   *  signal+background windows — unlike `evidence.net`, frozen at the last
+   *  identify() pass, this tracks a window the user just edited in Explore
+   *  without waiting for a re-ID. A row with no channels in its signal
+   *  window (or no spectrum yet) is simply absent here, which ElementList
+   *  reads as "nothing live to show" and falls back to the frozen evidence. */
+  const liveNetById = useMemo(() => {
+    if (!liveSpectrum) return {};
+    const out: Record<string, LiveNet | undefined> = {};
+    for (const row of rows) {
+      const integration = integrateEdge(
+        liveSpectrum,
+        row.species.windows.signal,
+        row.species.windows.background,
+        method,
+      );
+      if (integration) {
+        out[row.species.id] = { net: integration.net, sigma: integration.sigma };
+      }
+    }
+    return out;
+  }, [liveSpectrum, rows, method]);
 
   const { tiles, mapsBusy } = useEelsElementMaps({
     imageId: activeId,
@@ -266,6 +322,8 @@ export default function EelsMapsTab({
       <ElementList
         rows={rows}
         busy={idBusy}
+        liveNetById={liveNetById}
+        selectedId={selectedId}
         onToggle={(speciesId, visible) =>
           activeId && setVisible(activeId, speciesId, visible)
         }
@@ -274,7 +332,14 @@ export default function EelsMapsTab({
         onAdd={addElement}
         onRemove={(speciesId) => activeId && removeSpecies(activeId, speciesId)}
         onHover={(symbol) => onHoverElement?.(symbol)}
-        onFocus={(row) => onFocusElement?.(row)}
+        onFocus={(row) => {
+          // Clicking a row both selects it (for SpeciesChips and any other
+          // surface reading the store's selection) and keeps firing the
+          // optional montage-tile focus callback — the two are independent
+          // consumers of the same click. Mirrors MapsTab.tsx (EDS).
+          if (activeId) selectSpecies(activeId, row.species.id);
+          onFocusElement?.(row);
+        }}
       />
 
       <div className="fvd-ws-row">

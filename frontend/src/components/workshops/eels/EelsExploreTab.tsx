@@ -12,20 +12,38 @@
 // `bgWindow` below are the ordered, numeric views the plot and the
 // client-side readout are computed from — ordering a typed "hi < lo" is
 // normalised here rather than rewriting the text field mid-keystroke.
+//
+// SPECTRAL_WORKSPACE_PLAN #11 Wave 3: when a species is selected (via the
+// SpeciesChips strip mounted here, or a Maps row click — both write the same
+// store selection) these four fields ARE that species' windows, and every
+// commit (drag release, preset click, typed blur) writes back through
+// `setWindow`. A live drag stays purely local until it commits — see
+// `commitWindows` below. With nothing selected this degrades exactly to the
+// old spectrum-fraction-seeded, locally-edited behaviour.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { EelsBackgroundResult, Spectrum } from "../../../lib/api";
 import type { PeakMarker } from "../../../lib/eds/peakMarkers";
 import { formatCountTick } from "../../../lib/edsSpectrumDisplay";
 import { integrateEdge } from "../../../lib/eels/integrate";
-import { orderWindow, splitEdgeLabel } from "../../../lib/spectrum/species";
+import {
+  orderWindow,
+  splitEdgeLabel,
+  type EnergyWindow,
+} from "../../../lib/spectrum/species";
 import {
   presetWindows,
   type WindowPreset,
 } from "../../../lib/spectrum/windowPresets";
 import type { XRange } from "../../../lib/spectrum/zoomRange";
+import {
+  selectedSpeciesOf,
+  speciesOf,
+  useSpecies,
+} from "../../../store/species";
 import type { CaptureMode } from "../../../store/viewerTypes";
+import SpeciesChips from "../../elemental/SpeciesChips";
 import SpectrumPlot, {
   type SpectrumOverlay,
 } from "../../spectrum/SpectrumPlot";
@@ -38,6 +56,10 @@ import { KNOWN_EDGES } from "./eelsEdges";
 
 const MIN_ZOOM_CHANNELS = 6; // narrowest view the wheel / buttons may reach
 const OVERLAY_ACCENT = "#a78bfa";
+
+/** The shape a drag/preset/typed edit reports — signal always, background
+ *  only when that half of the pair was the one that changed. */
+type WindowsPatch = { signal: EnergyWindow; background?: EnergyWindow };
 
 function pm(value: number, error: number): string {
   return `${formatCountTick(value)} ± ${formatCountTick(error)}`;
@@ -96,6 +118,23 @@ export default function EelsExploreTab({
   const [pickMode, setPickMode] = useState<"region" | "pixel">("region");
   const [xRange, setXRange] = useState<XRange | null>(null);
 
+  const imageId = activeId;
+  const byImage = useSpecies((s) => s.byImage);
+  const setWindow = useSpecies((s) => s.setWindow);
+  const selected = useSpecies((s) => selectedSpeciesOf(s, imageId));
+  const species = speciesOf(byImage, imageId);
+
+  // An Explore tab opened straight from a fresh cube (no prior Maps visit,
+  // or nothing picked there yet) should not present blank/default windows
+  // when real species already exist — mirrors Maps' own "seed once" rule,
+  // just for selection instead of the list itself.
+  useEffect(() => {
+    if (!imageId) return;
+    if (useSpecies.getState().selectedByImage[imageId]) return;
+    const first = species.find((s) => s.visible);
+    if (first) useSpecies.getState().selectSpecies(imageId, first.id);
+  }, [imageId, species]);
+
   const sigWindow = useMemo(
     () => orderWindow({ lo: Number(sigLo) || 0, hi: Number(sigHi) || 0 }),
     [sigLo, sigHi],
@@ -107,6 +146,24 @@ export default function EelsExploreTab({
         : null,
     [bgLo, bgHi],
   );
+
+  // The edited windows ARE the selected species' windows — switching species
+  // (a chip here, or a Maps row click, both write the same store selection)
+  // swaps what this tab shows and edits. EelsWorkshop's fraction-based
+  // `seedFitWindows` default only applies while nothing is selected — see
+  // its own guard for the other half of this handshake.
+  useEffect(() => {
+    if (!selected || selected.modality !== "eels") return;
+    setSigLo(fmtNum(selected.windows.signal.lo));
+    setSigHi(fmtNum(selected.windows.signal.hi));
+    if (selected.windows.background) {
+      setBgLo(fmtNum(selected.windows.background.lo));
+      setBgHi(fmtNum(selected.windows.background.hi));
+    } else {
+      setBgLo("");
+      setBgHi("");
+    }
+  }, [selected, setBgLo, setBgHi, setSigLo, setSigHi]);
 
   const { bounds, minSpan } = useMemo(() => {
     const n = spectrum?.energy.length ?? 0;
@@ -168,11 +225,10 @@ export default function EelsExploreTab({
   // Sync all four fields from whichever window a drag/nudge/shift-drag
   // touched. Idempotent for the untouched window: seedFitWindows already
   // writes fmtNum's canonical form, so re-formatting an unchanged value
-  // yields the same string back.
-  const handleWindowsChange = (w: {
-    signal: { lo: number; hi: number };
-    background?: { lo: number; hi: number };
-  }) => {
+  // yields the same string back. LOCAL ONLY — this runs on every live drag
+  // frame, and a frame-rate write into the species store is not what
+  // "commit" means (see commitWindows below).
+  const handleWindowsChange = (w: WindowsPatch) => {
     setSigLo(fmtNum(w.signal.lo));
     setSigHi(fmtNum(w.signal.hi));
     if (w.background) {
@@ -181,16 +237,44 @@ export default function EelsExploreTab({
     }
   };
 
+  /** A commit — drag release, preset click, or a typed field losing focus.
+   *  Updates the fields locally AND, when a species is selected, writes
+   *  through to the store: Maps' live net and the EELS map extraction both
+   *  key on the species' windows, so this is what makes an Explore edit
+   *  show up there immediately (SPECTRAL_WORKSPACE_PLAN #11 Wave 3). With
+   *  nothing selected (no species yet, or a plain non-species workflow) it
+   *  degrades to exactly the old local-only behaviour. */
+  const commitWindows = (w: WindowsPatch) => {
+    handleWindowsChange(w);
+    if (imageId && selected) {
+      setWindow(imageId, selected.id, "signal", w.signal);
+      if (w.background) setWindow(imageId, selected.id, "background", w.background);
+    }
+  };
+
+  /** The four text fields have no per-keystroke commit — a half-typed
+   *  number is not a window edit — so typing commits on blur, from
+   *  whatever the fields currently parse to (sigWindow/bgWindow already
+   *  track bgLo/bgHi/sigLo/sigHi, ordered). */
+  const commitTyped = () =>
+    commitWindows({ signal: sigWindow, background: bgWindow ?? undefined });
+
   /** A width preset is measured from the ONSET, which for an EELS signal
    *  window is its lower bound: the edge is a step, so the window's start is
    *  the physical landmark and only its extent is a choice. Re-placing the
    *  pre-edge background under it comes free from `eelsDefaultWindows` — the
    *  same placement a fresh species is born with. */
   const applyPreset = (preset: WindowPreset) =>
-    handleWindowsChange(presetWindows("eels", sigWindow.lo, preset));
+    commitWindows(presetWindows("eels", sigWindow.lo, preset));
 
   return (
     <>
+      {imageId && (
+        <SpeciesChips
+          imageId={imageId}
+          emptyHint="No species yet — identify or add elements from the Maps tab."
+        />
+      )}
       <div className="fvd-ws-row">
         <label className="fvd-check">
           <input
@@ -275,7 +359,7 @@ export default function EelsExploreTab({
             eHi={sigWindow.hi}
             background={bgWindow}
             onDragWindowsLive={handleWindowsChange}
-            onDragWindowsCommit={handleWindowsChange}
+            onDragWindowsCommit={commitWindows}
             markers={edgeMarkers}
             overlays={overlays}
             xRange={xRange}
@@ -303,9 +387,9 @@ export default function EelsExploreTab({
       )}
       <div className="fvd-ws-row">
         <span className="k">Background</span>
-        <input value={bgLo} onChange={(e) => setBgLo(e.target.value)} />
+        <input value={bgLo} onChange={(e) => setBgLo(e.target.value)} onBlur={commitTyped} />
         <span>–</span>
-        <input value={bgHi} onChange={(e) => setBgHi(e.target.value)} />
+        <input value={bgHi} onChange={(e) => setBgHi(e.target.value)} onBlur={commitTyped} />
         <span className="k">{spectrum?.units ?? "eV"}</span>
         <button
           className="fvd-btn"
@@ -322,9 +406,9 @@ export default function EelsExploreTab({
       )}
       <div className="fvd-ws-row">
         <span className="k">Signal</span>
-        <input value={sigLo} onChange={(e) => setSigLo(e.target.value)} />
+        <input value={sigLo} onChange={(e) => setSigLo(e.target.value)} onBlur={commitTyped} />
         <span>–</span>
-        <input value={sigHi} onChange={(e) => setSigHi(e.target.value)} />
+        <input value={sigHi} onChange={(e) => setSigHi(e.target.value)} onBlur={commitTyped} />
         <span className="k">{spectrum?.units ?? "eV"}</span>
         <button
           className="fvd-btn"

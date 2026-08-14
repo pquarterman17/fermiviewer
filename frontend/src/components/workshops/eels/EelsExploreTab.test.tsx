@@ -1,35 +1,34 @@
 // EelsExploreTab receives its spectrum as a prop (EelsWorkshop owns the
-// fetch), so these tests exercise the readout/marker wiring directly —
-// no lib/api mock needed, just a plain uPlot stub (SpectrumPlot's own tests
-// cover the drag gestures in detail).
+// fetch), so these tests exercise the readout/marker/store wiring directly.
+//
+// SpectrumPlot itself is mocked rather than the underlying uPlot: (1) it
+// lets these tests drive onDragWindowsLive/onDragWindowsCommit directly,
+// which is what the store-commit tests below need and no synthetic pointer
+// gesture on a stubbed uPlot could exercise honestly; (2) Wave 2 of this
+// campaign owns components/spectrum/* and may be mid-refactor of its
+// internals — this test only needs SpectrumPlot's EELS-facing prop
+// contract (onDragWindowsLive/onDragWindowsCommit/background/overlays),
+// which is guaranteed stable, so stubbing the component insulates these
+// tests from anything else changing underneath it. SpectrumPlot's own
+// gesture tests remain the place drag mechanics are covered.
 
-import { render, screen } from "@testing-library/react";
-import type { ComponentProps } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { useState, type ComponentProps } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { EelsBackgroundResult, Spectrum } from "../../../lib/api";
+import { eelsSpecies } from "../../../lib/spectrum/species";
+import { useSpecies } from "../../../store/species";
 import EelsExploreTab from "./EelsExploreTab";
 
-vi.mock("uplot", () => ({
-  default: class {
-    over = document.createElement("div");
-    bbox = { left: 0, top: 0, width: 320, height: 200 };
-    scales = { x: {} };
-    constructor(_options: unknown, _data: unknown, host: HTMLElement) {
-      host.appendChild(document.createElement("canvas"));
-      host.appendChild(this.over);
-    }
-    destroy() {}
-    setSize() {}
-    redraw() {}
-    setScale() {}
-    setSelect() {}
-    posToVal(v: number) {
-      return v;
-    }
-    valToPos(v: number) {
-      return v;
-    }
+const spectrumPlotProps = vi.hoisted(() => ({
+  current: null as null | Record<string, unknown>,
+}));
+
+vi.mock("../../spectrum/SpectrumPlot", () => ({
+  default: (props: Record<string, unknown>) => {
+    spectrumPlotProps.current = props;
+    return <div data-testid="spectrum-plot-stub" />;
   },
 }));
 
@@ -71,6 +70,11 @@ function baseProps(overrides: Partial<Props> = {}): Props {
   };
 }
 
+afterEach(() => {
+  spectrumPlotProps.current = null;
+  useSpecies.setState({ byImage: {}, selectedByImage: {}, edsSettingsByImage: {} });
+});
+
 describe("EelsExploreTab", () => {
   it("shows a live net/gross/background readout for the current windows", () => {
     render(<EelsExploreTab {...baseProps()} />);
@@ -102,10 +106,11 @@ describe("EelsExploreTab", () => {
   });
 
   it("builds edge-onset markers without throwing once Edge IDs is on", () => {
-    // Markers paint on the uPlot canvas (not observable via the DOM with
-    // this stub); this exercises the KNOWN_EDGES filter/range/splitEdgeLabel
-    // path (C-K at 284 eV falls inside [0, 1000]) and asserts the component
-    // still renders cleanly with a live marker set.
+    // Markers are handed to the (stubbed) SpectrumPlot as a prop, not
+    // observable via the DOM here; this exercises the KNOWN_EDGES
+    // filter/range/splitEdgeLabel path (C-K at 284 eV falls inside
+    // [0, 1000]) and asserts the component still renders cleanly with a
+    // live marker set.
     render(
       <EelsExploreTab
         {...baseProps({
@@ -128,5 +133,142 @@ describe("EelsExploreTab", () => {
     };
     render(<EelsExploreTab {...baseProps({ fit })} />);
     expect(screen.getByText(/r = 2.500/)).toBeVisible();
+  });
+});
+
+/** EelsWorkshop owns bgLo/bgHi/sigLo/sigHi as real `useState`, not the
+ *  fire-and-forget spies `baseProps()` defaults to — the store-backed tests
+ *  below need the fields to actually re-render when the sync effect calls
+ *  the setters, so this stands in for that parent. */
+function Harness(overrides: Partial<Props> & { activeId: string }) {
+  const initial = baseProps(overrides);
+  const [bgLo, setBgLo] = useState(initial.bgLo);
+  const [bgHi, setBgHi] = useState(initial.bgHi);
+  const [sigLo, setSigLo] = useState(initial.sigLo);
+  const [sigHi, setSigHi] = useState(initial.sigHi);
+  return (
+    <EelsExploreTab
+      {...initial}
+      bgLo={bgLo}
+      bgHi={bgHi}
+      sigLo={sigLo}
+      sigHi={sigHi}
+      setBgLo={setBgLo}
+      setBgHi={setBgHi}
+      setSigLo={setSigLo}
+      setSigHi={setSigHi}
+    />
+  );
+}
+
+describe("EelsExploreTab store-backed windows", () => {
+  it("auto-selects the first visible species and shows its windows in the fields", () => {
+    const sp = eelsSpecies("Fe", "L23", 400, {
+      windows: {
+        signal: { lo: 400, hi: 600 },
+        background: { lo: 350, hi: 390 },
+      },
+    });
+    useSpecies.getState().setSpecies("eels-1", [sp]);
+
+    render(<Harness activeId="eels-1" />);
+
+    expect(screen.getByDisplayValue("400")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("600")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("350")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("390")).toBeInTheDocument();
+    expect(useSpecies.getState().selectedByImage["eels-1"]).toBe(sp.id);
+  });
+
+  it("switching species (SpeciesChips, mirroring a Maps row click) swaps the edited windows", () => {
+    const fe = eelsSpecies("Fe", "L23", 400, {
+      windows: { signal: { lo: 400, hi: 600 }, background: { lo: 350, hi: 390 } },
+    });
+    const o = eelsSpecies("O", "K", 150, {
+      windows: { signal: { lo: 150, hi: 250 }, background: { lo: 100, hi: 140 } },
+    });
+    useSpecies.getState().setSpecies("eels-1", [fe, o]);
+
+    render(<Harness activeId="eels-1" />);
+    expect(screen.getByDisplayValue("400")).toBeInTheDocument(); // Fe auto-selected
+
+    fireEvent.click(screen.getByRole("option", { name: "O" }));
+
+    expect(screen.getByDisplayValue("150")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("250")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("100")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("140")).toBeInTheDocument();
+  });
+
+  it("commits a preset click to the selected species in the store", () => {
+    const sp = eelsSpecies("Fe", "L23", 400, { widthEv: 50 });
+    useSpecies.getState().setSpecies("eels-1", [sp]);
+
+    render(<Harness activeId="eels-1" />);
+    fireEvent.click(screen.getByRole("button", { name: "wide" }));
+
+    // EELS_PRESET_WIDTH_EV.wide = 100 eV past the 400 eV onset.
+    const stored = useSpecies.getState().byImage["eels-1"][0];
+    expect(stored.windows.signal).toEqual({ lo: 400, hi: 500 });
+  });
+
+  it("commits a typed window edit to the store on blur, not on every keystroke", () => {
+    const sp = eelsSpecies("Fe", "L23", 400, {
+      windows: { signal: { lo: 400, hi: 600 }, background: { lo: 350, hi: 390 } },
+    });
+    useSpecies.getState().setSpecies("eels-1", [sp]);
+
+    render(<Harness activeId="eels-1" />);
+    const sigHiInput = screen.getByDisplayValue("600");
+    fireEvent.change(sigHiInput, { target: { value: "620" } });
+    expect(useSpecies.getState().byImage["eels-1"][0].windows.signal.hi).toBe(600);
+
+    fireEvent.blur(sigHiInput);
+    expect(useSpecies.getState().byImage["eels-1"][0].windows.signal.hi).toBe(620);
+  });
+
+  // Mutation-verified: commenting out the `setWindow` call inside
+  // `commitWindows` (leaving `handleWindowsChange` in place) turns the
+  // second assertion red while the first stays green, confirming this test
+  // actually distinguishes "local" from "committed" rather than passing
+  // vacuously. Restored after confirming the failure.
+  it("keeps a live drag local — the store commits only when the drag is released", () => {
+    const sp = eelsSpecies("Fe", "L23", 400, {
+      windows: { signal: { lo: 400, hi: 600 }, background: { lo: 350, hi: 390 } },
+    });
+    useSpecies.getState().setSpecies("eels-1", [sp]);
+
+    render(<Harness activeId="eels-1" />);
+    expect(screen.getByDisplayValue("600")).toBeInTheDocument();
+
+    act(() => {
+      (spectrumPlotProps.current!.onDragWindowsLive as (w: unknown) => void)({
+        signal: { lo: 400, hi: 650 },
+      });
+    });
+    expect(screen.getByDisplayValue("650")).toBeInTheDocument();
+    expect(useSpecies.getState().byImage["eels-1"][0].windows.signal).toEqual({
+      lo: 400,
+      hi: 600,
+    });
+
+    act(() => {
+      (spectrumPlotProps.current!.onDragWindowsCommit as (w: unknown) => void)({
+        signal: { lo: 400, hi: 650 },
+      });
+    });
+    expect(useSpecies.getState().byImage["eels-1"][0].windows.signal).toEqual({
+      lo: 400,
+      hi: 650,
+    });
+  });
+
+  it("never crashes with an empty species list, and points at Maps instead", () => {
+    render(<Harness activeId="eels-1" />);
+    expect(
+      screen.getByText(
+        "No species yet — identify or add elements from the Maps tab.",
+      ),
+    ).toBeVisible();
   });
 });

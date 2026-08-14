@@ -12,6 +12,7 @@ import {
   type ElnesResult,
   type Spectrum,
 } from "../../lib/api";
+import { selectedSpeciesOf, useSpecies } from "../../store/species";
 import { useViewer } from "../../store/viewer";
 import EelsAdvanced from "./EelsAdvanced";
 import { type EdgeRow } from "./EelsEdgeEditor";
@@ -88,11 +89,17 @@ export default function EelsWorkshop({
       .then((s) => {
         if (!alive) return;
         setSpectrum(s);
-        const w = seedFitWindows(s.energy);
-        setBgLo(w.bgLo);
-        setBgHi(w.bgHi);
-        setSigLo(w.sigLo);
-        setSigHi(w.sigHi);
+        // A selected species already owns these fields (EelsExploreTab syncs
+        // them from its windows) — re-seeding fraction-based defaults here
+        // would win the race against that sync and stomp the species' real
+        // window the moment the spectrum finishes loading.
+        if (!selectedSpeciesOf(useSpecies.getState(), activeId)) {
+          const w = seedFitWindows(s.energy);
+          setBgLo(w.bgLo);
+          setBgHi(w.bgHi);
+          setSigLo(w.sigLo);
+          setSigHi(w.sigHi);
+        }
       })
       .catch((e: Error) => setStatus(`EELS: ${e.message}`));
     return () => {
