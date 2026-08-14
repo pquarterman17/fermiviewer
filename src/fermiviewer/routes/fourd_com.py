@@ -20,7 +20,11 @@ already-small `(scan_y, scan_x)` arrays, negligible next to the streamed
 pass. It is a SEPARATE route (not a `/com` response extension): #9 (iDPC)
 also lands in this module and would otherwise need to edit the same shared
 response schema, so each phase-contrast product gets its own route and
-response type instead.
+response type instead. `POST /api/fourd/{id}/idpc` pays the same streamed
+cost again, then runs `calc.fourd.idpc.idpc_image` — one FFT-based
+integration over the same small `(scan_y, scan_x)` field, also negligible
+next to the streamed pass — and registers the ONE resulting phase-contrast
+map (unlike `/com`/`/dpc`, which each register several).
 """
 
 from __future__ import annotations
@@ -32,6 +36,7 @@ from pydantic import BaseModel, Field
 from fermiviewer.calc.fourd.com import com_maps, resolve_center
 from fermiviewer.calc.fourd.dataset import FourDDataset
 from fermiviewer.calc.fourd.dpc import DpcMaps, dpc_maps
+from fermiviewer.calc.fourd.idpc import DEFAULT_HIGH_PASS_CUTOFF, idpc_image
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.models import ImageMeta
 from fermiviewer.routes._arrays import value_error_as_422
@@ -273,4 +278,77 @@ def fourd_dpc(fourd_id: str, req: DpcRequest) -> DpcMapsResponse:
                 "voltage and the physical scan pixel pitch"
             ),
         ),
+    )
+
+
+# ── integrated differential phase contrast (PLAN_4DSTEM #9) ────────────
+
+
+class IdpcRequest(BaseModel):
+    """Same descan-center + `mrad_per_px` calibration contract as
+    `DpcRequest` (see its docstring), plus the ONE knob unique to iDPC:
+    ``high_pass_cutoff`` — the Gaussian high-pass cutoff, in cycles per
+    scan pixel, that suppresses the low-frequency reconstruction artifact
+    (see `calc/fourd/idpc.py`'s module docstring for the full derivation).
+    Optional, defaulting to `idpc.DEFAULT_HIGH_PASS_CUTOFF` — the calc
+    module's own documented default, not re-invented here."""
+
+    center_ky: float | None = None
+    center_kx: float | None = None
+    mrad_per_px: float = Field(gt=0)
+    high_pass_cutoff: float = Field(default=DEFAULT_HIGH_PASS_CUTOFF, ge=0)
+    name: str | None = None
+
+
+@router.post("/fourd/{fourd_id}/idpc")
+def fourd_idpc(fourd_id: str, req: IdpcRequest) -> ImageMeta:
+    """Integrated DPC (iDPC): Fourier-space integration of the calibrated
+    COM deflection field into a single phase-contrast image (PLAN_4DSTEM
+    #9). All math lives in `calc.fourd.idpc.idpc_image` — this route
+    validates the request, resolves the descan center and streams the cube
+    exactly once (identical cost/path to `/com` and `/dpc`, see the module
+    docstring for the RAM budget), then registers the ONE resulting map,
+    recording the resolved center, the `mrad_per_px` calibration used AND
+    the `high_pass_cutoff` applied in its metadata.
+
+    Unlike `/com`/`/dpc`, this registers a SINGLE image (an `ImageMeta`
+    directly, not a wrapper response) — iDPC produces one phase-contrast
+    map, not a family of derived maps, matching `/nav`'s and
+    `/virtual-detector`'s single-image response shape.
+    """
+    ds4 = get_fourd(fourd_id)
+    validate_optional_center(req.center_ky, req.center_kx, ds4.det_shape)
+    cy, cx, com_y, com_x = _resolve_and_stream_com(ds4, req.center_ky, req.center_kx)
+
+    with value_error_as_422():
+        map_arr = idpc_image(com_y, com_x, req.mrad_per_px, req.high_pass_cutoff)
+
+    base_name = fourd_store.name(fourd_id)
+    return _register_fourd_map(
+        map_arr,
+        fourd_id=fourd_id,
+        ds4=ds4,
+        parser="fourd-idpc",
+        analysis="idpc",
+        label="iDPC",
+        base_name=base_name,
+        req_name=req.name,
+        extra_metadata={
+            "center_ky": float(cy),
+            "center_kx": float(cx),
+            "mrad_per_px": float(req.mrad_per_px),
+            "high_pass_cutoff": float(req.high_pass_cutoff),
+            "units": "mrad",
+            # What this measurably is, not what it is popularly called: see
+            # calc/fourd/idpc.py's module docstring for the full accounting
+            # of the accelerating-voltage/electron-wavelength and physical
+            # scan-pixel-pitch constants an absolute potential in volts
+            # would additionally require — neither is invented here.
+            "interpretation": (
+                "proportional to the projected potential (phase image) up to "
+                "an unrecoverable additive constant; absolute phase/potential "
+                "needs the accelerating voltage (electron wavelength) and the "
+                "physical scan pixel pitch"
+            ),
+        },
     )

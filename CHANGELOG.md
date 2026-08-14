@@ -16,6 +16,61 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Integrated DPC (iDPC) for 4D-STEM (`POST /api/fourd/{id}/idpc`,
+  PLAN_4DSTEM #9 — closes Tier 2).** New `calc/fourd/idpc.py` performs the
+  Fourier-space integration that turns a `/dpc`-style calibrated COM field
+  into a single light-element phase-contrast image, reimplemented from
+  Lazić, Bosch & Lazar, "Phase contrast STEM for thin samples: Integrated
+  differential phase contrast", Ultramicroscopy 160 (2016) 265-280. The
+  integration is a Frankot-Chellappa-style least-squares gradient inversion
+  in Fourier space (`F[psi] = -1j*(omega_y*F[field_y] + omega_x*F[field_x])
+  / (omega_y**2+omega_x**2)`), with `F[psi](0,0)` pinned at exactly 0 — the
+  DC/mean term of a reconstructed phase image is not, and cannot be,
+  recovered from a gradient field, so every iDPC image is a phase map up to
+  an unknown additive constant, by construction, not as an approximation.
+  A documented Gaussian high-pass (`high_pass_cutoff`, default `0.02`
+  cycles per scan pixel, always caller-overridable — never a hidden magic
+  number) suppresses the classic iDPC low-frequency "bowl" artifact the
+  `1/omega` reconstruction kernel is known to amplify. The image is in
+  MILLIRADIANS, proportional to the projected potential — not an absolute
+  potential in volts, and not even an absolute phase in radians: that would
+  additionally need the accelerating voltage (electron wavelength, via the
+  interaction constant) and the physical scan-pixel pitch along both scan
+  axes, neither of which this module invents. `POST /api/fourd/{id}/idpc`
+  (thin, in `routes/fourd_com.py`, reusing `/com`/`/dpc`'s
+  center-resolution/streaming step) registers the ONE resulting map —
+  unlike `/com` (two images) and `/dpc` (three) — recording the resolved
+  descan center, the `mrad_per_px` calibration and the `high_pass_cutoff`
+  applied in its metadata. `routes/fourd_com.py` grew 276→354 lines (pin
+  500, still comfortable). 38 new backend tests (18 pure in
+  `test_fourd_idpc.py`, 20 route-level in `test_api_fourd_idpc.py`): the
+  pure suite reconstructs a hand-built sinusoidal potential — an exact DFT
+  bin, so the reconstruction is checked to near machine precision after
+  removing the mean from both sides (the required "up to an additive
+  constant" property) — and separately proves the high-pass filter actually
+  suppresses a deliberately low-frequency signal by a known, analytically
+  predicted factor; the route suite checks registration/metadata/units and
+  that the endpoint's wiring (center resolution, calibration and cutoff
+  pass-through) matches calling the calc layer directly on the same COM
+  field. Frontend: `FourDWorkshop`'s aperture-mode segmented control gains
+  three new buttons (COM/DPC/iDPC) alongside BF/ABF/ADF/Custom, each
+  routing to its own endpoint via a new `computeComOutput` store action
+  (`store/fourdComOutput.ts`, split out to keep `store/fourd.ts` under its
+  500-line ceiling) instead of the aperture path's `computeMap` — the two
+  families share the descan-center controls but not radii/shape, which are
+  hidden for com/dpc/idpc since those routes don't take them. A new
+  `FourDComOutputFields` control exposes the required `mrad_per_px`
+  calibration (dpc/idpc) and `high_pass_cutoff` (idpc only), showing but
+  never auto-filling the detector's own calibration when available — same
+  "never invent a physical constant" line the backend holds. 42 new
+  frontend tests across three files. Along the way, found and fixed a
+  latent bug in `setApertureMode`: switching directly into "custom" (or now
+  com/dpc/idpc) via the mode buttons silently failed to update the stored
+  mode, because `apertureRadiiForMode`'s pass-through case returns the
+  *entire* previous aperture object (needed for its own, deliberate,
+  reference-equality contract) including its own stale `mode` field, which
+  a spread-order bug then let win over the intended new mode; fixed by
+  spreading the new `mode` last, unconditionally.
 - **Differential phase contrast (DPC) for 4D-STEM (`POST /api/fourd/{id}/dpc`,
   PLAN_4DSTEM #8).** New `calc/fourd/dpc.py` turns a `/com`-style COM shift
   field into the standard DPC products: magnitude and direction of the

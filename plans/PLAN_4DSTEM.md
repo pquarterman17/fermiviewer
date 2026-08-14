@@ -13,20 +13,25 @@ and never assumes the whole cube is resident. py4DSTEM is **AGPL** and must NOT
 become a runtime dependency — all math is reimplemented from primary references.
 
 **Status:** Active (Tier 1 / Phase 1 COMPLETE 2026-08-02 — items #1–#6
-all shipped + live-verified same day, `f6141b2..b4826b0`. Tier 2 #7
-(per-probe COM) and #8 (DPC + charge density) shipped 2026-08-14;
-remaining: #9 iDPC — #7's `com.py`/`POST /fourd/{id}/com` and #8's
-`dpc.py`/`POST /fourd/{id}/dpc` are both in place for it to build on — and
-parked Tier 3. Item #14's live-audit usability list is fully shipped and
-CLOSED 2026-08-12 (c3df999) — this line previously still read "three
-remain" from before its last three boxes landed, contradicting the
-Updated log below)
+all shipped + live-verified same day, `f6141b2..b4826b0`. Tier 2 COMPLETE
+2026-08-14 — #7 (per-probe COM), #8 (DPC + charge density), and #9 (iDPC)
+all shipped the same day; #9 was Tier 2's last item, so Tier 2 is now
+CLOSED. Only parked Tier 3 remains. Item #14's live-audit usability list is
+fully shipped and CLOSED 2026-08-12 (c3df999) — this line previously still
+read "three remain" from before its last three boxes landed, contradicting
+the Updated log below)
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-06-21
-**Updated:** 2026-08-14 (later) — item #8 (DPC + charge-density/field maps)
+**Updated:** 2026-08-14 (latest) — item #9 (integrated DPC / iDPC) CLOSED:
+all three boxes shipped (`calc/fourd/idpc.py`'s Fourier-space gradient
+integration + Gaussian high-pass, `POST /api/fourd/{id}/idpc` in
+`routes/fourd_com.py`, 38 new backend tests + 42 new frontend tests). This
+was Tier 2's last open item — **Tier 2 (center-of-mass / DPC / iDPC) is
+now CLOSED.**
+Earlier the same day: item #8 (DPC + charge-density/field maps)
 CLOSED: all three boxes shipped (`calc/fourd/dpc.py`,
 `POST /api/fourd/{id}/dpc` in the newly-split `routes/fourd_com.py`, 37
-new tests). Only #9 (iDPC) remains open in Tier 2.
+new tests).
 Earlier the same day: item #7 (per-probe center-of-mass) CLOSED: all
 three boxes shipped (`calc/fourd/com.py`, `POST /api/fourd/{id}/com`,
 20 new tests). Deferral lifted the same day (below).
@@ -381,14 +386,51 @@ helper from #5. Headline STEM phase-contrast techniques.)*
    - [x] Tests vs an analytic field: uniform E-field → constant COM shift,
      zero divergence; a radial field with known non-zero divergence
 
-9. **Integrated DPC (iDPC)** — light-element phase imaging via 2D integration of
-   the COM field.
-   - [ ] `calc/fourd/idpc.py` — Fourier-space integration of (COMx, COMy) →
+9. ~~**Integrated DPC (iDPC)**~~ (2026-08-14) — light-element phase imaging
+   via Fourier-space integration of the calibrated COM field. New
+   `calc/fourd/idpc.py` reimplements the Frankot-Chellappa-style
+   least-squares gradient inversion directly from Lazić, Bosch & Lazar,
+   "Phase contrast STEM for thin samples: Integrated differential phase
+   contrast", Ultramicroscopy 160 (2016) 265-280: `F[psi] =
+   -1j*(omega_y*F[field_y] + omega_x*F[field_x]) / (omega_y**2+omega_x**2)`,
+   with `F[psi](0,0)` pinned at exactly 0 (the DC/mean term of a
+   reconstructed phase image cannot be recovered from a gradient field —
+   this is why every iDPC image is a phase map up to an unknown additive
+   constant, by construction, not an approximation). A documented Gaussian
+   high-pass (`high_pass_cutoff`, default `DEFAULT_HIGH_PASS_CUTOFF` = 0.02
+   cycles per scan pixel, always caller-overridable) suppresses the classic
+   low-frequency "bowl" artifact the `1/omega` reconstruction kernel is
+   known to amplify — reused, not reinvented, from `dpc.py`'s
+   `calibrated_field_mrad`, so the image is in MILLIRADIANS: proportional
+   to the projected potential, NOT an absolute potential in volts or even
+   an absolute phase in radians (that needs the accelerating voltage and
+   the physical scan-pixel pitch along both scan axes, neither invented
+   here). `POST /api/fourd/{id}/idpc` (thin, in `routes/fourd_com.py`,
+   reusing `/com`/`/dpc`'s center-resolution/streaming step) registers the
+   ONE resulting map — unlike `/com`/`/dpc`'s several — recording the
+   resolved center, the calibration, and the cutoff applied.
+   `routes/fourd_com.py` grew 276→354 lines (pin 500, comfortable). 38 new
+   backend tests (18 pure, 20 route-level): the pure suite reconstructs a
+   hand-built sinusoidal potential (an exact DFT bin) to near machine
+   precision after removing the mean from both sides — the required "up to
+   an additive constant" property — and separately proves the high-pass
+   filter suppresses a deliberately low-frequency signal by a known,
+   analytically predicted factor. Frontend: `FourDWorkshop`'s aperture-mode
+   segmented control gains COM/DPC/iDPC alongside BF/ABF/ADF/Custom, each
+   routing to its own endpoint via a new `computeComOutput` store action
+   (`store/fourdComOutput.ts`, split out to keep `store/fourd.ts` under its
+   500-line ceiling); a new `FourDComOutputFields` control exposes the
+   required `mrad_per_px`/`high_pass_cutoff` fields, never auto-filling a
+   detected detector calibration. 42 new frontend tests. Found and fixed a
+   latent `setApertureMode` bug along the way (a spread-order issue that
+   silently failed to switch into "custom"/com/dpc/idpc via the mode
+   buttons). **This was Tier 2's last open item — Tier 2 is now CLOSED.**
+   - [x] `calc/fourd/idpc.py` — Fourier-space integration of (COMx, COMy) →
      iDPC image (Lazić/Bosch method); high-pass to suppress low-freq artifacts.
      Reimplement from the primary paper
-   - [ ] Route + derived 2D image; frontend exposes BF/ABF/ADF/COM/DPC/iDPC as
+   - [x] Route + derived 2D image; frontend exposes BF/ABF/ADF/COM/DPC/iDPC as
      selectable virtual-output modes in `FourDWorkshop`
-   - [ ] Tests: iDPC of a known potential reconstructs its phase up to a constant
+   - [x] Tests: iDPC of a known potential reconstructs its phase up to a constant
 
 ---
 

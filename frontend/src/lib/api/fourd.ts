@@ -145,3 +145,73 @@ export function computeVirtualDetector(
 ): Promise<ImageMeta> {
   return fourdPost(`/api/fourd/${id}/virtual-detector`, body);
 }
+
+// ── COM / DPC / iDPC (PLAN_4DSTEM #7-#9) ────────────────────────────────
+// Same null-means-auto-center contract as VirtualDetectorRequest's
+// `center_*` above (routes/fourd_com.py's ComRequest/DpcRequest/
+// IdpcRequest). Unlike virtual-detector, these carry no aperture
+// radii/shape — the COM-derived family is driven purely by the descan
+// center (+ calibration, for DPC/iDPC).
+
+export interface ComRequest {
+  center_ky: number | null;
+  center_kx: number | null;
+  name: string | null;
+}
+
+/** Both derived maps from one `/com` call — COMy and COMx, each an
+ *  ordinary registered 2D image. */
+export interface ComMapsResponse {
+  comy: ImageMeta;
+  comx: ImageMeta;
+}
+
+export function computeCom(id: string, body: ComRequest): Promise<ComMapsResponse> {
+  return fourdPost(`/api/fourd/${id}/com`, body);
+}
+
+export interface DpcRequest {
+  center_ky: number | null;
+  center_kx: number | null;
+  /** Detector's isotropic milliradians-per-pixel calibration — REQUIRED,
+   *  never defaulted (see calc/fourd/dpc.py's module docstring: a bare
+   *  `.mib` with no `.hdr` sidecar is uncalibrated, and guessing `1.0`
+   *  would silently relabel a raw pixel shift as a physical angle). */
+  mrad_per_px: number;
+  name: string | null;
+}
+
+/** Three derived maps from one `/dpc` call — magnitude, direction and
+ *  divergence of the calibrated deflection field, each an ordinary
+ *  registered 2D image. */
+export interface DpcMapsResponse {
+  magnitude: ImageMeta;
+  direction: ImageMeta;
+  divergence: ImageMeta;
+}
+
+export function computeDpc(id: string, body: DpcRequest): Promise<DpcMapsResponse> {
+  return fourdPost(`/api/fourd/${id}/dpc`, body);
+}
+
+export interface IdpcRequest {
+  center_ky: number | null;
+  center_kx: number | null;
+  mrad_per_px: number;
+  /** Gaussian high-pass cutoff, in cycles per scan pixel, that suppresses
+   *  iDPC's characteristic low-frequency reconstruction artifact (see
+   *  calc/fourd/idpc.py's module docstring). The server defaults this to
+   *  `idpc.DEFAULT_HIGH_PASS_CUTOFF` when omitted — sent explicitly here
+   *  rather than made optional on the wire, matching this file's other
+   *  request shapes (every field always present). */
+  high_pass_cutoff: number;
+  name: string | null;
+}
+
+/** Integrated DPC: Fourier-space integration of the calibrated COM field
+ *  into a SINGLE phase-contrast image (unlike `/com`/`/dpc`, which each
+ *  register several) — returns its ImageMeta directly, same shape as
+ *  `/fourd/{id}/nav`/`computeVirtualDetector`. */
+export function computeIdpc(id: string, body: IdpcRequest): Promise<ImageMeta> {
+  return fourdPost(`/api/fourd/${id}/idpc`, body);
+}

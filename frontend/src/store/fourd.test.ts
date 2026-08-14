@@ -200,6 +200,8 @@ describe("useFourD store", () => {
       innerR: 0,
       outerR: 40, // 320 / 8
       shape: "circle",
+      mradPerPx: null,
+      highPassCutoff: 0.02,
     });
     expect(s.patternRaster).toEqual(raster(8, 8));
     // cached separately from patternRaster so the auto-center preview can
@@ -253,6 +255,8 @@ describe("useFourD store", () => {
         innerR: 0,
         outerR: 80,
         shape: "circle",
+        mradPerPx: null,
+        highPassCutoff: 0.02,
       },
     });
     vi.mocked(computeVirtualDetector).mockResolvedValue(imageMeta("map1"));
@@ -283,6 +287,8 @@ describe("useFourD store", () => {
         innerR: 5,
         outerR: 20,
         shape: "annulus",
+        mradPerPx: null,
+        highPassCutoff: 0.02,
       },
     });
     vi.mocked(computeVirtualDetector).mockResolvedValue(imageMeta("map2"));
@@ -306,6 +312,7 @@ describe("useFourD store", () => {
       aperture: {
         centerKy: null, centerKx: null, autoCenter: true,
         mode: "bf", innerR: 0, outerR: 80, shape: "circle",
+        mradPerPx: null, highPassCutoff: 0.02,
       },
     });
     let resolveFetch: (m: ImageMeta) => void = () => {};
@@ -330,6 +337,7 @@ describe("useFourD store", () => {
       aperture: {
         centerKy: NaN, centerKx: 9, autoCenter: false,
         mode: "custom", innerR: 5, outerR: 20, shape: "annulus",
+        mradPerPx: null, highPassCutoff: 0.02,
       },
     });
 
@@ -346,6 +354,7 @@ describe("useFourD store", () => {
       aperture: {
         centerKy: null, centerKx: null, autoCenter: true,
         mode: "custom", innerR: 0, outerR: 0, shape: "circle",
+        mradPerPx: null, highPassCutoff: 0.02,
       },
     });
 
@@ -362,6 +371,7 @@ describe("useFourD store", () => {
       aperture: {
         centerKy: null, centerKx: null, autoCenter: true,
         mode: "custom", innerR: 40, outerR: 40, shape: "annulus",
+        mradPerPx: null, highPassCutoff: 0.02,
       },
     });
 
@@ -536,6 +546,7 @@ describe("useFourD store", () => {
         aperture: {
           centerKy: null, centerKx: null, autoCenter: true,
           mode: "bf", innerR: 0, outerR: 80, shape: "circle",
+          mradPerPx: null, highPassCutoff: 0.02,
         },
       });
       vi.mocked(computeVirtualDetector).mockRejectedValue(

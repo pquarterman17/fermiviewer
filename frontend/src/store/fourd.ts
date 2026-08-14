@@ -29,6 +29,10 @@ import {
   type ImageMeta,
   type Raster16,
 } from "../lib/api";
+import {
+  createComOutputAction,
+  DEFAULT_HIGH_PASS_CUTOFF,
+} from "./fourdComOutput";
 import { useViewer } from "./viewer";
 
 /** A stale-selection 404 (dataset closed elsewhere, or a selection that
@@ -39,7 +43,12 @@ function isStaleDataset(e: unknown): boolean {
   return e instanceof FourDNotFoundError;
 }
 
-export type ApertureMode = "bf" | "abf" | "adf" | "custom";
+// bf/abf/adf/custom drive `computeMap` (POST /virtual-detector, aperture
+// radii/shape); com/dpc/idpc drive `computeComOutput` in
+// fourdComOutput.ts (POST /com, /dpc, /idpc — descan center [+ calibration
+// for dpc/idpc] only, no radii/shape at all). One shared `mode` field for
+// both families keeps a single segmented control (PLAN_4DSTEM #9).
+export type ApertureMode = "bf" | "abf" | "adf" | "custom" | "com" | "dpc" | "idpc";
 
 export interface FourDAperture {
   /** null when autoCenter is on — the server centers from the mean pattern. */
@@ -50,6 +59,18 @@ export interface FourDAperture {
   shape: ApertureShape;
   mode: ApertureMode;
   autoCenter: boolean;
+  /** Detector mrad-per-pixel calibration for dpc/idpc — required by both
+   *  routes, never defaulted (see calc/fourd/dpc.py's module docstring),
+   *  so null (not yet typed by the user) is a valid, distinct state from
+   *  any number, and `comOutputError` rejects it same as an aperture's
+   *  degenerate radius. Unused by com/bf/abf/adf/custom. */
+  mradPerPx: number | null;
+  /** iDPC's Gaussian high-pass cutoff, cycles per scan pixel — always has
+   *  a value (defaults to fourdComOutput's DEFAULT_HIGH_PASS_CUTOFF, which
+   *  mirrors the server's own default) since 0 is itself a valid,
+   *  meaningful choice ("disable suppression"), unlike mradPerPx's
+   *  required-but-unset null. Unused outside idpc. */
+  highPassCutoff: number;
 }
 
 export interface FourDProbe {
@@ -76,6 +97,13 @@ export function apertureRadiiForMode(
     case "adf":
       return { innerR: size / 6, outerR: size / 2.5, shape: "annulus" };
     case "custom":
+    case "com":
+    case "dpc":
+    case "idpc":
+      // com/dpc/idpc have no radii/shape of their own (see the ApertureMode
+      // doc comment) — pass through unchanged exactly like "custom" does,
+      // so switching into/out of one of these modes never clobbers radii
+      // the user may return to on a later BF/ABF/ADF/Custom selection.
       return current ?? { innerR: size / 16, outerR: size / 8, shape: "annulus" };
   }
 }
@@ -86,6 +114,8 @@ function defaultAperture(detShape: readonly [number, number]): FourDAperture {
     centerKx: null,
     autoCenter: true,
     mode: "bf",
+    mradPerPx: null,
+    highPassCutoff: DEFAULT_HIGH_PASS_CUTOFF,
     ...apertureRadiiForMode("bf", detShape),
   };
 }
@@ -153,7 +183,7 @@ function isValidFourDMeta(m: FourDMeta): boolean {
   );
 }
 
-interface FourDState {
+export interface FourDState {
   datasets: FourDMeta[];
   selectedId: string | null;
   navMeta: ImageMeta | null;
@@ -191,6 +221,15 @@ interface FourDState {
   ) => void;
   setAutoCenter: (autoCenter: boolean) => void;
   computeMap: () => Promise<void>;
+  /** dpc/idpc's required detector calibration — a dedicated setter (not
+   *  folded into `setApertureField`) because, unlike an aperture radius
+   *  edit, typing a calibration does NOT imply "switch to custom". */
+  setMradPerPx: (mradPerPx: number | null) => void;
+  /** idpc's Gaussian high-pass cutoff — same rationale as `setMradPerPx`. */
+  setHighPassCutoff: (highPassCutoff: number) => void;
+  /** com/dpc/idpc's compute action (fourdComOutput.ts) — the
+   *  computeMap counterpart for the three modes with no radii/shape. */
+  computeComOutput: () => Promise<void>;
   reset: () => void;
 }
 
@@ -390,8 +429,16 @@ export const useFourD = create<FourDState>((set, get) => ({
     set((s) => ({
       aperture: {
         ...s.aperture,
-        mode,
+        // `mode` MUST be spread last: apertureRadiiForMode's pass-through
+        // branches (custom/com/dpc/idpc) return `current` UNCHANGED, which
+        // is `s.aperture` itself — including its OWN (stale, pre-switch)
+        // `mode` field. Spreading `mode` before that pass-through, as this
+        // used to, let the stale field win and silently undo the switch
+        // whenever the target was one of those four modes (bf/abf/adf never
+        // exposed this — their presets are always a fresh `{innerR,
+        // outerR, shape}` literal with no `mode` key to collide with).
         ...apertureRadiiForMode(mode, detShapeOf(s.datasets, s.selectedId), s.aperture),
+        mode,
       },
     })),
 
@@ -400,6 +447,12 @@ export const useFourD = create<FourDState>((set, get) => ({
 
   setAutoCenter: (autoCenter) =>
     set((s) => ({ aperture: { ...s.aperture, autoCenter } })),
+
+  setMradPerPx: (mradPerPx) =>
+    set((s) => ({ aperture: { ...s.aperture, mradPerPx } })),
+
+  setHighPassCutoff: (highPassCutoff) =>
+    set((s) => ({ aperture: { ...s.aperture, highPassCutoff } })),
 
   computeMap: async () => {
     const { selectedId, aperture, datasets, busyCompute } = get();
@@ -429,6 +482,8 @@ export const useFourD = create<FourDState>((set, get) => ({
       set({ busyCompute: false });
     }
   },
+
+  ...createComOutputAction(set, get),
 
   reset: () => set({ ...initial, aperture: defaultAperture([256, 256]) }),
 }));
