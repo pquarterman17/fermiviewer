@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-import fermiviewer.routes.eds_advanced as eds_advanced_routes
+import fermiviewer.routes._eds_common as eds_common
 from fermiviewer.calc.eds import line_energy
 from fermiviewer.calc.eds_calib import fano_sigma_kev
 from fermiviewer.calc.eds_continuum import kramers_continuum
@@ -136,12 +136,14 @@ def test_peakfit_model_sigma_null_when_unusable(client, cube_id, monkeypatch) ->
     """The route must serialise `model_sigma: null` (never crash) when the
     fit's covariance can't produce a σ — same best-effort-null contract as
     /eels/fit's (and #3's other chart, composition-profile)."""
-    real_fit_peaks = eds_advanced_routes.fit_peaks
+    # /eds/peakfit reaches fit_peaks through _eds_common.fit_summed_peaks
+    # (the 2026-08-14 ceiling split), so the patch targets that module.
+    real_fit_peaks = eds_common.fit_peaks
 
     def _unusable_sigma(*args, **kwargs):
         return replace(real_fit_peaks(*args, **kwargs), model_sigma=None)
 
-    monkeypatch.setattr(eds_advanced_routes, "fit_peaks", _unusable_sigma)
+    monkeypatch.setattr(eds_common, "fit_peaks", _unusable_sigma)
     r = client.post("/api/eds/peakfit", json={
         "image_id": cube_id, "elements": ["Fe", "Cu"],
         "background": "bremsstrahlung", "e0_kev": E0_KEV, "weights": None,
