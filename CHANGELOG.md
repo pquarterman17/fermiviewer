@@ -40,7 +40,21 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   beam energy, or Model fit for lines the detector genuinely cannot
   separate) is yours to make.
 
-### Fixed
+### Changed
+- **The Explore tabs now tune the species list directly — one set of
+  windows everywhere.** Clicking a species row in Maps (or a chip in the
+  new species strip at the top of Explore) selects that species, and the
+  window you drag, nudge, preset, fit or type in Explore IS the window
+  Maps extracts with, the composite blends, and the figure export
+  legends — for both EDS and EELS. Species rows now show a live net ± σ
+  that tracks the window as you tune it, instead of a number frozen at
+  identification time. Background model and beam energy are per-image
+  settings shared between Explore and Maps, so bremsstrahlung-background
+  maps are now reachable from the Maps workflow and E₀ is no longer a
+  hardcoded 30 kV. The single-element picker in EDS Explore is retired —
+  pick species in Maps (auto-identify or the periodic table), tune them
+  in Explore. Restoring a pinned integration region re-selects its
+  species, recreating it if it was removed.
 
 ## [0.1.27] - 2026-08-12
 

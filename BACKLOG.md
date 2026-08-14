@@ -1,8 +1,8 @@
 # BACKLOG
 
 **Derived from the plans in `plans/` — never edit this file in isolation.**
-Regenerate it from `plans/MAIN_PLAN.md`, `plans/SPECTRAL_WORKSPACE_PLAN.md`,
-`plans/PLAN_4DSTEM.md` and `plans/ANALYSIS_PRESENTATION_PLAN.md` whenever an
+Regenerate it from `plans/MAIN_PLAN.md`, `plans/PLAN_4DSTEM.md` and
+`plans/ANALYSIS_PRESENTATION_PLAN.md` whenever an
 item opens, closes, or moves (see the
 plan-hygiene rules). When this file and a plan disagree, the plan is
 authoritative — fix this file to match it, never the reverse. A plan that
@@ -45,21 +45,6 @@ re-verified against the code before folding).*
     implementation exists; parked
 
 **Open items: 9**
-
----
-
-## SPECTRAL_WORKSPACE_PLAN.md
-
-*Parent: MAIN_PLAN.md. Status: Active. Counted by top-level numbered item —
-see the Dashboard note below for the counting convention.*
-
-### W2 — EDS workspace
-
-**Tier 2 — Medium Impact**
-11. **Retire the single-element Explore flow**
-
-**Open items: 1** *(everything else in this plan is complete: W1, W3 and
-W4 in full, plus W2's item 10. Items 10 + 19 + 20 shipped 2026-08-12.)*
 
 ---
 
@@ -112,19 +97,18 @@ only Tier 3 (build-on-demand by rule) remains.*
 | Plan | Status | Open items |
 |---|---|---|
 | MAIN_PLAN.md | Active (root) | 9 |
-| SPECTRAL_WORKSPACE_PLAN.md | Active | 1 |
 | PLAN_4DSTEM.md | Active | 7 |
 | ANALYSIS_PRESENTATION_PLAN.md | Active (Tier 3 residue only) | 4 |
 
-**Total open items:** 21
+**Total open items:** 20
 
 **Counting method:** top-level numbered items (the plan-format.md unit of a
 tracked work item) — not nested `- [ ]` sub-task checkboxes. Nested-checkbox
-counts by plan, for reference: MAIN_PLAN 5, SPECTRAL_WORKSPACE_PLAN 0,
-PLAN_4DSTEM 7, ANALYSIS_PRESENTATION_PLAN 0 (12 total). A checkbox-based
+counts by plan, for reference: MAIN_PLAN 5, PLAN_4DSTEM 7,
+ANALYSIS_PRESENTATION_PLAN 0 (12 total). A checkbox-based
 count would disagree with the open-items count above — pick one convention
 when reading this table and don't mix the two.
 
-**Last regenerated:** 2026-08-12 (ANALYSIS_PRESENTATION_PLAN booked +12 then
-fully shipped −8 across four waves; PLAN_4DSTEM #14 closed −1; plus the
-copy-annotations preference and the structure/profiles ceiling extractions)
+**Last regenerated:** 2026-08-13 (SPECTRAL_WORKSPACE_PLAN #11 closed −1 and
+the plan reached Complete → archived, its section removed per the
+plan-hygiene archival rule)

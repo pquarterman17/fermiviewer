@@ -6,11 +6,13 @@ plan in `plans/` declares this file as its parent.
 
 **Status:** Active
 **Created:** 2026-08-09
-**Updated:** 2026-08-13 — router-registration block extracted from
-`server.py` (490→443) into new `server_routers.py`, closing the
-cross-plan-dependencies note's standing "extract before the ceiling"
-instruction. Previous update 2026-08-12 — ANALYSIS_PRESENTATION_PLAN
-adopted as a live
+**Updated:** 2026-08-13 — SPECTRAL_WORKSPACE_PLAN **Complete** and
+archived: its last item (#11, retire the single-element Explore flow)
+shipped by making both Explore tabs species-connected. Also today: the
+router-registration block extracted from `server.py` (490→443) into new
+`server_routers.py`, closing the cross-plan-dependencies note's standing
+"extract before the ceiling" instruction. Previous update 2026-08-12 —
+ANALYSIS_PRESENTATION_PLAN adopted as a live
 sub-plan: the never-merged OriginPro/JMP gap-audit branch
 (`claude/feature-gaps-originpro-jump-9h32ai`) was merged
 (`docs/originpro-jmp-gap-audit.md`), its R1–R12 BUILD list re-verified
@@ -43,7 +45,7 @@ plans (items 6–14).
 
 | Sub-plan | Scope | Status | Why its own file |
 |---|---|---|---|
-| SPECTRAL_WORKSPACE_PLAN.md | EDS+EELS shared spectrum core, species lists, batch maps, composites, synthetic-SI verification | Active (4 open items / 0 sub-task boxes; W1 + W4 Tier 2 complete 2026-08-12, W3 complete 2026-08-11) | Independent lifecycle, four workstreams of its own |
+| ~~SPECTRAL_WORKSPACE_PLAN.md~~ | EDS+EELS shared spectrum core, species lists, batch maps, composites, synthetic-SI verification | **Complete 2026-08-13** → `plans/archive/` | All 23 items shipped across four workstreams. Closed by #11: Explore tabs species-connected (window edits write the store, live net ± σ rows, shared bg/E₀), single-element flow's duplicate controls deleted. Kept for ADR 0003's rationale and the overlap-advisory measurement record |
 | PLAN_4DSTEM.md | Lazy 4D-STEM dataset model (`FourDDataset`), MIB/HyperSpy-4D ingest, virtual-detector imaging (Phase 1 shipped 2026-08-02); COM/DPC/iDPC (owner-deferred), usability follow-ups, and parked strain/ptychography/ACOM | Active (8 open items / 14 sub-task boxes, Tier 2–3) | Independent lifecycle and its own architectural decision (Option B: 4D data is a source, not a `DataStruct`) with memory-streaming constraints the other two plans don't share |
 | ANALYSIS_PRESENTATION_PLAN.md | Presenting/quantifying the app's own results: peak shapes (Voigt), fit residuals + R², σ bands on charts, vector chart export, Savitzky–Golay, population histograms, fit reports, batch/scripting reach | Active, Tier 3 residue only (ALL eight engineering items shipped 2026-08-12 in four same-day waves; 4 build-on-demand items remain) | Coherent campaign with its own scope rule (image-derived results only; general graphing/statistics DECLINED per the audit) and its own sequencing |
 | ~~PROJECT_WORKFLOW_PLAN.md~~ | Folder import, constant-physical-scale browsing, area measurement, project/sample hierarchy + comparison deliverables, and the `.fvp` project file format | **Complete 2026-08-10** → `plans/archive/` | 27 items shipped, 6 gates resolved. Kept for the decision record: ADR 0002's rationale, the `py/path-injection` triage, and the ratchet outcomes (`store/viewer.ts` graduated 575→444) |
