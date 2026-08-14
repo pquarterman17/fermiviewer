@@ -39,6 +39,7 @@ def include_all_routers(app: FastAPI) -> None:
     from fermiviewer.routes.filter import router as filter_router
     from fermiviewer.routes.folders import router as folders_router
     from fermiviewer.routes.fourd import router as fourd_router
+    from fermiviewer.routes.fourd_com import router as fourd_com_router
     from fermiviewer.routes.grains_trained import router as grains_trained_router
     from fermiviewer.routes.images import router as images_router
     from fermiviewer.routes.imaging_ops import router as imaging_ops_router
@@ -65,7 +66,7 @@ def include_all_routers(app: FastAPI) -> None:
         eds_quant_router, eds_maps_router, eels_advanced_router,
         eels_identify_router, eels_maps_router,
         layers_router, watch_router,
-        fourd_router, folders_router, regions_router, montage_compare_router,
+        fourd_router, fourd_com_router, folders_router, regions_router, montage_compare_router,
         project_io_router, distributions_router,
     ):
         app.include_router(_router)
