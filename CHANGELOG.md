@@ -13,6 +13,25 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Find particles shaped like this one — now in the GUI.** Every row of
+  the Particles table gains a ≈ action that ranks all particles by shape
+  distance to that one (elliptic-Fourier similarity, shipped server-side
+  in v0.1.30): distances appear as a sorted dimensionless column with the
+  reference first, particles whose outline cannot support the harmonic
+  count stay visible with the reason on hover, and the ranking always
+  reflects the segmentation you are looking at — it exits automatically on
+  re-run or image change rather than showing stale distances.
+- **Fit a circle and ellipse to any traced region.** The Regions card
+  gains a per-region Fit action showing both least-squares fits with
+  their RMS residuals — advisory, nothing auto-picks a winner. Radii,
+  axes and RMS display in physical units when the image is calibrated
+  (px otherwise); the ellipse angle is shown in degrees with its axis
+  convention stated. Disabled below five vertices, where an ellipse fit
+  is meaningless.
+
 ## [0.1.30] - 2026-08-14
 
 ### Fixed
