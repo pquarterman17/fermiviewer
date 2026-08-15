@@ -72,6 +72,15 @@ export default function CustomMetaCard() {
   const [busy, setBusy] = useState(false);
   const [reload, setReload] = useState(0);
   const prevActive = useRef<string | null>(null);
+  // The effect below only re-runs on activeId/reload, not on every keystroke
+  // (that would refetch on every character typed) — so its promise callback
+  // must read `dirty` through a ref kept current every render, not the
+  // `dirty` closed over when the effect last ran. Without this, a same-image
+  // refresh (Auto-fill all → setReload) that is still in flight when the
+  // user starts typing resolves with the STALE (pre-edit) `dirty`, sees it
+  // as false, and overwrites the in-progress edit with the server's value.
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
 
   useEffect(() => {
     if (!activeId) {
@@ -88,7 +97,7 @@ export default function CustomMetaCard() {
         // refresh field list / sidecar status always, but don't clobber
         // unsaved edits on the SAME image (e.g. a batch refresh fired while
         // the user was typing). On an image switch, always load fresh.
-        if (imageChanged || !dirty) {
+        if (imageChanged || !dirtyRef.current) {
           setValues(u.values);
           setDirty(false);
         }
