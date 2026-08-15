@@ -17,6 +17,7 @@ import type {
   DistributionHistogram,
   PopulationSummary,
 } from "./api/distributions";
+import type { ParticleRow } from "./api/imaging";
 import { formatPlusMinus } from "./formatUncertainty";
 
 const SQRT_2PI = Math.sqrt(2 * Math.PI);
@@ -117,6 +118,76 @@ export function pickSizeValues(
     return { values: calibratedValues as number[], unit };
   }
   return { values: pxValues, unit: "px" };
+}
+
+/** Population feed offered by ParticlesMode's metric picker
+ *  (SHAPE_ANALYSIS_PLAN.md item 3): equivalent diameter and Feret max are
+ *  lengths (calibrated-vs-px switching via `pickSizeValues`); circularity
+ *  and aspect ratio are dimensionless (Convention 5 — no calibrated twin,
+ *  no unit, never "px"). */
+export type ParticleMetric =
+  | "equiv_diameter"
+  | "circularity"
+  | "aspect_ratio"
+  | "feret_max";
+
+export const PARTICLE_METRIC_OPTIONS: { value: ParticleMetric; label: string }[] = [
+  { value: "equiv_diameter", label: "Equivalent diameter" },
+  { value: "circularity", label: "Circularity" },
+  { value: "aspect_ratio", label: "Aspect ratio" },
+  { value: "feret_max", label: "Feret max" },
+];
+
+export interface ParticleMetricPopulation {
+  values: number[];
+  /** "" for dimensionless metrics — show none, not "px". */
+  unit: string;
+  /** particles omitted from `values`. Currently only aspect ratio's
+   *  `null` entries (degenerate minor axis) — never coerced to 0. */
+  excluded: number;
+}
+
+/** Resolve one metric's population values + unit from a particle list,
+ *  switching calibrated-vs-px exactly as `pickSizeValues` does for the
+ *  two length metrics, and never inventing a unit for the two
+ *  dimensionless ones. */
+export function pickParticleMetricValues(
+  particles: ParticleRow[],
+  metric: ParticleMetric,
+  unit: string,
+): ParticleMetricPopulation {
+  switch (metric) {
+    case "equiv_diameter": {
+      const picked = pickSizeValues(
+        particles.map((p) => p.equiv_diameter),
+        particles.map((p) => p.diameter_calibrated),
+        unit,
+      );
+      return { ...picked, excluded: 0 };
+    }
+    case "feret_max": {
+      const picked = pickSizeValues(
+        particles.map((p) => p.feret_max),
+        particles.map((p) => p.feret_max_calibrated),
+        unit,
+      );
+      return { ...picked, excluded: 0 };
+    }
+    case "circularity":
+      return {
+        values: particles.map((p) => p.circularity),
+        unit: "",
+        excluded: 0,
+      };
+    case "aspect_ratio": {
+      const withValue = particles.filter((p) => p.aspect_ratio != null);
+      return {
+        values: withValue.map((p) => p.aspect_ratio as number),
+        unit: "",
+        excluded: particles.length - withValue.length,
+      };
+    }
+  }
 }
 
 /** One-line summary: "N=300 · mean 18.4 ± 3.2 nm · median 17.9 [15.1, 21.0] nm". */

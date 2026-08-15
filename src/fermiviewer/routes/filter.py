@@ -141,7 +141,11 @@ def apply_filter(req: FilterRequest) -> ImageMeta:
         out = fn(raster, req.params)
     except KeyError as e:
         raise HTTPException(422, f"missing param: {e}") from None
-    except (ValueError, TypeError) as e:
+    except (ValueError, TypeError, ZeroDivisionError, IndexError) as e:
+        # bin_size=0 (ZeroDivisionError, calc.filters.bin_image) and
+        # clahe tile_size=[0, 0] (IndexError, empty tile-centre array in
+        # calc.filters.clahe) are malformed-but-well-typed params that
+        # otherwise escape this catch-all as an unhandled 500.
         raise HTTPException(422, str(e)) from None
 
     if req.kind in _RESAMPLING:

@@ -251,6 +251,31 @@ def test_noise_estimate(synth) -> None:
     assert lv.sigma == pytest.approx(g["sigmaLocalVar"], rel=REL)
 
 
+def test_sigma_mad_kernel_energy() -> None:
+    """Pin the actual kernel energy (sum of squared entries) of
+    ``texture._LAPLACIAN``, independent of ``_sigma_mad``'s divisor.
+
+    A previous version of ``_sigma_mad``'s comment claimed "Sigma K^2 =
+    20" to justify its ``sqrt(20)`` divisor; that arithmetic does not
+    match this kernel (it is 36). The divisor itself stays ``sqrt(20)``
+    for MATLAB golden parity (see ``test_noise_estimate`` above and the
+    corrected comment in texture.py) — this test exists only so the
+    *documentation* of the kernel's energy can never silently drift back
+    to the wrong number.
+
+    Mutation: change ``_LAPLACIAN``'s center coefficient from 4 to 3 —
+    the sum of squares becomes 1+4+1+4+9+4+1+4+1 = 29, so
+    ``== pytest.approx(36.0)`` fails (RED), confirming this test reads
+    the real kernel values rather than tautologically re-asserting a
+    literal.
+    """
+    from fermiviewer.calc.texture import _LAPLACIAN
+
+    energy = float((_LAPLACIAN.astype(np.float64) ** 2).sum())
+    assert energy == pytest.approx(36.0)
+    assert energy != pytest.approx(20.0)
+
+
 def test_radial_profile(synth) -> None:
     radii, avg, mx = radial_profile(synth["base"], n_bins=32)
     g = GOLDEN["radial"]
@@ -478,6 +503,10 @@ def test_count_defect_lines() -> None:
     assert res.density == pytest.approx(g["density2D"], rel=REL)
     assert res.enhanced.sum() == pytest.approx(g["enhancedSum"], rel=REL)
     assert int(res.binary_mask.sum()) == g["maskCount"]
+    # density (no foil_thickness) is 2N/L: dimensionally 1/length, i.e.
+    # "lines/px" (^1) — NOT "lines/px^2" (see defects.py's dimensional-
+    # analysis comment; pinned separately below by the scaling check).
+    assert res.density_unit == "lines/px"
     res3 = count_defect_lines(
         line_img,
         kernel_length=9,
@@ -486,7 +515,57 @@ def test_count_defect_lines() -> None:
         foil_thickness=50,
     )
     assert res3.density == pytest.approx(g["density3D"], rel=REL)
-    assert res3.density_unit == "lines/px^3"
+    # density (with foil_thickness) is 2N/(L*t): dimensionally 1/length^2
+    # (Ham's classic dislocation-density unit, e.g. lines/cm^2) — NOT
+    # "lines/px^3".
+    assert res3.density_unit == "lines/px^2"
+
+
+def test_count_defect_lines_density_units_are_dimensionally_correct() -> None:
+    """``density`` (no foil_thickness) scales as 1/pixel_size — a LENGTH
+    unit, matching ``density_unit == "lines/px"`` — and ``density`` (with
+    foil_thickness) scales as 1/(pixel_size*foil_thickness) — a
+    LENGTH-SQUARED unit, matching ``"lines/px^2"``. Empirically confirms
+    the exponents in ``density_unit`` rather than trusting the label.
+
+    Mutation: reverting defects.py's exponents to the old "^2"/"^3"
+    strings does not change this test (it checks scaling, not the
+    string), but reverting the *scaling law itself* (e.g. dividing by
+    ``total_len**2`` in the no-thickness branch) would turn the first
+    assertion RED, confirming it actually exercises the formula.
+    """
+    r = np.arange(1, 65, dtype=np.float64)[:, None]
+    c = np.arange(1, 97, dtype=np.float64)[None, :]
+    line_img = (np.mod(c, 12) < 2).astype(np.float64) + 0.1 * np.sin(
+        r / 5
+    ) * np.cos(c / 9)
+
+    d1 = count_defect_lines(
+        line_img, kernel_length=9, grid_spacing=20, pixel_size=1.0
+    ).density
+    d2 = count_defect_lines(
+        line_img, kernel_length=9, grid_spacing=20, pixel_size=2.0
+    ).density
+    # 1/length: doubling pixel_size halves the density.
+    assert d1 == pytest.approx(2.0 * d2, rel=1e-9)
+
+    e1 = count_defect_lines(
+        line_img, kernel_length=9, grid_spacing=20,
+        pixel_size=1.0, foil_thickness=10.0,
+    ).density
+    e2 = count_defect_lines(
+        line_img, kernel_length=9, grid_spacing=20,
+        pixel_size=2.0, foil_thickness=10.0,
+    ).density
+    # 1/length^2: doubling ONE length factor (pixel_size) still only
+    # halves it, since foil_thickness is independent — but doubling BOTH
+    # quarters it, which is what distinguishes ^2 from ^1 or ^3.
+    assert e1 == pytest.approx(2.0 * e2, rel=1e-9)
+    e3 = count_defect_lines(
+        line_img, kernel_length=9, grid_spacing=20,
+        pixel_size=2.0, foil_thickness=20.0,
+    ).density
+    assert e1 == pytest.approx(4.0 * e3, rel=1e-9)
 
 
 def test_stitch_images(synth) -> None:

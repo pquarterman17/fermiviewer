@@ -1,0 +1,290 @@
+"""API tests for routes/shape_id.py (SHAPE_ANALYSIS_PLAN Tier-2 items #4
+and #5): POST /analyze/efd-similarity and POST /analyze/fit-shape.
+
+Calc-level numerics (invariances, fit accuracy) are covered by
+test_efd.py / test_shape_fit.py; these tests verify the WIRE contract:
+request validation, the recompute-and-rank flow, and the 404/422 cases.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import pytest
+from fastapi.testclient import TestClient
+
+from fermiviewer.server import create_app
+from fermiviewer.session import store
+from fixtures.minidm4 import write_mini_dm4
+
+pytestmark = pytest.mark.api
+
+
+@pytest.fixture(autouse=True)
+def _clean_store():
+    store.clear()
+    yield
+    store.clear()
+
+
+@pytest.fixture()
+def client() -> TestClient:
+    return TestClient(create_app())
+
+
+def _open(client: TestClient, tmp_path, data: np.ndarray, name: str = "img.dm4") -> str:
+    h, w = data.shape
+    f = write_mini_dm4(
+        tmp_path / name, dims=[w, h], data=data.ravel(),
+        cal=[{"scale": 0.5, "origin": 0, "units": "nm"}] * 2,
+    )
+    return client.post("/api/session/open", json={"paths": [str(f)]}).json()[0]["id"]
+
+
+def _three_particle_image() -> np.ndarray:
+    """Two disks (one big, one smaller, at opposite ends of the image --
+    similar SHAPE to each other) plus one elongated ellipse ("rod-like").
+    Curved boundaries throughout so `trace_outer_contour` at the route's
+    finer tolerance yields plenty of vertices for every region -- see
+    routes/shape_id.py's module docstring on why the tolerance is tuned
+    tighter than trace_outer_contour's own default."""
+    h, w = 200, 300
+    img = np.zeros((h, w))
+    yy, xx = np.mgrid[0:h, 0:w]
+    disk_ref = (yy - 40) ** 2 + (xx - 40) ** 2 <= 20**2
+    disk_similar = (yy - 40) ** 2 + (xx - 250) ** 2 <= 15**2
+    rod = ((yy - 150) / 8.0) ** 2 + ((xx - 150) / 60.0) ** 2 <= 1.0
+    img[disk_ref] = 10
+    img[disk_similar] = 10
+    img[rod] = 10
+    return img + 1  # background above 0 so threshold=5 cleanly separates
+
+
+# ── /analyze/efd-similarity ─────────────────────────────────────────
+
+
+def _particle_req(image_id: str, **overrides) -> dict:
+    req = {"image_id": image_id, "threshold": 5, "min_area": 1}
+    req.update(overrides)
+    return req
+
+
+def test_ranks_self_first_and_similar_shape_above_dissimilar(client, tmp_path) -> None:
+    img_id = _open(client, tmp_path, _three_particle_image())
+    # locate the small disk's particle id first, by asking for particles
+    r = client.post("/api/analyze/particles", json=_particle_req(img_id))
+    particles = r.json()["particles"]
+    assert len(particles) == 3
+    # the two disks are both smaller-area than the rod; identify the ref
+    # disk as the largest-area of the two smallest regions (area ~1257 px)
+    ref = max(particles, key=lambda p: p["area"] if p["area"] < 1400 else -1)
+    ref_id = ref["id"]
+
+    r = client.post(
+        "/api/analyze/efd-similarity",
+        json=_particle_req(img_id, ref_id=ref_id),
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["n_harmonics"] == 10
+    ranked = body["ranked"]
+    assert len(ranked) == 3
+    assert ranked[0]["id"] == ref_id
+    assert ranked[0]["distance"] == pytest.approx(0.0, abs=1e-9)
+    # strictly increasing distance thereafter (no ties in this fixture)
+    dists = [row["distance"] for row in ranked]
+    assert dists == sorted(dists)
+    # the OTHER disk should rank closer than the rod
+    assert ranked[1]["distance"] < ranked[2]["distance"]
+
+
+def test_default_n_harmonics_is_ten(client, tmp_path) -> None:
+    img_id = _open(client, tmp_path, _three_particle_image())
+    particles = client.post(
+        "/api/analyze/particles", json=_particle_req(img_id)
+    ).json()["particles"]
+    ref_id = particles[0]["id"]
+    r = client.post(
+        "/api/analyze/efd-similarity", json=_particle_req(img_id, ref_id=ref_id)
+    )
+    assert r.json()["n_harmonics"] == 10
+
+
+def test_caller_can_override_n_harmonics(client, tmp_path) -> None:
+    img_id = _open(client, tmp_path, _three_particle_image())
+    particles = client.post(
+        "/api/analyze/particles", json=_particle_req(img_id)
+    ).json()["particles"]
+    ref_id = particles[0]["id"]
+    r = client.post(
+        "/api/analyze/efd-similarity",
+        json=_particle_req(img_id, ref_id=ref_id, n_harmonics=4),
+    )
+    assert r.status_code == 200
+    assert r.json()["n_harmonics"] == 4
+
+
+def test_unknown_ref_id_is_404(client, tmp_path) -> None:
+    img_id = _open(client, tmp_path, _three_particle_image())
+    r = client.post(
+        "/api/analyze/efd-similarity",
+        json=_particle_req(img_id, ref_id=999),
+    )
+    assert r.status_code == 404
+
+
+def test_unknown_image_id_is_404(client) -> None:
+    r = client.post(
+        "/api/analyze/efd-similarity",
+        json=_particle_req("no-such-image", ref_id=1),
+    )
+    assert r.status_code == 404
+
+
+def test_undescribable_reference_region_is_422_naming_it(
+    client, tmp_path
+) -> None:
+    """The one region that CANNOT be skipped is the reference itself —
+    with no reference descriptor there is nothing to rank against. A 3x3
+    particle's raw ring (~a dozen points) cannot support 50 harmonics no
+    matter how it is traced, so making it the ref forces the guard."""
+    img = np.zeros((30, 30))
+    img[5:8, 5:8] = 10  # 3x3 particle — the ref itself is undescribable
+    img_id = _open(client, tmp_path, img + 1)
+    particles = client.post(
+        "/api/analyze/particles",
+        json={"image_id": img_id, "threshold": 5, "min_area": 1},
+    ).json()["particles"]
+    ref_id = particles[0]["id"]
+    r = client.post(
+        "/api/analyze/efd-similarity",
+        json={
+            "image_id": img_id, "threshold": 5, "min_area": 1,
+            "ref_id": ref_id, "n_harmonics": 50,
+        },
+    )
+    assert r.status_code == 422
+    assert "reference region" in r.json()["detail"]
+    assert "nothing to rank against" in r.json()["detail"]
+
+
+def test_undescribable_non_reference_region_is_skipped_not_fatal(
+    client, tmp_path
+) -> None:
+    """Skip-and-note: one tiny speck must not kill ranking across the
+    good particles. Fixture: a healthy square (the ref) plus a 3x3 speck
+    that cannot support the harmonic count → 200, speck in `skipped`
+    with a reason, ranking covers the describable regions only."""
+    img = np.zeros((60, 60))
+    img[10:41, 10:41] = 10  # healthy square — the reference
+    img[50:53, 50:53] = 10  # 3x3 speck — undescribable at 50 harmonics
+    img_id = _open(client, tmp_path, img + 1)
+    particles = client.post(
+        "/api/analyze/particles",
+        json={"image_id": img_id, "threshold": 5, "min_area": 1},
+    ).json()["particles"]
+    by_area = sorted(particles, key=lambda p: p["area"], reverse=True)
+    ref_id, speck_id = by_area[0]["id"], by_area[-1]["id"]
+    r = client.post(
+        "/api/analyze/efd-similarity",
+        json={
+            "image_id": img_id, "threshold": 5, "min_area": 1,
+            "ref_id": ref_id, "n_harmonics": 50,
+        },
+    )
+    assert r.status_code == 200, r.json()
+    body = r.json()
+    ranked_ids = [e["id"] for e in body["ranked"]]
+    assert ranked_ids[0] == ref_id  # self-distance first
+    assert speck_id not in ranked_ids
+    (skip,) = body["skipped"]
+    assert skip["id"] == speck_id
+    assert "harmonics" in skip["reason"]
+
+
+# ── /analyze/fit-shape ──────────────────────────────────────────────
+
+
+def _circle_points(cy, cx, r, n=50) -> list[list[float]]:
+    t = np.linspace(0.0, 2.0 * np.pi, n, endpoint=False)
+    pts = np.column_stack([cy + r * np.sin(t), cx + r * np.cos(t)])
+    return pts.tolist()
+
+
+def test_fit_shape_returns_circle_and_ellipse(client) -> None:
+    pts = _circle_points(50.0, 30.0, 12.0)
+    r = client.post("/api/analyze/fit-shape", json={"points": pts})
+    assert r.status_code == 200
+    body = r.json()
+    assert set(body.keys()) == {"circle", "ellipse"}
+    assert body["circle"]["cy"] == pytest.approx(50.0, abs=0.5)
+    assert body["circle"]["cx"] == pytest.approx(30.0, abs=0.5)
+    assert body["circle"]["r"] == pytest.approx(12.0, abs=0.5)
+    assert set(body["circle"].keys()) == {"cy", "cx", "r", "rms"}
+    assert set(body["ellipse"].keys()) == {"cy", "cx", "a", "b", "theta_rad", "rms"}
+    assert body["ellipse"]["a"] == pytest.approx(12.0, abs=0.5)
+    assert body["ellipse"]["b"] == pytest.approx(12.0, abs=0.5)
+
+
+def test_fit_shape_ellipse_field_mapping_on_elongated_shape(client) -> None:
+    """A circle can't distinguish an a/b (or cy/cx) field swap since both
+    axes are equal -- use a genuinely elongated ellipse so `a != b`."""
+
+    def _ellipse_points(cy, cx, a, b, theta, n=80):
+        t = np.linspace(0.0, 2.0 * np.pi, n, endpoint=False)
+        ex, ey = a * np.cos(t), b * np.sin(t)
+        ct, st = np.cos(theta), np.sin(theta)
+        row = cy + st * ex + ct * ey
+        col = cx + ct * ex - st * ey
+        return np.column_stack([row, col]).tolist()
+
+    pts = _ellipse_points(20.0, 40.0, 15.0, 6.0, 0.3)
+    r = client.post("/api/analyze/fit-shape", json={"points": pts})
+    assert r.status_code == 200
+    ellipse = r.json()["ellipse"]
+    assert ellipse["cy"] == pytest.approx(20.0, abs=0.5)
+    assert ellipse["cx"] == pytest.approx(40.0, abs=0.5)
+    assert ellipse["a"] == pytest.approx(15.0, abs=0.5)
+    assert ellipse["b"] == pytest.approx(6.0, abs=0.5)
+    assert ellipse["a"] > ellipse["b"]  # a is always the SEMI-MAJOR axis
+
+
+def test_fit_shape_too_few_points_for_circle_is_422(client) -> None:
+    r = client.post("/api/analyze/fit-shape", json={"points": [[0.0, 0.0], [1.0, 1.0]]})
+    assert r.status_code == 422
+    assert "circle" in r.json()["detail"]
+
+
+def test_fit_shape_enough_for_circle_not_ellipse_is_422(client) -> None:
+    pts = [[0.0, 0.0], [0.0, 4.0], [4.0, 4.0], [4.0, 0.0]]  # 4 points
+    r = client.post("/api/analyze/fit-shape", json={"points": pts})
+    assert r.status_code == 422
+    assert "ellipse" in r.json()["detail"]
+
+
+def test_fit_shape_malformed_points_is_422(client) -> None:
+    r = client.post("/api/analyze/fit-shape", json={"points": [[1.0, 2.0, 3.0]] * 6})
+    assert r.status_code == 422
+
+
+def test_efd_handles_square_particles_via_unsimplified_ring(
+    client, tmp_path,
+) -> None:
+    """A plain square particle must be EFD-rankable. Found live during
+    Wave-1 integration: contour SIMPLIFICATION collapses straight edges
+    to their endpoints at any tolerance, so a square came back as 4
+    corner vertices and 422'd against the 10-harmonic point floor —
+    square/faceted particles are completely ordinary in TEM. The route
+    now traces the raw marching-squares ring (tolerance=0); EFD's own
+    harmonic truncation is the smoothing. The ranked list must contain
+    the square, self-distance ≈ 0, first."""
+    img = np.zeros((60, 60))
+    img[10:41, 10:41] = 10  # one axis-aligned square particle
+    img_id = _open(client, tmp_path, img + 1)
+    r = client.post(
+        "/api/analyze/efd-similarity",
+        json={"image_id": img_id, "threshold": 5, "min_area": 10, "ref_id": 1},
+    )
+    assert r.status_code == 200, r.json()
+    ranked = r.json()["ranked"]
+    assert ranked[0]["id"] == 1
+    assert ranked[0]["distance"] == pytest.approx(0.0, abs=1e-12)

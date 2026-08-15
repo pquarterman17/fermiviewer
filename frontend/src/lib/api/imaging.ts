@@ -88,6 +88,16 @@ export function analyzeGpa(
   return post("/api/analyze/gpa", { image_id: id, g1, g2 });
 }
 
+/** Advisory heuristic on the 2D projection only (SHAPE_ANALYSIS_PLAN.md
+ *  Convention 6) — a rod viewed end-on projects as a disk, so no 2D image
+ *  can refute that reading. Nothing is filtered or auto-corrected by
+ *  class; thresholds are caller-tunable server-side. */
+export type ShapeClass =
+  | "sphere-like"
+  | "rod-like"
+  | "intermediate"
+  | "aggregate";
+
 export interface ParticleRow {
   id: number;
   area: number;
@@ -96,6 +106,28 @@ export interface ParticleRow {
   mean_intensity: number;
   area_calibrated: number | null;
   diameter_calibrated: number | null;
+  /** 4πA / P_crofton², dimensionless. Small regions can slightly exceed 1
+   *  (Crofton bias) — report raw, never clip (SHAPE_ANALYSIS_PLAN
+   *  Convention 2). */
+  circularity: number;
+  /** axis_major_length / axis_minor_length of the moment ellipse; `null`
+   *  when the minor axis is degenerate (never Infinity). */
+  aspect_ratio: number | null;
+  /** moment-ellipse eccentricity, [0, 1). */
+  eccentricity: number;
+  /** skimage `regionprops` convention: angle between the ROW axis and the
+   *  ellipse major axis, (-π/2, π/2], radians. AXIAL (period π — a rod at
+   *  +80° is the same rod at −100°) and MORPHOLOGICAL, not
+   *  crystallographic (SHAPE_ANALYSIS_PLAN Convention 3). */
+  orientation_rad: number;
+  /** area / convex-hull area, (0, 1]. */
+  solidity: number;
+  /** max caliper (Feret) diameter, px. */
+  feret_max: number;
+  /** feret_max in the response's `unit`; null when the image has no
+   *  pixel calibration — same serialization as `diameter_calibrated`. */
+  feret_max_calibrated: number | null;
+  shape_class: ShapeClass;
 }
 
 export function analyzeParticles(

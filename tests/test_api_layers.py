@@ -240,6 +240,35 @@ def test_layers_multi_empty_422(client) -> None:
     assert r.status_code == 422
 
 
+def test_layers_multi_nan_comparison_map_is_422_not_500(client, tmp_path) -> None:
+    """A non-reference map's own recompute_layers() call was unwrapped: a
+    few NaN pixels make calc.layers.cross_section_profile raise ValueError
+    (non-finite values in the ROI), which escaped as an unhandled 500
+    instead of the 422 every other calc call in this route already gets."""
+    sharp = _open_map(client, tmp_path, "sharp-nan", 2.0)
+    y = np.arange(H, dtype=np.float64)
+    prof = np.full(H, LEVELS[0])
+    for c, (lo, hi) in zip(CENTERS, zip(LEVELS, LEVELS[1:], strict=False), strict=True):
+        prof += (hi - lo) * 0.5 * (1 + erf((y - c) / (2.0 * np.sqrt(2))))
+    img = np.tile(prof[:, None], (1, W))
+    rng = np.random.default_rng(0)
+    img[rng.random(img.shape) < 0.01] = np.nan
+    f = write_mini_dm4(
+        tmp_path / "nanmap.dm4", dims=[W, H],
+        data=img.ravel().astype(np.float32), data_type=2,
+        cal=[{"scale": PX, "origin": 0, "units": "nm"},
+             {"scale": PX, "origin": 0, "units": "nm"}],
+    )
+    nanmap = client.post(
+        "/api/session/open", json={"paths": [str(f)]}
+    ).json()[0]["id"]
+
+    r = client.post("/api/analyze/layers/multi", json={
+        "image_ids": [sharp, nanmap], "reference": 0,
+    })
+    assert r.status_code == 422, r.text
+
+
 def _tilted_image_id(client, tmp_path, tilt_deg: float) -> str:
     yy, xx = np.mgrid[0:H, 0:W].astype(np.float64)
     a = np.radians(tilt_deg)

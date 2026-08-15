@@ -137,12 +137,18 @@ def count_defect_lines(
         h_rows.size * roi_w * pixel_size + v_cols.size * roi_h * pixel_size
     )
     rho_2d = 2 * n_hits / total_len if total_len > 0 else 0.0
+    # Dimensional analysis (see the module docstring's own ρ formulas): N is
+    # a dimensionless count, total_len is a LENGTH (pixel_unit), so 2N/L is
+    # ^1 (not ^2), and foil_thickness is another length, so 2N/(L·t) is ^2
+    # (not ^3) — Ham's method gives the classic dislocation-density unit of
+    # 1/length², e.g. lines/cm², not a volumetric 1/length³. Confirmed by
+    # scaling pixel_size/foil_thickness in test_count_defect_lines.
     if np.isfinite(foil_thickness) and foil_thickness > 0:
         density = 2 * n_hits / (total_len * foil_thickness)
-        density_unit = f"lines/{pixel_unit}^3"
+        density_unit = f"lines/{pixel_unit}^2"
     else:
         density = rho_2d
-        density_unit = f"lines/{pixel_unit}^2"
+        density_unit = f"lines/{pixel_unit}"
 
     return DefectCount(
         intersection_count=n_hits,

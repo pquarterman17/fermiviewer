@@ -120,6 +120,27 @@ def test_error_paths(client, img_id) -> None:
     )
 
 
+def test_bin_size_zero_is_422_not_500(client, img_id) -> None:
+    """bin_size=0 makes calc.filters.bin_image divide by zero (h // 0) —
+    a malformed-but-well-typed param must surface as 422, not an unhandled
+    ZeroDivisionError leaking out of the dispatch table as a 500."""
+    r = client.post(
+        "/api/filter",
+        json={"image_id": img_id, "kind": "bin", "params": {"bin_size": 0}},
+    )
+    assert r.status_code == 422, r.text
+
+
+def test_clahe_zero_tile_size_is_422_not_500(client, img_id) -> None:
+    """tile_size=[0, 0] leaves calc.filters.clahe's tile-centre array empty,
+    so indexing it raises IndexError — must surface as 422, not a 500."""
+    r = client.post(
+        "/api/filter",
+        json={"image_id": img_id, "kind": "clahe", "params": {"tile_size": [0, 0]}},
+    )
+    assert r.status_code == 422, r.text
+
+
 # ── geometric ops (stage toolbar) ────────────────────────────────────
 
 def test_rotate_and_flip(client, img_id) -> None:

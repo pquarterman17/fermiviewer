@@ -96,7 +96,21 @@ _BLOCK = 16
 
 def _sigma_mad(d: np.ndarray) -> float:
     """MAD of the Laplacian response. 0.6745 converts MAD→σ for Gaussian
-    noise; √20 corrects for the kernel energy (Σ K² = 20)."""
+    noise.
+
+    The ``sqrt(20)`` divisor is preserved VERBATIM from the MATLAB
+    reference for golden parity (``tests/golden/imaging.json`` was frozen
+    from the real ``imaging.noiseEstimate`` output and pins this exact
+    constant to 1e-9 — see ``test_noise_estimate``); do not "fix" it to
+    ``sqrt(kernel energy)``. An earlier version of this comment claimed
+    "corrects for the kernel energy (Σ K² = 20)", but that arithmetic is
+    wrong for ``_LAPLACIAN`` as actually defined above: summing its
+    squared entries gives 36, not 20 (``test_sigma_mad_kernel_energy``
+    pins this). Substituting the "corrected" ``sqrt(36)`` would shift
+    every reported sigma by a factor of ``sqrt(36/20) ≈ 1.34`` and break
+    golden parity with the shipped MATLAB tool — resolving that
+    discrepancy needs the real MATLAB source, not a guess made here.
+    """
     response = signal.convolve2d(d, _LAPLACIAN, mode="valid")
     return float(np.median(np.abs(response)) / 0.6745 / np.sqrt(20))
 

@@ -211,7 +211,7 @@ def test_defects_endpoint_default_sweep(client, tmp_path) -> None:
     ):
         assert key in body
     assert body["test_lines"] > 0
-    assert body["density_unit"] == "lines/nm^2"
+    assert body["density_unit"] == "lines/nm"  # 2N/L is 1/length — see calc/defects.py unit fix
     assert client.get(
         f"/api/image/{body['enhanced']['id']}/render"
     ).status_code == 200
@@ -240,7 +240,7 @@ def test_defects_endpoint_roi_and_foil_thickness(client, tmp_path) -> None:
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["roi"] == [10, 12, 60, 72]
-    assert body["density_unit"] == "lines/nm^3"
+    assert body["density_unit"] == "lines/nm^2"  # Ham 2N/(L*t) is 1/length^2 — dislocation density
     assert body["h_rows"] == [20, 40]
     assert body["v_cols"] == [20, 40, 60]
     assert body["enhanced"]["shape"] == body["mask"]["shape"]
