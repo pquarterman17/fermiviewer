@@ -28,14 +28,20 @@ promptly rather than after paying for contours nobody asked to see.
 PLAN_4DSTEM #10 (Bragg-disk detection) is a documented FUTURE consumer of
 `calc/shape_fit.py`'s circle fit, not wired up here -- see that module.
 
-Contour tracing here deliberately passes a FINER `tolerance` than
+Contour tracing here passes `tolerance=0` -- NO simplification -- unlike
 `trace_outer_contour`'s own default (2.0px, `calc/contours.py`'s
-"manageable for hand-correction" outline target -- a different job with
-a different accuracy need). EFD wants the outline's actual shape detail,
-not a vertex count a person can drag around, so `_EFD_TRACE_TOLERANCE`
-below is tuned tighter; `calc/efd.py`'s own `n_harmonics`-vs-vertex-count
-floor still applies on top of it, and a ring that doesn't clear it (a
-small or extremely simplified region) still 422s naming that region.
+"manageable for hand-correction" outline target, a different job with a
+different accuracy need). Simplification is actively wrong for EFD, not
+just unnecessary: Douglas-Peucker collapses straight edges to their
+endpoints at ANY tolerance, so a plain square particle -- completely
+ordinary in TEM -- came back as 4 corner vertices and could not clear
+`calc/efd.py`'s `n_harmonics` point floor (found live: `422 region 1:
+need >= 10 contour points for 10 harmonics, got 4`). EFD's own harmonic
+truncation IS its smoothing; the raw marching-squares ring is its honest
+input. `_EFD_TRACE_MAX_VERTICES` stays as the decimation safety net for
+enormous regions (contours.py escalates tolerance only above it), and a
+ring that still can't clear the harmonic floor (a tiny region) 422s
+naming that region.
 """
 
 from __future__ import annotations
@@ -58,11 +64,12 @@ from fermiviewer.routes.structure import ParticleRequest, _raster
 
 router = APIRouter(prefix="/api")
 
-# See module docstring: finer than trace_outer_contour's own 2.0px/200-vertex
-# hand-edit-outline default, because EFD needs shape detail, not an outline
-# a person is meant to drag vertices around on.
-_EFD_TRACE_TOLERANCE = 0.5
-_EFD_TRACE_MAX_VERTICES = 300
+# See module docstring: tolerance 0 = the raw marching-squares ring, because
+# Douglas-Peucker collapses straight edges to endpoints at any tolerance and
+# starves the harmonic floor on square/faceted particles. The vertex cap is
+# the safety net for enormous regions only.
+_EFD_TRACE_TOLERANCE = 0.0
+_EFD_TRACE_MAX_VERTICES = 2000
 
 
 # ── EFD similarity ──────────────────────────────────────────────────

@@ -143,19 +143,26 @@ def test_unknown_image_id_is_404(client) -> None:
 def test_too_few_contour_points_for_harmonic_count_is_422_naming_region(
     client, tmp_path
 ) -> None:
-    """Every region in the fixture has well under 50 traced vertices
-    (checked directly against calc/contours.py's tracer), so requesting
-    50 harmonics deterministically forces the too-few-points guard,
-    regardless of the exact vertex count DP-simplification happens to
-    produce for any one region."""
-    img_id = _open(client, tmp_path, _three_particle_image())
+    """The too-few-points guard still fires and names the region. The
+    route now traces the RAW ring (no DP simplification — see the module
+    docstring's square-particle rationale), so an ordinary particle
+    carries far more vertices than it used to and this fixture must be
+    genuinely tiny: a 3x3 particle's ring (~8-12 points) cannot support
+    50 harmonics no matter how it is traced."""
+    img = np.zeros((30, 30))
+    img[5:8, 5:8] = 10  # 3x3 particle — raw ring is still only ~a dozen points
+    img_id = _open(client, tmp_path, img + 1)
     particles = client.post(
-        "/api/analyze/particles", json=_particle_req(img_id)
+        "/api/analyze/particles",
+        json={"image_id": img_id, "threshold": 5, "min_area": 1},
     ).json()["particles"]
     ref_id = particles[0]["id"]
     r = client.post(
         "/api/analyze/efd-similarity",
-        json=_particle_req(img_id, ref_id=ref_id, n_harmonics=50),
+        json={
+            "image_id": img_id, "threshold": 5, "min_area": 1,
+            "ref_id": ref_id, "n_harmonics": 50,
+        },
     )
     assert r.status_code == 422
     assert "region" in r.json()["detail"]
@@ -224,3 +231,27 @@ def test_fit_shape_enough_for_circle_not_ellipse_is_422(client) -> None:
 def test_fit_shape_malformed_points_is_422(client) -> None:
     r = client.post("/api/analyze/fit-shape", json={"points": [[1.0, 2.0, 3.0]] * 6})
     assert r.status_code == 422
+
+
+def test_efd_handles_square_particles_via_unsimplified_ring(
+    client, tmp_path,
+) -> None:
+    """A plain square particle must be EFD-rankable. Found live during
+    Wave-1 integration: contour SIMPLIFICATION collapses straight edges
+    to their endpoints at any tolerance, so a square came back as 4
+    corner vertices and 422'd against the 10-harmonic point floor —
+    square/faceted particles are completely ordinary in TEM. The route
+    now traces the raw marching-squares ring (tolerance=0); EFD's own
+    harmonic truncation is the smoothing. The ranked list must contain
+    the square, self-distance ≈ 0, first."""
+    img = np.zeros((60, 60))
+    img[10:41, 10:41] = 10  # one axis-aligned square particle
+    img_id = _open(client, tmp_path, img + 1)
+    r = client.post(
+        "/api/analyze/efd-similarity",
+        json={"image_id": img_id, "threshold": 5, "min_area": 10, "ref_id": 1},
+    )
+    assert r.status_code == 200, r.json()
+    ranked = r.json()["ranked"]
+    assert ranked[0]["id"] == 1
+    assert ranked[0]["distance"] == pytest.approx(0.0, abs=1e-12)

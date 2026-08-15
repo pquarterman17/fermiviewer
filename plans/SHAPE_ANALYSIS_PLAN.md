@@ -169,16 +169,20 @@ conflict).
    probe square inside the 0.85–0.92 trap zone.
    - [x] classifier + boundary tests (each threshold edge, both sides)
    - [x] tunable thresholds honoured end-to-end through the route
-3. **Frontend: columns, metric picker, orientation rose** —
-   ParticlesMode table gains circularity/AR/class columns; the existing
-   PopulationHistogram feed gains a metric picker (equiv ⌀ /
-   circularity / aspect ratio / Feret max — unit string switches with
-   calibration exactly as `pickSizeValues` does); new `OrientationRose`
-   SVG half-rose (axial, Convention 3) with near-circular regions
-   (eccentricity < 0.2) excluded from the rose and counted in a note,
-   since a circle's orientation is noise; per-class count line with the
-   projection-caveat tooltip.
-   - [ ] table + picker + rose + per-class counts, all against the
+~~**3. Frontend: columns, metric picker, orientation rose**~~
+   (2026-08-14, agent A3) — ParticlesMode 192→284 lines: circ/AR/class
+   columns (null AR renders "—"), metric picker over the
+   PopulationHistogram feed via new `lib/populationHistogram.ts`
+   (dimensionless metrics carry no unit; null ARs excluded and counted),
+   new `OrientationRose.tsx` (177 lines, axial half-rose, +90° edge
+   clamped, ecc<0.2 excluded with note), per-class count line with the
+   projection-caveat tooltip. Typed verbatim against the frozen
+   contract with mocks; the contract held at integration — live E2E
+   found zero drift between A3's types and A1's real wire. Also fixed a
+   latent fixture bug in the pre-existing ParticlesMode tests (a mock
+   crashing `ingestDerived`, invisible because the old tests never
+   asserted past the call args).
+   - [x] table + picker + rose + per-class counts, all against the
          frozen contract with mocked responses
 
 ## Tier 2 — Wave 2 (sequential, after Wave-1 merge)
