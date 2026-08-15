@@ -13,7 +13,7 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.30] - 2026-08-14
 
 ### Fixed
 - **Typing during a metadata refresh no longer loses your edit.** If a
