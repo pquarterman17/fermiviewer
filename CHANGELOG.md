@@ -15,6 +15,34 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **Typing during a metadata refresh no longer loses your edit.** If a
+  Custom-metadata refetch (e.g. Auto-fill all) was still in flight when
+  you started typing, its response silently overwrote the in-progress
+  edit — the stale-value guard read a snapshot of the dirty flag from
+  when the request started, not its live value when the response landed.
+- **Dislocation density now carries dimensionally correct units.** The
+  defect-line count reported `lines/nm²` for the per-length density
+  (2N/L, which is 1/length) and `lines/nm³` for Ham's foil-thickness
+  density (2N/(L·t), which is the classic 1/length² of lines-per-cm²) —
+  both exponents were off by one. Values were always correct; the unit
+  label on them was not. Pinned by a scaling-law test independent of the
+  label.
+- **Three malformed-input 500s are now proper 422s**: `/api/filter` with
+  a zero bin size or zero CLAHE tile size, `/api/diffraction/calibrate`
+  with a negative angle count, and `/analyze/layers/multi` with a
+  comparison map containing non-finite pixels (which now names the
+  offending image).
+- **One bad particle no longer kills shape-similarity ranking.**
+  `/analyze/efd-similarity` skips regions that cannot support the
+  requested harmonic count and reports them in a `skipped` list with
+  reasons, instead of failing the whole query on the first tiny speck.
+  A reference region that cannot be described is still a 422 — there is
+  nothing to rank against, and the error now says so.
+- A false derivation comment on the noise estimator's MATLAB-verbatim
+  √20 divisor was corrected (the Laplacian kernel energy is 36, not 20;
+  the divisor itself is golden-pinned and deliberately unchanged).
+
 ### Added
 - **Particles now have a shape identity (SHAPE_ANALYSIS_PLAN Wave 1).**
   `/analyze/particles` measures each particle's circularity, aspect ratio,
