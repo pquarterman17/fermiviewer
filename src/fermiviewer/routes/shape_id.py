@@ -114,23 +114,38 @@ def analyze_efd_similarity(req: EfdSimilarityRequest) -> dict:
     skipped: list[dict[str, object]] = []
     for p in res.particles:
         mask = res.labels == p.id
+        # The response's `reason`/`detail` strings are built HERE from
+        # request-known quantities, never from exception text — CodeQL
+        # (py/stack-trace-exposure, alert #47) treats exception-derived
+        # strings in responses as information exposure, and a static
+        # message is equally informative: the only two failure modes are
+        # an untraceable mask and a ring too small for the harmonic count.
         try:
             contour = trace_outer_contour(
                 mask,
                 tolerance=_EFD_TRACE_TOLERANCE,
                 max_vertices=_EFD_TRACE_MAX_VERTICES,
             )
-            descriptors[p.id] = efd_descriptor(
-                contour.points, n_harmonics=req.n_harmonics
+        except NoContourError:
+            reason = "no traceable outer contour"
+            contour = None
+        if contour is not None:
+            try:
+                descriptors[p.id] = efd_descriptor(
+                    contour.points, n_harmonics=req.n_harmonics
+                )
+                continue
+            except ValueError:
+                reason = (
+                    f"contour cannot support {req.n_harmonics} harmonics"
+                )
+        if p.id == req.ref_id:
+            raise HTTPException(
+                422,
+                f"reference region {p.id} cannot be described "
+                f"({reason}) — nothing to rank against",
             )
-        except (NoContourError, ValueError) as e:
-            if p.id == req.ref_id:
-                raise HTTPException(
-                    422,
-                    f"reference region {p.id} cannot be described "
-                    f"({e}) — nothing to rank against",
-                ) from None
-            skipped.append({"id": p.id, "reason": str(e)})
+        skipped.append({"id": p.id, "reason": reason})
 
     ref_descriptor = descriptors[req.ref_id]
     ranked = sorted(
