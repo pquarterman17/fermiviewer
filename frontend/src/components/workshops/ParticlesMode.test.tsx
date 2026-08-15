@@ -3,7 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../lib/api", async (importActual) => {
   const actual = await importActual<typeof import("../../lib/api")>();
-  return { ...actual, analyzeParticles: vi.fn(), fetchData16: vi.fn() };
+  return {
+    ...actual,
+    analyzeParticles: vi.fn(),
+    efdSimilarity: vi.fn(),
+    fetchData16: vi.fn(),
+  };
 });
 
 // Isolate ParticlesMode's data flow from PopulationHistogram's own
@@ -27,7 +32,8 @@ vi.mock("../analysis/PopulationHistogram", () => ({
 }));
 
 import type { ParticleRow } from "../../lib/api";
-import { analyzeParticles, fetchData16 } from "../../lib/api";
+import { analyzeParticles, efdSimilarity, fetchData16 } from "../../lib/api";
+import { useViewer } from "../../store/viewer";
 import { useResults } from "../overlays/ResultsWindow";
 import ParticlesMode, { countShapeClasses } from "./ParticlesMode";
 
@@ -326,6 +332,228 @@ describe("ParticlesMode", () => {
         screen.getByRole("img", { name: "Particle orientation half-rose" }),
       ).toBeInTheDocument(),
     );
+  });
+});
+
+// SHAPE_ANALYSIS_PLAN.md Wave 2 — GUI wiring: "find similar" (item #4).
+describe("ParticlesMode — find similar", () => {
+  function rowIds(container: HTMLElement): string[] {
+    return Array.from(
+      container.querySelectorAll<HTMLTableRowElement>("tbody tr"),
+    ).map((tr) => tr.querySelector("td")?.textContent ?? "");
+  }
+
+  function rowById(container: HTMLElement, id: string): HTMLTableRowElement {
+    const row = Array.from(
+      container.querySelectorAll<HTMLTableRowElement>("tbody tr"),
+    ).find((tr) => tr.querySelector("td")?.textContent === id);
+    if (!row) throw new Error(`no row for id ${id}`);
+    return row;
+  }
+
+  // Mocks MUST be configured before render — the raster fetch fires
+  // synchronously from ParticlesMode's mount effect, so setting up the mock
+  // afterwards only "works" by accident (a lingering mockResolvedValue left
+  // over from an earlier test in the same run, which vi.clearAllMocks()
+  // does not clear). Found by running this describe block in isolation
+  // (vitest -t), which has no earlier test to leak from.
+  async function setUpWithParticles(): Promise<HTMLElement> {
+    vi.mocked(fetchData16).mockResolvedValue(raster());
+    vi.mocked(analyzeParticles).mockResolvedValue({
+      n_particles: 4,
+      threshold: 0.5,
+      labels: { id: "labels", meta: {} } as never,
+      particles: particleRows(),
+      unit: "nm",
+    });
+    const { container } = render(<ParticlesMode id="img" />);
+    await waitFor(() => expect(fetchData16).toHaveBeenCalledWith("img"));
+    fireEvent.click(screen.getByRole("button", { name: "Count" }));
+    await waitFor(() => expect(rowIds(container).length).toBe(4));
+    return container;
+  }
+
+  it("sorts ranked rows ascending by distance, the reference landing first", async () => {
+    // Mutation tested: dropping the `.sort((a, b) => a.distance - b.distance)`
+    // call in ParticlesTable.tsx (rendering `similarity.ranked` verbatim)
+    // turned this RED — rows came back in the mock's [3, 2, 1] order instead
+    // of [2, 1, 3]. Restored and green again.
+    const container = await setUpWithParticles();
+
+    vi.mocked(efdSimilarity).mockResolvedValue({
+      ranked: [
+        { id: 3, distance: 0.5 },
+        { id: 2, distance: 0 }, // the reference — lands first at ≈0
+        { id: 1, distance: 0.2 },
+      ],
+      skipped: [],
+      n_harmonics: 10,
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "≈" })[1]); // particle id 2
+    await waitFor(() => expect(rowIds(container)).toEqual(["2", "1", "3"]));
+  });
+
+  it("keeps skipped particles visible with '—' and the reason on hover", async () => {
+    // Mutation tested: rendering skipped rows with the reason baked into the
+    // cell TEXT instead of a `title` attribute turned this RED (no `title`
+    // to assert on); restored to a `title`-only reason and green again.
+    const container = await setUpWithParticles();
+
+    vi.mocked(efdSimilarity).mockResolvedValue({
+      ranked: [{ id: 1, distance: 0.012 }],
+      skipped: [{ id: 4, reason: "no traceable outer contour" }],
+      n_harmonics: 10,
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "≈" })[0]); // particle id 1
+    await waitFor(() =>
+      expect(screen.getByText(/ranked 1 · skipped 1/)).toBeInTheDocument(),
+    );
+
+    const distanceCell = rowById(container, "4").querySelectorAll("td")[1];
+    expect(distanceCell.textContent).toBe("—");
+    expect(distanceCell).toHaveAttribute(
+      "title",
+      "no traceable outer contour",
+    );
+    // the ranked row still shows a real distance, 3 sig figs
+    expect(rowById(container, "1").querySelectorAll("td")[1].textContent).toBe(
+      "0.0120",
+    );
+  });
+
+  it("Clear exits similarity mode and restores the normal table's row order", async () => {
+    // Mutation tested: making onClear a no-op (dropping `setSimilarity(null)`
+    // from clearSimilarity) turned this RED — the distance column and
+    // "ranked" status line stayed on screen after clicking Clear. Restored
+    // and green again.
+    const container = await setUpWithParticles();
+
+    vi.mocked(efdSimilarity).mockResolvedValue({
+      ranked: [
+        { id: 2, distance: 0 },
+        { id: 1, distance: 0.3 },
+      ],
+      skipped: [{ id: 4, reason: "no traceable outer contour" }],
+      n_harmonics: 10,
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: "≈" })[1]); // id 2
+    await waitFor(() =>
+      expect(screen.getByText(/ranked 2 · skipped 1/)).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+
+    await waitFor(() =>
+      expect(rowIds(container)).toEqual(["1", "2", "3", "4"]),
+    );
+    expect(screen.queryByText(/ranked/)).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "≈" })).toHaveLength(4);
+  });
+
+  it("sends find-similar with the DISPLAYED run's exact params, ignoring later control edits", async () => {
+    // Mutation tested: reading `polarity`/`minArea`/`watershed`/live-thresh
+    // state directly in findSimilar (instead of the captured `runParams`)
+    // turned this RED — the assertion below caught "bright"/99/false instead
+    // of the run's actual "dark"/7/true. Restored to runParams and green.
+    vi.mocked(fetchData16).mockResolvedValue(raster());
+    vi.mocked(analyzeParticles).mockResolvedValue({
+      n_particles: 4,
+      threshold: 0.5,
+      labels: { id: "labels", meta: {} } as never,
+      particles: particleRows(),
+      unit: "nm",
+    });
+    const { container } = render(<ParticlesMode id="img" />);
+    await waitFor(() => expect(fetchData16).toHaveBeenCalledWith("img"));
+
+    // Configure and run with a specific, non-default segmentation.
+    fireEvent.click(screen.getByRole("button", { name: "dark" }));
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "7" } });
+    fireEvent.click(screen.getByLabelText("Split touching particles"));
+    fireEvent.click(screen.getByRole("button", { name: "Count" }));
+    await waitFor(() => expect(rowIds(container).length).toBe(4));
+
+    // Edit the LIVE controls after the run — these must NOT leak into the
+    // find-similar request; only the params that produced the displayed
+    // table may.
+    fireEvent.click(screen.getByRole("button", { name: "bright" }));
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "99" } });
+    fireEvent.click(screen.getByLabelText("Split touching particles"));
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "0.9" } });
+
+    vi.mocked(efdSimilarity).mockResolvedValue({
+      ranked: [],
+      skipped: [],
+      n_harmonics: 10,
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: "≈" })[1]); // id 2
+
+    await waitFor(() => expect(efdSimilarity).toHaveBeenCalled());
+    expect(efdSimilarity).toHaveBeenCalledWith(
+      "img",
+      expect.objectContaining({
+        threshold: 0.5, // realThr computed at Count time (vmin 0, thresh 0.5)
+        polarity: "dark",
+        minArea: 7,
+        watershed: true,
+        refId: 2,
+      }),
+    );
+  });
+
+  it("surfaces a 422 (undescribable reference) via the status idiom; the table stays usable", async () => {
+    // Mutation tested: dropping the `.catch` handler in findSimilar (letting
+    // the rejection go unhandled) turned this RED — status never updated.
+    // Restored and green again.
+    await setUpWithParticles();
+
+    vi.mocked(efdSimilarity).mockRejectedValue(
+      new Error(
+        "reference region 3 cannot be described " +
+          "(contour cannot support 10 harmonics) — nothing to rank against",
+      ),
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "≈" })[2]); // id 3
+    await waitFor(() =>
+      expect(useViewer.getState().status).toBe(
+        "find similar: reference region 3 cannot be described " +
+          "(contour cannot support 10 harmonics) — nothing to rank against",
+      ),
+    );
+
+    // still the ordinary table — never entered similarity mode
+    expect(screen.getAllByRole("button", { name: "≈" })).toHaveLength(4);
+    expect(screen.queryByText(/ranked/)).not.toBeInTheDocument();
+  });
+
+  it("exits similarity mode when the analysis is re-run (stale distances against a new segmentation)", async () => {
+    // Mutation tested: removing the `setSimilarity(null)` call at the top of
+    // count() turned this RED — the old distance column/status line stayed
+    // on screen through the re-run. Restored and green again.
+    await setUpWithParticles();
+
+    vi.mocked(efdSimilarity).mockResolvedValue({
+      ranked: [
+        { id: 1, distance: 0 },
+        { id: 2, distance: 0.4 },
+      ],
+      skipped: [],
+      n_harmonics: 10,
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: "≈" })[0]);
+    await waitFor(() =>
+      expect(screen.getByText(/ranked 2 · skipped 0/)).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Count" }));
+
+    await waitFor(() =>
+      expect(screen.queryByText(/ranked/)).not.toBeInTheDocument(),
+    );
+    expect(screen.getAllByRole("button", { name: "≈" })).toHaveLength(4);
   });
 });
 

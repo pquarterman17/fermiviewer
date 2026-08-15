@@ -10,10 +10,12 @@ question: *spheres or rods?* Meanwhile `calc/distributions.py` is
 deliberately metric-agnostic, so every descriptor added becomes a fittable
 population for free.
 
-**Status:** Active (created 2026-08-14; same-day: Wave 1 (#1–#3) fully
-SHIPPED and integrated, #4/#5 backend SHIPPED + skip-and-note refinement
-landed in the same day's bug round. Remaining: Wave 2 GUI wiring for
-#4/#5 — the only open work in this plan)
+**Status:** COMPLETE 2026-08-15 — all five items shipped end-to-end.
+Wave 1 (#1–#3) 2026-08-14 in a three-agent parallel build against the
+frozen contract; #4/#5 backends the same day; Wave-2 GUI wiring (find
+similar + fit shape) 2026-08-15 by two parallel agents on disjoint
+files. #1–#3 and the backends released in v0.1.30. Optional follow-up
+recorded, not owed: drawing fitted circles/ellipses on the Stage.
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-08-14
 **Updated:** 2026-08-14 — Wave 1 integrated. Convention #2 corrected
@@ -197,8 +199,15 @@ conflict).
    contour tracing runs finer than `trace_outer_contour`'s hand-edit
    default (0.5px/300 vertices — mutation-verified load-bearing).*
    Remaining:
-   - [ ] Wave 2: workshop "find similar" control (was deferred from the
-         parallel build to avoid colliding with A3 in ParticlesMode)
+   - [x] ~~Wave 2: workshop "find similar" control~~ (2026-08-15, W2a) —
+         per-row ≈ action on a new interactive ParticlesTable (the generic
+         ResultsWindow is primitives-only and stayed untouched); distance
+         column ascending with the ref first, skipped rows visible with
+         hover reasons, explicit Clear, and similarity mode exits on
+         re-run/image change (stale distances against a new segmentation
+         are wrong data — pinned). Requests reuse the DISPLAYED run's
+         captured params, not live control state — pinned by a
+         leak-catching mutation test.
    - [x] ~~Wave 2 refinement: skip-and-note~~ (2026-08-14, bug round) —
          undescribable non-reference regions land in `skipped:
          [{id, reason}]` instead of failing the query; an undescribable
@@ -213,6 +222,42 @@ conflict).
    for parked PLAN_4DSTEM #10 (Bragg-disk detection). Remaining:
    - [ ] Wave 2: GUI wiring (fit a traced region/contour from the
          Regions/Particles surface)
+
+## Wave 2 — GUI wiring (specced 2026-08-15, two parallel agents)
+
+File partition (disjoint by construction):
+
+| W2a (find similar)              | W2b (fit shape)                  |
+|---------------------------------|----------------------------------|
+| lib/api/imaging.ts (client)     | lib/api/regions.ts (client)      |
+| ParticlesMode.tsx (+child)      | Inspector/RegionsCard.tsx        |
+| colocated tests                 | colocated tests                  |
+
+**W2a — "Find similar" in ParticlesMode.** A per-row action on the
+particles table calls `/analyze/efd-similarity` with the SAME segmentation
+params as the displayed run plus that row's id as `ref_id`. Result mode:
+a distance column, rows sorted ascending by it (reference first at ≈0),
+skipped regions kept visible with "—" and their reason on hover; a status
+line "ranked N · skipped M"; an explicit exit control restores the normal
+table. A 422 (undescribable reference) surfaces the server detail via the
+existing status idiom. Distances are DIMENSIONLESS (normalized-descriptor
+space) — no unit, ever.
+
+**W2b — circle/ellipse fit in RegionsCard.** A per-region "Fit" action
+sends the polygon's vertices to `/analyze/fit-shape` and shows both fits
+compactly: circle (center, r, rms) and ellipse (center, a, b, θ shown in
+DEGREES with the convention stated, rms). Both are shown with their rms —
+advisory, the user judges; nothing auto-picks. Lengths (r, a, b, rms)
+display calibrated when the image has a pixel size, px otherwise —
+following the card's existing physical-units convention; rms IS a length
+and calibrates with them. Coordinate care: measures hold `{x, y}`; the
+endpoint wants 1-based `[[row, col]]` — the implementer must VERIFY the
+measure/regions basing against `routes/regions.py` before converting, not
+guess (fitting is translation-equivariant, so a basing error would be
+invisible in r/a/b/rms and visible only in the reported center — exactly
+the kind of silent unit bug this plan exists to prevent). No new overlay
+machinery: draw the fitted shape only if an existing overlay path makes it
+trivial, else numeric readout only.
 
 ## Testing & integration protocol (Wave 1)
 

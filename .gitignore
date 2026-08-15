@@ -50,6 +50,7 @@ design/
 plans/archive/*
 !plans/archive/PROJECT_WORKFLOW_PLAN.md
 !plans/archive/SPECTRAL_WORKSPACE_PLAN.md
+!plans/archive/SHAPE_ANALYSIS_PLAN.md
 
 # IDE / OS
 .idea/

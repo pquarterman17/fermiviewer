@@ -154,6 +154,59 @@ export function analyzeParticles(
   });
 }
 
+/** One ranked result from `/analyze/efd-similarity`: another particle's id
+ *  and its EFD distance to the reference. Distance is DIMENSIONLESS
+ *  (normalized elliptic-Fourier-descriptor space, SHAPE_ANALYSIS_PLAN Wave
+ *  2) — never render a unit next to it. The reference itself is included,
+ *  landing first at distance ≈0. */
+export interface EfdSimilarityRanked {
+  id: number;
+  distance: number;
+}
+
+/** A particle whose contour could not support the requested harmonic count
+ *  (or had no traceable outline) — skipped rather than failing the whole
+ *  ranking; `reason` is a static, request-derived string safe to show
+ *  verbatim (never exception text — see routes/shape_id.py). */
+export interface EfdSimilaritySkipped {
+  id: number;
+  reason: string;
+}
+
+/** Rank every particle from a fresh (stateless) recompute of the SAME
+ *  segmentation by EFD shape distance to `opts.refId`. Mirrors
+ *  `analyzeParticles`'s segmentation options exactly — callers must pass
+ *  the params that produced the DISPLAYED particle set, not re-derive
+ *  defaults, or the ranking silently runs against a different
+ *  segmentation than what's on screen. 404 if `refId` is not a particle
+ *  id in this segmentation; 422 if the reference region itself cannot be
+ *  described (its `detail` message is meant to surface verbatim). */
+export function efdSimilarity(
+  id: string,
+  opts: {
+    threshold?: number | null;
+    minArea?: number;
+    watershed?: boolean;
+    polarity?: "bright" | "dark";
+    refId: number;
+    nHarmonics?: number;
+  },
+): Promise<{
+  ranked: EfdSimilarityRanked[];
+  skipped: EfdSimilaritySkipped[];
+  n_harmonics: number;
+}> {
+  return post("/api/analyze/efd-similarity", {
+    image_id: id,
+    threshold: opts.threshold ?? null,
+    min_area: opts.minArea ?? 1,
+    use_watershed: opts.watershed ?? false,
+    polarity: opts.polarity ?? "bright",
+    ref_id: opts.refId,
+    ...(opts.nHarmonics != null ? { n_harmonics: opts.nHarmonics } : {}),
+  });
+}
+
 export interface JobStatus {
   id: string;
   status: "queued" | "running" | "done" | "error";

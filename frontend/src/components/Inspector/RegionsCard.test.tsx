@@ -1,9 +1,17 @@
-// RegionsCard — the CSV-export deliverable of plan item 15. Uses the
+// RegionsCard — the CSV-export deliverable of plan item 15, plus the
+// SHAPE_ANALYSIS_PLAN.md Wave-2 #5 circle/ellipse "Fit" action. Uses the
 // same store-mock pattern as RoiManagerCard.test.tsx (stable references,
 // no fresh []/{} per render).
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const proposeRegionMock = vi.fn();
+const fitShapeMock = vi.fn();
+vi.mock("../../lib/api/regions", () => ({
+  proposeRegion: (...args: unknown[]) => proposeRegionMock(...args),
+  fitShape: (...args: unknown[]) => fitShapeMock(...args),
+}));
 
 type RegionMeasure = {
   id: string;
@@ -182,6 +190,117 @@ describe("RegionsCard", () => {
       fireEvent.click(screen.getByRole("button", { name: "Copy CSV" }));
       expect(setStatusFn).toHaveBeenCalledWith(
         "clipboard unavailable — use Export CSV instead",
+      );
+    });
+  });
+
+  describe("Fit (SHAPE_ANALYSIS_PLAN.md Wave-2 #5)", () => {
+    // 5 vertices (the ellipse minimum) at normalized quarter-turn
+    // positions — x != y at every vertex and the image is non-square
+    // (shape [50, 100]), so a row/col swap or a 0-vs-1-based slip in the
+    // conversion is visible in every coordinate, not just accidentally
+    // masked by symmetry.
+    const PENTAGON: RegionMeasure = {
+      id: "m1",
+      kind: "polygon",
+      text: "Grain A",
+      pts: [
+        { x: 0, y: 0 },
+        { x: 0.5, y: 0 },
+        { x: 1, y: 0.5 },
+        { x: 0.5, y: 1 },
+        { x: 0, y: 0.5 },
+      ],
+    };
+
+    beforeEach(() => {
+      proposeRegionMock.mockReset();
+      fitShapeMock.mockReset();
+    });
+
+    it("converts normalized {x,y} vertices to 1-based [row, col] wire points (pins the verified basing)", async () => {
+      state.measures = { img1: [PENTAGON] };
+      fitShapeMock.mockResolvedValue({
+        circle: { cy: 26, cx: 51, r: 25, rms: 1 },
+        ellipse: { cy: 26, cx: 51, a: 25, b: 24, theta_rad: 0, rms: 1 },
+      });
+      render(<RegionsCard />);
+      fireEvent.click(screen.getByRole("button", { name: "Fit" }));
+      await waitFor(() => expect(fitShapeMock).toHaveBeenCalledOnce());
+      // shape [50, 100] -> h=50, w=100; row = y*50+1, col = x*100+1
+      expect(fitShapeMock).toHaveBeenCalledWith({
+        points: [
+          [1, 1],
+          [1, 51],
+          [26, 101],
+          [51, 51],
+          [26, 1],
+        ],
+      });
+    });
+
+    it("converts the wire's theta_rad to degrees for display, stating the axis convention", async () => {
+      state.measures = { img1: [PENTAGON] };
+      fitShapeMock.mockResolvedValue({
+        circle: { cy: 1, cx: 1, r: 1, rms: 0.1 },
+        ellipse: { cy: 1, cx: 1, a: 2, b: 1, theta_rad: Math.PI / 6, rms: 0.1 },
+      });
+      render(<RegionsCard />);
+      fireEvent.click(screen.getByRole("button", { name: "Fit" }));
+      const ellipseLine = await screen.findByTitle(/θ measured from the image/);
+      const match = ellipseLine.textContent?.match(/θ (-?[\d.]+)°/);
+      expect(match).not.toBeNull();
+      expect(Number(match![1])).toBeCloseTo(30, 3); // pi/6 rad = 30 deg
+    });
+
+    it("shows fit lengths calibrated when the image has a pixel size", async () => {
+      state.measures = { img1: [PENTAGON] }; // IMG_META: pixel_size 2, unit nm
+      fitShapeMock.mockResolvedValue({
+        circle: { cy: 1, cx: 1, r: 10, rms: 0.5 },
+        ellipse: { cy: 1, cx: 1, a: 10, b: 8, theta_rad: 0, rms: 0.5 },
+      });
+      render(<RegionsCard />);
+      fireEvent.click(screen.getByRole("button", { name: "Fit" }));
+      const circleLine = await screen.findByText(/^circle — center/);
+      // r=10px * pixel_size 2nm/px = 20nm; rms=0.5px * 2 = 1nm
+      expect(circleLine.textContent).toContain("r 20 nm");
+      expect(circleLine.textContent).toContain("rms 1 nm");
+    });
+
+    it("falls back to px display when the image is uncalibrated", async () => {
+      state.images = { img1: { ...IMG_META, pixel_size: null } };
+      state.measures = { img1: [PENTAGON] };
+      fitShapeMock.mockResolvedValue({
+        circle: { cy: 1, cx: 1, r: 10, rms: 0.5 },
+        ellipse: { cy: 1, cx: 1, a: 10, b: 8, theta_rad: 0, rms: 0.5 },
+      });
+      render(<RegionsCard />);
+      fireEvent.click(screen.getByRole("button", { name: "Fit" }));
+      const circleLine = await screen.findByText(/^circle — center/);
+      expect(circleLine.textContent).toContain("r 10 px");
+      expect(circleLine.textContent).not.toContain("nm");
+    });
+
+    it("disables Fit below the 5-vertex minimum with an explanatory title", () => {
+      state.measures = { img1: [POLYGON] }; // 4 vertices
+      render(<RegionsCard />);
+      const btn = screen.getByRole("button", { name: "Fit" });
+      expect(btn).toBeDisabled();
+      expect(btn.title).toMatch(/needs ≥ 5 vertices/);
+      expect(fitShapeMock).not.toHaveBeenCalled();
+    });
+
+    it("surfaces a fit-shape failure (e.g. the ellipse-minimum 422) via setStatus", async () => {
+      state.measures = { img1: [PENTAGON] };
+      fitShapeMock.mockRejectedValue(
+        new Error("need >= 5 non-degenerate (row, col) points to fit an ellipse"),
+      );
+      render(<RegionsCard />);
+      fireEvent.click(screen.getByRole("button", { name: "Fit" }));
+      await waitFor(() =>
+        expect(setStatusFn).toHaveBeenCalledWith(
+          "fit shape failed: need >= 5 non-degenerate (row, col) points to fit an ellipse",
+        ),
       );
     });
   });
