@@ -123,12 +123,22 @@ def shape_descriptors(labels: np.ndarray) -> ShapeDescriptors:
 
 @dataclass(frozen=True)
 class ClassThresholds:
-    """Caller-tunable classification cutoffs — frozen contract defaults."""
+    """Caller-tunable classification cutoffs — contract defaults.
+
+    ``sphere_min_circularity`` is set on the CROFTON scale, where an
+    axis-aligned square converges to ≈0.874 (measured; see the module
+    docstring — NOT the textbook 4πA/P² = π/4, which belongs to the naive
+    perimeter). A cube-projection must not classify sphere-like — cubes
+    vs spheres is the canonical faceted-vs-round distinction — so the
+    cutoff sits between the square's 0.874 and the large disk's ≈0.99.
+    The plan's original 0.85 default predated the measurement and would
+    have admitted squares.
+    """
 
     aggregate_max_solidity: float = 0.85
     rod_min_aspect: float = 2.5
     sphere_max_aspect: float = 1.3
-    sphere_min_circularity: float = 0.85
+    sphere_min_circularity: float = 0.92
 
 
 def classify_shapes(

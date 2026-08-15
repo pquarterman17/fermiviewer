@@ -190,20 +190,37 @@ def test_rod_aspect_boundary() -> None:
 
 def test_sphere_aspect_boundary() -> None:
     # just below 1.3 with high circularity -> sphere
-    assert _classify_one(1.299999, 0.9, 0.95) == "sphere-like"
+    assert _classify_one(1.299999, 0.95, 0.95) == "sphere-like"
     # exactly 1.3 -> NOT sphere (strict <)
-    assert _classify_one(1.3, 0.9, 0.95) == "intermediate"
+    assert _classify_one(1.3, 0.95, 0.95) == "intermediate"
     # just above -> not sphere
-    assert _classify_one(1.300001, 0.9, 0.95) == "intermediate"
+    assert _classify_one(1.300001, 0.95, 0.95) == "intermediate"
 
 
 def test_sphere_circularity_boundary() -> None:
-    # just below 0.85 -> not sphere
-    assert _classify_one(1.0, 0.849999, 0.95) == "intermediate"
-    # exactly 0.85 -> NOT sphere (strict >)
-    assert _classify_one(1.0, 0.85, 0.95) == "intermediate"
+    # just below 0.92 -> not sphere
+    assert _classify_one(1.0, 0.919999, 0.95) == "intermediate"
+    # exactly 0.92 -> NOT sphere (strict >)
+    assert _classify_one(1.0, 0.92, 0.95) == "intermediate"
     # just above -> sphere
-    assert _classify_one(1.0, 0.850001, 0.95) == "sphere-like"
+    assert _classify_one(1.0, 0.920001, 0.95) == "sphere-like"
+
+
+def test_square_projection_is_not_sphere_like() -> None:
+    """The reason sphere_min_circularity is 0.92, not the plan's original
+    0.85: on the Crofton scale an axis-aligned square measures ≈0.874
+    (NOT the textbook π/4 — that value belongs to the naive perimeter),
+    so an 0.85 cutoff would classify a cube-projection as sphere-like.
+    Cubes vs spheres is the canonical faceted-vs-round distinction; a
+    REAL measured square must land in intermediate. End-to-end through
+    shape_descriptors + classify_shapes, not a hand-fed circularity."""
+    side = 101
+    labels = np.zeros((side + 20, side + 20), dtype=np.int32)
+    labels[10 : 10 + side, 10 : 10 + side] = 1
+    d = shape_descriptors(labels)
+    cls = classify_shapes(d.aspect_ratio, d.circularity, d.solidity)
+    assert 0.85 < d.circularity[0] < 0.92  # the trap zone the cutoff dodges
+    assert cls[0] == "intermediate"
 
 
 def test_aggregate_trumps_rod_and_sphere_precedence() -> None:
@@ -224,7 +241,7 @@ def test_null_aspect_ratio_falls_to_intermediate_unless_aggregate() -> None:
 
 def test_classify_shapes_vectorized_matches_scalar_calls() -> None:
     aspect = np.array([5.0, 1.0, np.nan, 1.0, 2.5, 1.3])
-    circ = np.array([0.5, 0.9, 0.9, 0.5, 0.6, 0.9])
+    circ = np.array([0.5, 0.95, 0.95, 0.5, 0.6, 0.95])
     solidity = np.array([0.9, 0.9, 0.9, 0.5, 0.9, 0.9])
     got = classify_shapes(aspect, circ, solidity)
     expected = [
@@ -258,4 +275,6 @@ def test_default_thresholds_match_frozen_contract() -> None:
     assert DEFAULTS.aggregate_max_solidity == 0.85
     assert DEFAULTS.rod_min_aspect == 2.5
     assert DEFAULTS.sphere_max_aspect == 1.3
-    assert DEFAULTS.sphere_min_circularity == 0.85
+    # 0.92, not the plan's original 0.85 — see
+    # test_square_projection_is_not_sphere_like for the measured rationale
+    assert DEFAULTS.sphere_min_circularity == 0.92

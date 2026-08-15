@@ -33,12 +33,25 @@ surface. Every one of these is a decision already made — do not re-decide.
    `feret_diameter_max`). Do not hand-roll moments the library already
    computes under test.
 2. **Circularity = 4πA / P² with P = the CROFTON perimeter.** The naive
-   polygonal pixel-boundary perimeter overestimates digitized circles and
-   yields ≈0.79 for a perfect disk — the classic trap. With Crofton a
-   large digitized disk approaches 1. Small regions can still exceed 1
+   perimeter underestimates a digitized disk's circularity (measured:
+   ≈0.90 with skimage's chain-code `perimeter`); with Crofton a large
+   digitized disk approaches 1. Small regions can still exceed 1
    slightly (Crofton bias); report the raw value and document it — never
    clip silently. Pin with tests: large synthetic disk → ≈1 (±few %),
-   filled square → π/4 ≈ 0.785.
+   filled square → **≈0.874** (measured, converged over sides 21→1601).
+   *CORRECTED 2026-08-14 during Wave 1:* this convention originally
+   claimed the square pins at π/4 ≈ 0.785 — that is the NAIVE
+   estimator's square value (where it happens to be exact), not
+   Crofton's; 4-direction Crofton has a persistent bias on axis-aligned
+   edges and never converges to π/4. Found by A1 implementing the pin
+   honestly and reporting the discrepancy; verified independently by
+   the integrator. Consequence: `sphere_min_circularity` moved
+   0.85 → **0.92** — on the Crofton scale a square scores 0.874, so the
+   original 0.85 cutoff would have classified a cube-projection as
+   sphere-like, and cubes-vs-spheres is the canonical faceted-vs-round
+   distinction. The cutoff now sits between the square's 0.874 and the
+   large disk's ≈0.99, pinned by an end-to-end square→intermediate
+   test that fails under the old default.
 3. **Orientation: skimage convention, verbatim** — the angle between the
    ROW axis (axis 0) and the ellipse major axis, range (-π/2, π/2],
    radians on the wire. This is AXIAL data (period π, a rod at +80° is
@@ -98,7 +111,7 @@ sphere_max_aspect, sphere_min_circularity}`):
 ```
 aggregate    solidity < 0.85          # checked FIRST — trumps the rest
 rod-like     aspect_ratio ≥ 2.5
-sphere-like  aspect_ratio < 1.3 AND circularity > 0.85
+sphere-like  aspect_ratio < 1.3 AND circularity > 0.92   # was 0.85; see Convention #2's correction
 intermediate otherwise (incl. null aspect_ratio)
 ```
 
