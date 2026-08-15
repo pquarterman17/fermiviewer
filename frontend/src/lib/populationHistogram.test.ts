@@ -7,11 +7,13 @@
 import { describe, expect, it } from "vitest";
 
 import type { DistFit, DistributionHistogram } from "./api/distributions";
+import type { ParticleRow } from "./api/imaging";
 import {
   binCenters,
   formatPopulationSummary,
   meanBinWidth,
   pdf,
+  pickParticleMetricValues,
   pickSizeValues,
   scaledPdfCurve,
 } from "./populationHistogram";
@@ -177,6 +179,83 @@ describe("pickSizeValues", () => {
     const r = pickSizeValues([10, 20, 30], [5, null, 15], "nm");
     expect(r.unit).toBe("px");
     expect(r.values).toEqual([10, 20, 30]);
+  });
+});
+
+function particle(overrides: Partial<ParticleRow>): ParticleRow {
+  return {
+    id: 1,
+    area: 10,
+    centroid: [0, 0],
+    equiv_diameter: 10,
+    mean_intensity: 1,
+    area_calibrated: 1,
+    diameter_calibrated: 1,
+    circularity: 0.8,
+    aspect_ratio: 1.5,
+    eccentricity: 0.5,
+    orientation_rad: 0,
+    solidity: 0.9,
+    feret_max: 12,
+    feret_max_calibrated: 1.2,
+    shape_class: "intermediate",
+    ...overrides,
+  };
+}
+
+describe("pickParticleMetricValues", () => {
+  it("equiv_diameter: switches calibrated-vs-px exactly like pickSizeValues", () => {
+    const particles = [
+      particle({ equiv_diameter: 10, diameter_calibrated: 5 }),
+      particle({ equiv_diameter: 20, diameter_calibrated: 10 }),
+    ];
+    expect(pickParticleMetricValues(particles, "equiv_diameter", "nm")).toEqual({
+      values: [5, 10],
+      unit: "nm",
+      excluded: 0,
+    });
+  });
+
+  it("feret_max: falls back to px when any calibrated value is missing", () => {
+    const particles = [
+      particle({ feret_max: 8, feret_max_calibrated: 4 }),
+      particle({ feret_max: 16, feret_max_calibrated: null }),
+    ];
+    expect(pickParticleMetricValues(particles, "feret_max", "nm")).toEqual({
+      values: [8, 16],
+      unit: "px",
+      excluded: 0,
+    });
+  });
+
+  it("circularity: dimensionless — unit is empty, never px, nothing excluded", () => {
+    const particles = [
+      particle({ circularity: 0.79 }),
+      particle({ circularity: 1.02 }),
+    ];
+    expect(pickParticleMetricValues(particles, "circularity", "nm")).toEqual({
+      values: [0.79, 1.02],
+      unit: "",
+      excluded: 0,
+    });
+  });
+
+  it("aspect_ratio: null entries are EXCLUDED and counted, never coerced to 0", () => {
+    const particles = [
+      particle({ aspect_ratio: 2.1 }),
+      particle({ aspect_ratio: null }),
+      particle({ aspect_ratio: 1.3 }),
+    ];
+    const r = pickParticleMetricValues(particles, "aspect_ratio", "nm");
+    expect(r.values).toEqual([2.1, 1.3]);
+    expect(r.values).not.toContain(0);
+    expect(r.unit).toBe("");
+    expect(r.excluded).toBe(1);
+  });
+
+  it("aspect_ratio: zero excluded when every particle has one", () => {
+    const particles = [particle({ aspect_ratio: 1.1 }), particle({ aspect_ratio: 2.2 })];
+    expect(pickParticleMetricValues(particles, "aspect_ratio", "nm").excluded).toBe(0);
   });
 });
 

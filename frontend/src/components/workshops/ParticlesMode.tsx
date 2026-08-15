@@ -2,15 +2,55 @@
 // Extracted from StructureWorkshop so the mode owns its own controls (and
 // to keep that module under its size cap).
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { analyzeParticles, fetchData16, type Raster16 } from "../../lib/api";
-import { pickSizeValues } from "../../lib/populationHistogram";
+import {
+  analyzeParticles,
+  fetchData16,
+  type ParticleRow,
+  type Raster16,
+  type ShapeClass,
+} from "../../lib/api";
+import {
+  PARTICLE_METRIC_OPTIONS,
+  pickParticleMetricValues,
+  type ParticleMetric,
+} from "../../lib/populationHistogram";
 import { useViewer } from "../../store/viewer";
+import OrientationRose from "../analysis/OrientationRose";
 import PopulationHistogram from "../analysis/PopulationHistogram";
 import { useResults } from "../overlays/ResultsWindow";
 
 const VIEW_W = 300;
+
+// Shape classes are advisory heuristics on the 2D PROJECTION only
+// (SHAPE_ANALYSIS_PLAN.md Convention 6) — a rod viewed end-on projects as
+// a disk, so no 2D image can refute that reading. Nothing elsewhere in the
+// app filters or auto-corrects by class; the per-class count line below
+// carries that caveat as a tooltip rather than hiding it.
+const SHAPE_CLASSES: ShapeClass[] = [
+  "sphere-like",
+  "rod-like",
+  "intermediate",
+  "aggregate",
+];
+const SHAPE_CLASS_CAVEAT =
+  "Shape classes are advisory heuristics on the 2D projection only — e.g. a rod viewed end-on projects as a disk. Thresholds are visible/tunable server-side; nothing is filtered or auto-corrected by class.";
+
+/** Per-class particle counts, for the advisory count line below the
+ *  table (SHAPE_ANALYSIS_PLAN.md item 3, Convention 6). */
+export function countShapeClasses(
+  particles: ParticleRow[],
+): Record<ShapeClass, number> {
+  const counts: Record<ShapeClass, number> = {
+    "sphere-like": 0,
+    "rod-like": 0,
+    intermediate: 0,
+    aggregate: 0,
+  };
+  for (const p of particles) counts[p.shape_class] += 1;
+  return counts;
+}
 
 export default function ParticlesMode({ id }: { id: string }) {
   const setStatus = useViewer((s) => s.setStatus);
@@ -25,17 +65,19 @@ export default function ParticlesMode({ id }: { id: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rasterRef = useRef<Raster16 | null>(null);
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
-  // size-distribution feed (#6/audit R6): equivalent diameter, calibrated
-  // when the image has a pixel size, else px — see pickSizeValues
-  const [sizePop, setSizePop] = useState<{ values: number[]; unit: string } | null>(
-    null,
-  );
+  // population feed (#6/audit R6, extended by SHAPE_ANALYSIS_PLAN item 3):
+  // the full per-particle rows from the last run, plus which metric the
+  // picker below currently shows. pickParticleMetricValues resolves
+  // calibrated-vs-px (lengths) or unit "" (dimensionless) from these.
+  const [particles, setParticles] = useState<ParticleRow[]>([]);
+  const [unit, setUnit] = useState("px");
+  const [metric, setMetric] = useState<ParticleMetric>("equiv_diameter");
 
   // fetch the raw raster once per image
   useEffect(() => {
     rasterRef.current = null;
     setDims(null);
-    setSizePop(null);
+    setParticles([]);
     let stale = false;
     fetchData16(id)
       .then((r) => {
@@ -89,16 +131,21 @@ export default function ParticlesMode({ id }: { id: string }) {
         const s = useViewer.getState();
         s.ingestDerived([res.labels]);
         s.setStatus(`particles: ${res.n_particles} found`);
-        setSizePop(
-          pickSizeValues(
-            res.particles.map((p) => p.equiv_diameter),
-            res.particles.map((p) => p.diameter_calibrated),
-            res.unit,
-          ),
-        );
+        setParticles(res.particles);
+        setUnit(res.unit);
         useResults.getState().show({
           title: `Particles (${res.n_particles}) — ${res.unit}`,
-          columns: ["id", "area", "equiv ⌀", "mean I", "cx", "cy"],
+          columns: [
+            "id",
+            "area",
+            "equiv ⌀",
+            "mean I",
+            "cx",
+            "cy",
+            "circ.",
+            "AR",
+            "class",
+          ],
           rows: res.particles.map((p) => [
             p.id,
             p.area,
@@ -106,12 +153,28 @@ export default function ParticlesMode({ id }: { id: string }) {
             Number(p.mean_intensity.toPrecision(4)),
             Number(p.centroid[0].toFixed(1)),
             Number(p.centroid[1].toFixed(1)),
+            Number(p.circularity.toFixed(2)),
+            p.aspect_ratio == null ? null : Number(p.aspect_ratio.toFixed(2)),
+            p.shape_class,
           ]),
         });
       })
       .catch((e: Error) => setStatus(`particles: ${e.message}`))
       .finally(() => setBusy(false));
   };
+
+  // resolved population for the metric picker below (calibrated-vs-px for
+  // the two length metrics, unit "" for the two dimensionless ones)
+  const pop = useMemo(
+    () =>
+      particles.length > 0
+        ? pickParticleMetricValues(particles, metric, unit)
+        : null,
+    [particles, metric, unit],
+  );
+  const classCounts = useMemo(() => countShapeClasses(particles), [particles]);
+  const metricLabel =
+    PARTICLE_METRIC_OPTIONS.find((o) => o.value === metric)?.label ?? metric;
 
   const viewH = dims ? (dims.h / dims.w) * VIEW_W : VIEW_W;
   return (
@@ -179,13 +242,42 @@ export default function ParticlesMode({ id }: { id: string }) {
         />
         Split touching particles
       </label>
-      {sizePop && sizePop.values.length > 0 && (
-        <PopulationHistogram
-          values={sizePop.values}
-          unit={sizePop.unit}
-          title="Particle size distribution"
-          filename="particle_size_distribution.png"
-        />
+      {particles.length > 0 && (
+        <>
+          <div className="fvd-ws-row">
+            <span className="k">metric</span>
+            <select
+              aria-label="Population metric"
+              value={metric}
+              style={{ flex: 1 }}
+              onChange={(e) => setMetric(e.target.value as ParticleMetric)}
+            >
+              {PARTICLE_METRIC_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          {pop && pop.values.length > 0 && (
+            <PopulationHistogram
+              values={pop.values}
+              unit={pop.unit}
+              title={`Particle ${metricLabel.toLowerCase()} distribution`}
+              filename="particle_size_distribution.png"
+            />
+          )}
+          {pop && pop.excluded > 0 && (
+            <div className="fvd-ws-note">
+              {pop.excluded} particle(s) excluded — no aspect ratio (degenerate
+              minor axis)
+            </div>
+          )}
+          <OrientationRose particles={particles} />
+          <div className="fvd-ws-note" title={SHAPE_CLASS_CAVEAT}>
+            {SHAPE_CLASSES.map((c) => `${classCounts[c]} ${c}`).join(" · ")}
+          </div>
+        </>
       )}
     </>
   );
