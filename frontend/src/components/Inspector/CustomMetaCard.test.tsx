@@ -10,7 +10,7 @@
 // element's full (nested) textContent, and matches both a wrapping <details>
 // and its child in this layout, which throws "multiple elements found".
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { UserMeta } from "../../lib/api";
@@ -227,5 +227,40 @@ describe("CustomMetaCard", () => {
     getUserMetaMock.mockResolvedValue(makeInfo());
     const { container } = render(<CustomMetaCard />);
     expect(container.firstChild).toBeNull();
+  });
+
+  it("a same-image refresh in flight (e.g. Auto-fill all) must not clobber an edit typed while it was loading — the dirty guard has to see the LIVE dirty flag, not the one from when the refetch started", async () => {
+    getUserMetaMock.mockResolvedValueOnce(
+      makeInfo({ values: { Design: "1234" } }),
+    );
+    let resolveReload!: (u: UserMeta) => void;
+    const reloadFetch = new Promise<UserMeta>((resolve) => {
+      resolveReload = resolve;
+    });
+    getUserMetaMock.mockImplementationOnce(() => reloadFetch);
+    batchAutofillMock.mockResolvedValue({ n_matched: 1, n_total: 2 });
+
+    render(<CustomMetaCard />);
+    await screen.findByText("Design");
+
+    // Kick off a same-image refresh (Auto-fill all → batchAutofill →
+    // setReload → the effect refetches getUserMeta for the active image).
+    fireEvent.click(screen.getByRole("button", { name: /Auto-fill all/ }));
+    await waitFor(() => expect(getUserMetaMock).toHaveBeenCalledTimes(2));
+
+    // While that refetch is still in flight, the user edits the field —
+    // dirty flips true AFTER the effect's closure was already created.
+    const input = screen.getByDisplayValue("1234");
+    fireEvent.change(input, { target: { value: "9999" } });
+    expect(input).toHaveValue("9999");
+
+    // The refetch resolves with the server's (older) value. Because the
+    // user is dirty right now, it must not overwrite the in-progress edit.
+    await act(async () => {
+      resolveReload(makeInfo({ values: { Design: "1234" } }));
+      await reloadFetch;
+    });
+
+    expect(input).toHaveValue("9999");
   });
 });
