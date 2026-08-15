@@ -13,6 +13,44 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Particles now have a shape identity (SHAPE_ANALYSIS_PLAN Wave 1).**
+  `/analyze/particles` measures each particle's circularity, aspect ratio,
+  eccentricity, orientation, solidity and maximum Feret diameter
+  (calibrated twin included), through the same `skimage.regionprops` path
+  grain analysis already uses, and assigns an advisory shape class —
+  sphere-like / rod-like / intermediate / aggregate — with visible,
+  caller-tunable thresholds. Classes describe the 2D projection only (a
+  rod viewed end-on projects as a disk) and nothing is auto-corrected or
+  filtered by class; low solidity flags probable touching-particle
+  aggregates the watershed missed. The Particles table shows the new
+  columns and per-class counts, the size-distribution feed gains a metric
+  picker (equivalent ⌀ / circularity / aspect ratio / Feret max —
+  dimensionless metrics carry no unit, and null aspect ratios are
+  excluded and counted, never coerced to 0), and a new orientation
+  half-rose answers "are my rods aligned?" at a glance — axial over
+  (-90°, 90°], never mirrored into a full circle, with near-circular
+  particles excluded from the rose since a circle's orientation is noise.
+  Circularity is defined against the Crofton perimeter; calibration work
+  during the build measured that an axis-aligned square scores ≈0.874 on
+  that scale (not the textbook π/4, which belongs to the naive
+  perimeter), so the sphere-like circularity cutoff is 0.92 — between
+  the square's 0.874 and a disk's ≈0.99 — keeping cube projections out
+  of sphere-like, pinned by an end-to-end square→intermediate test.
+- **Find particles shaped like this one (`POST /analyze/efd-similarity`).**
+  Elliptic Fourier descriptors (Kuhl & Giardina 1982) of each particle's
+  traced outline, normalized for scale, rotation and starting point, rank
+  every particle by shape distance to a chosen reference — invariances
+  pinned by tests (a scaled/rotated copy ranks at distance ≈0). Backend
+  ships now; the workshop "find similar" control follows in Wave 2.
+- **Circle and ellipse fitting on contour points (`POST /analyze/fit-shape`)**
+  for pores and core-shell shells: least-squares circle and ellipse fits
+  with per-fit RMS residuals, reusing the diffraction-calibration ellipse
+  math rather than a second implementation. Backend ships now; GUI wiring
+  follows in Wave 2.
+
 ## [0.1.29] - 2026-08-14
 
 ### Changed

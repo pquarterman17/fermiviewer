@@ -10,10 +10,17 @@ question: *spheres or rods?* Meanwhile `calc/distributions.py` is
 deliberately metric-agnostic, so every descriptor added becomes a fittable
 population for free.
 
-**Status:** Active (created 2026-08-14; Wave 1 items #1–#5 in flight as a
-three-agent parallel build)
+**Status:** Active (created 2026-08-14; same-day: #1/#2 SHIPPED, #4/#5
+backend SHIPPED, #3 frontend built and in final integration — three
+worktree agents in parallel against the frozen contract, merged
+sequentially with the full gate between. Remaining: #3 merge, then Wave 2
+GUI wiring for #4/#5)
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-08-14
+**Updated:** 2026-08-14 — Wave 1 integrated. Convention #2 corrected
+during the build (square ≈0.874 Crofton, not π/4; sphere cutoff
+0.85→0.92) — found by A1's honest implementation of the mandatory pin;
+two integrator hardenings recorded under items #1/#2.
 
 Scope rule (inherited from ANALYSIS_PRESENTATION_PLAN's audit ruling):
 image-derived measurements only. All items below measure segmented regions
@@ -141,16 +148,27 @@ conflict).
 
 ## Tier 1 — Wave 1 (parallel build 2026-08-14)
 
-1. **Particle shape descriptors** — `calc/shape_metrics.py` (pure):
-   per-region descriptor arrays from `regionprops_table` + derived
-   circularity/aspect-ratio per Conventions 1–5. Route merges them into
-   the existing particles response (additive; nothing existing renamed).
-   - [ ] calc module + pure tests (disk ≈1 / square π/4 pins mandatory)
-   - [ ] route extension + API tests
-2. **Shape classes + aggregate flag** — `classify_shapes` in the same
-   calc module per the frozen thresholds; `shape_class` on the wire.
-   - [ ] classifier + boundary tests (each threshold edge, both sides)
-   - [ ] tunable thresholds honoured end-to-end through the route
+~~**1. Particle shape descriptors**~~ (2026-08-14, agent A1 + integrator) —
+   `calc/shape_metrics.py` (176 lines, pure) via `regionprops_table`
+   matching `grain_stats`'s idiom; the 8 contract fields merged
+   additively into `/analyze/particles`; `feret_max_calibrated` follows
+   `_nan_none` exactly. 31 tests, 13-mutation kill matrix. The mandatory
+   square pin exposed a plan error (see Convention #2's correction):
+   Crofton measures a square at ≈0.874, not π/4.
+   - [x] calc module + pure tests (disk ≈1 / square ≈0.874 pins)
+   - [x] route extension + API tests
+~~**2. Shape classes + aggregate flag**~~ (2026-08-14, agent A1 +
+   integrator) — `classify_shapes` + `ClassThresholds`, aggregate checked
+   first, boundary tests on every edge. Integrator hardening: sphere
+   cutoff 0.85→0.92 (Convention #2 correction) with an end-to-end
+   square→intermediate pin, and threshold defaults consolidated to the
+   calc layer ONLY — the route's pydantic model briefly duplicated the
+   literals and drifted on the first correction, so partial overrides
+   silently reverted the sphere cutoff; route fields are now
+   None-defaulted and resolved via `dataclasses.replace`, pinned by a
+   probe square inside the 0.85–0.92 trap zone.
+   - [x] classifier + boundary tests (each threshold edge, both sides)
+   - [x] tunable thresholds honoured end-to-end through the route
 3. **Frontend: columns, metric picker, orientation rose** —
    ParticlesMode table gains circularity/AR/class columns; the existing
    PopulationHistogram feed gains a metric picker (equiv ⌀ /
@@ -165,21 +183,29 @@ conflict).
 
 ## Tier 2 — Wave 2 (sequential, after Wave-1 merge)
 
-4. **Elliptic Fourier shape signatures** — `calc/efd.py` (pure): Kuhl &
-   Giardina harmonic coefficients of the traced closed contour
-   (`calc/contours.py` provides the rings), normalized for scale /
-   rotation / start point; similarity = L2 in normalized-descriptor
-   space. `/analyze/efd-similarity` recomputes the segmentation from the
-   mirrored request (routes are stateless — same recompute pattern the
-   app already uses) and ranks all regions against `ref_id`. GUI wiring
-   ("find similar") lands in Wave 2 to avoid colliding with A3.
-5. **Circle/ellipse fitting** — `calc/shape_fit.py` (pure): direct
-   least-squares circle + ellipse fits on contour points, for pores and
-   core-shell shells. `calc/diffraction_calib.py` already fits ellipses
-   to diffraction rings — READ IT FIRST and reuse/extract rather than
-   re-derive; a second independent ellipse fit in the same codebase is a
-   defect. `/analyze/fit-shape` per the contract. Also the geometry
-   runway for parked PLAN_4DSTEM #10 (Bragg-disk detection).
+4. **Elliptic Fourier shape signatures** — *backend SHIPPED 2026-08-14
+   (agent A2): `calc/efd.py` (256 lines, Kuhl & Giardina §IV
+   normalization, `DEFAULT_N_HARMONICS = 10` visible constant) +
+   `/analyze/efd-similarity` in new `routes/shape_id.py`; invariance
+   tests (scaled/rotated/start-shifted copy → distance ≈0); the request
+   model IMPORTS `ParticleRequest` (structure_grains precedent). EFD
+   contour tracing runs finer than `trace_outer_contour`'s hand-edit
+   default (0.5px/300 vertices — mutation-verified load-bearing).*
+   Remaining:
+   - [ ] Wave 2: workshop "find similar" control (was deferred from the
+         parallel build to avoid colliding with A3 in ParticlesMode)
+   - [ ] Wave 2 refinement candidate: one untraceable speck currently
+         422s the whole query (per contract, named region); consider
+         skip-and-note instead
+5. **Circle/ellipse fitting** — *backend SHIPPED 2026-08-14 (agent A2):
+   `calc/shape_fit.py` (165 lines) REUSING `diffraction_calib`'s
+   Halir–Flušser ellipse fit via import (already importable — no
+   extraction needed); `/analyze/fit-shape` per the contract, pure
+   delegation for point-count guards (route-level pre-checks were
+   mutation-verified redundant and removed).* Also the geometry runway
+   for parked PLAN_4DSTEM #10 (Bragg-disk detection). Remaining:
+   - [ ] Wave 2: GUI wiring (fit a traced region/contour from the
+         Regions/Particles surface)
 
 ## Testing & integration protocol (Wave 1)
 
