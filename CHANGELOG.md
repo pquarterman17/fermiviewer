@@ -13,6 +13,20 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [0.1.29] - 2026-08-14
+
+### Changed
+- **Internal decomposition only — no user-facing or API changes.** The two
+  source files closest to the 500-line module ceiling were split along
+  natural seams. Backend: `routes/eds_advanced.py` (493→289 lines) gives up
+  the `/eds/zeta` endpoint to a new `routes/eds_zeta.py` and its shared
+  peak-fit machinery to `routes/_eds_common.py` (mirroring the existing
+  `_fourd_common.py` pattern); the HTTP surface is unchanged. Frontend:
+  `EdsSpectrumImage.tsx` (480→404 lines) moves two self-contained lifecycles
+  into hooks — `useEdsPinnedRegions` (pin/restore with species re-creation
+  and reset-on-cube-change) and `useEdsStatusReporter` (the
+  status-must-not-outlive-the-file contract).
+
 ## [0.1.28] - 2026-08-14
 
 ### Added
