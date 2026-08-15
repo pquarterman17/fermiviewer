@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   analyzeParticles,
+  efdSimilarity,
   fetchData16,
   type ParticleRow,
   type Raster16,
@@ -20,6 +21,7 @@ import { useViewer } from "../../store/viewer";
 import OrientationRose from "../analysis/OrientationRose";
 import PopulationHistogram from "../analysis/PopulationHistogram";
 import { useResults } from "../overlays/ResultsWindow";
+import ParticlesTable, { type SimilarityState } from "./ParticlesTable";
 
 const VIEW_W = 300;
 
@@ -52,6 +54,19 @@ export function countShapeClasses(
   return counts;
 }
 
+// Segmentation params captured from the DISPLAYED particle run. "Find
+// similar" must resend exactly these — not whatever the threshold/
+// polarity/min-area/watershed controls happen to show right now, which
+// the user may have nudged since Count last ran (SHAPE_ANALYSIS_PLAN Wave
+// 2: "reuse whatever state produced the current particles; do not
+// re-derive defaults").
+interface RunParams {
+  threshold: number | null;
+  polarity: "bright" | "dark";
+  minArea: number;
+  watershed: boolean;
+}
+
 export default function ParticlesMode({ id }: { id: string }) {
   const setStatus = useViewer((s) => s.setStatus);
   const [thresh, setThresh] = useState(0.5); // normalized vs raster range
@@ -72,12 +87,23 @@ export default function ParticlesMode({ id }: { id: string }) {
   const [particles, setParticles] = useState<ParticleRow[]>([]);
   const [unit, setUnit] = useState("px");
   const [metric, setMetric] = useState<ParticleMetric>("equiv_diameter");
+  // exact segmentation params that produced `particles` above — see
+  // RunParams. Null until the first successful Count.
+  const [runParams, setRunParams] = useState<RunParams | null>(null);
+  // "find similar" result mode (SHAPE_ANALYSIS_PLAN Wave 2); null = the
+  // normal particle table.
+  const [similarity, setSimilarity] = useState<SimilarityState | null>(null);
+  const [simBusyId, setSimBusyId] = useState<number | null>(null);
 
   // fetch the raw raster once per image
   useEffect(() => {
     rasterRef.current = null;
     setDims(null);
     setParticles([]);
+    // A new image invalidates any similarity ranking from the old one —
+    // stale distances against a different segmentation are wrong data.
+    setSimilarity(null);
+    setRunParams(null);
     let stale = false;
     fetchData16(id)
       .then((r) => {
@@ -119,20 +145,26 @@ export default function ParticlesMode({ id }: { id: string }) {
     const r = rasterRef.current;
     if (!r) return;
     setBusy(true);
+    // Re-running the analysis exits similarity mode immediately (not just
+    // on success) — even a failed re-run means the on-screen params no
+    // longer match what similarity was ranked against.
+    setSimilarity(null);
     // slider is normalized — the endpoint wants real intensity
     const realThr = r.vmin + thresh * (r.vmax - r.vmin);
-    analyzeParticles(id, {
+    const params: RunParams = {
       threshold: realThr,
       polarity,
       minArea: Number(minArea) || 1,
       watershed,
-    })
+    };
+    analyzeParticles(id, params)
       .then((res) => {
         const s = useViewer.getState();
         s.ingestDerived([res.labels]);
         s.setStatus(`particles: ${res.n_particles} found`);
         setParticles(res.particles);
         setUnit(res.unit);
+        setRunParams(params);
         useResults.getState().show({
           title: `Particles (${res.n_particles}) — ${res.unit}`,
           columns: [
@@ -162,6 +194,33 @@ export default function ParticlesMode({ id }: { id: string }) {
       .catch((e: Error) => setStatus(`particles: ${e.message}`))
       .finally(() => setBusy(false));
   };
+
+  // Rank every particle from the displayed run by EFD shape distance to
+  // `refId`, reusing runParams verbatim (not the live threshold/polarity/
+  // min-area/watershed controls, which may have moved since Count last
+  // ran). A 422 (undescribable reference) surfaces via the same status
+  // idiom as every other failure here; the table stays exactly as it was.
+  const findSimilar = (refId: number) => {
+    if (!runParams) return;
+    setSimBusyId(refId);
+    efdSimilarity(id, {
+      threshold: runParams.threshold,
+      polarity: runParams.polarity,
+      minArea: runParams.minArea,
+      watershed: runParams.watershed,
+      refId,
+    })
+      .then((res) => {
+        setSimilarity({ refId, ranked: res.ranked, skipped: res.skipped });
+        setStatus(
+          `find similar: ranked ${res.ranked.length} · skipped ${res.skipped.length}`,
+        );
+      })
+      .catch((e: Error) => setStatus(`find similar: ${e.message}`))
+      .finally(() => setSimBusyId(null));
+  };
+
+  const clearSimilarity = () => setSimilarity(null);
 
   // resolved population for the metric picker below (calibrated-vs-px for
   // the two length metrics, unit "" for the two dimensionless ones)
@@ -277,6 +336,13 @@ export default function ParticlesMode({ id }: { id: string }) {
           <div className="fvd-ws-note" title={SHAPE_CLASS_CAVEAT}>
             {SHAPE_CLASSES.map((c) => `${classCounts[c]} ${c}`).join(" · ")}
           </div>
+          <ParticlesTable
+            particles={particles}
+            similarity={similarity}
+            busyId={simBusyId}
+            onFindSimilar={findSimilar}
+            onClear={clearSimilarity}
+          />
         </>
       )}
     </>
