@@ -214,6 +214,42 @@ conflict).
    - [ ] Wave 2: GUI wiring (fit a traced region/contour from the
          Regions/Particles surface)
 
+## Wave 2 — GUI wiring (specced 2026-08-15, two parallel agents)
+
+File partition (disjoint by construction):
+
+| W2a (find similar)              | W2b (fit shape)                  |
+|---------------------------------|----------------------------------|
+| lib/api/imaging.ts (client)     | lib/api/regions.ts (client)      |
+| ParticlesMode.tsx (+child)      | Inspector/RegionsCard.tsx        |
+| colocated tests                 | colocated tests                  |
+
+**W2a — "Find similar" in ParticlesMode.** A per-row action on the
+particles table calls `/analyze/efd-similarity` with the SAME segmentation
+params as the displayed run plus that row's id as `ref_id`. Result mode:
+a distance column, rows sorted ascending by it (reference first at ≈0),
+skipped regions kept visible with "—" and their reason on hover; a status
+line "ranked N · skipped M"; an explicit exit control restores the normal
+table. A 422 (undescribable reference) surfaces the server detail via the
+existing status idiom. Distances are DIMENSIONLESS (normalized-descriptor
+space) — no unit, ever.
+
+**W2b — circle/ellipse fit in RegionsCard.** A per-region "Fit" action
+sends the polygon's vertices to `/analyze/fit-shape` and shows both fits
+compactly: circle (center, r, rms) and ellipse (center, a, b, θ shown in
+DEGREES with the convention stated, rms). Both are shown with their rms —
+advisory, the user judges; nothing auto-picks. Lengths (r, a, b, rms)
+display calibrated when the image has a pixel size, px otherwise —
+following the card's existing physical-units convention; rms IS a length
+and calibrates with them. Coordinate care: measures hold `{x, y}`; the
+endpoint wants 1-based `[[row, col]]` — the implementer must VERIFY the
+measure/regions basing against `routes/regions.py` before converting, not
+guess (fitting is translation-equivariant, so a basing error would be
+invisible in r/a/b/rms and visible only in the reported center — exactly
+the kind of silent unit bug this plan exists to prevent). No new overlay
+machinery: draw the fitted shape only if an existing overlay path makes it
+trivial, else numeric readout only.
+
 ## Testing & integration protocol (Wave 1)
 
 - Worktree agents run ONLY scoped checks: `ruff`, `mypy`, and their own
