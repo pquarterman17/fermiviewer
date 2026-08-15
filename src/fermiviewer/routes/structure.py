@@ -19,6 +19,11 @@ from fermiviewer.calc.atoms import (
 )
 from fermiviewer.calc.particles import particle_analysis
 from fermiviewer.calc.raster import NoRasterError, raster_of
+from fermiviewer.calc.shape_metrics import (
+    ClassThresholds,
+    classify_shapes,
+    shape_descriptors,
+)
 from fermiviewer.calc.stack import align_stack, image_math, mip
 from fermiviewer.calc.stitch import stitch_images
 from fermiviewer.calc.texture import template_match
@@ -62,6 +67,17 @@ def _register(
 # ── particle analysis ─────────────────────────────────────────────────
 
 
+class ShapeClassThresholds(BaseModel):
+    """Caller-tunable overrides for `classify_shapes` — see
+    `calc.shape_metrics.ClassThresholds` for the (identical) defaults and
+    the aggregate-checked-first precedence rule."""
+
+    aggregate_max_solidity: float = 0.85
+    rod_min_aspect: float = 2.5
+    sphere_max_aspect: float = 1.3
+    sphere_min_circularity: float = 0.85
+
+
 class ParticleRequest(BaseModel):
     image_id: str
     threshold: float | None = None
@@ -69,12 +85,14 @@ class ParticleRequest(BaseModel):
     min_area: int = Field(default=1, ge=0)
     use_watershed: bool = False
     min_marker_distance: float = 3.0
+    class_thresholds: ShapeClassThresholds | None = None
 
 
 @router.post("/analyze/particles")
 def analyze_particles(req: ParticleRequest) -> dict:
     ds, raster = _raster(req.image_id)
     px = ds.pixel_size if np.isfinite(ds.pixel_size) else float("nan")
+    has_cal = np.isfinite(px) and px > 0
     with value_error_as_422():
         res = particle_analysis(
             raster,
@@ -86,6 +104,23 @@ def analyze_particles(req: ParticleRequest) -> dict:
             min_marker_distance=req.min_marker_distance,
         )
     name = store.name(req.image_id)
+    # per-particle shape descriptors — SHAPE_ANALYSIS_PLAN Wave 1 #1/#2.
+    # `res.labels` is the filtered/renumbered compact 1..n label image
+    # `region_stats` already produced, so `desc`'s rows line up 1:1 with
+    # `res.particles` by position (ascending label), same guarantee
+    # `grains.grain_stats` relies on for its own regionprops_table call.
+    desc = shape_descriptors(res.labels)
+    thresholds = (
+        ClassThresholds(**req.class_thresholds.model_dump())
+        if req.class_thresholds is not None
+        else None
+    )
+    shape_classes = classify_shapes(
+        desc.aspect_ratio, desc.circularity, desc.solidity, thresholds
+    )
+    feret_calibrated = desc.feret_max_px * px if has_cal else np.full_like(
+        desc.feret_max_px, np.nan
+    )
     return {
         "n_particles": res.n_particles,
         "threshold": res.threshold,
@@ -102,8 +137,16 @@ def analyze_particles(req: ParticleRequest) -> dict:
                 "mean_intensity": p.mean_intensity,
                 "area_calibrated": _nan_none(p.area_calibrated),
                 "diameter_calibrated": _nan_none(p.diameter_calibrated),
+                "circularity": float(desc.circularity[i]),
+                "aspect_ratio": _nan_none(float(desc.aspect_ratio[i])),
+                "eccentricity": float(desc.eccentricity[i]),
+                "orientation_rad": float(desc.orientation_rad[i]),
+                "solidity": float(desc.solidity[i]),
+                "feret_max": float(desc.feret_max_px[i]),
+                "feret_max_calibrated": _nan_none(float(feret_calibrated[i])),
+                "shape_class": shape_classes[i],
             }
-            for p in res.particles
+            for i, p in enumerate(res.particles)
         ],
         "unit": ds.pixel_unit or "px",
     }
