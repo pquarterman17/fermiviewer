@@ -325,11 +325,16 @@ def multi_layers_route(req: LayersMultiRequest) -> dict:
     for img_id, ds in zip(req.image_ids, structs, strict=True):
         m_px = ds.pixel_size if np.isfinite(ds.pixel_size) and ds.pixel_size > 0 else px
         m_unit = ds.pixel_unit if ds.pixel_unit else unit
-        res = recompute_layers(
-            ds.data, positions, axis=use_axis, roi=req.roi,
-            pixel_size=m_px, unit=m_unit,
-            waviness=req.waviness,
-        )
+        try:
+            res = recompute_layers(
+                ds.data, positions, axis=use_axis, roi=req.roi,
+                pixel_size=m_px, unit=m_unit,
+                waviness=req.waviness,
+            )
+        except ValueError as e:  # e.g. non-finite pixels in a comparison map
+            raise HTTPException(
+                422, f"{store.name(img_id)}: {e}"
+            ) from None
         maps.append({
             "image_id": img_id,
             "name": store.name(img_id),

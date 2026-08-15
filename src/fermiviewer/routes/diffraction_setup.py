@@ -55,9 +55,12 @@ def diffraction_calibrate(req: CalibrateRequest) -> dict:
     Returns the ellipse (centre, semi-axes, angle, eccentricity), the RMS
     radial residual of the un-distorted ring, and the camera constant."""
     raster = _raster(req.image_id)
-    pts = dcal.detect_ring_points(
-        raster, r_min=req.r_min, r_max=req.r_max, n_angles=req.n_angles
-    )
+    try:
+        pts = dcal.detect_ring_points(
+            raster, r_min=req.r_min, r_max=req.r_max, n_angles=req.n_angles
+        )
+    except ValueError as e:  # e.g. n_angles < 0 (np.linspace rejects it)
+        raise HTTPException(422, str(e)) from None
     if len(pts) < 5:
         raise HTTPException(
             422, "too few ring points detected — adjust r_min/r_max or the image"

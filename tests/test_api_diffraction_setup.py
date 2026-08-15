@@ -202,6 +202,18 @@ def test_calibrate_too_few_ring_points_is_422(client, tmp_path) -> None:
     assert "too few ring points" in r.json()["detail"]
 
 
+def test_calibrate_negative_n_angles_is_422_not_500(client, tmp_path) -> None:
+    # n_angles < 0 makes calc.diffraction_calib.detect_ring_points's
+    # np.linspace(..., n_angles, ...) raise ValueError — a malformed-but
+    # -well-typed int must surface as 422, not an unhandled 500.
+    img_id = _open(client, tmp_path, _ring_image(radius=40.0))
+    r = client.post(
+        "/api/diffraction/calibrate",
+        json={"image_id": img_id, "n_angles": -5},
+    )
+    assert r.status_code == 422, r.text
+
+
 def test_calibrate_degenerate_ellipse_fit_is_422(
     client, tmp_path, monkeypatch
 ) -> None:
