@@ -140,17 +140,15 @@ def test_unknown_image_id_is_404(client) -> None:
     assert r.status_code == 404
 
 
-def test_too_few_contour_points_for_harmonic_count_is_422_naming_region(
+def test_undescribable_reference_region_is_422_naming_it(
     client, tmp_path
 ) -> None:
-    """The too-few-points guard still fires and names the region. The
-    route now traces the RAW ring (no DP simplification — see the module
-    docstring's square-particle rationale), so an ordinary particle
-    carries far more vertices than it used to and this fixture must be
-    genuinely tiny: a 3x3 particle's ring (~8-12 points) cannot support
-    50 harmonics no matter how it is traced."""
+    """The one region that CANNOT be skipped is the reference itself —
+    with no reference descriptor there is nothing to rank against. A 3x3
+    particle's raw ring (~a dozen points) cannot support 50 harmonics no
+    matter how it is traced, so making it the ref forces the guard."""
     img = np.zeros((30, 30))
-    img[5:8, 5:8] = 10  # 3x3 particle — raw ring is still only ~a dozen points
+    img[5:8, 5:8] = 10  # 3x3 particle — the ref itself is undescribable
     img_id = _open(client, tmp_path, img + 1)
     particles = client.post(
         "/api/analyze/particles",
@@ -165,7 +163,42 @@ def test_too_few_contour_points_for_harmonic_count_is_422_naming_region(
         },
     )
     assert r.status_code == 422
-    assert "region" in r.json()["detail"]
+    assert "reference region" in r.json()["detail"]
+    assert "nothing to rank against" in r.json()["detail"]
+
+
+def test_undescribable_non_reference_region_is_skipped_not_fatal(
+    client, tmp_path
+) -> None:
+    """Skip-and-note: one tiny speck must not kill ranking across the
+    good particles. Fixture: a healthy square (the ref) plus a 3x3 speck
+    that cannot support the harmonic count → 200, speck in `skipped`
+    with a reason, ranking covers the describable regions only."""
+    img = np.zeros((60, 60))
+    img[10:41, 10:41] = 10  # healthy square — the reference
+    img[50:53, 50:53] = 10  # 3x3 speck — undescribable at 50 harmonics
+    img_id = _open(client, tmp_path, img + 1)
+    particles = client.post(
+        "/api/analyze/particles",
+        json={"image_id": img_id, "threshold": 5, "min_area": 1},
+    ).json()["particles"]
+    by_area = sorted(particles, key=lambda p: p["area"], reverse=True)
+    ref_id, speck_id = by_area[0]["id"], by_area[-1]["id"]
+    r = client.post(
+        "/api/analyze/efd-similarity",
+        json={
+            "image_id": img_id, "threshold": 5, "min_area": 1,
+            "ref_id": ref_id, "n_harmonics": 50,
+        },
+    )
+    assert r.status_code == 200, r.json()
+    body = r.json()
+    ranked_ids = [e["id"] for e in body["ranked"]]
+    assert ranked_ids[0] == ref_id  # self-distance first
+    assert speck_id not in ranked_ids
+    (skip,) = body["skipped"]
+    assert skip["id"] == speck_id
+    assert "harmonics" in skip["reason"]
 
 
 # ── /analyze/fit-shape ──────────────────────────────────────────────

@@ -10,11 +10,10 @@ question: *spheres or rods?* Meanwhile `calc/distributions.py` is
 deliberately metric-agnostic, so every descriptor added becomes a fittable
 population for free.
 
-**Status:** Active (created 2026-08-14; same-day: #1/#2 SHIPPED, #4/#5
-backend SHIPPED, #3 frontend built and in final integration — three
-worktree agents in parallel against the frozen contract, merged
-sequentially with the full gate between. Remaining: #3 merge, then Wave 2
-GUI wiring for #4/#5)
+**Status:** Active (created 2026-08-14; same-day: Wave 1 (#1–#3) fully
+SHIPPED and integrated, #4/#5 backend SHIPPED + skip-and-note refinement
+landed in the same day's bug round. Remaining: Wave 2 GUI wiring for
+#4/#5 — the only open work in this plan)
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-08-14
 **Updated:** 2026-08-14 — Wave 1 integrated. Convention #2 corrected
@@ -126,7 +125,9 @@ Wave-2 endpoints (new module `routes/shape_id.py`; names normative):
 
 ```
 POST /analyze/efd-similarity   # mirror of the particles request + ref_id
-  → {ranked: [{id, distance}], n_harmonics}
+  → {ranked: [{id, distance}], skipped: [{id, reason}], n_harmonics}
+  # skipped added 2026-08-14 (bug round): undescribable non-reference
+  # regions skip-and-note instead of failing the query
 POST /analyze/fit-shape        # {points: [[row,col],...]} 1-based, closed ring
   → {circle: {cy,cx,r,rms}, ellipse: {cy,cx,a,b,theta_rad,rms}}   # px, 1-based
 ```
@@ -198,9 +199,11 @@ conflict).
    Remaining:
    - [ ] Wave 2: workshop "find similar" control (was deferred from the
          parallel build to avoid colliding with A3 in ParticlesMode)
-   - [ ] Wave 2 refinement candidate: one untraceable speck currently
-         422s the whole query (per contract, named region); consider
-         skip-and-note instead
+   - [x] ~~Wave 2 refinement: skip-and-note~~ (2026-08-14, bug round) —
+         undescribable non-reference regions land in `skipped:
+         [{id, reason}]` instead of failing the query; an undescribable
+         REFERENCE still 422s ("nothing to rank against"). Both paths
+         pinned red-first.
 5. **Circle/ellipse fitting** — *backend SHIPPED 2026-08-14 (agent A2):
    `calc/shape_fit.py` (165 lines) REUSING `diffraction_calib`'s
    Halir–Flušser ellipse fit via import (already importable — no

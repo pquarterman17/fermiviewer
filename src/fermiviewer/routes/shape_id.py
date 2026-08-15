@@ -104,7 +104,14 @@ def analyze_efd_similarity(req: EfdSimilarityRequest) -> dict:
     if req.ref_id not in ids:
         raise HTTPException(404, f"unknown ref_id: {req.ref_id}")
 
+    # Skip-and-note, not fail-the-query: one tiny speck that cannot support
+    # the harmonic count must not kill ranking across hundreds of good
+    # particles. Undescribable regions land in `skipped` with the reason.
+    # The ONE region that cannot be skipped is the reference itself — with
+    # no reference descriptor there is nothing to rank against, so that
+    # stays a 422 saying exactly that.
     descriptors: dict[int, EfdDescriptor] = {}
+    skipped: list[dict[str, object]] = []
     for p in res.particles:
         mask = res.labels == p.id
         try:
@@ -113,12 +120,17 @@ def analyze_efd_similarity(req: EfdSimilarityRequest) -> dict:
                 tolerance=_EFD_TRACE_TOLERANCE,
                 max_vertices=_EFD_TRACE_MAX_VERTICES,
             )
-        except NoContourError as e:
-            raise HTTPException(422, f"region {p.id}: {e}") from None
-        try:
-            descriptors[p.id] = efd_descriptor(contour.points, n_harmonics=req.n_harmonics)
-        except ValueError as e:
-            raise HTTPException(422, f"region {p.id}: {e}") from None
+            descriptors[p.id] = efd_descriptor(
+                contour.points, n_harmonics=req.n_harmonics
+            )
+        except (NoContourError, ValueError) as e:
+            if p.id == req.ref_id:
+                raise HTTPException(
+                    422,
+                    f"reference region {p.id} cannot be described "
+                    f"({e}) — nothing to rank against",
+                ) from None
+            skipped.append({"id": p.id, "reason": str(e)})
 
     ref_descriptor = descriptors[req.ref_id]
     ranked = sorted(
@@ -128,7 +140,7 @@ def analyze_efd_similarity(req: EfdSimilarityRequest) -> dict:
         ),
         key=lambda r: r["distance"],
     )
-    return {"ranked": ranked, "n_harmonics": req.n_harmonics}
+    return {"ranked": ranked, "skipped": skipped, "n_harmonics": req.n_harmonics}
 
 
 # ── circle / ellipse fitting ────────────────────────────────────────
