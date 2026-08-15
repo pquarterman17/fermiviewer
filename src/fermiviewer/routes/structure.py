@@ -5,6 +5,8 @@ out to keep both modules comfortably under the 500-line ceiling."""
 
 from __future__ import annotations
 
+import dataclasses
+
 import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -68,14 +70,19 @@ def _register(
 
 
 class ShapeClassThresholds(BaseModel):
-    """Caller-tunable overrides for `classify_shapes` — see
-    `calc.shape_metrics.ClassThresholds` for the (identical) defaults and
-    the aggregate-checked-first precedence rule."""
+    """Caller-tunable overrides for `classify_shapes`. Every field is
+    None-defaulted: an omitted field means "use the calc-layer default",
+    resolved via `dataclasses.replace` at call time so
+    `calc.shape_metrics.ClassThresholds` stays the ONLY place a default
+    value exists. This model briefly duplicated the literals and the two
+    copies drifted on the first correction (sphere cutoff 0.85→0.92
+    landed in calc only, so any partial override here silently reverted
+    it) — do not reintroduce literal defaults here."""
 
-    aggregate_max_solidity: float = 0.85
-    rod_min_aspect: float = 2.5
-    sphere_max_aspect: float = 1.3
-    sphere_min_circularity: float = 0.85
+    aggregate_max_solidity: float | None = None
+    rod_min_aspect: float | None = None
+    sphere_max_aspect: float | None = None
+    sphere_min_circularity: float | None = None
 
 
 class ParticleRequest(BaseModel):
@@ -111,7 +118,9 @@ def analyze_particles(req: ParticleRequest) -> dict:
     # `grains.grain_stats` relies on for its own regionprops_table call.
     desc = shape_descriptors(res.labels)
     thresholds = (
-        ClassThresholds(**req.class_thresholds.model_dump())
+        dataclasses.replace(
+            ClassThresholds(), **req.class_thresholds.model_dump(exclude_none=True)
+        )
         if req.class_thresholds is not None
         else None
     )

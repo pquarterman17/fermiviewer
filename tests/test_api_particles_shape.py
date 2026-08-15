@@ -195,8 +195,28 @@ def test_class_thresholds_partial_override_keeps_other_defaults(
     client, tmp_path,
 ) -> None:
     """A request that overrides only one threshold field still applies the
-    frozen defaults for the rest (pydantic model default-fills)."""
-    img_id = _open(client, tmp_path, _blobs_image())
+    CALC-LAYER defaults for the rest — resolved via dataclasses.replace,
+    not pydantic default-fill. The distinction bit once: the route model
+    briefly carried its own copies of the default literals, so a partial
+    override silently reverted the corrected sphere cutoff (0.92) to the
+    stale 0.85. The probe is a square whose Crofton circularity sits
+    INSIDE the 0.85–0.92 trap zone: under the calc default it must stay
+    intermediate even when an unrelated threshold is overridden; under
+    stale pydantic literals it flips sphere-like and this test goes red."""
+    img = np.zeros((60, 60))
+    img[10:41, 10:41] = 10     # 31x31 square — Crofton circ ≈ 0.88-0.89
+    img_id = _open(client, tmp_path, img + 1)
+
+    # sanity: with no overrides the square is in the trap zone → intermediate
+    base = client.post(
+        "/api/analyze/particles",
+        json={"image_id": img_id, "threshold": 5, "min_area": 10},
+    ).json()
+    (square,) = base["particles"]
+    assert 0.85 < square["circularity"] < 0.92
+    assert square["shape_class"] == "intermediate"
+
+    # partial override of an UNRELATED threshold must not change that
     body = client.post(
         "/api/analyze/particles",
         json={
@@ -204,6 +224,16 @@ def test_class_thresholds_partial_override_keeps_other_defaults(
             "class_thresholds": {"rod_min_aspect": 1000.0},
         },
     ).json()
-    square_blob = next(p for p in body["particles"] if p["area"] == 49)
-    # sphere threshold defaults (1.3 / 0.85) are untouched by the override
-    assert square_blob["shape_class"] == "sphere-like"
+    (square,) = body["particles"]
+    assert square["shape_class"] == "intermediate"
+
+    # and an EXPLICIT sphere override is still honoured
+    body = client.post(
+        "/api/analyze/particles",
+        json={
+            "image_id": img_id, "threshold": 5, "min_area": 10,
+            "class_thresholds": {"sphere_min_circularity": 0.5},
+        },
+    ).json()
+    (square,) = body["particles"]
+    assert square["shape_class"] == "sphere-like"
