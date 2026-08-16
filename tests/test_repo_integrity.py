@@ -216,3 +216,60 @@ def test_node_version_declarations_agree() -> None:
     assert volta_major == major, (
         f"volta pins Node {volta_major} but .nvmrc says {major}"
     )
+
+
+def test_project_version_declarations_agree() -> None:
+    """The release version is declared in eight files; they must never drift.
+
+    A ``chore(release): vX.Y.Z`` commit is exactly an 8-file, 2-line-each
+    diff (pyproject, the package ``__version__``, frontend/package.json,
+    tauri.conf.json, Cargo.toml, Cargo.lock, uv.lock, CHANGELOG). Lockfiles
+    record the version too and a stale one fails ``--locked`` builds; a
+    missing ``## [X.Y.Z]`` CHANGELOG section makes the GitHub Release fall
+    back to an auto-generated commit list instead of the curated notes.
+    Comparing every declaration to pyproject makes a partial bump fail
+    here rather than in the release pipeline.
+    """
+    import json
+    import re
+
+    import fermiviewer
+
+    expected = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"][
+        "version"
+    ]
+    assert re.fullmatch(r"\d+\.\d+\.\d+", expected), expected
+
+    tauri_dir = ROOT / "src-tauri"
+    cargo_lock = tomllib.loads((tauri_dir / "Cargo.lock").read_text())
+    uv_lock = tomllib.loads((ROOT / "uv.lock").read_text())
+
+    def locked(lock: dict, name: str) -> str:
+        pkgs = [p for p in lock["package"] if p["name"] == name]
+        assert len(pkgs) == 1, f"{name!r} appears {len(pkgs)}× in lockfile"
+        return str(pkgs[0]["version"])
+
+    changelog = (ROOT / "CHANGELOG.md").read_text()
+    top = re.search(r"^## \[(\d+\.\d+\.\d+)\]", changelog, re.M)
+    assert top, "CHANGELOG.md has no '## [X.Y.Z]' section"
+
+    declared = {
+        "src/fermiviewer/__init__.py": fermiviewer.__version__,
+        "frontend/package.json": json.loads(
+            (ROOT / "frontend" / "package.json").read_text()
+        )["version"],
+        "src-tauri/tauri.conf.json": json.loads(
+            (tauri_dir / "tauri.conf.json").read_text()
+        )["version"],
+        "src-tauri/Cargo.toml": tomllib.loads(
+            (tauri_dir / "Cargo.toml").read_text()
+        )["package"]["version"],
+        "src-tauri/Cargo.lock": locked(cargo_lock, "fermiviewer-shell"),
+        "uv.lock": locked(uv_lock, "fermiviewer"),
+        "CHANGELOG.md (topmost versioned section)": top.group(1),
+    }
+    drift = {k: v for k, v in declared.items() if v != expected}
+    assert not drift, (
+        f"pyproject.toml says {expected} but these disagree: {drift} — a "
+        "release bump touches all eight files in ONE commit"
+    )
