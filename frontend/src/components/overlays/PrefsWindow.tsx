@@ -302,7 +302,7 @@ export default function PrefsWindow() {
                 <Row label="Profile reduction">
                   <Seg value={p.profileReduce} options={REDUCE_OPTS} onChange={(v) => set("profileReduce", v)} />
                 </Row>
-                <Row label="Lasso simplify (px)" hint="freehand capture point-spacing tolerance; higher = fewer points">
+                <Row label="Lasso simplify (px)" hint="simplifies a freehand outline when you close it; higher = fewer vertices">
                   <Num value={p.lassoSimplifyPx} min={0.5} max={20} step={0.5} onChange={(v) => set("lassoSimplifyPx", v)} />
                 </Row>
                 <Row label="Show scale bar">
