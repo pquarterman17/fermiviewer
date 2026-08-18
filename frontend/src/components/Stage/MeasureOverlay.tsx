@@ -422,6 +422,7 @@ export default function MeasureOverlay({
             mid={m.id}
             sel={sel}
             color={color}
+            kind={m.kind}
             defaultEndSymbol={defaultEndSymbol}
             endSymbol={m.endSymbol}
             onHandleDown={onHandleDown}

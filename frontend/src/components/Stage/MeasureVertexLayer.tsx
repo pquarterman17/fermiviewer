@@ -261,6 +261,7 @@ export interface VertexHandlesProps {
   mid: string;
   sel: boolean;
   color: string;
+  kind: Measure["kind"];
   defaultEndSymbol: EndSymbol;
   endSymbol?: EndSymbol; // per-measure override (Measure.endSymbol)
   onHandleDown: (e: React.PointerEvent, mid: string, pt: number) => void;
@@ -283,6 +284,7 @@ export function VertexHandles({
   mid,
   sel,
   color,
+  kind,
   defaultEndSymbol,
   endSymbol,
   onHandleDown,
@@ -314,13 +316,28 @@ export function VertexHandles({
                 : undefined
             }
           >
-            <EndpointGlyph
-              cx={p.x}
-              cy={p.y}
-              sym={endSymbol ?? defaultEndSymbol}
-              stroke={sel ? "var(--accent)" : color}
-              angle={ang}
-            />
+            {(kind === "polygon" || kind === "lasso") ? (
+              <>
+                <circle
+                  cx={p.x}
+                  cy={p.y}
+                  r={3}
+                  fill="var(--surface-0)"
+                  stroke={sel ? "var(--accent)" : color}
+                  strokeWidth={1.5}
+                />
+                {/* transparent hit target — always present for drag capture */}
+                <circle cx={p.x} cy={p.y} r={8} fill="transparent" stroke="none" />
+              </>
+            ) : (
+              <EndpointGlyph
+                cx={p.x}
+                cy={p.y}
+                sym={endSymbol ?? defaultEndSymbol}
+                stroke={sel ? "var(--accent)" : color}
+                angle={ang}
+              />
+            )}
           </g>
         );
       })}

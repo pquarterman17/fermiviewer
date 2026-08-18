@@ -251,3 +251,52 @@ describe("MeasureOverlay alt+edge-drag vertex insert (item D step 3)", () => {
     fireEvent.pointerUp(rect, { pointerId: 1 });
   });
 });
+
+describe("MeasureOverlay handle glyph rendering", () => {
+  it("polygon measure's rendered handles contain <circle> elements and NO EndpointGlyph bars", () => {
+    seed([{ id: "m1", kind: "polygon", pts: SQUARE }]);
+    const { container } = renderOverlay();
+    const handleGroups = container.querySelectorAll("svg > g > g");
+    expect(handleGroups).toHaveLength(4);
+
+    // Each handle group should contain a circle
+    handleGroups.forEach((group) => {
+      const circles = group.querySelectorAll("circle");
+      expect(circles.length).toBeGreaterThan(0); // at least the visible circle
+      // Verify the visible circle (not the hit target) has the right properties
+      const visibleCircle = circles[0];
+      expect(visibleCircle.getAttribute("r")).toBe("3");
+      expect(visibleCircle.getAttribute("fill")).toBe("var(--surface-0)");
+
+      // No EndpointGlyph bar (which is a line element)
+      const lines = group.querySelectorAll("line");
+      expect(lines).toHaveLength(0);
+    });
+  });
+
+  it("line measure still renders EndpointGlyph (regression pin)", () => {
+    seed([
+      {
+        id: "m1",
+        kind: "distance",
+        pts: [
+          { x: 0.2, y: 0.2 },
+          { x: 0.8, y: 0.8 },
+        ],
+      },
+    ]);
+    const { container } = renderOverlay();
+    const handleGroups = container.querySelectorAll("svg > g > g");
+    expect(handleGroups).toHaveLength(2);
+
+    // Each handle group should contain a line (the EndpointGlyph bar)
+    handleGroups.forEach((group) => {
+      const lines = group.querySelectorAll("line");
+      expect(lines.length).toBeGreaterThan(0); // the bar glyph
+
+      // No circles except the hit target (which is inside EndpointGlyph)
+      const circles = group.querySelectorAll("circle");
+      expect(circles.length).toBeGreaterThan(0); // the hit target from EndpointGlyph
+    });
+  });
+});
