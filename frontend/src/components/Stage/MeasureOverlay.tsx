@@ -461,6 +461,8 @@ export default function MeasureOverlay({
           at={ctxMenu}
           defaultEndSymbol={defaultEndSymbol}
           globalFont={globalFont}
+          view={view}
+          img={img}
           onClose={() => setCtxMenu(null)}
         />
       )}

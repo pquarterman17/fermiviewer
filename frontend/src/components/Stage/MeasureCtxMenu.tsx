@@ -5,10 +5,14 @@
 // Extracted verbatim from MeasureOverlay.tsx. It renders a fragment of the
 // same two sibling divs in the same order, so the overlay's DOM is unchanged.
 
+import type { Size } from "../../lib/geometry";
+import { loadPrefs } from "../../lib/prefs";
+import { simplifyRing } from "../../lib/simplifyRing";
 import {
   useViewer,
   type EndSymbol,
   type Measure,
+  type View,
 } from "../../store/viewer";
 import { findHoleHost } from "./pointerDecisions";
 
@@ -32,6 +36,15 @@ interface Props {
   defaultEndSymbol: EndSymbol;
   /** overlay-wide label font size, the fallback in the font-size prompt */
   globalFont: number;
+  /** current per-image view — "Simplify outline" converts the lasso
+   *  simplify preference (screen px) to image px at the CURRENT zoom
+   *  (Convention 3), so it needs view.z here. */
+  view: View;
+  /** image pixel dimensions — `pts` are stored normalized ([0,1] fraction
+   *  of img.w/img.h, same convention as the rest of the store); simplify
+   *  needs true (isotropic) image-px points so the epsilon comparison
+   *  isn't skewed by a non-square image, then converts the result back. */
+  img: Size;
   onClose: () => void;
 }
 
@@ -41,6 +54,8 @@ export default function MeasureCtxMenu({
   at,
   defaultEndSymbol,
   globalFont,
+  view,
+  img,
   onClose,
 }: Props) {
   const setMeasureStyle = useViewer((s) => s.setMeasureStyle);
@@ -72,6 +87,19 @@ export default function MeasureCtxMenu({
     !!target &&
     (target.kind === "polygon" || target.kind === "lasso") &&
     at.vertexIndex != null &&
+    target.pts.length > 3;
+
+  // Lasso-editing plan, item C — retroactive "Simplify outline": unlike
+  // "Delete vertex" it acts on the whole ring, not one right-clicked
+  // vertex, so it doesn't gate on at.vertexIndex — a right-click on the
+  // body or label offers it too (same idiom as "Mark as hole"). Retroactive
+  // simplify is user-invoked, so BOTH ring kinds qualify (Convention 5
+  // restricts only capture-time auto-simplify to lasso). Hidden (same
+  // "absent" idiom as "Delete vertex") when it can't do anything useful —
+  // a triangle can't be simplified further.
+  const canSimplify =
+    !!target &&
+    (target.kind === "polygon" || target.kind === "lasso") &&
     target.pts.length > 3;
 
   return (
@@ -215,6 +243,46 @@ export default function MeasureCtxMenu({
               </button>
             ))}
           </>
+        )}
+        {canSimplify && (
+          <button
+            className="fvd-ctx-item"
+            title="Reduce this outline's vertex count — uses the lasso simplify preference at the current zoom; zoom in first for a gentler pass"
+            onClick={() => {
+              const before = target!.pts;
+              // pts are stored normalized (fraction of img.w/img.h); convert
+              // to true image px so epsilon (also image px, Convention 3)
+              // compares isotropically even when img.w !== img.h, then
+              // convert the simplified ring back to the stored convention.
+              const beforePx = before.map((p) => ({
+                x: p.x * img.w,
+                y: p.y * img.h,
+              }));
+              const epsilon = loadPrefs().lassoSimplifyPx / view.z;
+              const afterPx = simplifyRing(beforePx, epsilon);
+              if (afterPx.length < before.length) {
+                const after = afterPx.map((p) => ({
+                  x: p.x / img.w,
+                  y: p.y / img.h,
+                }));
+                updateMeasure(imageId, at.mid, after);
+                pushUndo({
+                  t: "measure-move",
+                  imageId,
+                  measureId: at.mid,
+                  before,
+                  after,
+                });
+              } else {
+                useViewer
+                  .getState()
+                  .setStatus("outline already simplified — no vertices removed");
+              }
+              onClose();
+            }}
+          >
+            Simplify outline
+          </button>
         )}
         {canDeleteVertex && (
           <button
