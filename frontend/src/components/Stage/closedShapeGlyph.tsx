@@ -31,6 +31,9 @@ export interface ClosedShapeGlyphProps {
   onHandleMove?: (e: React.PointerEvent) => void;
   onHandleUp?: (e: React.PointerEvent) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
+  /** Discoverability hint for the alt-drag-to-insert gesture (lasso-editing
+   *  plan, item D step 3) — omitted while pending, same as the handlers. */
+  title?: string;
 }
 
 /** One closed subpath ("M x,y L x,y … Z") for the evenodd `d` string. */
@@ -50,6 +53,7 @@ export function ClosedShapeGlyph({
   onHandleMove,
   onHandleUp,
   onContextMenu,
+  title,
 }: ClosedShapeGlyphProps) {
   const shared = {
     stroke,
@@ -62,6 +66,7 @@ export function ClosedShapeGlyph({
     onPointerMove: isPending ? undefined : onHandleMove,
     onPointerUp: isPending ? undefined : onHandleUp,
     onContextMenu: isPending ? undefined : onContextMenu,
+    title: isPending ? undefined : title,
   };
   // A hole reads as a VOID rather than a second overlapping shape via a
   // second <path> subpath + fill-rule evenodd (the conventional SVG way

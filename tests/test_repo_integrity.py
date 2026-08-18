@@ -45,7 +45,6 @@ FRONTEND_MAX_STYLESHEET_LINES = 500
 # spent. The slack is the working margin; the distance from the previous cap
 # is what got banked.
 FRONTEND_LEGACY_CAPS = {
-    "components/Stage/MeasureOverlay.tsx": 562,
     "components/Stage/Stage.tsx": 617,
     # store/viewer.ts graduated 2026-08-09 (W4 #22): 575 -> 448 lines, once
     # the close teardown moved to viewerCloseImage.ts and the appearance
@@ -54,7 +53,12 @@ FRONTEND_LEGACY_CAPS = {
     # 445 lines, once the Simulate-tab state/logic (phase list, CIF import/
     # delete, kinematic simulate) moved to useDiffractionSimulation.ts and the
     # elliptical-distortion calibration flow moved to
-    # useDiffractionCalibration.ts, both under diffraction/. Last legacy pin.
+    # useDiffractionCalibration.ts, both under diffraction/.
+    # MeasureOverlay.tsx graduated 2026-08-18 (LASSO_EDITING_PLAN item D):
+    # 533 -> 469 lines, once the per-vertex handle rendering + drag/insert
+    # mechanics (onHandleDown/Move/Up, whole-body translate, alt+edge-drag
+    # vertex insertion) moved to MeasureVertexLayer.tsx. It is a plain
+    # 500-line module now. Last legacy pin.
 }
 PURE_LAYERS = ("io", "calc", "ops")
 FORBIDDEN_IN_PURE = ("fastapi", "pydantic", "fermiviewer.routes", "starlette")
