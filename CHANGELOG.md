@@ -28,6 +28,19 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   unrecognized calibrations disable the menu with a reason instead of
   mislabeling a conversion; uncalibrated images keep px/px². Unit choices
   save with the project.
+- **Vertex editing for polygons and lassos.** Right-click a vertex →
+  Delete vertex (disabled at three — a polygon must stay a polygon);
+  alt-drag anywhere on an edge to insert a vertex at that spot and place
+  it in the same motion. Plain drags are unchanged: body drag still
+  moves the whole measure, handle drag still moves one vertex. Undo
+  covers each edit as a single step.
+- **Simplify outline on demand.** Right-click an existing polygon or
+  lasso → Simplify outline, using the same preference at the current
+  zoom (zoom in first for a gentler pass). One undo step; if the outline
+  is already sparse it says so instead of silently doing nothing.
+- Polygon and lasso vertices now render as small round handles instead
+  of directional bars (which belong on line and arrow endpoints), with a
+  larger invisible hit target so they stay easy to grab.
 
 ### Fixed
 - **Adjusting a lasso no longer means fighting hundreds of points.** A
@@ -46,21 +59,6 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   the voids from the outline and invalidating the holes-subtracted area —
   a long-standing bug surfaced by this release's review pass. Undo
   restores shape and holes together.
-
-### Added
-- **Vertex editing for polygons and lassos.** Right-click a vertex →
-  Delete vertex (disabled at three — a polygon must stay a polygon);
-  alt-drag anywhere on an edge to insert a vertex at that spot and place
-  it in the same motion. Plain drags are unchanged: body drag still
-  moves the whole measure, handle drag still moves one vertex. Undo
-  covers each edit as a single step.
-- **Simplify outline on demand.** Right-click an existing polygon or
-  lasso → Simplify outline, using the same preference at the current
-  zoom (zoom in first for a gentler pass). One undo step; if the outline
-  is already sparse it says so instead of silently doing nothing.
-- Polygon and lasso vertices now render as small round handles instead
-  of directional bars (which belong on line and arrow endpoints), with a
-  larger invisible hit target so they stay easy to grab.
 
 ## [0.1.31] - 2026-08-16
 
