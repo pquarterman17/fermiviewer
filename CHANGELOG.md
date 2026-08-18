@@ -27,6 +27,11 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   one genuinely reshapes the outline. Deliberate spikes survive
   simplification — removing detail is only ever your call. Click-placed
   polygons are untouched: you placed those vertices on purpose.
+- **Holes now move with their shape.** Dragging a polygon that had marked
+  holes used to leave the holes behind at their old position, detaching
+  the voids from the outline and invalidating the holes-subtracted area —
+  a long-standing bug surfaced by this release's review pass. Undo
+  restores shape and holes together.
 
 ### Added
 - **Vertex editing for polygons and lassos.** Right-click a vertex →
