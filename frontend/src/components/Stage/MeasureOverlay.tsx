@@ -4,11 +4,7 @@
 
 import { useRef, useState } from "react";
 
-import {
-  imageToScreen,
-  screenToImage,
-  type Size,
-} from "../../lib/geometry";
+import { imageToScreen, type Size } from "../../lib/geometry";
 import { useStageInfo } from "../../store/stage";
 import {
   OVERLAY_FONT_PX,
@@ -18,7 +14,8 @@ import {
 } from "../../store/viewer";
 import { ClosedShapeGlyph, closedShapeLabelAnchor } from "./closedShapeGlyph";
 import MeasureCtxMenu from "./MeasureCtxMenu";
-import { EndpointGlyph, measureLabel } from "./measureGlyphs";
+import { measureLabel } from "./measureGlyphs";
+import { useVertexEditing, VertexHandles } from "./MeasureVertexLayer";
 import { useMeasureRefresh } from "./useMeasureRefresh";
 
 // stable empty result — a fresh [] per snapshot makes zustand's
@@ -56,14 +53,6 @@ export default function MeasureOverlay({
   const setProfile = useStageInfo((s) => s.setProfile);
   const setStatus = useViewer((s) => s.setStatus);
 
-  const dragRef = useRef<{
-    mid: string;
-    pt: number; // -1 = whole-body translate (audit #12)
-    before: Measure["pts"];
-    startX?: number; // client px at drag start (body drag)
-    startY?: number;
-    pts0?: Measure["pts"]; // snapshot of all pts at drag start (body drag)
-  } | null>(null);
   const labelDragRef = useRef<{
     mid: string;
     startX: number;
@@ -78,6 +67,9 @@ export default function MeasureOverlay({
     mid: string;
     x: number;
     y: number;
+    /** which vertex was right-clicked (handle context-menu path only) —
+     *  gates the "Delete vertex" item (MeasureCtxMenu.tsx). */
+    vertexIndex?: number;
   } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -101,66 +93,29 @@ export default function MeasureOverlay({
     setRoiStats,
   });
 
-  const onHandleDown = (e: React.PointerEvent, mid: string, pt: number) => {
-    e.stopPropagation();
-    const m = measures.find((x) => x.id === mid);
-    dragRef.current = { mid, pt, before: m ? m.pts : [] };
-    (e.target as Element).setPointerCapture(e.pointerId);
-    setSelected(mid);
-  };
-
-  const onHandleMove = (e: React.PointerEvent) => {
-    if (!dragRef.current || !svgRef.current) return;
-    const { mid, pt } = dragRef.current;
-    const m = measures.find((x) => x.id === mid);
-    if (!m) return;
-
-    if (pt === -1) {
-      // whole-body translate (audit #12)
-      const { startX, startY, pts0 } = dragRef.current;
-      if (startX == null || startY == null || !pts0) return;
-      const dx = (e.clientX - startX) / (view.z * img.w);
-      const dy = (e.clientY - startY) / (view.z * img.h);
-      const pts = pts0.map((p) => ({
-        x: Math.min(1, Math.max(0, p.x + dx)),
-        y: Math.min(1, Math.max(0, p.y + dy)),
-      }));
-      updateMeasure(imageId, mid, pts);
-      return;
-    }
-
-    const r = svgRef.current.getBoundingClientRect();
-    const ip = screenToImage(
-      e.clientX - r.left,
-      e.clientY - r.top,
+  // Vertex/handle drag mechanics (handle drag, whole-body translate, and
+  // alt+edge-drag insert) live in MeasureVertexLayer.tsx — extracted to
+  // stay under the frontend size ratchet (lasso-editing plan, item D).
+  const {
+    onHandleDown,
+    onHandleMove,
+    onHandleUp,
+    onBodyDown,
+    onVertexContextMenu,
+  } = useVertexEditing({
+      imageId,
+      measures,
       view,
       img,
       vp,
-    );
-    const nx = Math.min(1, Math.max(0, ip.x / img.w));
-    const ny = Math.min(1, Math.max(0, ip.y / img.h));
-    const pts = m.pts.map((p, i) => (i === pt ? { x: nx, y: ny } : p));
-    updateMeasure(imageId, mid, pts);
-  };
-
-  const onHandleUp = (e: React.PointerEvent) => {
-    if (!dragRef.current) return;
-    const { mid, before } = dragRef.current;
-    const m = measures.find((x) => x.id === mid);
-    dragRef.current = null;
-    (e.target as Element).releasePointerCapture(e.pointerId);
-    if (!m) return;
-    if (before.length && JSON.stringify(before) !== JSON.stringify(m.pts)) {
-      pushUndo({
-        t: "measure-move",
-        imageId,
-        measureId: mid,
-        before,
-        after: m.pts,
-      });
-    }
-    refresh(m);
-  };
+      svgRef,
+      updateMeasure,
+      setSelected,
+      pushUndo,
+      refresh,
+      openMenu: (e, mid, vertexIndex) =>
+        setCtxMenu({ mid, x: e.clientX, y: e.clientY, vertexIndex }),
+    });
 
   const renderMeasure = (m: Measure, isPending = false) => {
     const pts = m.pts.map(toScreen);
@@ -173,23 +128,13 @@ export default function MeasureOverlay({
     const sw = sel ? baseSw + 1 : baseSw;
     // per-annotation font size (audit #12) overrides global overlay size
     const font = m.fontSize ?? globalFont;
-    // body-drag starter for box/circle (audit #12): mousedown on the shape
-    // interior translates all points together instead of dragging a corner.
-    const onBodyDown = isPending
+    // body-drag starter (audit #12): mousedown on the shape interior
+    // translates all points together instead of dragging a corner. On a
+    // polygon/lasso, alt turns this into an edge-insert-and-drag instead
+    // (item D step 3) — see useVertexEditing's onBodyDown.
+    const bodyDown = isPending
       ? undefined
-      : (e: React.PointerEvent) => {
-          e.stopPropagation();
-          setSelected(m.id);
-          dragRef.current = {
-            mid: m.id,
-            pt: -1,
-            before: m.pts,
-            startX: e.clientX,
-            startY: e.clientY,
-            pts0: m.pts,
-          };
-          (e.target as Element).setPointerCapture(e.pointerId);
-        };
+      : (e: React.PointerEvent) => onBodyDown(e, m, pts);
     const common = {
       stroke,
       strokeWidth: sw,
@@ -252,7 +197,7 @@ export default function MeasureOverlay({
           fill="transparent"
           pointerEvents={isPending ? "none" : "all"}
           style={{ cursor: isPending ? "default" : "move" }}
-          onPointerDown={onBodyDown}
+          onPointerDown={bodyDown}
           onPointerMove={onHandleMove}
           onPointerUp={onHandleUp}
         />
@@ -274,7 +219,7 @@ export default function MeasureOverlay({
           fill="transparent"
           pointerEvents={isPending ? "none" : "all"}
           style={{ cursor: isPending ? "default" : "move" }}
-          onPointerDown={onBodyDown}
+          onPointerDown={bodyDown}
           onPointerMove={onHandleMove}
           onPointerUp={onHandleUp}
         />
@@ -327,9 +272,10 @@ export default function MeasureOverlay({
           stroke={stroke}
           strokeWidth={sw}
           isPending={isPending}
-          onBodyDown={onBodyDown}
+          onBodyDown={bodyDown}
           onHandleMove={onHandleMove}
           onHandleUp={onHandleUp}
+          title="alt-drag an edge to add a point"
           onContextMenu={common.onContextMenu}
         />
       );
@@ -470,30 +416,20 @@ export default function MeasureOverlay({
             {measureLabel(m, { img, pixelSize, pixelUnit, tilt, roiStats })}
           </text>
         )}
-        {!isPending &&
-          pts.map((p, i) => {
-            // adjacent-segment direction for the perpendicular bar glyph
-            const nb = pts.length > 1 ? (i === 0 ? pts[1] : pts[i - 1]) : null;
-            const ang = nb ? Math.atan2(nb.y - p.y, nb.x - p.x) : 0;
-            return (
-              <g
-                key={i}
-                pointerEvents="all"
-                style={{ cursor: "move" }}
-                onPointerDown={(e) => onHandleDown(e, m.id, i)}
-                onPointerMove={onHandleMove}
-                onPointerUp={onHandleUp}
-              >
-                <EndpointGlyph
-                  cx={p.x}
-                  cy={p.y}
-                  sym={m.endSymbol ?? defaultEndSymbol}
-                  stroke={sel ? "var(--accent)" : color}
-                  angle={ang}
-                />
-              </g>
-            );
-          })}
+        {!isPending && (
+          <VertexHandles
+            pts={pts}
+            mid={m.id}
+            sel={sel}
+            color={color}
+            defaultEndSymbol={defaultEndSymbol}
+            endSymbol={m.endSymbol}
+            onHandleDown={onHandleDown}
+            onHandleMove={onHandleMove}
+            onHandleUp={onHandleUp}
+            onVertexContextMenu={onVertexContextMenu}
+          />
+        )}
       </g>
     );
   };

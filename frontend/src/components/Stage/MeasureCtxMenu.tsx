@@ -17,6 +17,10 @@ export interface MeasureCtxTarget {
   mid: string;
   x: number;
   y: number;
+  /** Set only via the handle's own context-menu path (MeasureOverlay's
+   *  onVertexContextMenu) — gates "Delete vertex" below, since a right-
+   *  click on the body/label doesn't know which vertex, if any. */
+  vertexIndex?: number;
 }
 
 interface Props {
@@ -44,6 +48,8 @@ export default function MeasureCtxMenu({
   const removeMeasure = useViewer((s) => s.removeMeasure);
   const addHole = useViewer((s) => s.addHole);
   const removeHole = useViewer((s) => s.removeHole);
+  const updateMeasure = useViewer((s) => s.updateMeasure);
+  const pushUndo = useViewer((s) => s.pushUndo);
 
   // Plan item 4 — DRAW a hole: a polygon/lasso ring fully contained by
   // another region offers "Mark as hole" (findHoleHost — pointerDecisions
@@ -55,6 +61,18 @@ export default function MeasureCtxMenu({
       ? findHoleHost(measures, target.id, target.pts)
       : null;
   const holes = target?.holes ?? [];
+
+  // Lasso-editing plan, item D step 2 — "Delete vertex" joins this menu
+  // (Convention 6): only for the closed-ring kinds with an editable vertex
+  // list (a line/angle/etc's endpoint isn't deletable), only when the
+  // handle's own context-menu path recorded WHICH vertex, and disabled
+  // (here: absent, same idiom as "Mark as hole") at <= 3 vertices — a
+  // polygon must stay a polygon.
+  const canDeleteVertex =
+    !!target &&
+    (target.kind === "polygon" || target.kind === "lasso") &&
+    at.vertexIndex != null &&
+    target.pts.length > 3;
 
   return (
     <>
@@ -197,6 +215,27 @@ export default function MeasureCtxMenu({
               </button>
             ))}
           </>
+        )}
+        {canDeleteVertex && (
+          <button
+            className="fvd-ctx-item"
+            title="Remove this vertex from the outline"
+            onClick={() => {
+              const before = target!.pts;
+              const after = before.filter((_, i) => i !== at.vertexIndex);
+              updateMeasure(imageId, at.mid, after);
+              pushUndo({
+                t: "measure-move",
+                imageId,
+                measureId: at.mid,
+                before,
+                after,
+              });
+              onClose();
+            }}
+          >
+            Delete vertex
+          </button>
         )}
         <button
           className="fvd-ctx-item danger"
