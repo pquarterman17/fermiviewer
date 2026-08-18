@@ -49,6 +49,19 @@ describe("regionCapture", () => {
     expect(cap.pts.at(-1)).not.toEqual({ x: 99999, y: 0 });
   });
 
+  it("accepts points well beyond the OLD 2000 cap, up to the raised budget (lasso path budget fix)", () => {
+    // Mutation-verified against the PRE-fix source (MAX_LASSO_POINTS = 2000):
+    // this test fails RED there because appendLassoPoint stops accepting new
+    // points once cap.pts.length hits 2000, so a trace of 2500 steps tops
+    // out at 2000 kept points, not 2501. Raising MAX_LASSO_POINTS fixes it,
+    // GREEN — a long lasso trace no longer gets truncated mid-drag.
+    let cap = startLasso({ x: 0, y: 0 });
+    for (let i = 0; i < 2500; i++) {
+      cap = appendLassoPoint(cap, { x: i + 1, y: 0 }, 0);
+    }
+    expect(cap.pts.length).toBe(2501); // seed + 2500 accepted moves
+  });
+
   it("nearFirstVertex requires a real polygon (>= 3 verts) before closing", () => {
     const verts = [
       { x: 0, y: 0 },

@@ -271,7 +271,16 @@ export function applyUndoEntry(
           ...s.measures,
           [e.imageId]: (s.measures[e.imageId] ?? []).map((m) =>
             m.id === e.measureId
-              ? { ...m, pts: inverse ? e.before : e.after }
+              ? {
+                  ...m,
+                  pts: inverse ? e.before : e.after,
+                  // holes-detach fix: only entries from a body-translate
+                  // that actually had holes carry these — leave m.holes
+                  // untouched for every other measure-move producer.
+                  ...(e.beforeHoles !== undefined || e.afterHoles !== undefined
+                    ? { holes: inverse ? e.beforeHoles : e.afterHoles }
+                    : {}),
+                }
               : m,
           ),
         },

@@ -64,6 +64,27 @@ describe("prefs", () => {
     expect(loadPrefs().copyIncludesAnnotations).toBe(false);
   });
 
+  it("lassoSimplifyPx semantic migration: an old-semantics stored value is ignored, not backfilled (pref rename)", () => {
+    // lassoSimplifyPx changed meaning (capture spacing -> close-time
+    // epsilon) with the rename to lassoCloseSimplifyPx; a stored value
+    // under the OLD key is deliberately NOT carried over — using it as the
+    // new field's value would silently apply an old-semantics number as a
+    // destructive simplification epsilon. Mutation-verified against the
+    // PRE-fix source (field still named lassoSimplifyPx): there this
+    // assertion reads `p.lassoSimplifyPx` unchanged at 20 — the RENAME
+    // itself (and its accompanying non-migration) is the fix, so RED here
+    // means "loadPrefs().lassoCloseSimplifyPx doesn't even exist yet /
+    // isn't 2"; after the rename with no legacyBackfill entry added for
+    // the old key, the stored 20 lands on an unused property and
+    // lassoCloseSimplifyPx falls through to its own default, GREEN.
+    localStorage.setItem(
+      "fv_prefs",
+      JSON.stringify({ lassoSimplifyPx: 20 }),
+    );
+    const p = loadPrefs();
+    expect(p.lassoCloseSimplifyPx).toBe(2);
+  });
+
   it("a legacy stored blob missing the copy-annotations key resolves to true", () => {
     // simulates a prefs blob saved before this preference existed — it must
     // NOT come back undefined/falsy, or Copy Image would silently go bare

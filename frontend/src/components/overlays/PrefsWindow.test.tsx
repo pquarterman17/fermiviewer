@@ -117,10 +117,10 @@ describe("PrefsWindow", () => {
   it("lasso simplify tolerance (item 17): edits and persists via Save", () => {
     render(<PrefsWindow />);
     fireEvent.click(screen.getByText("Measurement"));
-    const input = screen.getByDisplayValue("2") as HTMLInputElement; // DEFAULTS.lassoSimplifyPx
+    const input = screen.getByDisplayValue("2") as HTMLInputElement; // DEFAULTS.lassoCloseSimplifyPx
     fireEvent.change(input, { target: { value: "5" } });
     fireEvent.click(screen.getByText("Save"));
-    expect(loadPrefs().lassoSimplifyPx).toBe(5);
+    expect(loadPrefs().lassoCloseSimplifyPx).toBe(5);
   });
 
   it("Copy-includes-annotations toggle (Export section): renders, flips, persists", () => {

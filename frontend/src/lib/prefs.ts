@@ -44,11 +44,26 @@ export interface Prefs {
   /** ⊥ averaging width (px) for profile captures. */
   profileWidth: number;
   profileReduce: "mean" | "sum";
-  /** Freehand (lasso) capture simplification tolerance, in screen px — a
-   *  dragged point closer than this to the last kept point is dropped
-   *  (components/Stage/regionCapture.ts appendLassoPoint). Higher = fewer,
-   *  coarser points; lower = more faithful to the cursor path. */
-  lassoSimplifyPx: number;
+  /** Freehand (lasso) CLOSE-TIME simplification tolerance (Douglas-Peucker
+   *  epsilon), in screen px, converted to image px by the current zoom
+   *  before use — see lib/simplifyRing.ts and the finishLasso call site in
+   *  components/Stage/useStagePointers.ts. Higher = fewer, coarser
+   *  vertices in the STORED ring; lower = more faithful to the traced
+   *  outline. This is applied ONCE, when the lasso closes (and again,
+   *  on demand, via the "Simplify outline" context-menu action) — capture
+   *  itself always runs at a fixed 1-screen-px floor
+   *  (regionCapture.ts LASSO_CAPTURE_STEP_PX), independent of this pref.
+   *
+   *  Renamed from `lassoSimplifyPx` (which meant something different: the
+   *  per-step CAPTURE decimation spacing, dropped every drag point closer
+   *  than this to the last kept one). That old semantics is gone — a
+   *  stored value under the old key is deliberately NOT migrated by
+   *  legacyBackfill below, because carrying an old-semantics number
+   *  (e.g. a user's 20) straight into this field would apply it as a
+   *  destructively coarse close-time epsilon instead of the harmless
+   *  capture-spacing it used to be. Ignoring it and falling through to
+   *  this field's own default is the intended migration. */
+  lassoCloseSimplifyPx: number;
   scaleBarVisible: boolean;
   /** Scale-bar label font size (screen px). */
   scaleBarFontSize: number;
@@ -96,7 +111,7 @@ export const DEFAULTS: Prefs = {
   overlayEndSymbol: "bar",
   profileWidth: 1,
   profileReduce: "mean",
-  lassoSimplifyPx: 2,
+  lassoCloseSimplifyPx: 2,
   scaleBarVisible: true,
   scaleBarFontSize: 20,
   exportFormat: "png",

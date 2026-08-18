@@ -17,6 +17,7 @@ import { useRef, type RefObject } from "react";
 import { applyFilter } from "../../lib/api";
 import { screenToImage, viewForRect, type Size } from "../../lib/geometry";
 import { loadPrefs } from "../../lib/prefs";
+import { simplifyRing } from "../../lib/simplifyRing";
 import { useBrowseScale } from "../../store/browseScale";
 import {
   useViewer,
@@ -39,6 +40,7 @@ import {
 import {
   appendLassoPoint,
   finishLasso,
+  LASSO_CAPTURE_STEP_PX,
   startLasso,
   type LassoCapture,
 } from "./regionCapture";
@@ -146,8 +148,6 @@ export function useStagePointers(ctx: StagePointersCtx) {
   // lasso: local capture accumulator (regionCapture.ts) — no ctx ref needed
   // since only this hook's own pointer handlers touch it.
   const lassoRef = useRef<LassoCapture | null>(null);
-  // #17: simplify tolerance (screen px), cached per-drag (avoids per-move reads)
-  const lassoTolRef = useRef(2);
 
   // ── pointer: pan / marquee / capture / readout ──
   const local = (e: React.PointerEvent | React.MouseEvent): Pt => {
@@ -250,7 +250,6 @@ export function useStagePointers(ctx: StagePointersCtx) {
       // held (onPointerMove below, via regionCapture.ts) — no click
       // accumulation, unlike the click-counted modes just below.
       const ip = toImage(p);
-      lassoTolRef.current = loadPrefs().lassoSimplifyPx;
       lassoRef.current = startLasso(ip);
       setPending({ kind: "lasso", pts: [ip] });
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -299,7 +298,10 @@ export function useStagePointers(ctx: StagePointersCtx) {
         lassoRef.current = null;
       } else {
         const ip = toImage(p);
-        const tol = lassoTolRef.current / view.z;
+        // #17 / LASSO_EDITING_PLAN Convention 4: capture-time decimation is
+        // a fixed fidelity floor, not the user's lassoCloseSimplifyPx pref
+        // — the pref only drives the close-time simplifyRing epsilon below.
+        const tol = LASSO_CAPTURE_STEP_PX / view.z;
         lassoRef.current = appendLassoPoint(lassoRef.current, ip, tol);
         setPending({ kind: "lasso", pts: lassoRef.current.pts });
       }
@@ -334,8 +336,17 @@ export function useStagePointers(ctx: StagePointersCtx) {
       releaseCapture(e);
       if (captureMode === "lasso") {
         const pts = finishLasso(cap);
-        if (pts) finalizeMeasure("lasso", pts);
-        else setCaptureMode("none");
+        if (pts) {
+          // LASSO_EDITING_PLAN Convention 4: simplify-at-close, lasso only
+          // (polygon closes through runCaptureAction above, never through
+          // here — Convention 5). Convention 3: epsilon is a SCREEN-px
+          // pref converted to image space by the CURRENT zoom. Convention
+          // 1: the simplified ring is what gets stored, not a display copy.
+          const eps = view ? loadPrefs().lassoCloseSimplifyPx / view.z : 0;
+          finalizeMeasure("lasso", simplifyRing(pts, eps));
+        } else {
+          setCaptureMode("none");
+        }
       }
       return;
     }
