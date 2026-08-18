@@ -80,24 +80,38 @@ export function linearUnitToNm(unit: string): number | null {
   }
 }
 
-/** Match formatScaleLength's (lib/geometry.ts) existing 3-significant-
- *  figure rounding convention for a physical length/area label, so this
- *  feature's numbers read with the same precision the scale bar already
- *  uses rather than inventing a second convention. */
-function round3(v: number): number {
-  if (!Number.isFinite(v) || v === 0) return 0;
-  return Number(v.toPrecision(3));
-}
-
 /** Length in calibration units + the measure's choice -> {value, unit}
  *  for display (canonical glyphs "Å"/"nm"/"µm"/"mm"), or null meaning
  *  "no conversion possible — render as today" (uncalibrated, reciprocal
- *  or unrecognized calibration unit). */
+ *  or unrecognized calibration unit, or a non-finite `value`).
+ *
+ *  PR #159 critical-review fix 1 ("precision belongs to display sites,
+ *  not the lib"): this used to round the result to 3 significant figures
+ *  before returning it, which corrupted every consumer that needs more
+ *  than a label's worth of precision — CSV export (measurePanelUtils.ts
+ *  showLog) most visibly, but also identity conversions (850.4 nm + "nm"
+ *  chosen explicitly used to come back as 850). The value returned here
+ *  is now the FULL-precision conversion; each display site applies its
+ *  own existing precision convention on top (the stage label and the
+ *  MeasurePanel row both round to 3 sig figs — formatScaleLength's,
+ *  lib/geometry.ts, convention — right where they format the string;
+ *  showLog keeps its own 6-sig-fig format applied to the untouched
+ *  value). */
 export function displayLength(
   value: number,
   calUnit: string,
   choice: DisplayUnit,
 ): { value: number; unit: string } | null {
+  // PR #159 critical-review fix 2: a non-finite `value` (NaN/Infinity —
+  // a broken measurement) must never convert to a confident-looking
+  // number. round3 used to fold NaN/Infinity to 0 as a side effect of
+  // its own Number.isFinite guard; now that rounding has moved out of
+  // this function entirely, the non-finite guard has to be explicit here
+  // instead of arriving for free — null tells the caller "no conversion
+  // possible", the same signal an unrecognized calibration unit gives,
+  // which every caller already falls back on to render today's '—'/NaN
+  // handling rather than inventing a value.
+  if (!Number.isFinite(value)) return null;
   const calToNm = linearUnitToNm(calUnit);
   if (calToNm == null) return null;
   const nmValue = value * calToNm;
@@ -109,24 +123,27 @@ export function displayLength(
     if (value === 0) return null;
     for (const unit of AUTO_ORDER) {
       const v = nmValue / FIXED_UNIT_TO_NM[unit];
-      if (Math.abs(v) >= AUTO_MIN_MAGNITUDE) return { value: round3(v), unit: GLYPH[unit] };
+      if (Math.abs(v) >= AUTO_MIN_MAGNITUDE) return { value: v, unit: GLYPH[unit] };
     }
-    return { value: round3(nmValue / FIXED_UNIT_TO_NM.A), unit: GLYPH.A };
+    return { value: nmValue / FIXED_UNIT_TO_NM.A, unit: GLYPH.A };
   }
 
   const outFactor = FIXED_UNIT_TO_NM[choice];
-  return { value: round3(nmValue / outFactor), unit: GLYPH[choice] };
+  return { value: nmValue / outFactor, unit: GLYPH[choice] };
 }
 
 /** Same as displayLength but for AREAS: `valueSq` is in calUnit² and the
  *  conversion factors are SQUARED (nm² -> µm² divides by 1e6, not 1e3) —
  *  the units trap this feature exists to get right. Output unit is like
- *  "µm²". */
+ *  "µm²". Full-precision return + non-finite guard: see displayLength's
+ *  doc above (PR #159 critical-review fixes 1 and 2 — identical
+ *  reasoning, mirrored here for the squared-factor path). */
 export function displayArea(
   valueSq: number,
   calUnit: string,
   choice: DisplayUnit,
 ): { value: number; unit: string } | null {
+  if (!Number.isFinite(valueSq)) return null;
   const calToNm = linearUnitToNm(calUnit);
   if (calToNm == null) return null;
   const calToNmSq = calToNm * calToNm;
@@ -138,13 +155,13 @@ export function displayArea(
       const factorSq = FIXED_UNIT_TO_NM[unit] * FIXED_UNIT_TO_NM[unit];
       const v = nmSqValue / factorSq;
       if (Math.abs(v) >= AUTO_MIN_MAGNITUDE) {
-        return { value: round3(v), unit: `${GLYPH[unit]}²` };
+        return { value: v, unit: `${GLYPH[unit]}²` };
       }
     }
     const aFactorSq = FIXED_UNIT_TO_NM.A * FIXED_UNIT_TO_NM.A;
-    return { value: round3(nmSqValue / aFactorSq), unit: `${GLYPH.A}²` };
+    return { value: nmSqValue / aFactorSq, unit: `${GLYPH.A}²` };
   }
 
   const outFactorSq = FIXED_UNIT_TO_NM[choice] * FIXED_UNIT_TO_NM[choice];
-  return { value: round3(nmSqValue / outFactorSq), unit: `${GLYPH[choice]}²` };
+  return { value: nmSqValue / outFactorSq, unit: `${GLYPH[choice]}²` };
 }

@@ -53,8 +53,20 @@ describe("displayLength — owner example", () => {
 });
 
 describe("displayArea — owner example", () => {
-  it("37990 nm² + Auto -> 0.038 µm²", () => {
-    expect(displayArea(37990, "nm", "auto")).toEqual({ value: 0.038, unit: "µm²" });
+  it("37990 nm² + Auto -> 0.03799 µm² at FULL precision (PR #159 review fix 1: " +
+    "rounding is a display-site concern now, not the lib's — the ratified " +
+    "'0.038 µm²' string is a label-level pin, see MeasureOverlay.displayUnit.test.tsx)", () => {
+    expect(displayArea(37990, "nm", "auto")).toEqual({ value: 0.03799, unit: "µm²" });
+  });
+});
+
+describe("displayLength/displayArea — CSV precision (PR #159 review fix 1)", () => {
+  it("1234.5 nm + 'um' override -> 1.2345 µm, not the label's rounded 1.23", () => {
+    // the exact bug the review flagged: a 3-sig-fig round INSIDE the lib
+    // corrupted export precision by 0.36%. Full precision here is what
+    // lets showLog (measurePanelUtils.ts) hand its own 6-sig-fig format
+    // a real number to work with instead of an already-mangled one.
+    expect(displayLength(1234.5, "nm", "um")).toEqual({ value: 1.2345, unit: "µm" });
   });
 });
 
@@ -102,6 +114,26 @@ describe("displayLength/displayArea — Auto at value 0", () => {
 
   it("an EXPLICIT unit choice still converts 0 (only Auto special-cases zero)", () => {
     expect(displayLength(0, "nm", "um")).toEqual({ value: 0, unit: "µm" });
+  });
+});
+
+describe("displayLength/displayArea — non-finite input (PR #159 review fix 2)", () => {
+  // round3 used to map NaN/Infinity -> 0 (Number.isFinite guard inside
+  // round3 itself), so a broken measurement rendered as a confident,
+  // fabricated "0 µm" instead of surfacing as unconvertible. Now that
+  // round3 is gone from the lib entirely, this must be an EXPLICIT guard,
+  // not an accidental side effect of some other check.
+  it("NaN input returns null regardless of choice", () => {
+    expect(displayLength(NaN, "nm", "um")).toBeNull();
+    expect(displayLength(NaN, "nm", "auto")).toBeNull();
+    expect(displayArea(NaN, "nm", "um")).toBeNull();
+    expect(displayArea(NaN, "nm", "auto")).toBeNull();
+  });
+
+  it("Infinity/-Infinity input returns null, never a fabricated finite value", () => {
+    expect(displayLength(Infinity, "nm", "nm")).toBeNull();
+    expect(displayLength(-Infinity, "nm", "auto")).toBeNull();
+    expect(displayArea(Infinity, "nm", "mm")).toBeNull();
   });
 });
 

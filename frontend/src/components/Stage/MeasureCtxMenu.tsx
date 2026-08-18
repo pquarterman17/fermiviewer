@@ -11,27 +11,12 @@ import { loadPrefs } from "../../lib/prefs";
 import { simplifyRing } from "../../lib/simplifyRing";
 import {
   useViewer,
+  UNIT_DISPLAY_KINDS,
   type EndSymbol,
   type Measure,
   type View,
 } from "../../store/viewer";
 import { findHoleHost } from "./pointerDecisions";
-
-/** Measure kinds with a length or area label the Units menu can retarget
- *  (owner spec: "lines, polylines, box/ellipse/polygon/lasso" — "box" is
- *  the rectangular ROI kind (glyph ▭, `measureTools.ts` label "ROI"),
- *  "ellipse" the ellipse ROI; both carry a calibrated `area` alongside
- *  their μ/σ readout, see roiStats/RoiStats. Angle is excluded — degrees
- *  are not a length/area unit). */
-const UNIT_MENU_KINDS: ReadonlySet<Measure["kind"]> = new Set([
-  "distance",
-  "profile",
-  "polyline",
-  "roi",
-  "ellipse",
-  "polygon",
-  "lasso",
-]);
 
 /** The Units group's fixed option list — value `undefined` is "Image
  *  default" (clears the override), matching setMeasureDisplayUnit's
@@ -116,12 +101,14 @@ export default function MeasureCtxMenu({
   const holes = target?.holes ?? [];
 
   // Measure display-units feature — "Units" group, offered only for the
-  // kinds that carry a length/area label (UNIT_MENU_KINDS above). Disabled
-  // (with an explanatory title, same idiom as the other absent/disabled
-  // items in this menu) when the image is uncalibrated or its calibration
-  // unit cannot be linearly converted (reciprocal "1/nm", unrecognized) —
+  // kinds that carry a length/area label (UNIT_DISPLAY_KINDS,
+  // store/viewerTypes.ts — the single source setAllMeasureDisplayUnits
+  // also reads, see that constant's doc for why). Disabled (with an
+  // explanatory title, same idiom as the other absent/disabled items in
+  // this menu) when the image is uncalibrated or its calibration unit
+  // cannot be linearly converted (reciprocal "1/nm", unrecognized) —
   // never silently "converts" those.
-  const showUnitsGroup = !!target && UNIT_MENU_KINDS.has(target.kind);
+  const showUnitsGroup = !!target && UNIT_DISPLAY_KINDS.has(target.kind);
   const unitsDisabledReason =
     pixelSize == null
       ? "image is uncalibrated (px) — units cannot be converted"

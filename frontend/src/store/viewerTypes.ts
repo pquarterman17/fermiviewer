@@ -115,6 +115,36 @@ export type MeasureKind =
   | "box"
   | "circle";
 
+/** Measure kinds carrying a length/area label that a Measure.displayUnit
+ *  override can retarget — the ONE gate the Units menu (MeasureCtxMenu
+ *  .tsx's "Units" group) and "Apply to all measures on this image"
+ *  (viewerMeasureActions.ts's setAllMeasureDisplayUnits) both read,
+ *  rather than each keeping its own copy of this kind list.
+ *
+ *  PR #159 critical-review fix 6: setAllMeasureDisplayUnits used to write
+ *  `displayUnit` onto every measure unconditionally, including kinds the
+ *  menu itself never offers Units for (angle/text/arrow/box/circle) —
+ *  dead fields silently persisting into saved projects. A prior incident
+ *  (ShapeClassThresholds, commit 71ee3d7) showed exactly this
+ *  two-copies-of-one-list shape drifting silently apart, so this list is
+ *  now singly sourced here and both call sites import it instead of
+ *  redeclaring it.
+ *
+ *  PR #159 critical-review fix 4: "roi"/"ellipse" were dropped from this
+ *  list — their stage label (measureGlyphs.tsx) only ever renders μ/σ
+ *  and never reads displayUnit, and showLog (measurePanelUtils.ts) has
+ *  no roi/ellipse area column either, so offering the menu on those
+ *  kinds visibly did nothing. "angle" was never included (degrees, not a
+ *  length/area unit); "box"/"circle" are annotation kinds (a caption,
+ *  ride-along on the measure rails) with no length/area label either. */
+export const UNIT_DISPLAY_KINDS: ReadonlySet<MeasureKind> = new Set([
+  "distance",
+  "profile",
+  "polyline",
+  "polygon",
+  "lasso",
+]);
+
 export type EndSymbol = "bar" | "circle" | "cross" | "square" | "none";
 
 /** Normalized 0–1 image coords survive derived images of the same aspect. */

@@ -7,7 +7,12 @@ import type { StateCreator } from "zustand";
 
 import { nextMeasureId } from "./viewerSession";
 import type { ViewerState } from "./viewerState";
-import { UNDO_CAP, type Measure, type SavedRoi } from "./viewerTypes";
+import {
+  UNDO_CAP,
+  UNIT_DISPLAY_KINDS,
+  type Measure,
+  type SavedRoi,
+} from "./viewerTypes";
 
 type Set = Parameters<StateCreator<ViewerState>>[0];
 type Get = Parameters<StateCreator<ViewerState>>[1];
@@ -232,14 +237,23 @@ export function createMeasureActions(
         },
       })),
 
+    // Only the kinds UNIT_DISPLAY_KINDS lists (viewerTypes.ts) carry a
+    // length/area label the Units menu can retarget — a kind the menu
+    // itself gates out (angle/text/arrow/box/circle/roi/ellipse) must
+    // never pick up a dead displayUnit field here either, so this reads
+    // the SAME constant the menu (MeasureCtxMenu.tsx's showUnitsGroup)
+    // reads rather than keeping its own copy of the kind list. Two copies
+    // of exactly this shape (a kind allowlist duplicated across a menu
+    // and its action) drifted silently apart before (ShapeClassThresholds,
+    // commit 71ee3d7) — this gate is deliberately single-sourced so that
+    // cannot happen again here.
     setAllMeasureDisplayUnits: (imageId, unit) =>
       set((s) => ({
         measures: {
           ...s.measures,
-          [imageId]: (s.measures[imageId] ?? []).map((m) => ({
-            ...m,
-            displayUnit: unit,
-          })),
+          [imageId]: (s.measures[imageId] ?? []).map((m) =>
+            UNIT_DISPLAY_KINDS.has(m.kind) ? { ...m, displayUnit: unit } : m,
+          ),
         },
       })),
 

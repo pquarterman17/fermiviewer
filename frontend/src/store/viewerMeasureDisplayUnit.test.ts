@@ -93,6 +93,44 @@ describe("setMeasureDisplayUnit / setAllMeasureDisplayUnits", () => {
     expect(listB.find((m) => m.id === b1)?.displayUnit).toBeUndefined();
   });
 
+  it("apply-to-all skips kinds the Units menu itself doesn't offer (PR #159 review fix 6)", () => {
+    // UNIT_DISPLAY_KINDS (viewerTypes.ts) is the single source the menu
+    // (MeasureCtxMenu.tsx's showUnitsGroup) AND this action both read —
+    // a mixed image with an angle/text measure alongside a polygon/
+    // distance one must come out of "Apply to all" with the field set
+    // ONLY on the kinds the menu actually offers Units for; a stray
+    // displayUnit on "angle"/"text" would be a dead field with no UI to
+    // ever clear it again (exactly the review finding: "stamps unit-less
+    // kinds"). Mutation-verified: inlining a second copy of the kind
+    // list in the action (e.g. adding "angle" to it) turns this red,
+    // which is the drift the shared constant exists to prevent
+    // (ShapeClassThresholds, commit 71ee3d7, bit this codebase before).
+    const s = useViewer.getState();
+    s.ingest([meta("a")]);
+    const dist = s.addMeasure("a", {
+      kind: "distance",
+      pts: [{ x: 0, y: 0 }, { x: 1, y: 1 }],
+    });
+    const poly = s.addMeasure("a", {
+      kind: "polygon",
+      pts: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }],
+    });
+    const angle = s.addMeasure("a", {
+      kind: "angle",
+      pts: [{ x: 0.5, y: 0.5 }, { x: 0, y: 0 }, { x: 1, y: 0 }],
+    });
+    const text = s.addMeasure("a", {
+      kind: "text",
+      pts: [{ x: 0.2, y: 0.2 }],
+    });
+    useViewer.getState().setAllMeasureDisplayUnits("a", "mm");
+    const list = useViewer.getState().measures["a"]!;
+    expect(list.find((m) => m.id === dist)?.displayUnit).toBe("mm");
+    expect(list.find((m) => m.id === poly)?.displayUnit).toBe("mm");
+    expect(list.find((m) => m.id === angle)?.displayUnit).toBeUndefined();
+    expect(list.find((m) => m.id === text)?.displayUnit).toBeUndefined();
+  });
+
   it("pushes NO undo entry — a display preference, not a measurement edit", () => {
     const s = useViewer.getState();
     s.ingest([meta("a")]);

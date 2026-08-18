@@ -100,6 +100,31 @@ describe("stage label honors Measure.displayUnit — owner examples", () => {
   });
 });
 
+describe("stage label — non-finite measurement value (PR #159 review fix 2)", () => {
+  it("a NaN distance value renders the existing '—' fallback, never a fabricated '0 <unit>'", () => {
+    // pixelSize itself NaN (a broken/malformed calibration) makes
+    // tiltDist's calibrated value NaN — displayLength(NaN, ...) must
+    // return null (fix 2) so the label falls through to fmt()'s existing
+    // Number.isFinite guard, not round3's old "NaN -> 0" behaviour.
+    const IMG = { w: 1000, h: 1000 };
+    seed([
+      {
+        id: "m1",
+        kind: "distance",
+        pts: [{ x: 0, y: 0 }, { x: 0.85, y: 0 }],
+        displayUnit: "um",
+      },
+    ]);
+    const { container } = renderOverlay(IMG, NaN, "nm");
+    const label = [...container.querySelectorAll("text")].find((t) =>
+      t.textContent?.includes("nm"),
+    );
+    expect(label?.textContent).toBe("— nm");
+    expect(label?.textContent).not.toContain("0 ");
+    expect(label?.textContent).not.toContain("µm");
+  });
+});
+
 describe("MeasureCtxMenu — Units group", () => {
   const IMG = { w: 1000, h: 1000 };
   const DIST: Measure = { id: "m1", kind: "distance", pts: [{ x: 0, y: 0 }, { x: 0.85, y: 0 }] };
@@ -192,5 +217,43 @@ describe("MeasureCtxMenu — Units group", () => {
     // angle renders as one connected <polyline> (both legs) — right-click it
     fireEvent.contextMenu(container.querySelector("polyline")!);
     expect(queryByText("Units")).toBeNull();
+  });
+
+  // PR #159 critical-review fix 4: roi/ellipse stage labels only ever show
+  // μ/σ (measureLabel's "roi"/"ellipse" case never reads displayUnit — see
+  // measureGlyphs.tsx) and showLog has no roi/ellipse area column either,
+  // so offering the Units menu on those kinds visibly did nothing —
+  // removed from UNIT_DISPLAY_KINDS (store/viewerTypes.ts), the single
+  // source both this menu and the "apply to all" action read.
+  it("roi measures do not offer a Units group (menu would visibly do nothing)", () => {
+    seed([{ id: "r1", kind: "roi", pts: [{ x: 0.1, y: 0.1 }, { x: 0.4, y: 0.4 }] }]);
+    const { container, queryByText } = renderOverlay(IMG, 1, "nm");
+    fireEvent.contextMenu(container.querySelector("rect")!);
+    expect(queryByText("Units")).toBeNull();
+  });
+
+  it("ellipse measures do not offer a Units group (menu would visibly do nothing)", () => {
+    seed([{ id: "e1", kind: "ellipse", pts: [{ x: 0.1, y: 0.1 }, { x: 0.4, y: 0.4 }] }]);
+    const { container, queryByText } = renderOverlay(IMG, 1, "nm");
+    fireEvent.contextMenu(container.querySelector("ellipse")!);
+    expect(queryByText("Units")).toBeNull();
+  });
+
+  it("polygon measures still offer a Units group (has an area label the menu can retarget)", () => {
+    seed([
+      {
+        id: "p1",
+        kind: "polygon",
+        pts: [
+          { x: 0.1, y: 0.1 },
+          { x: 0.4, y: 0.1 },
+          { x: 0.4, y: 0.4 },
+          { x: 0.1, y: 0.4 },
+        ],
+      },
+    ]);
+    const { container, queryByText } = renderOverlay(IMG, 1, "nm");
+    fireEvent.contextMenu(container.querySelector("polygon")!);
+    expect(queryByText("Units")).not.toBeNull();
   });
 });
