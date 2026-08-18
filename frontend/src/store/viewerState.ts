@@ -10,6 +10,7 @@ import type {
 } from "../lib/api";
 import type { TiltSettings } from "../lib/geometry";
 import type { ComparePane, GroupParams, ImageGroup } from "../lib/groups";
+import type { DisplayUnit } from "../lib/lengthUnits";
 import type {
   CaptureMode,
   ColorbarSide,
@@ -280,6 +281,18 @@ export interface ViewerState {
   ) => void;
   /** Set per-annotation font size override (audit #12); null clears it. */
   setMeasureFontSize: (imageId: string, measureId: string, size: number | null) => void;
+  /** Set (or, with undefined, clear back to "image default") one measure's
+   *  display-unit override. A DISPLAY preference — no undo entry, never
+   *  touches `pts`/geometry (measure display-units feature). */
+  setMeasureDisplayUnit: (
+    imageId: string,
+    measureId: string,
+    unit: DisplayUnit | undefined,
+  ) => void;
+  /** Apply one display-unit override to every measure on the image
+   *  ("apply to all measures on this image"); same no-undo idiom as
+   *  setMeasureDisplayUnit. */
+  setAllMeasureDisplayUnits: (imageId: string, unit: DisplayUnit | undefined) => void;
   /** marquee multi-selection (shift-drag on the stage) */
   selectedMulti: string[];
   setSelectedMulti: (ids: string[]) => void;

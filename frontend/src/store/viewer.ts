@@ -51,6 +51,7 @@ import {
 export * from "./viewerTypes";
 export type { ViewerState } from "./viewerState";
 export type { TiltSettings } from "../lib/geometry";
+export type { DisplayUnit } from "../lib/lengthUnits";
 export type { ComparePane, ImageGroup } from "../lib/groups";
 
 export const useViewer = create<ViewerState>((set, get) => ({

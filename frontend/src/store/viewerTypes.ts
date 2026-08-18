@@ -4,6 +4,7 @@
 
 import type { ImageMeta } from "../lib/api";
 import type { ColormapName } from "../lib/colormaps";
+import type { DisplayUnit } from "../lib/lengthUnits";
 
 /** Per-image view: z = screen px per image px (1 → 100 %),
  *  (px, py) = normalized image point under the viewport centre. */
@@ -146,6 +147,12 @@ export interface Measure {
   width?: number;
   /** Per-annotation screen px; undefined uses global, clamped to [6, 120]. */
   fontSize?: number;
+  /** Display-unit override for this measure's length/area label (measure
+   *  display-units feature). Absent = "image default" — render the
+   *  calibration unit verbatim, byte-identical to pre-feature behaviour.
+   *  A DISPLAY preference only: never touched by undo, never affects
+   *  `pts` or any stored geometry. See lib/lengthUnits.ts. */
+  displayUnit?: DisplayUnit;
 }
 
 /** Undoable mutations (Edit menu / ⌘Z). Derived-image entries remove

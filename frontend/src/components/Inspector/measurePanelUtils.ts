@@ -10,6 +10,7 @@ import {
   tiltDist,
   type TiltSettings,
 } from "../../lib/geometry";
+import { displayArea, displayLength } from "../../lib/lengthUnits";
 import { useStageInfo } from "../../store/stage";
 import {
   useViewer,
@@ -104,7 +105,15 @@ export function showLog(
         d += tiltDist(px[k - 1], px[k], meta?.pixel_size ?? null, tilt).value;
         dRaw += physDist(px[k - 1], px[k], meta?.pixel_size ?? null).value;
       }
-      value = `${Number(d.toPrecision(6))} ${unit}`;
+      // the stage label and this CSV row must never disagree, so the same
+      // per-measure override converts both — the raw (uncorrected, tilt-
+      // only) column stays in the calibration unit either way, since it
+      // is a diagnostic secondary value, not the headline reading.
+      const disp =
+        meta?.pixel_size != null &&
+        m.displayUnit &&
+        displayLength(d, meta.pixel_unit, m.displayUnit);
+      value = disp ? `${Number(disp.value.toPrecision(6))} ${disp.unit}` : `${Number(d.toPrecision(6))} ${unit}`;
       if (tiltOn) raw = `${Number(dRaw.toPrecision(6))} ${unit}`;
     } else if (m.kind === "roi" || m.kind === "ellipse") {
       const s = roiStats[m.id];
@@ -112,10 +121,14 @@ export function showLog(
     } else if (m.kind === "polygon" || m.kind === "lasso") {
       const areaPx2 = polygonStats(px).areaPx2;
       const areaPhys = areaPxToPhysical(areaPx2, meta?.pixel_size ?? null);
-      value =
-        areaPhys != null
-          ? `${Number(areaPhys.toPrecision(6))} ${unit}²`
-          : `${Number(areaPx2.toPrecision(6))} px²`;
+      if (areaPhys == null) {
+        value = `${Number(areaPx2.toPrecision(6))} px²`;
+      } else {
+        const disp = m.displayUnit && displayArea(areaPhys, unit, m.displayUnit);
+        value = disp
+          ? `${Number(disp.value.toPrecision(6))} ${disp.unit}`
+          : `${Number(areaPhys.toPrecision(6))} ${unit}²`;
+      }
     } else {
       value = m.text ?? "";
     }

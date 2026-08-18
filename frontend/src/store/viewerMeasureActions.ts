@@ -27,6 +27,8 @@ export function createMeasureActions(
   | "setMeasureText"
   | "setMeasureStyle"
   | "setMeasureFontSize"
+  | "setMeasureDisplayUnit"
+  | "setAllMeasureDisplayUnits"
   | "clearMeasures"
   | "setSelectedMeasure"
   | "setRoiStats"
@@ -211,6 +213,33 @@ export function createMeasureActions(
               ? { ...m, fontSize: size == null ? undefined : Math.min(120, Math.max(6, size)) }
               : m,
           ),
+        },
+      })),
+
+    // ── display-unit override (measure display-units feature) ──────────
+    // A DISPLAY preference, not a measurement edit: unlike the actions
+    // above it never pushes an undo entry and never touches `pts`/
+    // `holes` — same non-undoable idiom as setMeasureStyle/
+    // setMeasureFontSize just above.
+
+    setMeasureDisplayUnit: (imageId, measureId, unit) =>
+      set((s) => ({
+        measures: {
+          ...s.measures,
+          [imageId]: (s.measures[imageId] ?? []).map((m) =>
+            m.id === measureId ? { ...m, displayUnit: unit } : m,
+          ),
+        },
+      })),
+
+    setAllMeasureDisplayUnits: (imageId, unit) =>
+      set((s) => ({
+        measures: {
+          ...s.measures,
+          [imageId]: (s.measures[imageId] ?? []).map((m) => ({
+            ...m,
+            displayUnit: unit,
+          })),
         },
       })),
 

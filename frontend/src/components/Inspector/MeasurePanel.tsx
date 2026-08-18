@@ -16,6 +16,7 @@ import {
   polygonStats,
   tiltDist,
 } from "../../lib/geometry";
+import { displayArea, displayLength } from "../../lib/lengthUnits";
 import { MEASURE_GROUPS, MEASURE_TOOLS } from "../../lib/measureTools";
 import {
   boxProfileToCsv,
@@ -90,9 +91,11 @@ export default function MeasurePanel() {
     if ((m.kind === "distance" || m.kind === "profile") && px.length === 2) {
       const d = tiltDist(px[0], px[1], meta.pixel_size, tilt);
       const theta = tilt != null && tilt.angle !== 0 ? " θ" : "";
-      return `${Number(d.value.toPrecision(4))} ${
-        d.unit === "cal" ? meta.pixel_unit : "px"
-      }${theta}`;
+      if (d.unit !== "cal") return `${Number(d.value.toPrecision(4))} px${theta}`;
+      const disp = m.displayUnit && displayLength(d.value, meta.pixel_unit, m.displayUnit);
+      return disp
+        ? `${Number(disp.value.toPrecision(4))} ${disp.unit}${theta}`
+        : `${Number(d.value.toPrecision(4))} ${meta.pixel_unit}${theta}`;
     }
     if (m.kind === "roi" || m.kind === "ellipse") {
       const s = roiStats[m.id];
@@ -101,9 +104,11 @@ export default function MeasurePanel() {
     if (m.kind === "polygon" || m.kind === "lasso") {
       const areaPx2 = polygonStats(px).areaPx2;
       const areaPhys = areaPxToPhysical(areaPx2, meta.pixel_size ?? null);
-      return areaPhys != null
-        ? `${Number(areaPhys.toPrecision(4))} ${meta.pixel_unit}²`
-        : `${Number(areaPx2.toPrecision(4))} px²`;
+      if (areaPhys == null) return `${Number(areaPx2.toPrecision(4))} px²`;
+      const disp = m.displayUnit && displayArea(areaPhys, meta.pixel_unit, m.displayUnit);
+      return disp
+        ? `${Number(disp.value.toPrecision(4))} ${disp.unit}`
+        : `${Number(areaPhys.toPrecision(4))} ${meta.pixel_unit}²`;
     }
     if (
       m.kind === "text" ||
@@ -395,26 +400,34 @@ export default function MeasurePanel() {
               )}
             </div>
           )}
-          {selStats && (
-            <div className="fvd-roi-stats">
-              {(
-                [
-                  ["mean", selStats.mean],
-                  ["std", selStats.std],
-                  ["min", selStats.min],
-                  ["max", selStats.max],
-                  ["area", selStats.area],
-                ] as const
-              ).map(([k, v]) => (
-                <div key={k} className="fvd-meta-row">
-                  <span className="k">
-                    {k === "area" ? `area (${selStats.unit}²)` : k}
-                  </span>
-                  <span className="v">{Number(v.toPrecision(5))}</span>
-                </div>
-              ))}
-            </div>
-          )}
+          {selStats && (() => {
+            // ROI/ellipse `area` is the one length/area value in this table
+            // (mean/std/min/max are intensity, not length) — the only row
+            // the measure display-unit override applies to.
+            const areaDisp =
+              sel?.displayUnit && displayArea(selStats.area, selStats.unit, sel.displayUnit);
+            const rows = [
+              ["mean", selStats.mean, null],
+              ["std", selStats.std, null],
+              ["min", selStats.min, null],
+              ["max", selStats.max, null],
+              ["area", selStats.area, areaDisp],
+            ] as const;
+            return (
+              <div className="fvd-roi-stats">
+                {rows.map(([k, v, disp]) => (
+                  <div key={k} className="fvd-meta-row">
+                    <span className="k">
+                      {k === "area" ? `area (${disp ? disp.unit : `${selStats.unit}²`})` : k}
+                    </span>
+                    <span className="v">
+                      {Number((disp ? disp.value : v).toPrecision(5))}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </Card>
       )}
 

@@ -13,6 +13,7 @@ import {
   type Size,
   type TiltSettings,
 } from "../../lib/geometry";
+import { displayArea, displayLength } from "../../lib/lengthUnits";
 import type { EndSymbol, Measure } from "../../store/viewer";
 
 export const HANDLE_R = 5;
@@ -119,18 +120,22 @@ export function measureLabel(m: Measure, ctx: MeasureLabelCtx): string {
     case "distance":
     case "profile": {
       const d = tiltDist(px[0], px[1], pixelSize, tilt);
-      return d.unit === "cal"
-        ? `${fmt(d.value)} ${pixelUnit}${theta}`
-        : `${fmt(d.value)} px${theta}`;
+      if (d.unit !== "cal") return `${fmt(d.value)} px${theta}`;
+      const disp = m.displayUnit && displayLength(d.value, pixelUnit, m.displayUnit);
+      return disp
+        ? `${fmt(disp.value)} ${disp.unit}${theta}`
+        : `${fmt(d.value)} ${pixelUnit}${theta}`;
     }
     case "polyline": {
       let total = 0;
       for (let i = 1; i < px.length; i++) {
         total += tiltDist(px[i - 1], px[i], pixelSize, tilt).value;
       }
-      return pixelSize != null
-        ? `${fmt(total)} ${pixelUnit}${theta}`
-        : `${fmt(total)} px${theta}`;
+      if (pixelSize == null) return `${fmt(total)} px${theta}`;
+      const disp = m.displayUnit && displayLength(total, pixelUnit, m.displayUnit);
+      return disp
+        ? `${fmt(disp.value)} ${disp.unit}${theta}`
+        : `${fmt(total)} ${pixelUnit}${theta}`;
     }
     case "angle":
       return px.length === 3
@@ -159,9 +164,11 @@ export function measureLabel(m: Measure, ctx: MeasureLabelCtx): string {
       const holeNote = holesPx
         ? ` (${holesPx.length} hole${holesPx.length > 1 ? "s" : ""})`
         : "";
-      return areaPhys != null
-        ? `${fmt(areaPhys)} ${pixelUnit}²${holeNote}`
-        : `${fmt(stats.areaPx2)} px²${holeNote}`;
+      if (areaPhys == null) return `${fmt(stats.areaPx2)} px²${holeNote}`;
+      const disp = m.displayUnit && displayArea(areaPhys, pixelUnit, m.displayUnit);
+      return disp
+        ? `${fmt(disp.value)} ${disp.unit}${holeNote}`
+        : `${fmt(areaPhys)} ${pixelUnit}²${holeNote}`;
     }
     case "text":
     case "arrow":
