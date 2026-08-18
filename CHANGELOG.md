@@ -15,6 +15,20 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Pick the units a measurement displays in.** Right-click any measure →
+  Units: Image default / Auto / Å / nm / µm / mm — per measure, with
+  "Apply to all measures on this image" for consistency. Covers areas and
+  lengths (37990 nm² becomes 0.038 µm²; 850 nm becomes 0.85 µm); Auto
+  picks the largest unit that keeps the number readable. Nothing changes
+  until you choose: the default remains the image's calibration unit, and
+  Image default returns to it. The Measure panel and its CSV log follow
+  the same choice as the stage label, so exports never disagree with what
+  you see. Diffraction images calibrated in reciprocal units (1/nm) and
+  unrecognized calibrations disable the menu with a reason instead of
+  mislabeling a conversion; uncalibrated images keep px/px². Unit choices
+  save with the project.
+
 ### Fixed
 - **Adjusting a lasso no longer means fighting hundreds of points.** A
   freehand lasso used to store a vertex every ~2 screen pixels — handles
