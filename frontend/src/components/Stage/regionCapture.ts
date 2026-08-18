@@ -19,6 +19,14 @@ export interface LassoCapture {
  *  overlay render cheap. */
 export const MAX_LASSO_POINTS = 2000;
 
+/** Fixed capture-time decimation step, in SCREEN px (LASSO_EDITING_PLAN
+ *  Convention 4). This is a fidelity floor for the Douglas–Peucker input
+ *  at close, NOT user-tunable — `lassoSimplifyPx` no longer drives
+ *  capture at all; it drives only the close-time `simplifyRing` epsilon
+ *  (see finishLasso's call site in useStagePointers.ts). Callers convert
+ *  to image-space the same way as before: `LASSO_CAPTURE_STEP_PX / view.z`. */
+export const LASSO_CAPTURE_STEP_PX = 1;
+
 /** Start a freehand capture at an image-space point. */
 export function startLasso(pt: { x: number; y: number }): LassoCapture {
   return { pts: [pt] };
@@ -27,11 +35,10 @@ export function startLasso(pt: { x: number; y: number }): LassoCapture {
 /** Append a point, dropping anything closer than `minStepPx` (image-space)
  *  to the last KEPT point — a cheap streaming decimation so a slow drag
  *  across a large image doesn't balloon the Measure to thousands of
- *  points. Callers derive minStepPx from the current zoom and the user's
- *  lasso-simplify preference (lib/prefs.ts lassoSimplifyPx), e.g.
- *  `prefs.lassoSimplifyPx / view.z`, so the simplification feels
- *  consistent at any zoom. Once MAX_LASSO_POINTS is reached, every further
- *  point is dropped regardless of spacing (the hard cap above). */
+ *  points before it ever reaches the close-time simplifier. Callers pass
+ *  `LASSO_CAPTURE_STEP_PX / view.z` so the floor feels the same at any
+ *  zoom. Once MAX_LASSO_POINTS is reached, every further point is dropped
+ *  regardless of spacing (the hard cap above). */
 export function appendLassoPoint(
   cap: LassoCapture,
   pt: { x: number; y: number },
@@ -45,7 +52,13 @@ export function appendLassoPoint(
 
 /** Points ready for finalizeMeasure, or null to drop a too-short drag
  *  (mirrors the marquee tools' w/h >= 2 guard) — a lasso needs at least
- *  3 points to enclose any area. */
+ *  3 points to enclose any area. Deliberately does NOT run simplifyRing:
+ *  that needs view.z (screen→image epsilon conversion) and the user's
+ *  lassoSimplifyPx pref, neither of which this pure module touches — the
+ *  call site (useStagePointers.ts, where both are already in scope) runs
+ *  `simplifyRing(pts, prefs.lassoSimplifyPx / view.z)` on this function's
+ *  result before it reaches finalizeMeasure, keeping this module a pure,
+ *  zoom/pref-agnostic capture-geometry gate. */
 export function finishLasso(
   cap: LassoCapture,
 ): { x: number; y: number }[] | null {
