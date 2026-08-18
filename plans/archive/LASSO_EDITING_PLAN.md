@@ -15,9 +15,17 @@ Douglas–Peucker with an explicit "manageable for hand-correction" target
 (`calc/contours.py::_simplify`, 2px/200-vertex) for detected regions —
 hand-drawn lassos are the one path that never gets it.
 
-**Status:** Active (created 2026-08-16; single campaign, three
-successive waves, cheapest-safe model per item, fable as orchestrator/
-reviewer only)
+**Status:** COMPLETE 2026-08-16, same day — all five items shipped in
+three waves exactly as planned (A+D parallel, B+C parallel, E), every
+item on its assigned model tier (4× sonnet, 1× haiku; fable wrote zero
+implementation). MeasureOverlay GRADUATED off the legacy-cap list
+entirely (533→472, pin removed per the store/viewer.ts idiom) rather
+than merely shrinking. Two spec corrections surfaced by implementers and
+absorbed: stored Measure.pts are normalized [0,1] (item C round-trips
+through image px — the plan's literal formula would have been a units
+bug), and polygon/lasso labels are pure render-derived functions of pts
+(no async refresh path exists to fire). Measured headline: a 600-point
+traced circle closes to 16 vertices at 2.55% area drift.
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-08-16
 

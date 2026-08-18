@@ -13,6 +13,36 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- **Adjusting a lasso no longer means fighting hundreds of points.** A
+  freehand lasso used to store a vertex every ~2 screen pixels — handles
+  rendered as fur around the outline, and dragging any single vertex
+  among hundreds produced a needle-thin spike instead of reshaping the
+  curve. Lassos now capture at full fidelity and simplify when you close
+  them (true Douglas–Peucker; the Lasso simplify preference finally does
+  what its name says): a typical traced particle drops from ~300 vertices
+  to a couple dozen, each owning a real stretch of boundary, so dragging
+  one genuinely reshapes the outline. Deliberate spikes survive
+  simplification — removing detail is only ever your call. Click-placed
+  polygons are untouched: you placed those vertices on purpose.
+
+### Added
+- **Vertex editing for polygons and lassos.** Right-click a vertex →
+  Delete vertex (disabled at three — a polygon must stay a polygon);
+  alt-drag anywhere on an edge to insert a vertex at that spot and place
+  it in the same motion. Plain drags are unchanged: body drag still
+  moves the whole measure, handle drag still moves one vertex. Undo
+  covers each edit as a single step.
+- **Simplify outline on demand.** Right-click an existing polygon or
+  lasso → Simplify outline, using the same preference at the current
+  zoom (zoom in first for a gentler pass). One undo step; if the outline
+  is already sparse it says so instead of silently doing nothing.
+- Polygon and lasso vertices now render as small round handles instead
+  of directional bars (which belong on line and arrow endpoints), with a
+  larger invisible hit target so they stay easy to grab.
+
 ## [0.1.31] - 2026-08-16
 
 ### Added
