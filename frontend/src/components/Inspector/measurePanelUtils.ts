@@ -6,10 +6,11 @@ import {
   areaPxToPhysical,
   physAngle,
   physDist,
-  polygonStats,
+  polygonStatsNormalizedWithHoles,
   tiltDist,
   type TiltSettings,
 } from "../../lib/geometry";
+import { displayArea, displayLength } from "../../lib/lengthUnits";
 import { useStageInfo } from "../../store/stage";
 import {
   useViewer,
@@ -76,6 +77,87 @@ export function distanceValues(
   return out;
 }
 
+/** Per-row value string for MeasurePanel's "Measurements" list — moved
+ *  out of MeasurePanel.tsx (repo-health #33 precedent: that file was
+ *  already at the 500-line ceiling before this feature's holes/polyline
+ *  fixes, which would have breached it). Mirrors measureGlyphs.tsx's
+ *  measureLabel kind by kind (both must agree — pinned end to end by
+ *  MeasurePanel.displayUnit.test.tsx / MeasureOverlay.displayUnit
+ *  .test.tsx), but this is the plain Inspector-row text, not the
+ *  positioned SVG label, so it deliberately skips the stage's tilt-θ/
+ *  hole-count suffixes — an independent implementation on purpose, not a
+ *  shared call, the same relationship showLog below already has to the
+ *  stage label.
+ *
+ *  PR #159 critical-review fix 1 (precision): a converted (`disp`) value
+ *  rounds to 3 sig figs here, matching the stage's own convention
+ *  (measureGlyphs.tsx's fmtDisp / formatScaleLength, lib/geometry.ts) —
+ *  the RAW (uncalibrated or non-overridden) fallback keeps this row's
+ *  pre-existing 4-sig-fig format, unchanged.
+ *  fix 3 (holes): the polygon/lasso branch nets out holes via
+ *  polygonStatsNormalizedWithHoles, the same lib.geometry helper the
+ *  stage uses, instead of the plain (gross-only) polygonStats it used to
+ *  call — see showLog's identical fix below for why this must be the
+ *  SAME helper, not a second copy of the holes math.
+ *  fix 5 (polyline): this kind had no branch at all — the row rendered
+ *  "" while the stage already showed the total length. */
+export function measureRowValue(
+  m: Measure,
+  img: { w: number; h: number },
+  meta: MetaLike,
+  roiStats: Record<string, { mean: number; std: number }>,
+  tilt: TiltSettings | null,
+): string {
+  const px = m.pts.map((p) => ({ x: p.x * img.w, y: p.y * img.h }));
+  const unit = meta?.pixel_unit ?? "px";
+  if (m.kind === "angle" && px.length === 3) {
+    return `${physAngle(px[1], px[0], px[2]).toFixed(1)}°`;
+  }
+  if ((m.kind === "distance" || m.kind === "profile") && px.length === 2) {
+    const d = tiltDist(px[0], px[1], meta?.pixel_size ?? null, tilt);
+    const theta = tilt != null && tilt.angle !== 0 ? " θ" : "";
+    if (d.unit !== "cal") return `${Number(d.value.toPrecision(4))} px${theta}`;
+    const disp = m.displayUnit && displayLength(d.value, unit, m.displayUnit);
+    return disp
+      ? `${Number(disp.value.toPrecision(3))} ${disp.unit}${theta}`
+      : `${Number(d.value.toPrecision(4))} ${unit}${theta}`;
+  }
+  if (m.kind === "polyline" && px.length >= 2) {
+    let total = 0;
+    for (let i = 1; i < px.length; i++) {
+      total += tiltDist(px[i - 1], px[i], meta?.pixel_size ?? null, tilt).value;
+    }
+    const theta = tilt != null && tilt.angle !== 0 ? " θ" : "";
+    if (meta?.pixel_size == null) return `${Number(total.toPrecision(4))} px${theta}`;
+    const disp = m.displayUnit && displayLength(total, unit, m.displayUnit);
+    return disp
+      ? `${Number(disp.value.toPrecision(3))} ${disp.unit}${theta}`
+      : `${Number(total.toPrecision(4))} ${unit}${theta}`;
+  }
+  if (m.kind === "roi" || m.kind === "ellipse") {
+    const s = roiStats[m.id];
+    return s ? `μ ${Number(s.mean.toPrecision(4))}` : "…";
+  }
+  if (m.kind === "polygon" || m.kind === "lasso") {
+    const areaPx2 = polygonStatsNormalizedWithHoles(m.pts, m.holes ?? [], img).areaPx2;
+    const areaPhys = areaPxToPhysical(areaPx2, meta?.pixel_size ?? null);
+    if (areaPhys == null) return `${Number(areaPx2.toPrecision(4))} px²`;
+    const disp = m.displayUnit && displayArea(areaPhys, unit, m.displayUnit);
+    return disp
+      ? `${Number(disp.value.toPrecision(3))} ${disp.unit}`
+      : `${Number(areaPhys.toPrecision(4))} ${unit}²`;
+  }
+  if (
+    m.kind === "text" ||
+    m.kind === "arrow" ||
+    m.kind === "box" ||
+    m.kind === "circle"
+  ) {
+    return m.text ?? "";
+  }
+  return "";
+}
+
 export function showLog(
   measures: Measure[],
   img: { w: number; h: number },
@@ -104,18 +186,37 @@ export function showLog(
         d += tiltDist(px[k - 1], px[k], meta?.pixel_size ?? null, tilt).value;
         dRaw += physDist(px[k - 1], px[k], meta?.pixel_size ?? null).value;
       }
-      value = `${Number(d.toPrecision(6))} ${unit}`;
+      // the stage label and this CSV row must never disagree, so the same
+      // per-measure override converts both — the raw (uncorrected, tilt-
+      // only) column stays in the calibration unit either way, since it
+      // is a diagnostic secondary value, not the headline reading.
+      const disp =
+        meta?.pixel_size != null &&
+        m.displayUnit &&
+        displayLength(d, meta.pixel_unit, m.displayUnit);
+      value = disp ? `${Number(disp.value.toPrecision(6))} ${disp.unit}` : `${Number(d.toPrecision(6))} ${unit}`;
       if (tiltOn) raw = `${Number(dRaw.toPrecision(6))} ${unit}`;
     } else if (m.kind === "roi" || m.kind === "ellipse") {
       const s = roiStats[m.id];
       value = s ? `μ=${s.mean} σ=${s.std}` : "";
     } else if (m.kind === "polygon" || m.kind === "lasso") {
-      const areaPx2 = polygonStats(px).areaPx2;
+      // PR #159 critical-review fix 3: this used plain polygonStats (gross
+      // area only), disagreeing with the stage label's holes-aware stats
+      // for any region with a hole. polygonStatsNormalizedWithHoles is
+      // the SAME lib.geometry helper the stage (measureGlyphs.tsx) uses
+      // and is a no-op equivalent to polygonStats when holes is empty
+      // (its own doc guarantees this), so this never changes the
+      // holes-free case.
+      const areaPx2 = polygonStatsNormalizedWithHoles(m.pts, m.holes ?? [], img).areaPx2;
       const areaPhys = areaPxToPhysical(areaPx2, meta?.pixel_size ?? null);
-      value =
-        areaPhys != null
-          ? `${Number(areaPhys.toPrecision(6))} ${unit}²`
-          : `${Number(areaPx2.toPrecision(6))} px²`;
+      if (areaPhys == null) {
+        value = `${Number(areaPx2.toPrecision(6))} px²`;
+      } else {
+        const disp = m.displayUnit && displayArea(areaPhys, unit, m.displayUnit);
+        value = disp
+          ? `${Number(disp.value.toPrecision(6))} ${disp.unit}`
+          : `${Number(areaPhys.toPrecision(6))} ${unit}²`;
+      }
     } else {
       value = m.text ?? "";
     }

@@ -6,15 +6,29 @@
 // same two sibling divs in the same order, so the overlay's DOM is unchanged.
 
 import type { Size } from "../../lib/geometry";
+import { linearUnitToNm, type DisplayUnit } from "../../lib/lengthUnits";
 import { loadPrefs } from "../../lib/prefs";
 import { simplifyRing } from "../../lib/simplifyRing";
 import {
   useViewer,
+  UNIT_DISPLAY_KINDS,
   type EndSymbol,
   type Measure,
   type View,
 } from "../../store/viewer";
 import { findHoleHost } from "./pointerDecisions";
+
+/** The Units group's fixed option list — value `undefined` is "Image
+ *  default" (clears the override), matching setMeasureDisplayUnit's
+ *  `DisplayUnit | undefined` contract. */
+const UNIT_OPTIONS: { value: DisplayUnit | undefined; label: string }[] = [
+  { value: undefined, label: "Image default" },
+  { value: "auto", label: "Auto" },
+  { value: "A", label: "Å" },
+  { value: "nm", label: "nm" },
+  { value: "um", label: "µm" },
+  { value: "mm", label: "mm" },
+];
 
 /** Which annotation the menu is acting on, and where it was opened. */
 export interface MeasureCtxTarget {
@@ -32,6 +46,11 @@ interface Props {
   /** live measures for this image — the menu resolves `at.mid` against it */
   measures: Measure[];
   at: MeasureCtxTarget;
+  /** image calibration (ImageMeta.pixel_size/.pixel_unit) — gates the
+   *  Units group: null pixelSize (uncalibrated) or an unconvertible
+   *  pixelUnit (reciprocal "1/nm", unrecognized) disables it. */
+  pixelSize: number | null;
+  pixelUnit: string;
   /** overlay-wide end symbol, shown as active when the measure has none */
   defaultEndSymbol: EndSymbol;
   /** overlay-wide label font size, the fallback in the font-size prompt */
@@ -52,6 +71,8 @@ export default function MeasureCtxMenu({
   imageId,
   measures,
   at,
+  pixelSize,
+  pixelUnit,
   defaultEndSymbol,
   globalFont,
   view,
@@ -60,6 +81,8 @@ export default function MeasureCtxMenu({
 }: Props) {
   const setMeasureStyle = useViewer((s) => s.setMeasureStyle);
   const setMeasureFontSize = useViewer((s) => s.setMeasureFontSize);
+  const setMeasureDisplayUnit = useViewer((s) => s.setMeasureDisplayUnit);
+  const setAllMeasureDisplayUnits = useViewer((s) => s.setAllMeasureDisplayUnits);
   const removeMeasure = useViewer((s) => s.removeMeasure);
   const addHole = useViewer((s) => s.addHole);
   const removeHole = useViewer((s) => s.removeHole);
@@ -76,6 +99,22 @@ export default function MeasureCtxMenu({
       ? findHoleHost(measures, target.id, target.pts)
       : null;
   const holes = target?.holes ?? [];
+
+  // Measure display-units feature — "Units" group, offered only for the
+  // kinds that carry a length/area label (UNIT_DISPLAY_KINDS,
+  // store/viewerTypes.ts — the single source setAllMeasureDisplayUnits
+  // also reads, see that constant's doc for why). Disabled (with an
+  // explanatory title, same idiom as the other absent/disabled items in
+  // this menu) when the image is uncalibrated or its calibration unit
+  // cannot be linearly converted (reciprocal "1/nm", unrecognized) —
+  // never silently "converts" those.
+  const showUnitsGroup = !!target && UNIT_DISPLAY_KINDS.has(target.kind);
+  const unitsDisabledReason =
+    pixelSize == null
+      ? "image is uncalibrated (px) — units cannot be converted"
+      : linearUnitToNm(pixelUnit) == null
+        ? `calibration unit "${pixelUnit}" cannot be converted (reciprocal or unrecognized)`
+        : null;
 
   // Lasso-editing plan, item D step 2 — "Delete vertex" joins this menu
   // (Convention 6): only for the closed-ring kinds with an editable vertex
@@ -213,6 +252,51 @@ export default function MeasureCtxMenu({
         >
           Reset label position
         </button>
+        {showUnitsGroup && (
+          <>
+            <div className="fvd-ctx-sep" />
+            <div className="fvd-ctx-label" title={unitsDisabledReason ?? undefined}>
+              Units
+            </div>
+            {UNIT_OPTIONS.map((opt) => {
+              const active = (target?.displayUnit ?? undefined) === opt.value;
+              return (
+                <button
+                  key={opt.label}
+                  className="fvd-ctx-item"
+                  disabled={!!unitsDisabledReason}
+                  title={
+                    unitsDisabledReason ??
+                    (opt.value === undefined
+                      ? "Render this measure in the image's calibration unit"
+                      : `Display this measure's label in ${opt.label}`)
+                  }
+                  onClick={() => {
+                    setMeasureDisplayUnit(imageId, at.mid, opt.value);
+                    onClose();
+                  }}
+                >
+                  {opt.label}
+                  {active ? " ✓" : ""}
+                </button>
+              );
+            })}
+            <button
+              className="fvd-ctx-item"
+              disabled={!!unitsDisabledReason}
+              title={
+                unitsDisabledReason ??
+                "Apply this measure's unit choice to every measure on this image"
+              }
+              onClick={() => {
+                setAllMeasureDisplayUnits(imageId, target?.displayUnit);
+                onClose();
+              }}
+            >
+              Apply to all measures on this image
+            </button>
+          </>
+        )}
         {holeHostId && (
           <button
             className="fvd-ctx-item"

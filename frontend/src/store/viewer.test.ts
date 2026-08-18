@@ -1426,6 +1426,7 @@ describe("restore preserves every field of persisted types", () => {
     endSymbol: "cross",
     width: 5,
     fontSize: 18,
+    displayUnit: "nm",
   } satisfies Required<Measure>;
 
   beforeEach(() => {

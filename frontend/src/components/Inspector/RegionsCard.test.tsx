@@ -18,6 +18,7 @@ type RegionMeasure = {
   kind: string;
   pts: { x: number; y: number }[];
   text?: string;
+  displayUnit?: "auto" | "A" | "nm" | "um" | "mm";
 };
 
 const POLYGON: RegionMeasure = {
@@ -96,6 +97,14 @@ describe("RegionsCard", () => {
     expect(screen.getByText("5000 px²")).toBeInTheDocument();
   });
 
+  it("honors the measure's displayUnit override in the area column (measure display-units feature)", () => {
+    state.measures = { img1: [{ ...POLYGON, displayUnit: "um" }] };
+    render(<RegionsCard />);
+    // 20000 nm^2 -> 0.02 um^2 (squared factor 1e6, not the linear 1e3)
+    expect(screen.getByText("0.02 µm²")).toBeInTheDocument();
+    expect(screen.queryByText("20000 nm²")).toBeNull();
+  });
+
   it("shows the region count badge", () => {
     state.measures = { img1: [POLYGON, { ...POLYGON, id: "m2", text: undefined }] };
     render(<RegionsCard />);
@@ -144,6 +153,21 @@ describe("RegionsCard", () => {
         // area_px2=5000 then an EMPTY physical cell (no fabricated 0/NaN),
         // then perimeter — i.e. two consecutive commas.
         expect(text).toContain("Grain A,polygon,5000,,300");
+      });
+    });
+
+    it("stays in the image's calibration unit regardless of any per-measure override — the column header names ONE unit for the whole table", () => {
+      state.measures = { img1: [{ ...POLYGON, displayUnit: "um" }] };
+      let capturedBlob: Blob | null = null;
+      globalThis.URL.createObjectURL = vi.fn((b: Blob) => {
+        capturedBlob = b;
+        return "blob:mock";
+      });
+      render(<RegionsCard />);
+      fireEvent.click(screen.getByRole("button", { name: "Export CSV" }));
+      return capturedBlob!.text().then((text) => {
+        expect(text).toContain("area_nm2");
+        expect(text).toContain("Grain A,polygon,5000,20000");
       });
     });
 

@@ -10,12 +10,6 @@ import {
 } from "../../lib/api";
 import { computeMeasureStats } from "../../lib/measureStats";
 import { fuzzy } from "../../lib/fuzzy";
-import {
-  areaPxToPhysical,
-  physAngle,
-  polygonStats,
-  tiltDist,
-} from "../../lib/geometry";
 import { MEASURE_GROUPS, MEASURE_TOOLS } from "../../lib/measureTools";
 import {
   boxProfileToCsv,
@@ -29,6 +23,7 @@ import {
   END_SYMBOLS,
   KIND_GLYPH,
   LINE_WIDTHS,
+  measureRowValue,
   NO_MEASURES,
   showLog,
   showRoiHistogram,
@@ -81,40 +76,6 @@ export default function MeasurePanel() {
 
   if (!activeId || !meta) return null;
   const img = { w: meta.shape[1] ?? 1, h: meta.shape[0] ?? 1 };
-
-  const valueOf = (m: Measure): string => {
-    const px = m.pts.map((p) => ({ x: p.x * img.w, y: p.y * img.h }));
-    if (m.kind === "angle" && px.length === 3) {
-      return `${physAngle(px[1], px[0], px[2]).toFixed(1)}°`;
-    }
-    if ((m.kind === "distance" || m.kind === "profile") && px.length === 2) {
-      const d = tiltDist(px[0], px[1], meta.pixel_size, tilt);
-      const theta = tilt != null && tilt.angle !== 0 ? " θ" : "";
-      return `${Number(d.value.toPrecision(4))} ${
-        d.unit === "cal" ? meta.pixel_unit : "px"
-      }${theta}`;
-    }
-    if (m.kind === "roi" || m.kind === "ellipse") {
-      const s = roiStats[m.id];
-      return s ? `μ ${Number(s.mean.toPrecision(4))}` : "…";
-    }
-    if (m.kind === "polygon" || m.kind === "lasso") {
-      const areaPx2 = polygonStats(px).areaPx2;
-      const areaPhys = areaPxToPhysical(areaPx2, meta.pixel_size ?? null);
-      return areaPhys != null
-        ? `${Number(areaPhys.toPrecision(4))} ${meta.pixel_unit}²`
-        : `${Number(areaPx2.toPrecision(4))} px²`;
-    }
-    if (
-      m.kind === "text" ||
-      m.kind === "arrow" ||
-      m.kind === "box" ||
-      m.kind === "circle"
-    ) {
-      return m.text ?? "";
-    }
-    return "";
-  };
 
   const onSelect = (m: Measure) => {
     setSelected(m.id);
@@ -321,7 +282,7 @@ export default function MeasurePanel() {
               <span className="name">
                 {m.kind} {i + 1}
               </span>
-              <span className="val">{valueOf(m)}</span>
+              <span className="val">{measureRowValue(m, img, meta, roiStats, tilt)}</span>
               <button
                 className="fvd-icon-btn"
                 title="Delete  Del"
@@ -396,6 +357,12 @@ export default function MeasurePanel() {
             </div>
           )}
           {selStats && (
+            // PR #159 critical-review fix 4: roi/ellipse no longer offer
+            // the Units menu (measureGlyphs.tsx's stage label for these
+            // kinds only ever shows μ/σ and never reads displayUnit
+            // either — see UNIT_DISPLAY_KINDS, store/viewerTypes.ts), so
+            // this area row goes back to plain image-default rendering —
+            // no override to apply, no menu that could have set one.
             <div className="fvd-roi-stats">
               {(
                 [
@@ -407,9 +374,7 @@ export default function MeasurePanel() {
                 ] as const
               ).map(([k, v]) => (
                 <div key={k} className="fvd-meta-row">
-                  <span className="k">
-                    {k === "area" ? `area (${selStats.unit}²)` : k}
-                  </span>
+                  <span className="k">{k === "area" ? `area (${selStats.unit}²)` : k}</span>
                   <span className="v">{Number(v.toPrecision(5))}</span>
                 </div>
               ))}

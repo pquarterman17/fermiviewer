@@ -15,6 +15,33 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Pick the units a measurement displays in.** Right-click any measure →
+  Units: Image default / Auto / Å / nm / µm / mm — per measure, with
+  "Apply to all measures on this image" for consistency. Covers areas and
+  lengths (37990 nm² becomes 0.038 µm²; 850 nm becomes 0.85 µm); Auto
+  picks the largest unit that keeps the number readable. Nothing changes
+  until you choose: the default remains the image's calibration unit, and
+  Image default returns to it. The Measure panel and its CSV log follow
+  the same choice as the stage label, so exports never disagree with what
+  you see. Diffraction images calibrated in reciprocal units (1/nm) and
+  unrecognized calibrations disable the menu with a reason instead of
+  mislabeling a conversion; uncalibrated images keep px/px². Unit choices
+  save with the project.
+- **Vertex editing for polygons and lassos.** Right-click a vertex →
+  Delete vertex (disabled at three — a polygon must stay a polygon);
+  alt-drag anywhere on an edge to insert a vertex at that spot and place
+  it in the same motion. Plain drags are unchanged: body drag still
+  moves the whole measure, handle drag still moves one vertex. Undo
+  covers each edit as a single step.
+- **Simplify outline on demand.** Right-click an existing polygon or
+  lasso → Simplify outline, using the same preference at the current
+  zoom (zoom in first for a gentler pass). One undo step; if the outline
+  is already sparse it says so instead of silently doing nothing.
+- Polygon and lasso vertices now render as small round handles instead
+  of directional bars (which belong on line and arrow endpoints), with a
+  larger invisible hit target so they stay easy to grab.
+
 ### Fixed
 - **Adjusting a lasso no longer means fighting hundreds of points.** A
   freehand lasso used to store a vertex every ~2 screen pixels — handles
@@ -32,21 +59,6 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   the voids from the outline and invalidating the holes-subtracted area —
   a long-standing bug surfaced by this release's review pass. Undo
   restores shape and holes together.
-
-### Added
-- **Vertex editing for polygons and lassos.** Right-click a vertex →
-  Delete vertex (disabled at three — a polygon must stay a polygon);
-  alt-drag anywhere on an edge to insert a vertex at that spot and place
-  it in the same motion. Plain drags are unchanged: body drag still
-  moves the whole measure, handle drag still moves one vertex. Undo
-  covers each edit as a single step.
-- **Simplify outline on demand.** Right-click an existing polygon or
-  lasso → Simplify outline, using the same preference at the current
-  zoom (zoom in first for a gentler pass). One undo step; if the outline
-  is already sparse it says so instead of silently doing nothing.
-- Polygon and lasso vertices now render as small round handles instead
-  of directional bars (which belong on line and arrow endpoints), with a
-  larger invisible hit target so they stay easy to grab.
 
 ## [0.1.31] - 2026-08-16
 

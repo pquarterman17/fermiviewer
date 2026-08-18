@@ -460,6 +460,8 @@ export default function MeasureOverlay({
           imageId={imageId}
           measures={measures}
           at={ctxMenu}
+          pixelSize={pixelSize}
+          pixelUnit={pixelUnit}
           defaultEndSymbol={defaultEndSymbol}
           globalFont={globalFont}
           view={view}

@@ -34,6 +34,7 @@
 import { useMemo, useState } from "react";
 
 import { fitShape, proposeRegion, type FitShapeResponse } from "../../lib/api/regions";
+import { displayArea } from "../../lib/lengthUnits";
 import {
   regionCsvColumns,
   regionCsvRows,
@@ -261,6 +262,18 @@ export default function RegionsCard() {
               const vertexCount = measure?.pts.length ?? 0;
               const canFit = vertexCount >= MIN_FIT_VERTICES;
               const fit = fits[r.measureId];
+              // Stage label / MeasurePanel row / this card must never
+              // disagree, so the same per-measure override converts this
+              // on-screen area too. NOT applied to the CSV export below
+              // (buildCsv/regionCsvRows) — that column's header names ONE
+              // unit for the whole table (areaPhysicalColumn) and its
+              // values feed regionPhysicalAreas' cross-image roll-up
+              // (W4 item 24), both of which require every row to share one
+              // unit; per-row overrides would corrupt that contract.
+              const areaDisp =
+                r.areaPhysical != null &&
+                measure?.displayUnit &&
+                displayArea(r.areaPhysical, meta.pixel_unit, measure.displayUnit);
               return (
                 <div key={r.measureId}>
                   <div className="fvd-measure-row">
@@ -281,9 +294,11 @@ export default function RegionsCard() {
                       className="val"
                       title={`${r.areaPx2.toPrecision(5)} px² · perimeter ${r.perimeterPx.toPrecision(4)} px`}
                     >
-                      {r.areaPhysical != null
-                        ? `${Number(r.areaPhysical.toPrecision(5))} ${meta.pixel_unit}²`
-                        : `${Number(r.areaPx2.toPrecision(5))} px²`}
+                      {areaDisp
+                        ? `${Number(areaDisp.value.toPrecision(5))} ${areaDisp.unit}`
+                        : r.areaPhysical != null
+                          ? `${Number(r.areaPhysical.toPrecision(5))} ${meta.pixel_unit}²`
+                          : `${Number(r.areaPx2.toPrecision(5))} px²`}
                     </span>
                     <button
                       className="fvd-btn"

@@ -7,7 +7,12 @@ import type { StateCreator } from "zustand";
 
 import { nextMeasureId } from "./viewerSession";
 import type { ViewerState } from "./viewerState";
-import { UNDO_CAP, type Measure, type SavedRoi } from "./viewerTypes";
+import {
+  UNDO_CAP,
+  UNIT_DISPLAY_KINDS,
+  type Measure,
+  type SavedRoi,
+} from "./viewerTypes";
 
 type Set = Parameters<StateCreator<ViewerState>>[0];
 type Get = Parameters<StateCreator<ViewerState>>[1];
@@ -27,6 +32,8 @@ export function createMeasureActions(
   | "setMeasureText"
   | "setMeasureStyle"
   | "setMeasureFontSize"
+  | "setMeasureDisplayUnit"
+  | "setAllMeasureDisplayUnits"
   | "clearMeasures"
   | "setSelectedMeasure"
   | "setRoiStats"
@@ -210,6 +217,42 @@ export function createMeasureActions(
             m.id === measureId
               ? { ...m, fontSize: size == null ? undefined : Math.min(120, Math.max(6, size)) }
               : m,
+          ),
+        },
+      })),
+
+    // ── display-unit override (measure display-units feature) ──────────
+    // A DISPLAY preference, not a measurement edit: unlike the actions
+    // above it never pushes an undo entry and never touches `pts`/
+    // `holes` — same non-undoable idiom as setMeasureStyle/
+    // setMeasureFontSize just above.
+
+    setMeasureDisplayUnit: (imageId, measureId, unit) =>
+      set((s) => ({
+        measures: {
+          ...s.measures,
+          [imageId]: (s.measures[imageId] ?? []).map((m) =>
+            m.id === measureId ? { ...m, displayUnit: unit } : m,
+          ),
+        },
+      })),
+
+    // Only the kinds UNIT_DISPLAY_KINDS lists (viewerTypes.ts) carry a
+    // length/area label the Units menu can retarget — a kind the menu
+    // itself gates out (angle/text/arrow/box/circle/roi/ellipse) must
+    // never pick up a dead displayUnit field here either, so this reads
+    // the SAME constant the menu (MeasureCtxMenu.tsx's showUnitsGroup)
+    // reads rather than keeping its own copy of the kind list. Two copies
+    // of exactly this shape (a kind allowlist duplicated across a menu
+    // and its action) drifted silently apart before (ShapeClassThresholds,
+    // commit 71ee3d7) — this gate is deliberately single-sourced so that
+    // cannot happen again here.
+    setAllMeasureDisplayUnits: (imageId, unit) =>
+      set((s) => ({
+        measures: {
+          ...s.measures,
+          [imageId]: (s.measures[imageId] ?? []).map((m) =>
+            UNIT_DISPLAY_KINDS.has(m.kind) ? { ...m, displayUnit: unit } : m,
           ),
         },
       })),
