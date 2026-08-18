@@ -197,6 +197,76 @@ describe("simplifyRing", () => {
     }
   });
 
+  it("large ring (>4000 pts, extremes-based anchor regime): keeps a deliberate spike, output stays small", () => {
+    // n=4500 exceeds farthestPair's n<=4000 exact-vs-extremes boundary, so
+    // this exercises farthestPairFromExtremes (the O(n) 8-coordinate-
+    // extremes approximation), not the exact O(n^2) brute force. Same
+    // cigar-shaped ellipse (a=150, b=20) as the exact-regime spike test
+    // above, for the same reason: its true farthest pair (dist 300) is the
+    // major-axis ends, well clear of the spike (dist to either end ~161),
+    // and hand-verified to also be the farthest pair AMONG the 8 coordinate
+    // extremes for this shape (iMinX/iMaxX at ~(-150,0)/(150,0), dist 300,
+    // beats every other candidate pair including the spike, which only
+    // displaces iMaxY since its y=60 barely exceeds the ellipse's b=20) —
+    // so the spike is genuinely NOT an anchor here either, and its survival
+    // exercises RDP's deviation check under the extremes regime specifically.
+    //
+    // This is a scaling/performance addition (the exact brute force stays
+    // technically correct, just O(n^2)-expensive, for n this large), not a
+    // pre-existing correctness bug — so there is no pre-fix/post-fix
+    // behavioural delta to pin here the way the other new tests in this PR
+    // have. Mutation tried anyway (on the new code): hard-coding
+    // farthestPairFromExtremes to always return [0, 1] (two adjacent,
+    // near-identical points) — this test still stayed GREEN (RDP's
+    // deviation check still catches the spike even off-center anchors, so
+    // this mutation does not pin THIS property; the rotation test below
+    // does catch it, see its own comment).
+    const n = 4500;
+    const a = 150;
+    const b = 20;
+    const ring: Pt[] = [];
+    for (let k = 0; k < n; k++) {
+      const t = (2 * Math.PI * k) / n;
+      ring.push({ x: a * Math.cos(t), y: b * Math.sin(t) });
+    }
+    const spikeIdx = Math.round((n * Math.PI) / 2 / (2 * Math.PI));
+    const spikeTip = { x: 0, y: 60 };
+    ring[spikeIdx] = spikeTip;
+
+    const out = simplifyRing(ring, 5);
+    expect(approxContains(out, spikeTip, 1e-9)).toBe(true);
+    expect(out.length).toBeLessThan(60);
+  });
+
+  it("large ring (>4000 pts, extremes-based anchor regime): rotating the input leaves the simplified SHAPE unchanged", () => {
+    // Same rotation-invariance property as the exact-regime seam test
+    // below, pinned separately at n=4200 (> the 4000 exact/extremes
+    // boundary) because farthestPairFromExtremes picks its anchors by
+    // COORDINATE VALUE (argmin/argmax of x, y, x+y, x-y), a different code
+    // path from the exact brute force's index-pair scan — this needs its
+    // own pin to confirm that path is rotation-invariant too, not just the
+    // exact one.
+    //
+    // Mutation tried (on the new code, since — as in the test above — there
+    // is no pre-existing behaviour to regress against): swap
+    // farthestPairFromExtremes for fixed index anchors `[0, n >> 1]`
+    // instead of the coordinate extremes -> rotating the array relabels
+    // which POINT sits at index 0 and n>>1, so the "anchors" become
+    // different points across rotations and the simplified vertex set
+    // changes (verified: shapeKey differs after a k=999 rotation), RED.
+    // Restoring the coordinate-based extremes selection fixes it, GREEN.
+    const ring = asymmetricEgg(4200);
+    const epsilon = 3;
+    const base = simplifyRing(ring, epsilon);
+    const baseKey = shapeKey(base);
+
+    for (const k of [1, 999, 2100, 3333, 4199]) {
+      const rotated = ring.slice(k).concat(ring.slice(0, k));
+      const out = simplifyRing(rotated, epsilon);
+      expect(shapeKey(out)).toEqual(baseKey);
+    }
+  });
+
   it("closed-ring seam: rotating the input by k leaves the simplified SHAPE unchanged", () => {
     // Mutation tried: replace the closed-ring two-anchor split with a
     // naive open-polyline RDP pinned at index 0 (i.e.

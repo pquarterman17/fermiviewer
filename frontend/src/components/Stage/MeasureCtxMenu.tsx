@@ -258,7 +258,7 @@ export default function MeasureCtxMenu({
                 x: p.x * img.w,
                 y: p.y * img.h,
               }));
-              const epsilon = loadPrefs().lassoSimplifyPx / view.z;
+              const epsilon = loadPrefs().lassoCloseSimplifyPx / view.z;
               const afterPx = simplifyRing(beforePx, epsilon);
               if (afterPx.length < before.length) {
                 const after = afterPx.map((p) => ({

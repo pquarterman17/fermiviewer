@@ -249,6 +249,12 @@ export interface ViewerState {
     imageId: string,
     measureId: string,
     pts: Measure["pts"],
+    /** Holes-detach fix: when provided (not undefined), REPLACES the
+     *  measure's holes field too, in the same update as `pts` — used by
+     *  the whole-body translate (MeasureVertexLayer.tsx) so a translated
+     *  region's holes move with it instead of staying behind. Omitted or
+     *  explicitly undefined leaves the existing holes field untouched. */
+    holes?: Measure["holes"],
   ) => void;
   removeMeasure: (imageId: string, measureId: string) => void;
   /** Plan item 4 — DRAW a hole: convert an existing top-level polygon/

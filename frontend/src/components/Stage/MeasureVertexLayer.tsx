@@ -15,14 +15,18 @@ import { EndpointGlyph } from "./measureGlyphs";
 /** One in-flight drag: a vertex (`pt` = its index) or the whole body
  *  (`pt === -1`, audit #12). `before` is the pts snapshot at drag START —
  *  compared against the live pts on release to decide whether an undo
- *  entry is needed, and to seed it. */
+ *  entry is needed, and to seed it. `beforeHoles`/`holes0` are the same
+ *  idea for holes (holes-detach fix) — set only by a body drag, since a
+ *  per-vertex drag never moves holes. */
 export interface VertexDragState {
   mid: string;
   pt: number;
   before: Measure["pts"];
+  beforeHoles?: Measure["holes"];
   startX?: number; // client px at drag start (body drag only)
   startY?: number;
   pts0?: Measure["pts"]; // snapshot of all pts at drag start (body drag only)
+  holes0?: Measure["holes"]; // snapshot of holes at drag start (body drag only)
 }
 
 export interface VertexEditCtx {
@@ -36,6 +40,7 @@ export interface VertexEditCtx {
     imageId: string,
     measureId: string,
     pts: Measure["pts"],
+    holes?: Measure["holes"],
   ) => void;
   setSelected: (id: string) => void;
   pushUndo: (e: UndoEntry) => void;
@@ -73,6 +78,16 @@ export interface VertexEditApi {
   ) => void;
 }
 
+/** Alt+edge-drag insert only fires when the pointer actually came down
+ *  NEAR an edge (screen px — `bestDist` below is computed against
+ *  `screenPts`, the layer's own screen-space render coordinates). Beyond
+ *  this, a down-point deep in a shape's interior falls through to the
+ *  plain body translate instead of inserting a vertex at the (possibly
+ *  very distant) nearest-edge projection and teleporting it to the
+ *  pointer on the first move — the interior-alt-drag spike bug this
+ *  gate exists to kill. */
+const EDGE_INSERT_MAX_DIST_PX = 12;
+
 /** Closest point to `p` on segment a→b, plus the distance to it. */
 function projectToSegment(
   p: { x: number; y: number },
@@ -109,7 +124,11 @@ export function useVertexEditing(ctx: VertexEditCtx): VertexEditApi {
   const onHandleDown = (e: React.PointerEvent, mid: string, pt: number) => {
     e.stopPropagation();
     const m = measures.find((x) => x.id === mid);
-    dragRef.current = { mid, pt, before: m ? m.pts : [] };
+    // beforeHoles is snapshotted even though a per-vertex drag never moves
+    // holes — onHandleUp's holesChanged check needs a real "before" value
+    // to compare against, not undefined, or it would misread an untouched
+    // holes field as changed and wipe it on undo.
+    dragRef.current = { mid, pt, before: m ? m.pts : [], beforeHoles: m?.holes };
     (e.target as Element).setPointerCapture(e.pointerId);
     setSelected(mid);
   };
@@ -121,16 +140,20 @@ export function useVertexEditing(ctx: VertexEditCtx): VertexEditApi {
     if (!m) return;
 
     if (pt === -1) {
-      // whole-body translate (audit #12)
-      const { startX, startY, pts0 } = dragRef.current;
+      // whole-body translate (audit #12) — holes (if any) move by the SAME
+      // delta as pts, in the same updateMeasure call, so a region's holes
+      // stay attached to it instead of being left behind (holes-detach fix).
+      const { startX, startY, pts0, holes0 } = dragRef.current;
       if (startX == null || startY == null || !pts0) return;
       const dx = (e.clientX - startX) / (view.z * img.w);
       const dy = (e.clientY - startY) / (view.z * img.h);
-      const pts = pts0.map((p) => ({
+      const shift = (p: { x: number; y: number }) => ({
         x: Math.min(1, Math.max(0, p.x + dx)),
         y: Math.min(1, Math.max(0, p.y + dy)),
-      }));
-      updateMeasure(imageId, mid, pts);
+      });
+      const pts = pts0.map(shift);
+      const holes = holes0?.map((ring) => ring.map(shift));
+      updateMeasure(imageId, mid, pts, holes);
       return;
     }
 
@@ -150,25 +173,36 @@ export function useVertexEditing(ctx: VertexEditCtx): VertexEditApi {
 
   const onHandleUp = (e: React.PointerEvent) => {
     if (!dragRef.current) return;
-    const { mid, before } = dragRef.current;
+    const { mid, before, beforeHoles } = dragRef.current;
     const m = measures.find((x) => x.id === mid);
     dragRef.current = null;
     (e.target as Element).releasePointerCapture(e.pointerId);
     if (!m) return;
-    if (before.length && JSON.stringify(before) !== JSON.stringify(m.pts)) {
+    const ptsChanged =
+      before.length && JSON.stringify(before) !== JSON.stringify(m.pts);
+    // holes-detach fix: beforeHoles is set only by a body drag (never by a
+    // per-vertex drag), so this stays false whenever holes were never in
+    // play for this gesture.
+    const holesChanged =
+      JSON.stringify(beforeHoles) !== JSON.stringify(m.holes);
+    if (ptsChanged || holesChanged) {
       pushUndo({
         t: "measure-move",
         imageId,
         measureId: mid,
         before,
         after: m.pts,
+        beforeHoles,
+        afterHoles: m.holes,
       });
     }
     refresh(m);
   };
 
   /** Alt+edge-drag insert (step 3) — only for a closed ring with a real
-   *  edge to grab. Returns false when it does not apply, so `onBodyDown`
+   *  edge to grab NEAR the down-point (EDGE_INSERT_MAX_DIST_PX). Returns
+   *  false when it does not apply — kind mismatch, or the down-point too
+   *  far from every edge (e.g. deep in the interior) — so `onBodyDown`
    *  below can fall through to the plain translate. */
   const tryEdgeInsertDrag = (
     e: React.PointerEvent,
@@ -196,6 +230,12 @@ export function useVertexEditing(ctx: VertexEditCtx): VertexEditApi {
       }
     }
 
+    // Reject a down-point too far from any edge (see EDGE_INSERT_MAX_DIST_PX)
+    // — returning false here lets onBodyDown's caller fall through to the
+    // plain whole-body translate below, same as any other non-qualifying
+    // alt+drag.
+    if (bestDist > EDGE_INSERT_MAX_DIST_PX) return false;
+
     const ip = screenToImage(bestProj.x, bestProj.y, view, img, vp);
     const nx = Math.min(1, Math.max(0, ip.x / img.w));
     const ny = Math.min(1, Math.max(0, ip.y / img.h));
@@ -212,8 +252,10 @@ export function useVertexEditing(ctx: VertexEditCtx): VertexEditApi {
     setSelected(m.id);
     // `pt: insertAt` arms onHandleMove's per-vertex branch (not the -1
     // body-translate branch), so the freshly-inserted point drags exactly
-    // like any other handle for the rest of this gesture.
-    dragRef.current = { mid: m.id, pt: insertAt, before };
+    // like any other handle for the rest of this gesture. beforeHoles is
+    // snapshotted for the same reason as onHandleDown's — insert+drag
+    // never touches holes, but onHandleUp's comparison needs a real value.
+    dragRef.current = { mid: m.id, pt: insertAt, before, beforeHoles: m.holes };
     (e.target as Element).setPointerCapture(e.pointerId);
     return true;
   };
@@ -224,16 +266,21 @@ export function useVertexEditing(ctx: VertexEditCtx): VertexEditApi {
     screenPts: { x: number; y: number }[],
   ) => {
     if (tryEdgeInsertDrag(e, m, screenPts)) return;
-    // plain whole-body translate (audit #12), unchanged (Convention 6)
+    // plain whole-body translate (audit #12) — holes0/beforeHoles snapshot
+    // the pre-drag holes so onHandleMove can shift them by the same delta
+    // as pts and onHandleUp can tell whether they actually moved
+    // (holes-detach fix).
     e.stopPropagation();
     setSelected(m.id);
     dragRef.current = {
       mid: m.id,
       pt: -1,
       before: m.pts,
+      beforeHoles: m.holes,
       startX: e.clientX,
       startY: e.clientY,
       pts0: m.pts,
+      holes0: m.holes,
     };
     (e.target as Element).setPointerCapture(e.pointerId);
   };

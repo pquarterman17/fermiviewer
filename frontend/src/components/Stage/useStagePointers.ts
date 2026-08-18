@@ -299,8 +299,8 @@ export function useStagePointers(ctx: StagePointersCtx) {
       } else {
         const ip = toImage(p);
         // #17 / LASSO_EDITING_PLAN Convention 4: capture-time decimation is
-        // a fixed fidelity floor, not the user's lassoSimplifyPx pref — the
-        // pref only drives the close-time simplifyRing epsilon below.
+        // a fixed fidelity floor, not the user's lassoCloseSimplifyPx pref
+        // — the pref only drives the close-time simplifyRing epsilon below.
         const tol = LASSO_CAPTURE_STEP_PX / view.z;
         lassoRef.current = appendLassoPoint(lassoRef.current, ip, tol);
         setPending({ kind: "lasso", pts: lassoRef.current.pts });
@@ -342,7 +342,7 @@ export function useStagePointers(ctx: StagePointersCtx) {
           // here — Convention 5). Convention 3: epsilon is a SCREEN-px
           // pref converted to image space by the CURRENT zoom. Convention
           // 1: the simplified ring is what gets stored, not a display copy.
-          const eps = view ? loadPrefs().lassoSimplifyPx / view.z : 0;
+          const eps = view ? loadPrefs().lassoCloseSimplifyPx / view.z : 0;
           finalizeMeasure("lasso", simplifyRing(pts, eps));
         } else {
           setCaptureMode("none");

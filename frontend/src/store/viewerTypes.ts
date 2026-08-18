@@ -160,6 +160,15 @@ export type UndoEntry =
       measureId: string;
       before: Measure["pts"];
       after: Measure["pts"];
+      /** Holes-detach fix: a whole-body translate moves every hole ring by
+       *  the same delta as `pts`, so its undo/redo needs to restore holes
+       *  too. Present only when the drag that produced this entry actually
+       *  had holes to move; other measure-move producers (vertex/handle
+       *  drag, "Simplify outline", delete-vertex) never touch holes and
+       *  leave these undefined, in which case undo/redo leaves the
+       *  measure's holes field alone. */
+      beforeHoles?: Measure["holes"];
+      afterHoles?: Measure["holes"];
     }
   // Draw-a-hole (plan item 4): converting a top-level polygon/lasso ring
   // into a subtracted hole of `hostId`, or the reverse. `child` is the

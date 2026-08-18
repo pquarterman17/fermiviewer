@@ -54,12 +54,14 @@ export function createMeasureActions(
       return id;
     },
 
-    updateMeasure: (imageId, measureId, pts) =>
+    updateMeasure: (imageId, measureId, pts, holes) =>
       set((s) => ({
         measures: {
           ...s.measures,
           [imageId]: (s.measures[imageId] ?? []).map((m) =>
-            m.id === measureId ? { ...m, pts } : m,
+            m.id === measureId
+              ? { ...m, pts, ...(holes !== undefined ? { holes } : {}) }
+              : m,
           ),
         },
       })),

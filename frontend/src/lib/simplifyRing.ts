@@ -10,7 +10,8 @@ type Pt = { x: number; y: number };
 
 /** Douglas–Peucker for a CLOSED ring. epsilon in IMAGE px (caller
  *  converts from screen px). Anchors: the two mutually-farthest ring
- *  points (found from the extremes), each half simplified
+ *  points — exact for n <= 4000, approximated from the 8 coordinate
+ *  extremes above that (see farthestPair) — each half simplified
  *  independently, halves rejoined. Result always has >= 3 vertices;
  *  if simplification would collapse below 3, the ORIGINAL ring is
  *  returned unchanged (mirrors calc/contours.py::_simplify's
@@ -42,13 +43,36 @@ export function simplifyRing(
   return result.length >= 3 ? result : pts;
 }
 
-/** Exact O(n^2) mutually-farthest pair (the true ring "diameter").
- *  Affordable at the lasso's hard cap of 2000 points and comfortably
- *  beyond it — per the frozen contract this is deliberately simpler
- *  than rotating calipers over a convex hull "found from the
- *  extremes" while being exact (not an approximation) for n up to
- *  ~4000, which is the documented bound for this brute force. */
+/** Mutually-farthest ring-point pair used to anchor the closed-ring RDP
+ *  split. Two regimes, chosen by input size:
+ *
+ *  - n <= 4000: EXACT O(n^2) brute force over every pair (the true ring
+ *    "diameter") — per the frozen contract this is deliberately simpler
+ *    than rotating calipers over a convex hull while being exact (not an
+ *    approximation), and affordable up to ~4000 points, which is the
+ *    documented bound for this brute force.
+ *  - n > 4000 (the lasso path budget fix raised MAX_LASSO_POINTS in
+ *    regionCapture.ts to 8000, past where O(n^2) stays cheap): an O(n)
+ *    approximation — the farthest pair AMONG THE 8 COORDINATE EXTREMES
+ *    (argmin/argmax of x, y, x+y, x-y). Those 8 candidates are picked by
+ *    COORDINATE VALUE, not array index, so — like the exact brute force —
+ *    this stays rotation-invariant: rotating a ring's point array
+ *    relabels indices but leaves the coordinate set unchanged, so the
+ *    same 8 points (and therefore the same chosen pair) come out no
+ *    matter where the array starts, which is what the closed-ring seam
+ *    property depends on. The chosen pair need not be the TRUE diameter
+ *    (an adversarial shape can hide it off all 8 extremes) — RDP's split
+ *    only needs two well-separated anchors, not the exact diameter, and
+ *    on any real ring the 8 extremes are spread across its bounding
+ *    directions, which is enough separation for that. */
 function farthestPair(pts: Pt[]): [number, number] {
+  return pts.length > 4000
+    ? farthestPairFromExtremes(pts)
+    : farthestPairExact(pts);
+}
+
+/** n <= 4000 regime: exact O(n^2) brute force over every pair. */
+function farthestPairExact(pts: Pt[]): [number, number] {
   let bestI = 0;
   let bestJ = 1;
   let bestD = -1;
@@ -59,6 +83,59 @@ function farthestPair(pts: Pt[]): [number, number] {
         bestD = d;
         bestI = a;
         bestJ = b;
+      }
+    }
+  }
+  return [bestI, bestJ];
+}
+
+/** n > 4000 regime: O(n) single pass to find the 8 coordinate extremes
+ *  (argmin/argmax of x, y, x+y, x-y), then the farthest pair among just
+ *  those (at most 8-choose-2 = 28 pairs — O(1) relative to n). */
+function farthestPairFromExtremes(pts: Pt[]): [number, number] {
+  let iMinX = 0,
+    iMaxX = 0,
+    iMinY = 0,
+    iMaxY = 0,
+    iMinSum = 0,
+    iMaxSum = 0,
+    iMinDiff = 0,
+    iMaxDiff = 0;
+  for (let k = 1; k < pts.length; k++) {
+    const p = pts[k];
+    if (p.x < pts[iMinX].x) iMinX = k;
+    if (p.x > pts[iMaxX].x) iMaxX = k;
+    if (p.y < pts[iMinY].y) iMinY = k;
+    if (p.y > pts[iMaxY].y) iMaxY = k;
+    const sum = p.x + p.y;
+    if (sum < pts[iMinSum].x + pts[iMinSum].y) iMinSum = k;
+    if (sum > pts[iMaxSum].x + pts[iMaxSum].y) iMaxSum = k;
+    const diff = p.x - p.y;
+    if (diff < pts[iMinDiff].x - pts[iMinDiff].y) iMinDiff = k;
+    if (diff > pts[iMaxDiff].x - pts[iMaxDiff].y) iMaxDiff = k;
+  }
+  const candidates = [
+    iMinX,
+    iMaxX,
+    iMinY,
+    iMaxY,
+    iMinSum,
+    iMaxSum,
+    iMinDiff,
+    iMaxDiff,
+  ];
+  let bestI = candidates[0];
+  let bestJ = candidates[1];
+  let bestD = -1;
+  for (let a = 0; a < candidates.length; a++) {
+    for (let b = a + 1; b < candidates.length; b++) {
+      const ia = candidates[a];
+      const ib = candidates[b];
+      const d = dist2(pts[ia], pts[ib]);
+      if (d > bestD) {
+        bestD = d;
+        bestI = ia;
+        bestJ = ib;
       }
     }
   }

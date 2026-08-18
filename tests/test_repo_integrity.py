@@ -55,7 +55,7 @@ FRONTEND_LEGACY_CAPS = {
     # elliptical-distortion calibration flow moved to
     # useDiffractionCalibration.ts, both under diffraction/.
     # MeasureOverlay.tsx graduated 2026-08-18 (LASSO_EDITING_PLAN item D):
-    # 533 -> 469 lines, once the per-vertex handle rendering + drag/insert
+    # 533 -> 472 lines, once the per-vertex handle rendering + drag/insert
     # mechanics (onHandleDown/Move/Up, whole-body translate, alt+edge-drag
     # vertex insertion) moved to MeasureVertexLayer.tsx. It is a plain
     # 500-line module now. Last legacy pin.

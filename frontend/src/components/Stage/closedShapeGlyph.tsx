@@ -66,8 +66,13 @@ export function ClosedShapeGlyph({
     onPointerMove: isPending ? undefined : onHandleMove,
     onPointerUp: isPending ? undefined : onHandleUp,
     onContextMenu: isPending ? undefined : onContextMenu,
-    title: isPending ? undefined : title,
   };
+  // A `title` ATTRIBUTE is never rendered as a tooltip by browsers on SVG
+  // elements (unlike HTML, where it is) — SVG needs a <title> CHILD
+  // element instead. Rendered once here (not in `shared`, which is spread
+  // as element ATTRIBUTES) and reused by both branches below.
+  const shownTitle = isPending ? undefined : title;
+  const titleChild = shownTitle ? <title>{shownTitle}</title> : null;
   // A hole reads as a VOID rather than a second overlapping shape via a
   // second <path> subpath + fill-rule evenodd (the conventional SVG way
   // to punch a hole), instead of drawing the outer ring and the hole as
@@ -81,7 +86,9 @@ export function ClosedShapeGlyph({
         fillRule="evenodd"
         fill={isPending ? "none" : stroke}
         {...shared}
-      />
+      >
+        {titleChild}
+      </path>
     );
   }
   return (
@@ -89,6 +96,8 @@ export function ClosedShapeGlyph({
       points={pts.map((p) => `${p.x},${p.y}`).join(" ")}
       fill={isPending ? "none" : stroke}
       {...shared}
-    />
+    >
+      {titleChild}
+    </polygon>
   );
 }

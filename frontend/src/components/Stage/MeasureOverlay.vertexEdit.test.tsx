@@ -144,12 +144,11 @@ describe("MeasureOverlay vertex delete (item D step 2)", () => {
 describe("MeasureOverlay alt+edge-drag vertex insert (item D step 3)", () => {
   beforeEach(() => seed([{ id: "m1", kind: "polygon", pts: SQUARE }]));
 
-  it("carries the discoverability hint on the body path", () => {
+  it("carries the discoverability hint on the body path as a <title> CHILD element (dead SVG tooltip fix — a `title` ATTRIBUTE renders nothing in a browser; SVG needs a <title> element)", () => {
     const { container } = renderOverlay();
     const polygon = container.querySelector("polygon")!;
-    expect(polygon.getAttribute("title")).toBe(
-      "alt-drag an edge to add a point",
-    );
+    const titleEl = polygon.querySelector("title");
+    expect(titleEl?.textContent).toBe("alt-drag an edge to add a point");
   });
 
   it("inserts a vertex at the grab point projected onto the segment, and drags it in the same gesture", () => {
@@ -223,6 +222,42 @@ describe("MeasureOverlay alt+edge-drag vertex insert (item D step 3)", () => {
     fireEvent.pointerUp(polygon, { pointerId: 1 });
   });
 
+  it("alt+drag from deep in the interior does NOT insert a vertex — falls through to plain translate (alt-drag-from-interior fix)", () => {
+    // The 80-320 screen-px square's centroid is (200,200), ~120 screen px
+    // from its nearest edge — far past the ~12px edge-grab gate, so a
+    // down-point this deep inside must be REJECTED by tryEdgeInsertDrag and
+    // fall through to the plain whole-body translate, not insert a vertex
+    // at the (very distant) nearest-edge projection and then teleport it to
+    // the pointer on the first move — the interior-alt-drag spike bug this
+    // PR exists to kill.
+    const { container } = renderOverlay();
+    const polygon = container.querySelector("polygon")!;
+    fireEvent.pointerDown(polygon, {
+      clientX: 200,
+      clientY: 200,
+      altKey: true,
+      pointerId: 1,
+    });
+    let m = useViewer.getState().measures["img1"][0];
+    expect(m.pts).toHaveLength(4); // no vertex inserted
+    expect(m.pts).toEqual(SQUARE); // untouched by pointerdown alone
+
+    // same translate math as the Convention 6 regression pin above: +50
+    // screen px -> +0.125 normalized (dx = 50 / (z=4 * img.w=100))
+    fireEvent.pointerMove(polygon, {
+      clientX: 250,
+      clientY: 200,
+      pointerId: 1,
+    });
+    m = useViewer.getState().measures["img1"][0];
+    expect(m.pts).toHaveLength(4); // still no vertex inserted
+    for (let i = 0; i < 4; i++) {
+      expect(m.pts[i].x).toBeCloseTo(SQUARE[i].x + 0.125, 10);
+      expect(m.pts[i].y).toBeCloseTo(SQUARE[i].y, 10);
+    }
+    fireEvent.pointerUp(polygon, { pointerId: 1 });
+  });
+
   it("alt+drag on a non-closed-ring kind's body is a no-op for insert (kind gate) — box still just translates", () => {
     seed([
       {
@@ -249,6 +284,50 @@ describe("MeasureOverlay alt+edge-drag vertex insert (item D step 3)", () => {
     expect(m.pts).toHaveLength(2); // still a 2-corner box, nothing inserted
     expect(m.pts[0].x).toBeCloseTo(0.325, 10);
     fireEvent.pointerUp(rect, { pointerId: 1 });
+  });
+});
+
+describe("MeasureOverlay body-translate carries holes along (pre-existing bug, holes-detach fix)", () => {
+  // Normalized 0.4-0.6 square, well inside SQUARE (0.2-0.8) — a marked
+  // hole (Measure.holes), same normalized 0-1 convention as pts.
+  const HOLE: Measure["pts"] = [
+    { x: 0.4, y: 0.4 },
+    { x: 0.6, y: 0.4 },
+    { x: 0.6, y: 0.6 },
+    { x: 0.4, y: 0.6 },
+  ];
+
+  beforeEach(() =>
+    seed([{ id: "m1", kind: "polygon", pts: SQUARE, holes: [HOLE] }]),
+  );
+
+  it("body drag shifts hole vertices by the SAME delta as the body's own pts, and undo restores both", () => {
+    const { container } = renderOverlay();
+    // holes>0 makes ClosedShapeGlyph render a <path> (evenodd fill), not a
+    // <polygon> — see closedShapeGlyph.tsx.
+    const body = container.querySelector("path")!;
+    fireEvent.pointerDown(body, { clientX: 150, clientY: 150, pointerId: 1 });
+    // +50 screen px -> +0.125 normalized (dx = 50 / (z=4 * img.w=100)), same
+    // translate math as the Convention 6 regression pin above
+    fireEvent.pointerMove(body, { clientX: 200, clientY: 150, pointerId: 1 });
+
+    let m = useViewer.getState().measures["img1"][0];
+    for (let i = 0; i < 4; i++) {
+      expect(m.pts[i].x).toBeCloseTo(SQUARE[i].x + 0.125, 10);
+      expect(m.pts[i].y).toBeCloseTo(SQUARE[i].y, 10);
+    }
+    expect(m.holes).toBeDefined();
+    for (let i = 0; i < 4; i++) {
+      expect(m.holes![0][i].x).toBeCloseTo(HOLE[i].x + 0.125, 10);
+      expect(m.holes![0][i].y).toBeCloseTo(HOLE[i].y, 10);
+    }
+    fireEvent.pointerUp(body, { pointerId: 1 });
+
+    const entry = useViewer.getState().undo();
+    expect(entry?.t).toBe("measure-move");
+    m = useViewer.getState().measures["img1"][0];
+    expect(m.pts).toEqual(SQUARE);
+    expect(m.holes).toEqual([HOLE]);
   });
 });
 

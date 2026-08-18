@@ -4,7 +4,7 @@
 // unchanged) and simplifyRing.ts stays pure (simplifyRing.test.ts covers
 // the algorithm) — this file exercises only the SEAM: the fixed 1
 // screen-px capture floor, and the close-time
-// `simplifyRing(pts, prefs.lassoSimplifyPx / view.z)` call, driven through
+// `simplifyRing(pts, prefs.lassoCloseSimplifyPx / view.z)` call, driven through
 // the hook's real pointer handlers so the assertions are on what actually
 // reaches finalizeMeasure — the store/finalize path, not a render.
 
@@ -96,7 +96,7 @@ describe("useStagePointers — lasso simplify-at-close (item B)", () => {
   });
 
   it("captures a dense circular stroke and closes to a small STORED vertex count (mutation: drop the simplifyRing call → hundreds of pts)", () => {
-    savePrefs({ ...DEFAULTS, lassoSimplifyPx: 2 });
+    savePrefs({ ...DEFAULTS, lassoCloseSimplifyPx: 2 });
     const ctx = mkCtx();
     ctx.setPending = vi.fn((p) => {
       ctx.pending = p as PendingMeasure | null;
@@ -136,7 +136,7 @@ describe("useStagePointers — lasso simplify-at-close (item B)", () => {
   });
 
   it("a deliberate spike survives close (Convention 2: deviation > epsilon retained; mutation: swap simplifyRing for a naive `pts.slice(0, 20)` decimation → the spike, captured well past index 20, is dropped)", () => {
-    savePrefs({ ...DEFAULTS, lassoSimplifyPx: 2 }); // eps = 2 image px at z=1
+    savePrefs({ ...DEFAULTS, lassoCloseSimplifyPx: 2 }); // eps = 2 image px at z=1
     const ctx = mkCtx();
     ctx.setPending = vi.fn((p) => {
       ctx.pending = p as PendingMeasure | null;
@@ -191,7 +191,7 @@ describe("useStagePointers — lasso simplify-at-close (item B)", () => {
     const { result, rerender } = renderHook(() => useStagePointers(ctx));
 
     // 4 vertices; ip2 sits ~0.1 image-px off the ip1–ip3 chord — well
-    // under lassoSimplifyPx's default epsilon (2) — so if simplification
+    // under lassoCloseSimplifyPx's default epsilon (2) — so if simplification
     // wrongly ran here, ip2 would be dropped and this test would go RED.
     const ip1: Pt = { x: 1000, y: 1000 };
     const ip2: Pt = { x: 1300, y: 1000.1 };
@@ -214,8 +214,8 @@ describe("useStagePointers — lasso simplify-at-close (item B)", () => {
     expect(simplifyRingSpy).not.toHaveBeenCalled();
   });
 
-  it("capture step filter is fixed at 1 screen-px regardless of the pref (mutation: read lassoSimplifyPx back into the capture tol → 1.5px-apart points get dropped)", () => {
-    savePrefs({ ...DEFAULTS, lassoSimplifyPx: 20 }); // way coarser than 1px
+  it("capture step filter is fixed at 1 screen-px regardless of the pref (mutation: read lassoCloseSimplifyPx back into the capture tol → 1.5px-apart points get dropped)", () => {
+    savePrefs({ ...DEFAULTS, lassoCloseSimplifyPx: 5 }); // coarsest legal value (0.5-5 range), still coarser than 1px
     const ctx = mkCtx();
     ctx.setPending = vi.fn((p) => {
       ctx.pending = p as PendingMeasure | null;
@@ -252,7 +252,7 @@ describe("useStagePointers — lasso simplify-at-close (item B)", () => {
   });
 
   it("epsilon honours zoom: the same stroke closed at z=4 passes epsilon/4 (image space) to simplifyRing, vs z=1 passing epsilon (mutation: compute epsilon without dividing by view.z → both calls get the same value)", () => {
-    savePrefs({ ...DEFAULTS, lassoSimplifyPx: 2 });
+    savePrefs({ ...DEFAULTS, lassoCloseSimplifyPx: 2 });
     const stroke: Pt[] = [
       { x: 5000, y: 5000 },
       { x: 5100, y: 5000 },
