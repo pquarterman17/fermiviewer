@@ -13,7 +13,7 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.32] - 2026-08-18
 
 ### Added
 - **Pick the units a measurement displays in.** Right-click any measure →
