@@ -6,7 +6,7 @@ Regenerate after touching ``fermiviewer.api`` or any op catalogue:
 
     uv run python tools/gen_api_reference.py
 
-``tests/test_examples.py`` regenerates this in memory on every test run
+``tests/test_api_reference.py`` regenerates this in memory on every test run
 and fails if the committed file doesn't match byte-for-byte — the
 generated file must never be hand-edited; change the source it reads
 from and rerun this script instead.
@@ -35,7 +35,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import fermiviewer.api as fvapi  # noqa: E402
 import fermiviewer.ops as fvops  # noqa: E402
-from fermiviewer.ops.base import OpParam, OpSpec  # noqa: E402
+from fermiviewer.ops.base import OpParam, OpSpec, produces_value_result  # noqa: E402
 
 OUT_PATH = ROOT / "docs" / "api-reference.md"
 
@@ -187,9 +187,7 @@ def _bounds_cell(param: OpParam) -> str:
 
 
 def _op_produces(spec: OpSpec) -> str:
-    # Mirrors OpSpec.produces_value's own doc: category == "analysis" implies
-    # a value result without needing the flag set explicitly.
-    return "value" if (spec.category == "analysis" or spec.produces_value) else "derived image"
+    return "value" if produces_value_result(spec) else "derived image"
 
 
 def _render_op(spec: OpSpec) -> str:

@@ -91,7 +91,7 @@ def batch_operations() -> dict[str, Any]:
                 "category": spec.category,
                 "summary": spec.summary,
                 "produces": "analysis"
-                if (spec.category == "analysis" or spec.produces_value)
+                if ops.produces_value_result(spec)
                 else "image",
                 "params": [
                     _param_schema(name, param)

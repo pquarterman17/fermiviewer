@@ -87,6 +87,19 @@ class OpResult:
         return self.derived is not None
 
 
+def produces_value_result(spec: OpSpec) -> bool:
+    """True for an op whose result is a value, False for an image producer.
+
+    THE single home of the rule (ADR 0005): ``category == "analysis"``
+    implies a value result without the flag; domain categories (eels, eds,
+    diffraction, ...) opt in via ``produces_value``. Previously copied in
+    ``routes/batch_ops.py`` and ``tools/gen_api_reference.py`` — three
+    predicates that could drift apart is how a palette starts disagreeing
+    with the docs about what an op returns.
+    """
+    return spec.category == "analysis" or spec.produces_value
+
+
 @dataclass(frozen=True)
 class OpSpec:
     """A registered operation: its schema + the pure function that runs it.

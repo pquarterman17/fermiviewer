@@ -317,7 +317,12 @@ manually collecting outputs from several transient workshops.
 The HTTP surface is much broader than the registered operation catalogue.
 Close that gap in coherent waves; do not add a second scripting mechanism.
 
-- [ ] Publish a generated coverage table: GUI action -> route -> `OpSpec` ->
+**3A shipped 2026-08-22** (ADR 0005): generated audit
+`docs/operation-coverage.md` + drift test (13/80 analysis endpoints
+op-backed), frozen result conventions for the waves, `produces_value_result`
+predicate consolidated, README parity overclaim corrected.
+
+- [x] Publish a generated coverage table: GUI action -> route -> `OpSpec` ->
       batch/macro -> Python API -> result type.
 - [ ] Wave A: particles, grains, trained segmentation, layers, interfaces.
 - [ ] Wave B: GPA, CTF, atoms, lattice, and structure/defect operations.
