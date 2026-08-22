@@ -6,7 +6,12 @@ plan in `plans/` declares this file as its parent.
 
 **Status:** Active
 **Created:** 2026-08-09
-**Updated:** 2026-08-14 — PLAN_4DSTEM Tier 2 (COM/DPC/iDPC, items 7–9)
+**Updated:** 2026-08-22 — MICROSCOPY_FEATURE_ROADMAP adopted from a fresh
+feature audit against v0.1.32. It prioritises persistent results/methods,
+automation parity, exact masks, calibration/standards, registration, and
+large-data execution. 4D-STEM extensions and tomography are explicitly the
+last, optional tracks by owner decision. Previous update 2026-08-14 —
+PLAN_4DSTEM Tier 2 (COM/DPC/iDPC, items 7–9)
 shipped via phone-session PR #153 and released as **v0.1.28**; that plan is
 now Tier-3-residue-only (4 parked items). Previous update 2026-08-13:
 SPECTRAL_WORKSPACE_PLAN **Complete** and
@@ -36,18 +41,20 @@ FermiViewer is a desktop scientific image viewer: a FastAPI backend
 (`src/fermiviewer` — pure `io`/`calc`/`ops` layers under thin `routes/`,
 guarded by `tests/test_repo_integrity.py`'s layering test and 500-line
 module ratchet) and a React/zustand frontend (`frontend/src` — same
-500-line ratchet with pinned legacy caps that only move down). Two
-campaigns are live, one per sub-plan: making the spectral (EDS/EELS)
-workspaces usable for routine elemental analysis, and 4D-STEM beyond its
-shipped Phase 1 (owner-deferred DPC tier + usability follow-ups). The
-many-sample project-workflow campaign completed 2026-08-10; this root
-plan additionally carries the fold-up residue of five archived legacy
-plans (items 6–14).
+500-line ratchet with pinned legacy caps that only move down). The current
+feature-priority spine is `MICROSCOPY_FEATURE_ROADMAP.md`: persistent results,
+reproducible execution, precise regions, quantitative calibration,
+cross-modal registration, and large-data operation. The spectral workspace's
+main usability campaign and the many-sample project workflow are complete.
+Advanced 4D-STEM is parked as a rare-use specialist option rather than an
+active general campaign. This root plan additionally carries the fold-up
+residue of five archived legacy plans (items 6–14).
 
 ### Plan tree
 
 | Sub-plan | Scope | Status | Why its own file |
 |---|---|---|---|
+| MICROSCOPY_FEATURE_ROADMAP.md | Persistent scientific results, reproducible execution, exact regions, quantitative calibration/standards, cross-modal registration, and large-data operation; 4D-STEM/tomography last | Active (planning only; 7 general workstreams followed by 2 parked specialty options) | This is the current feature-priority spine. It connects previously separate workshops into one traceable microscopy workflow and records the owner's low priority for 4D-STEM/tomography |
 | ~~SPECTRAL_WORKSPACE_PLAN.md~~ | EDS+EELS shared spectrum core, species lists, batch maps, composites, synthetic-SI verification | **Complete 2026-08-13** → `plans/archive/` | All 23 items shipped across four workstreams. Closed by #11: Explore tabs species-connected (window edits write the store, live net ± σ rows, shared bg/E₀), single-element flow's duplicate controls deleted. Kept for ADR 0003's rationale and the overlap-advisory measurement record |
 | PLAN_4DSTEM.md | Lazy 4D-STEM dataset model (`FourDDataset`), MIB/HyperSpy-4D ingest, virtual-detector imaging (Phase 1 shipped 2026-08-02); COM/DPC/iDPC (Tier 2 shipped 2026-08-14, v0.1.28); parked strain/ptychography/ACOM | Active (4 open items, all parked Tier 3) | Independent lifecycle and its own architectural decision (Option B: 4D data is a source, not a `DataStruct`) with memory-streaming constraints the other two plans don't share |
 | ANALYSIS_PRESENTATION_PLAN.md | Presenting/quantifying the app's own results: peak shapes (Voigt), fit residuals + R², σ bands on charts, vector chart export, Savitzky–Golay, population histograms, fit reports, batch/scripting reach | Active, Tier 3 residue only (ALL eight engineering items shipped 2026-08-12 in four same-day waves; 4 build-on-demand items remain) | Coherent campaign with its own scope rule (image-derived results only; general graphing/statistics DECLINED per the audit) and its own sequencing |
