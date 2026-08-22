@@ -33,12 +33,17 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from importlib import resources
 from pathlib import PurePosixPath, PureWindowsPath
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 from jsonschema import Draft202012Validator
 
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
+
+if TYPE_CHECKING:
+    # Import-time would be circular: project_results builds on the helpers
+    # and error type defined here.
+    from fermiviewer.io.project_results import ResultRecord
 
 __all__ = [
     "FORMAT_MAGIC",
@@ -93,6 +98,7 @@ MANIFEST_KEYS = frozenset(
         "images",
         "samples",
         "measures",
+        "results",
         "ui_state",
     }
 )
@@ -226,6 +232,7 @@ class LoadedProject:
     images: tuple[ProjectImage, ...] = ()
     samples: tuple[dict[str, Any], ...] = ()
     measures: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    results: tuple[ResultRecord, ...] = ()
     ui_state: dict[str, Any] = field(default_factory=dict)
     payload_mode: str = "light"
     data_root_hint: str | None = None

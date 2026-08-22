@@ -33,6 +33,7 @@ from typing import Any
 from fermiviewer.io import project_paths as paths
 from fermiviewer.io import project_resolve as resolving
 from fermiviewer.io.project_manifest import LoadedProject, ProjectImage
+from fermiviewer.io.project_results import ResultRecord
 
 __all__ = [
     "HashMismatch",
@@ -58,6 +59,10 @@ class OpenProject:
     placeholders: tuple[ProjectImage, ...] = ()
     #: Folders the user has re-pointed this session, oldest first.
     extra_roots: tuple[str, ...] = ()
+    #: Persisted analysis results (ADR 0004), carried by the SERVER for the
+    #: same reason placeholders are: the client never echoes them back, so
+    #: a re-save that forgot them would silently destroy recorded science.
+    results: tuple[ResultRecord, ...] = ()
 
     @property
     def project_dir(self) -> Path:
@@ -170,9 +175,14 @@ class ProjectSession:
                     primary_param=loaded.primary_param,
                     unknown_keys=dict(loaded.unknown_keys),
                     placeholders=arriving,
+                    results=loaded.results,
                 )
                 return
             known = {img.id for img in previous.placeholders}
+            # Same append-not-overwrite rule as placeholders: a merge load
+            # must not drop the first project's recorded results, and
+            # re-loading the same file twice must not double them.
+            known_results = {rec.id for rec in previous.results}
             extra = list(previous.extra_roots)
             for root in (loaded.data_root_hint, str(Path(path).parent)):
                 if root and root not in extra:
@@ -182,6 +192,10 @@ class ProjectSession:
                 placeholders=(
                     *previous.placeholders,
                     *(img for img in arriving if img.id not in known),
+                ),
+                results=(
+                    *previous.results,
+                    *(r for r in loaded.results if r.id not in known_results),
                 ),
                 extra_roots=tuple(extra),
             )
