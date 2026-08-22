@@ -263,7 +263,12 @@
           "region_ids": {
             "type": "array",
             "items": { "type": "string" },
-            "description": "Ids of the measures/ROIs the analysis was restricted to. Same keep-on-save rule as source_ids."
+            "description": "Ids of the LIVE measures/ROIs the analysis was restricted to, for linking while they still exist. Same keep-on-save rule as source_ids. The geometry itself is in regions[] — a region edited or deleted later must not change what this record meant."
+          },
+          "regions": {
+            "type": "array",
+            "description": "SNAPSHOTS of the region definitions used, copied at compute time (conventionally the measures[] entry shape: id, kind, pts, holes, ...). Same copy-not-reference rule as calibration: region_ids link, regions reproduce. Kept schematically permissive until the roadmap item-4 canonical geometry contract; preserved verbatim on save.",
+            "items": { "type": "object" }
           },
           "params": {
             "type": "object",
@@ -271,7 +276,7 @@
           },
           "calibration": {
             "type": "array",
-            "description": "Per-source calibration SNAPSHOTS, copied at compute time: recalibrating an image later must not silently rewrite what a stored result meant. The deliberate inverse of the measures rule (areas derived, never stored).",
+            "description": "Per-source calibration SNAPSHOTS, copied at compute time: recalibrating an image later must not silently rewrite what a stored result meant. The deliberate inverse of the measures rule (areas derived, never stored). Axes are the first supported snapshot content: roadmap item 5 extends entries with quantitative keys (detector/profile/standard identity, efficiency, dose, factor sets, uncertainties); readers MUST preserve keys they do not model verbatim on save, like everywhere else in this schema.",
             "items": {
               "type": "object",
               "required": ["image_id", "axes"],
@@ -329,7 +334,7 @@
                 },
                 "member": {
                   "type": ["string", "null"],
-                  "description": "results/<result-id>/<n>.npy ZIP entry holding this output's array. Null for a fully-inline output. Must live under results/ and must not escape it. A member the container does not hold degrades the record on load; a re-save keeps the dangling reference rather than destroying the evidence."
+                  "description": "results/<result-id>/<n>.npy ZIP entry holding this output's array. Null for a fully-inline output. Must live under the OWNING record's results/<id>/ directory (a reference into another record's directory is aliasing, not sharing) and must be unique across the whole section. A member the container does not hold — or holds corrupted — degrades the record on load; a re-save keeps the dangling reference rather than destroying the evidence."
                 }
               }
             }

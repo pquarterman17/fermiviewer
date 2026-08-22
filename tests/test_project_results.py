@@ -58,6 +58,14 @@ CURVE_DATA: dict[str, Any] = {
     "y_unit": "counts",
 }
 PARAMS: dict[str, Any] = {"kv": 200.0, "model": "cliff_lorimer", "window": [1.0, 2.0]}
+#: A region snapshot in the measures[] entry shape — the geometry copied at
+#: compute time, distinct from the mutable region the id points at.
+REGION_SNAPSHOT: dict[str, Any] = {
+    "id": "m1",
+    "kind": "polygon",
+    "pts": [{"x": 0.1, "y": 0.2}, {"x": 0.6, "y": 0.2}, {"x": 0.4, "y": 0.8}],
+    "holes": [],
+}
 
 
 def _image(
@@ -107,6 +115,7 @@ def _record(rid: str = "res1") -> ResultRecord:
         derived_ids=("map-fe",),
         region_ids=("m1",),
         params=dict(PARAMS),
+        regions=(REGION_SNAPSHOT,),
         calibration=(snapshot_calibration("img1", _cal_ds()),),
         warnings=("low counts in O K",),
         outputs=(
@@ -180,6 +189,8 @@ def test_round_trip_is_deep_equal(tmp_path: Path) -> None:
     assert rec.source_ids == ("img1",)
     assert rec.derived_ids == ("map-fe",)
     assert rec.region_ids == ("m1",)
+    # the geometry snapshot survives independently of the live region (§6)
+    assert rec.regions == (REGION_SNAPSHOT,)
     assert rec.params == PARAMS
     assert rec.warnings == ("low counts in O K",)
     assert rec.error is None  # a completed record records no failure
@@ -380,8 +391,7 @@ def test_an_invalid_output_kind_is_refused_on_save(tmp_path: Path) -> None:
 
 def test_duplicate_explicit_member_paths_are_refused(tmp_path: Path) -> None:
     """A repeated member entry would write a duplicate ZIP entry and one
-    output would silently read back the other's array — within a record and
-    across records alike."""
+    output would silently read back the other's array."""
     shared = "results/r1/0.npy"
 
     def out() -> ResultOutput:
@@ -397,18 +407,24 @@ def test_duplicate_explicit_member_paths_are_refused(tmp_path: Path) -> None:
     with pytest.raises(ProjectFormatError, match="duplicate member entry"):
         save_project(tmp_path / "study.fvp", [_image()], results=[within])
 
-    across = [
-        ResultRecord(
-            id=rid,
-            analysis="eds.maps",
-            created_at=CREATED_AT,
-            status="completed",
-            outputs=(out(),),
-        )
-        for rid in ("r1", "r2")
-    ]
-    with pytest.raises(ProjectFormatError, match="duplicate member entry"):
-        save_project(tmp_path / "study.fvp", [_image()], results=across)
+
+def test_a_member_in_another_records_directory_is_refused_on_save(tmp_path: Path) -> None:
+    """A member is bound to its OWNING record's results/<id>/ directory:
+    a reference into another record's directory would silently associate
+    that record's data — aliasing, not sharing."""
+    thief = ResultRecord(
+        id="r2",
+        analysis="eds.maps",
+        created_at=CREATED_AT,
+        status="completed",
+        outputs=(
+            ResultOutput(
+                kind="map", name="x", member="results/r1/0.npy", array=np.zeros((2, 2), np.float32)
+            ),
+        ),
+    )
+    with pytest.raises(ProjectFormatError, match=r"must live under results/r2/"):
+        save_project(tmp_path / "study.fvp", [_image()], results=[thief])
 
 
 # ── load-side path safety (before any ZIP access) ────────────────────
@@ -442,6 +458,116 @@ def test_a_hostile_result_id_in_the_manifest_is_refused(tmp_path: Path) -> None:
         load_project(path)
 
 
+# ── load-side identity invariants (ADR 0004 §6) ──────────────────────
+# The schema cannot express uniqueness or ownership, so the save-side
+# invariants are re-checked on load: a crafted manifest must not alias one
+# member into many outputs, claim another record's data, or smuggle in
+# duplicate ids that a later session merge would resolve unpredictably.
+
+
+def test_duplicate_result_ids_in_a_manifest_are_refused_on_load(tmp_path: Path) -> None:
+    path = save_project(
+        tmp_path / "study.fvp",
+        [_image()],
+        results=[_meta_record("aaa"), _meta_record("bbb")],
+    )
+    _rewrite_manifest(path, lambda m: m["results"][1].__setitem__("id", "aaa"))
+
+    with pytest.raises(ProjectFormatError, match="duplicate result id"):
+        load_project(path)
+
+
+def test_an_aliased_member_in_a_manifest_is_refused_on_load(tmp_path: Path) -> None:
+    """Two outputs claiming one member would read the same array twice and
+    present it as two facts — aliasing a crafted manifest must not manage."""
+    path = save_project(tmp_path / "study.fvp", [_image()], results=[_record()])
+    _rewrite_manifest(
+        path,
+        lambda m: m["results"][0]["outputs"][2].__setitem__("member", "results/res1/1.npy"),
+    )
+
+    with pytest.raises(ProjectFormatError, match="duplicate member entry"):
+        load_project(path)
+
+
+def test_a_member_claiming_another_records_directory_is_refused_on_load(
+    tmp_path: Path,
+) -> None:
+    """Ownership binds on load exactly as on save: results/<other-id>/... in
+    record res1's outputs would silently associate another record's data."""
+    path = save_project(tmp_path / "study.fvp", [_image()], results=[_record()])
+    _rewrite_manifest(
+        path,
+        lambda m: m["results"][0]["outputs"][1].__setitem__("member", "results/zzz/0.npy"),
+    )
+
+    with pytest.raises(ProjectFormatError, match=r"must live under results/res1/"):
+        load_project(path)
+
+
+# ── member corruption degrades, never fails the project (ADR 0004 §6) ─
+
+
+def _flip_central_directory_crc(path: Path, member: bytes) -> None:
+    """Corrupt a member's recorded CRC-32 in the ZIP central directory —
+    the copy zipfile actually checks. The payload then decompresses cleanly
+    and fails only the final CRC comparison, which is the corruption mode
+    that raises zipfile.BadZipFile rather than a read error."""
+    raw = bytearray(path.read_bytes())
+    local = raw.find(member)
+    central = raw.find(member, local + 1)
+    assert central != -1, "member not present twice (local header + central directory)"
+    header = central - 46
+    assert raw[header : header + 4] == b"PK\x01\x02"
+    raw[header + 16] ^= 0xFF
+    path.write_bytes(bytes(raw))
+
+
+def _flip_compressed_stream_byte(path: Path, member: bytes) -> None:
+    """Corrupt a byte inside a member's DEFLATE stream — the corruption mode
+    that raises zlib.error mid-read."""
+    raw = bytearray(path.read_bytes())
+    local = raw.find(member)
+    assert local != -1
+    raw[local + len(member) + 50] ^= 0xFF
+    path.write_bytes(bytes(raw))
+
+
+def test_a_crc_corrupted_member_degrades_the_record_not_the_project(
+    tmp_path: Path,
+) -> None:
+    """zipfile raises BadZipFile for a bad member CRC; uncaught it would
+    reach load_project's outer handler and misreport the whole container as
+    unreadable — one damaged result must not take the images down with it
+    (ADR 0004 §6)."""
+    path = save_project(tmp_path / "study.fvp", [_image(value=5)], results=[_record()])
+    _flip_central_directory_crc(path, b"results/res1/1.npy")
+
+    loaded = load_project(path)  # no exception
+    (img,) = loaded.images
+    np.testing.assert_array_equal(img.data, np.full((3, 4), 5, np.uint16))
+    (rec,) = loaded.results
+    assert rec.missing_members == ("results/res1/1.npy",)
+    assert rec.outputs[1].array is None
+    assert rec.outputs[1].data == TABLE_DATA  # the inline half survived
+    np.testing.assert_array_equal(rec.outputs[2].array, _curve_array())
+
+
+def test_a_corrupted_deflate_stream_degrades_the_record_not_the_project(
+    tmp_path: Path,
+) -> None:
+    """Mid-stream corruption raises zlib.error, which is not an OSError —
+    uncaught it would escape load_project entirely as a raw exception."""
+    path = save_project(tmp_path / "study.fvp", [_image()], results=[_record()])
+    _flip_compressed_stream_byte(path, b"results/res1/1.npy")
+
+    loaded = load_project(path)  # no exception
+    (rec,) = loaded.results
+    assert rec.missing_members == ("results/res1/1.npy",)
+    assert rec.outputs[1].array is None
+    np.testing.assert_array_equal(rec.outputs[2].array, _curve_array())
+
+
 # ── forward compatibility (ADR 0002 §6 applied to results) ───────────
 
 
@@ -466,6 +592,62 @@ def test_unknown_record_and_output_keys_round_trip_verbatim(tmp_path: Path) -> N
     (entry,) = _manifest(resaved)["results"]
     assert entry["reviewed_by"] == "paige"
     assert entry["outputs"][0]["render_hint"] == {"digits": 3}
+
+
+def test_unknown_calibration_snapshot_keys_round_trip_verbatim(tmp_path: Path) -> None:
+    """Axes are the FIRST supported snapshot content, not the last: roadmap
+    item 5 extends calibration entries with detector/standard/factor keys,
+    and a build that predates them must carry them untouched rather than
+    quietly stripping a richer snapshot down to axes (ADR 0004 §5)."""
+    path = save_project(tmp_path / "study.fvp", [_image()], results=[_record()])
+
+    item5_keys = {
+        "detector": {"solid_angle_sr": 0.7, "takeoff_deg": 22.0},
+        "factors": {"set": "zeta-2027a", "uncertainty_pct": 4.0},
+    }
+
+    def inject(manifest: dict[str, Any]) -> None:
+        manifest["results"][0]["calibration"][0].update(item5_keys)
+
+    _rewrite_manifest(path, inject)
+
+    loaded = load_project(path)
+    (snap,) = loaded.results[0].calibration
+    assert snap.extra == item5_keys
+    assert snap.axes == (AxisCal(0.5, units="nm"), AxisCal(0.5, units="nm"))  # still modelled
+
+    resaved = save_project(tmp_path / "again.fvp", loaded.images, results=loaded.results)
+    (cal_entry,) = _manifest(resaved)["results"][0]["calibration"]
+    assert cal_entry["detector"] == item5_keys["detector"]
+    assert cal_entry["factors"] == item5_keys["factors"]
+    assert cal_entry["image_id"] == "img1"  # carried keys never shadow modelled ones
+
+
+def test_region_snapshots_reproduce_geometry_a_live_region_lost(tmp_path: Path) -> None:
+    """`region_ids` link, `regions` reproduce: the snapshot is what lets a
+    reopened record say exactly which geometry produced its numbers after
+    the live region was edited or deleted (ADR 0004 §6)."""
+    path = save_project(tmp_path / "study.fvp", [_image()], results=[_record()])
+
+    (entry,) = _manifest(path)["results"]
+    assert entry["region_ids"] == ["m1"]
+    assert entry["regions"] == [REGION_SNAPSHOT]  # geometry inline in the manifest
+
+    (rec,) = load_project(path).results
+    assert rec.regions == (REGION_SNAPSHOT,)
+
+    # non-finite coordinates are scrubbed like every other carried structure
+    # (finite_json drops a NaN-valued dict key rather than writing NaN)
+    weird = ResultRecord(
+        id="r2",
+        analysis="stats.roi",
+        created_at=CREATED_AT,
+        status="completed",
+        regions=({"id": "m2", "kind": "lasso", "pts": [{"x": float("nan"), "y": 0.5}]},),
+    )
+    path2 = save_project(tmp_path / "weird.fvp", [_image()], results=[weird])
+    (rec2,) = load_project(path2).results
+    assert rec2.regions == ({"id": "m2", "kind": "lasso", "pts": [{"y": 0.5}]},)
 
 
 def test_a_project_without_results_loads_with_an_empty_tuple(tmp_path: Path) -> None:

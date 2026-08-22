@@ -15,10 +15,8 @@ Design rules, argued in ADR 0004:
   load parse megabytes of numbers it may never look at.
 * ``status`` is ``completed | failed | cancelled`` — the vocabulary of a
   scientific *record*, deliberately distinct from the job poller's
-  ``queued/running/done/error`` (`jobs.py`), which reports cancellation as
-  an error only so pollers always reach a terminal state. A failed or
-  cancelled run is recorded separately from completed science rather than
-  pretending to be some of it.
+  ``queued/running/done/error`` (`jobs.py`): a run that did not finish is
+  recorded separately from completed science, never as some of it.
 * A **missing or unreadable member degrades the record** — arrays absent,
   the entry listed in `missing_members` — and never fails the project
   load, mirroring unavailable image placeholders. A re-save keeps the
@@ -42,6 +40,7 @@ from __future__ import annotations
 
 import uuid
 import zipfile
+import zlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any
@@ -61,6 +60,7 @@ from fermiviewer.io.project_manifest import (
 from fermiviewer.io.project_sections import finite_json
 
 __all__ = [
+    "CAL_KEYS",
     "OUTPUT_KINDS",
     "OUTPUT_KEYS",
     "RESULTS_DIR",
@@ -106,6 +106,7 @@ RESULT_KEYS = frozenset(
         "source_ids",
         "derived_ids",
         "region_ids",
+        "regions",
         "params",
         "calibration",
         "warnings",
@@ -114,6 +115,7 @@ RESULT_KEYS = frozenset(
     }
 )
 OUTPUT_KEYS = frozenset({"kind", "name", "data", "member"})
+CAL_KEYS = frozenset({"image_id", "axes", "source"})
 
 
 # ── structures ───────────────────────────────────────────────────────
@@ -127,11 +129,19 @@ class CalibrationSnapshot:
     `AxisCal` values at compute time, `source` is the image's
     ``metadata["calibration_source"]`` if it recorded one (``"fei"``,
     ``"db:<key>"``, ...) — the existing provenance convention.
+
+    Axes are the first supported snapshot content, not the last: roadmap
+    item 5's quantitative calibration (detector/profile/standard identity,
+    efficiency, dose, factor sets and their uncertainties) extends these
+    entries with further keys. `extra` carries any such key this build does
+    not model verbatim through a load → re-save, so a richer snapshot
+    written by a later build survives an older one untouched.
     """
 
     image_id: str
     axes: tuple[AxisCal, ...] = ()
     source: str | None = None
+    extra: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -167,6 +177,13 @@ class ResultRecord:
     `source_ids`/`derived_ids`/`region_ids` may name things no longer in
     the project; readers prune for display and MUST keep them on save
     (the same rule the schema states for `samples.image_ids`).
+
+    `region_ids` are links to the LIVE regions; `regions` are snapshots of
+    their definitions at compute time. Both exist because a region can be
+    edited or deleted after the result is computed: the link lets the UI
+    highlight a region that still exists, the snapshot keeps the record
+    able to say exactly what geometry produced its numbers regardless —
+    the same copy-not-reference rule as `calibration`.
     """
 
     id: str
@@ -179,6 +196,10 @@ class ResultRecord:
     source_ids: tuple[str, ...] = ()
     derived_ids: tuple[str, ...] = ()
     region_ids: tuple[str, ...] = ()
+    #: JSON-safe copies of the region definitions used, as at compute time
+    #: (conventionally the measure's `{id, kind, pts, holes, ...}` shape).
+    #: Deliberately permissive until roadmap item 4's geometry contract.
+    regions: tuple[dict[str, Any], ...] = ()
     params: dict[str, Any] = field(default_factory=dict)
     calibration: tuple[CalibrationSnapshot, ...] = ()
     warnings: tuple[str, ...] = ()
@@ -245,7 +266,7 @@ def prepare_results(results: Sequence[ResultRecord]) -> tuple[ResultRecord, ...]
             if member is None and output.array is not None:
                 member = f"{RESULTS_DIR}/{rid}/{out_index}.npy"
             if member is not None:
-                member = safe_member(member, where=f"{out_where}.member")
+                member = safe_member(member, owner_id=rid, where=f"{out_where}.member")
                 if member in seen_members:
                     raise ProjectFormatError(
                         f"{out_where}.member: duplicate member entry "
@@ -281,15 +302,9 @@ def _result_entry(record: ResultRecord) -> dict[str, Any]:
         "source_ids": [str(i) for i in record.source_ids],
         "derived_ids": [str(i) for i in record.derived_ids],
         "region_ids": [str(i) for i in record.region_ids],
+        "regions": [finite_json(region) or {} for region in record.regions],
         "params": finite_json(record.params) or {},
-        "calibration": [
-            {
-                "image_id": snap.image_id,
-                "axes": axes_to_manifest(snap.axes),
-                "source": snap.source,
-            }
-            for snap in record.calibration
-        ],
+        "calibration": [_calibration_entry(snap) for snap in record.calibration],
         "warnings": [str(w) for w in record.warnings],
         "error": record.error,
         "outputs": [_output_entry(output) for output in record.outputs],
@@ -305,6 +320,17 @@ def _output_entry(output: ResultOutput) -> dict[str, Any]:
         "member": output.member,
     }
     return merge_extra(entry, output.extra, OUTPUT_KEYS)
+
+
+def _calibration_entry(snap: CalibrationSnapshot) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "image_id": snap.image_id,
+        "axes": axes_to_manifest(snap.axes),
+        "source": snap.source,
+    }
+    # Item-5 keys a later build wrote (detector, factors, ...) ride through
+    # this build's re-save untouched, like every other carried structure.
+    return merge_extra(entry, finite_json(snap.extra) or {}, CAL_KEYS)
 
 
 def write_result_members(zf: zipfile.ZipFile, results: Sequence[ResultRecord]) -> None:
@@ -336,9 +362,34 @@ def load_results(
 
     Ids and member paths are path-checked BEFORE any ZIP access, matching
     `load_project`'s rule for image ids and rels: one hostile path
-    invalidates the manifest rather than being skipped mid-read.
+    invalidates the manifest rather than being skipped mid-read. The
+    save-side identity invariants hold here too — the schema cannot check
+    them, and a crafted manifest must not be able to alias one member into
+    many outputs, claim another record's member directory, or smuggle in
+    duplicate ids that a later session merge would resolve unpredictably.
     """
-    records = [_record_from_entry(raw, index) for index, raw in enumerate(entries)]
+    seen_ids: set[str] = set()
+    seen_members: set[str] = set()
+    records: list[ResultRecord] = []
+    for index, raw in enumerate(entries):
+        record = _record_from_entry(raw, index)
+        if record.id in seen_ids:
+            raise ProjectFormatError(
+                f"results[{index}].id: duplicate result id {record.id!r} — "
+                f"ids name the member directory and must be unique"
+            )
+        seen_ids.add(record.id)
+        for out_index, output in enumerate(record.outputs):
+            if output.member is None:
+                continue
+            if output.member in seen_members:
+                raise ProjectFormatError(
+                    f"results[{index}].outputs[{out_index}].member: duplicate "
+                    f"member entry {output.member!r} — one array must not be "
+                    f"aliased into several outputs"
+                )
+            seen_members.add(output.member)
+        records.append(record)
     return tuple(_read_arrays(zf, record) for record in records)
 
 
@@ -353,7 +404,9 @@ def _record_from_entry(raw: Mapping[str, Any], index: int) -> ResultRecord:
                 kind=str(raw_out["kind"]),
                 name=str(raw_out["name"]),
                 data=dict(raw_out.get("data") or {}),
-                member=safe_member(str(member), where=f"{where}.outputs[{out_index}].member")
+                member=safe_member(
+                    str(member), owner_id=rid, where=f"{where}.outputs[{out_index}].member"
+                )
                 if member is not None
                 else None,
                 extra=extra_keys(raw_out, OUTPUT_KEYS),
@@ -364,6 +417,7 @@ def _record_from_entry(raw: Mapping[str, Any], index: int) -> ResultRecord:
             image_id=str(snap.get("image_id") or ""),
             axes=axes_from_manifest(snap.get("axes") or ()),
             source=snap.get("source"),
+            extra=extra_keys(snap, CAL_KEYS),
         )
         for snap in raw.get("calibration") or ()
     )
@@ -378,6 +432,9 @@ def _record_from_entry(raw: Mapping[str, Any], index: int) -> ResultRecord:
         source_ids=tuple(str(i) for i in raw.get("source_ids") or ()),
         derived_ids=tuple(str(i) for i in raw.get("derived_ids") or ()),
         region_ids=tuple(str(i) for i in raw.get("region_ids") or ()),
+        regions=tuple(
+            dict(region) for region in raw.get("regions") or () if isinstance(region, Mapping)
+        ),
         params=dict(raw.get("params") or {}),
         calibration=calibration,
         warnings=tuple(str(w) for w in raw.get("warnings") or ()),
@@ -405,9 +462,13 @@ def _read_arrays(zf: zipfile.ZipFile, record: ResultRecord) -> ResultRecord:
             missing.append(output.member)
             outputs.append(output)
             continue
-        except (OSError, ValueError, EOFError):
-            # Unreadable is degraded like missing, not fatal: the images in
-            # this project still load, and the record keeps its metadata.
+        except (OSError, ValueError, EOFError, zipfile.BadZipFile, zlib.error):
+            # Unreadable degrades like missing, not fatal: the images still
+            # load and the record keeps its metadata. BadZipFile = member
+            # CRC corruption, zlib.error = corrupted DEFLATE stream — both
+            # are THIS member's damage, not the container's, and letting
+            # either escape would turn one damaged result into a project
+            # that cannot open.
             missing.append(output.member)
             outputs.append(output)
             continue
@@ -418,20 +479,21 @@ def _read_arrays(zf: zipfile.ZipFile, record: ResultRecord) -> ResultRecord:
 # ── member-path safety ───────────────────────────────────────────────
 
 
-def safe_member(member: str, *, where: str) -> str:
-    """Validate a result member path as `results/<component>/<component>…`.
+def safe_member(member: str, *, owner_id: str, where: str) -> str:
+    """Validate a member path as `results/<owner_id>/<component>…`.
 
     Same threat model as `safe_image_id`: `unzip project.fvp` is an
     advertised inspection route, so a crafted member path would plant a
-    zip-slip entry for whoever does that. `safe_posix_rel` rejects
-    absolute/drive/`..` forms; on top of that the path must live under
-    `results/` with clean, non-empty components.
+    zip-slip entry. Beyond `safe_posix_rel`'s absolute/drive/`..` checks,
+    the path must live in the OWNING record's directory with clean
+    components — a reference into another record's directory would
+    silently associate that record's data: aliasing, not sharing.
     """
     posix = safe_posix_rel(member, where=where)
     parts = posix.split("/")
-    if parts[0] != RESULTS_DIR or len(parts) < 2:
+    if parts[0] != RESULTS_DIR or len(parts) < 3 or parts[1] != owner_id:
         raise ProjectFormatError(
-            f"{where}: result member must live under {RESULTS_DIR}/, got {member!r}"
+            f"{where}: result member must live under {RESULTS_DIR}/{owner_id}/, got {member!r}"
         )
     for part in parts[1:]:
         safe_image_id(part, where=where)

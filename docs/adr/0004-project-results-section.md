@@ -86,11 +86,19 @@ not a polling state: failure and cancellation are recorded separately
 from completed science (roadmap item 1 requires this distinction), with
 the reason in `error` and no pretence of outputs.
 
-### 5. Calibration is snapshotted, not referenced
+### 5. Calibration is snapshotted, not referenced — and extensible
 
 Each record embeds a **copy** of every source image's `AxisCal` tuple
 and its `metadata.calibration_source` provenance string, taken at
-compute time. Recalibrating an image later must not silently rewrite
+compute time. Axes are the *first* supported snapshot content, not the
+last: roadmap item 5's quantitative calibration (detector/profile/
+standard identity, efficiency, dose and live-time provenance, factor
+sets and their uncertainties) extends the same entries with further
+keys rather than inventing a second snapshot mechanism. Keys this build
+does not model are carried verbatim through a load → re-save
+(`CalibrationSnapshot.extra`), so a richer snapshot written by a later
+build survives an older one untouched — the same unknown-key rule as
+every other structure in the format. Recalibrating an image later must not silently rewrite
 what a stored composition or distance meant when it was measured; a
 consumer compares the snapshot against the image's current axes to
 surface staleness explicitly. This is the deliberate inverse of the
@@ -120,6 +128,29 @@ Id lists (`source_ids`, `derived_ids`, `region_ids`) may name things no
 longer in the project; readers prune for display and keep them on save,
 the same rule the schema states for `samples.image_ids`.
 
+**Regions are snapshotted too.** `region_ids` link to the live
+measures/ROIs so a UI can highlight ones that still exist, but regions
+are mutable: they can be edited, have holes changed, or be deleted
+after a result is computed, and a record that only referenced them
+would silently come to mean different geometry (or none). Each record
+therefore also carries `regions` — JSON-safe copies of the region
+definitions at compute time, conventionally the `measures[]` entry
+shape. The same copy-not-reference rule as calibration: the id links,
+the snapshot reproduces. The entries stay schematically permissive
+until roadmap item 4 defines the canonical geometry contract, and ride
+through saves verbatim.
+
+**Load enforces the save-side identity invariants.** The JSON schema
+cannot express uniqueness or ownership, so `load_results` re-checks
+what `prepare_results` guarantees: record ids unique, member references
+unique across the section, and every member confined to its *owning*
+record's `results/<id>/` directory. A crafted manifest must not be able
+to alias one member into many outputs, claim another record's data as
+its own, or smuggle in duplicate ids that a later session merge would
+resolve unpredictably. Violations invalidate the manifest (a
+`ProjectFormatError` before any member is read), matching the hostile-
+`rel` rule for images.
+
 ### 7. Arrays load eagerly, for now
 
 `load_project` reads member arrays into memory with the rest of the
@@ -147,9 +178,12 @@ already the on-disk shape that store needs.
 with inline and member outputs across the four representative analyses
 (EDS quant, profile curve, particle table, diffraction indexing);
 manifests stay strict-JSON under non-finite params; member arrays never
-inline; missing and unreadable members degrade with `missing_members`
-set and survive a re-save; hostile result ids and member paths are
-rejected before ZIP access; duplicate ids/members are save errors;
+inline; missing, garbage, CRC-corrupted and truncated-stream members
+degrade with `missing_members` set and survive a re-save; hostile
+result ids and member paths are rejected before ZIP access; duplicate
+ids/members and foreign-directory member references are errors on save
+AND load; calibration and region snapshots round-trip with unknown
+keys carried verbatim;
 failed/cancelled records round-trip with `error` and without outputs;
 v1 migration yields no results; unknown record/output keys round-trip
 verbatim; `OpenProject` carries results through save-without-client and
