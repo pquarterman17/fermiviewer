@@ -269,18 +269,24 @@ Add a typed `results` section to `.fvp` rather than storing more opaque state in
 `ui_state`. A result references source image IDs and keeps data products
 separate from lightweight metadata.
 
-- [ ] Define a versioned result schema with stable result ID, analysis type,
+**1A shipped 2026-08-22** (PR #162, ADR 0004): schema, member storage,
+migrations, session carry, review-hardening (calibration `extra` carry, region
+geometry snapshots, load-side identity invariants, corruption degrade). 1C
+awaits the 1B consumability review per the stack gate below.
+
+- [x] Define a versioned result schema with stable result ID, analysis type,
       created time, application version, source IDs, derived IDs, region/mask
       IDs, resolved parameters, calibration snapshot, warnings, and status.
-- [ ] Represent scalar, table, curve, fit, map, overlay, and figure outputs
+      (1A also snapshots region geometry, not only ids — review finding.)
+- [x] Represent scalar, table, curve, fit, map, overlay, and figure outputs
       without giving every workshop its own persistence format.
-- [ ] Store large result arrays as project members; never inline them into the
+- [x] Store large result arrays as project members; never inline them into the
       JSON manifest.
-- [ ] Add project migration, validation, round-trip, missing-member, and
+- [x] Add project migration, validation, round-trip, missing-member, and
       forward-compatibility tests.
 - [ ] Provide a small backend/frontend result API that workshops can adopt
-      incrementally.
-- [ ] Record failure/cancellation separately from completed scientific results.
+      incrementally. (1C — gated on the 1B review.)
+- [x] Record failure/cancellation separately from completed scientific results.
 
 **Done when:** a project can save, close, reopen, and inspect a representative
 EDS quantification, profile, particle table, and diffraction indexing result
