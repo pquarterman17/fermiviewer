@@ -8,6 +8,7 @@ import {
   isFourDMeta,
   type FourDMeta,
   type ImageMeta,
+  type PersistedResultRecord,
   type SessionClientState,
   type UnavailableImage,
 } from "../lib/api";
@@ -390,6 +391,8 @@ export function sessionSlice(
     /** Images the project referenced but this machine could not find
      *  (ADR 0002 §4). Absent for callers that cannot produce any. */
     unavailable?: UnavailableImage[];
+    /** Persisted project results; absent only for pre-1B test/mocked callers. */
+    results?: PersistedResultRecord[];
   },
   fallbackOverlay: OverlayStyle,
 ): Partial<ViewerState> {
@@ -454,6 +457,7 @@ export function sessionSlice(
   return {
     images,
     unavailable,
+    persistedResults: r.results ?? [],
     order,
     activeId,
     selected: activeId ? [activeId] : [],

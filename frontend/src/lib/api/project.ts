@@ -18,6 +18,62 @@ import type { SessionClientState } from "./workspace";
  *  (transfer to another machine, hundreds of MB). */
 export type ProjectPayloadMode = "light" | "bundle";
 
+export type PersistedResultStatus = "completed" | "failed" | "cancelled";
+export type PersistedResultKind =
+  | "scalar"
+  | "table"
+  | "curve"
+  | "fit"
+  | "map"
+  | "overlay"
+  | "figure";
+
+export interface PersistedAxisCalibration {
+  scale: number;
+  origin: number;
+  units: string;
+}
+
+/** A compute-time copy. Unknown quantitative-calibration fields are retained
+ *  by the backend and intentionally remain accessible here. */
+export interface PersistedCalibrationSnapshot {
+  image_id: string;
+  axes: PersistedAxisCalibration[];
+  source: string | null;
+  [key: string]: unknown;
+}
+
+export interface PersistedResultOutput {
+  kind: PersistedResultKind;
+  name: string;
+  data?: Record<string, unknown>;
+  member?: string | null;
+  [key: string]: unknown;
+}
+
+/** Manifest-shaped result record returned by project load. Member arrays stay
+ *  server-side; missing_members is a route-only health flag. */
+export interface PersistedResultRecord {
+  id: string;
+  schema?: number;
+  analysis: string;
+  label?: string | null;
+  created_at: string;
+  app_version?: string | null;
+  status: PersistedResultStatus;
+  source_ids?: string[];
+  derived_ids?: string[];
+  region_ids?: string[];
+  regions?: Record<string, unknown>[];
+  params?: Record<string, unknown>;
+  calibration?: PersistedCalibrationSnapshot[];
+  warnings?: string[];
+  error?: string | null;
+  outputs?: PersistedResultOutput[];
+  missing_members?: string[];
+  [key: string]: unknown;
+}
+
 /** An image whose pixels this machine could not find. It keeps its name and
  *  reference, and its sample membership / parameters / measurements ride the
  *  restored client state — so nothing about it is lost, and a save writes the
@@ -44,6 +100,7 @@ export interface ProjectInfo {
   data_root_hint: string | null;
   primary_param: string | null;
   n_unavailable: number;
+  n_results: number;
   /** The payload mode of the file just read, which on an append load is not
    *  necessarily the session's. */
   loaded_payload_mode: ProjectPayloadMode;
@@ -53,6 +110,7 @@ export interface ProjectLoadResponse {
   images: ImageMeta[];
   client_state: SessionClientState | null;
   unavailable: UnavailableImage[];
+  results: PersistedResultRecord[];
   project: ProjectInfo;
 }
 
@@ -61,6 +119,7 @@ export interface ProjectSaveResponse {
   payload_mode: ProjectPayloadMode;
   n_images: number;
   n_unavailable: number;
+  n_results: number;
   dropped_samples: number;
   dropped_measures: number;
 }

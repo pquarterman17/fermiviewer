@@ -31,6 +31,9 @@ vi.mock("../workshops/InterfaceWidthWorkshop", () => ({
 vi.mock("../workshops/DefectWorkshop", () => ({
   default: () => <div>Defect workspace content</div>,
 }));
+vi.mock("../workshops/ProjectResultsWorkshop", () => ({
+  default: () => <div>Saved result cards</div>,
+}));
 
 beforeEach(() => {
   useViewer.setState({ tools: [] });
@@ -133,6 +136,17 @@ describe("ToolWindows", () => {
     render(<ToolWindows />);
     expect(screen.getByText("Compare Samples")).toBeVisible();
     expect(await screen.findByText(/No sample groups yet/)).toBeVisible();
+  });
+
+  it("gives saved results room for values, warnings and provenance", async () => {
+    useViewer.setState({ tools: [{ kind: "results", x: 10, y: 20, z: 1 }] });
+    render(<ToolWindows />);
+    const content = await screen.findByText("Saved result cards");
+    expect(screen.getByText("Results & Methods")).toBeVisible();
+    expect(content.closest(".fvd-tool-window")).toHaveStyle({
+      width: "580px",
+      height: "620px",
+    });
   });
 
   it("exposes an accessible resize grip", async () => {

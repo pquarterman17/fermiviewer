@@ -53,6 +53,7 @@ vi.mock("../lib/api", async (importOriginal) => {
         // a workspace is a `.fvp` since plan #32, so its load response carries
         // the project's identity and any placeholders alongside the images
         unavailable: [],
+        results: [],
         project: {
           path: `/cfg/workspaces/${slug}.fvp`,
           name: slug === "study" ? "Study" : slug,
@@ -61,6 +62,7 @@ vi.mock("../lib/api", async (importOriginal) => {
           data_root_hint: null,
           primary_param: null,
           n_unavailable: 0,
+          n_results: 0,
         },
       }),
     ),
@@ -101,6 +103,7 @@ beforeEach(() => {
  *  responses rather than partial ones the real endpoint never sends. */
 const LOADED_PROJECT = {
   unavailable: [],
+  results: [],
   project: {
     path: "/cfg/workspaces/saved.fvp",
     name: "Saved",
@@ -109,10 +112,11 @@ const LOADED_PROJECT = {
     data_root_hint: null,
     primary_param: null,
     n_unavailable: 0,
+    n_results: 0,
   },
 } satisfies Pick<
   Awaited<ReturnType<typeof apiLoadWorkspaceNamed>>,
-  "unavailable" | "project"
+  "unavailable" | "results" | "project"
 >;
 
 // measureSeq/groupSeq are module-level counters, not part of the Zustand

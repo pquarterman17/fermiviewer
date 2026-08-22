@@ -62,11 +62,19 @@ const PROJECT: ProjectLoadResponse["project"] = {
   data_root_hint: "/data",
   primary_param: "anneal_T",
   n_unavailable: 1,
+  n_results: 1,
 };
 
 /** One resolved image, one missing — a sample holding both. */
 const PARTIAL_LOAD: ProjectLoadResponse = {
   images: [meta("here")],
+  results: [{
+    id: "result-1",
+    analysis: "eds.quantify",
+    created_at: "2026-08-22T20:00:00Z",
+    status: "completed",
+    source_ids: ["here"],
+  }],
   unavailable: [
     { id: "gone", name: "b.tif", rel: "s2/b.tif", source: "/data/s2/b.tif", size_bytes: 512 },
   ],
@@ -110,6 +118,7 @@ describe("openProject", () => {
     expect(s.currentProject).toEqual({ path: "/p/study.fvp", name: "Study" });
     expect(s.currentWorkspace).toBeNull();
     expect(s.status).toContain("1 unavailable");
+    expect(s.persistedResults.map((result) => result.id)).toEqual(["result-1"]);
   });
 
   it("keeps pointing at the session's project, not the file just read", async () => {
@@ -149,6 +158,7 @@ describe("saveProject", () => {
       payload_mode: "light",
       n_images: 3,
       n_unavailable: 2,
+      n_results: 1,
       dropped_samples: 0,
       dropped_measures: 0,
     });
@@ -165,6 +175,7 @@ describe("saveProject", () => {
       payload_mode: "bundle",
       n_images: 1,
       n_unavailable: 0,
+      n_results: 1,
       dropped_samples: 0,
       dropped_measures: 0,
     });
@@ -183,6 +194,7 @@ describe("saveProject", () => {
       payload_mode: "light",
       n_images: 2,
       n_unavailable: 1,
+      n_results: 1,
       dropped_samples: 0,
       dropped_measures: 0,
     });
@@ -283,6 +295,7 @@ describe("browse-scale lock persistence (item 11)", () => {
       payload_mode: "light",
       n_images: 1,
       n_unavailable: 0,
+      n_results: 1,
       dropped_samples: 0,
       dropped_measures: 0,
     });
