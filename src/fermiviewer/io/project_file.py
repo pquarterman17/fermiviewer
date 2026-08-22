@@ -7,7 +7,8 @@ Spec: `docs/adr/0002-project-file-format.md`; contract:
     project.fvp                 ZIP, DEFLATE
     ├── manifest.json           schema-validated on every load
     ├── pixels/<image-id>.npy   one entry per image with embedded: true
-    └── thumbs/<image-id>.png   <= 256 px longest edge, BOTH payload modes
+    ├── thumbs/<image-id>.png   <= 256 px longest edge, BOTH payload modes
+    └── results/<result-id>/    result output arrays (ADR 0004), never inline
 
 One container cannot be separated in transfer, and it makes the save
 **atomic by construction**: staged sibling → flush + fsync → a single
@@ -77,6 +78,13 @@ from fermiviewer.io.project_manifest import (
     validate_manifest,
 )
 from fermiviewer.io.project_media import sha256_for, thumbnail_bytes
+from fermiviewer.io.project_results import (
+    ResultRecord,
+    load_results,
+    prepare_results,
+    results_to_manifest,
+    write_result_members,
+)
 from fermiviewer.io.project_v1 import V1_SUFFIXES, load_v1_as_project
 
 # Imported as modules, not by name: `data_root` and `resolve` are also public
@@ -114,6 +122,7 @@ def save_project(
     mode: PayloadMode = "light",
     samples: Sequence[Mapping[str, Any]] | None = None,
     measures: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
+    results: Sequence[ResultRecord] | None = None,
     ui_state: Mapping[str, Any] | None = None,
     data_root: str | Path | None = None,
     primary_param: str | None = None,
@@ -149,6 +158,7 @@ def save_project(
     target = _project_path(path)
     images = [_as_project_image(entry) for entry in entries]
     _check_ids(images)
+    prepared_results = prepare_results(results or ())
     root = paths.data_root(data_root, images)
     generation = uuid.uuid4().hex
     records = [
@@ -171,11 +181,12 @@ def save_project(
         "measures": {
             str(k): [dict(m) for m in v] for k, v in (measures or {}).items()
         },
+        "results": results_to_manifest(prepared_results),
         "ui_state": dict(ui_state or {}),
     }
     merge_extra(manifest, unknown_keys or {}, MANIFEST_KEYS)
     validate_manifest(manifest)
-    _write_container(target, generation, manifest, records)
+    _write_container(target, generation, manifest, records, prepared_results)
     return target
 
 
@@ -248,6 +259,7 @@ def _write_container(
     generation: str,
     manifest: Mapping[str, Any],
     records: Sequence[tuple[ProjectImage, Mapping[str, Any]]],
+    results: Sequence[ResultRecord] = (),
 ) -> None:
     """Stage the whole container, fsync it, then commit with one replace.
 
@@ -277,6 +289,7 @@ def _write_container(
                     thumb = thumbnail_bytes(img)
                     if thumb is not None:
                         zf.writestr(f"{THUMBS_DIR}/{img.id}.png", thumb)
+                write_result_members(zf, results)
             fh.flush()
             os.fsync(fh.fileno())
         os.replace(staged, target)
@@ -335,6 +348,8 @@ def load_project(path: str | Path) -> LoadedProject:
                 _load_image(zf, raw, index, rels.get(index), roots)
                 for index, raw in enumerate(raw_images)
             )
+            # Inside the `with`: member arrays live in the ZIP being read.
+            results = load_results(zf, manifest.get("results") or ())
     except zipfile.BadZipFile as exc:
         raise ProjectFormatError(
             f"{project.name} is not a readable .fvp ZIP container: {exc}"
@@ -347,6 +362,7 @@ def load_project(path: str | Path) -> LoadedProject:
             str(k): [dict(m) for m in v]
             for k, v in (manifest.get("measures") or {}).items()
         },
+        results=results,
         ui_state=dict(manifest.get("ui_state") or {}),
         payload_mode=str(manifest["payload_mode"]),
         data_root_hint=manifest.get("data_root_hint"),

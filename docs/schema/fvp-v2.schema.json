@@ -210,6 +210,138 @@
         }
       }
     },
+    "results": {
+      "type": "array",
+      "description": "Persistent analysis results (ADR 0004). Each entry is a lightweight record of one analysis run; large output arrays live as results/<result-id>/ ZIP members referenced by outputs[].member, NEVER inline here. A record whose members are missing from the container still loads, degraded — its presence must never fail a project load.",
+      "items": {
+        "type": "object",
+        "required": ["id", "analysis", "created_at", "status"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable result id; also names the results/<id>/ member directory, so it must be a single safe path component."
+          },
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1,
+            "description": "Revision of this record's shape, so a future build can migrate records individually without re-versioning the container."
+          },
+          "analysis": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Analysis type identifier, e.g. eds.quantify, measure.profile, structure.particles, diffraction.index."
+          },
+          "label": {
+            "type": ["string", "null"],
+            "description": "Short human description of this run."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO-8601 UTC timestamp of the computation (not of the save)."
+          },
+          "app_version": {
+            "type": ["string", "null"],
+            "description": "FermiViewer version that computed the result."
+          },
+          "status": {
+            "enum": ["completed", "failed", "cancelled"],
+            "description": "Record vocabulary, deliberately distinct from the job poller's queued/running/done/error: a failed or cancelled run is recorded separately from completed science, never as some of it."
+          },
+          "source_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Input image ids. MAY name ids no longer present; readers prune for display and MUST keep them on save (same rule as samples.image_ids)."
+          },
+          "derived_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Ids of images this analysis produced (element maps, label maps, ...). Same keep-on-save rule as source_ids."
+          },
+          "region_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Ids of the LIVE measures/ROIs the analysis was restricted to, for linking while they still exist. Same keep-on-save rule as source_ids. The geometry itself is in regions[] — a region edited or deleted later must not change what this record meant."
+          },
+          "regions": {
+            "type": "array",
+            "description": "SNAPSHOTS of the region definitions used, copied at compute time (conventionally the measures[] entry shape: id, kind, pts, holes, ...). Same copy-not-reference rule as calibration: region_ids link, regions reproduce. Kept schematically permissive until the roadmap item-4 canonical geometry contract; preserved verbatim on save.",
+            "items": { "type": "object" }
+          },
+          "params": {
+            "type": "object",
+            "description": "RESOLVED parameters (defaults filled in) — the reproduction key for a rerun. Non-finite floats were scrubbed at save time."
+          },
+          "calibration": {
+            "type": "array",
+            "description": "Per-source calibration SNAPSHOTS, copied at compute time: recalibrating an image later must not silently rewrite what a stored result meant. The deliberate inverse of the measures rule (areas derived, never stored). Axes are the first supported snapshot content: roadmap item 5 extends entries with quantitative keys (detector/profile/standard identity, efficiency, dose, factor sets, uncertainties); readers MUST preserve keys they do not model verbatim on save, like everywhere else in this schema.",
+            "items": {
+              "type": "object",
+              "required": ["image_id", "axes"],
+              "properties": {
+                "image_id": { "type": "string" },
+                "axes": {
+                  "type": "array",
+                  "description": "One AxisCal per data dimension of the source at compute time, same shape as images[].axes.",
+                  "items": {
+                    "type": "object",
+                    "required": ["scale", "origin", "units"],
+                    "properties": {
+                      "scale": { "type": "number" },
+                      "origin": { "type": "number" },
+                      "units": { "type": "string" }
+                    }
+                  }
+                },
+                "source": {
+                  "type": ["string", "null"],
+                  "description": "Where the calibration came from — the image's metadata.calibration_source convention (fei, gatan, db:<key>, ...)."
+                }
+              }
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Scientific caveats attached to the result (poor counts, peak interference, extrapolation, ...), kept beside the numbers they qualify."
+          },
+          "error": {
+            "type": ["string", "null"],
+            "description": "What went wrong, for status failed/cancelled. Null when completed."
+          },
+          "outputs": {
+            "type": "array",
+            "description": "Named outputs. One shared envelope for every workshop; per-kind data conventions are ADR 0004 §3.",
+            "items": {
+              "type": "object",
+              "required": ["kind", "name"],
+              "properties": {
+                "kind": {
+                  "enum": ["scalar", "table", "curve", "fit", "map", "overlay", "figure"],
+                  "description": "The closed set of output shapes (roadmap item 1)."
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Name unique within this record, e.g. composition, profile, particles."
+                },
+                "data": {
+                  "type": "object",
+                  "description": "Small inline JSON payload (a scalar's value/unit/sigma, a table's columns/units, a curve's axis names). Large numeric payloads belong in member.",
+                  "default": {}
+                },
+                "member": {
+                  "type": ["string", "null"],
+                  "description": "results/<result-id>/<n>.npy ZIP entry holding this output's array. Null for a fully-inline output. Must live under the OWNING record's results/<id>/ directory (a reference into another record's directory is aliasing, not sharing) and must be unique across the whole section. A member the container does not hold — or holds corrupted — degrades the record on load; a re-save keeps the dangling reference rather than destroying the evidence."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "ui_state": {
       "type": "object",
       "description": "Presentational state, deliberately UNVALIDATED beyond being an object: views, display windows, overlay style, savedRois, sbsPanes/sbsRows/sbsCols, browseScale. Passed through verbatim so its shape stays free to change without a format revision."

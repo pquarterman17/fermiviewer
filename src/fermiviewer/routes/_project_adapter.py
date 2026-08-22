@@ -39,6 +39,7 @@ from fermiviewer.io.project_file import (
     save_project,
 )
 from fermiviewer.io.project_manifest import LoadedProject, ProjectImage
+from fermiviewer.io.project_results import results_to_manifest
 from fermiviewer.io.project_sections import join_sections, split_client_state
 from fermiviewer.models import ImageMeta
 from fermiviewer.project_session import project
@@ -135,6 +136,10 @@ def load_into_session(path: str | Path, *, replace: bool = True) -> dict[str, An
         # append load the client must see the ones it already had too, or its
         # library would stop listing them while the server still saves them.
         "unavailable": unavailable_payload(project.placeholders()),
+        # Result records as their manifest form — metadata and member
+        # references only, never the arrays. Session-wide for the same
+        # reason `unavailable` is (ADR 0004).
+        "results": results_to_manifest(project.current().results),
         "project": _project_info(loaded),
     }
 
@@ -150,6 +155,7 @@ def _project_info(loaded: LoadedProject) -> dict[str, Any]:
         "data_root_hint": state.data_root_hint,
         "primary_param": state.primary_param,
         "n_unavailable": len(state.placeholders),
+        "n_results": len(state.results),
         # The one field that describes the FILE rather than the session, so an
         # append load can still say what it just read.
         "loaded_payload_mode": loaded.payload_mode,
@@ -187,6 +193,9 @@ def save_current(
         mode=mode,
         samples=sections.samples,
         measures=sections.measures,
+        # Server-carried, like placeholders: results survive a save even
+        # when the client never mentions them (ADR 0004).
+        results=state.results,
         ui_state=sections.ui_state,
         # See rule 2 in the module docstring.
         data_root=state.data_root_hint if placeholders else None,
@@ -201,6 +210,7 @@ def save_current(
         "payload_mode": mode,
         "n_images": len(entries),
         "n_unavailable": len(placeholders),
+        "n_results": len(state.results),
         "dropped_samples": sections.dropped_samples,
         "dropped_measures": sections.dropped_measures,
     }
