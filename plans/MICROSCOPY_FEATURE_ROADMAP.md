@@ -181,6 +181,12 @@ invent scientific values or duplicate calculation logic in TypeScript.
 - **1D — Codex/terra medium:** frontend persistence/reopen integration and UI
   test matrix once 1B establishes the visual pattern.
 
+**Stack gate:** 1C does not start until Codex has reviewed the 1A schema for
+consumability against item-2 needs — every planned card, filter, comparison,
+and methods view must be constructible from what 1A persists. Everything in
+items 2–7 consumes this contract, and a schema revision after the item-3
+waves adopt it is expensive; catch it here, before adoption.
+
 #### Item 2 stack
 
 - **2A — Codex/sol high:** Results/Methods workspace, navigation, filters,
@@ -195,7 +201,10 @@ invent scientific values or duplicate calculation logic in TypeScript.
 - **3A — Claude/high capability:** generated parity audit and frozen operation
   result conventions.
 - **3B–3D — Claude/lower-cost only after 3A:** the three registered-operation
-  waves, each with full backend/API tests.
+  waves, each with full backend/API tests. The lower-cost tier is for
+  pattern-following only: the first operation in a wave that does not fit the
+  frozen 3A conventions bounces back to the high-capability model for contract
+  work rather than being force-fit to the pattern.
 - **3E — Codex/terra medium:** recipe-builder discoverability, validation and
   progress/error UI; documentation truth pass.
 
@@ -240,7 +249,9 @@ invent scientific values or duplicate calculation logic in TypeScript.
   status UI across representative workflows.
 - **7E — Claude/high capability:** Zarr/OME-NGFF evaluation or implementation
   after a written format decision; Codex reviews only user-facing import/export
-  and registration consequences.
+  and registration consequences. The written decision must audit the licenses
+  of every required codec and dependency against the existing no-GPL-runtime-
+  dependency constraint before any implementation starts.
 
 #### Items 8–9
 
