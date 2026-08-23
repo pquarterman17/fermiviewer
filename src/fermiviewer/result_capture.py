@@ -16,8 +16,14 @@ Contract points enforced here rather than trusted to each caller
   cannot be resolved right now (an unavailable placeholder) simply
   contributes no snapshot — the id reference stays, per the keep-on-save
   rule, and nothing is invented.
-* **Failure is recorded, not decorated**: a `failed`/`cancelled` capture
-  carries `error` and whatever outputs genuinely exist (usually none).
+* **Failure is recorded, not decorated**: a `failed` capture carries
+  `error` and whatever outputs genuinely exist (usually none). Adopters
+  record COMPUTATION failures — anything raised after their inputs
+  resolved — when recording was requested; request-validation failures
+  (unknown image id, wrong data kind, schema-invalid params) are
+  deliberately not captured, because no computation was attempted.
+  `cancelled` is reserved for job-backed adopters, none of which exist
+  yet (the grains job is the first candidate).
 
 App layer on purpose: this module needs the session store and the project
 session, so it must not live in `io/`/`ops/` — the pure record types stay
@@ -26,17 +32,16 @@ in `io/project_results.py` and routes import from here.
 
 from __future__ import annotations
 
-import dataclasses
 import datetime
 from collections.abc import Callable, Iterable, Sequence
 from typing import Any
 
 from fermiviewer import __version__
 from fermiviewer.io.project_results import (
-    RESULTS_DIR,
     ResultOutput,
     ResultRecord,
     new_result_id,
+    prepare_results,
     snapshot_calibration,
 )
 from fermiviewer.project_session import project
@@ -77,18 +82,8 @@ def capture_result(
         except UnknownImageError:
             continue  # unresolved source: keep the id, invent no snapshot
         calibration.append(snapshot_calibration(source_id, ds))
-    result_id = new_result_id()
-    # Allocate member names NOW, not at first save: the query surface and
-    # the 1B output inventory report `member` from the moment of capture,
-    # and `prepare_results` preserves (and ownership-checks) existing names.
-    outputs = tuple(
-        dataclasses.replace(output, member=f"{RESULTS_DIR}/{result_id}/{index}.npy")
-        if output.array is not None and output.member is None
-        else output
-        for index, output in enumerate(outputs)
-    )
     record = ResultRecord(
-        id=result_id,
+        id=new_result_id(),
         analysis=analysis,
         created_at=clock(),
         status=status,
@@ -104,5 +99,12 @@ def capture_result(
         error=error,
         outputs=tuple(outputs),
     )
+    # Validate BEFORE the record joins the server-carried session: the 1A
+    # save-side invariants (status/kind vocabulary, member ownership and
+    # uniqueness) run here, and member names for array outputs are
+    # allocated by the same code the save path uses — so a bad capture
+    # fails this call, not the next project save after the session is
+    # already poisoned. `add_result` additionally rejects duplicate ids.
+    (record,) = prepare_results([record])
     project.add_result(record)
     return record

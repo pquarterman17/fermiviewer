@@ -11,9 +11,11 @@ rather than imported across route boundaries.
 
 from __future__ import annotations
 
+from typing import Literal
+
 import numpy as np
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from fermiviewer.calc.eds import ClResult, ZafResult, cliff_lorimer, zaf_correction
 from fermiviewer.calc.eds_maps import extract_element_maps
@@ -75,10 +77,14 @@ def _map_is_blank(arr: np.ndarray) -> bool:
 class EdsQuantifyRequest(BaseModel):
     image_id: str
     elements: list[str]
-    method: str = "cliff-lorimer"  # | "zaf"
-    half_window_kev: float = 0.085
-    thickness_nm: float = 100
-    take_off_angle_deg: float = 20
+    # A closed set, not a fallback: any other string used to silently run
+    # Cliff-Lorimer AND be recorded as the resolved reproduction method —
+    # a scientifically misleading record (1C review). Bounds likewise keep
+    # nonsense out of persisted params.
+    method: Literal["cliff-lorimer", "zaf"] = "cliff-lorimer"
+    half_window_kev: float = Field(default=0.085, gt=0)
+    thickness_nm: float = Field(default=100, gt=0)
+    take_off_angle_deg: float = Field(default=20, gt=0, le=90)
     #: Capture this run as a persisted ResultRecord (1C). Default off until
     #: the client grows its capture affordance — recording is a user
     #: decision, not a side effect of every exploratory run.
@@ -88,6 +94,26 @@ class EdsQuantifyRequest(BaseModel):
 @router.post("/eds/quantify")
 def eds_quantify(req: EdsQuantifyRequest) -> dict:
     ds = _cube(req.image_id)
+    # Input resolution is done; from here a failure is a COMPUTATION
+    # failure, which a requested capture must record rather than lose
+    # (the 1B contract's failed-state requirement).
+    try:
+        return _quantify(req, ds)
+    except (HTTPException, ValueError) as exc:
+        if req.record:
+            detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
+            capture_result(
+                analysis="eds.quantify",
+                label=f"EDS quantification of {store.name(req.image_id)}",
+                source_ids=[req.image_id],
+                params=req.model_dump(exclude={"record"}),
+                status="failed",
+                error=str(detail),
+            )
+        raise
+
+
+def _quantify(req: EdsQuantifyRequest, ds: DataStruct) -> dict:
     # half_window_kev and the line library are keV; the axis may be in eV.
     energy_kev = to_kev(ds.energy_axis, ds.energy_cal.units)
     entries = extract_element_maps(

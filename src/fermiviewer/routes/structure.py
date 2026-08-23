@@ -1,11 +1,10 @@
 """Structural-analysis endpoints: particles, atom columns, template
 matching, stitching, stack ops (plan item 28 — adapters over W3/W4
-calc). Grain segmentation lives in routes/structure_grains.py — split
-out to keep both modules comfortably under the 500-line ceiling."""
+calc). Grain segmentation lives in routes/structure_grains.py and
+particle analysis in routes/structure_particles.py — each split out to
+keep every module comfortably under the 500-line ceiling."""
 
 from __future__ import annotations
-
-import dataclasses
 
 import numpy as np
 from fastapi import APIRouter, HTTPException
@@ -19,13 +18,7 @@ from fermiviewer.calc.atoms import (
     fit_gaussian_2d,
     peak_pair_strain,
 )
-from fermiviewer.calc.particles import particle_analysis
 from fermiviewer.calc.raster import NoRasterError, raster_of
-from fermiviewer.calc.shape_metrics import (
-    ClassThresholds,
-    classify_shapes,
-    shape_descriptors,
-)
 from fermiviewer.calc.stack import align_stack, image_math, mip
 from fermiviewer.calc.stitch import stitch_images
 from fermiviewer.calc.texture import template_match
@@ -68,180 +61,6 @@ def _register(
     )
     new_id = store.add_derived(derived, name, parent_id)
     return ImageMeta.from_datastruct(new_id, name, derived).model_dump()
-
-
-# ── particle analysis ─────────────────────────────────────────────────
-
-
-class ShapeClassThresholds(BaseModel):
-    """Caller-tunable overrides for `classify_shapes`. Every field is
-    None-defaulted: an omitted field means "use the calc-layer default",
-    resolved via `dataclasses.replace` at call time so
-    `calc.shape_metrics.ClassThresholds` stays the ONLY place a default
-    value exists. This model briefly duplicated the literals and the two
-    copies drifted on the first correction (sphere cutoff 0.85→0.92
-    landed in calc only, so any partial override here silently reverted
-    it) — do not reintroduce literal defaults here."""
-
-    aggregate_max_solidity: float | None = None
-    rod_min_aspect: float | None = None
-    sphere_max_aspect: float | None = None
-    sphere_min_circularity: float | None = None
-
-
-class ParticleRequest(BaseModel):
-    image_id: str
-    threshold: float | None = None
-    polarity: str = "bright"
-    min_area: int = Field(default=1, ge=0)
-    use_watershed: bool = False
-    min_marker_distance: float = 3.0
-    class_thresholds: ShapeClassThresholds | None = None
-    #: Capture this run as a persisted ResultRecord (1C). Default off until
-    #: the client grows its capture affordance.
-    record: bool = False
-
-
-@router.post("/analyze/particles")
-def analyze_particles(req: ParticleRequest) -> dict:
-    ds, raster = _raster(req.image_id)
-    px = ds.pixel_size if np.isfinite(ds.pixel_size) else float("nan")
-    has_cal = np.isfinite(px) and px > 0
-    with value_error_as_422():
-        res = particle_analysis(
-            raster,
-            threshold=req.threshold,
-            polarity=req.polarity,
-            min_area=req.min_area,
-            pixel_size=px,
-            use_watershed=req.use_watershed,
-            min_marker_distance=req.min_marker_distance,
-        )
-    name = store.name(req.image_id)
-    # per-particle shape descriptors — SHAPE_ANALYSIS_PLAN Wave 1 #1/#2.
-    # `res.labels` is the filtered/renumbered compact 1..n label image
-    # `region_stats` already produced, so `desc`'s rows line up 1:1 with
-    # `res.particles` by position (ascending label), same guarantee
-    # `grains.grain_stats` relies on for its own regionprops_table call.
-    desc = shape_descriptors(res.labels)
-    thresholds = (
-        dataclasses.replace(ClassThresholds(), **req.class_thresholds.model_dump(exclude_none=True))
-        if req.class_thresholds is not None
-        else None
-    )
-    shape_classes = classify_shapes(desc.aspect_ratio, desc.circularity, desc.solidity, thresholds)
-    feret_calibrated = (
-        desc.feret_max_px * px if has_cal else np.full_like(desc.feret_max_px, np.nan)
-    )
-    labels_meta = _register(
-        res.labels.astype(np.float64),
-        f"particles({name})",
-        ds,
-        req.image_id,
-    )
-    body = {
-        "n_particles": res.n_particles,
-        "threshold": res.threshold,
-        "labels": labels_meta,
-        "particles": [
-            {
-                "id": p.id,
-                "area": p.area,
-                "centroid": list(p.centroid),
-                "equiv_diameter": p.equiv_diameter,
-                "mean_intensity": p.mean_intensity,
-                "area_calibrated": _nan_none(p.area_calibrated),
-                "diameter_calibrated": _nan_none(p.diameter_calibrated),
-                "circularity": float(desc.circularity[i]),
-                "aspect_ratio": _nan_none(float(desc.aspect_ratio[i])),
-                "eccentricity": float(desc.eccentricity[i]),
-                "orientation_rad": float(desc.orientation_rad[i]),
-                "solidity": float(desc.solidity[i]),
-                "feret_max": float(desc.feret_max_px[i]),
-                "feret_max_calibrated": _nan_none(float(feret_calibrated[i])),
-                "shape_class": shape_classes[i],
-            }
-            for i, p in enumerate(res.particles)
-        ],
-        "unit": ds.pixel_unit or "px",
-    }
-    if req.record:
-        body["result"] = _capture_particles(req, body, labels_meta)
-    return body
-
-
-#: The particle table's numeric columns, in member-array column order.
-_PARTICLE_COLUMNS = (
-    ("id", ""),
-    ("area", "px^2"),
-    ("equiv_diameter", "px"),
-    ("mean_intensity", ""),
-    ("area_calibrated", None),
-    ("diameter_calibrated", None),
-    ("circularity", ""),
-    ("aspect_ratio", ""),
-    ("eccentricity", ""),
-    ("orientation_rad", "rad"),
-    ("solidity", ""),
-    ("feret_max", "px"),
-    ("feret_max_calibrated", None),
-)
-
-
-def _capture_particles(req: ParticleRequest, body: dict, labels_meta: dict) -> dict:
-    """This run as a persisted ResultRecord (ADR 0004): particle counts as
-    scalars, the numeric morphometrics as a member-backed table (thousands
-    of rows must never inline into manifest.json), shape classes inline,
-    and the registered label map as a derived id."""
-    from fermiviewer.io.project_results import ResultOutput
-    from fermiviewer.result_capture import capture_result
-
-    unit = body["unit"]
-    columns = [name for name, _ in _PARTICLE_COLUMNS]
-    units = [
-        (u if u is not None else (f"{unit}^2" if name.startswith("area") else unit))
-        for name, u in _PARTICLE_COLUMNS
-    ]
-    rows = np.array(
-        [
-            [np.nan if p[name] is None else float(p[name]) for name in columns]
-            for p in body["particles"]
-        ],
-        dtype=np.float64,
-    ).reshape(len(body["particles"]), len(columns))
-    outputs = [
-        ResultOutput(
-            kind="scalar",
-            name="n_particles",
-            data={"value": body["n_particles"], "unit": ""},
-        ),
-        ResultOutput(
-            kind="scalar",
-            name="threshold",
-            data={"value": body["threshold"], "unit": ""},
-        ),
-        ResultOutput(
-            kind="table",
-            name="particles",
-            data={
-                "columns": columns,
-                "units": units,
-                "shape_class": [p["shape_class"] for p in body["particles"]],
-            },
-            array=rows,
-        ),
-    ]
-    record = capture_result(
-        analysis="structure.particles",
-        label=f"Particle analysis of {store.name(req.image_id)}",
-        source_ids=[req.image_id],
-        # Resolved params: res.threshold is the value actually used, which
-        # differs from the request when auto-thresholding picked it.
-        params={**req.model_dump(exclude={"record"}), "threshold": body["threshold"]},
-        outputs=outputs,
-        derived_ids=[labels_meta["id"]],
-    )
-    return {"id": record.id, "created_at": record.created_at}
 
 
 def _nan_none(v: float) -> float | None:
