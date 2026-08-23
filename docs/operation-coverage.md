@@ -9,7 +9,7 @@ Route and op inventories are read live from the app and registry at generation t
 
 ## Summary
 
-- **139** HTTP endpoints; **80** perform analysis, 3 are physics-table lookups, and 56 are allowlisted infrastructure.
+- **140** HTTP endpoints; **80** perform analysis, 3 are physics-table lookups, and 57 are allowlisted infrastructure.
 - **13 of 80** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **29** ops in total.
 - Registered-op reach IS headless reach: batch recipes, folder watch, `fv --script`, and the Python API all resolve steps through the same registry and cannot call anything else.
 - Remaining item-3 work: wave A (13), wave B (10), wave C (10), wave D (26) endpoints; 8 are parked behind the item-8/9 activation gates. Item 3 does not close while any analysis row lacks a wave or a named gate — every endpoint is assigned, none is silently deferred.
@@ -143,9 +143,9 @@ Route and op inventories are read live from the app and registry at generation t
 
 ## Registered ops with no route
 
-Reachable from batch/Python but absent from the GUI's own wiring (`image_stats` reaches the GUI only via `/api/export/table`).
+Reachable from batch/Python but absent from the GUI's own wiring.
 
-- `image_stats` — Raster mean/std/min/max
+- `image_stats` — Raster mean/std/min/max (reaches the GUI only via `/api/export/table`)
 - `savgol` — Savitzky-Golay smoothing of a spectrum (a SPECTRUM_IMAGE cube is spatially summed first, like eels_quantify)
 - `savgol_derivative` — Savitzky-Golay derivative of a spectrum; delta is the energy axis's calibrated scale when calibrated, else 1.0/channel. Output y-units are d(counts)/d(energy unit), unlike the input's raw counts -- see the module docstring's units note
 
@@ -217,3 +217,4 @@ Session, project, render, export, jobs, calibration-store and dataset plumbing �
 - `POST /api/workspaces/load`
 - `POST /api/workspaces/save`
 - `DELETE /api/workspaces/{slug}`
+- `WS /api/ws`

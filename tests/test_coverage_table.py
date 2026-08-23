@@ -3,9 +3,10 @@
 Same pattern as tests/test_api_reference.py: the committed audit is
 byte-compared against an in-memory regeneration, so a new route, a new op,
 or an edited classification cannot leave the published parity table stale.
-The generator itself fails on an unclassified analysis-prefix route, so
-this test failing is always "regenerate or classify", never a judgement
-call.
+The generator itself fails on ANY live route (HTTP or WebSocket) that no
+classification covers — analysis, reference, or the infrastructure
+allowlist — so this test failing is always "regenerate or classify",
+never a judgement call.
 """
 
 from __future__ import annotations

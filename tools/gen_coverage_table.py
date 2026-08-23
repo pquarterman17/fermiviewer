@@ -504,6 +504,7 @@ INFRASTRUCTURE: tuple[tuple[str, str], ...] = (
     ("GET", "/api/fourd/{fourd_id}/meta"),
     ("POST", "/api/fourd/{fourd_id}/reshape"),
     ("GET", "/api/health"),
+    ("WS", "/api/ws"),
     ("DELETE", "/api/image/{img_id}"),
     ("GET", "/api/image/{img_id}/data16"),
     ("POST", "/api/image/{img_id}/explode"),
@@ -554,8 +555,16 @@ WAVE_LABEL = {
 
 
 def app_routes() -> set[tuple[str, str]]:
-    """(method, path) for every HTTP endpoint the app serves."""
-    from fastapi.routing import APIRoute
+    """(method, path) for every API endpoint the app serves.
+
+    Covers HTTP routes AND WebSocket routes (as method ``"WS"``) — the
+    lifecycle socket `/api/ws` is a real endpoint and a future analysis
+    surface could arrive as one, so the total-classification guarantee
+    must see them. Deliberately out of scope: FastAPI's own docs routes
+    (`/docs`, `/redoc`, `/openapi.json`) and the static SPA mount, which
+    are framework plumbing, not application endpoints.
+    """
+    from fastapi.routing import APIRoute, APIWebSocketRoute
 
     from fermiviewer.server import create_app
 
@@ -566,6 +575,8 @@ def app_routes() -> set[tuple[str, str]]:
             if isinstance(route, APIRoute):
                 for method in (route.methods or set()) - {"HEAD", "OPTIONS"}:
                     found.add((method, prefix + route.path))
+            elif isinstance(route, APIWebSocketRoute):
+                found.add(("WS", prefix + route.path))
             elif hasattr(route, "original_router"):
                 # FastAPI's lazily-included router wrapper: recurse with
                 # the include-time prefix applied.
@@ -580,10 +591,9 @@ def curated_analysis() -> list[Row]:
     return [row for domain in DOMAINS for row in domain.rows]
 
 
-def cross_check() -> None:
+def cross_check(live: set[tuple[str, str]]) -> None:
     """Fail loudly on any drift between the app, the registry, and the
     curated classification — this is what makes the audit trustworthy."""
-    live = app_routes()
     rows = curated_analysis()
     analysis = {(row.method, row.path) for row in rows}
     reference = set(REFERENCE)
@@ -617,6 +627,15 @@ def cross_check() -> None:
             raise SystemExit(
                 f"{row.path}: wave {row.wave!r} is not an assignment — every "
                 f"analysis row needs one of {sorted(WAVE_LABEL)}"
+            )
+        # "shipped" is not independent state — it MEANS op-backed. A row
+        # that breaks the equivalence would silently corrupt the headline
+        # parity counts while both drift tests stayed green.
+        if (row.wave == "shipped") != bool(row.ops):
+            raise SystemExit(
+                f"{row.path}: wave {row.wave!r} contradicts its op list "
+                f"{row.ops!r} — 'shipped' if and only if a registered op "
+                f"backs the route"
             )
 
 
@@ -673,17 +692,27 @@ def _analysis_sections() -> list[str]:
     return lines
 
 
+#: Curated context for a stranded op, rendered only while that op is
+#: actually in the list below — prose about a specific op must not
+#: outlive the introspection that governs its row.
+STRANDED_OP_NOTES = {
+    "image_stats": "reaches the GUI only via `/api/export/table`",
+}
+
+
 def _ops_without_routes() -> list[str]:
     referenced = {name for row in curated_analysis() for name in row.ops}
     stranded = [spec for spec in fvops.list_ops() if spec.name not in referenced]
     lines = [
         "## Registered ops with no route",
         "",
-        "Reachable from batch/Python but absent from the GUI's own wiring "
-        "(`image_stats` reaches the GUI only via `/api/export/table`).",
+        "Reachable from batch/Python but absent from the GUI's own wiring.",
         "",
     ]
-    lines += [f"- `{spec.name}` — {_cell(spec.summary)}" for spec in stranded]
+    for spec in stranded:
+        note = STRANDED_OP_NOTES.get(spec.name)
+        suffix = f" ({note})" if note else ""
+        lines.append(f"- `{spec.name}` — {_cell(spec.summary)}{suffix}")
     lines.append("")
     return lines
 
@@ -698,8 +727,8 @@ def _compact_listing(title: str, blurb: str, pairs: list[tuple[str, str]]) -> li
 def build_markdown() -> str:
     """The whole document as a string; no filesystem I/O (the drift-guard
     test compares this against the committed file without touching it)."""
-    cross_check()
     live = app_routes()
+    cross_check(live)
     infra = sorted(INFRASTRUCTURE, key=lambda pair: (pair[1], pair[0]))
 
     lines: list[str] = [

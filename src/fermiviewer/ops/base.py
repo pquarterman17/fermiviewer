@@ -18,7 +18,7 @@ from typing import Any
 
 from fermiviewer.datastruct import DataStruct
 
-__all__ = ["OpParam", "OpResult", "OpSpec", "ParamError"]
+__all__ = ["OpParam", "OpResult", "OpSpec", "ParamError", "produces_value_result"]
 
 
 class ParamError(ValueError):
@@ -58,9 +58,7 @@ class OpParam:
                 f"param '{name}': cannot coerce {value!r} to {self.ptype.__name__}"
             ) from None
         if self.choices is not None and out not in self.choices:
-            raise ParamError(
-                f"param '{name}': {out!r} not in {self.choices}"
-            )
+            raise ParamError(f"param '{name}': {out!r} not in {self.choices}")
         if isinstance(out, (int, float)) and not isinstance(out, bool):
             if self.minimum is not None and out < self.minimum:
                 raise ParamError(f"param '{name}': {out} < min {self.minimum}")
