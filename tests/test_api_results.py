@@ -236,6 +236,22 @@ def test_an_unknown_eds_method_is_rejected_not_recorded(client, eds_cube_id) -> 
     assert r.status_code == 422
     assert client.get("/api/results").json()["results"] == []
 
+    # exactly 90° take-off is outside zaf_correction's (0, 90) domain, so
+    # it must be request validation (nothing recorded), not a captured
+    # computation failure
+    r = client.post(
+        "/api/eds/quantify",
+        json={
+            "image_id": eds_cube_id,
+            "elements": ["Fe"],
+            "method": "zaf",
+            "take_off_angle_deg": 90,
+            "record": True,
+        },
+    )
+    assert r.status_code == 422
+    assert client.get("/api/results").json()["results"] == []
+
 
 def test_a_computation_failure_is_captured_as_a_failed_record(
     client,

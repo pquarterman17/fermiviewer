@@ -84,7 +84,10 @@ class EdsQuantifyRequest(BaseModel):
     method: Literal["cliff-lorimer", "zaf"] = "cliff-lorimer"
     half_window_kev: float = Field(default=0.085, gt=0)
     thickness_nm: float = Field(default=100, gt=0)
-    take_off_angle_deg: float = Field(default=20, gt=0, le=90)
+    # Strict upper bound, matching zaf_correction's own (0, 90) check: at
+    # exactly 90° the calculation refuses, so admitting it here would turn
+    # invalid input into a captured "failed" scientific record.
+    take_off_angle_deg: float = Field(default=20, gt=0, lt=90)
     #: Capture this run as a persisted ResultRecord (1C). Default off until
     #: the client grows its capture affordance — recording is a user
     #: decision, not a side effect of every exploratory run.
