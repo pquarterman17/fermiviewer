@@ -10,9 +10,9 @@ Route and op inventories are read live from the app and registry at generation t
 ## Summary
 
 - **144** HTTP endpoints; **80** perform analysis, 3 are physics-table lookups, and 61 are allowlisted infrastructure.
-- **20 of 80** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **36** ops in total.
+- **28 of 80** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **44** ops in total.
 - Registered-op reach IS headless reach: batch recipes, folder watch, `fv --script`, and the Python API all resolve steps through the same registry and cannot call anything else.
-- Remaining item-3 work: wave A (6), wave B (10), wave C (10), wave D (26) endpoints; 8 are parked behind the item-8/9 activation gates. Item 3 does not close while any analysis row lacks a wave or a named gate — every endpoint is assigned, none is silently deferred.
+- Remaining item-3 work: wave A (6), wave B (2), wave C (10), wave D (26) endpoints; 8 are parked behind the item-8/9 activation gates. Item 3 does not close while any analysis row lacks a wave or a named gate — every endpoint is assigned, none is silently deferred.
 
 ## Analysis endpoints
 
@@ -22,16 +22,16 @@ Route and op inventories are read live from the app and registry at generation t
 |---|---|---|---|---|
 | `POST /api/filter` | Image menu, Stage tools. *`crop` and arbitrary-angle `rotate` kinds have no op* | `gaussian`, `median`, `unsharp`, `butterworth`, `clahe`, `bin`, `plane_level`, `morph`, `multiotsu`, `rotate90`, `rotate180`, `rotate270`, `fliph`, `flipv` | map (derived image) | shipped |
 | `POST /api/strip-databar` | Image menu | — | map (derived image) | wave D |
-| `POST /api/image/{img_id}/fft` | Image menu; Lattice/GPA/FFT-mask modes | — | map | wave B |
-| `POST /api/analyze/fft-mask` | FFT Mask workshop | — | map | wave B |
-| `POST /api/analyze/vdf` | Image menu | — | map | wave B |
-| `POST /api/analyze/gpa` | Structure workshop, Template/GPA mode | — | map ×4 + scalar ×4 | wave B |
+| `POST /api/image/{img_id}/fft` | Image menu; Lattice/GPA/FFT-mask modes. *op flattens the optional local-FFT rect to NaN-sentinel floats; the derived image drops calibration (FFT space)* | `fft` | map | shipped |
+| `POST /api/analyze/fft-mask` | FFT Mask workshop. *wave-B bounce-back: `masks` is a variable-length (row, col, radius) coordinate-triple list — structured params, ADR 0005 addendum gap 2 (2026-08-23)* | — | map | wave B |
+| `POST /api/analyze/vdf` | Image menu. *op flattens the aperture centre to two required floats* | `vdf` | map | shipped |
+| `POST /api/analyze/gpa` | Structure workshop, Template/GPA mode. *the four strain maps inline as `map` envelopes in the op; the route registers them as session images (grains precedent, ADR 0005 wave-B addendum)* | `gpa` | map ×4 + scalar ×4 | shipped |
 | `POST /api/analyze/radial` | Image menu. *azimuthal sector mode has no op* | `radial_profile` | curve ×2 | shipped |
 | `POST /api/analyze/roughness` | Roughness workshop. *route adds bearing curve + ROI* | `roughness` | scalar set + curve (bearing) | shipped |
 | `POST /api/analyze/noise` | Noise workshop. *route adds block stats + ROI* | `noise` | scalar set + fit + curve | shipped |
 | `POST /api/analyze/interface-width` | Interface Width workshop. *no image subject — op ignores `ds`, profile travels as x/y CSV (`distribution_fit` precedent, blessed in ADR 0005's wave-A addendum)* | `interface_width` | fit | shipped |
-| `POST /api/analyze/lattice` | Lattice mode | — | scalar set | wave B |
-| `POST /api/analyze/ctf` | Structure workshop, CTF mode | — | fit + curve ×2 + scalar | wave B |
+| `POST /api/analyze/lattice` | Lattice mode. *op flattens the two FFT spot picks to four required floats; unset pixel_size (NaN) falls back to the image calibration* | `lattice` | scalar set | shipped |
+| `POST /api/analyze/ctf` | Structure workshop, CTF mode. *the route's exclusive pixel_size_a > 0 bound is enforced in the op fn (OpParam has no exclusive minimum — ADR 0005 wave-B addendum)* | `ctf` | fit + curve ×2 + scalar | shipped |
 | `POST /api/analyze/montage` | Image menu | — | figure | wave C |
 | `POST /api/analyze/montage-compare` | — (no GUI caller) | — | figure | wave C |
 
@@ -43,10 +43,10 @@ Route and op inventories are read live from the app and registry at generation t
 | `POST /api/analyze/efd-similarity` | Particles mode. *op drops the route's dead inherited `class_thresholds` field* | `efd_similarity` | table | shipped |
 | `POST /api/analyze/fit-shape` | Inspector, Regions card. *wave-A bounce-back: no image subject AND a variable-length coordinate-pair list (ADR 0005 addendum 2026-08-23)* | — | fit ×2 + overlay | wave A |
 | `POST /api/regions/propose` | Inspector, Regions card. *op flattens seed/rect to NaN-sentinel floats (`composition_profile` x1/y1 precedent)* | `propose_region` | overlay | shipped |
-| `POST /api/analyze/atoms` | Atom Column panel | — | table + overlay + scalar | wave B |
-| `POST /api/atoms/strain` | Atom Column panel | — | table + scalar | wave B |
-| `POST /api/analyze/template-match` | Template/GPA mode | — | table + overlay | wave B |
-| `POST /api/analyze/defects` | Defect workshop | — | scalar + overlay + map ×2 | wave B |
+| `POST /api/analyze/atoms` | Atom Column panel. *the detect/refine/lattice/sublattice/strain composition is lifted to calc/atom_report.py, shared with /atoms/strain* | `atoms` | table + overlay + scalar | shipped |
+| `POST /api/atoms/strain` | Atom Column panel. *wave-B bounce-back: `positions` is a variable-length coordinate-pair list AND there is no image subject — the fit-shape shape exactly (structured params, ADR 0005 addendum gap 2, 2026-08-23)* | — | table + scalar | wave B |
+| `POST /api/analyze/template-match` | Template/GPA mode. *op flattens the template rect to four required ints — (row, col, height, width), deliberately NOT the corner-ROI string other ops use* | `template_match` | table + overlay | shipped |
+| `POST /api/analyze/defects` | Defect workshop. *the two diagnostic maps inline as `map` envelopes in the op; the route registers them as session images (grains precedent, ADR 0005 wave-B addendum)* | `defects` | scalar + overlay + map ×2 | shipped |
 | `POST /api/analyze/distribution` | Population histogram panel | `distribution_fit` | scalar set + curve + fit ×3 | shipped |
 
 ### Grains & layers

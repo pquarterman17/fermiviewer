@@ -249,9 +249,19 @@ The registered operation catalogue: name, category, summary, params.
 
 ## Operation catalogue
 
-36 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
+44 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
 
 ### analysis
+
+#### `ctf` — Defocus estimate from Thon rings: radial power spectrum + fitted |CTF|² (calc/ctf.estimate_ctf)
+
+*category: `analysis` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `voltage_kv` | `float` | 200.0 | no |  |  | beam voltage (kV) |
+| `cs_mm` | `float` | 1.2 | no |  |  | spherical aberration (mm) |
+| `pixel_size_a` | `float` | 1.0 | no |  | [0.0, ] | pixel size (Å/px); must be > 0 (the route's gt=0 bound, enforced in the op fn) |
 
 #### `distribution_fit` — Population summary + histogram + normal/lognormal/weibull fit over a raw value list (calc/distributions.py) — for particle/grain size populations extracted elsewhere in a script
 
@@ -261,6 +271,20 @@ The registered operation catalogue: name, category, summary, params.
 |---|---|---|---|---|---|---|
 | `values` | `str` |  | yes |  |  | comma-separated numeric values, e.g. particle equivalent diameters '12.3,45.6,78.9' |
 | `fit` | `str` | all | no | 'all', 'normal', 'lognormal', 'weibull', 'none' |  | 'all' fits + AIC-picks the best; a single kind fits only that one; 'none' returns summary + histogram only |
+
+#### `gpa` — Geometric phase analysis strain/rotation maps + field means (calc/gpa.geometric_phase_analysis + gpa_mean_strain). The four maps inline as `map` envelopes — the route registers them as session images instead (grains precedent, ADR 0005 wave-B addendum)
+
+*category: `analysis` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `g1x` | `float` |  | yes |  |  | 1st reciprocal vector x (FFT-pixel offset from centre) |
+| `g1y` | `float` |  | yes |  |  | 1st reciprocal vector y |
+| `g2x` | `float` |  | yes |  |  | 2nd reciprocal vector x |
+| `g2y` | `float` |  | yes |  |  | 2nd reciprocal vector y |
+| `mask_radius` | `float` | 0.0 | no |  | [0.0, ] | Gaussian mask radius (FFT px); 0 = auto (min(\|g1\|,\|g2\|)/3, the calc's own sentinel) |
+| `mask_order` | `float` | 2.0 | no |  |  | Gaussian mask order |
+| `pixel_size` | `float` | 1.0 | no |  |  | real-space calibration (unit/px); the route takes it from the request, not the image — mirrored |
 
 #### `image_stats` — Raster mean/std/min/max
 
@@ -277,6 +301,18 @@ The registered operation catalogue: name, category, summary, params.
 | `x` | `str` |  | yes |  |  | comma-separated profile positions, e.g. '0,1,2,...' |
 | `y` | `str` |  | yes |  |  | comma-separated profile intensities (same length as x) |
 | `model` | `str` | erf | no | 'erf', 'sigmoid' |  | transition model to fit |
+
+#### `lattice` — Real-space lattice parameters from two reciprocal-space spot picks on the fftshifted FFT (calc/lattice.lattice_measure)
+
+*category: `analysis` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `spot1_row` | `float` |  | yes |  |  | 1st FFT spot row, 1-based, fftshifted |
+| `spot1_col` | `float` |  | yes |  |  | 1st FFT spot col, 1-based |
+| `spot2_row` | `float` |  | yes |  |  | 2nd FFT spot row, 1-based |
+| `spot2_col` | `float` |  | yes |  |  | 2nd FFT spot col, 1-based |
+| `pixel_size` | `float` | nan | no |  |  | real-space calibration (unit/px); leave unset (NaN) to use the image's own, falling back to 1.0 |
 
 #### `noise` — Noise, SNR, and type estimate
 
@@ -451,6 +487,17 @@ The registered operation catalogue: name, category, summary, params.
 | `clip_limit` | `float` | 0.01 | no |  | [0.0, ] |  |
 | `num_bins` | `int` | 256 | no |  | [2, ] |  |
 
+#### `fft` — Log-magnitude centred 2D FFT as a derived image (calc/fourier.compute_fft); the optional rect computes the LOCAL FFT of that region only (calc/fourier.local_fft_region)
+
+*category: `filter` · produces: derived image*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `rect_r1` | `float` | nan | no |  |  | local-FFT region corner row, 1-based inclusive; give all four rect_* or none |
+| `rect_c1` | `float` | nan | no |  |  | region corner col |
+| `rect_r2` | `float` | nan | no |  |  | opposite corner row |
+| `rect_c2` | `float` | nan | no |  |  | opposite corner col |
+
 #### `gaussian` — Gaussian blur
 
 *category: `filter` · produces: derived image*
@@ -501,6 +548,18 @@ The registered operation catalogue: name, category, summary, params.
 |---|---|---|---|---|---|---|
 | `sigma` | `float` | 2.0 | no |  | [0.0, ] |  |
 | `amount` | `float` | 1.0 | no |  | [0.0, ] |  |
+
+#### `vdf` — Virtual dark-field image via FFT aperture masking (calc/eds_maps.virtual_dark_field)
+
+*category: `filter` · produces: derived image*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `center_row` | `float` |  | yes |  |  | aperture centre row, 1-based, on the fftshifted FFT |
+| `center_col` | `float` |  | yes |  |  | aperture centre col, 1-based |
+| `radius` | `float` | 10.0 | no |  |  | aperture radius (FFT px) |
+| `shape` | `str` | circle | no | 'circle', 'annulus' |  |  |
+| `inner_radius` | `float` | 0.0 | no |  | [0.0, ] | annulus inner radius (FFT px) |
 
 ### geometry
 
@@ -556,6 +615,33 @@ The registered operation catalogue: name, category, summary, params.
 | `order` | `int` | 1 | no |  | [1, ] | derivative order; must satisfy 1 <= order <= polyorder |
 
 ### structure
+
+#### `atoms` — Atom-column detection + Gaussian refinement, lattice basis, optional sublattice labels and PPA strain (calc/atom_report.atom_column_report)
+
+*category: `structure` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `sigma` | `float` | 2.0 | no |  |  | detection smoothing (px) |
+| `threshold` | `float` | 0.2 | no |  |  | relative detection threshold |
+| `min_separation` | `float` | 8.0 | no |  |  | minimum column separation (px) |
+| `polarity` | `str` | bright | no | 'bright', 'dark' |  |  |
+| `refine` | `bool` | True | no |  |  | per-column 2D Gaussian refinement |
+| `win_radius` | `int` | 6 | no |  |  | refinement window radius (px) |
+| `strain` | `bool` | False | no |  |  | also compute peak-pair strain |
+| `sublattices` | `int` | 1 | no |  | [1, 4] | cluster columns into this many sublattices |
+
+#### `defects` — Line-defect density via oriented filtering + line intercepts (calc/defects.count_defect_lines); the two diagnostic maps inline as `map` envelopes — the route registers them as session images instead (grains precedent, ADR 0005 wave-B addendum)
+
+*category: `structure` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `direction` | `float` | nan | no |  |  | defect direction (deg); leave unset (NaN) to sweep 0/45/90/135° |
+| `kernel_length` | `int` | 15 | no |  | [1, ] | oriented-filter length (px) |
+| `grid_spacing` | `int` | 50 | no |  | [1, ] | test-line spacing (px) |
+| `roi` | `str` |  | no |  |  | 'r1,c1,r2,c2' 1-based inclusive analysis rectangle; empty = whole image |
+| `foil_thickness` | `float` | nan | no |  |  | foil thickness in the image's calibrated unit; must be > 0 when given (NaN = unknown, areal density only) |
 
 #### `efd_similarity` — Segment particles, then rank every region by elliptic-Fourier shape distance to a reference region (calc/efd_rank.rank_by_efd). Note: the route's dead `class_thresholds` field is deliberately not mirrored — classification never enters similarity
 
@@ -654,4 +740,17 @@ The registered operation catalogue: name, category, summary, params.
 | `n_classes` | `int` | 3 | no |  | [2, 5] | multi-Otsu classes |
 | `morph_radius` | `int` | 1 | no |  |  | closing radius (px) cleaning the mask |
 | `tolerance` | `float` | 2.0 | no |  |  | contour simplification tolerance (px) |
+
+#### `template_match` — FFT-based normalized cross-correlation matching of a template cut from the same image (calc/texture.template_match_rect). The rect is (row, col, height, width), 1-based — NOT the 'r1,c1,r2,c2' corner ROI other ops use
+
+*category: `structure` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `rect_row` | `int` |  | yes |  |  | template top row, 1-based |
+| `rect_col` | `int` |  | yes |  |  | template left col, 1-based |
+| `rect_height` | `int` |  | yes |  |  | template height (px) |
+| `rect_width` | `int` |  | yes |  |  | template width (px) |
+| `threshold` | `float` | 0.7 | no |  | [0.0, 1.0] | NCC score floor |
+| `max_matches` | `int` | 100 | no |  |  | cap on returned matches |
 

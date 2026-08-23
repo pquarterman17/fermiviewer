@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from fermiviewer.calc.ctf import estimate_ctf
 from fermiviewer.calc.eds_maps import virtual_dark_field
 from fermiviewer.calc.fourier import fft_mask_inverse
-from fermiviewer.calc.gpa import geometric_phase_analysis
+from fermiviewer.calc.gpa import geometric_phase_analysis, gpa_mean_strain
 from fermiviewer.calc.lattice import lattice_measure
 from fermiviewer.calc.montage import montage as calc_montage
 from fermiviewer.calc.profile_stats import fit_interface_width
@@ -90,7 +90,7 @@ def analyze_gpa(req: GpaRequest) -> dict:
             _register(m, f"{key}({name})", ds, req.image_id)
             for key, m in maps.items()
         ],
-        "mean": {k: float(np.nanmean(m)) for k, m in maps.items()},
+        "mean": gpa_mean_strain(res),
     }
 
 
