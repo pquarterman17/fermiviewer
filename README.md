@@ -235,9 +235,12 @@ Feature walkthroughs, screenshots, and how-tos live in the
 
 ## Scripting
 
-Everything the GUI can do is also a headless Python surface —
+Every **registered operation** is also a headless Python surface —
 `fermiviewer.api` — the same engine the server and a notebook both use,
-with no FastAPI/browser dependency:
+with no FastAPI/browser dependency. Registered-op coverage of the GUI's
+analysis surface is partial and growing wave by wave; the generated
+audit of exactly what is reachable headlessly is
+[`docs/operation-coverage.md`](docs/operation-coverage.md):
 
 ```python
 import fermiviewer.api as fv
@@ -259,7 +262,7 @@ print(denoised.methods())       # "scan.dm4 was processed with fermiviewer X.Y.Z
 | `Result.value` / `.image` / `.params` | A plain value (scalar/table), a derived `Image`, and the resolved parameters |
 | `Result.to_csv()` / `.to_json()` | Export a dict-shaped result as a table |
 | `Image.methods()` / `.provenance_json()` | A reproducible methods paragraph / full JSON ancestry for that image's pipeline |
-| **op categories** | `filter`, `geometry`, `analysis`, `eels`, `eds`, `diffraction` — see `fv.ops()` or `docs/api-reference.md` for the full, generated list with every parameter |
+| **op categories** | `filter`, `geometry`, `analysis`, `spectral`, `eels`, `eds`, `diffraction` — see `fv.ops()` or `docs/api-reference.md` for the full, generated list with every parameter |
 
 Full generated reference (every class, method, and op parameter,
 regenerated from source): **[`docs/api-reference.md`](docs/api-reference.md)**.
@@ -357,6 +360,7 @@ npx @tauri-apps/cli@^2 build --config \
 | `docs/parity_report.md` | Three-way parity vs the MATLAB reference + design prototype |
 | `docs/w3_imaging_audit.md` | Per-algorithm port decisions (map / port / hybrid) |
 | `docs/api-reference.md` | Generated reference for the `fermiviewer.api` scripting surface — every class/method/op, regenerate with `tools/gen_api_reference.py` |
+| `docs/operation-coverage.md` | Generated GUI/headless parity audit — every analysis endpoint, its GUI surface, registered-op reach, ADR 0004 result kinds, and wave; regenerate with `tools/gen_coverage_table.py` |
 | `examples/` | Worked `fermiviewer.api` scripts (filters + roughness, EDS quantification, real-corpus recipe) |
 | `tests/golden/` | Frozen MATLAB reference values (see `tools/matlab/`) |
 | `plans/` *(local-only)* | Per-machine working plans (gitignored, fermi-viewer convention) |

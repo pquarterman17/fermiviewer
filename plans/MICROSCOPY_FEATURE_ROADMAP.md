@@ -200,12 +200,14 @@ waves adopt it is expensive; catch it here, before adoption.
 
 - **3A — Claude/high capability:** generated parity audit and frozen operation
   result conventions.
-- **3B–3D — Claude/lower-cost only after 3A:** the three registered-operation
-  waves, each with full backend/API tests. The lower-cost tier is for
-  pattern-following only: the first operation in a wave that does not fit the
-  frozen 3A conventions bounces back to the high-capability model for contract
-  work rather than being force-fit to the pattern.
-- **3E — Codex/terra medium:** recipe-builder discoverability, validation and
+- **3B–3E — Claude/lower-cost only after 3A:** the four registered-operation
+  waves (3B = wave A, 3C = wave B, 3D = wave C, 3E = wave D — spectroscopy,
+  measurement, and utility endpoints), each with full backend/API tests. The
+  lower-cost tier is for pattern-following only: the first operation in a wave
+  that does not fit the frozen 3A conventions bounces back to the
+  high-capability model for contract work rather than being force-fit to the
+  pattern.
+- **3F — Codex/terra medium:** recipe-builder discoverability, validation and
   progress/error UI; documentation truth pass.
 
 #### Item 4 stack
@@ -269,18 +271,24 @@ Add a typed `results` section to `.fvp` rather than storing more opaque state in
 `ui_state`. A result references source image IDs and keeps data products
 separate from lightweight metadata.
 
-- [ ] Define a versioned result schema with stable result ID, analysis type,
+**1A shipped 2026-08-22** (PR #162, ADR 0004): schema, member storage,
+migrations, session carry, review-hardening (calibration `extra` carry, region
+geometry snapshots, load-side identity invariants, corruption degrade). 1C
+awaits the 1B consumability review per the stack gate below.
+
+- [x] Define a versioned result schema with stable result ID, analysis type,
       created time, application version, source IDs, derived IDs, region/mask
       IDs, resolved parameters, calibration snapshot, warnings, and status.
-- [ ] Represent scalar, table, curve, fit, map, overlay, and figure outputs
+      (1A also snapshots region geometry, not only ids — review finding.)
+- [x] Represent scalar, table, curve, fit, map, overlay, and figure outputs
       without giving every workshop its own persistence format.
-- [ ] Store large result arrays as project members; never inline them into the
+- [x] Store large result arrays as project members; never inline them into the
       JSON manifest.
-- [ ] Add project migration, validation, round-trip, missing-member, and
+- [x] Add project migration, validation, round-trip, missing-member, and
       forward-compatibility tests.
 - [ ] Provide a small backend/frontend result API that workshops can adopt
-      incrementally.
-- [ ] Record failure/cancellation separately from completed scientific results.
+      incrementally. (1C — gated on the 1B review.)
+- [x] Record failure/cancellation separately from completed scientific results.
 
 **Done when:** a project can save, close, reopen, and inspect a representative
 EDS quantification, profile, particle table, and diffraction indexing result
@@ -311,12 +319,24 @@ manually collecting outputs from several transient workshops.
 The HTTP surface is much broader than the registered operation catalogue.
 Close that gap in coherent waves; do not add a second scripting mechanism.
 
-- [ ] Publish a generated coverage table: GUI action -> route -> `OpSpec` ->
+**3A shipped 2026-08-22** (ADR 0005): generated audit
+`docs/operation-coverage.md` + drift test (13/80 analysis endpoints
+op-backed), frozen result conventions for the waves, `produces_value_result`
+predicate consolidated, README parity overclaim corrected.
+
+- [x] Publish a generated coverage table: GUI action -> route -> `OpSpec` ->
       batch/macro -> Python API -> result type.
 - [ ] Wave A: particles, grains, trained segmentation, layers, interfaces.
 - [ ] Wave B: GPA, CTF, atoms, lattice, and structure/defect operations.
 - [ ] Wave C: diffraction calibration, indexing, simulation, stack alignment,
       MIP, and montage.
+- [ ] Wave D: remaining spectroscopy (EELS background/thickness/KK/SVD/
+      alignment/deconvolution/maps/auto-assign, EDS zeta/continuum/artifacts/
+      recalibration/auto-assign), measurement (profiles, ROI statistics,
+      distances, spectra/histograms, scale-bar detect), and utility
+      (databar strip) operations — every analysis endpoint the coverage
+      table lists is in a wave or behind a named item-8/9 gate; item 3
+      does not close with any endpoint unassigned (3A review finding).
 - [ ] Have registered operations emit the item-1 result contract.
 - [ ] Add recipe validation, versioning, dry-run summaries, and clear failure
       provenance.

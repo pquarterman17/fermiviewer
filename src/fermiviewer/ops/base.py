@@ -18,7 +18,7 @@ from typing import Any
 
 from fermiviewer.datastruct import DataStruct
 
-__all__ = ["OpParam", "OpResult", "OpSpec", "ParamError"]
+__all__ = ["OpParam", "OpResult", "OpSpec", "ParamError", "produces_value_result"]
 
 
 class ParamError(ValueError):
@@ -58,9 +58,7 @@ class OpParam:
                 f"param '{name}': cannot coerce {value!r} to {self.ptype.__name__}"
             ) from None
         if self.choices is not None and out not in self.choices:
-            raise ParamError(
-                f"param '{name}': {out!r} not in {self.choices}"
-            )
+            raise ParamError(f"param '{name}': {out!r} not in {self.choices}")
         if isinstance(out, (int, float)) and not isinstance(out, bool):
             if self.minimum is not None and out < self.minimum:
                 raise ParamError(f"param '{name}': {out} < min {self.minimum}")
@@ -85,6 +83,19 @@ class OpResult:
     @property
     def produces_image(self) -> bool:
         return self.derived is not None
+
+
+def produces_value_result(spec: OpSpec) -> bool:
+    """True for an op whose result is a value, False for an image producer.
+
+    THE single home of the rule (ADR 0005): ``category == "analysis"``
+    implies a value result without the flag; domain categories (eels, eds,
+    diffraction, ...) opt in via ``produces_value``. Previously copied in
+    ``routes/batch_ops.py`` and ``tools/gen_api_reference.py`` — three
+    predicates that could drift apart is how a palette starts disagreeing
+    with the docs about what an op returns.
+    """
+    return spec.category == "analysis" or spec.produces_value
 
 
 @dataclass(frozen=True)

@@ -11,7 +11,13 @@ from fermiviewer.ops import (
     catalogue_analysis,  # noqa: F401  (model-fit + distribution ops)
     catalogue_spectral,  # noqa: F401  (EELS/EDS/diffraction ops)
 )
-from fermiviewer.ops.base import OpParam, OpResult, OpSpec, ParamError
+from fermiviewer.ops.base import (
+    OpParam,
+    OpResult,
+    OpSpec,
+    ParamError,
+    produces_value_result,
+)
 from fermiviewer.ops.registry import (
     UnknownOpError,
     get_spec,
@@ -28,6 +34,7 @@ __all__ = [
     "UnknownOpError",
     "get_spec",
     "list_ops",
+    "produces_value_result",
     "register",
     "run",
 ]
