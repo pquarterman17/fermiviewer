@@ -1,6 +1,10 @@
 // Extracted from lib/api.ts; public imports remain stable via the barrel.
 import type { ImageMeta } from "./core";
-import type { ProjectInfo, UnavailableImage } from "./project";
+import type {
+  PersistedResultRecord,
+  ProjectInfo,
+  UnavailableImage,
+} from "./project";
 import { json, post } from "./transport";
 
 // ── workspace persistence ───────────────────────────────────────────
@@ -64,6 +68,8 @@ export async function loadWorkspaceNamed(slug: string): Promise<{
   /** Placeholders, exactly as an Open Project… returns them: a workspace is a
    *  light-mode project, so its sources can go missing too. */
   unavailable: UnavailableImage[];
+  /** Persisted scientific results carried by the same .fvp container. */
+  results: PersistedResultRecord[];
   project: ProjectInfo;
   name: string;
 }> {
