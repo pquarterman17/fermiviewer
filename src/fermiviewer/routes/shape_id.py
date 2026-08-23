@@ -60,7 +60,8 @@ from fermiviewer.calc.efd import (
 from fermiviewer.calc.particles import particle_analysis
 from fermiviewer.calc.shape_fit import fit_circle, fit_ellipse
 from fermiviewer.routes._arrays import value_error_as_422
-from fermiviewer.routes.structure import ParticleRequest, _raster
+from fermiviewer.routes.structure import _raster
+from fermiviewer.routes.structure_particles import ParticleRequest
 
 router = APIRouter(prefix="/api")
 

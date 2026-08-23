@@ -50,11 +50,13 @@ def include_all_routers(app: FastAPI) -> None:
     from fermiviewer.routes.montage_compare import router as montage_compare_router
     from fermiviewer.routes.project_io import router as project_io_router
     from fermiviewer.routes.regions import router as regions_router
+    from fermiviewer.routes.results_api import router as results_router
     from fermiviewer.routes.session_io import router as session_io_router
     from fermiviewer.routes.shape_id import router as shape_id_router
     from fermiviewer.routes.spectral_fit import router as spectral_fit_router
     from fermiviewer.routes.structure import router as structure_router
     from fermiviewer.routes.structure_grains import router as structure_grains_router
+    from fermiviewer.routes.structure_particles import router as structure_particles_router
     from fermiviewer.routes.usermeta import router as usermeta_router
     from fermiviewer.routes.watch import router as watch_router
 
@@ -62,6 +64,7 @@ def include_all_routers(app: FastAPI) -> None:
         images_router, analysis_router, wireups_router, batch_ops_router, measure_router,
         filter_router, export_router, export_batch_router, export_table_router, session_io_router,
         imaging_ops_router, defect_ops_router, structure_router, structure_grains_router,
+        structure_particles_router,
         grains_trained_router,
         jobs_router, calibration_router, composite_router, dev_router, usermeta_router,
         diffraction_setup_router, spectral_fit_router, eds_advanced_router,
@@ -69,6 +72,6 @@ def include_all_routers(app: FastAPI) -> None:
         eels_identify_router, eels_maps_router,
         layers_router, watch_router,
         fourd_router, fourd_com_router, folders_router, regions_router, montage_compare_router,
-        project_io_router, distributions_router, shape_id_router,
+        project_io_router, distributions_router, shape_id_router, results_router,
     ):
         app.include_router(_router)

@@ -133,9 +133,7 @@ class ProjectSession:
         with self._lock:
             self._state = OpenProject()
 
-    def adopt(
-        self, loaded: LoadedProject, path: str | Path, *, merge: bool = False
-    ) -> None:
+    def adopt(self, loaded: LoadedProject, path: str | Path, *, merge: bool = False) -> None:
         """Take over from a fresh load, replacing whatever was open.
 
         `merge=True` is the append load (`/project/load` with
@@ -199,6 +197,26 @@ class ProjectSession:
                 ),
                 extra_roots=tuple(extra),
             )
+
+    def add_result(self, record: ResultRecord) -> None:
+        """Append a captured result (1C). Server-carried like placeholders:
+        the record survives every save from this moment on, whether or not
+        the client ever mentions it. A duplicate id is refused HERE — ids
+        key the member directories, and discovering a collision at the
+        next save would poison every save after it."""
+        with self._lock:
+            if any(r.id == record.id for r in self._state.results):
+                raise ValueError(f"duplicate result id: {record.id!r}")
+            self._state = replace(self._state, results=(*self._state.results, record))
+
+    def remove_result(self, result_id: str) -> bool:
+        """Drop a record by id; returns whether anything was removed."""
+        with self._lock:
+            kept = tuple(r for r in self._state.results if r.id != result_id)
+            removed = len(kept) != len(self._state.results)
+            if removed:
+                self._state = replace(self._state, results=kept)
+        return removed
 
     def note_save(self, path: str | Path, mode: str, name: str | None) -> None:
         """Record where the project now lives, after a save.
