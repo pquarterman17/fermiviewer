@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-08-22
-**Plan:** `plans/MICROSCOPY_FEATURE_ROADMAP.md` item 3 (stack item 3A — these are the "frozen operation result conventions" waves 3B–3D implement against)
+**Plan:** `plans/MICROSCOPY_FEATURE_ROADMAP.md` item 3 (stack item 3A — these are the "frozen operation result conventions" waves 3B–3E implement against)
 **Audit:** [`docs/operation-coverage.md`](../operation-coverage.md) (generated; `tools/gen_coverage_table.py`)
 
 ## Context
@@ -11,7 +11,7 @@ The coverage audit shows 13 of 80 analysis endpoints backed by a
 registered op. Headless reach — batch recipes, folder watch,
 `fv --script`, the Python API, and the macro's op conversion — is
 exactly registry reach, so the other 67 endpoints are GUI-only. Waves
-3B–3D close that gap mechanically, at the lower-cost model tier, which
+3B–3E close that gap mechanically, at the lower-cost model tier, which
 only works if every judgement is settled here first: the roadmap
 amendment (2026-08-22) bounces any op that does not fit these
 conventions back to the high-capability tier rather than force-fitting
@@ -62,7 +62,7 @@ types; a wave does not invent per-op encodings.
 The roadmap requires registered operations to emit the ADR 0004 result
 contract. `OpResult` stays a plain dataclass, and the convention is:
 
-- **Every value-producing op registered from waves 3B–3D onward —
+- **Every value-producing op registered from waves 3B–3E onward —
   scalar- and table-shaped included — returns
   `value = {"outputs": [...]}`**, where each entry is an ADR 0004 output
   envelope `{kind, name, data}` with the per-kind `data` conventions of
@@ -111,7 +111,7 @@ bending the op to fit.
 
 ## Consequences
 
-- Waves 3B–3D become pattern-following: route request model → OpParam
+- Waves 3B–3E become pattern-following: route request model → OpParam
   schema, route payload → envelope list, calc function unchanged.
 - The frontend's `macroOpMap.ts` gains op conversions wave by wave and
   should be regenerated/reviewed against the coverage table each time.

@@ -200,12 +200,14 @@ waves adopt it is expensive; catch it here, before adoption.
 
 - **3A — Claude/high capability:** generated parity audit and frozen operation
   result conventions.
-- **3B–3D — Claude/lower-cost only after 3A:** the three registered-operation
-  waves, each with full backend/API tests. The lower-cost tier is for
-  pattern-following only: the first operation in a wave that does not fit the
-  frozen 3A conventions bounces back to the high-capability model for contract
-  work rather than being force-fit to the pattern.
-- **3E — Codex/terra medium:** recipe-builder discoverability, validation and
+- **3B–3E — Claude/lower-cost only after 3A:** the four registered-operation
+  waves (3B = wave A, 3C = wave B, 3D = wave C, 3E = wave D — spectroscopy,
+  measurement, and utility endpoints), each with full backend/API tests. The
+  lower-cost tier is for pattern-following only: the first operation in a wave
+  that does not fit the frozen 3A conventions bounces back to the
+  high-capability model for contract work rather than being force-fit to the
+  pattern.
+- **3F — Codex/terra medium:** recipe-builder discoverability, validation and
   progress/error UI; documentation truth pass.
 
 #### Item 4 stack
