@@ -249,7 +249,7 @@ The registered operation catalogue: name, category, summary, params.
 
 ## Operation catalogue
 
-29 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
+36 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
 
 ### analysis
 
@@ -267,6 +267,16 @@ The registered operation catalogue: name, category, summary, params.
 *category: `analysis` · produces: value*
 
 *(no parameters)*
+
+#### `interface_width` — Erf/sigmoid interface-width fit over an extracted line profile (calc/profile_stats.fit_interface_width) — like distribution_fit, the input image is unused: the profile travels as x/y CSV lists
+
+*category: `analysis` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `x` | `str` |  | yes |  |  | comma-separated profile positions, e.g. '0,1,2,...' |
+| `y` | `str` |  | yes |  |  | comma-separated profile intensities (same length as x) |
+| `model` | `str` | erf | no | 'erf', 'sigmoid' |  | transition model to fit |
 
 #### `noise` — Noise, SNR, and type estimate
 
@@ -544,4 +554,104 @@ The registered operation catalogue: name, category, summary, params.
 | `window` | `int` | 11 | no |  | [1, ] | filter window length (odd, samples); must be <= trace length |
 | `polyorder` | `int` | 3 | no |  | [0, ] | fitted polynomial degree; must be < window |
 | `order` | `int` | 1 | no |  | [1, ] | derivative order; must satisfy 1 <= order <= polyorder |
+
+### structure
+
+#### `efd_similarity` — Segment particles, then rank every region by elliptic-Fourier shape distance to a reference region (calc/efd_rank.rank_by_efd). Note: the route's dead `class_thresholds` field is deliberately not mirrored — classification never enters similarity
+
+*category: `structure` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `ref_id` | `int` |  | yes |  |  | particle id (from this run's segmentation) every other region is ranked against |
+| `threshold` | `float` | nan | no |  |  | intensity threshold; leave unset (NaN) for auto multi-Otsu |
+| `polarity` | `str` | bright | no | 'bright', 'dark' |  |  |
+| `min_area` | `int` | 1 | no |  | [0, ] |  |
+| `use_watershed` | `bool` | False | no |  |  |  |
+| `min_marker_distance` | `float` | 3.0 | no |  |  |  |
+| `n_harmonics` | `int` | 10 | no |  | [1, ] | EFD harmonic count (calc/efd.DEFAULT_N_HARMONICS) |
+
+#### `grains` — Grain segmentation + morphometrics and boundary-network stats (calc/grains.segment_auto/segment_watershed + calc/grain_report.grain_report) — the synchronous computation behind /analyze/grains; job orchestration stays in routes/ (ADR 0005 §6)
+
+*category: `structure` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `roi` | `str` |  | no |  |  | 'r1,c1,r2,c2' 1-based inclusive analysis rectangle; empty = whole image |
+| `method` | `str` | gradient | no | 'kmeans', 'gradient', 'rag', 'orientation' |  | kmeans is the ported MATLAB texture-clustering path; the others are per-image-type watershed/RAG methods |
+| `k` | `int` | 4 | no |  | [2, 10] | k-means cluster count |
+| `seed` | `int` | 0 | no |  |  | k-means RNG seed |
+| `replicates` | `int` | 3 | no |  |  | k-means restarts |
+| `granularity` | `float` | 0.05 | no |  | [0.0, 1.0] | watershed granularity |
+| `compactness` | `float` | 0.001 | no |  | [0.0, 1.0] |  |
+| `orientation_sigma` | `float` | 2.0 | no |  | [0.5, 8.0] |  |
+| `n_superpixels` | `int` | 400 | no |  | [50, 4000] |  |
+| `merge_threshold` | `float` | 0.08 | no |  | [0.0, 1.0] |  |
+| `denoise_sigma` | `float` | 0.0 | no |  | [0.0, 10.0] | denoise pre-pass (watershed methods) |
+| `robust` | `bool` | True | no |  |  | outlier-clipped stretch (watershed methods) |
+| `min_area` | `int` | 25 | no |  |  | drop grains smaller than this (px) |
+
+#### `layers` — Cross-section layer stack: auto-orient, depth profile, detect + erf-refine interfaces, thicknesses, σ_erf and (with waviness) the full roughness metrology (calc/layers.analyze_layers + calc/layers_report)
+
+*category: `structure` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `axis` | `str` | auto | no | 'auto', 'y', 'x' |  | depth axis; auto detects from the image |
+| `sensitivity` | `float` | 0.3 | no |  |  | interface detection sensitivity |
+| `n_layers` | `int` | 0 | no |  |  | expected layer count; 0 = auto |
+| `modality` | `str` | haadf | no | 'haadf', 'eels', 'bf', 'df' |  | imaging modality (sets detection heuristics) |
+| `roi` | `str` |  | no |  |  | 'r1,c1,r2,c2' 1-based inclusive analysis rectangle; empty = whole image |
+| `reduce` | `str` | mean | no | 'mean', 'sum', 'median' |  | profile collapse (median is robust to streaks) |
+| `fit_window` | `int` | 15 | no |  |  | erf-refinement window (profile px) |
+| `waviness` | `bool` | False | no |  |  | trace each interface laterally (enables the roughness metrology and σ_w) |
+| `trace_window` | `int` | 10 | no |  |  | per-column edge-search half-window (px) |
+| `destripe` | `bool` | False | no |  |  | FFT notch out FIB curtaining first |
+
+#### `layers_edit` — Re-measure the layer stack from a user-edited interface list — no detection (calc/layers.recompute_layers + calc/layers_report)
+
+*category: `structure` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `positions` | `str` |  | yes |  |  | comma-separated interface depths in profile pixels, e.g. '12.5,40,77.2' |
+| `axis` | `str` | y | no | 'y', 'x' |  | depth axis — editing assumes a known axis |
+| `roi` | `str` |  | no |  |  | 'r1,c1,r2,c2' 1-based inclusive analysis rectangle; empty = whole image |
+| `reduce` | `str` | mean | no | 'mean', 'sum', 'median' |  | profile collapse (median is robust to streaks) |
+| `fit_window` | `int` | 15 | no |  |  | erf-refinement window (profile px) |
+| `waviness` | `bool` | False | no |  |  | trace each interface laterally (enables the roughness metrology and σ_w) |
+| `trace_window` | `int` | 10 | no |  |  | per-column edge-search half-window (px) |
+| `destripe` | `bool` | False | no |  |  | FFT notch out FIB curtaining first |
+
+#### `particles` — Threshold + label + per-particle morphometrics and shape classes (calc/particles.particle_analysis, calc/shape_metrics)
+
+*category: `structure` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `threshold` | `float` | nan | no |  |  | intensity threshold; leave unset (NaN) for auto multi-Otsu |
+| `polarity` | `str` | bright | no | 'bright', 'dark' |  | particles brighter or darker than background |
+| `min_area` | `int` | 1 | no |  | [0, ] | drop regions smaller than this (px) |
+| `use_watershed` | `bool` | False | no |  |  | split touching particles by watershed |
+| `min_marker_distance` | `float` | 3.0 | no |  |  | watershed marker separation (px) |
+| `aggregate_max_solidity` | `float` | nan | no |  |  | classify_shapes override; leave unset (NaN) for the calc-layer default |
+| `rod_min_aspect` | `float` | nan | no |  |  | classify_shapes override; NaN = calc default |
+| `sphere_max_aspect` | `float` | nan | no |  |  | classify_shapes override; NaN = calc default |
+| `sphere_min_circularity` | `float` | nan | no |  |  | classify_shapes override; NaN = calc default |
+
+#### `propose_region` — Propose one region's polygon outline from a click/box seed (calc/region_propose.propose_region: multi-Otsu + morphology + connected components + contour trace). Give seed_x/seed_y, or rect_x0..y1, or both
+
+*category: `structure` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `seed_x` | `float` | nan | no |  |  | normalized click x in [0, 1]; give with seed_y |
+| `seed_y` | `float` | nan | no |  |  | normalized click y in [0, 1] |
+| `rect_x0` | `float` | nan | no |  |  | normalized box seed corner; give all four rect_* |
+| `rect_y0` | `float` | nan | no |  |  |  |
+| `rect_x1` | `float` | nan | no |  |  |  |
+| `rect_y1` | `float` | nan | no |  |  |  |
+| `n_classes` | `int` | 3 | no |  | [2, 5] | multi-Otsu classes |
+| `morph_radius` | `int` | 1 | no |  |  | closing radius (px) cleaning the mask |
+| `tolerance` | `float` | 2.0 | no |  |  | contour simplification tolerance (px) |
 

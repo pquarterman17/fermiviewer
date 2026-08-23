@@ -10,9 +10,9 @@ Route and op inventories are read live from the app and registry at generation t
 ## Summary
 
 - **144** HTTP endpoints; **80** perform analysis, 3 are physics-table lookups, and 61 are allowlisted infrastructure.
-- **13 of 80** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **29** ops in total.
+- **20 of 80** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **36** ops in total.
 - Registered-op reach IS headless reach: batch recipes, folder watch, `fv --script`, and the Python API all resolve steps through the same registry and cannot call anything else.
-- Remaining item-3 work: wave A (13), wave B (10), wave C (10), wave D (26) endpoints; 8 are parked behind the item-8/9 activation gates. Item 3 does not close while any analysis row lacks a wave or a named gate — every endpoint is assigned, none is silently deferred.
+- Remaining item-3 work: wave A (6), wave B (10), wave C (10), wave D (26) endpoints; 8 are parked behind the item-8/9 activation gates. Item 3 does not close while any analysis row lacks a wave or a named gate — every endpoint is assigned, none is silently deferred.
 
 ## Analysis endpoints
 
@@ -29,7 +29,7 @@ Route and op inventories are read live from the app and registry at generation t
 | `POST /api/analyze/radial` | Image menu. *azimuthal sector mode has no op* | `radial_profile` | curve ×2 | shipped |
 | `POST /api/analyze/roughness` | Roughness workshop. *route adds bearing curve + ROI* | `roughness` | scalar set + curve (bearing) | shipped |
 | `POST /api/analyze/noise` | Noise workshop. *route adds block stats + ROI* | `noise` | scalar set + fit + curve | shipped |
-| `POST /api/analyze/interface-width` | Interface Width workshop | — | fit | wave A |
+| `POST /api/analyze/interface-width` | Interface Width workshop. *no image subject — op ignores `ds`, profile travels as x/y CSV (`distribution_fit` precedent, blessed in ADR 0005's wave-A addendum)* | `interface_width` | fit | shipped |
 | `POST /api/analyze/lattice` | Lattice mode | — | scalar set | wave B |
 | `POST /api/analyze/ctf` | Structure workshop, CTF mode | — | fit + curve ×2 + scalar | wave B |
 | `POST /api/analyze/montage` | Image menu | — | figure | wave C |
@@ -39,10 +39,10 @@ Route and op inventories are read live from the app and registry at generation t
 
 | Route | GUI action | Registered op (headless reach) | Result kinds (ADR 0004) | Wave |
 |---|---|---|---|---|
-| `POST /api/analyze/particles` | Structure workshop, Particles mode | — | table + map (label map) | wave A |
-| `POST /api/analyze/efd-similarity` | Particles mode | — | table | wave A |
-| `POST /api/analyze/fit-shape` | Inspector, Regions card | — | fit ×2 + overlay | wave A |
-| `POST /api/regions/propose` | Inspector, Regions card | — | overlay | wave A |
+| `POST /api/analyze/particles` | Structure workshop, Particles mode. *op flattens `class_thresholds` to four NaN-sentinel floats resolved against calc defaults* | `particles` | table + map (label map) | shipped |
+| `POST /api/analyze/efd-similarity` | Particles mode. *op drops the route's dead inherited `class_thresholds` field* | `efd_similarity` | table | shipped |
+| `POST /api/analyze/fit-shape` | Inspector, Regions card. *wave-A bounce-back: no image subject AND a variable-length coordinate-pair list (ADR 0005 addendum 2026-08-23)* | — | fit ×2 + overlay | wave A |
+| `POST /api/regions/propose` | Inspector, Regions card. *op flattens seed/rect to NaN-sentinel floats (`composition_profile` x1/y1 precedent)* | `propose_region` | overlay | shipped |
 | `POST /api/analyze/atoms` | Atom Column panel | — | table + overlay + scalar | wave B |
 | `POST /api/atoms/strain` | Atom Column panel | — | table + scalar | wave B |
 | `POST /api/analyze/template-match` | Template/GPA mode | — | table + overlay | wave B |
@@ -53,14 +53,14 @@ Route and op inventories are read live from the app and registry at generation t
 
 | Route | GUI action | Registered op (headless reach) | Result kinds (ADR 0004) | Wave |
 |---|---|---|---|---|
-| `POST /api/analyze/grains` | Structure workshop, Grains mode | — | table + map + overlay + scalar (job) | wave A |
-| `POST /api/grains/edit` | Stage grain merge/split | — | table + map + overlay + scalar | wave A |
-| `POST /api/grains/train-segment` | Grains mode, Trained panel | — | table + map + overlay + scalar | wave A |
-| `POST /api/grains/train-preview` | Grains mode, Trained panel | — | map ×2 + scalar ×2 | wave A |
-| `POST /api/analyze/layers` | Layers workshop | — | curve + table + fit (per interface) | wave A |
-| `POST /api/analyze/layers/edit` | Layers workshop | — | curve + table + fit | wave A |
-| `POST /api/analyze/layers/grains` | Cross-section per-layer view | — | table | wave A |
-| `POST /api/analyze/layers/multi` | Layers multi-compare | — | table + map refs | wave A |
+| `POST /api/analyze/grains` | Structure workshop, Grains mode. *op registers the synchronous computation; `run_async` job orchestration stays route-only (ADR 0005 §6)* | `grains` | table + map + overlay + scalar (job) | shipped |
+| `POST /api/grains/edit` | Stage grain merge/split. *wave-A bounce-back: input is a label map by session id whose source image comes from metadata, plus a click list (ADR 0005 addendum 2026-08-23)* | — | table + map + overlay + scalar | wave A |
+| `POST /api/grains/train-segment` | Grains mode, Trained panel. *wave-A bounce-back: scribble strokes are an array of nested models with coordinate lists (ADR 0005 addendum 2026-08-23)* | — | table + map + overlay + scalar | wave A |
+| `POST /api/grains/train-preview` | Grains mode, Trained panel. *wave-A bounce-back: same scribble-stroke shape as train-segment, plus two derived maps (ADR 0005 addendum 2026-08-23)* | — | map ×2 + scalar ×2 | wave A |
+| `POST /api/analyze/layers` | Layers workshop | `layers` | curve + table + fit (per interface) | shipped |
+| `POST /api/analyze/layers/edit` | Layers workshop. *op flattens `positions` to a CSV float list (`distribution_fit` values precedent)* | `layers_edit` | curve + table + fit | shipped |
+| `POST /api/analyze/layers/grains` | Cross-section per-layer view. *wave-A bounce-back: label map by session id + nested layer bands + ragged interface traces (ADR 0005 addendum 2026-08-23)* | — | table | wave A |
+| `POST /api/analyze/layers/multi` | Layers multi-compare. *wave-A bounce-back: N input images by session id — `fn(ds, params)` takes exactly one DataStruct (ADR 0005 addendum 2026-08-23)* | — | table + map refs | wave A |
 
 ### Stacks & mosaics
 

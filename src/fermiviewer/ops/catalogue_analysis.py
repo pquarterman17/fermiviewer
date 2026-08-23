@@ -15,13 +15,18 @@ List-shaped params use ``catalogue_spectral``'s established string
 conventions (see ``ops/_parsing.py``): comma lists (``"Fe,O"``) and
 ``"lo:hi"`` windows.
 
-``distribution_fit`` is the one op here whose subject isn't the input
-``DataStruct`` at all — a size distribution is a property of a list of
-already-measured numbers (particle/grain diameters, ...), not of any
-particular image (see ``routes/distributions.py``'s own docstring). The
-input image is still required by the op/scripting contract (``img.<op>(...)``
-always runs against SOME loaded image) but its data is unused; the values
-travel as a comma-separated param like every other list-shaped op input.
+``distribution_fit`` and ``interface_width`` are the two ops here whose
+subject isn't the input ``DataStruct`` at all — a size distribution is a
+property of a list of already-measured numbers (particle/grain diameters,
+...), and an interface-width fit is a property of an already-extracted
+line profile, not of any particular image (see ``routes/distributions.py``'s
+own docstring). The input image is still required by the op/scripting
+contract (``img.<op>(...)`` always runs against SOME loaded image) but its
+data is unused; the values travel as comma-separated params like every
+other list-shaped op input. ``interface_width`` was the wave-A judgement
+call ADR 0005 §7 sends to the high-capability tier: blessed on exactly
+this ``distribution_fit`` precedent (flat float lists, single calc call,
+single fit output) — see the ADR's wave-A addendum.
 """
 
 from __future__ import annotations
@@ -47,6 +52,7 @@ from fermiviewer.calc.eds_peakfit import quantify_peaks
 from fermiviewer.calc.eels_model import fit_edges
 from fermiviewer.calc.eels_quant import ElementEdge
 from fermiviewer.calc.energy_units import to_kev
+from fermiviewer.calc.profile_stats import fit_interface_width
 from fermiviewer.calc.uncertainty import atomic_fraction_sigma, default_k_factors
 from fermiviewer.datastruct import SPECTRAL_KINDS, DataKind, DataStruct
 from fermiviewer.ops._parsing import parse_windows, split_csv
@@ -376,4 +382,56 @@ register(OpSpec(
                           "one; 'none' returns summary + histogram only"),
     },
     fn=_distribution_fit,
+))
+
+
+# ── Interface width (fits an extracted line profile) ────────────────────
+
+def _interface_width(ds: DataStruct, params: dict[str, Any]) -> OpResult:
+    # ds is unused: the subject is an already-extracted line profile, not
+    # any particular image — see the module docstring (the wave-A blessed
+    # second member of distribution_fit's ds-ignoring precedent).
+    del ds
+    x = np.array([float(v) for v in split_csv(params["x"])], dtype=np.float64)
+    y = np.array([float(v) for v in split_csv(params["y"])], dtype=np.float64)
+    fit = fit_interface_width(x, y, model=params["model"])
+    # ADR 0005 §5 typed envelope (this op is wave A — the frozen flat-dict
+    # legacy set above must not grow).
+    outputs = [{
+        "kind": "fit",
+        "name": "interface_width",
+        "data": {
+            "model": fit.model,
+            "x_name": "position", "x_unit": "",
+            "y_name": "intensity", "y_unit": "",
+            "coefficients": {
+                "center": fit.center,
+                "sigma": fit.sigma,
+                "width_10_90": fit.width_10_90,
+                "amplitude": fit.amplitude,
+                "offset": fit.offset,
+            },
+            "r_squared": fit.r_squared,
+            "x_fit": fit.x_fit.tolist(),
+            "y_fit": fit.y_fit.tolist(),
+        },
+    }]
+    return OpResult(op="interface_width", params=params,
+                    label="interface width fit", value={"outputs": outputs})
+
+
+register(OpSpec(
+    name="interface_width", category="analysis",
+    summary="Erf/sigmoid interface-width fit over an extracted line profile "
+            "(calc/profile_stats.fit_interface_width) — like distribution_fit, "
+            "the input image is unused: the profile travels as x/y CSV lists",
+    params={
+        "x": OpParam(str, required=True,
+                     doc="comma-separated profile positions, e.g. '0,1,2,...'"),
+        "y": OpParam(str, required=True,
+                     doc="comma-separated profile intensities (same length as x)"),
+        "model": OpParam(str, "erf", choices=("erf", "sigmoid"),
+                         doc="transition model to fit"),
+    },
+    fn=_interface_width,
 ))

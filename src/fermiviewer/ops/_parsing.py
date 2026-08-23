@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import numpy as np
 
-__all__ = ["clean_values", "parse_windows", "split_csv"]
+from fermiviewer.calc.roi import RectRoi, parse_rect_roi
+
+__all__ = ["clean_values", "parse_roi_param", "parse_windows", "split_csv"]
 
 
 def split_csv(value: str) -> list[str]:
@@ -32,6 +34,19 @@ def parse_windows(value: str) -> list[tuple[float, float]]:
             )
         out.append((float(lo_s), float(hi_s)))
     return out
+
+
+def parse_roi_param(value: str) -> RectRoi | None:
+    """``"r1,c1,r2,c2"`` -> RectRoi; ``""`` -> None (whole image); anything
+    else is an error — `calc.roi.parse_rect_roi`'s silent-None fallback (fine
+    for provenance metadata) would silently analyze the whole image on a
+    typo'd op param."""
+    if not value:
+        return None
+    roi = parse_rect_roi(value)
+    if roi is None:
+        raise ValueError(f"roi must be 'r1,c1,r2,c2' (1-based, inclusive), got {value!r}")
+    return roi
 
 
 def clean_values(values: np.ndarray) -> list[float | None]:

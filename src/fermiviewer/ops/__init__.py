@@ -9,7 +9,9 @@ from __future__ import annotations
 from fermiviewer.ops import (
     catalogue,  # noqa: F401  (import registers ops)
     catalogue_analysis,  # noqa: F401  (model-fit + distribution ops)
+    catalogue_grains_layers,  # noqa: F401  (wave A: grain + layer ops)
     catalogue_spectral,  # noqa: F401  (EELS/EDS/diffraction ops)
+    catalogue_structure,  # noqa: F401  (wave A: particle/region ops)
 )
 from fermiviewer.ops.base import (
     OpParam,

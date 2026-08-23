@@ -152,7 +152,16 @@ DOMAINS: tuple[Domain, ...] = (
                 "shipped",
                 "route adds block stats + ROI",
             ),
-            Row("POST", "/api/analyze/interface-width", "Interface Width workshop", (), "fit", "A"),
+            Row(
+                "POST",
+                "/api/analyze/interface-width",
+                "Interface Width workshop",
+                ("interface_width",),
+                "fit",
+                "shipped",
+                "no image subject — op ignores `ds`, profile travels as x/y CSV "
+                "(`distribution_fit` precedent, blessed in ADR 0005's wave-A addendum)",
+            ),
             Row("POST", "/api/analyze/lattice", "Lattice mode", (), "scalar set", "B"),
             Row(
                 "POST",
@@ -173,11 +182,21 @@ DOMAINS: tuple[Domain, ...] = (
                 "POST",
                 "/api/analyze/particles",
                 "Structure workshop, Particles mode",
-                (),
+                ("particles",),
                 "table + map (label map)",
-                "A",
+                "shipped",
+                "op flattens `class_thresholds` to four NaN-sentinel floats "
+                "resolved against calc defaults",
             ),
-            Row("POST", "/api/analyze/efd-similarity", "Particles mode", (), "table", "A"),
+            Row(
+                "POST",
+                "/api/analyze/efd-similarity",
+                "Particles mode",
+                ("efd_similarity",),
+                "table",
+                "shipped",
+                "op drops the route's dead inherited `class_thresholds` field",
+            ),
             Row(
                 "POST",
                 "/api/analyze/fit-shape",
@@ -185,8 +204,19 @@ DOMAINS: tuple[Domain, ...] = (
                 (),
                 "fit ×2 + overlay",
                 "A",
+                "wave-A bounce-back: no image subject AND a variable-length "
+                "coordinate-pair list (ADR 0005 addendum 2026-08-23)",
             ),
-            Row("POST", "/api/regions/propose", "Inspector, Regions card", (), "overlay", "A"),
+            Row(
+                "POST",
+                "/api/regions/propose",
+                "Inspector, Regions card",
+                ("propose_region",),
+                "overlay",
+                "shipped",
+                "op flattens seed/rect to NaN-sentinel floats "
+                "(`composition_profile` x1/y1 precedent)",
+            ),
             Row(
                 "POST",
                 "/api/analyze/atoms",
@@ -229,9 +259,11 @@ DOMAINS: tuple[Domain, ...] = (
                 "POST",
                 "/api/analyze/grains",
                 "Structure workshop, Grains mode",
-                (),
+                ("grains",),
                 "table + map + overlay + scalar (job)",
-                "A",
+                "shipped",
+                "op registers the synchronous computation; `run_async` job "
+                "orchestration stays route-only (ADR 0005 §6)",
             ),
             Row(
                 "POST",
@@ -240,6 +272,9 @@ DOMAINS: tuple[Domain, ...] = (
                 (),
                 "table + map + overlay + scalar",
                 "A",
+                "wave-A bounce-back: input is a label map by session id whose "
+                "source image comes from metadata, plus a click list "
+                "(ADR 0005 addendum 2026-08-23)",
             ),
             Row(
                 "POST",
@@ -248,6 +283,8 @@ DOMAINS: tuple[Domain, ...] = (
                 (),
                 "table + map + overlay + scalar",
                 "A",
+                "wave-A bounce-back: scribble strokes are an array of nested "
+                "models with coordinate lists (ADR 0005 addendum 2026-08-23)",
             ),
             Row(
                 "POST",
@@ -256,22 +293,26 @@ DOMAINS: tuple[Domain, ...] = (
                 (),
                 "map ×2 + scalar ×2",
                 "A",
+                "wave-A bounce-back: same scribble-stroke shape as "
+                "train-segment, plus two derived maps "
+                "(ADR 0005 addendum 2026-08-23)",
             ),
             Row(
                 "POST",
                 "/api/analyze/layers",
                 "Layers workshop",
-                (),
+                ("layers",),
                 "curve + table + fit (per interface)",
-                "A",
+                "shipped",
             ),
             Row(
                 "POST",
                 "/api/analyze/layers/edit",
                 "Layers workshop",
-                (),
+                ("layers_edit",),
                 "curve + table + fit",
-                "A",
+                "shipped",
+                "op flattens `positions` to a CSV float list (`distribution_fit` values precedent)",
             ),
             Row(
                 "POST",
@@ -280,6 +321,9 @@ DOMAINS: tuple[Domain, ...] = (
                 (),
                 "table",
                 "A",
+                "wave-A bounce-back: label map by session id + nested layer "
+                "bands + ragged interface traces "
+                "(ADR 0005 addendum 2026-08-23)",
             ),
             Row(
                 "POST",
@@ -288,6 +332,9 @@ DOMAINS: tuple[Domain, ...] = (
                 (),
                 "table + map refs",
                 "A",
+                "wave-A bounce-back: N input images by session id — "
+                "`fn(ds, params)` takes exactly one DataStruct "
+                "(ADR 0005 addendum 2026-08-23)",
             ),
         ),
     ),

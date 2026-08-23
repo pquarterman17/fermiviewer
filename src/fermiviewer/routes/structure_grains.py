@@ -12,12 +12,11 @@ import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from fermiviewer.calc.grain_report import grain_report
 from fermiviewer.calc.grains import (
     GrainSegmentation,
     WatershedSegmentation,
-    astm_grain_size_number,
     enforce_connected_grains,
-    grain_stats,
     segment_auto,
     segment_watershed,
     split_grain,
@@ -65,19 +64,18 @@ def _grains_payload(
     source_id: str, roi: tuple[int, int, int, int] | None = None,
 ) -> dict:
     """Build the grain-analysis response (shared by initial segmentation and
-    interactive merge/split). Registers the renumbered label map tagged so
-    the stage can recognize and further edit it."""
+    interactive merge/split). The numbers come from calc/grain_report.py —
+    the same report the registered `grains` op emits (ADR 0005 §1); this
+    wrapper registers the renumbered label map tagged so the stage can
+    recognize and further edit it, and shapes the JSON."""
     px = ds.pixel_size if np.isfinite(ds.pixel_size) else float("nan")
-    stats = grain_stats(labels, raster, pixel_size=px)
+    report = grain_report(labels, raster, pixel_size=px, unit=ds.pixel_unit or "px")
     name = store.name(source_id)
-    unit = ds.pixel_unit or "px"
-    diam_cal = stats.diameter_calibrated
-    mean_diam_cal = float(np.nanmean(diam_cal)) if diam_cal.size else float("nan")
     return {
-        "n_grains": stats.n_grains,
+        "n_grains": report.n_grains,
         "method": method,
         "labels": _register(
-            stats.labels.astype(np.float64), f"grains({name})", ds, source_id,
+            report.labels.astype(np.float64), f"grains({name})", ds, source_id,
             extra_meta={
                 "grain_labels": True,
                 "grain_source": source_id,
@@ -85,23 +83,19 @@ def _grains_payload(
             } | ({"grain_roi": ",".join(map(str, roi))} if roi is not None else {}),
         ),
         # true (border-excluding) inter-grain network length
-        "boundary_network_px": stats.boundary_network_px,
-        "boundary_network_calibrated": _nan_none(stats.boundary_network_calibrated),
-        "n_boundary_segments": stats.n_boundary_segments,
-        "n_triple_junctions": stats.n_triple_junctions,
-        "mean_diameter_px": (
-            float(stats.equiv_diameter_px.mean())
-            if stats.equiv_diameter_px.size
-            else 0.0
-        ),
-        "astm_grain_size": _nan_none(astm_grain_size_number(mean_diam_cal, unit)),
-        "areas_px": stats.area_px.tolist(),
-        "perimeters_px": stats.perimeter_crofton_px.tolist(),
-        "eccentricity": stats.eccentricity.tolist(),
+        "boundary_network_px": report.boundary_network_px,
+        "boundary_network_calibrated": _nan_none(report.boundary_network_calibrated),
+        "n_boundary_segments": report.n_boundary_segments,
+        "n_triple_junctions": report.n_triple_junctions,
+        "mean_diameter_px": report.mean_diameter_px,
+        "astm_grain_size": _nan_none(report.astm_grain_size),
+        "areas_px": report.area_px.tolist(),
+        "perimeters_px": report.perimeter_crofton_px.tolist(),
+        "eccentricity": report.eccentricity.tolist(),
         # per-grain diameter feeds a size-distribution histogram (#6/R6)
-        "equiv_diameter_px": stats.equiv_diameter_px.tolist(),
-        "diameter_calibrated": [_nan_none(d) for d in stats.diameter_calibrated],
-        "unit": unit,
+        "equiv_diameter_px": report.equiv_diameter_px.tolist(),
+        "diameter_calibrated": [_nan_none(d) for d in report.diameter_calibrated],
+        "unit": report.unit,
     }
 
 
