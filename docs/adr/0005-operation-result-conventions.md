@@ -125,3 +125,63 @@ bending the op to fit.
 `tests/test_api_reference.py` (unchanged output under the consolidated
 predicate); wave PRs add per-op parity tests comparing op output to the
 route's payload for the same inputs.
+
+## Addendum — wave A outcome (2026-08-23)
+
+Wave A (roadmap 3B) registered 7 of its 13 endpoints and bounced 6 back,
+per the Context section's rule. What the wave established:
+
+### Shipped
+
+`particles`, `efd_similarity`, `propose_region`, `grains`, `layers`,
+`layers_edit` under the new `structure` category (§2's one-new-category
+allowance; each sets `produces_value=True` explicitly since the category
+does not imply it), plus `interface_width` in `analysis`. All seven emit
+§5 typed envelopes; the grandfathered flat-dict set did not grow.
+
+Two conventions this wave firmed up for waves 3C–3E:
+
+- **Route-local numerics get lifted to `calc/`, not duplicated.** Four
+  compositions lived in `routes/` (the regions window/seed maths, the
+  grain payload aggregates, the layers roughness/serialisation blocks,
+  the EFD trace-describe-rank loop); registering their ops under §1 meant
+  lifting them (`calc/region_propose.py`, `calc/grain_report.py`,
+  `calc/layers_report.py`, `calc/efd_rank.py`) so op and route run ONE
+  code path. Later waves should expect and budget for the same lift work.
+- **A no-subject op is admissible on the `distribution_fit` precedent
+  only in its narrowest form**: every input flattens to flat scalar CSV
+  lists, one calc call, `ds` deliberately unused and documented.
+  `interface_width` (x/y profile lists) qualifies; `fit-shape` — which
+  would ALSO need a variable-length coordinate-pair encoding — does not,
+  and stays bounced rather than force-fit (§4: a wave does not invent
+  per-op encodings).
+
+### Bounced back, and the contract gaps they expose
+
+| Endpoint | Blocking shape |
+|---|---|
+| `/api/analyze/fit-shape` | no image subject + variable-length `[[row, col], ...]` list |
+| `/api/grains/edit` | label map addressed by session id, source image resolved from its metadata; click list |
+| `/api/grains/train-segment` | `strokes`: an array of nested models each carrying a coordinate list |
+| `/api/grains/train-preview` | same strokes shape; also two derived maps |
+| `/api/analyze/layers/grains` | label map by session id + nested layer bands + ragged `interface_traces` |
+| `/api/analyze/layers/multi` | N input images by session id — `fn(ds, params)` has exactly one subject |
+
+Two registry-contract gaps account for all six, and they are contract
+work for the high-capability tier, not wave work:
+
+1. **Multi-input operations.** `OpSpec.fn(ds, params)` takes exactly one
+   `DataStruct`. Ops over several session images (`layers/multi`) or over
+   a derived label map plus the source image it references
+   (`grains/edit`, `layers/grains`) need a registry-level input schema
+   (named `DataStruct` inputs), not image ids smuggled through string
+   params — `ops/` reaching into the session store would break the pure
+   layer.
+2. **Structured parameters.** The §4 CSV flattening ends at flat scalar
+   lists and `"lo:hi"` pairs. Coordinate-pair lists (`points`), and
+   arrays of nested models (`strokes`), need richer param types in
+   `OpParam` itself before their endpoints can register.
+
+The six rows stay wave A in the coverage audit, each annotated with its
+blocking shape, until the ops contract grows; re-opening that contract is
+its own high-capability work item, not part of waves 3C–3E.

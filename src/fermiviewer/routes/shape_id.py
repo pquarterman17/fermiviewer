@@ -28,20 +28,10 @@ promptly rather than after paying for contours nobody asked to see.
 PLAN_4DSTEM #10 (Bragg-disk detection) is a documented FUTURE consumer of
 `calc/shape_fit.py`'s circle fit, not wired up here -- see that module.
 
-Contour tracing here passes `tolerance=0` -- NO simplification -- unlike
-`trace_outer_contour`'s own default (2.0px, `calc/contours.py`'s
-"manageable for hand-correction" outline target, a different job with a
-different accuracy need). Simplification is actively wrong for EFD, not
-just unnecessary: Douglas-Peucker collapses straight edges to their
-endpoints at ANY tolerance, so a plain square particle -- completely
-ordinary in TEM -- came back as 4 corner vertices and could not clear
-`calc/efd.py`'s `n_harmonics` point floor (found live: `422 region 1:
-need >= 10 contour points for 10 harmonics, got 4`). EFD's own harmonic
-truncation IS its smoothing; the raw marching-squares ring is its honest
-input. `_EFD_TRACE_MAX_VERTICES` stays as the decimation safety net for
-enormous regions (contours.py escalates tolerance only above it), and a
-ring that still can't clear the harmonic floor (a tiny region) 422s
-naming that region.
+The trace -> describe -> rank loop (including the tolerance-0 tracing
+rationale and the skip-and-note semantics) lives in `calc/efd_rank.py` --
+lifted there for wave A (ADR 0005 §1) so the registered `efd_similarity`
+op and this route run the SAME code.
 """
 
 from __future__ import annotations
@@ -50,13 +40,8 @@ import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from fermiviewer.calc.contours import NoContourError, trace_outer_contour
-from fermiviewer.calc.efd import (
-    DEFAULT_N_HARMONICS,
-    EfdDescriptor,
-    efd_descriptor,
-    efd_distance,
-)
+from fermiviewer.calc.efd import DEFAULT_N_HARMONICS
+from fermiviewer.calc.efd_rank import rank_by_efd
 from fermiviewer.calc.particles import particle_analysis
 from fermiviewer.calc.shape_fit import fit_circle, fit_ellipse
 from fermiviewer.routes._arrays import value_error_as_422
@@ -64,13 +49,6 @@ from fermiviewer.routes.structure import _raster
 from fermiviewer.routes.structure_particles import ParticleRequest
 
 router = APIRouter(prefix="/api")
-
-# See module docstring: tolerance 0 = the raw marching-squares ring, because
-# Douglas-Peucker collapses straight edges to endpoints at any tolerance and
-# starves the harmonic floor on square/faceted particles. The vertex cap is
-# the safety net for enormous regions only.
-_EFD_TRACE_TOLERANCE = 0.0
-_EFD_TRACE_MAX_VERTICES = 2000
 
 
 # ── EFD similarity ──────────────────────────────────────────────────
@@ -105,58 +83,21 @@ def analyze_efd_similarity(req: EfdSimilarityRequest) -> dict:
     if req.ref_id not in ids:
         raise HTTPException(404, f"unknown ref_id: {req.ref_id}")
 
-    # Skip-and-note, not fail-the-query: one tiny speck that cannot support
-    # the harmonic count must not kill ranking across hundreds of good
-    # particles. Undescribable regions land in `skipped` with the reason.
-    # The ONE region that cannot be skipped is the reference itself — with
-    # no reference descriptor there is nothing to rank against, so that
-    # stays a 422 saying exactly that.
-    descriptors: dict[int, EfdDescriptor] = {}
-    skipped: list[dict[str, object]] = []
-    for p in res.particles:
-        mask = res.labels == p.id
-        # The response's `reason`/`detail` strings are built HERE from
-        # request-known quantities, never from exception text — CodeQL
-        # (py/stack-trace-exposure, alert #47) treats exception-derived
-        # strings in responses as information exposure, and a static
-        # message is equally informative: the only two failure modes are
-        # an untraceable mask and a ring too small for the harmonic count.
-        try:
-            contour = trace_outer_contour(
-                mask,
-                tolerance=_EFD_TRACE_TOLERANCE,
-                max_vertices=_EFD_TRACE_MAX_VERTICES,
-            )
-        except NoContourError:
-            reason = "no traceable outer contour"
-            contour = None
-        if contour is not None:
-            try:
-                descriptors[p.id] = efd_descriptor(
-                    contour.points, n_harmonics=req.n_harmonics
-                )
-                continue
-            except ValueError:
-                reason = (
-                    f"contour cannot support {req.n_harmonics} harmonics"
-                )
-        if p.id == req.ref_id:
-            raise HTTPException(
-                422,
-                f"reference region {p.id} cannot be described "
-                f"({reason}) — nothing to rank against",
-            )
-        skipped.append({"id": p.id, "reason": reason})
-
-    ref_descriptor = descriptors[req.ref_id]
-    ranked = sorted(
-        (
-            {"id": pid, "distance": efd_distance(ref_descriptor, d)}
-            for pid, d in descriptors.items()
-        ),
-        key=lambda r: r["distance"],
-    )
-    return {"ranked": ranked, "skipped": skipped, "n_harmonics": req.n_harmonics}
+    # calc/efd_rank.py raises ValueError only when the REFERENCE region
+    # cannot be described (other regions skip-and-note) -- that stays a 422
+    # naming the region, same as before the wave-A lift.
+    with value_error_as_422():
+        ranking = rank_by_efd(
+            res.labels,
+            [p.id for p in res.particles],
+            req.ref_id,
+            n_harmonics=req.n_harmonics,
+        )
+    return {
+        "ranked": ranking.ranked,
+        "skipped": ranking.skipped,
+        "n_harmonics": req.n_harmonics,
+    }
 
 
 # ── circle / ellipse fitting ────────────────────────────────────────

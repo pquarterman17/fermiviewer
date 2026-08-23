@@ -326,7 +326,18 @@ predicate consolidated, README parity overclaim corrected.
 
 - [x] Publish a generated coverage table: GUI action -> route -> `OpSpec` ->
       batch/macro -> Python API -> result type.
-- [ ] Wave A: particles, grains, trained segmentation, layers, interfaces.
+- [x] Wave A: particles, grains, trained segmentation, layers, interfaces.
+      **Shipped 2026-08-23** (3B): 7 ops registered — `particles`,
+      `efd_similarity`, `propose_region`, `grains`, `layers`, `layers_edit`
+      (new `structure` category) and `interface_width` (analysis, blessed on
+      the `distribution_fit` no-subject precedent) — each emitting ADR 0005
+      §5 typed envelopes, with the shared compositions lifted to
+      `calc/{efd_rank,region_propose,grain_report,layers_report}.py` so op
+      and route run one code path. Six endpoints bounced back per the 3A
+      rule (grains/edit, train-segment, train-preview, layers/grains,
+      layers/multi, fit-shape) — the contract gaps (multi-input ops,
+      structured params) are logged in ADR 0005's wave-A addendum and those
+      rows stay wave A in the audit until the ops contract grows.
 - [ ] Wave B: GPA, CTF, atoms, lattice, and structure/defect operations.
 - [ ] Wave C: diffraction calibration, indexing, simulation, stack alignment,
       MIP, and montage.
