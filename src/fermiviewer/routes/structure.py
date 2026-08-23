@@ -49,8 +49,12 @@ def _raster(img_id: str) -> tuple[DataStruct, np.ndarray]:
 
 
 def _register(
-    arr: np.ndarray, name: str, parent: DataStruct, parent_id: str,
-    keep_axes: bool = True, extra_meta: dict | None = None,
+    arr: np.ndarray,
+    name: str,
+    parent: DataStruct,
+    parent_id: str,
+    keep_axes: bool = True,
+    extra_meta: dict | None = None,
 ) -> dict:
     axes = (parent.axes[0], parent.axes[1]) if keep_axes else (AxisCal(), AxisCal())
     metadata: dict = {"source": name, "parser": "derived"}
@@ -93,6 +97,9 @@ class ParticleRequest(BaseModel):
     use_watershed: bool = False
     min_marker_distance: float = 3.0
     class_thresholds: ShapeClassThresholds | None = None
+    #: Capture this run as a persisted ResultRecord (1C). Default off until
+    #: the client grows its capture affordance.
+    record: bool = False
 
 
 @router.post("/analyze/particles")
@@ -118,25 +125,24 @@ def analyze_particles(req: ParticleRequest) -> dict:
     # `grains.grain_stats` relies on for its own regionprops_table call.
     desc = shape_descriptors(res.labels)
     thresholds = (
-        dataclasses.replace(
-            ClassThresholds(), **req.class_thresholds.model_dump(exclude_none=True)
-        )
+        dataclasses.replace(ClassThresholds(), **req.class_thresholds.model_dump(exclude_none=True))
         if req.class_thresholds is not None
         else None
     )
-    shape_classes = classify_shapes(
-        desc.aspect_ratio, desc.circularity, desc.solidity, thresholds
+    shape_classes = classify_shapes(desc.aspect_ratio, desc.circularity, desc.solidity, thresholds)
+    feret_calibrated = (
+        desc.feret_max_px * px if has_cal else np.full_like(desc.feret_max_px, np.nan)
     )
-    feret_calibrated = desc.feret_max_px * px if has_cal else np.full_like(
-        desc.feret_max_px, np.nan
+    labels_meta = _register(
+        res.labels.astype(np.float64),
+        f"particles({name})",
+        ds,
+        req.image_id,
     )
-    return {
+    body = {
         "n_particles": res.n_particles,
         "threshold": res.threshold,
-        "labels": _register(
-            res.labels.astype(np.float64),
-            f"particles({name})", ds, req.image_id,
-        ),
+        "labels": labels_meta,
         "particles": [
             {
                 "id": p.id,
@@ -159,6 +165,83 @@ def analyze_particles(req: ParticleRequest) -> dict:
         ],
         "unit": ds.pixel_unit or "px",
     }
+    if req.record:
+        body["result"] = _capture_particles(req, body, labels_meta)
+    return body
+
+
+#: The particle table's numeric columns, in member-array column order.
+_PARTICLE_COLUMNS = (
+    ("id", ""),
+    ("area", "px^2"),
+    ("equiv_diameter", "px"),
+    ("mean_intensity", ""),
+    ("area_calibrated", None),
+    ("diameter_calibrated", None),
+    ("circularity", ""),
+    ("aspect_ratio", ""),
+    ("eccentricity", ""),
+    ("orientation_rad", "rad"),
+    ("solidity", ""),
+    ("feret_max", "px"),
+    ("feret_max_calibrated", None),
+)
+
+
+def _capture_particles(req: ParticleRequest, body: dict, labels_meta: dict) -> dict:
+    """This run as a persisted ResultRecord (ADR 0004): particle counts as
+    scalars, the numeric morphometrics as a member-backed table (thousands
+    of rows must never inline into manifest.json), shape classes inline,
+    and the registered label map as a derived id."""
+    from fermiviewer.io.project_results import ResultOutput
+    from fermiviewer.result_capture import capture_result
+
+    unit = body["unit"]
+    columns = [name for name, _ in _PARTICLE_COLUMNS]
+    units = [
+        (u if u is not None else (f"{unit}^2" if name.startswith("area") else unit))
+        for name, u in _PARTICLE_COLUMNS
+    ]
+    rows = np.array(
+        [
+            [np.nan if p[name] is None else float(p[name]) for name in columns]
+            for p in body["particles"]
+        ],
+        dtype=np.float64,
+    ).reshape(len(body["particles"]), len(columns))
+    outputs = [
+        ResultOutput(
+            kind="scalar",
+            name="n_particles",
+            data={"value": body["n_particles"], "unit": ""},
+        ),
+        ResultOutput(
+            kind="scalar",
+            name="threshold",
+            data={"value": body["threshold"], "unit": ""},
+        ),
+        ResultOutput(
+            kind="table",
+            name="particles",
+            data={
+                "columns": columns,
+                "units": units,
+                "shape_class": [p["shape_class"] for p in body["particles"]],
+            },
+            array=rows,
+        ),
+    ]
+    record = capture_result(
+        analysis="structure.particles",
+        label=f"Particle analysis of {store.name(req.image_id)}",
+        source_ids=[req.image_id],
+        # Resolved params: res.threshold is the value actually used, which
+        # differs from the request when auto-thresholding picked it.
+        params={**req.model_dump(exclude={"record"}), "threshold": body["threshold"]},
+        outputs=outputs,
+        derived_ids=[labels_meta["id"]],
+    )
+    return {"id": record.id, "created_at": record.created_at}
 
 
 def _nan_none(v: float) -> float | None:
@@ -192,13 +275,17 @@ class AtomsRequest(BaseModel):
 def analyze_atoms(req: AtomsRequest) -> dict:
     _, raster = _raster(req.image_id)
     with value_error_as_422():
-        det = detect_columns(raster, sigma=req.sigma, threshold=req.threshold,
-                             min_separation=req.min_separation, polarity=req.polarity)
+        det = detect_columns(
+            raster,
+            sigma=req.sigma,
+            threshold=req.threshold,
+            min_separation=req.min_separation,
+            polarity=req.polarity,
+        )
 
     positions, amplitude, converged = det.positions, det.intensities, None
     if req.refine and positions.shape[0] > 0:
-        fit = fit_gaussian_2d(raster, positions, win_radius=req.win_radius,
-                              polarity=req.polarity)
+        fit = fit_gaussian_2d(raster, positions, win_radius=req.win_radius, polarity=req.polarity)
         positions, amplitude, converged = fit.positions, fit.amplitude, fit.converged.tolist()
 
     out: dict = {
@@ -208,12 +295,14 @@ def analyze_atoms(req: AtomsRequest) -> dict:
         "converged": converged,
     }
     lv = find_lattice_vectors(positions)
-    out["lattice"] = {"valid": bool(lv.valid), "spacing": _nan_none(lv.spacing),
-                      "a1": None if not lv.valid else lv.a1.tolist(),
-                      "a2": None if not lv.valid else lv.a2.tolist()}
+    out["lattice"] = {
+        "valid": bool(lv.valid),
+        "spacing": _nan_none(lv.spacing),
+        "a1": None if not lv.valid else lv.a1.tolist(),
+        "a2": None if not lv.valid else lv.a2.tolist(),
+    }
     if req.sublattices > 1 and positions.shape[0] > 0:
-        out["sublattice"] = assign_sublattice(np.asarray(amplitude),
-                                              req.sublattices).tolist()
+        out["sublattice"] = assign_sublattice(np.asarray(amplitude), req.sublattices).tolist()
     if req.strain:
         out["strain"] = _ppa_payload(peak_pair_strain(positions))
     return out
@@ -227,16 +316,18 @@ def _ppa_payload(st: PairStrain) -> dict:
         "exx_mean": _nan_none(_nanmean_or_nan(st.exx)),
         "eyy_mean": _nan_none(_nanmean_or_nan(st.eyy)),
         "exy_mean": _nan_none(_nanmean_or_nan(st.exy)),
-        "exx": _s(st.exx), "eyy": _s(st.eyy),
-        "exy": _s(st.exy), "rotation": _s(st.rotation),
+        "exx": _s(st.exx),
+        "eyy": _s(st.eyy),
+        "exy": _s(st.exy),
+        "rotation": _s(st.rotation),
         "displacement": st.displacement.tolist() if st.valid else [],
     }
 
 
 class AtomsStrainRequest(BaseModel):
-    positions: list[list[float]]         # [[x,y], …] 1-based
+    positions: list[list[float]]  # [[x,y], …] 1-based
     ref_vectors: list[list[float]] | None = None  # [[a1x,a1y],[a2x,a2y]]
-    origin: list[float] | None = None    # [x0, y0]
+    origin: list[float] | None = None  # [x0, y0]
     neighbors: int = Field(default=8, ge=3, le=32)
 
 
@@ -247,8 +338,9 @@ def atoms_strain(req: AtomsStrainRequest) -> dict:
         pos = np.asarray(req.positions, dtype=np.float64)
         rv = np.asarray(req.ref_vectors, dtype=np.float64) if req.ref_vectors else None
         org = np.asarray(req.origin, dtype=np.float64) if req.origin else None
-        return _ppa_payload(peak_pair_strain(pos, ref_vectors=rv, origin=org,
-                                             neighbors=req.neighbors))
+        return _ppa_payload(
+            peak_pair_strain(pos, ref_vectors=rv, origin=org, neighbors=req.neighbors)
+        )
 
 
 # ── template match ───────────────────────────────────────────────────
@@ -267,13 +359,21 @@ def analyze_template(req: TemplateRequest) -> dict:
     _, raster = _raster(req.image_id)
     r0, c0, th, tw = req.rect
     h, w = raster.shape
-    if not (1 <= r0 <= h and 1 <= c0 <= w and th > 0 and tw > 0
-            and r0 + th - 1 <= h and c0 + tw - 1 <= w):
+    if not (
+        1 <= r0 <= h
+        and 1 <= c0 <= w
+        and th > 0
+        and tw > 0
+        and r0 + th - 1 <= h
+        and c0 + tw - 1 <= w
+    ):
         raise HTTPException(422, "template rect out of bounds")
     template = raster[r0 - 1 : r0 - 1 + th, c0 - 1 : c0 - 1 + tw]
     with value_error_as_422():
         res = template_match(
-            raster, template, threshold=req.threshold,
+            raster,
+            template,
+            threshold=req.threshold,
             max_matches=req.max_matches,
         )
     return {
@@ -309,13 +409,17 @@ def analyze_stitch(req: StitchRequest) -> dict:
         raise HTTPException(422, "stitch requires equal-size tiles")
     with value_error_as_422():
         res = stitch_images(
-            rasters, layout=req.layout,
-            overlap_frac=req.overlap_frac, blend_width=req.blend_width,
+            rasters,
+            layout=req.layout,
+            overlap_frac=req.overlap_frac,
+            blend_width=req.blend_width,
         )
     assert parent is not None
     return {
         "mosaic": _register(
-            res.mosaic, f"mosaic({len(rasters)})", parent,
+            res.mosaic,
+            f"mosaic({len(rasters)})",
+            parent,
             req.image_ids[0],
         ),
         "offsets": res.offsets.tolist(),
@@ -358,9 +462,14 @@ def analyze_align_stack(req: StackIdsRequest) -> dict:
     images = []
     for i, img_id in enumerate(req.image_ids[1:], start=1):
         ds = pairs[i][0]
-        images.append(_register(
-            aligned[i], f"aligned({store.name(img_id)})", ds, img_id,
-        ))
+        images.append(
+            _register(
+                aligned[i],
+                f"aligned({store.name(img_id)})",
+                ds,
+                img_id,
+            )
+        )
     return {"images": images, "shifts": shifts.tolist()}
 
 

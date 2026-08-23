@@ -50,6 +50,7 @@ __all__ = [
     "meta_of",
     "open_entries",
     "restore_into_store",
+    "results_payload",
     "save_current",
     "unavailable_payload",
 ]
@@ -139,12 +140,12 @@ def load_into_session(path: str | Path, *, replace: bool = True) -> dict[str, An
         # Result records as their manifest form — metadata and member
         # references only, never the arrays. Session-wide for the same
         # reason `unavailable` is (ADR 0004).
-        "results": _results_for_client(project.current().results),
+        "results": results_payload(project.current().results),
         "project": _project_info(loaded),
     }
 
 
-def _results_for_client(records: tuple[ResultRecord, ...]) -> list[dict[str, Any]]:
+def results_payload(records: tuple[ResultRecord, ...]) -> list[dict[str, Any]]:
     """Manifest-shaped result metadata plus load-only health information.
 
     ``missing_members`` must never be persisted into manifest.json, but the

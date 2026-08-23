@@ -9,7 +9,7 @@ Route and op inventories are read live from the app and registry at generation t
 
 ## Summary
 
-- **140** HTTP endpoints; **80** perform analysis, 3 are physics-table lookups, and 57 are allowlisted infrastructure.
+- **144** HTTP endpoints; **80** perform analysis, 3 are physics-table lookups, and 61 are allowlisted infrastructure.
 - **13 of 80** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **29** ops in total.
 - Registered-op reach IS headless reach: batch recipes, folder watch, `fv --script`, and the Python API all resolve steps through the same registry and cannot call anything else.
 - Remaining item-3 work: wave A (13), wave B (10), wave C (10), wave D (26) endpoints; 8 are parked behind the item-8/9 activation gates. Item 3 does not close while any analysis row lacks a wave or a named gate â€” every endpoint is assigned, none is silently deferred.
@@ -202,6 +202,10 @@ Session, project, render, export, jobs, calibration-store and dataset plumbing â
 - `POST /api/project/load`
 - `POST /api/project/relocate`
 - `POST /api/project/save`
+- `GET /api/results`
+- `DELETE /api/results/{result_id}`
+- `GET /api/results/{result_id}`
+- `GET /api/results/{result_id}/outputs/{index}/data`
 - `GET /api/session/images`
 - `GET /api/session/launch-dir`
 - `POST /api/session/open`

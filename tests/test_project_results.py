@@ -650,6 +650,26 @@ def test_region_snapshots_reproduce_geometry_a_live_region_lost(tmp_path: Path) 
     assert rec2.regions == ({"id": "m2", "kind": "lasso", "pts": [{"y": 0.5}]},)
 
 
+def test_a_manifest_missing_members_key_cannot_ride_the_extra_carry(
+    tmp_path: Path,
+) -> None:
+    """`missing_members` is the load response's route-only health flag, so
+    the name is RESERVED in RESULT_KEYS: a hand-crafted manifest key of the
+    same name must neither survive into `extra` nor be written back on a
+    re-save, where a stale fake could shadow future readers' expectations."""
+    path = save_project(tmp_path / "study.fvp", [_image()], results=[_record()])
+    _rewrite_manifest(path, lambda m: m["results"][0].__setitem__("missing_members", ["fake"]))
+
+    loaded = load_project(path)
+    (rec,) = loaded.results
+    assert rec.extra == {}  # not carried
+    assert rec.missing_members == ()  # and never mistaken for the real flag
+
+    resaved = save_project(tmp_path / "again.fvp", loaded.images, results=loaded.results)
+    (entry,) = _manifest(resaved)["results"]
+    assert "missing_members" not in entry  # not written back either
+
+
 def test_a_project_without_results_loads_with_an_empty_tuple(tmp_path: Path) -> None:
     """The section is a non-breaking extension: a save writes an explicit
     empty list, and a manifest missing the key entirely (an older writer)
@@ -856,9 +876,7 @@ def test_load_route_exposes_results_and_save_route_preserves_them(
 
 
 @pytest.mark.api
-def test_load_route_exposes_a_degraded_results_member(
-    client: TestClient, tmp_path: Path
-) -> None:
+def test_load_route_exposes_a_degraded_results_member(client: TestClient, tmp_path: Path) -> None:
     """The load-only degradation flag is UI data, not manifest data: the
     project opens, the route reports the lost member, and a card can warn
     without pretending its table/curve payload is still available."""
