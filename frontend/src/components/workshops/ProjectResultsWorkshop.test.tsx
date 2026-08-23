@@ -69,6 +69,40 @@ describe("ProjectResultsWorkshop", () => {
     expect(screen.getByText("1 shown")).toBeVisible();
   });
 
+  it("matches the active image against derived outputs, not only sources", () => {
+    // Inspecting an element map (a derived id) must surface the
+    // quantification that produced it, not an empty filtered state.
+    useViewer.setState({
+      images: { a: image("a"), map: image("map") },
+      order: ["a", "map"],
+      activeId: "map",
+      persistedResults: [
+        { ...result("r1", "a", "2026-08-22T12:00:00Z"), derived_ids: ["map"] },
+        result("r2", "elsewhere", "2026-08-21T12:00:00Z"),
+      ],
+    });
+    render(<ProjectResultsWorkshop />);
+    fireEvent.click(screen.getByRole("button", { name: "Active image" }));
+    expect(screen.getByText("Result r1")).toBeVisible();
+    expect(screen.queryByText("Result r2")).toBeNull();
+  });
+
+  it("keeps a deterministic order when a record carries an unparseable date", () => {
+    useViewer.setState({
+      images: { a: image("a") },
+      order: ["a"],
+      activeId: "a",
+      persistedResults: [
+        { ...result("weird", "a", "not-a-date") },
+        result("dated", "a", "2026-08-22T12:00:00Z"),
+      ],
+    });
+    const { container } = render(<ProjectResultsWorkshop />);
+    const headings = [...container.querySelectorAll(".fvd-result-title-block h3")];
+    // Unparseable pins to the epoch, so real timestamps sort ahead of it.
+    expect(headings.map((node) => node.textContent)).toEqual(["Result dated", "Result weird"]);
+  });
+
   it("selects an available source from a result card", () => {
     useViewer.setState({
       images: { a: image("a"), b: image("b") },

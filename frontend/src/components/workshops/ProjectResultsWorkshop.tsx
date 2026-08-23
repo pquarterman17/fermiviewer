@@ -6,8 +6,25 @@ import PersistedResultCard from "../results/PersistedResultCard";
 
 type Scope = "all" | "active";
 
+function createdAt(result: PersistedResultRecord): number {
+  // A record written by another tool can legally carry a non-ISO timestamp
+  // (the card already renders those as "Unknown date"); NaN in a comparator
+  // would make the whole sort order arbitrary, so pin unparseable to 0.
+  const parsed = Date.parse(result.created_at);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
 function newestFirst(a: PersistedResultRecord, b: PersistedResultRecord): number {
-  return Date.parse(b.created_at) - Date.parse(a.created_at);
+  return createdAt(b) - createdAt(a);
+}
+
+function involvesImage(result: PersistedResultRecord, imageId: string): boolean {
+  // A result is "about" the active image whether that image was its input
+  // or its product — a user inspecting an element map expects to find the
+  // quantification that produced it.
+  return Boolean(
+    result.source_ids?.includes(imageId) || result.derived_ids?.includes(imageId),
+  );
 }
 
 export default function ProjectResultsWorkshop() {
@@ -20,7 +37,7 @@ export default function ProjectResultsWorkshop() {
 
   const visible = useMemo(() => {
     const filtered = scope === "active" && activeId
-      ? results.filter((result) => result.source_ids?.includes(activeId))
+      ? results.filter((result) => involvesImage(result, activeId))
       : results;
     return [...filtered].sort(newestFirst);
   }, [activeId, results, scope]);
