@@ -830,6 +830,7 @@ def test_load_route_exposes_results_and_save_route_preserves_them(
     assert entry["id"] == "res1"
     assert entry["analysis"] == "eds.quantify"
     assert entry["status"] == "completed"
+    assert entry["missing_members"] == []
     assert entry["params"] == PARAMS
     assert [o["member"] for o in entry["outputs"]] == [
         None,
@@ -852,6 +853,24 @@ def test_load_route_exposes_results_and_save_route_preserves_them(
     np.testing.assert_array_equal(rec.outputs[1].array, _table_array())
     np.testing.assert_array_equal(rec.outputs[2].array, _curve_array())
     assert rec.missing_members == ()
+
+
+@pytest.mark.api
+def test_load_route_exposes_a_degraded_results_member(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """The load-only degradation flag is UI data, not manifest data: the
+    project opens, the route reports the lost member, and a card can warn
+    without pretending its table/curve payload is still available."""
+    path = save_project(tmp_path / "degraded.fvp", [_image()], results=[_record()])
+    _rewrite_entries(path, lambda blobs: blobs.pop("results/res1/1.npy"))
+
+    response = client.post("/api/project/load", json={"path": str(path)})
+
+    assert response.status_code == 200, response.text
+    (entry,) = response.json()["results"]
+    assert entry["status"] == "completed"
+    assert entry["missing_members"] == ["results/res1/1.npy"]
 
 
 # ── id minting ───────────────────────────────────────────────────────

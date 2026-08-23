@@ -63,6 +63,10 @@ export function buildWindowMenu(ctx: MenuCtx): Entry[] {
       label: "Analysis Workspaces",
       submenu: [
         {
+          label: "Results & Methods",
+          action: () => store.openTool("results"),
+        },
+        {
           label: "Elemental Analysis",
           action: () => store.openTool("eds"),
         },

@@ -59,6 +59,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   activeId: null,
   images: {},
   unavailable: {},
+  persistedResults: [],
   selected: [],
   listView: "thumbs",
   compareSet: null,

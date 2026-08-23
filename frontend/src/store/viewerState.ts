@@ -4,6 +4,7 @@
 
 import type {
   ImageMeta,
+  PersistedResultRecord,
   ProjectPayloadMode,
   RoiStats,
   UnavailableImage,
@@ -47,6 +48,8 @@ export interface ViewerState {
    *  the server writes their references straight back on the next save.
    *  Narrowed one folder at a time by `locateData`. */
   unavailable: Record<string, UnavailableImage>;
+  /** Scientific result records restored from the current .fvp project. */
+  persistedResults: PersistedResultRecord[];
   selected: string[];
   listView: ListView;
   compareSet: string[] | null;
