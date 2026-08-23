@@ -14,9 +14,10 @@ Two sources of truth are JOINED, so neither can silently drift:
 
 * **Introspection** — the live FastAPI route table (`create_app()`) and
   the ops registry (`ops.list_ops()`). A curated row naming a route or op
-  that no longer exists fails the build; a NEW route under an analysis
-  prefix (`/api/analyze/`, `/api/eels/`, ...) that nobody classified
-  fails the build too, so the audit cannot quietly go stale.
+  that no longer exists fails the build; so does ANY live route that no
+  classification covers — every endpoint is explicitly analysis,
+  reference, or infrastructure, and infrastructure is an allowlist, not
+  the unchecked remainder. A new route cannot silently hide as plumbing.
 * **Curated classification** — which GUI surface calls each analysis
   endpoint, which registered op (if any) backs it, its ADR 0004 result
   kinds, and its roadmap wave. These are judgements, not introspectable
@@ -43,22 +44,6 @@ sys.path.insert(0, str(ROOT / "src"))
 import fermiviewer.ops as fvops  # noqa: E402
 
 OUT_PATH = ROOT / "docs" / "operation-coverage.md"
-
-#: Route prefixes where every endpoint MUST be classified below (analysis,
-#: reference, or the explicit infrastructure list). A new endpoint under
-#: one of these that nobody classified is exactly the drift this audit
-#: exists to catch, so it fails the build instead of hiding.
-GUARDED_PREFIXES = (
-    "/api/analyze/",
-    "/api/atoms/",
-    "/api/diffraction/",
-    "/api/eds/",
-    "/api/eels/",
-    "/api/fourd",
-    "/api/grains/",
-    "/api/measure/",
-    "/api/regions/",
-)
 
 #: The 14 /api/filter kinds that dispatch to registered filter/geometry
 #: ops. The route additionally accepts `crop` and arbitrary-angle
@@ -92,7 +77,11 @@ class Row:
     gui: str  # calling GUI surface; "— (no GUI caller)" marks an orphan
     ops: tuple[str, ...] = ()  # registered op name(s) backing it, if any
     kinds: str = ""  # ADR 0004 output kinds of today's payload
-    wave: str = ""  # "shipped" | "A" | "B" | "C" | "parked" | "" (unassigned)
+    #: Every row MUST carry an assignment (cross_check enforces it): a
+    #: shipped op, one of waves A-D, or parked behind an item-8/9 gate.
+    #: "Unassigned" is not a state — that is how endpoints disappear from
+    #: a "universal" parity plan.
+    wave: str = ""  # "shipped" | "A" | "B" | "C" | "D" | "parked"
     note: str = ""
 
 
@@ -117,7 +106,7 @@ DOMAINS: tuple[Domain, ...] = (
                 "shipped",
                 "`crop` and arbitrary-angle `rotate` kinds have no op",
             ),
-            Row("POST", "/api/strip-databar", "Image menu", (), "map (derived image)"),
+            Row("POST", "/api/strip-databar", "Image menu", (), "map (derived image)", "D"),
             Row(
                 "POST",
                 "/api/image/{img_id}/fft",
@@ -315,7 +304,7 @@ DOMAINS: tuple[Domain, ...] = (
                 "Analysis menu",
                 (),
                 "map",
-                "",
+                "parked",
                 "tomography — parked with roadmap item 9",
             ),
         ),
@@ -323,7 +312,7 @@ DOMAINS: tuple[Domain, ...] = (
     Domain(
         "EELS",
         (
-            Row("POST", "/api/eels/background", "EELS workshop", (), "curve ×3"),
+            Row("POST", "/api/eels/background", "EELS workshop", (), "curve ×3", "D"),
             Row("POST", "/api/eels/map", "EELS workshop", ("eels_map",), "map", "shipped"),
             Row(
                 "POST",
@@ -334,18 +323,18 @@ DOMAINS: tuple[Domain, ...] = (
                 "shipped",
             ),
             Row("POST", "/api/eels/fit", "EELS workshop", ("eels_fit",), "fit", "shipped"),
-            Row("POST", "/api/eels/fit-map", "EELS workshop", (), "map ×N + table"),
-            Row("POST", "/api/eels/quantify-map", "EELS quant-map job", (), "map ×N"),
-            Row("POST", "/api/eels/thickness", "EELS Advanced", (), "map + scalar ×2"),
-            Row("POST", "/api/eels/kk", "EELS Advanced", (), "curve ×5 + scalar ×2"),
-            Row("POST", "/api/eels/fourier-log", "EELS Advanced", (), "curve ×2 + scalar"),
-            Row("POST", "/api/eels/svd", "EELS Advanced", (), "curve ×k + map ×k"),
-            Row("POST", "/api/eels/align-zlp", "EELS Advanced", (), "map + scalar ×2"),
-            Row("POST", "/api/eels/subpixel-align", "EELS Advanced", (), "map + scalar ×2"),
-            Row("POST", "/api/eels/richardson-lucy", "EELS Advanced", (), "curve ×2 + scalar"),
-            Row("POST", "/api/eels/maps", "Elemental workspace", (), "map ×N"),
-            Row("POST", "/api/eels/auto-assign", "Elemental workspace", (), "table"),
-            Row("POST", "/api/analyze/elnes", "EELS workshop", (), "curve"),
+            Row("POST", "/api/eels/fit-map", "EELS workshop", (), "map ×N + table", "D"),
+            Row("POST", "/api/eels/quantify-map", "EELS quant-map job", (), "map ×N", "D"),
+            Row("POST", "/api/eels/thickness", "EELS Advanced", (), "map + scalar ×2", "D"),
+            Row("POST", "/api/eels/kk", "EELS Advanced", (), "curve ×5 + scalar ×2", "D"),
+            Row("POST", "/api/eels/fourier-log", "EELS Advanced", (), "curve ×2 + scalar", "D"),
+            Row("POST", "/api/eels/svd", "EELS Advanced", (), "curve ×k + map ×k", "D"),
+            Row("POST", "/api/eels/align-zlp", "EELS Advanced", (), "map + scalar ×2", "D"),
+            Row("POST", "/api/eels/subpixel-align", "EELS Advanced", (), "map + scalar ×2", "D"),
+            Row("POST", "/api/eels/richardson-lucy", "EELS Advanced", (), "curve ×2 + scalar", "D"),
+            Row("POST", "/api/eels/maps", "Elemental workspace", (), "map ×N", "D"),
+            Row("POST", "/api/eels/auto-assign", "Elemental workspace", (), "table", "D"),
+            Row("POST", "/api/analyze/elnes", "EELS workshop", (), "curve", "D"),
         ),
     ),
     Domain(
@@ -368,16 +357,17 @@ DOMAINS: tuple[Domain, ...] = (
                 "shipped",
                 "op and route use different entry points into calc/eds_peakfit",
             ),
-            Row("POST", "/api/eds/zeta", "EDS Model Fit", (), "fit + table + scalar"),
-            Row("POST", "/api/eds/continuum", "EDS Model Fit", (), "fit + curve"),
+            Row("POST", "/api/eds/zeta", "EDS Model Fit", (), "fit + table + scalar", "D"),
+            Row("POST", "/api/eds/continuum", "EDS Model Fit", (), "fit + curve", "D"),
             Row(
                 "POST",
                 "/api/eds/artifacts",
                 "— (wrapper only, no GUI caller)",
                 (),
                 "curve ×2 + table",
+                "D",
             ),
-            Row("POST", "/api/eds/recalibrate", "EDS Model Fit", (), "fit (calibration)"),
+            Row("POST", "/api/eds/recalibrate", "EDS Model Fit", (), "fit (calibration)", "D"),
             Row(
                 "POST",
                 "/api/eds/element-map",
@@ -394,7 +384,7 @@ DOMAINS: tuple[Domain, ...] = (
                 "map ×N",
                 "shipped",
             ),
-            Row("POST", "/api/eds/auto-assign", "EDS Quantify panel, Maps tab", (), "table"),
+            Row("POST", "/api/eds/auto-assign", "EDS Quantify panel, Maps tab", (), "table", "D"),
             Row(
                 "POST",
                 "/api/analyze/composition-profile",
@@ -439,19 +429,20 @@ DOMAINS: tuple[Domain, ...] = (
     Domain(
         "Measurement",
         (
-            Row("POST", "/api/measure/profile", "Measure panel, Stage", (), "curve + scalar"),
-            Row("POST", "/api/measure/roi", "Measure panel", (), "scalar set"),
-            Row("POST", "/api/measure/box-profile", "Measure panel", (), "curve ×2"),
+            Row("POST", "/api/measure/profile", "Measure panel, Stage", (), "curve + scalar", "D"),
+            Row("POST", "/api/measure/roi", "Measure panel", (), "scalar set", "D"),
+            Row("POST", "/api/measure/box-profile", "Measure panel", (), "curve ×2", "D"),
             Row(
                 "POST",
                 "/api/measure/distance-tilted",
                 "— (wrapper only, no GUI caller)",
                 (),
                 "scalar set",
+                "D",
             ),
-            Row("GET", "/api/image/{img_id}/spectrum", "Spectrum panel", (), "curve"),
-            Row("GET", "/api/image/{img_id}/histogram", "Histogram panel", (), "curve"),
-            Row("POST", "/api/calibration/detect-bar", "Calibration dialog", (), "scalar set"),
+            Row("GET", "/api/image/{img_id}/spectrum", "Spectrum panel", (), "curve", "D"),
+            Row("GET", "/api/image/{img_id}/histogram", "Histogram panel", (), "curve", "D"),
+            Row("POST", "/api/calibration/detect-bar", "Calibration dialog", (), "scalar set", "D"),
         ),
     ),
     Domain(
@@ -482,15 +473,71 @@ REFERENCE: tuple[tuple[str, str], ...] = (
     ("GET", "/api/eds/lines"),
 )
 
-#: Endpoints under a guarded prefix that are deliberately NOT analysis:
-#: dataset/phase-store management, not computation.
-GUARDED_INFRASTRUCTURE: tuple[tuple[str, str], ...] = (
+#: The EXPLICIT infrastructure allowlist: session, project, render,
+#: export, jobs, calibration-store and dataset plumbing. This is an
+#: allowlist, never a derived remainder — several route families
+#: (`/api/image/...`, `/api/calibration/...`, `/api/filter`) mix analysis
+#: and plumbing, so an "everything else is infrastructure" rule would let
+#: a new analysis sibling in those families vanish from the audit while
+#: the parity counts still looked complete. Any live route in none of the
+#: three classifications fails the build.
+INFRASTRUCTURE: tuple[tuple[str, str], ...] = (
+    ("GET", "/api/batch/operations"),
+    ("POST", "/api/batch/run"),
+    ("GET", "/api/calibration"),
+    ("POST", "/api/calibration"),
+    ("POST", "/api/calibration/apply"),
+    ("POST", "/api/calibration/clear"),
+    ("DELETE", "/api/calibration/{key:path}"),
+    ("POST", "/api/composite/register"),
+    ("GET", "/api/debug/report"),
+    ("GET", "/api/dev/sample-files"),
     ("POST", "/api/diffraction/phases/import"),
     ("DELETE", "/api/diffraction/phases/{name}"),
+    ("POST", "/api/export"),
+    ("POST", "/api/export/batch"),
+    ("POST", "/api/export/figure"),
+    ("POST", "/api/export/gif"),
+    ("POST", "/api/export/table"),
     ("GET", "/api/fourd"),
     ("DELETE", "/api/fourd/{fourd_id}"),
     ("GET", "/api/fourd/{fourd_id}/meta"),
     ("POST", "/api/fourd/{fourd_id}/reshape"),
+    ("GET", "/api/health"),
+    ("DELETE", "/api/image/{img_id}"),
+    ("GET", "/api/image/{img_id}/data16"),
+    ("POST", "/api/image/{img_id}/explode"),
+    ("GET", "/api/image/{img_id}/meta"),
+    ("POST", "/api/image/{img_id}/metadata"),
+    ("POST", "/api/image/{img_id}/rename"),
+    ("GET", "/api/image/{img_id}/render"),
+    ("GET", "/api/image/{img_id}/rgb8"),
+    ("GET", "/api/image/{img_id}/tile"),
+    ("GET", "/api/image/{img_id}/tile-info"),
+    ("GET", "/api/image/{img_id}/usermeta"),
+    ("POST", "/api/image/{img_id}/usermeta"),
+    ("GET", "/api/image/{img_id}/usermeta/sidecar"),
+    ("DELETE", "/api/jobs/{job_id}"),
+    ("GET", "/api/jobs/{job_id}"),
+    ("GET", "/api/metadata-schema"),
+    ("POST", "/api/project/load"),
+    ("POST", "/api/project/relocate"),
+    ("POST", "/api/project/save"),
+    ("GET", "/api/session/images"),
+    ("GET", "/api/session/launch-dir"),
+    ("POST", "/api/session/open"),
+    ("POST", "/api/session/open-folder"),
+    ("POST", "/api/session/open-raw"),
+    ("GET", "/api/session/supported-extensions"),
+    ("POST", "/api/session/upload"),
+    ("POST", "/api/usermeta/batch-autofill"),
+    ("POST", "/api/watch/start"),
+    ("GET", "/api/watch/status"),
+    ("POST", "/api/watch/stop"),
+    ("GET", "/api/workspaces"),
+    ("POST", "/api/workspaces/load"),
+    ("POST", "/api/workspaces/save"),
+    ("DELETE", "/api/workspaces/{slug}"),
 )
 
 WAVE_LABEL = {
@@ -498,8 +545,8 @@ WAVE_LABEL = {
     "A": "wave A",
     "B": "wave B",
     "C": "wave C",
+    "D": "wave D",
     "parked": "parked (item 8/9)",
-    "": "—",
 }
 
 
@@ -538,20 +585,27 @@ def cross_check() -> None:
     curated classification — this is what makes the audit trustworthy."""
     live = app_routes()
     rows = curated_analysis()
-    curated = {(row.method, row.path) for row in rows}
-    stated = curated | set(REFERENCE) | set(GUARDED_INFRASTRUCTURE)
+    analysis = {(row.method, row.path) for row in rows}
+    reference = set(REFERENCE)
+    infra = set(INFRASTRUCTURE)
 
+    overlap = sorted((analysis & reference) | (analysis & infra) | (reference & infra))
+    if overlap:
+        raise SystemExit(f"routes classified more than once: {overlap}")
+
+    stated = analysis | reference | infra
     missing = sorted(stated - live)
     if missing:
         raise SystemExit(f"classified routes not served by the app: {missing}")
 
-    unclassified = sorted(
-        (method, path) for method, path in live - stated if path.startswith(GUARDED_PREFIXES)
-    )
+    # TOTAL classification: infrastructure is an allowlist, so any route
+    # nobody stated fails here — a new analysis endpoint cannot hide as
+    # plumbing while the parity counts still look complete.
+    unclassified = sorted(live - stated)
     if unclassified:
         raise SystemExit(
-            "new analysis-prefix routes need a classification in "
-            f"tools/gen_coverage_table.py: {unclassified}"
+            "live routes with no classification in tools/gen_coverage_table.py "
+            f"(add to a Domain, REFERENCE, or INFRASTRUCTURE): {unclassified}"
         )
 
     registered = {spec.name for spec in fvops.list_ops()}
@@ -559,6 +613,11 @@ def cross_check() -> None:
         unknown = sorted(set(row.ops) - registered)
         if unknown:
             raise SystemExit(f"{row.path} names unregistered op(s): {unknown}")
+        if row.wave not in WAVE_LABEL:
+            raise SystemExit(
+                f"{row.path}: wave {row.wave!r} is not an assignment — every "
+                f"analysis row needs one of {sorted(WAVE_LABEL)}"
+            )
 
 
 # ── rendering ────────────────────────────────────────────────────────
@@ -580,12 +639,12 @@ def _row_line(row: Row) -> str:
 def _summary(live: set[tuple[str, str]]) -> list[str]:
     rows = curated_analysis()
     opped = sum(1 for row in rows if row.ops)
-    waves = {key: sum(1 for r in rows if r.wave == key) for key in ("A", "B", "C")}
+    waves = {key: sum(1 for r in rows if r.wave == key) for key in ("A", "B", "C", "D", "parked")}
     n_ops = len(fvops.list_ops())
     return [
         f"- **{len(live)}** HTTP endpoints; **{len(rows)}** perform analysis, "
-        f"{len(REFERENCE)} are physics-table lookups, the rest are "
-        "session/project/render/export infrastructure.",
+        f"{len(REFERENCE)} are physics-table lookups, and "
+        f"{len(INFRASTRUCTURE)} are allowlisted infrastructure.",
         f"- **{opped} of {len(rows)}** analysis endpoints are backed by a "
         f"registered op (the `/api/filter` row alone carries {len(FILTER_OPS)}); "
         f"the registry holds **{n_ops}** ops in total.",
@@ -593,9 +652,11 @@ def _summary(live: set[tuple[str, str]]) -> list[str]:
         "watch, `fv --script`, and the Python API all resolve steps through "
         "the same registry and cannot call anything else.",
         f"- Remaining item-3 work: wave A ({waves['A']}), wave B "
-        f"({waves['B']}), wave C ({waves['C']}) endpoints; spectroscopy, "
-        "measurement and utility endpoints marked — are not yet assigned "
-        "to a wave.",
+        f"({waves['B']}), wave C ({waves['C']}), wave D ({waves['D']}) "
+        f"endpoints; {waves['parked']} are parked behind the item-8/9 "
+        "activation gates. Item 3 does not close while any analysis row "
+        "lacks a wave or a named gate — every endpoint is assigned, none "
+        "is silently deferred.",
     ]
 
 
@@ -639,11 +700,7 @@ def build_markdown() -> str:
     test compares this against the committed file without touching it)."""
     cross_check()
     live = app_routes()
-    stated_analysis = {(r.method, r.path) for r in curated_analysis()}
-    infra = sorted(
-        live - stated_analysis - set(REFERENCE),
-        key=lambda pair: (pair[1], pair[0]),
-    )
+    infra = sorted(INFRASTRUCTURE, key=lambda pair: (pair[1], pair[0]))
 
     lines: list[str] = [
         "<!-- AUTO-GENERATED by tools/gen_coverage_table.py — do not edit by hand.",
@@ -664,8 +721,9 @@ def build_markdown() -> str:
         "",
         "Route and op inventories are read live from the app and registry "
         "at generation time; classifications are curated in "
-        "`tools/gen_coverage_table.py`. A new analysis-prefix route without "
-        "a classification fails the build, and "
+        "`tools/gen_coverage_table.py`. Every live route must be classified "
+        "— analysis, reference, or allowlisted infrastructure — so ANY new "
+        "route without a classification fails the build, and "
         "`tests/test_coverage_table.py` fails if this file drifts from a "
         "regeneration.",
         "",
@@ -685,7 +743,9 @@ def build_markdown() -> str:
         *_compact_listing(
             "Infrastructure endpoints",
             "Session, project, render, export, jobs, calibration-store and "
-            "dataset plumbing — outside the parity audit's scope.",
+            "dataset plumbing — outside the parity audit's scope. An "
+            "explicit allowlist: a new route that is not added here (or "
+            "classified as analysis/reference) fails the generator.",
             infra,
         ),
     ]

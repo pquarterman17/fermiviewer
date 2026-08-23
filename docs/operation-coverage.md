@@ -5,14 +5,14 @@
 
 The parity audit for roadmap item 3 (`plans/MICROSCOPY_FEATURE_ROADMAP.md`): every analysis endpoint, the GUI surface that calls it, the registered op that makes it reachable headlessly (batch recipes, folder watch, `fv --script`, and `fermiviewer.api` all resolve through the ops registry — one column covers all four), the ADR 0004 output kinds of today's response, and the item-3 wave that will close each gap. Macro record/replay converges on the same registry for exactly the op-backed wire calls; everything else it records is replay-only (`frontend/src/lib/macroOpMap.ts` mirrors this table).
 
-Route and op inventories are read live from the app and registry at generation time; classifications are curated in `tools/gen_coverage_table.py`. A new analysis-prefix route without a classification fails the build, and `tests/test_coverage_table.py` fails if this file drifts from a regeneration.
+Route and op inventories are read live from the app and registry at generation time; classifications are curated in `tools/gen_coverage_table.py`. Every live route must be classified — analysis, reference, or allowlisted infrastructure — so ANY new route without a classification fails the build, and `tests/test_coverage_table.py` fails if this file drifts from a regeneration.
 
 ## Summary
 
-- **139** HTTP endpoints; **80** perform analysis, 3 are physics-table lookups, the rest are session/project/render/export infrastructure.
+- **139** HTTP endpoints; **80** perform analysis, 3 are physics-table lookups, and 56 are allowlisted infrastructure.
 - **13 of 80** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **29** ops in total.
 - Registered-op reach IS headless reach: batch recipes, folder watch, `fv --script`, and the Python API all resolve steps through the same registry and cannot call anything else.
-- Remaining item-3 work: wave A (13), wave B (10), wave C (10) endpoints; spectroscopy, measurement and utility endpoints marked — are not yet assigned to a wave.
+- Remaining item-3 work: wave A (13), wave B (10), wave C (10), wave D (26) endpoints; 8 are parked behind the item-8/9 activation gates. Item 3 does not close while any analysis row lacks a wave or a named gate — every endpoint is assigned, none is silently deferred.
 
 ## Analysis endpoints
 
@@ -21,7 +21,7 @@ Route and op inventories are read live from the app and registry at generation t
 | Route | GUI action | Registered op (headless reach) | Result kinds (ADR 0004) | Wave |
 |---|---|---|---|---|
 | `POST /api/filter` | Image menu, Stage tools. *`crop` and arbitrary-angle `rotate` kinds have no op* | `gaussian`, `median`, `unsharp`, `butterworth`, `clahe`, `bin`, `plane_level`, `morph`, `multiotsu`, `rotate90`, `rotate180`, `rotate270`, `fliph`, `flipv` | map (derived image) | shipped |
-| `POST /api/strip-databar` | Image menu | — | map (derived image) | — |
+| `POST /api/strip-databar` | Image menu | — | map (derived image) | wave D |
 | `POST /api/image/{img_id}/fft` | Image menu; Lattice/GPA/FFT-mask modes | — | map | wave B |
 | `POST /api/analyze/fft-mask` | FFT Mask workshop | — | map | wave B |
 | `POST /api/analyze/vdf` | Image menu | — | map | wave B |
@@ -70,28 +70,28 @@ Route and op inventories are read live from the app and registry at generation t
 | `POST /api/analyze/mip` | Image menu | — | map | wave C |
 | `POST /api/analyze/stitch` | CTF/Stitch mode | — | map + table | wave C |
 | `POST /api/analyze/image-math` | Image menu | — | map | wave C |
-| `POST /api/analyze/back-project` | Analysis menu. *tomography — parked with roadmap item 9* | — | map | — |
+| `POST /api/analyze/back-project` | Analysis menu. *tomography — parked with roadmap item 9* | — | map | parked (item 8/9) |
 
 ### EELS
 
 | Route | GUI action | Registered op (headless reach) | Result kinds (ADR 0004) | Wave |
 |---|---|---|---|---|
-| `POST /api/eels/background` | EELS workshop | — | curve ×3 | — |
+| `POST /api/eels/background` | EELS workshop | — | curve ×3 | wave D |
 | `POST /api/eels/map` | EELS workshop | `eels_map` | map | shipped |
 | `POST /api/eels/quantify` | EELS workshop | `eels_quantify` | table | shipped |
 | `POST /api/eels/fit` | EELS workshop | `eels_fit` | fit | shipped |
-| `POST /api/eels/fit-map` | EELS workshop | — | map ×N + table | — |
-| `POST /api/eels/quantify-map` | EELS quant-map job | — | map ×N | — |
-| `POST /api/eels/thickness` | EELS Advanced | — | map + scalar ×2 | — |
-| `POST /api/eels/kk` | EELS Advanced | — | curve ×5 + scalar ×2 | — |
-| `POST /api/eels/fourier-log` | EELS Advanced | — | curve ×2 + scalar | — |
-| `POST /api/eels/svd` | EELS Advanced | — | curve ×k + map ×k | — |
-| `POST /api/eels/align-zlp` | EELS Advanced | — | map + scalar ×2 | — |
-| `POST /api/eels/subpixel-align` | EELS Advanced | — | map + scalar ×2 | — |
-| `POST /api/eels/richardson-lucy` | EELS Advanced | — | curve ×2 + scalar | — |
-| `POST /api/eels/maps` | Elemental workspace | — | map ×N | — |
-| `POST /api/eels/auto-assign` | Elemental workspace | — | table | — |
-| `POST /api/analyze/elnes` | EELS workshop | — | curve | — |
+| `POST /api/eels/fit-map` | EELS workshop | — | map ×N + table | wave D |
+| `POST /api/eels/quantify-map` | EELS quant-map job | — | map ×N | wave D |
+| `POST /api/eels/thickness` | EELS Advanced | — | map + scalar ×2 | wave D |
+| `POST /api/eels/kk` | EELS Advanced | — | curve ×5 + scalar ×2 | wave D |
+| `POST /api/eels/fourier-log` | EELS Advanced | — | curve ×2 + scalar | wave D |
+| `POST /api/eels/svd` | EELS Advanced | — | curve ×k + map ×k | wave D |
+| `POST /api/eels/align-zlp` | EELS Advanced | — | map + scalar ×2 | wave D |
+| `POST /api/eels/subpixel-align` | EELS Advanced | — | map + scalar ×2 | wave D |
+| `POST /api/eels/richardson-lucy` | EELS Advanced | — | curve ×2 + scalar | wave D |
+| `POST /api/eels/maps` | Elemental workspace | — | map ×N | wave D |
+| `POST /api/eels/auto-assign` | Elemental workspace | — | table | wave D |
+| `POST /api/analyze/elnes` | EELS workshop | — | curve | wave D |
 
 ### EDS
 
@@ -99,13 +99,13 @@ Route and op inventories are read live from the app and registry at generation t
 |---|---|---|---|---|
 | `POST /api/eds/quantify` | EDS Quantify panel | `eds_quantify` | table + map ×N | shipped |
 | `POST /api/eds/peakfit` | EDS Model Fit. *op and route use different entry points into calc/eds_peakfit* | `eds_peakfit` | fit + table | shipped |
-| `POST /api/eds/zeta` | EDS Model Fit | — | fit + table + scalar | — |
-| `POST /api/eds/continuum` | EDS Model Fit | — | fit + curve | — |
-| `POST /api/eds/artifacts` | — (wrapper only, no GUI caller) | — | curve ×2 + table | — |
-| `POST /api/eds/recalibrate` | EDS Model Fit | — | fit (calibration) | — |
+| `POST /api/eds/zeta` | EDS Model Fit | — | fit + table + scalar | wave D |
+| `POST /api/eds/continuum` | EDS Model Fit | — | fit + curve | wave D |
+| `POST /api/eds/artifacts` | — (wrapper only, no GUI caller) | — | curve ×2 + table | wave D |
+| `POST /api/eds/recalibrate` | EDS Model Fit | — | fit (calibration) | wave D |
 | `POST /api/eds/element-map` | Elemental workspace | `eds_element_map` | map + scalar | shipped |
 | `POST /api/eds/element-maps` | Elemental workspace | `eds_element_maps` | map ×N | shipped |
-| `POST /api/eds/auto-assign` | EDS Quantify panel, Maps tab | — | table | — |
+| `POST /api/eds/auto-assign` | EDS Quantify panel, Maps tab | — | table | wave D |
 | `POST /api/analyze/composition-profile` | EDS Quantify panel. *op quantifies the cube itself; route samples pre-registered maps* | `composition_profile` | curve ×N (σ-bearing) | shipped |
 
 ### Diffraction
@@ -121,13 +121,13 @@ Route and op inventories are read live from the app and registry at generation t
 
 | Route | GUI action | Registered op (headless reach) | Result kinds (ADR 0004) | Wave |
 |---|---|---|---|---|
-| `POST /api/measure/profile` | Measure panel, Stage | — | curve + scalar | — |
-| `POST /api/measure/roi` | Measure panel | — | scalar set | — |
-| `POST /api/measure/box-profile` | Measure panel | — | curve ×2 | — |
-| `POST /api/measure/distance-tilted` | — (wrapper only, no GUI caller) | — | scalar set | — |
-| `GET /api/image/{img_id}/spectrum` | Spectrum panel | — | curve | — |
-| `GET /api/image/{img_id}/histogram` | Histogram panel | — | curve | — |
-| `POST /api/calibration/detect-bar` | Calibration dialog | — | scalar set | — |
+| `POST /api/measure/profile` | Measure panel, Stage | — | curve + scalar | wave D |
+| `POST /api/measure/roi` | Measure panel | — | scalar set | wave D |
+| `POST /api/measure/box-profile` | Measure panel | — | curve ×2 | wave D |
+| `POST /api/measure/distance-tilted` | — (wrapper only, no GUI caller) | — | scalar set | wave D |
+| `GET /api/image/{img_id}/spectrum` | Spectrum panel | — | curve | wave D |
+| `GET /api/image/{img_id}/histogram` | Histogram panel | — | curve | wave D |
+| `POST /api/calibration/detect-bar` | Calibration dialog | — | scalar set | wave D |
 
 ### 4D-STEM
 
@@ -159,7 +159,7 @@ Physics tables, no data reduction — no op is owed.
 
 ## Infrastructure endpoints
 
-Session, project, render, export, jobs, calibration-store and dataset plumbing — outside the parity audit's scope.
+Session, project, render, export, jobs, calibration-store and dataset plumbing — outside the parity audit's scope. An explicit allowlist: a new route that is not added here (or classified as analysis/reference) fails the generator.
 
 - `GET /api/batch/operations`
 - `POST /api/batch/run`

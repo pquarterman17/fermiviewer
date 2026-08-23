@@ -328,6 +328,13 @@ predicate consolidated, README parity overclaim corrected.
 - [ ] Wave B: GPA, CTF, atoms, lattice, and structure/defect operations.
 - [ ] Wave C: diffraction calibration, indexing, simulation, stack alignment,
       MIP, and montage.
+- [ ] Wave D: remaining spectroscopy (EELS background/thickness/KK/SVD/
+      alignment/deconvolution/maps/auto-assign, EDS zeta/continuum/artifacts/
+      recalibration/auto-assign), measurement (profiles, ROI statistics,
+      distances, spectra/histograms, scale-bar detect), and utility
+      (databar strip) operations — every analysis endpoint the coverage
+      table lists is in a wave or behind a named item-8/9 gate; item 3
+      does not close with any endpoint unassigned (3A review finding).
 - [ ] Have registered operations emit the item-1 result contract.
 - [ ] Add recipe validation, versioning, dry-run summaries, and clear failure
       provenance.

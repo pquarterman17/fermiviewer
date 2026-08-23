@@ -57,19 +57,30 @@ same names, same defaults, same bounds — minus session-specific fields
 spectral catalogue established, until the registry grows richer param
 types; a wave does not invent per-op encodings.
 
-### 5. Ops emit the item-1 result contract through `value`
+### 5. Ops emit the item-1 result contract through `value` — typed envelopes for every new op
 
 The roadmap requires registered operations to emit the ADR 0004 result
 contract. `OpResult` stays a plain dataclass, and the convention is:
 
-- `value` remains a flat JSON-safe dict for scalar/table-shaped results
-  (today's contract, unchanged — every existing op keeps working).
-- An op whose route response is richer (curves, fits, multiple named
-  outputs) returns `value` as a dict whose `outputs` key holds a list of
-  ADR 0004 output envelopes: `{kind, name, data}` with per-kind `data`
-  conventions from ADR 0004 §3. Arrays inline as lists here — the op
-  layer is pure and has no project file; the 1C result API is what
-  turns an envelope list into a persisted record with members.
+- **Every value-producing op registered from waves 3B–3D onward —
+  scalar- and table-shaped included — returns
+  `value = {"outputs": [...]}`**, where each entry is an ADR 0004 output
+  envelope `{kind, name, data}` with the per-kind `data` conventions of
+  ADR 0004 §3. A flat dict is not an acceptable shape for a new op: a
+  generic 1C adapter cannot mechanically tell whether its keys are
+  scalar outputs, table columns, metadata, or units/uncertainties, so a
+  flat dict is precisely the shape that cannot become a `ResultRecord`
+  or a 1B result card without per-op knowledge. Arrays inline as lists
+  here — the op layer is pure and has no project file; the 1C result
+  API turns an envelope list into a persisted record with members.
+- **The value ops already registered at this ADR's date are
+  grandfathered, as a frozen, closed set** (the audit's "shipped" rows:
+  `image_stats`, `noise`, `roughness`, `distribution_fit`,
+  `radial_profile`, `composition_profile`, and the spectral/EDS quant
+  and fit ops). Their flat dicts keep working through a per-op legacy
+  adapter that 1C carries for exactly this set; no new op may join it,
+  and each member migrates to envelopes when its domain's wave touches
+  it.
 - σ/uncertainty and units live inside the envelope `data`
   (`sigma` absent — not zero — when no honest uncertainty exists),
   never as bare parallel lists at top level in new ops.
@@ -77,8 +88,9 @@ contract. `OpResult` stays a plain dataclass, and the convention is:
   reproduction key (`OpResult.params` is already resolved by
   `registry.run`).
 
-This keeps `ops/` free of any 1C dependency while making every wave-B/C
-op's output mechanically convertible to a `ResultRecord`.
+This keeps `ops/` free of any 1C dependency while making every wave
+op's output mechanically convertible to a `ResultRecord` — the generic
+adapter needs no per-op knowledge outside the frozen legacy set.
 
 ### 6. Waves do not fork execution semantics
 
