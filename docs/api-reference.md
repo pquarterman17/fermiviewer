@@ -122,6 +122,17 @@ def run(op: str, **params: Any) -> Result
 Run a registered operation by name, returning a ``Result``. The
 session records a provenance step (params + lineage) for it.
 
+The operation name is positional-ONLY so that it cannot collide with
+a param of the same name: ``image_math`` mirrors its route's request
+model, which calls the arithmetic selector ``op``, and
+``a.image_math(op="subtract")`` must reach the param.
+
+An op that declares auxiliary inputs (``image_math``'s second image,
+``mip``'s remaining frames) takes them as ``Image`` keyword
+arguments — ``a.image_math(other=b, op="subtract")``,
+``a.mip(others=[b, c])`` — and every contributing image is recorded
+in the step's lineage, not just the subject.
+
 ### `Image.pipeline()`
 
 ```python
@@ -249,9 +260,21 @@ The registered operation catalogue: name, category, summary, params.
 
 ## Operation catalogue
 
-73 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
+77 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
 
 ### analysis
+
+#### `align_stack` — FFT cross-correlation drift correction across a stack; the subject is the reference frame and the movers come back as inline aligned maps plus their integer shifts (calc/stack.align_stack)
+
+*category: `analysis` · produces: value*
+
+| Input | Datasets | Required | Description |
+|---|---|---|---|
+| `others` | 1+ | yes | the remaining frames, in order; the subject is frame 0 (the alignment reference, kept as-is) |
+
+*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API); this op is not available as a recipe step.*
+
+*(no parameters)*
 
 #### `box_profile` — Axis-aligned box integrated along both axes → horizontal (x, over columns) and vertical (y, over rows) profiles (calc/profile_stats.box_integrate). Corners are 1-based inclusive; returned positions are 0-based px from the box edge
 
@@ -273,7 +296,7 @@ The registered operation catalogue: name, category, summary, params.
 |---|---|---|---|---|---|---|
 | `voltage_kv` | `float` | 200.0 | no |  |  | beam voltage (kV) |
 | `cs_mm` | `float` | 1.2 | no |  |  | spherical aberration (mm) |
-| `pixel_size_a` | `float` | 1.0 | no |  | [0.0, ] | pixel size (Å/px); must be > 0 (the route's gt=0 bound, enforced in the op fn) |
+| `pixel_size_a` | `float` | 1.0 | no |  | (0.0, ] | pixel size (Å/px), must be > 0 |
 
 #### `distribution_fit` — Population summary + histogram + normal/lognormal/weibull fit over a raw value list (calc/distributions.py) — for particle/grain size populations extracted elsewhere in a script
 
@@ -838,6 +861,15 @@ The registered operation catalogue: name, category, summary, params.
 | `rect_r2` | `float` | nan | no |  |  | opposite corner row |
 | `rect_c2` | `float` | nan | no |  |  | opposite corner col |
 
+#### `fft_mask` — Inverse FFT through circular spectral masks — periodic-noise removal ('reject') or lattice isolation ('pass') (calc/fourier.fft_mask_inverse)
+
+*category: `filter` · produces: derived image*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `masks` | `list[3 x row/col/radius]` |  | yes |  |  | circular masks on the fftshifted spectrum, 1-based; each radius must be > 0 (calc rejects a flat mask, as for the route — no OpParam bound, which would also constrain the row/col columns) |
+| `mode` | `str` | pass | no | 'pass', 'reject' |  | 'pass' keeps only the masked regions (mirrored through DC so the result stays real); 'reject' suppresses them |
+
 #### `gaussian` — Gaussian blur
 
 *category: `filter` · produces: derived image*
@@ -846,6 +878,20 @@ The registered operation catalogue: name, category, summary, params.
 |---|---|---|---|---|---|---|
 | `sigma` | `float` | 1.0 | no |  | [0.0, ] | blur radius (px) |
 
+#### `image_math` — Arithmetic between the subject and a second image, cropped to their common top-left region (calc/stack.image_math)
+
+*category: `filter` · produces: derived image*
+
+| Input | Datasets | Required | Description |
+|---|---|---|---|
+| `other` | 1 | yes | the second operand; the subject is the left-hand one (the route's a_id) |
+
+*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API); this op is not available as a recipe step.*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `op` | `str` | subtract | no | 'subtract', 'divide', 'ratio', 'add' |  | divide and ratio clamp their denominators at 1 (count-data convention) |
+
 #### `median` — Median denoise
 
 *category: `filter` · produces: derived image*
@@ -853,6 +899,18 @@ The registered operation catalogue: name, category, summary, params.
 | Param | Type | Default | Required | Choices | Bounds | Description |
 |---|---|---|---|---|---|---|
 | `window_size` | `int` | 3 | no |  | [1, ] | window (px) |
+
+#### `mip` — Maximum intensity projection across the subject and the remaining frames (calc/stack.mip)
+
+*category: `filter` · produces: derived image*
+
+| Input | Datasets | Required | Description |
+|---|---|---|---|
+| `others` | 1+ | yes | the remaining frames of the stack |
+
+*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API); this op is not available as a recipe step.*
+
+*(no parameters)*
 
 #### `morph` — Binary morphology at image mean
 

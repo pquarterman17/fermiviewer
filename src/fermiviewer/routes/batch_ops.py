@@ -68,15 +68,54 @@ def json_safe(value: Any) -> Any:
 
 
 def _param_schema(name: str, param: ops.OpParam) -> dict[str, Any]:
-    return {
+    schema: dict[str, Any] = {
         "name": name,
-        "type": param.ptype.__name__,
+        "type": param.describe_type(),
         "default": param.default,
         "required": param.required,
         "minimum": param.minimum,
         "maximum": param.maximum,
+        "exclusive_minimum": param.exclusive_minimum,
+        "exclusive_maximum": param.exclusive_maximum,
         "choices": list(param.choices) if param.choices is not None else None,
         "doc": param.doc,
+    }
+    # A list-shaped param (ADR 0005 §9) carries its row/record structure so a
+    # palette can build the right editor instead of guessing from "list".
+    if param.row is not None:
+        schema["shape"] = {
+            "kind": "rows",
+            "width": param.row.width,
+            "item_type": param.row.item_type.__name__,
+            "columns": list(param.row.columns),
+            "min_rows": param.row.min_rows,
+            "max_rows": param.row.max_rows,
+            "allow_none_rows": param.row.allow_none_rows,
+        }
+    elif param.record is not None:
+        schema["shape"] = {
+            "kind": "records",
+            "min_rows": param.record.min_rows,
+            "max_rows": param.record.max_rows,
+            "fields": [
+                _param_schema(fname, fparam)
+                for fname, fparam in param.record.fields.items()
+            ],
+        }
+    return schema
+
+
+def _input_schema(name: str, spec: ops.OpInput) -> dict[str, Any]:
+    """One auxiliary dataset an op needs beyond its subject (ADR 0005 §8) —
+    the palette needs this to know an op wants a second image picker."""
+    return {
+        "name": name,
+        "required": spec.required,
+        "variadic": spec.variadic,
+        "min_count": spec.min_count if spec.variadic else None,
+        "max_count": spec.max_count if spec.variadic else None,
+        "kinds": [k.value for k in spec.kinds] if spec.kinds is not None else None,
+        "doc": spec.doc,
     }
 
 
@@ -97,6 +136,14 @@ def batch_operations() -> dict[str, Any]:
                     _param_schema(name, param)
                     for name, param in spec.params.items()
                 ],
+                "inputs": [
+                    _input_schema(name, inp) for name, inp in spec.inputs.items()
+                ],
+                # A recipe step carries one subject, so an op needing extra
+                # datasets is callable but not scriptable as a batch step
+                # (`ops/batch.validate_recipe` rejects it) — say so in the
+                # palette rather than letting a builder offer it and fail.
+                "recipe_step": not spec.multi_input,
             }
             for spec in ops.list_ops()
         ],

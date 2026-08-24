@@ -179,11 +179,37 @@ def _choices_cell(param: OpParam) -> str:
 
 
 def _bounds_cell(param: OpParam) -> str:
-    if param.minimum is None and param.maximum is None:
+    """Inclusive bounds render as `[lo, hi]`, exclusive ones as `(lo, hi)` —
+    the interval notation, so the routes' gt=/lt= bounds are legible."""
+    lo_v = param.minimum if param.minimum is not None else param.exclusive_minimum
+    hi_v = param.maximum if param.maximum is not None else param.exclusive_maximum
+    if lo_v is None and hi_v is None:
         return ""
-    lo = "" if param.minimum is None else str(param.minimum)
-    hi = "" if param.maximum is None else str(param.maximum)
-    return f"[{lo}, {hi}]"
+    open_b = "(" if param.exclusive_minimum is not None else "["
+    close_b = ")" if param.exclusive_maximum is not None else "]"
+    lo = "" if lo_v is None else str(lo_v)
+    hi = "" if hi_v is None else str(hi_v)
+    return f"{open_b}{lo}, {hi}{close_b}"
+
+
+def _render_params(
+    schema: dict[str, OpParam], indent: str = "", prefix: str = ""
+) -> list[str]:
+    """The param table rows; a record-shaped param is followed by its field
+    rows, named `param[].field`, so one flat table still shows the nesting."""
+    rows: list[str] = []
+    for pname, p in schema.items():
+        default = "" if p.required else _param_cell(p.default)
+        rows.append(
+            f"| {indent}`{prefix}{pname}` | `{p.describe_type()}` | {default} | "
+            f"{'yes' if p.required else 'no'} | {_choices_cell(p)} | "
+            f"{_bounds_cell(p)} | {_cell(p.doc)} |"
+        )
+        if p.record is not None:
+            rows.extend(
+                _render_params(p.record.fields, indent="&nbsp;&nbsp;", prefix=f"{pname}[].")
+            )
+    return rows
 
 
 def _op_produces(spec: OpSpec) -> str:
@@ -197,16 +223,28 @@ def _render_op(spec: OpSpec) -> str:
         f"*category: `{spec.category}` · produces: {_op_produces(spec)}*",
         "",
     ]
+    if spec.inputs:
+        lines.append("| Input | Datasets | Required | Description |")
+        lines.append("|---|---|---|---|")
+        for iname, inp in spec.inputs.items():
+            count = (
+                f"{inp.min_count}+" if inp.variadic else "1"
+            )
+            lines.append(
+                f"| `{iname}` | {count} | {'yes' if inp.required else 'no'} | "
+                f"{_cell(inp.doc)} |"
+            )
+        lines.append("")
+        lines.append(
+            "*Auxiliary inputs are passed as resolved datasets "
+            "(`ops.run(..., inputs={...})`, or `Image` keyword arguments in "
+            "the Python API); this op is not available as a recipe step.*"
+        )
+        lines.append("")
     if spec.params:
         lines.append("| Param | Type | Default | Required | Choices | Bounds | Description |")
         lines.append("|---|---|---|---|---|---|---|")
-        for pname, p in spec.params.items():
-            default = "" if p.required else _param_cell(p.default)
-            required = "yes" if p.required else "no"
-            lines.append(
-                f"| `{pname}` | `{p.ptype.__name__}` | {default} | {required} | "
-                f"{_choices_cell(p)} | {_bounds_cell(p)} | {_cell(p.doc)} |"
-            )
+        lines.extend(_render_params(spec.params))
     else:
         lines.append("*(no parameters)*")
     lines.append("")

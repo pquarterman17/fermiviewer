@@ -21,13 +21,19 @@ from fermiviewer.ops import (
     catalogue_measure,  # noqa: F401  (wave D: profile/ROI/box/distance ops)
     catalogue_measure_reads,  # noqa: F401  (wave D: spectrum/histogram/scalebar)
     catalogue_spectral,  # noqa: F401  (EELS/EDS/diffraction ops)
+    catalogue_stack,  # noqa: F401  (multi-input: image math/align/MIP)
     catalogue_structure,  # noqa: F401  (wave A: particle/region ops)
 )
 from fermiviewer.ops.base import (
+    ANY_SCALAR,
+    InputError,
+    OpInput,
     OpParam,
     OpResult,
     OpSpec,
     ParamError,
+    RecordSpec,
+    RowSpec,
     produces_value_result,
 )
 from fermiviewer.ops.registry import (
@@ -39,10 +45,15 @@ from fermiviewer.ops.registry import (
 )
 
 __all__ = [
+    "ANY_SCALAR",
+    "InputError",
+    "OpInput",
     "OpParam",
     "OpResult",
     "OpSpec",
     "ParamError",
+    "RecordSpec",
+    "RowSpec",
     "UnknownOpError",
     "get_spec",
     "list_ops",

@@ -117,6 +117,37 @@ class Result:
         return table_to_json_bytes(columns, rows)
 
 
+def _flatten(value: Any) -> list[Image]:
+    """One Image, a list of them, or nothing — as a flat list."""
+    if value is None:
+        return []
+    return list(value) if isinstance(value, (list, tuple)) else [value]
+
+
+def _split_inputs(
+    spec: Any, supplied: dict[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Peel the op's declared auxiliary inputs out of the keyword arguments,
+    leaving the rest as params. Keyword arguments are how a notebook reads
+    (``a.image_math(other=b)``), so inputs and params share one namespace
+    here and the spec decides which is which."""
+    inputs = {name: supplied.pop(name) for name in spec.inputs if name in supplied}
+    return inputs, supplied
+
+
+def _as_structs(inputs: dict[str, Any]) -> dict[str, Any]:
+    """``Image`` -> ``DataStruct`` (the pure layer speaks structs, not
+    session objects); a plain ``DataStruct`` passes through, so the façade
+    accepts either."""
+    out: dict[str, Any] = {}
+    for name, value in inputs.items():
+        if isinstance(value, (list, tuple)):
+            out[name] = [v.datastruct if isinstance(v, Image) else v for v in value]
+        else:
+            out[name] = value.datastruct if isinstance(value, Image) else value
+    return out
+
+
 class Image:
     """A loaded dataset: a thin, notebook-friendly wrapper over a
     ``DataStruct``. Run any registered op as a method (``img.gaussian(...)``)
@@ -174,18 +205,33 @@ class Image:
         return self._ds.energy_axis
 
     # ── operations ────────────────────────────────────────────────────
-    def run(self, op: str, **params: Any) -> Result:
+    def run(self, op: str, /, **params: Any) -> Result:
         """Run a registered operation by name, returning a ``Result``. The
-        session records a provenance step (params + lineage) for it."""
-        op_result = _ops.run(op, self._ds, params)
+        session records a provenance step (params + lineage) for it.
+
+        The operation name is positional-ONLY so that it cannot collide with
+        a param of the same name: ``image_math`` mirrors its route's request
+        model, which calls the arithmetic selector ``op``, and
+        ``a.image_math(op="subtract")`` must reach the param.
+
+        An op that declares auxiliary inputs (``image_math``'s second image,
+        ``mip``'s remaining frames) takes them as ``Image`` keyword
+        arguments — ``a.image_math(other=b, op="subtract")``,
+        ``a.mip(others=[b, c])`` — and every contributing image is recorded
+        in the step's lineage, not just the subject.
+        """
+        spec = _ops.get_spec(op)
+        inputs, params = _split_inputs(spec, params)
+        op_result = _ops.run(op, self._ds, params, inputs=_as_structs(inputs))
         result = Result(op_result, self._session)
         out_id = result.image.id if result.image is not None else None
+        extra = [img for name in spec.inputs for img in _flatten(inputs.get(name))]
         self._session._record(
             op=op_result.op,
             params=op_result.params,
             label=op_result.label,
-            inputs=(self.id,),
-            input_names=(self._name,),
+            inputs=(self.id, *(i.id for i in extra)),
+            input_names=(self._name, *(i.name for i in extra)),
             output=out_id,
             value=op_result.value if out_id is None else None,
         )

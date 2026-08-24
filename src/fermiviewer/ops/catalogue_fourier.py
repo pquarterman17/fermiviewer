@@ -32,14 +32,14 @@ import numpy as np
 
 from fermiviewer.calc.ctf import estimate_ctf
 from fermiviewer.calc.eds_maps import virtual_dark_field
-from fermiviewer.calc.fourier import compute_fft, local_fft_region
+from fermiviewer.calc.fourier import compute_fft, fft_mask_inverse, local_fft_region
 from fermiviewer.calc.gpa import geometric_phase_analysis, gpa_mean_strain
 from fermiviewer.calc.lattice import lattice_measure
 from fermiviewer.calc.raster import raster_of
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.ops._envelopes import output, scalar
 from fermiviewer.ops._parsing import sentinel_group
-from fermiviewer.ops.base import OpParam, OpResult, OpSpec
+from fermiviewer.ops.base import OpParam, OpResult, OpSpec, RowSpec
 from fermiviewer.ops.registry import register
 
 __all__: list[str] = []
@@ -328,11 +328,65 @@ register(
             "pixel_size_a": OpParam(
                 float,
                 1.0,
-                minimum=0.0,
-                doc="pixel size (Å/px); must be > 0 (the route's "
-                "gt=0 bound, enforced in the op fn)",
+                exclusive_minimum=0.0,
+                doc="pixel size (Å/px), must be > 0",
             ),
         },
         fn=_ctf,
+    )
+)
+
+
+# ── fft_mask (derived image) ──────────────────────────────────────────
+
+
+def _fft_mask(ds: DataStruct, params: dict[str, Any]) -> OpResult:
+    raster = raster_of(ds)
+    masks = [(row, col, radius) for row, col, radius in params["masks"]]
+    out = fft_mask_inverse(raster, masks, mode=params["mode"])
+    derived = DataStruct(
+        data=np.ascontiguousarray(out),
+        kind=DataKind.IMAGE,
+        axes=(ds.axes[0], ds.axes[1]),
+        metadata={"parser": "derived", "filter_kind": "fft_mask", "source": "fft_mask"},
+    )
+    label = "FFT band-pass" if params["mode"] == "pass" else "FFT band-reject"
+    return OpResult(op="fft_mask", params=params, label=label, derived=derived)
+
+
+register(
+    OpSpec(
+        name="fft_mask",
+        category="filter",
+        summary="Inverse FFT through circular spectral masks — periodic-noise "
+        "removal ('reject') or lattice isolation ('pass') "
+        "(calc/fourier.fft_mask_inverse)",
+        params={
+            # The first list-shaped param in the catalogue (the contract's
+            # gap-2 re-opening): the route takes real (row, col, radius)
+            # triples, so the op takes them too, rather than inventing an
+            # "r:c:rad,…" string the way a pre-contract flattening would.
+            "masks": OpParam(
+                list,
+                required=True,
+                row=RowSpec(
+                    width=3,
+                    columns=("row", "col", "radius"),
+                    min_rows=1,
+                ),
+                doc="circular masks on the fftshifted spectrum, 1-based; "
+                "each radius must be > 0 (calc rejects a flat mask, as for "
+                "the route — no OpParam bound, which would also constrain "
+                "the row/col columns)",
+            ),
+            "mode": OpParam(
+                str,
+                "pass",
+                choices=("pass", "reject"),
+                doc="'pass' keeps only the masked regions (mirrored through "
+                "DC so the result stays real); 'reject' suppresses them",
+            ),
+        },
+        fn=_fft_mask,
     )
 )

@@ -130,12 +130,11 @@ DOMAINS: tuple[Domain, ...] = (
                 "POST",
                 "/api/analyze/fft-mask",
                 "FFT Mask workshop",
-                (),
+                ("fft_mask",),
                 "map",
-                "B",
-                "wave-B bounce-back: `masks` is a variable-length "
-                "(row, col, radius) coordinate-triple list — structured "
-                "params, ADR 0005 addendum gap 2 (2026-08-23)",
+                "shipped",
+                "the gap-2 exemplar: `masks` rides the contract's row-list "
+                "param type (ADR 0005 §9) as real (row, col, radius) triples",
             ),
             Row(
                 "POST",
@@ -433,22 +432,22 @@ DOMAINS: tuple[Domain, ...] = (
                 "POST",
                 "/api/analyze/align-stack",
                 "Image menu",
-                (),
+                ("align_stack",),
                 "map ×N + table",
-                "C",
-                "wave-C bounce-back: N input images by session id — "
-                "fn(ds, params) has exactly one subject (gap 1, ADR 0005 "
-                "wave-C addendum)",
+                "shipped",
+                "a gap-1 exemplar: subject = reference frame, `others` is a "
+                "variadic input (ADR 0005 §8). The N-1 aligned rasters inline "
+                "as `map` envelopes; the route registers session images",
             ),
             Row(
                 "POST",
                 "/api/analyze/mip",
                 "Image menu",
-                (),
+                ("mip",),
                 "map",
-                "C",
-                "wave-C bounce-back: N input images by session id (gap 1); "
-                "its ONLY field is the blocking one",
+                "shipped",
+                "a gap-1 exemplar: subject = first frame, `others` is a "
+                "variadic input (ADR 0005 §8)",
             ),
             Row(
                 "POST",
@@ -464,13 +463,12 @@ DOMAINS: tuple[Domain, ...] = (
                 "POST",
                 "/api/analyze/image-math",
                 "Image menu",
-                (),
+                ("image_math",),
                 "map",
-                "C",
-                "wave-C bounce-back: TWO equal image inputs (a_id/b_id) — "
-                "reshaping as primary-ds + id param would smuggle a session "
-                "read into the pure op layer, the exact gap-1 anti-pattern "
-                "(ADR 0005 wave-C addendum)",
+                "shipped",
+                "the gap-1 exemplar: the subject is a_id and `other` is a "
+                "named input the CALLER resolves (ADR 0005 §8), so the op "
+                "still never reads the session store",
             ),
             Row(
                 "POST",

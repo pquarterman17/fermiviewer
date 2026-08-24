@@ -64,7 +64,13 @@ class ProvenanceLog:
         """The ordered chain of steps that produced ``image_id`` (root → leaf).
 
         Follows the first input of each producing step up the lineage; stops at
-        an opened (un-produced) image. Guards against cycles."""
+        an opened (un-produced) image. Guards against cycles.
+
+        A multi-input step (image math, MIP) has several parents, so the true
+        lineage is a DAG and this walks its PRIMARY spine — the subject each
+        op ran on. The step itself still carries every contributing id in
+        ``inputs``, and the methods paragraph names them (``_describe``), so
+        nothing a result depended on goes unrecorded."""
         chain: list[ProvenanceStep] = []
         seen: set[str] = set()
         cur: str | None = image_id
@@ -99,7 +105,13 @@ class ProvenanceLog:
 
 
 def _describe(step: ProvenanceStep) -> str:
-    if step.params:
-        ps = ", ".join(f"{k}={v}" for k, v in step.params.items())
-        return f"{step.label} ({ps})"
-    return step.label
+    bits = [f"{k}={v}" for k, v in step.params.items()]
+    # A multi-input step (image math, MIP, a montage) has more than one
+    # parent, so the lineage is a DAG while `ancestry` walks the primary
+    # chain. Naming the other contributors here keeps them out of the
+    # methods paragraph's blind spot: "processed with X" must not silently
+    # omit a dataset that went into the number.
+    if len(step.inputs) > 1:
+        others = step.input_names[1:] or step.inputs[1:]
+        bits.append(f"with {', '.join(others)}")
+    return f"{step.label} ({', '.join(bits)})" if bits else step.label
