@@ -117,6 +117,71 @@ class Result:
         return table_to_json_bytes(columns, rows)
 
 
+def _flatten(value: Any) -> list[Image]:
+    """One Image, a list of them, or nothing — as a flat list."""
+    if value is None:
+        return []
+    return list(value) if isinstance(value, (list, tuple)) else [value]
+
+
+def _split_inputs(
+    spec: Any, supplied: dict[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Peel the op's declared auxiliary inputs out of the keyword arguments,
+    leaving the rest as params. Keyword arguments are how a notebook reads
+    (``a.image_math(other=b)``), so inputs and params share one namespace
+    here and the spec decides which is which."""
+    inputs = {name: supplied.pop(name) for name in spec.inputs if name in supplied}
+    return inputs, supplied
+
+
+def _as_structs(op: str, inputs: dict[str, Any], session: Session) -> dict[str, Any]:
+    """``Image`` -> ``DataStruct`` (the pure layer speaks structs, not
+    session objects).
+
+    Only ``Image``s belonging to ``session`` are accepted. The façade records
+    every contributing dataset in provenance BY IMAGE ID, and that id is only
+    meaningful inside the session that issued it:
+
+    - a raw ``DataStruct`` has no id at all — it belongs to the pure entry
+      point (``fermiviewer.ops.run``), which takes structs precisely because
+      it records no provenance;
+    - an ``Image`` from ANOTHER session has an id this session cannot
+      resolve, so the step would record a dangling parent and the lineage
+      could not be reopened faithfully.
+
+    Both are rejected before the op runs, so a bad input cannot leave a
+    half-finished session behind.
+    """
+    out: dict[str, Any] = {}
+    for name, value in inputs.items():
+        if value is None:  # an omitted optional input; the spec decides
+            out[name] = None
+        elif isinstance(value, (list, tuple)):
+            out[name] = [_one_struct(op, name, v, session) for v in value]
+        else:
+            out[name] = _one_struct(op, name, value, session)
+    return out
+
+
+def _one_struct(op: str, name: str, value: Any, session: Session) -> DataStruct:
+    where = f"op '{op}' input '{name}'"
+    if not isinstance(value, Image):
+        raise TypeError(
+            f"{where}: expected an Image from this session, got "
+            f"{type(value).__name__}. The Python API records provenance by "
+            f"image id; use fermiviewer.ops.run(...) to run an op over raw "
+            f"DataStructs."
+        )
+    if value._session is not session:
+        raise ValueError(
+            f"{where}: {value.name!r} belongs to a different Session. Its id "
+            f"({value.id}) would record a parent this session cannot resolve, "
+            f"leaving a lineage that cannot be reopened."
+        )
+    return value.datastruct
+
+
 class Image:
     """A loaded dataset: a thin, notebook-friendly wrapper over a
     ``DataStruct``. Run any registered op as a method (``img.gaussian(...)``)
@@ -174,18 +239,38 @@ class Image:
         return self._ds.energy_axis
 
     # ── operations ────────────────────────────────────────────────────
-    def run(self, op: str, **params: Any) -> Result:
+    def run(self, op: str, /, **params: Any) -> Result:
         """Run a registered operation by name, returning a ``Result``. The
-        session records a provenance step (params + lineage) for it."""
-        op_result = _ops.run(op, self._ds, params)
+        session records a provenance step (params + lineage) for it.
+
+        The operation name is positional-ONLY so that it cannot collide with
+        a param of the same name: ``image_math`` mirrors its route's request
+        model, which calls the arithmetic selector ``op``, and
+        ``a.image_math(op="subtract")`` must reach the param.
+
+        An op that declares auxiliary inputs (``image_math``'s second image,
+        ``mip``'s remaining frames) takes them as ``Image`` keyword
+        arguments — ``a.image_math(other=b, op="subtract")``,
+        ``a.mip(others=[b, c])`` — and every contributing image is recorded
+        in the step's lineage, not just the subject. They must be ``Image``s
+        of this session, not raw ``DataStruct``s: provenance is recorded by
+        image id (see ``_as_structs``).
+        """
+        spec = _ops.get_spec(op)
+        inputs, params = _split_inputs(spec, params)
+        # validated BEFORE anything runs: a bad input must not leave a
+        # derived image adopted into the session with no provenance step
+        resolved = _as_structs(op, inputs, self._session)
+        op_result = _ops.run(op, self._ds, params, inputs=resolved)
         result = Result(op_result, self._session)
         out_id = result.image.id if result.image is not None else None
+        extra = [img for name in spec.inputs for img in _flatten(inputs.get(name))]
         self._session._record(
             op=op_result.op,
             params=op_result.params,
             label=op_result.label,
-            inputs=(self.id,),
-            input_names=(self._name,),
+            inputs=(self.id, *(i.id for i in extra)),
+            input_names=(self._name, *(i.name for i in extra)),
             output=out_id,
             value=op_result.value if out_id is None else None,
         )

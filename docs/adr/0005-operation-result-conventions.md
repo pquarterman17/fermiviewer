@@ -109,6 +109,106 @@ conventions is the bounce-back signal the roadmap amendment describes —
 stop and re-open the contract at the high-capability tier instead of
 bending the op to fit.
 
+### 8. Auxiliary inputs: an op may need more than its subject
+
+*Added 2026-08-24, closing gap 1. The four wave addenda below are the
+evidence that produced this section; they stand as written.*
+
+An op declares extra datasets by name in `OpSpec.inputs`
+(`dict[str, OpInput]`), and the caller passes them to
+`run(name, ds, params, inputs={...})` as already-resolved `DataStruct`s.
+`OpInput` carries `required`, `variadic` (a list of datasets rather than
+one), `min_count`/`max_count`, and an optional accepted-`kinds` tuple.
+
+Three rules make this safe rather than merely possible:
+
+1. **The caller resolves ids; `ops/` never does.** What blocked these
+   endpoints was never multi-image analysis — it was that a session id
+   smuggled through a string param would make the pure layer read the
+   session store. Handing over resolved structs inverts that, and the
+   layering guard keeps it honest.
+2. **Every op keeps exactly ONE primary subject.** The `ds` positional
+   stays the recipe chain's spine, the provenance root, and the thing
+   `Image.<op>()` is called on; auxiliary inputs are always named. A
+   stack op's subject is its FIRST frame (the alignment reference, as in
+   the route), with `others` carrying the rest — not an opaque bag of N.
+3. **The call convention follows the schema.** A spec that declares
+   `inputs` has `fn(ds, params, inputs)`; every other op keeps
+   `fn(ds, params)` untouched. `tests/test_ops_contract.py` asserts each
+   registered fn's arity against its spec, so the two conventions cannot
+   drift apart silently.
+
+Consequences recorded with the mechanism:
+
+- **Provenance is a DAG.** `ProvenanceStep.inputs` was already a tuple, so
+  the log needed nothing; `ancestry()` walks the PRIMARY spine, and
+  `_describe` names the other contributors ("… with b.dm4") so a methods
+  paragraph cannot silently omit a dataset that went into the number.
+- **Recipes cannot express them yet.** A step is `{op, params}` with one
+  chained subject and no vocabulary for naming a second dataset, so
+  `validate_recipe` rejects a multi-input op up front rather than failing
+  mid-run, and the palette marks it `recipe_step: false`. Giving recipes a
+  named-input vocabulary is real follow-on work, not a hole to paper over:
+  it needs an id→dataset resolution step that belongs to the caller, not
+  to `ops/`.
+- **Per-input labels ride `metadata`**, not a parallel param: an op that
+  must letter its inputs (montage) reads each struct's `source`, the
+  static-name convention wave B set for the pure layer.
+
+### 9. List-shaped params: `RowSpec` and `RecordSpec`
+
+*Added 2026-08-24, closing gap 2.*
+
+`OpParam` accepts `ptype=list` with exactly one of:
+
+- **`row=RowSpec(width, item_type, columns, min_rows, max_rows,
+  allow_none_rows)`** — variable-length lists of fixed-width numeric rows:
+  coordinate pairs (`points`, `positions`, `spots`), `fft-mask`'s
+  (row, col, radius) triples, `eds_recalibrate`'s non-coordinate pairs.
+  `width=None` accepts ragged rows and `allow_none_rows` nullable ones
+  (`layers/grains`'s `interface_traces`) — both opt-in, because a width
+  mismatch is the coordinate-list typo worth catching.
+- **`record=RecordSpec(fields, min_rows, max_rows)`** — rows of named
+  fields, each field an `OpParam`, so a field may itself be a row list
+  (`strokes` = class id + radius + polyline). Records do NOT nest: one
+  level covers the whole evidence set, and a bounded depth is what keeps
+  the palette, the generated reference, and the error messages
+  renderable.
+
+The value is a **real JSON list**, never a delimited string. A string
+reaching a row list is an error, not a re-split: the CSV flattenings that
+waves A–D used (`"Fe,O"`, `"708:758,532:582"`) were §4 compromises for a
+contract that could not hold lists, and silently accepting them here would
+resurrect exactly the per-op encoding invention §4 forbids.
+
+**The shipped CSV params stay frozen.** They are public surface — recipes,
+macros, and the frontend's `macroOpMap.ts` all spell them that way — so
+they are NOT migrated by this ADR. New list params use the native shape;
+minting a new CSV flattening is now out of contract. A deliberate
+migration of the ~20 shipped spellings is a separate cross-lane item
+(it changes the frontend map with the ops).
+
+Three smaller gaps the addenda recorded are closed with the same edit:
+
+- **Exclusive bounds.** `exclusive_minimum`/`exclusive_maximum` are the
+  routes' `Field(gt=)`/`Field(lt=)` twins, sighted in wave B
+  (`ctf.pixel_size_a`) and wave C (`montage.overlap`). `ctf` drops its
+  hand-written `ValueError` for the schema spelling.
+- **`ANY_SCALAR`.** The one union a route model needs that no single
+  constructor covers — `montage-compare`'s `param_value`
+  (`float|str|bool|None`). Containers are still refused: "any scalar", not
+  "anything".
+- **Fractional ints.** `int(1.5) == 1` silently addressed a different
+  pixel/reflection than requested, where every route's pydantic int field
+  rejects the same input. Wave C hand-rolled this per op group
+  (`int_group`); it is now enforced for every int param and every int row
+  item. No shipped test depended on the truncation.
+
+One incidental fix belongs to this section because §4 caused it:
+`Image.run`'s operation name is now positional-only, so an op mirroring a
+route field literally named `op` (`image_math`) can pass it as a param
+instead of colliding with the façade's own argument.
+
 ## Consequences
 
 - Waves 3B–3E become pattern-following: route request model → OpParam
@@ -368,3 +468,68 @@ ride `derived.metadata`, the `savgol_derivative` precedent.
   (both are PURE_LAYERS; the guard forbids only fastapi/pydantic/routes/
   starlette) — deliberate, for `databar_content_rows` and the lifted
   carry-forward rule.
+
+## Addendum — the contract re-opening (2026-08-24)
+
+The high-capability item the four wave addenda kept deferring to. §8 and
+§9 above ARE its output; this records what it cost and what it left.
+
+### What the evidence set decided
+
+Every shape the fifteen bounces needed was already enumerated by the
+addenda, and each mapped to exactly one of two mechanisms — which is the
+argument for having bounced rather than force-fitting them one at a time:
+
+| Bounced shape | Mechanism |
+|---|---|
+| coordinate pairs (`points`, `positions`, `spots`) | `RowSpec(2)` |
+| `masks` (row, col, radius) | `RowSpec(3)` |
+| `pairs` (non-coordinate floats) | `RowSpec(2)` |
+| `interface_traces` (ragged, nullable) | `RowSpec(None, allow_none_rows=True)` |
+| `strokes`, layer bands, tiles | `RecordSpec` (+ a row-list field) |
+| `param_value` (`float\|str\|bool\|None`) | `ANY_SCALAR` |
+| two equal images (`image-math`) | one named `OpInput` |
+| N images (align/mip/stitch/montage/layers-multi) | one variadic `OpInput` |
+| label map + its source image (`grains/edit`, `layers/grains`) | one named `OpInput` |
+
+No shape needed a third mechanism, and none needed records inside records.
+The one shape the addenda predicted but nothing required is still gap 3
+(member-bearing/`figure` kinds in a pure op) — named, unexercised.
+
+### Registered here, and what remains
+
+Four exemplars land with the contract, one per mechanism, chosen because
+their calc functions were already shared with their routes (zero lift
+work, so the PR is contract + proof and nothing else): `fft_mask`
+(row list), `image_math` (named input), `align_stack` and `mip` (variadic
+input). The audit moves 57 → **61 of 80**; the registry holds 77 ops.
+
+The remaining eleven bounces are now pattern-following registrations
+against a contract that fits them, not contract work: `fit-shape`,
+`atoms/strain`, `diffraction/index`, `train-segment`, `train-preview`,
+`stitch`, `montage`, `grains/edit`, `layers/grains`, `layers/multi`,
+`montage-compare`. Several still need route-local numerics lifted to
+`calc/` first (§1) — `layers/multi`'s cross-map calibration checks,
+`index`'s ROI re-centring, `grains/edit`'s merge branch,
+`montage-compare`'s tile ordering — which is the bulk of that work, not
+the registration.
+
+### Two things deliberately NOT done
+
+- **The CSV params were not migrated** (§9). They are public surface and
+  the migration is cross-lane; doing it inside the contract PR would have
+  mixed a mechanical rename of ~20 shipped ops into the change that has to
+  be reviewed as a contract.
+- **Recipes did not gain a named-input vocabulary** (§8). Multi-input ops
+  are callable from the API and HTTP but are not recipe steps, and say so
+  in the palette. Item 3's "done when" wants a saved recipe to reproduce
+  any GUI analysis, so this IS a real remaining gap — recorded here rather
+  than hidden behind a passing audit, because the coverage table counts an
+  endpoint as op-backed without asking whether a recipe can carry it.
+
+### Note for the record
+
+`interface_traces`'s nullable rows are the only place the contract accepts
+a null INSIDE a param value. It stays opt-in per param: a null coordinate
+is almost always a caller bug, and the one route that means it (a layer
+with no measured interface) says so in its own schema.

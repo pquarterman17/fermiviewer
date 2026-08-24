@@ -62,6 +62,11 @@ def test_every_op_runs_on_a_synthetic_image() -> None:
             # sensible image-derived default — covered by its own fixtures
             # in test_ops_analysis.py instead
             continue
+        if any(i.required for i in spec.inputs.values()):
+            # a multi-input op (image_math, mip, align_stack) needs a second
+            # dataset this single-subject sweep has no way to supply — each
+            # runs against real stacks in test_ops_contract.py
+            continue
         result = ops.run(spec.name, ds)  # defaults only
         assert result.op == spec.name
         if result.produces_image:

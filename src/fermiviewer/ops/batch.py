@@ -18,7 +18,7 @@ from typing import Any
 
 from fermiviewer.datastruct import DataStruct
 from fermiviewer.ops.base import OpResult
-from fermiviewer.ops.registry import run
+from fermiviewer.ops.registry import UnknownOpError, get_spec, run
 
 __all__ = ["RecipeResult", "run_recipe", "validate_recipe"]
 
@@ -36,12 +36,30 @@ class RecipeResult:
 
 def validate_recipe(steps: list[dict[str, Any]]) -> None:
     """Cheap structural check before a (possibly long) run: each step is a
-    dict with a string ``op``. Param validation happens per-op at run time."""
+    dict with a string ``op``, and that op takes only the chained subject.
+    Param validation happens per-op at run time."""
     for i, step in enumerate(steps):
         if not isinstance(step, dict) or "op" not in step:
             raise ValueError(f"recipe step {i} must be a dict with an 'op' key")
         if not isinstance(step["op"], str):
             raise ValueError(f"recipe step {i}: 'op' must be a string")
+        # A recipe runs over ONE input and chains derived images through it;
+        # a step has no vocabulary for naming a second dataset, and the pure
+        # layer cannot resolve one from an id. Rejecting here beats running
+        # half a recipe and failing on the step's missing input — and beats
+        # the alternative of quietly running such an op against its subject
+        # alone. Recipe-level multi-input is named follow-on work in
+        # ADR 0005 §8.
+        try:
+            spec = get_spec(step["op"])
+        except UnknownOpError:
+            continue  # unknown names surface with the registry's own message
+        if spec.multi_input:
+            raise ValueError(
+                f"recipe step {i}: op '{step['op']}' needs auxiliary "
+                f"input(s) {sorted(spec.inputs)}, which a recipe step cannot "
+                f"supply — call it directly (api/HTTP) instead"
+            )
 
 
 def run_recipe(

@@ -8,10 +8,14 @@ through ``run`` so a recorded, scripted, or replayed step is the same object.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
+
 from fermiviewer.datastruct import DataStruct
-from fermiviewer.ops.base import OpResult, OpSpec
+from fermiviewer.ops.base import InputError, OpResult, OpSpec
 
 __all__ = [
+    "InputError",
     "UnknownOpError",
     "get_spec",
     "list_ops",
@@ -48,9 +52,26 @@ def list_ops(category: str | None = None) -> list[OpSpec]:
 
 
 def run(
-    name: str, ds: DataStruct, params: dict | None = None
+    name: str,
+    ds: DataStruct,
+    params: dict | None = None,
+    inputs: Mapping[str, Any] | None = None,
 ) -> OpResult:
-    """Validate params against the op's schema and run it on ``ds``."""
+    """Validate params against the op's schema and run it on ``ds``.
+
+    ``ds`` is the primary subject. An op that declares auxiliary ``inputs``
+    (image math's second image, a stack's remaining frames) takes them here
+    as already-resolved ``DataStruct``s — the caller owns the session store,
+    so the pure layer never looks an id up — and its ``fn`` is called with
+    the third argument.
+    """
     spec = get_spec(name)
     resolved = spec.resolve_params(params)
-    return spec.fn(ds, resolved)
+    if not spec.multi_input:
+        if inputs:
+            raise InputError(
+                f"op '{name}': takes no auxiliary inputs "
+                f"(got {sorted(inputs)})"
+            )
+        return spec.fn(ds, resolved)
+    return spec.fn(ds, resolved, spec.resolve_inputs(inputs))

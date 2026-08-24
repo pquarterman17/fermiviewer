@@ -10,9 +10,9 @@ Route and op inventories are read live from the app and registry at generation t
 ## Summary
 
 - **144** HTTP endpoints; **80** perform analysis, 3 are physics-table lookups, and 61 are allowlisted infrastructure.
-- **57 of 80** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **73** ops in total.
+- **61 of 80** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **77** ops in total.
 - Registered-op reach IS headless reach: batch recipes, folder watch, `fv --script`, and the Python API all resolve steps through the same registry and cannot call anything else.
-- Remaining item-3 work: wave A (6), wave B (2), wave C (7), wave D (0) endpoints; 8 are parked behind the item-8/9 activation gates. Item 3 does not close while any analysis row lacks a wave or a named gate — every endpoint is assigned, none is silently deferred.
+- Remaining item-3 work: wave A (6), wave B (1), wave C (4), wave D (0) endpoints; 8 are parked behind the item-8/9 activation gates. Item 3 does not close while any analysis row lacks a wave or a named gate — every endpoint is assigned, none is silently deferred.
 
 ## Analysis endpoints
 
@@ -23,7 +23,7 @@ Route and op inventories are read live from the app and registry at generation t
 | `POST /api/filter` | Image menu, Stage tools. *`crop` and arbitrary-angle `rotate` kinds have no op* | `gaussian`, `median`, `unsharp`, `butterworth`, `clahe`, `bin`, `plane_level`, `morph`, `multiotsu`, `rotate90`, `rotate180`, `rotate270`, `fliph`, `flipv` | map (derived image) | shipped |
 | `POST /api/strip-databar` | Image menu. *the tree's first ops->io import (both pure layers); static source name in the pure layer* | `strip_databar` | map (derived image) | shipped |
 | `POST /api/image/{img_id}/fft` | Image menu; Lattice/GPA/FFT-mask modes. *op flattens the optional local-FFT rect to NaN-sentinel floats; the derived image drops calibration (FFT space)* | `fft` | map | shipped |
-| `POST /api/analyze/fft-mask` | FFT Mask workshop. *wave-B bounce-back: `masks` is a variable-length (row, col, radius) coordinate-triple list — structured params, ADR 0005 addendum gap 2 (2026-08-23)* | — | map | wave B |
+| `POST /api/analyze/fft-mask` | FFT Mask workshop. *the gap-2 exemplar: `masks` rides the contract's row-list param type (ADR 0005 §9) as real (row, col, radius) triples* | `fft_mask` | map | shipped |
 | `POST /api/analyze/vdf` | Image menu. *op flattens the aperture centre to two required floats* | `vdf` | map | shipped |
 | `POST /api/analyze/gpa` | Structure workshop, Template/GPA mode. *the four strain maps inline as `map` envelopes in the op; the route registers them as session images (grains precedent, ADR 0005 wave-B addendum)* | `gpa` | map ×4 + scalar ×4 | shipped |
 | `POST /api/analyze/radial` | Image menu. *azimuthal sector mode has no op* | `radial_profile` | curve ×2 | shipped |
@@ -66,10 +66,10 @@ Route and op inventories are read live from the app and registry at generation t
 
 | Route | GUI action | Registered op (headless reach) | Result kinds (ADR 0004) | Wave |
 |---|---|---|---|---|
-| `POST /api/analyze/align-stack` | Image menu. *wave-C bounce-back: N input images by session id — fn(ds, params) has exactly one subject (gap 1, ADR 0005 wave-C addendum)* | — | map ×N + table | wave C |
-| `POST /api/analyze/mip` | Image menu. *wave-C bounce-back: N input images by session id (gap 1); its ONLY field is the blocking one* | — | map | wave C |
+| `POST /api/analyze/align-stack` | Image menu. *a gap-1 exemplar: subject = reference frame, `others` is a variadic input (ADR 0005 §8). The N-1 aligned rasters inline as `map` envelopes; the route registers session images* | `align_stack` | map ×N + table | shipped |
+| `POST /api/analyze/mip` | Image menu. *a gap-1 exemplar: subject = first frame, `others` is a variadic input (ADR 0005 §8)* | `mip` | map | shipped |
 | `POST /api/analyze/stitch` | CTF/Stitch mode. *wave-C bounce-back: N input images by session id (gap 1, ADR 0005 wave-C addendum)* | — | map + table | wave C |
-| `POST /api/analyze/image-math` | Image menu. *wave-C bounce-back: TWO equal image inputs (a_id/b_id) — reshaping as primary-ds + id param would smuggle a session read into the pure op layer, the exact gap-1 anti-pattern (ADR 0005 wave-C addendum)* | — | map | wave C |
+| `POST /api/analyze/image-math` | Image menu. *the gap-1 exemplar: the subject is a_id and `other` is a named input the CALLER resolves (ADR 0005 §8), so the op still never reads the session store* | `image_math` | map | shipped |
 | `POST /api/analyze/back-project` | Analysis menu. *tomography — parked with roadmap item 9* | — | map | parked (item 8/9) |
 
 ### EELS

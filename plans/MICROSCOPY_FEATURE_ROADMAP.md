@@ -209,6 +209,10 @@ waves adopt it is expensive; catch it here, before adoption.
   pattern.
 - **3F — Codex/terra medium:** recipe-builder discoverability, validation and
   progress/error UI; documentation truth pass.
+- **3G — Claude/high capability:** the operation-contract re-opening (gaps 1–2
+  from the wave addenda). Shipped 2026-08-24; ADR 0005 §8–§9. Its follow-on
+  registrations (the eleven remaining bounces) are lower-cost wave work again,
+  under the same bounce rule.
 
 #### Item 4 stack
 
@@ -392,6 +396,31 @@ predicate consolidated, README parity overclaim corrected.
       Every wave-registered op (3B–3E) emits ADR 0005 §5 typed envelopes;
       the pre-wave flat-dict set stays frozen behind 1C's legacy adapter
       (ADR 0005 §5), so the contract holds registry-wide.
+- [x] Re-open the operation contract for the shapes the waves bounced.
+      **Shipped 2026-08-24** (3G, ADR 0005 §8–§9): the high-capability item
+      waves A–D kept deferring to. Gap 1 — ops declare named/variadic
+      auxiliary `DataStruct` inputs (`OpSpec.inputs`), which the CALLER
+      resolves, so `ops/` still never reads the session store; every op
+      keeps one primary subject, and a spec's declared inputs decide its
+      fn arity (arity-drift test). Gap 2 — `OpParam` takes real JSON lists
+      via `RowSpec` (fixed-width/ragged/nullable numeric rows) or
+      `RecordSpec` (one level of named fields, a field may be a row list).
+      Also closed: exclusive bounds, an any-scalar union, and fractional-int
+      rejection contract-wide. Four exemplars registered (`fft_mask`,
+      `image_math`, `align_stack`, `mip`) — audit 57 → 61 of 80. The
+      eleven remaining bounces are now pattern-following registrations plus
+      the `calc/` lifts §1 requires. Two gaps stay open by decision and are
+      recorded in the ADR: the shipped CSV param spellings are NOT migrated
+      (public surface, cross-lane), and recipes still have no vocabulary for
+      naming a second dataset, so multi-input ops are callable from the API
+      and HTTP but are not recipe steps.
+- [ ] Register the remaining eleven bounced endpoints against the re-opened
+      contract (fit-shape, atoms/strain, diffraction/index, train-segment,
+      train-preview, stitch, montage, grains/edit, layers/grains,
+      layers/multi, montage-compare).
+- [ ] Give recipe steps a named-input vocabulary so multi-input ops are
+      scriptable, not just callable — required by this item's done
+      condition, which asks for a saved recipe, not merely an op.
 - [ ] Add recipe validation, versioning, dry-run summaries, and clear failure
       provenance.
 - [ ] Correct public documentation until claimed GUI/headless parity matches
