@@ -43,22 +43,14 @@ from fermiviewer.calc.shape_metrics import (
     shape_descriptors,
 )
 from fermiviewer.datastruct import DataStruct
+from fermiviewer.ops._envelopes import nan_none as _nn
 from fermiviewer.ops._envelopes import output, scalar
+from fermiviewer.ops._parsing import pixel_cal as _px_cal
+from fermiviewer.ops._parsing import sentinel_group as _pair
 from fermiviewer.ops.base import OpParam, OpResult, OpSpec
 from fermiviewer.ops.registry import register
 
 __all__: list[str] = []
-
-
-def _nn(v: float) -> float | None:
-    """NaN/inf -> None so inline envelope data survives JSON."""
-    return None if not math.isfinite(v) else float(v)
-
-
-def _px_cal(ds: DataStruct) -> tuple[float, str]:
-    """(pixel_size or NaN, unit) — the route modules' calibration idiom."""
-    px = ds.pixel_size if np.isfinite(ds.pixel_size) else float("nan")
-    return px, ds.pixel_unit or "px"
 
 
 # ── particles ─────────────────────────────────────────────────────────
@@ -297,17 +289,6 @@ register(
 
 # ── region proposal ───────────────────────────────────────────────────
 
-
-def _pair(params: dict[str, Any], names: tuple[str, ...]) -> tuple[float, ...] | None:
-    """All-finite -> tuple, all-NaN -> None, mixed -> error (a half-given
-    seed/rect must not silently fall back to the other input)."""
-    values = [params[n] for n in names]
-    finite = [math.isfinite(v) for v in values]
-    if all(finite):
-        return tuple(float(v) for v in values)
-    if not any(finite):
-        return None
-    raise ValueError(f"{', '.join(names)} must be given together")
 
 
 def _propose_region(ds: DataStruct, params: dict[str, Any]) -> OpResult:

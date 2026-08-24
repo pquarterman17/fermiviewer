@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-__all__ = ["compute_fft", "fft_mask_inverse"]
+__all__ = ["compute_fft", "fft_mask_inverse", "local_fft_region"]
 
 
 def compute_fft(img: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -61,3 +61,24 @@ def fft_mask_inverse(
 
     out: np.ndarray = np.real(np.fft.ifft2(np.fft.ifftshift(f)))
     return out
+
+
+def local_fft_region(
+    img: np.ndarray, rect: tuple[float, float, float, float]
+) -> np.ndarray:
+    """The sub-raster a local FFT runs on — the (r0, c0, r1, c1) 1-based
+    inclusive corner rect, sorted and clamped to the image, with the ≥5 px
+    minimum a meaningful FFT needs. Lifted out of `routes/measure.py`
+    (wave B, ADR 0005 §1) so the registered `fft` op and the HTTP route
+    share this arithmetic. Not `calc.roi.extract_rect_roi`: the semantics
+    differ (float corners, and a too-small region is an error, never a
+    clamp-to-something)."""
+    d = np.asarray(img)
+    h, w = d.shape
+    r0, r1 = sorted((int(rect[0]), int(rect[2])))
+    c0, c1 = sorted((int(rect[1]), int(rect[3])))
+    r0, c0 = max(r0, 1), max(c0, 1)
+    r1, c1 = min(r1, h), min(c1, w)
+    if r1 - r0 < 4 or c1 - c0 < 4:
+        raise ValueError("FFT region too small (≥5 px)")
+    return d[r0 - 1 : r1, c0 - 1 : c1]

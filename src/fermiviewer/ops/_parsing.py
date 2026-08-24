@@ -14,8 +14,17 @@ from __future__ import annotations
 import numpy as np
 
 from fermiviewer.calc.roi import RectRoi, parse_rect_roi
+from fermiviewer.datastruct import DataStruct
 
-__all__ = ["clean_values", "parse_roi_param", "parse_windows", "split_csv"]
+__all__ = [
+    "clean_values",
+    "parse_roi_param",
+    "parse_windows",
+    "pixel_cal",
+    "pixel_cal_or_default",
+    "sentinel_group",
+    "split_csv",
+]
 
 
 def split_csv(value: str) -> list[str]:
@@ -52,3 +61,34 @@ def parse_roi_param(value: str) -> RectRoi | None:
 def clean_values(values: np.ndarray) -> list[float | None]:
     """NaN/inf -> None so the value survives JSON (mirrors routes/imaging_ops.py)."""
     return [None if not np.isfinite(v) else float(v) for v in values]
+
+
+def sentinel_group(params: dict, names: tuple[str, ...]) -> tuple[float, ...] | None:
+    """NaN-sentinel param group: all-finite -> tuple, all-NaN -> None,
+    mixed -> error (a half-given seed/rect must not silently fall back).
+    Wave A's `_pair`, promoted here for the later waves."""
+    values = [params[n] for n in names]
+    finite = [np.isfinite(v) for v in values]
+    if all(finite):
+        return tuple(float(v) for v in values)
+    if not any(finite):
+        return None
+    raise ValueError(f"{', '.join(names)} must be given together")
+
+
+def pixel_cal(ds: DataStruct) -> tuple[float, str]:
+    """(pixel_size or NaN, unit) — the route modules' calibration idiom.
+    Wave A's `_px_cal`, promoted here for the later waves."""
+    px = ds.pixel_size if np.isfinite(ds.pixel_size) else float("nan")
+    return px, ds.pixel_unit or "px"
+
+
+def pixel_cal_or_default(ds: DataStruct) -> tuple[float, str]:
+    """(pixel_size or 1.0, unit) — the OTHER calibration idiom: fall back
+    to 1.0/px when uncalibrated, for calcs that always need a number
+    (defects, GPA-adjacent routes). Three pre-wave catalogues still carry
+    local spellings of this; migrate them when their code is next
+    touched, and never mint a new copy."""
+    if np.isfinite(ds.pixel_size) and ds.pixel_size > 0:
+        return ds.pixel_size, ds.pixel_unit or "px"
+    return 1.0, ds.pixel_unit or "px"

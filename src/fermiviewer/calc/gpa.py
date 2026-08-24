@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-__all__ = ["GpaResult", "geometric_phase_analysis"]
+__all__ = ["GpaResult", "geometric_phase_analysis", "gpa_mean_strain"]
 
 
 @dataclass(frozen=True)
@@ -112,3 +112,15 @@ def geometric_phase_analysis(
         displacement_x=ux,
         displacement_y=uy,
     )
+
+
+def gpa_mean_strain(res: GpaResult) -> dict[str, float]:
+    """Field means of the four GPA maps — the aggregate block of the
+    /analyze/gpa payload, lifted out of `routes/imaging_ops.py` (wave B,
+    ADR 0005 §1) so the registered `gpa` op and the route report the
+    same numbers."""
+    maps = {
+        "exx": res.exx, "eyy": res.eyy,
+        "exy": res.exy, "rotation": res.rotation,
+    }
+    return {k: float(np.nanmean(m)) for k, m in maps.items()}

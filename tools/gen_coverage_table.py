@@ -111,19 +111,42 @@ DOMAINS: tuple[Domain, ...] = (
                 "POST",
                 "/api/image/{img_id}/fft",
                 "Image menu; Lattice/GPA/FFT-mask modes",
+                ("fft",),
+                "map",
+                "shipped",
+                "op flattens the optional local-FFT rect to NaN-sentinel floats; "
+                "the derived image drops calibration (FFT space)",
+            ),
+            Row(
+                "POST",
+                "/api/analyze/fft-mask",
+                "FFT Mask workshop",
                 (),
                 "map",
                 "B",
+                "wave-B bounce-back: `masks` is a variable-length "
+                "(row, col, radius) coordinate-triple list — structured "
+                "params, ADR 0005 addendum gap 2 (2026-08-23)",
             ),
-            Row("POST", "/api/analyze/fft-mask", "FFT Mask workshop", (), "map", "B"),
-            Row("POST", "/api/analyze/vdf", "Image menu", (), "map", "B"),
+            Row(
+                "POST",
+                "/api/analyze/vdf",
+                "Image menu",
+                ("vdf",),
+                "map",
+                "shipped",
+                "op flattens the aperture centre to two required floats",
+            ),
             Row(
                 "POST",
                 "/api/analyze/gpa",
                 "Structure workshop, Template/GPA mode",
-                (),
+                ("gpa",),
                 "map ×4 + scalar ×4",
-                "B",
+                "shipped",
+                "the four strain maps inline as `map` envelopes in the op; the "
+                "route registers them as session images (grains precedent, "
+                "ADR 0005 wave-B addendum)",
             ),
             Row(
                 "POST",
@@ -162,14 +185,26 @@ DOMAINS: tuple[Domain, ...] = (
                 "no image subject — op ignores `ds`, profile travels as x/y CSV "
                 "(`distribution_fit` precedent, blessed in ADR 0005's wave-A addendum)",
             ),
-            Row("POST", "/api/analyze/lattice", "Lattice mode", (), "scalar set", "B"),
+            Row(
+                "POST",
+                "/api/analyze/lattice",
+                "Lattice mode",
+                ("lattice",),
+                "scalar set",
+                "shipped",
+                "op flattens the two FFT spot picks to four required floats; "
+                "unset pixel_size (NaN) falls back to the image calibration",
+            ),
             Row(
                 "POST",
                 "/api/analyze/ctf",
                 "Structure workshop, CTF mode",
-                (),
+                ("ctf",),
                 "fit + curve ×2 + scalar",
-                "B",
+                "shipped",
+                "the route's exclusive pixel_size_a > 0 bound is enforced in "
+                "the op fn (OpParam has no exclusive minimum — ADR 0005 "
+                "wave-B addendum)",
             ),
             Row("POST", "/api/analyze/montage", "Image menu", (), "figure", "C"),
             Row("POST", "/api/analyze/montage-compare", "— (no GUI caller)", (), "figure", "C"),
@@ -221,26 +256,45 @@ DOMAINS: tuple[Domain, ...] = (
                 "POST",
                 "/api/analyze/atoms",
                 "Atom Column panel",
-                (),
+                ("atoms",),
                 "table + overlay + scalar",
-                "B",
+                "shipped",
+                "the detect/refine/lattice/sublattice/strain composition is "
+                "lifted to calc/atom_report.py, shared with /atoms/strain",
             ),
-            Row("POST", "/api/atoms/strain", "Atom Column panel", (), "table + scalar", "B"),
+            Row(
+                "POST",
+                "/api/atoms/strain",
+                "Atom Column panel",
+                (),
+                "table + scalar",
+                "B",
+                "wave-B bounce-back: `positions` is a variable-length "
+                "coordinate-pair list AND there is no image subject — the "
+                "fit-shape shape exactly (structured params, ADR 0005 "
+                "addendum gap 2, 2026-08-23)",
+            ),
             Row(
                 "POST",
                 "/api/analyze/template-match",
                 "Template/GPA mode",
-                (),
+                ("template_match",),
                 "table + overlay",
-                "B",
+                "shipped",
+                "op flattens the template rect to four required ints — "
+                "(row, col, height, width), deliberately NOT the corner-ROI "
+                "string other ops use",
             ),
             Row(
                 "POST",
                 "/api/analyze/defects",
                 "Defect workshop",
-                (),
+                ("defects",),
                 "scalar + overlay + map ×2",
-                "B",
+                "shipped",
+                "the two diagnostic maps inline as `map` envelopes in the op; "
+                "the route registers them as session images (grains "
+                "precedent, ADR 0005 wave-B addendum)",
             ),
             Row(
                 "POST",

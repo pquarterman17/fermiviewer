@@ -10,18 +10,12 @@ import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from fermiviewer.calc.atoms import (
-    PairStrain,
-    assign_sublattice,
-    detect_columns,
-    find_lattice_vectors,
-    fit_gaussian_2d,
-    peak_pair_strain,
-)
+from fermiviewer.calc.atom_report import atom_column_report, pair_strain_payload
+from fermiviewer.calc.atoms import peak_pair_strain
 from fermiviewer.calc.raster import NoRasterError, raster_of
 from fermiviewer.calc.stack import align_stack, image_math, mip
 from fermiviewer.calc.stitch import stitch_images
-from fermiviewer.calc.texture import template_match
+from fermiviewer.calc.texture import template_match_rect
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.models import ImageMeta
 from fermiviewer.routes._arrays import value_error_as_422
@@ -67,14 +61,6 @@ def _nan_none(v: float) -> float | None:
     return None if not np.isfinite(v) else float(v)
 
 
-def _nanmean_or_nan(values: np.ndarray) -> float:
-    """NaN-aware mean without warning when every sample is missing."""
-    array = np.asarray(values, dtype=np.float64)
-    if array.size == 0 or np.isnan(array).all():
-        return float("nan")
-    return float(np.nanmean(array))
-
-
 # ── atom columns ─────────────────────────────────────────────────────
 
 
@@ -92,55 +78,41 @@ class AtomsRequest(BaseModel):
 
 @router.post("/analyze/atoms")
 def analyze_atoms(req: AtomsRequest) -> dict:
+    """The detect → refine → lattice → sublattice → strain composition
+    lives in calc/atom_report.py (wave B, ADR 0005 §1 — shared with the
+    registered `atoms` op); this route is the JSON shaping."""
     _, raster = _raster(req.image_id)
     with value_error_as_422():
-        det = detect_columns(
+        report = atom_column_report(
             raster,
             sigma=req.sigma,
             threshold=req.threshold,
             min_separation=req.min_separation,
             polarity=req.polarity,
+            refine=req.refine,
+            win_radius=req.win_radius,
+            strain=req.strain,
+            sublattices=req.sublattices,
         )
 
-    positions, amplitude, converged = det.positions, det.intensities, None
-    if req.refine and positions.shape[0] > 0:
-        fit = fit_gaussian_2d(raster, positions, win_radius=req.win_radius, polarity=req.polarity)
-        positions, amplitude, converged = fit.positions, fit.amplitude, fit.converged.tolist()
-
     out: dict = {
-        "n_columns": int(positions.shape[0]),
-        "positions": positions.tolist(),  # (x, y), 1-based
-        "amplitude": np.asarray(amplitude).tolist(),
-        "converged": converged,
+        "n_columns": report.n_columns,
+        "positions": report.positions.tolist(),  # (x, y), 1-based
+        "amplitude": report.amplitude.tolist(),
+        "converged": report.converged,
     }
-    lv = find_lattice_vectors(positions)
+    lv = report.lattice
     out["lattice"] = {
         "valid": bool(lv.valid),
         "spacing": _nan_none(lv.spacing),
         "a1": None if not lv.valid else lv.a1.tolist(),
         "a2": None if not lv.valid else lv.a2.tolist(),
     }
-    if req.sublattices > 1 and positions.shape[0] > 0:
-        out["sublattice"] = assign_sublattice(np.asarray(amplitude), req.sublattices).tolist()
-    if req.strain:
-        out["strain"] = _ppa_payload(peak_pair_strain(positions))
+    if report.sublattice is not None:
+        out["sublattice"] = report.sublattice.tolist()
+    if report.strain is not None:
+        out["strain"] = pair_strain_payload(report.strain)
     return out
-
-
-def _ppa_payload(st: PairStrain) -> dict:
-    """Serialise a PairStrain to JSON (reused by /atoms/strain)."""
-    _s = lambda a: [_nan_none(v) for v in a]  # noqa: E731
-    return {
-        "valid": bool(st.valid),
-        "exx_mean": _nan_none(_nanmean_or_nan(st.exx)),
-        "eyy_mean": _nan_none(_nanmean_or_nan(st.eyy)),
-        "exy_mean": _nan_none(_nanmean_or_nan(st.exy)),
-        "exx": _s(st.exx),
-        "eyy": _s(st.eyy),
-        "exy": _s(st.exy),
-        "rotation": _s(st.rotation),
-        "displacement": st.displacement.tolist() if st.valid else [],
-    }
 
 
 class AtomsStrainRequest(BaseModel):
@@ -157,7 +129,7 @@ def atoms_strain(req: AtomsStrainRequest) -> dict:
         pos = np.asarray(req.positions, dtype=np.float64)
         rv = np.asarray(req.ref_vectors, dtype=np.float64) if req.ref_vectors else None
         org = np.asarray(req.origin, dtype=np.float64) if req.origin else None
-        return _ppa_payload(
+        return pair_strain_payload(
             peak_pair_strain(pos, ref_vectors=rv, origin=org, neighbors=req.neighbors)
         )
 
@@ -176,22 +148,12 @@ class TemplateRequest(BaseModel):
 @router.post("/analyze/template-match")
 def analyze_template(req: TemplateRequest) -> dict:
     _, raster = _raster(req.image_id)
-    r0, c0, th, tw = req.rect
-    h, w = raster.shape
-    if not (
-        1 <= r0 <= h
-        and 1 <= c0 <= w
-        and th > 0
-        and tw > 0
-        and r0 + th - 1 <= h
-        and c0 + tw - 1 <= w
-    ):
-        raise HTTPException(422, "template rect out of bounds")
-    template = raster[r0 - 1 : r0 - 1 + th, c0 - 1 : c0 - 1 + tw]
+    # rect validation + template cut live in calc (wave B, ADR 0005 §1 —
+    # shared with the registered `template_match` op)
     with value_error_as_422():
-        res = template_match(
+        res = template_match_rect(
             raster,
-            template,
+            req.rect,
             threshold=req.threshold,
             max_matches=req.max_matches,
         )

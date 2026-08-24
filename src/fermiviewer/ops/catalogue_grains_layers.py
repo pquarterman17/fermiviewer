@@ -36,23 +36,14 @@ from fermiviewer.calc.layers_report import layer_result_to_dict
 from fermiviewer.calc.raster import raster_of
 from fermiviewer.calc.roi import embed_rect_roi, extract_rect_roi
 from fermiviewer.datastruct import DataKind, DataStruct
+from fermiviewer.ops._envelopes import nan_none as _nn
 from fermiviewer.ops._envelopes import output, scalar
 from fermiviewer.ops._parsing import parse_roi_param, split_csv
+from fermiviewer.ops._parsing import pixel_cal as _px_cal
 from fermiviewer.ops.base import OpParam, OpResult, OpSpec
 from fermiviewer.ops.registry import register
 
 __all__: list[str] = []
-
-
-def _nn(v: float) -> float | None:
-    """NaN/inf -> None so inline envelope data survives JSON."""
-    return None if not math.isfinite(v) else float(v)
-
-
-def _px_cal(ds: DataStruct) -> tuple[float, str]:
-    """(pixel_size or NaN, unit) — the route modules' calibration idiom."""
-    px = ds.pixel_size if np.isfinite(ds.pixel_size) else float("nan")
-    return px, ds.pixel_unit or "px"
 
 
 def _image_cal(ds: DataStruct) -> tuple[float, str]:
