@@ -131,7 +131,9 @@ An op that declares auxiliary inputs (``image_math``'s second image,
 ``mip``'s remaining frames) takes them as ``Image`` keyword
 arguments — ``a.image_math(other=b, op="subtract")``,
 ``a.mip(others=[b, c])`` — and every contributing image is recorded
-in the step's lineage, not just the subject.
+in the step's lineage, not just the subject. They must be ``Image``s
+of this session, not raw ``DataStruct``s: provenance is recorded by
+image id (see ``_as_structs``).
 
 ### `Image.pipeline()`
 

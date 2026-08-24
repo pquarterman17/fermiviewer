@@ -385,3 +385,37 @@ def test_batch_palette_publishes_input_and_shape_schemas() -> None:
 
     assert palette["gaussian"]["inputs"] == []
     assert palette["gaussian"]["recipe_step"] is True
+
+
+def test_facade_rejects_raw_datastructs_without_touching_the_session() -> None:
+    """The façade records provenance by image id, so a raw DataStruct has no
+    identity to record. It used to reach the recording and raise
+    AttributeError — AFTER the derived image had been adopted, leaving an
+    orphan in the session with no step. Validation now happens before the op
+    runs, so a rejected input cannot mutate anything."""
+    session, a, b = _session_with_images()
+    raw = _image(offset=9)
+
+    for kwargs in ({"other": raw}, {"other": b, "op": "nope"}):
+        images_before = dict(session.images)
+        steps_before = len(session.provenance.steps)
+        with pytest.raises((TypeError, ParamError)):
+            a.image_math(**kwargs)
+        assert session.images == images_before, "a failed call adopted an image"
+        assert len(session.provenance.steps) == steps_before
+
+
+def test_facade_rejects_a_raw_datastruct_inside_a_variadic_input() -> None:
+    session, a, b = _session_with_images()
+    images_before = dict(session.images)
+    with pytest.raises(TypeError, match=r"input 'others'.*expected an Image"):
+        a.mip(others=[b, _image(offset=9)])
+    assert session.images == images_before
+
+
+def test_raw_datastructs_still_run_through_the_pure_entry_point() -> None:
+    """The rejection is about provenance identity, not about the op — the
+    pure layer takes structs and records nothing."""
+    a, b = _image(), _image(offset=3)
+    result = ops.run("image_math", a, {"op": "add"}, inputs={"other": b})
+    np.testing.assert_allclose(result.derived.data, image_math(a.data, b.data, "add"))
