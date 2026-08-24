@@ -185,3 +185,63 @@ work for the high-capability tier, not wave work:
 The six rows stay wave A in the coverage audit, each annotated with its
 blocking shape, until the ops contract grows; re-opening that contract is
 its own high-capability work item, not part of waves 3C–3E.
+
+## Addendum — wave B outcome (2026-08-23)
+
+Wave B (roadmap 3C) registered 8 of its 10 endpoints and bounced 2 back.
+
+### Shipped
+
+`fft` and `vdf` in `filter` (derived-image producers — `fft` deliberately
+drops the parent calibration, FFT space not being real space); `gpa`,
+`lattice`, `ctf` in `analysis` (the category implies their value result);
+`atoms`, `template_match`, `defects` in `structure` with explicit
+`produces_value=True`. §2's one-new-category allowance stays unspent:
+wave B is FFT-domain measurement of ordinary images, not a new domain,
+and the allowance remains earmarked for `fourd` (item 8). Four lifts
+followed the wave-A rule (`calc/fourier.local_fft_region`,
+`calc/gpa.gpa_mean_strain`, `calc/texture.template_match_rect`, and
+`calc/atom_report.py` — whose `pair_strain_payload` is now shared by
+/analyze/atoms and /atoms/strain). The shared helper trio
+(`nan_none`/`pixel_cal`/`sentinel_group`) moved into
+`ops/_envelopes.py`/`ops/_parsing.py` so wave C does not mint a third
+copy.
+
+### Standing resolution: multiple derived images
+
+`gpa` (four strain maps) and `defects` (two diagnostic maps) exceed
+`OpResult.derived`'s single slot. This is NOT a bounce: wave A's `grains`
+already established the resolution — the op inlines each raster as a
+`map` envelope in `value` while the route registers session images — and
+wave B adopts it as the standing rule. The accepted divergence (headless
+callers get inline arrays; GUI callers get session images) is noted on
+each affected audit row. Clarification to the wave-A table:
+`train-preview`'s bounce was its `strokes` parameter, not its two derived
+maps — map count alone never bounces an op.
+
+### Two small §4 fidelity gaps (recorded, not bounces)
+
+- **`OpParam` has no exclusive minimum**: the routes' `Field(gt=0)`
+  bounds (`ctf.pixel_size_a`, `defects.foil_thickness`) are enforced by
+  an explicit `ValueError` in the op fn, with `minimum=0.0` as the
+  closest schema spelling.
+- **Naming divergence**: derived-image routes compose display names from
+  `store.name(...)`; the pure op layer cannot, so op-derived images carry
+  a static `source` (the filter-op convention).
+
+### Bounced back
+
+| Endpoint | Blocking shape |
+|---|---|
+| `/api/analyze/fft-mask` | `masks`: a variable-length (row, col, radius) coordinate-triple list |
+| `/api/atoms/strain` | `positions`: a variable-length coordinate-pair list, and no image subject — exactly `fit-shape`'s shape |
+
+Both are **gap 2 (structured parameters)** from the wave-A addendum; no
+wave-B endpoint touches gap 1 (multi-input). Each was individually
+flattenable with enough per-op encoding invention — a `"r:c:rad,…"`
+triple string, parallel x/y CSV lists — and each stays bounced for the
+same reason `fit-shape` did: §4 says a wave does not invent per-op
+encodings, and blessing them piecemeal would make the earlier bounces
+arbitrary. `fft-mask` is now the cleanest motivator for re-opening gap 2:
+its calc function is a pure single call with zero lift work the moment a
+list-shaped `OpParam` type exists.

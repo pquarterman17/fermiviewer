@@ -22,6 +22,7 @@ __all__ = [
     "noise_estimate",
     "structure_tensor",
     "template_match",
+    "template_match_rect",
 ]
 
 
@@ -388,3 +389,31 @@ def template_match(
         n_matches=len(kept),
         threshold=threshold,
     )
+
+
+def template_match_rect(
+    img: np.ndarray,
+    rect: tuple[int, int, int, int],
+    *,
+    threshold: float = 0.7,
+    max_matches: int = 100,
+) -> TemplateMatches:
+    """Cut a template out of `img` by a 1-based (row, col, height, width)
+    rect and match it against the full image. The bounds validation +
+    slice arithmetic lived in `routes/structure.py`; lifted (wave B,
+    ADR 0005 §1) so the registered `template_match` op and the route
+    share it. A rect outside the image raises ValueError."""
+    d = np.asarray(img)
+    r0, c0, th, tw = (int(v) for v in rect)
+    h, w = d.shape
+    if not (
+        1 <= r0 <= h
+        and 1 <= c0 <= w
+        and th > 0
+        and tw > 0
+        and r0 + th - 1 <= h
+        and c0 + tw - 1 <= w
+    ):
+        raise ValueError("template rect out of bounds")
+    template = d[r0 - 1 : r0 - 1 + th, c0 - 1 : c0 - 1 + tw]
+    return template_match(d, template, threshold=threshold, max_matches=max_matches)

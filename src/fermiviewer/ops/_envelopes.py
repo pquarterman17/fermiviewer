@@ -10,12 +10,19 @@ API turns an envelope list into a persisted record with members.
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
-__all__ = ["output", "scalar"]
+__all__ = ["nan_none", "output", "scalar"]
 
 #: the ADR 0004 closed kind set, for reference and tests
 OUTPUT_KINDS = ("scalar", "table", "curve", "fit", "map", "overlay", "figure")
+
+
+def nan_none(v: float) -> float | None:
+    """NaN/inf -> None so inline envelope data survives JSON (one home —
+    wave A carried per-catalogue copies)."""
+    return None if not math.isfinite(v) else float(v)
 
 
 def output(kind: str, name: str, data: dict[str, Any]) -> dict[str, Any]:

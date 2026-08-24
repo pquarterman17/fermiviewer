@@ -41,11 +41,16 @@ def test_every_op_runs_on_a_synthetic_image() -> None:
             # required list-shaped params with no sensible image-only
             # default) — covered by their own fixtures in test_ops_spectral.py
             continue
-        if spec.category == "structure":
-            # wave-A ops need real structure in the image (a seed for
+        if spec.name in (
+            "particles", "efd_similarity", "propose_region",
+            "grains", "layers", "layers_edit",
+        ):
+            # these wave-A ops need real structure in the image (a seed for
             # propose_region, detectable interfaces for layers) that this
             # synthetic ramp can't provide — covered by their own fixtures
-            # in test_ops_structure.py
+            # in test_ops_structure.py. An explicit name set, not the whole
+            # structure category: wave B's atoms/defects DO run on the ramp
+            # and belong in this sweep.
             continue
         if any(p.required for p in spec.params.values()):
             # a required param (e.g. distribution_fit's "values") has no

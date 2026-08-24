@@ -338,7 +338,17 @@ predicate consolidated, README parity overclaim corrected.
       layers/multi, fit-shape) — the contract gaps (multi-input ops,
       structured params) are logged in ADR 0005's wave-A addendum and those
       rows stay wave A in the audit until the ops contract grows.
-- [ ] Wave B: GPA, CTF, atoms, lattice, and structure/defect operations.
+- [x] Wave B: GPA, CTF, atoms, lattice, and structure/defect operations.
+      **Shipped 2026-08-23** (3C): 8 ops registered — `fft`, `vdf` (filter),
+      `gpa`, `lattice`, `ctf` (analysis), `atoms`, `template_match`,
+      `defects` (structure) — with the compositions lifted to
+      `calc/{fourier,gpa,texture}.py` additions and a new
+      `calc/atom_report.py`. Multi-map results (gpa ×4, defects ×2) adopt
+      the wave-A grains resolution: inline `map` envelopes in the op, session
+      images on the route. Two endpoints bounced back per the 3A rule
+      (fft-mask, atoms/strain — both structured-params gap 2, logged in
+      ADR 0005's wave-B addendum); the one-new-category allowance stays
+      unspent.
 - [ ] Wave C: diffraction calibration, indexing, simulation, stack alignment,
       MIP, and montage.
 - [ ] Wave D: remaining spectroscopy (EELS background/thickness/KK/SVD/

@@ -7,7 +7,7 @@ import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from fermiviewer.calc.fourier import compute_fft
+from fermiviewer.calc.fourier import compute_fft, local_fft_region
 from fermiviewer.calc.profile_stats import box_integrate, measure_distance, roi_stats
 from fermiviewer.calc.profiles import line_profile_stats, polyline_profile
 from fermiviewer.calc.raster import NoRasterError, raster_of
@@ -210,14 +210,12 @@ def image_fft(img_id: str, req: FftRequest | None = None) -> ImageMeta:
     rect computes the LOCAL FFT of that region only."""
     ds, raster = _raster(img_id)
     if req is not None and req.rect is not None:
-        h, w = raster.shape
-        r0, r1 = sorted((int(req.rect[0]), int(req.rect[2])))
-        c0, c1 = sorted((int(req.rect[1]), int(req.rect[3])))
-        r0, c0 = max(r0, 1), max(c0, 1)
-        r1, c1 = min(r1, h), min(c1, w)
-        if r1 - r0 < 4 or c1 - c0 < 4:
-            raise HTTPException(422, "FFT region too small (≥5 px)")
-        raster = raster[r0 - 1:r1, c0 - 1:c1]
+        # window/clamp arithmetic lives in calc (wave B, ADR 0005 §1 —
+        # shared with the registered `fft` op)
+        try:
+            raster = local_fft_region(raster, req.rect)
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from None
     mag, _ = compute_fft(raster)
     derived = DataStruct(
         data=np.ascontiguousarray(mag), kind=DataKind.IMAGE,
