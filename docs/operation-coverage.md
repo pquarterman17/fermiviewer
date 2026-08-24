@@ -10,9 +10,9 @@ Route and op inventories are read live from the app and registry at generation t
 ## Summary
 
 - **144** HTTP endpoints; **80** perform analysis, 3 are physics-table lookups, and 61 are allowlisted infrastructure.
-- **28 of 80** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **44** ops in total.
+- **31 of 80** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **47** ops in total.
 - Registered-op reach IS headless reach: batch recipes, folder watch, `fv --script`, and the Python API all resolve steps through the same registry and cannot call anything else.
-- Remaining item-3 work: wave A (6), wave B (2), wave C (10), wave D (26) endpoints; 8 are parked behind the item-8/9 activation gates. Item 3 does not close while any analysis row lacks a wave or a named gate — every endpoint is assigned, none is silently deferred.
+- Remaining item-3 work: wave A (6), wave B (2), wave C (7), wave D (26) endpoints; 8 are parked behind the item-8/9 activation gates. Item 3 does not close while any analysis row lacks a wave or a named gate — every endpoint is assigned, none is silently deferred.
 
 ## Analysis endpoints
 
@@ -32,8 +32,8 @@ Route and op inventories are read live from the app and registry at generation t
 | `POST /api/analyze/interface-width` | Interface Width workshop. *no image subject — op ignores `ds`, profile travels as x/y CSV (`distribution_fit` precedent, blessed in ADR 0005's wave-A addendum)* | `interface_width` | fit | shipped |
 | `POST /api/analyze/lattice` | Lattice mode. *op flattens the two FFT spot picks to four required floats; unset pixel_size (NaN) falls back to the image calibration* | `lattice` | scalar set | shipped |
 | `POST /api/analyze/ctf` | Structure workshop, CTF mode. *the route's exclusive pixel_size_a > 0 bound is enforced in the op fn (OpParam has no exclusive minimum — ADR 0005 wave-B addendum)* | `ctf` | fit + curve ×2 + scalar | shipped |
-| `POST /api/analyze/montage` | Image menu | — | figure | wave C |
-| `POST /api/analyze/montage-compare` | — (no GUI caller) | — | figure | wave C |
+| `POST /api/analyze/montage` | Image menu. *wave-C bounce-back: N input images by session id (gap 1); labels=True also bakes session names into the pixels — a future multi-input op contract must carry per-input labels (ADR 0005 wave-C addendum). Kinds cell corrected from 'figure': the route registers a session image, it renders no export* | — | map (derived image) | wave C |
+| `POST /api/analyze/montage-compare` | — (no GUI caller). *wave-C bounce-back: gap 1 AND gap 2 — tiles are an array of nested models each naming a session image, with a float\|str\|bool param_value no scalar encoding covers (ADR 0005 wave-C addendum). Kinds cell corrected from 'figure' as for montage* | — | map (derived image) | wave C |
 
 ### Structure & particles
 
@@ -66,10 +66,10 @@ Route and op inventories are read live from the app and registry at generation t
 
 | Route | GUI action | Registered op (headless reach) | Result kinds (ADR 0004) | Wave |
 |---|---|---|---|---|
-| `POST /api/analyze/align-stack` | Image menu | — | map ×N + table | wave C |
-| `POST /api/analyze/mip` | Image menu | — | map | wave C |
-| `POST /api/analyze/stitch` | CTF/Stitch mode | — | map + table | wave C |
-| `POST /api/analyze/image-math` | Image menu | — | map | wave C |
+| `POST /api/analyze/align-stack` | Image menu. *wave-C bounce-back: N input images by session id — fn(ds, params) has exactly one subject (gap 1, ADR 0005 wave-C addendum)* | — | map ×N + table | wave C |
+| `POST /api/analyze/mip` | Image menu. *wave-C bounce-back: N input images by session id (gap 1); its ONLY field is the blocking one* | — | map | wave C |
+| `POST /api/analyze/stitch` | CTF/Stitch mode. *wave-C bounce-back: N input images by session id (gap 1, ADR 0005 wave-C addendum)* | — | map + table | wave C |
+| `POST /api/analyze/image-math` | Image menu. *wave-C bounce-back: TWO equal image inputs (a_id/b_id) — reshaping as primary-ds + id param would smuggle a session read into the pure op layer, the exact gap-1 anti-pattern (ADR 0005 wave-C addendum)* | — | map | wave C |
 | `POST /api/analyze/back-project` | Analysis menu. *tomography — parked with roadmap item 9* | — | map | parked (item 8/9) |
 
 ### EELS
@@ -112,10 +112,10 @@ Route and op inventories are read live from the app and registry at generation t
 
 | Route | GUI action | Registered op (headless reach) | Result kinds (ADR 0004) | Wave |
 |---|---|---|---|---|
-| `POST /api/diffraction/detect` | Diffraction workshop | — | table + overlay | wave C |
-| `POST /api/diffraction/index` | Diffraction workshop | — | table | wave C |
-| `POST /api/diffraction/calibrate` | Diffraction calibration | — | fit + scalar ×2 | wave C |
-| `POST /api/analyze/simulate` | Diffraction simulation | — | table + map + scalar | wave C |
+| `POST /api/diffraction/detect` | Diffraction workshop. *op flattens the rect/circle _Roi to a roi_kind discriminator + NaN-sentinel groups; a roi_kind without its coordinates is an error, never a silent whole-image analysis (deliberate tightening, ADR 0005 wave-C addendum)* | `diffraction_detect` | table + overlay | shipped |
+| `POST /api/diffraction/index` | Diffraction workshop. *wave-C bounce-back: `spots` is a variable-length coordinate-pair list — the fit-shape/atoms-strain shape exactly (gap 2, ADR 0005 wave-C addendum); would also need the ROI re-centring lifted from routes/analysis.py* | — | table | wave C |
+| `POST /api/diffraction/calibrate` | Diffraction calibration. *op anchors d via d_known_ang or standard_phase + hkl_h/k/l NaN-sentinel ints; the anchor scalars are absent — not null — when unresolved* | `diffraction_calibrate` | fit + scalar ×2 | shipped |
+| `POST /api/analyze/simulate` | Diffraction simulation. *no image subject — op ignores `ds` (distribution_fit precedent); the rendered pattern inlines as a `map` envelope while the route registers a session image only when parented* | `diffraction_simulate` | table + map + scalar | shipped |
 
 ### Measurement
 

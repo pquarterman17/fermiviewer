@@ -10,14 +10,14 @@ This is the in-memory core. On-disk persistence (per-user store / ``FV_PHASE_DB`
 like ``usermeta.py``) and the import/list/delete routes are follow-ups; the
 registry API is stable so they can attach later.
 
-Pure layer: stdlib only.
+Pure layer: stdlib + calc.crystal only.
 """
 
 from __future__ import annotations
 
 from fermiviewer.calc.crystal import PHASES, Phase, find_phase
 
-__all__ = ["PhaseRegistry", "registry"]
+__all__ = ["PhaseRegistry", "registry", "standard_d_spacing"]
 
 
 class PhaseRegistry:
@@ -66,3 +66,24 @@ class PhaseRegistry:
 
 registry = PhaseRegistry()
 """Process-wide default phase registry."""
+
+
+def standard_d_spacing(name: str, hkl: tuple[int, int, int]) -> float | None:
+    """The d-spacing (Å) of `hkl` in the named standard phase, or None when
+    no phase matches — the anchor-resolution step of
+    POST /diffraction/calibrate, lifted here (wave C, ADR 0005 §1) so the
+    registered `diffraction_calibrate` op and the route share it. Lives in
+    this module, not `diffraction_calib.py`, to keep that module's
+    numpy/stdlib-only purity statement true."""
+    from fermiviewer.calc.crystal import d_spacing
+
+    phase = registry.find(name)
+    if phase is None:
+        return None
+    h, k, ll = (int(v) for v in hkl)
+    return float(
+        d_spacing(
+            phase.a, h, k, ll, phase.b, phase.c,
+            phase.alpha, phase.beta, phase.gamma,
+        )
+    )

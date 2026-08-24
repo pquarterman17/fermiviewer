@@ -349,8 +349,21 @@ predicate consolidated, README parity overclaim corrected.
       (fft-mask, atoms/strain — both structured-params gap 2, logged in
       ADR 0005's wave-B addendum); the one-new-category allowance stays
       unspent.
-- [ ] Wave C: diffraction calibration, indexing, simulation, stack alignment,
+- [x] Wave C: diffraction calibration, indexing, simulation, stack alignment,
       MIP, and montage.
+      **Shipped 2026-08-24** (3D): 3 ops registered — `diffraction_detect`,
+      `diffraction_calibrate`, `diffraction_simulate` (existing `diffraction`
+      category; allowance unspent for the third wave) — with the
+      compositions lifted to `calc/diffraction.find_spots_roi`,
+      `calc/diffraction_calib.calibrate_rings` and
+      `calc/phase_registry.standard_d_spacing`. Seven endpoints bounced per
+      the 3A rule: index (gap 2) and the six-row multi-input cluster
+      (image-math, align-stack, mip, stitch, montage, montage-compare — all
+      gap 1; montage-compare also gap 2). The audit's `figure` cells for the
+      montages were corrected to `map (derived image)`, and the ADR wave-C
+      addendum names the would-be `figure` case "gap 3". The ops contract
+      re-opening (gaps 1–2) now has its full evidence set and is its own
+      high-capability item, not wave work.
 - [ ] Wave D: remaining spectroscopy (EELS background/thickness/KK/SVD/
       alignment/deconvolution/maps/auto-assign, EDS zeta/continuum/artifacts/
       recalibration/auto-assign), measurement (profiles, ROI statistics,

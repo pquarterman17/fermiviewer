@@ -14,8 +14,8 @@ from pydantic import BaseModel
 
 from fermiviewer.calc import diffraction_calib as dcal
 from fermiviewer.calc.cif import CIFParseError, parse_cif
-from fermiviewer.calc.crystal import PHASES, d_spacing
-from fermiviewer.calc.phase_registry import registry
+from fermiviewer.calc.crystal import PHASES
+from fermiviewer.calc.phase_registry import registry, standard_d_spacing
 from fermiviewer.calc.raster import NoRasterError, raster_of
 from fermiviewer.session import UnknownImageError, store
 
@@ -55,36 +55,22 @@ def diffraction_calibrate(req: CalibrateRequest) -> dict:
     Returns the ellipse (centre, semi-axes, angle, eccentricity), the RMS
     radial residual of the un-distorted ring, and the camera constant."""
     raster = _raster(req.image_id)
+    # detect -> fit -> un-distort lives in calc (wave C, ADR 0005 §1 —
+    # shared with the registered `diffraction_calibrate` op)
     try:
-        pts = dcal.detect_ring_points(
+        cal = dcal.calibrate_rings(
             raster, r_min=req.r_min, r_max=req.r_max, n_angles=req.n_angles
         )
-    except ValueError as e:  # e.g. n_angles < 0 (np.linspace rejects it)
+    except ValueError as e:  # too few ring points, bad n_angles, degenerate fit
         raise HTTPException(422, str(e)) from None
-    if len(pts) < 5:
-        raise HTTPException(
-            422, "too few ring points detected — adjust r_min/r_max or the image"
-        )
-    try:
-        ellipse = dcal.fit_ellipse(pts)
-    except ValueError as e:
-        raise HTTPException(422, str(e)) from None
-    corrected = dcal.undistort_radii(pts, ellipse)
-    rms = float(np.sqrt(np.mean((corrected - ellipse.mean_radius) ** 2)))
+    ellipse = cal.ellipse
 
     # resolve the anchor d-spacing: explicit, or from a standard phase + hkl
     d_known = req.d_known_ang
     if d_known is None and req.standard_phase and req.hkl:
-        phase = registry.find(req.standard_phase)
-        if phase is None:
+        d_known = standard_d_spacing(req.standard_phase, req.hkl)
+        if d_known is None:
             raise HTTPException(422, f"unknown standard phase '{req.standard_phase}'")
-        h, k, ll = req.hkl
-        d_known = float(
-            d_spacing(
-                phase.a, h, k, ll, phase.b, phase.c,
-                phase.alpha, phase.beta, phase.gamma,
-            )
-        )
 
     cam_const = (
         dcal.camera_constant(d_known, ellipse.mean_radius)
@@ -101,8 +87,8 @@ def diffraction_calibrate(req: CalibrateRequest) -> dict:
             "eccentricity": ellipse.eccentricity,
             "mean_radius": ellipse.mean_radius,
         },
-        "n_points": int(len(pts)),
-        "rms_residual_px": rms,
+        "n_points": cal.n_points,
+        "rms_residual_px": cal.rms_residual_px,
         "d_known_ang": d_known,
         "camera_constant_px_ang": cam_const,
     }

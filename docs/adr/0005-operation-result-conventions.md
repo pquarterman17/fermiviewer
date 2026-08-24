@@ -245,3 +245,61 @@ encodings, and blessing them piecemeal would make the earlier bounces
 arbitrary. `fft-mask` is now the cleanest motivator for re-opening gap 2:
 its calc function is a pure single call with zero lift work the moment a
 list-shaped `OpParam` type exists.
+
+## Addendum — wave C outcome (2026-08-24)
+
+Wave C (roadmap 3D) registered 3 of its 10 endpoints and bounced 7 back —
+the wave with the highest bounce rate, because six of its endpoints are
+the multi-input cluster gap 1 describes.
+
+### Shipped
+
+`diffraction_detect`, `diffraction_calibrate`, `diffraction_simulate` in
+the existing `diffraction` category (which does not imply a value result
+— each sets `produces_value=True` like `radial_profile`). The
+one-new-category allowance stays unspent for the third consecutive wave,
+still earmarked for `fourd`. Lifts per the standing rule:
+`calc/diffraction.find_spots_roi`,
+`calc/diffraction_calib.calibrate_rings`,
+`calc/phase_registry.standard_d_spacing`. `radial_profile` stays
+grandfathered in `catalogue_spectral.py` — §2 migrates a member only when
+its wave touches its code, and this wave did not.
+
+### Decisions this wave recorded
+
+- **The `_Roi` discriminated union flattens.** detect/index's ROI model
+  (`kind: "rect"|"circle"` + per-shape ints) is a fixed-arity,
+  scalar-only union: it flattens to a `roi_kind` choices discriminator
+  plus two NaN-sentinel groups — only already-blessed vocabulary, so §4
+  is not tripped. One deliberate tightening: a `roi_kind` without its
+  coordinate group errors instead of silently analyzing the whole image
+  (the strict `parse_roi_param` rationale; the route's zero-defaults
+  would silently no-op).
+- **`lt=` is the exclusive-maximum twin of the wave-B `OpParam` bound
+  gap** (sighted on montage's `overlap: Field(lt=1.0)`, a bounced row —
+  no code needed this wave, but the vocabulary gap now has both ends).
+- **The audit's `figure` cells were wrong.** montage and montage-compare
+  register a session-derived image; neither renders an export, so their
+  kinds cells now read `map (derived image)`. If an op ever genuinely
+  needs ADR 0004's `figure` kind, inlining PNG bytes is NOT a fit: a
+  base64 blob is neither an array-as-list nor a member, and the pure op
+  layer has no member store. Name it **gap 3 — member-bearing output
+  kinds in a pure op** if it arises; it did not arise this wave.
+
+### Bounced back
+
+| Endpoint | Blocking shape |
+|---|---|
+| `/api/diffraction/index` | gap 2: `spots` is a variable-length coordinate-pair list (the fit-shape/atoms-strain shape) |
+| `/api/analyze/image-math` | gap 1: two equal image inputs (`a_id`/`b_id`) — primary-ds + id-param would smuggle a session read into the pure layer |
+| `/api/analyze/align-stack` | gap 1: N image inputs; its only field is the blocking one |
+| `/api/analyze/mip` | gap 1: same |
+| `/api/analyze/stitch` | gap 1: N image inputs |
+| `/api/analyze/montage` | gap 1: N image inputs; `labels=True` additionally bakes session names into pixels — a future multi-input contract must carry per-input labels |
+| `/api/analyze/montage-compare` | gap 1 AND gap 2: an array of nested tile models, each naming a session image, with a `float\|str\|bool` field no scalar encoding covers |
+
+The gap-1 cluster is now six rows across two waves; together with
+`fft-mask` (the cleanest gap-2 motivator) and `montage-compare` (the
+strongest joint gap-1+2 case), the contract re-opening has its full
+evidence set. No wave-C route is job-backed, so §6 had nothing to bite
+on.

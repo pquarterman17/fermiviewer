@@ -29,7 +29,7 @@ from fermiviewer.calc.diffraction_simulate import (
 __all__ = [
     "IndexCandidate", "SimResult", "Spot",
     "apply_roi", "d_spacing_to_radius",
-    "find_spots", "index_spots", "simulate",
+    "find_spots", "find_spots_roi", "index_spots", "simulate",
 ]
 
 
@@ -311,3 +311,24 @@ def index_spots(
 
     cands.sort(key=lambda c: (-c.score, mean_err(c)))
     return cands[: min(top_n, len(cands))]
+
+
+def find_spots_roi(
+    img: np.ndarray,
+    roi: dict | None = None,
+    *,
+    min_radius: float = 10,
+    threshold: float = 0.05,
+    min_separation: float = 8,
+    max_spots: int = 50,
+) -> np.ndarray:
+    """`find_spots` scoped to an analysis ROI, returning full-image 1-based
+    (row, col) coordinates — the crop → detect → offset-shift composition
+    behind POST /diffraction/detect, lifted out of `routes/analysis.py`
+    (wave C, ADR 0005 §1) so the registered `diffraction_detect` op and
+    the HTTP route share it."""
+    cropped, (row_off, col_off) = apply_roi(img, roi)
+    spots = find_spots(cropped, min_radius, threshold, min_separation, max_spots)
+    if spots.shape[0] > 0 and (row_off or col_off):
+        spots = spots + np.array([[row_off, col_off]], dtype=np.float64)
+    return spots
