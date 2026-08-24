@@ -366,7 +366,7 @@ The registered operation catalogue: name, category, summary, params.
 | `roi_cc` | `float` | nan | no |  |  | circle centre col, 0-based |
 | `roi_radius` | `float` | nan | no |  |  | circle radius (px) |
 
-#### `diffraction_simulate` — Kinematic zone-axis pattern simulation (calc/diffraction.simulate) — like distribution_fit, the input image is unused: the subject is the named crystal phase. The rendered pattern inlines as a `map` envelope (the route registers it as a session image only when parented)
+#### `diffraction_simulate` — Kinematic zone-axis pattern simulation (calc/diffraction.simulate) — like distribution_fit, the input image is unused: the subject is the named crystal phase. The rendered pattern inlines as a `map` envelope (the route registers it as a session image only when parented); at the default 512x512 that is ~260k floats per run, so batch scripts that only need the spot table should shrink image_rows/image_cols
 
 *category: `diffraction` · produces: value*
 

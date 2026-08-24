@@ -596,8 +596,8 @@ DOMAINS: tuple[Domain, ...] = (
                 "fit + scalar ×2",
                 "shipped",
                 "op anchors d via d_known_ang or standard_phase + "
-                "hkl_h/k/l NaN-sentinel ints; the anchor scalars are absent "
-                "— not null — when unresolved",
+                "hkl_h/k/l NaN-sentinel floats (validated whole numbers); "
+                "the anchor scalars are absent — not null — when unresolved",
             ),
             Row(
                 "POST",

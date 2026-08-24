@@ -35,7 +35,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from fermiviewer.calc.diffraction import find_spots_roi, simulate
+from fermiviewer.calc.diffraction import find_spots_roi, roi_selects_pixels, simulate
 from fermiviewer.calc.diffraction_calib import calibrate_rings, camera_constant
 from fermiviewer.calc.phase_registry import registry, standard_d_spacing
 from fermiviewer.calc.raster import raster_of
@@ -68,6 +68,16 @@ _ROI_PARAMS = {
 }
 
 
+def _int_group(values: tuple[float, ...], what: str) -> tuple[int, ...]:
+    """NaN-sentinel groups ride float params; the underlying quantities are
+    integers, so a fractional value is rejected — `int()` truncation would
+    silently compute a DIFFERENT reflection/region than requested, where
+    the route's pydantic int fields reject the same input (self-review)."""
+    if any(v != int(v) for v in values):
+        raise ValueError(f"{what} must be whole numbers, got {list(values)}")
+    return tuple(int(v) for v in values)
+
+
 def _roi_from_params(params: dict[str, Any]) -> dict | None:
     """The `_Roi` dict `calc.diffraction.apply_roi` speaks, from the
     flattened discriminator + sentinel groups."""
@@ -78,12 +88,12 @@ def _roi_from_params(params: dict[str, Any]) -> dict | None:
         rect = sentinel_group(params, ("roi_r0", "roi_c0", "roi_r1", "roi_c1"))
         if rect is None:
             raise ValueError("roi_kind 'rect' needs roi_r0/roi_c0/roi_r1/roi_c1")
-        r0, c0, r1, c1 = (int(v) for v in rect)
+        r0, c0, r1, c1 = _int_group(rect, "roi_r0/roi_c0/roi_r1/roi_c1")
         return {"kind": "rect", "r0": r0, "c0": c0, "r1": r1, "c1": c1}
     circle = sentinel_group(params, ("roi_cr", "roi_cc", "roi_radius"))
     if circle is None:
         raise ValueError("roi_kind 'circle' needs roi_cr/roi_cc/roi_radius")
-    cr, cc, radius = (int(v) for v in circle)
+    cr, cc, radius = _int_group(circle, "roi_cr/roi_cc/roi_radius")
     return {"kind": "circle", "cr": cr, "cc": cc, "radius": radius}
 
 
@@ -95,9 +105,15 @@ def _detect(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     # cube, a scientific divergence, so mirror the explicit kind check
     if ds.kind is not DataKind.IMAGE:
         raise ValueError("spot detection needs a 2D image")
+    roi = _roi_from_params(params)
+    # apply_roi silently falls back to the whole image for a degenerate or
+    # fully out-of-bounds ROI (the route inherits that); this op's contract
+    # is stricter — an ROI that selects no pixels is an error (self-review)
+    if roi is not None and not roi_selects_pixels(ds.data.shape, roi):
+        raise ValueError("ROI selects no pixels (0-based half-open, clamped to the image)")
     spots = find_spots_roi(
         ds.data,
-        _roi_from_params(params),
+        roi,
         min_radius=params["min_radius"],
         threshold=params["threshold"],
         min_separation=params["min_separation"],
@@ -169,15 +185,18 @@ def _calibrate(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     )
     ellipse = cal.ellipse
 
-    # resolve the anchor d-spacing: explicit, or from a standard phase + hkl
+    # resolve the anchor d-spacing: explicit, or from a standard phase +
+    # hkl. hkl is only inspected when it can matter — an explicit
+    # d_known_ang with stray hkl params succeeds, like the route, which
+    # never reads hkl once d_known is set (self-review)
     d_known = params["d_known_ang"] if math.isfinite(params["d_known_ang"]) else None
-    hkl = sentinel_group(params, ("hkl_h", "hkl_k", "hkl_l"))
-    if d_known is None and params["standard_phase"] and hkl is not None:
-        d_known = standard_d_spacing(
-            params["standard_phase"], (int(hkl[0]), int(hkl[1]), int(hkl[2]))
-        )
-        if d_known is None:
-            raise ValueError(f"unknown standard phase '{params['standard_phase']}'")
+    if d_known is None and params["standard_phase"]:
+        hkl = sentinel_group(params, ("hkl_h", "hkl_k", "hkl_l"))
+        if hkl is not None:
+            h, k, ll = _int_group(hkl, "hkl_h/hkl_k/hkl_l")
+            d_known = standard_d_spacing(params["standard_phase"], (h, k, ll))
+            if d_known is None:
+                raise ValueError(f"unknown standard phase '{params['standard_phase']}'")
     cam_const = camera_constant(d_known, ellipse.mean_radius) if d_known and d_known > 0 else None
 
     outputs = [
@@ -324,7 +343,10 @@ register(
         "(calc/diffraction.simulate) — like distribution_fit, the input "
         "image is unused: the subject is the named crystal phase. The "
         "rendered pattern inlines as a `map` envelope (the route "
-        "registers it as a session image only when parented)",
+        "registers it as a session image only when parented); at the "
+        "default 512x512 that is ~260k floats per run, so batch scripts "
+        "that only need the spot table should shrink "
+        "image_rows/image_cols",
         params={
             "phase_name": OpParam(
                 str,

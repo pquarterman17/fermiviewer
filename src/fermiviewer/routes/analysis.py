@@ -374,7 +374,8 @@ def eels_align_zlp(req: EelsAlignRequest) -> dict:
 
 class _Roi(BaseModel):
     """Analysis region-of-interest.  Two shapes are supported:
-      rect:   {kind:"rect",   r0, c0, r1, c1}  — 0-based inclusive corners
+      rect:   {kind:"rect",   r0, c0, r1, c1}  — 0-based, half-open (r1/c1
+              exclusive, numpy-slice style; see calc/diffraction.apply_roi)
       circle: {kind:"circle", cr, cc, radius}  — center row/col + radius (px)
     Passed from the frontend's ROI drawing tools; applied in calc before
     spot detection / indexing so both analyses see only the ROI pixels.

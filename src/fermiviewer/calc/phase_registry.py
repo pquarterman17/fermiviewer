@@ -15,7 +15,7 @@ Pure layer: stdlib + calc.crystal only.
 
 from __future__ import annotations
 
-from fermiviewer.calc.crystal import PHASES, Phase, find_phase
+from fermiviewer.calc.crystal import PHASES, Phase, d_spacing, find_phase
 
 __all__ = ["PhaseRegistry", "registry", "standard_d_spacing"]
 
@@ -74,13 +74,14 @@ def standard_d_spacing(name: str, hkl: tuple[int, int, int]) -> float | None:
     POST /diffraction/calibrate, lifted here (wave C, ADR 0005 §1) so the
     registered `diffraction_calibrate` op and the route share it. Lives in
     this module, not `diffraction_calib.py`, to keep that module's
-    numpy/stdlib-only purity statement true."""
-    from fermiviewer.calc.crystal import d_spacing
-
+    numpy/stdlib-only purity statement true. hkl (0, 0, 0) has no
+    d-spacing (1/0) and raises rather than reporting infinity."""
     phase = registry.find(name)
     if phase is None:
         return None
     h, k, ll = (int(v) for v in hkl)
+    if h == 0 and k == 0 and ll == 0:
+        raise ValueError("hkl (0, 0, 0) has no d-spacing")
     return float(
         d_spacing(
             phase.a, h, k, ll, phase.b, phase.c,

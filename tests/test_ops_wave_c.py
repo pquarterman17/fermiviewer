@@ -144,6 +144,66 @@ def test_detect_op_rect_and_circle_rois_match_direct_composition() -> None:
     assert _outputs(circle)["spots"]["data"]["rows"] == direct_circle.tolist()
 
 
+def test_detect_op_rejects_a_roi_that_selects_no_pixels() -> None:
+    """apply_roi silently falls back to the WHOLE image for a degenerate or
+    out-of-bounds ROI (the route inherits that); the op's advertised
+    contract is stricter — these must error, never quietly analyze
+    everything while claiming ROI scope (self-review finding)."""
+    ds = _ds(_spots_image())
+    with pytest.raises(ValueError, match="selects no pixels"):
+        ops.run(
+            "diffraction_detect",
+            ds,
+            {  # r1 <= r0
+                "roi_kind": "rect",
+                "roi_r0": 50,
+                "roi_c0": 0,
+                "roi_r1": 10,
+                "roi_c1": 64,
+            },
+        )
+    with pytest.raises(ValueError, match="selects no pixels"):
+        ops.run(
+            "diffraction_detect",
+            ds,
+            {  # entirely below the image
+                "roi_kind": "rect",
+                "roi_r0": 100,
+                "roi_c0": 0,
+                "roi_r1": 200,
+                "roi_c1": 64,
+            },
+        )
+    with pytest.raises(ValueError, match="selects no pixels"):
+        ops.run(
+            "diffraction_detect",
+            ds,
+            {  # non-positive radius
+                "roi_kind": "circle",
+                "roi_cr": 32,
+                "roi_cc": 32,
+                "roi_radius": 0,
+            },
+        )
+
+
+def test_detect_op_rejects_fractional_roi_coordinates() -> None:
+    # int() truncation would analyze a DIFFERENT region than requested;
+    # the route's pydantic int fields reject the same input
+    with pytest.raises(ValueError, match="whole numbers"):
+        ops.run(
+            "diffraction_detect",
+            _ds(_spots_image()),
+            {
+                "roi_kind": "rect",
+                "roi_r0": 10.7,
+                "roi_c0": 0,
+                "roi_r1": 40,
+                "roi_c1": 64,
+            },
+        )
+
+
 def test_detect_op_roi_discriminator_validation() -> None:
     ds = _ds(_spots_image())
     with pytest.raises(ValueError, match="roi_r0/roi_c0/roi_r1/roi_c1"):
@@ -272,6 +332,46 @@ def test_calibrate_op_standard_phase_anchor_matches_direct() -> None:
         },
     )
     assert _outputs(explicit)["d_known_ang"]["data"]["value"] == pytest.approx(2.0)
+
+
+def test_calibrate_op_hkl_edge_cases() -> None:
+    ds = _ds(_ring_image())
+    # (0,0,0) has no d-spacing: an error, never an infinite camera
+    # constant in the envelope (self-review finding)
+    with pytest.raises(ValueError, match=r"\(0, 0, 0\)"):
+        ops.run(
+            "diffraction_calibrate",
+            ds,
+            {
+                "standard_phase": "Gold",
+                "hkl_h": 0,
+                "hkl_k": 0,
+                "hkl_l": 0,
+            },
+        )
+    # fractional hkl would silently anchor a DIFFERENT reflection
+    with pytest.raises(ValueError, match="whole numbers"):
+        ops.run(
+            "diffraction_calibrate",
+            ds,
+            {
+                "standard_phase": "Gold",
+                "hkl_h": 1.9,
+                "hkl_k": 1.9,
+                "hkl_l": 1.9,
+            },
+        )
+    # an explicit d_known_ang with a stray partial hkl succeeds — the
+    # route never reads hkl once d_known is set (parity, self-review)
+    result = ops.run(
+        "diffraction_calibrate",
+        ds,
+        {
+            "d_known_ang": 2.0,
+            "hkl_h": 1,
+        },
+    )
+    assert _outputs(result)["d_known_ang"]["data"]["value"] == pytest.approx(2.0)
 
 
 def test_calibrate_op_error_paths() -> None:

@@ -68,7 +68,10 @@ def diffraction_calibrate(req: CalibrateRequest) -> dict:
     # resolve the anchor d-spacing: explicit, or from a standard phase + hkl
     d_known = req.d_known_ang
     if d_known is None and req.standard_phase and req.hkl:
-        d_known = standard_d_spacing(req.standard_phase, req.hkl)
+        try:
+            d_known = standard_d_spacing(req.standard_phase, req.hkl)
+        except ValueError as e:  # hkl (0,0,0) — previously a latent 500 (inf)
+            raise HTTPException(422, str(e)) from None
         if d_known is None:
             raise HTTPException(422, f"unknown standard phase '{req.standard_phase}'")
 

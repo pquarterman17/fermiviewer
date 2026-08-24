@@ -114,7 +114,7 @@ Route and op inventories are read live from the app and registry at generation t
 |---|---|---|---|---|
 | `POST /api/diffraction/detect` | Diffraction workshop. *op flattens the rect/circle _Roi to a roi_kind discriminator + NaN-sentinel groups; a roi_kind without its coordinates is an error, never a silent whole-image analysis (deliberate tightening, ADR 0005 wave-C addendum)* | `diffraction_detect` | table + overlay | shipped |
 | `POST /api/diffraction/index` | Diffraction workshop. *wave-C bounce-back: `spots` is a variable-length coordinate-pair list — the fit-shape/atoms-strain shape exactly (gap 2, ADR 0005 wave-C addendum); would also need the ROI re-centring lifted from routes/analysis.py* | — | table | wave C |
-| `POST /api/diffraction/calibrate` | Diffraction calibration. *op anchors d via d_known_ang or standard_phase + hkl_h/k/l NaN-sentinel ints; the anchor scalars are absent — not null — when unresolved* | `diffraction_calibrate` | fit + scalar ×2 | shipped |
+| `POST /api/diffraction/calibrate` | Diffraction calibration. *op anchors d via d_known_ang or standard_phase + hkl_h/k/l NaN-sentinel floats (validated whole numbers); the anchor scalars are absent — not null — when unresolved* | `diffraction_calibrate` | fit + scalar ×2 | shipped |
 | `POST /api/analyze/simulate` | Diffraction simulation. *no image subject — op ignores `ds` (distribution_fit precedent); the rendered pattern inlines as a `map` envelope while the route registers a session image only when parented* | `diffraction_simulate` | table + map + scalar | shipped |
 
 ### Measurement

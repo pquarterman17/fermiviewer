@@ -27,15 +27,23 @@ from fermiviewer.calc.diffraction_simulate import (
 )  # re-export — moved to diffraction_simulate.py to respect the 500-line ceiling
 
 __all__ = [
-    "IndexCandidate", "SimResult", "Spot",
-    "apply_roi", "d_spacing_to_radius",
-    "find_spots", "find_spots_roi", "index_spots", "simulate",
+    "IndexCandidate",
+    "SimResult",
+    "Spot",
+    "apply_roi",
+    "d_spacing_to_radius",
+    "find_spots",
+    "find_spots_roi",
+    "index_spots",
+    "roi_selects_pixels",
+    "simulate",
 ]
 
 
 # ════════════════════════════════════════════════════════════════════
 # ROI helpers
 # ════════════════════════════════════════════════════════════════════
+
 
 def apply_roi(
     img: np.ndarray,
@@ -75,7 +83,7 @@ def apply_roi(
         patch = img[r0:r1, c0:c1].copy()
         # zero pixels outside the circle
         rr, cc_ = np.ogrid[r0:r1, c0:c1]
-        mask = (rr - cr) ** 2 + (cc_ - cc) ** 2 > rad ** 2
+        mask = (rr - cr) ** 2 + (cc_ - cc) ** 2 > rad**2
         patch[mask] = 0.0
         return patch, (r0, c0)
     return img, (0, 0)
@@ -173,10 +181,10 @@ def find_spots(
         return np.zeros((0, 2))
     is_max &= smoothed >= threshold * global_max
 
-    center_row = n_rows // 2 + 1            # 1-based
+    center_row = n_rows // 2 + 1  # 1-based
     center_col = n_cols // 2 + 1
     rows, cols = np.nonzero(is_max)
-    rows, cols = rows + 1, cols + 1         # → 1-based
+    rows, cols = rows + 1, cols + 1  # → 1-based
     if rows.size == 0:
         return np.zeros((0, 2))
 
@@ -281,8 +289,15 @@ def index_spots(
     cands: list[IndexCandidate] = []
     for ph in db:
         refl = plane_spacings(
-            ph.a, b=ph.b, c=ph.c, alpha=ph.alpha, beta=ph.beta, gamma=ph.gamma,
-            centering=ph.centering, max_hkl=max_hkl, lam=float("nan"),
+            ph.a,
+            b=ph.b,
+            c=ph.c,
+            alpha=ph.alpha,
+            beta=ph.beta,
+            gamma=ph.gamma,
+            centering=ph.centering,
+            max_hkl=max_hkl,
+            lam=float("nan"),
         )
         m_hkl, m_d, m_ref, m_idx = [], [], [], []
         for i in range(n_spots):
@@ -297,12 +312,20 @@ def index_spots(
                 m_idx.append(i)  # which input spot this match came from
         n_m = len(m_d)
         hkl_arr = np.array(m_hkl) if m_hkl else np.zeros((0, 3))
-        cands.append(IndexCandidate(
-            ph.name, ph.formula, n_m / max(n_spots, 1), n_m, n_spots,
-            hkl_arr, np.array(m_d), np.array(m_ref),
-            _zone_axis(hkl_arr) if n_m >= 2 else (float("nan"),) * 3,
-            np.array(m_idx, dtype=int),
-        ))
+        cands.append(
+            IndexCandidate(
+                ph.name,
+                ph.formula,
+                n_m / max(n_spots, 1),
+                n_m,
+                n_spots,
+                hkl_arr,
+                np.array(m_d),
+                np.array(m_ref),
+                _zone_axis(hkl_arr) if n_m >= 2 else (float("nan"),) * 3,
+                np.array(m_idx, dtype=int),
+            )
+        )
 
     def mean_err(c: IndexCandidate) -> float:
         if c.n_matched == 0:
@@ -311,6 +334,32 @@ def index_spots(
 
     cands.sort(key=lambda c: (-c.score, mean_err(c)))
     return cands[: min(top_n, len(cands))]
+
+
+def roi_selects_pixels(img_shape: tuple[int, ...], roi: dict) -> bool:
+    """True when `apply_roi` would crop to a non-empty region; False when
+    its malformed-ROI branch would silently fall back to the whole image
+    (degenerate rect, rect fully outside the image, non-positive circle
+    radius). Kept adjacent to `apply_roi` so the clamp arithmetic cannot
+    drift; the `diffraction_detect` op uses it to make that fallback an
+    error instead (wave C, ADR 0005 addendum)."""
+    h, w = int(img_shape[0]), int(img_shape[1])
+    if roi.get("kind") == "rect":
+        r0 = max(0, int(roi["r0"]))
+        c0 = max(0, int(roi["c0"]))
+        r1 = min(h, int(roi["r1"]))
+        c1 = min(w, int(roi["c1"]))
+        return r1 > r0 and c1 > c0
+    if roi.get("kind") == "circle":
+        rad = int(roi["radius"])
+        if rad <= 0:
+            return False
+        r0 = max(0, int(roi["cr"]) - rad)
+        c0 = max(0, int(roi["cc"]) - rad)
+        r1 = min(h, int(roi["cr"]) + rad + 1)
+        c1 = min(w, int(roi["cc"]) + rad + 1)
+        return r1 > r0 and c1 > c0
+    return False
 
 
 def find_spots_roi(
