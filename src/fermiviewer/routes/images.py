@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Response, UploadFile
 from PIL import Image
 from pydantic import BaseModel
 
-from fermiviewer.calc.raster import NoRasterError, raster_of
+from fermiviewer.calc.raster import NoRasterError, raster_of, region_sum_spectrum
 from fermiviewer.calc.render import histogram, to_display, to_uint16_norm
 from fermiviewer.datastruct import SPECTRAL_KINDS, DataKind, DataStruct
 from fermiviewer.io.registry import UnsupportedFormatError, load_auto, supported_extensions
@@ -464,20 +464,15 @@ def image_spectrum(
     if ds.kind is DataKind.SPECTRUM_IMAGE and None not in (
         row0, col0, row1, col1
     ):
-        h, w, _ = ds.data.shape
         assert row0 is not None and row1 is not None
         assert col0 is not None and col1 is not None
-        r0, r1 = sorted((row0, row1))
-        c0, c1 = sorted((col0, col1))
-        r0, c0 = max(r0, 1), max(c0, 1)
-        r1, c1 = min(r1, h), min(c1, w)
-        if r0 > r1 or c0 > c1:
-            raise HTTPException(422, "region is empty after clamping")
-        # Slice before converting/accumulating so a one-pixel probe never
-        # materializes a float64 copy of the entire spectrum image.
-        region_data = ds.data[r0 - 1:r1, c0 - 1:c1, :]
-        counts = np.sum(region_data, axis=(0, 1), dtype=np.float64)
-        region = [r0, c0, r1, c1]
+        # clamp → slice → sum lives in calc (wave D, ADR 0005 §1 — shared
+        # with the registered op)
+        try:
+            counts, rect = region_sum_spectrum(ds.data, row0, col0, row1, col1)
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from None
+        region = list(rect)
     else:
         counts = ds.sum_spectrum()
     return {

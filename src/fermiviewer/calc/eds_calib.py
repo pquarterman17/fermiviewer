@@ -10,9 +10,13 @@ Two small, dependency-free primitives that the EDS model-fitting modules
   characteristic peak so the peak-fit need not free every width.
 * **Two-point energy recalibration** — a linear ``E' = gain·E + offset``
   axis correction from one or more known lines, optionally locating the
-  observed peak centroid in the measured spectrum.
+  observed peak centroid in the measured spectrum. The route-facing
+  composition around it (anchor resolution from element symbols, folding
+  the fitted correction into an ``AxisCal``) was lifted here in wave D
+  (ADR 0005 §1): :func:`resolve_anchors` / :func:`recalibrated_cal`.
 
-Pure library (numpy only); no fastapi/pydantic/route imports.
+Pure library (numpy + calc.eds/energy_units + the pure ``datastruct``
+``AxisCal``); no fastapi/pydantic/route imports.
 
 References
 ----------
@@ -28,6 +32,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from fermiviewer.calc.energy_units import kev_factor
+from fermiviewer.datastruct import AxisCal
+
 __all__ = [
     "DEFAULT_EPSILON_EV",
     "DEFAULT_FANO",
@@ -37,18 +44,20 @@ __all__ = [
     "fano_fwhm",
     "fano_sigma_kev",
     "recalibrate",
+    "recalibrated_cal",
+    "resolve_anchors",
 ]
 
 # 2·sqrt(2·ln2): the FWHM ↔ Gaussian-σ conversion factor.
 _FWHM_PER_SIGMA = 2.0 * np.sqrt(2.0 * np.log(2.0))
 
 # Si detector constants.
-DEFAULT_EPSILON_EV = 3.85   # mean energy per electron-hole pair (Si), eV
-DEFAULT_FANO = 0.12         # Fano factor for Si
+DEFAULT_EPSILON_EV = 3.85  # mean energy per electron-hole pair (Si), eV
+DEFAULT_FANO = 0.12  # Fano factor for Si
 
 # Reference line that anchors the electronic-noise term.
 MN_KA_KEV = 5.899
-MN_KA_FWHM_EV = 130.0       # spec resolution of a typical SDD at Mn-Kα
+MN_KA_FWHM_EV = 130.0  # spec resolution of a typical SDD at Mn-Kα
 
 
 def fano_fwhm(
@@ -88,16 +97,14 @@ def fano_fwhm(
     """
     e_ev = np.asarray(energy_kev, dtype=np.float64) * 1000.0
     ref_ev = ref_energy_kev * 1000.0
-    slope = (_FWHM_PER_SIGMA**2) * fano * epsilon_ev   # eV² per eV
+    slope = (_FWHM_PER_SIGMA**2) * fano * epsilon_ev  # eV² per eV
     noise_sq = ref_fwhm_ev**2 - slope * ref_ev
     var = np.maximum(noise_sq + slope * e_ev, 0.0)
     out = np.sqrt(var)
     return float(out) if np.isscalar(energy_kev) or np.ndim(energy_kev) == 0 else out
 
 
-def fano_sigma_kev(
-    energy_kev: np.ndarray | float, **kwargs: float
-) -> np.ndarray | float:
+def fano_sigma_kev(energy_kev: np.ndarray | float, **kwargs: float) -> np.ndarray | float:
     """Gaussian σ (in **keV**) of a peak at ``energy_kev``.
 
     Convenience wrapper over :func:`fano_fwhm` for the peak-fit modules,
@@ -200,3 +207,65 @@ def recalibrate(
 
     corrected = gain * energy + offset
     return RecalResult(corrected, gain, offset, tuple(pairs))
+
+
+def resolve_anchors(
+    elements: Sequence[str],
+    pairs: Sequence[tuple[float, float]],
+    beam_kv: float,
+) -> tuple[list[float | tuple[float, float]], list[str]]:
+    """Resolve recalibration anchors from element symbols + explicit pairs.
+
+    The anchor-resolution step of POST /eds/recalibrate, lifted out of
+    ``routes/eds_advanced.py`` (wave D, ADR 0005 §1) so registered ops and
+    the route share it. Each symbol's principal-line true energy is looked
+    up at ``beam_kv`` (``calc.eds.line_energy``); symbols with no known
+    line are collected in ``skipped`` rather than failing the whole call.
+    Explicit ``(observed_keV, true_keV)`` pairs pass through verbatim,
+    after the symbol anchors. No usable anchors at all raises ValueError
+    (the route maps it to 422).
+
+    Returns
+    -------
+    ``(anchors, skipped)`` — anchors in :func:`recalibrate`'s input shape
+    (bare true energies and/or (observed, true) pairs), plus the skipped
+    symbols in input order.
+    """
+    # call-time import: only this composition needs the eds line table —
+    # the Fano/recalibrate primitives stay importable without it (this
+    # module is a dependency of eds_continuum/eds_peakfit/eds_artifacts,
+    # which all also import calc.eds themselves; no cycle either way).
+    from fermiviewer.calc.eds import line_energy
+
+    anchors: list[float | tuple[float, float]] = []
+    skipped: list[str] = []
+    for sym in elements:
+        e, fam = line_energy(sym, beam_kv=beam_kv)
+        if fam and np.isfinite(e):
+            anchors.append(float(e))
+        else:
+            skipped.append(sym)
+    anchors.extend((float(a), float(b)) for a, b in pairs)
+    if not anchors:
+        raise ValueError("no usable anchors (unknown elements and no pairs)")
+    return anchors, skipped
+
+
+def recalibrated_cal(e_cal: AxisCal, gain: float, offset: float) -> AxisCal:
+    """Fold a fitted ``E' = gain·E + offset`` (keV) into an energy AxisCal.
+
+    The apply step of POST /eds/recalibrate, lifted out of
+    ``routes/eds_advanced.py`` (wave D, ADR 0005 §1). ``scale' = gain·scale``
+    and ``origin' = origin − offset_native/scale'`` under the DM convention
+    ``value = (index − origin)·scale``. gain is a ratio (unit-free), but
+    offset is additive and was fitted in keV — it is expressed in the
+    axis's own unit (``calc.energy_units.kev_factor``) before folding in.
+    A non-finite or zero resulting scale raises ValueError (the route maps
+    it to 422).
+    """
+    scale2 = gain * e_cal.scale
+    if not np.isfinite(scale2) or scale2 == 0:
+        raise ValueError("recalibration produced a degenerate energy scale")
+    offset_native = offset / kev_factor(e_cal.units)
+    origin2 = e_cal.origin - offset_native / scale2
+    return AxisCal(scale=scale2, origin=origin2, units=e_cal.units)

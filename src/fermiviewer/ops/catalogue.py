@@ -21,6 +21,7 @@ from fermiviewer.calc.roughness import surface_roughness
 from fermiviewer.calc.segment import morph_op, multi_otsu
 from fermiviewer.calc.texture import noise_estimate
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
+from fermiviewer.io.metadata import databar_content_rows, databar_stripped_metadata
 from fermiviewer.ops.base import OpParam, OpResult, OpSpec
 from fermiviewer.ops.registry import register
 
@@ -269,3 +270,56 @@ register(OpSpec(
     },
     fn=_roughness,
 ))
+
+
+# ── strip_databar (wave D) — derived image, appended per ADR 0005 §2 ─
+
+# NOTE: this op introduces the tree's first ops -> io import (top of file).
+# Both are PURE_LAYERS — the layering guard forbids only fastapi/pydantic/
+# starlette/routes — and it is deliberate: the databar geometry
+# (io.metadata.databar_content_rows) and the metadata carry-forward rule
+# (io.metadata.databar_stripped_metadata) live beside the parsers that
+# record them, exactly as the route consumes them (ADR 0005 §1).
+
+
+def _strip_databar(ds: DataStruct, params: dict[str, Any]) -> OpResult:
+    """Crop the vendor-baked databar off the bottom of an image — the
+    POST /strip-databar composition (routes/filter.py), sharing
+    io.metadata's geometry + carry-forward rules with the route."""
+    if ds.kind is not DataKind.IMAGE:
+        raise ValueError("only 2-D images carry a vendor databar")
+    rows = databar_content_rows(ds.metadata, int(ds.data.shape[0]))
+    if rows is None:
+        raise ValueError("no vendor databar recorded for this image")
+    # acquisition provenance is carried forward (databar_stripped_metadata
+    # drops only the geometry keys, so a second strip correctly errors);
+    # the pure layer cannot compose a session-name `source`, so it carries
+    # the static filter-op spelling instead (the wave-B naming-divergence
+    # note). dtype is preserved: a pure crop justifies no float64 widening.
+    derived = DataStruct(
+        data=np.asarray(ds.data)[:rows, :].copy(),
+        kind=DataKind.IMAGE,
+        axes=(ds.axes[0], ds.axes[1]),
+        metadata={
+            **databar_stripped_metadata(ds.metadata),
+            "parser": "derived",
+            "filter_kind": "strip_databar",
+            "source": "strip_databar",
+        },
+    )
+    return OpResult(
+        op="strip_databar", params=params, label="strip vendor databar", derived=derived
+    )
+
+
+register(
+    OpSpec(
+        name="strip_databar",
+        category="filter",
+        summary="Crop the vendor-baked info bar (Thermo Fisher SEM/FIB "
+        "TIFFs) off the bottom of an image using the recorded databar "
+        "geometry (io.metadata.databar_content_rows); errors when no "
+        "databar is recorded",
+        fn=_strip_databar,
+    )
+)

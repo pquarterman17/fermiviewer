@@ -303,3 +303,68 @@ The gap-1 cluster is now six rows across two waves; together with
 strongest joint gap-1+2 case), the contract re-opening has its full
 evidence set. No wave-C route is job-backed, so §6 had nothing to bite
 on.
+
+## Addendum — wave D outcome (2026-08-24)
+
+Wave D (roadmap 3E), the final parity wave, registered all 26 of its
+endpoints — zero new bounces — closing item 3's mechanical phase at
+57 of 80 analysis endpoints op-backed (73 ops). That result rests on one
+new rule and two clarifications, recorded here.
+
+### The optional-input omission rule (new)
+
+*A variable-length or multi-input field that is OPTIONAL in the route's
+request model may be omitted from the op: the op registers the remaining
+fixed-arity form, and the omitted mode is annotated "no op" in the
+audit's note column. A REQUIRED such field still bounces.*
+
+This generalises existing practice rather than inventing it — shipped
+rows already annotate unbacked modes (`/api/analyze/radial`'s azimuthal
+sector, `/api/filter`'s `crop` and arbitrary-angle `rotate`). The rule
+leaves every one of the fifteen prior bounces intact: in each, the
+blocking field is required or IS the operation (verified case by case in
+the wave-D recon). It unlocked three wave-D rows: `elnes`
+(`reference_id`, an optional second image — the only gap-1 touch this
+wave), `line_profile` (`points` polyline mode), and `eds_recalibrate`
+(`pairs`). A caller who supplies an omitted field gets a hard
+`ParamError`, never silent divergence.
+
+### Modes without an op
+
+`eels_svd`'s `denoise=True` flips the route payload from curves+maps to
+a derived cube. `produces_value_result` is a schema-time predicate — the
+batch palette and the API reference read it before running anything — so
+a spec whose payload kind depends on a param cannot exist. The op drops
+`denoise` and the mode is annotated, the radial-sector treatment.
+
+### Standing rule: derived DataStructs and their diagnostics
+
+The wave-B inline-`map` rule covers 2-D rasters. A derived 1-D/3-D
+DataStruct (aligned SI cubes from `eels_align_zlp`/`eels_subpixel_align`,
+the recalibrated struct from `eds_recalibrate`) stays in
+`OpResult.derived` — ADR 0004 has no cube kind to inline as — and its
+scalar diagnostics (max_shift, shifted_fraction, gain/offset/skipped)
+ride `derived.metadata`, the `savgol_derivative` precedent.
+
+### Notes for the record
+
+- **The one-new-category allowance retires unspent** after four waves; a
+  `measure` category was argued and rejected (`analysis` already holds
+  exactly this work, implies the value result, and categories are op
+  taxonomy, not GUI panels). It remains earmarked for `fourd` (item 8),
+  which now re-opens §2 on its own terms.
+- **Gap 3 (member-bearing/figure kinds) never arose** in waves C or D;
+  it stays named but unexercised.
+- `eds_recalibrate`'s `pairs` is the first NON-coordinate float-pair
+  list to meet gap 2 — the final piece of evidence that the params
+  contract re-opening (gaps 1–2) should consider pair lists generally,
+  not just spatial coordinates.
+- `eels_thickness` deliberately diverges from its route in ONE respect:
+  the route registers `nan_to_num(t)` as the session image but reports
+  statistics over raw `t`; the op inlines the RAW map (NaN → null) —
+  zero-filling invalid pixels in a headless array would silently bias
+  any downstream mean. Annotated on the audit row.
+- `strip_databar` introduces the tree's first `ops → io` import
+  (both are PURE_LAYERS; the guard forbids only fastapi/pydantic/routes/
+  starlette) — deliberate, for `databar_content_rows` and the lifted
+  carry-forward rule.

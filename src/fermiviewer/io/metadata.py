@@ -23,6 +23,7 @@ from fermiviewer.calc.raster import rgb_luma
 
 __all__ = [
     "databar_content_rows",
+    "databar_stripped_metadata",
     "get_stage_tilt",
     "stage_tilt_from_image_tags",
     "to_grayscale",
@@ -35,7 +36,7 @@ _TILT_KEYS = (
     # the snake_case form above, which is why this alone never matched a
     # real .bcf: the two spellings had drifted apart.
     ("stageTilt_deg", False),
-    ("StageT", True),     # FEI/Thermo — radians or degrees, heuristic
+    ("StageT", True),  # FEI/Thermo — radians or degrees, heuristic
     ("StageTa", True),
     ("Tilt", True),
 )
@@ -46,7 +47,7 @@ _TILT_KEYS = (
 # all three.
 _IMAGE_TAG_TILT: tuple[tuple[str, bool], ...] = (
     ("stage position.stage alpha", False),  # Gatan DM3/DM4/DM5 — degrees
-    ("stage.alphatilt", True),              # Velox EMD (Thermo Fisher) — radians
+    ("stage.alphatilt", True),  # Velox EMD (Thermo Fisher) — radians
 )
 
 
@@ -85,6 +86,24 @@ def databar_content_rows(metadata: Mapping[str, Any], n_rows: int) -> int | None
     if bar is not None and bar < n_rows:
         return n_rows - bar
     return None
+
+
+def databar_stripped_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
+    """Metadata to carry onto a databar-cropped derivative of this image.
+
+    The carry-forward rule of POST /strip-databar, lifted out of
+    ``routes/filter.py`` (wave D, ADR 0005 §1) to sit beside
+    :func:`databar_content_rows`, whose geometry it undoes. The acquisition
+    provenance is kept — the databar was *displaying* exactly that
+    information (beam kV, instrument, stage tilt), and dropping it would
+    leave a figure-ready image that can no longer say how it was taken.
+    Only the two keys describing the geometry just removed
+    (``databar_height`` / ``image_rows``) are dropped, so a second
+    strip call — :func:`databar_content_rows` on the derivative —
+    correctly reports "no databar". Load-bearing: keep the dropped-key
+    set in lockstep with what :func:`databar_content_rows` reads.
+    """
+    return {k: v for k, v in metadata.items() if k not in ("databar_height", "image_rows")}
 
 
 def to_grayscale(pixels: np.ndarray) -> np.ndarray:

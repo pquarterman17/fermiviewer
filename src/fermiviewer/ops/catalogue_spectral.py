@@ -28,13 +28,13 @@ import numpy as np
 from fermiviewer.calc.eds import ClResult, ZafResult, cliff_lorimer, zaf_correction
 from fermiviewer.calc.eds_maps import element_map, extract_element_maps
 from fermiviewer.calc.eels import extract_map
-from fermiviewer.calc.eels_quant import ElementEdge, quantify
+from fermiviewer.calc.eels_quant import quantify
 from fermiviewer.calc.energy_units import to_kev
 from fermiviewer.calc.radial import radial_profile
 from fermiviewer.calc.smoothing import savgol_derivative, savgol_smooth
 from fermiviewer.datastruct import SPECTRAL_KINDS, DataKind, DataStruct
 from fermiviewer.ops._parsing import clean_values as _clean
-from fermiviewer.ops._parsing import parse_windows as _parse_windows
+from fermiviewer.ops._parsing import edges_from_params
 from fermiviewer.ops._parsing import split_csv as _split_csv
 from fermiviewer.ops.base import OpParam, OpResult, OpSpec
 from fermiviewer.ops.catalogue import raster_of
@@ -87,25 +87,7 @@ register(OpSpec(
 def _eels_quantify(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     if ds.kind not in SPECTRAL_KINDS:
         raise ValueError("eels_quantify requires spectral input (got a 2D image)")
-    elements = _split_csv(params["elements"])
-    shells = _split_csv(params["shells"])
-    z_list = [int(v) for v in _split_csv(params["z"])]
-    onsets = [float(v) for v in _split_csv(params["onset_ev"])]
-    sig_windows = _parse_windows(params["signal_windows"])
-    bg_windows = _parse_windows(params["bg_windows"])
-    lengths = {len(elements), len(shells), len(z_list), len(onsets),
-              len(sig_windows), len(bg_windows)}
-    if len(lengths) != 1 or not elements:
-        raise ValueError(
-            "eels_quantify: elements/shells/z/onset_ev/signal_windows/"
-            "bg_windows must all list the same non-zero number of edges "
-            f"(got lengths {sorted(lengths)})"
-        )
-    edges = [
-        ElementEdge(elements[i], shells[i], z_list[i], onsets[i],
-                   sig_windows[i], bg_windows[i])
-        for i in range(len(elements))
-    ]
+    edges = edges_from_params(params, "eels_quantify")
     res = quantify(ds.energy_axis, ds.sum_spectrum(), edges,
                    params["e0_kv"], params["beta_mrad"], params["method"])
     value = {

@@ -23,7 +23,10 @@ import numpy as np
 
 from fermiviewer.datastruct import DataKind, DataStruct
 
-__all__ = ["NoRasterError", "raster_from", "raster_of", "rgb_luma"]
+__all__ = [
+    "NoRasterError", "raster_from", "raster_of", "region_sum_spectrum",
+    "rgb_luma",
+]
 
 #: BT.601 luma weights — the app's one RGB→scalar rule. io/metadata.py's
 #: `to_grayscale` delegates here; io/images.py's load-time channel MEAN is
@@ -71,3 +74,33 @@ def raster_from(
 def raster_of(ds: DataStruct, *, native: bool = False) -> np.ndarray:
     """2D raster of a dataset — see :func:`raster_from`."""
     return raster_from(ds.data, ds.kind, native=native)
+
+
+def region_sum_spectrum(
+    cube: np.ndarray, row0: int, col0: int, row1: int, col1: int
+) -> tuple[np.ndarray, tuple[int, int, int, int]]:
+    """Region-summed spectrum of an SI cube — the clamp → slice → sum behind
+    GET /image/{id}/spectrum's rect path, lifted out of `routes/images.py`
+    (wave D, ADR 0005 §1) so the registered op and the HTTP route share it.
+
+    Corners are 1-based inclusive, in either order; they are sorted and
+    clamped to the cube. Returns ``(counts, (r0, c0, r1, c1))`` — the float64
+    spectrum summed over the spatial axes plus the clamped rect actually
+    summed. A region empty after clamping raises ValueError (the route maps
+    it to 422). The whole-cube case stays with the caller
+    (``DataStruct.sum_spectrum``).
+
+    The slice happens before converting/accumulating so a one-pixel probe
+    never materializes a float64 copy of the entire spectrum image.
+    """
+    cube = np.asarray(cube)
+    h, w = int(cube.shape[0]), int(cube.shape[1])
+    r0, r1 = sorted((int(row0), int(row1)))
+    c0, c1 = sorted((int(col0), int(col1)))
+    r0, c0 = max(r0, 1), max(c0, 1)
+    r1, c1 = min(r1, h), min(c1, w)
+    if r0 > r1 or c0 > c1:
+        raise ValueError("region is empty after clamping")
+    region_data = cube[r0 - 1:r1, c0 - 1:c1, :]
+    counts = np.asarray(np.sum(region_data, axis=(0, 1), dtype=np.float64))
+    return counts, (r0, c0, r1, c1)

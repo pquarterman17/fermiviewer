@@ -24,6 +24,7 @@ from fermiviewer.calc.eels_advanced import (
     svd,
 )
 from fermiviewer.calc.eels_quant import ElementEdge, quantify, quantify_map
+from fermiviewer.calc.eels_report import mean_atomic_percent, svd_view, thickness_summary
 from fermiviewer.calc.phase_registry import registry as _phase_registry
 from fermiviewer.calc.uncertainty import eels_atomic_sigma
 from fermiviewer.datastruct import SPECTRAL_KINDS, AxisCal, DataKind, DataStruct
@@ -183,10 +184,7 @@ def _eels_quantify_map(
     return {
         "elements": res.elements,
         "sigma": res.sigma.tolist(),
-        "mean_atomic_percent": [
-            float(np.nanmean(res.atomic_percent[:, :, k]))
-            for k in range(len(res.elements))
-        ],
+        "mean_atomic_percent": mean_atomic_percent(res.atomic_percent),
         "maps": maps,
     }
 
@@ -233,10 +231,11 @@ def eels_thickness(req: EelsThicknessRequest) -> dict:
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
     meta = _register_map(np.nan_to_num(t), "t/λ map", ds, req.image_id)
+    mean_t, valid_frac = thickness_summary(t, valid)
     return {
         "map": meta.model_dump(),
-        "mean_t_over_lambda": float(np.nanmean(t)) if valid.any() else 0.0,
-        "valid_fraction": float(valid.mean()),
+        "mean_t_over_lambda": mean_t,
+        "valid_fraction": valid_frac,
     }
 
 
@@ -321,17 +320,16 @@ def eels_svd(req: EelsSvdRequest) -> dict:
         res = svd(ds.data, ds.energy_axis, req.n_components, req.denoise)
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
-    k_show = min(req.n_score_maps, res.singular_values.size)
+    view = svd_view(res, req.n_score_maps)
     maps = [
-        _register_map(res.score_maps[:, :, j], f"SVD score {j + 1}",
-                      ds, req.image_id).model_dump()
-        for j in range(k_show)
+        _register_map(m, f"SVD score {j + 1}", ds, req.image_id).model_dump()
+        for j, m in enumerate(view.score_maps)
     ]
     out: dict = {
         "explained": res.explained.tolist(),
         "cumulative": res.cumulative.tolist(),
         "energy": ds.energy_axis.tolist(),
-        "eigenspectra": res.eigenspectra[:, :k_show].T.tolist(),
+        "eigenspectra": view.eigenspectra.tolist(),
         "score_maps": maps,
     }
     if res.denoised_cube is not None:

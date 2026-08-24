@@ -13,11 +13,14 @@ from __future__ import annotations
 
 import numpy as np
 
+from fermiviewer.calc.eels_quant import ElementEdge
 from fermiviewer.calc.roi import RectRoi, parse_rect_roi
 from fermiviewer.datastruct import DataStruct
 
 __all__ = [
     "clean_values",
+    "edges_from_params",
+    "int_group",
     "parse_roi_param",
     "parse_windows",
     "pixel_cal",
@@ -92,3 +95,41 @@ def pixel_cal_or_default(ds: DataStruct) -> tuple[float, str]:
     if np.isfinite(ds.pixel_size) and ds.pixel_size > 0:
         return ds.pixel_size, ds.pixel_unit or "px"
     return 1.0, ds.pixel_unit or "px"
+
+
+def int_group(values: tuple[float, ...], what: str) -> tuple[int, ...]:
+    """NaN-sentinel groups ride float params; when the underlying
+    quantities are integers a fractional value is rejected — `int()`
+    truncation would silently compute a DIFFERENT reflection/region than
+    requested, where the routes' pydantic int fields reject the same
+    input. Wave C's `_int_group`, promoted here on its second consumer."""
+    if any(v != int(v) for v in values):
+        raise ValueError(f"{what} must be whole numbers, got {list(values)}")
+    return tuple(int(v) for v in values)
+
+
+def edges_from_params(params: dict, opname: str) -> list[ElementEdge]:
+    """The six-CSV EELS edge schema (elements/shells/z/onset_ev/
+    signal_windows/bg_windows) as `ElementEdge`s, with the shared
+    same-length validation. Existed as per-catalogue copies in
+    `catalogue_spectral` and `catalogue_analysis`; promoted here when
+    wave D's map ops became the third and fourth consumers."""
+    elements = split_csv(params["elements"])
+    shells = split_csv(params["shells"])
+    z_list = [int(v) for v in split_csv(params["z"])]
+    onsets = [float(v) for v in split_csv(params["onset_ev"])]
+    sig_windows = parse_windows(params["signal_windows"])
+    bg_windows = parse_windows(params["bg_windows"])
+    lengths = {len(elements), len(shells), len(z_list), len(onsets),
+               len(sig_windows), len(bg_windows)}
+    if len(lengths) != 1 or not elements:
+        raise ValueError(
+            f"{opname}: elements/shells/z/onset_ev/signal_windows/bg_windows "
+            f"must all list the same non-zero number of edges "
+            f"(got lengths {sorted(lengths)})"
+        )
+    return [
+        ElementEdge(elements[i], shells[i], z_list[i], onsets[i],
+                    sig_windows[i], bg_windows[i])
+        for i in range(len(elements))
+    ]
