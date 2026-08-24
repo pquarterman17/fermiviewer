@@ -39,6 +39,7 @@ import numpy as np
 
 from fermiviewer.calc.eds import _resolve_k, mass_absorption_coeff
 from fermiviewer.calc.elements import ELEMENTS, atomic_mass
+from fermiviewer.calc.uncertainty import ClUncertainty, cliff_lorimer_uncertainty
 
 __all__ = [
     "ELECTRON_CHARGE_C",
@@ -47,9 +48,10 @@ __all__ = [
     "dose_electrons",
     "zeta_from_k_factors",
     "zeta_quantify",
+    "zeta_uncertainty",
 ]
 
-ELECTRON_CHARGE_C = 1.602176634e-19   # exact (2019 SI)
+ELECTRON_CHARGE_C = 1.602176634e-19  # exact (2019 SI)
 
 # mass-absorption coefficients come from eds.mass_absorption_coeff in
 # cm²/g; χ·ρt must be dimensionless with ρt in kg/m², so convert.
@@ -110,6 +112,47 @@ def zeta_from_k_factors(
     return k * zeta_si
 
 
+def zeta_uncertainty(
+    net_areas: np.ndarray | Sequence[float],
+    net_area_errors: np.ndarray | Sequence[float],
+    elements: Sequence[str],
+    zeta_factors: np.ndarray | Sequence[float],
+    absorption_factors: np.ndarray | Sequence[float],
+    dose: float,
+) -> tuple[ClUncertainty, float]:
+    """Counting/fit 1σ → at%/wt% error bars + mass-thickness 1σ.
+
+    The uncertainty block behind /eds/zeta, lifted out of
+    ``routes/eds_zeta.py`` (wave D, ADR 0005 §1) so registered ops and the
+    route share it. The ζ normalisation w_i = ζ_i·I_i/Σζ_j·I_j has the
+    Cliff-Lorimer form with k→ζ, so the same delta-method core
+    (:func:`~fermiviewer.calc.uncertainty.cliff_lorimer_uncertainty`)
+    applies; absorption factors are treated as exact and scale value and
+    σ alike. The mass-thickness 1σ follows from ρt = Σζ_j·A_j·I_j/D_e
+    with independent per-element intensity errors.
+
+    Parameters
+    ----------
+    net_areas : per-element net peak areas (counts), ≥ 0.
+    net_area_errors : their 1σ fit errors (NOT variances).
+    elements, zeta_factors : symbols + ζ (kg/m²), aligned with the areas.
+    absorption_factors : converged A_i from :func:`zeta_quantify`.
+    dose : electron dose D_e (see :func:`dose_electrons`).
+
+    Returns
+    -------
+    ``(unc, rho_t_sigma)`` — the at%/wt% σ (percentage points) and the
+    1σ on the mean mass-thickness (kg/m²).
+    """
+    net = np.asarray(net_areas, dtype=np.float64)
+    var = np.asarray(net_area_errors, dtype=np.float64) ** 2
+    zeta = np.asarray(zeta_factors, dtype=np.float64)
+    a_f = np.asarray(absorption_factors, dtype=np.float64)
+    unc = cliff_lorimer_uncertainty(net * a_f, var * a_f**2, list(elements), zeta)
+    rho_t_sigma = float(np.sqrt((zeta**2 * var * a_f**2).sum()) / dose)
+    return unc, rho_t_sigma
+
+
 @dataclass(frozen=True)
 class ZetaResult:
     """Outcome of :func:`zeta_quantify`. Maps are NaN off-mask.
@@ -127,10 +170,10 @@ class ZetaResult:
     mask: np.ndarray
     mean_atomic_pct: np.ndarray
     mean_weight_pct: np.ndarray
-    mass_thickness_map: np.ndarray          # kg/m²
-    mean_mass_thickness: float              # kg/m²
+    mass_thickness_map: np.ndarray  # kg/m²
+    mean_mass_thickness: float  # kg/m²
     thickness_map_nm: np.ndarray | None
-    mean_thickness_nm: float                # NaN without a density
+    mean_thickness_nm: float  # NaN without a density
     absorption_factors: np.ndarray
     dose: float
 
@@ -165,13 +208,13 @@ def _iterate(
     """
     n = cube.shape[2]
     a_f = np.ones(n)
-    gen = cube.copy()                       # generated-intensity estimate
+    gen = cube.copy()  # generated-intensity estimate
     rho_t = np.zeros(mask.shape)
     w = np.zeros_like(gen)
     for _ in range(n_iter):
-        q = gen * zeta                      # ζ_i·I_i per pixel
+        q = gen * zeta  # ζ_i·I_i per pixel
         q_sum = q.sum(axis=2)
-        rho_t = q_sum / dose                # kg/m²
+        rho_t = q_sum / dose  # kg/m²
         safe = np.where(q_sum > 0, q_sum, 1.0)
         w = q / safe[:, :, None]
         if mac is None:
@@ -247,7 +290,10 @@ def zeta_quantify(
     mask = cube.sum(axis=2) > mask_threshold
 
     w, rho_t, a_f = _iterate(
-        cube, zeta, dose, mask,
+        cube,
+        zeta,
+        dose,
+        mask,
         mac=_mac_matrix(elements) if absorption else None,
         csc=1.0 / np.sin(np.deg2rad(take_off_angle_deg)),
         n_iter=max(1, int(round(iterations))) if absorption else 1,
@@ -280,8 +326,8 @@ def zeta_quantify(
     if density_g_cm3 is not None:
         if density_g_cm3 <= 0:
             raise ValueError("density_g_cm3 must be positive")
-        rho_si = density_g_cm3 * 1000.0     # kg/m³
-        t_map = rho_t / rho_si * 1e9        # m → nm
+        rho_si = density_g_cm3 * 1000.0  # kg/m³
+        t_map = rho_t / rho_si * 1e9  # m → nm
         mean_t = mean_rt / rho_si * 1e9
 
     return ZetaResult(

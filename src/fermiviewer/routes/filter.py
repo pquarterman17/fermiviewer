@@ -14,7 +14,7 @@ from fermiviewer.calc import filters
 from fermiviewer.calc.raster import NoRasterError, raster_of
 from fermiviewer.calc.segment import morph_op, multi_otsu
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
-from fermiviewer.io.metadata import databar_content_rows
+from fermiviewer.io.metadata import databar_content_rows, databar_stripped_metadata
 from fermiviewer.models import ImageMeta
 from fermiviewer.session import UnknownImageError, store
 
@@ -48,7 +48,7 @@ def _crop(d: np.ndarray, p: dict[str, Any]) -> np.ndarray:
     r0, r1 = sorted((int(p["row0"]), int(p["row1"])))
     c0, c1 = sorted((int(p["col0"]), int(p["col1"])))
     r0, c0 = max(r0, 1), max(c0, 1)
-    out = d[r0 - 1:r1, c0 - 1:c1]
+    out = d[r0 - 1 : r1, c0 - 1 : c1]
     if out.size == 0:
         raise ValueError("crop rectangle is empty")
     return out
@@ -69,12 +69,8 @@ def _rotate_arbitrary(d: np.ndarray, p: dict[str, Any]) -> np.ndarray:
 # kind → (callable, resamples?) — dispatch table, never eval
 _FILTERS: dict[str, Callable[[np.ndarray, dict[str, Any]], np.ndarray]] = {
     "rotate": _rotate_arbitrary,
-    "gaussian": lambda d, p: filters.apply_gaussian(
-        d, sigma=float(p.get("sigma", 1.0))
-    ),
-    "median": lambda d, p: filters.apply_median(
-        d, window_size=int(p.get("window_size", 3))
-    ),
+    "gaussian": lambda d, p: filters.apply_gaussian(d, sigma=float(p.get("sigma", 1.0))),
+    "median": lambda d, p: filters.apply_median(d, window_size=int(p.get("window_size", 3))),
     "unsharp": lambda d, p: filters.unsharp_mask(
         d, sigma=float(p.get("sigma", 2.0)), amount=float(p.get("amount", 1.0))
     ),
@@ -93,15 +89,13 @@ _FILTERS: dict[str, Callable[[np.ndarray, dict[str, Any]], np.ndarray]] = {
     "bin": lambda d, p: filters.bin_image(
         d, bin_size=int(p.get("bin_size", 2)), mode=str(p.get("mode", "average"))
     ),
-    "plane_level": lambda d, p: filters.plane_level(
-        d, order=int(p.get("order", 1))
-    ).leveled,
+    "plane_level": lambda d, p: filters.plane_level(d, order=int(p.get("order", 1))).leveled,
     # geometric ops (stage toolbar): np.rot90 k>0 is CCW, so CW = k=-1
-    "rotate90": lambda d, p: np.rot90(d, k=-1),     # 90° clockwise
+    "rotate90": lambda d, p: np.rot90(d, k=-1),  # 90° clockwise
     "rotate180": lambda d, p: np.rot90(d, k=2),
-    "rotate270": lambda d, p: np.rot90(d, k=1),     # 90° CCW
-    "fliph": lambda d, p: d[:, ::-1],               # mirror left-right
-    "flipv": lambda d, p: d[::-1, :],               # mirror top-bottom
+    "rotate270": lambda d, p: np.rot90(d, k=1),  # 90° CCW
+    "fliph": lambda d, p: d[:, ::-1],  # mirror left-right
+    "flipv": lambda d, p: d[::-1, :],  # mirror top-bottom
     "crop": _crop,
     # segmentation dialogs (checklist K): morphology thresholds at the
     # image mean first (binary op on grayscale input); multi-Otsu
@@ -112,13 +106,13 @@ _FILTERS: dict[str, Callable[[np.ndarray, dict[str, Any]], np.ndarray]] = {
         radius=int(p.get("radius", 1)),
         shape=str(p.get("shape", "square")),
     ).astype(float),
-    "multiotsu": lambda d, p: multi_otsu(
-        d, n_classes=int(p.get("n_classes", 3))
-    ).label_map.astype(float),
+    "multiotsu": lambda d, p: multi_otsu(d, n_classes=int(p.get("n_classes", 3))).label_map.astype(
+        float
+    ),
 }
 
 _RESAMPLING = {"bin"}
-_SWAPS_AXES = {"rotate90", "rotate270"}             # row/col cal swap
+_SWAPS_AXES = {"rotate90", "rotate270"}  # row/col cal swap
 
 
 @router.post("/filter")
@@ -134,9 +128,7 @@ def apply_filter(req: FilterRequest) -> ImageMeta:
 
     fn = _FILTERS.get(req.kind)
     if fn is None:
-        raise HTTPException(
-            422, f"unknown filter '{req.kind}' (have: {sorted(_FILTERS)})"
-        )
+        raise HTTPException(422, f"unknown filter '{req.kind}' (have: {sorted(_FILTERS)})")
     try:
         out = fn(raster, req.params)
     except KeyError as e:
@@ -149,9 +141,7 @@ def apply_filter(req: FilterRequest) -> ImageMeta:
         raise HTTPException(422, str(e)) from None
 
     if req.kind in _RESAMPLING:
-        axes = _scaled_axes(
-            ds, raster.shape[0] / out.shape[0], raster.shape[1] / out.shape[1]
-        )
+        axes = _scaled_axes(ds, raster.shape[0] / out.shape[0], raster.shape[1] / out.shape[1])
     elif req.kind in _SWAPS_AXES:
         axes = (ds.axes[1], ds.axes[0])
     else:
@@ -168,9 +158,7 @@ def apply_filter(req: FilterRequest) -> ImageMeta:
             "filter_kind": req.kind,
         },
     )
-    new_id = store.add_derived(
-        derived, f"{req.kind}({name})", req.image_id
-    )
+    new_id = store.add_derived(derived, f"{req.kind}({name})", req.image_id)
     return ImageMeta.from_datastruct(new_id, store.name(new_id), derived)
 
 
@@ -195,17 +183,10 @@ def strip_databar(req: StripDatabarRequest) -> ImageMeta:
         raise HTTPException(422, "no vendor databar recorded for this image")
 
     name = store.name(req.image_id)
-    # Carry the acquisition provenance forward. The generic /filter path
-    # rebuilds metadata from scratch, which here would discard exactly the
-    # information the databar was *displaying* — beam kV, instrument, stage
-    # tilt — leaving a figure-ready image that can no longer say how it was
-    # taken. Only the two keys describing the geometry just removed are
-    # dropped, so a second call correctly reports "no databar".
-    carried = {
-        k: v
-        for k, v in ds.metadata.items()
-        if k not in ("databar_height", "image_rows")
-    }
+    # Carry the acquisition provenance forward (unlike the generic /filter
+    # path, which rebuilds metadata from scratch) — the rule and its
+    # rationale live on io.metadata.databar_stripped_metadata.
+    carried = databar_stripped_metadata(ds.metadata)
     # dtype is preserved: this is a pure crop, so unlike the filter path
     # there is no computation to justify widening to float64.
     derived = DataStruct(

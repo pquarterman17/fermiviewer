@@ -24,13 +24,14 @@ profile (:mod:`fermiviewer.calc.peak_shapes`) for the natural linewidth —
 from __future__ import annotations
 
 import warnings
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 import numpy as np
 from scipy.special import voigt_profile
 
 from fermiviewer.calc.eds import ClResult, cliff_lorimer, line_energy
+from fermiviewer.calc.eds_artifacts import ArtifactRemoval, artifact_prepass
 from fermiviewer.calc.eds_calib import fano_sigma_kev
 from fermiviewer.calc.peak_shapes import voigt_area
 from fermiviewer.calc.spectral_fit import (
@@ -45,6 +46,7 @@ __all__ = [
     "PeakFitResult",
     "element_peak_component",
     "fit_peaks",
+    "fit_summed_peaks",
     "quantify_peaks",
 ]
 
@@ -83,12 +85,12 @@ def element_peak_component(
 
             def fv2(energy: np.ndarray, p: np.ndarray) -> np.ndarray:
                 a, c = p
-                return np.asarray(
-                    a * voigt_profile(energy - c, s, g) / norm, dtype=np.float64
-                )
+                return np.asarray(a * voigt_profile(energy - c, s, g) / norm, dtype=np.float64)
 
             return Component(
-                symbol, ("amp", "center"), fv2,
+                symbol,
+                ("amp", "center"),
+                fv2,
                 (amp0, center_kev),
                 (0.0, center_kev - center_tol_kev),
                 (np.inf, center_kev + center_tol_kev),
@@ -96,9 +98,7 @@ def element_peak_component(
 
         def fv1(energy: np.ndarray, p: np.ndarray) -> np.ndarray:
             (a,) = p
-            return np.asarray(
-                a * voigt_profile(energy - center_kev, s, g) / norm, dtype=np.float64
-            )
+            return np.asarray(a * voigt_profile(energy - center_kev, s, g) / norm, dtype=np.float64)
 
         return Component(symbol, ("amp",), fv1, (amp0,), (0.0,), (np.inf,))
 
@@ -109,7 +109,9 @@ def element_peak_component(
             return np.asarray(a * np.exp(-0.5 * ((energy - c) / s) ** 2), dtype=np.float64)
 
         return Component(
-            symbol, ("amp", "center"), f2,
+            symbol,
+            ("amp", "center"),
+            f2,
             (amp0, center_kev),
             (0.0, center_kev - center_tol_kev),
             (np.inf, center_kev + center_tol_kev),
@@ -222,7 +224,10 @@ def fit_peaks(
         line_e[sym], line_fam[sym], sigmas[sym] = e_line, fam, sigma
         components.append(
             element_peak_component(
-                sym, e_line, sigma, _amp0(energy, counts, e_line, sigma),
+                sym,
+                e_line,
+                sigma,
+                _amp0(energy, counts, e_line, sigma),
                 center_tol_kev=center_tol_kev,
                 lorentzian_hwhm_kev=gamma,
             )
@@ -260,6 +265,59 @@ def fit_peaks(
         fit=result,
         model_sigma=model_sigma_curve,
     )
+
+
+def fit_summed_peaks(
+    energy: np.ndarray,
+    spectrum: np.ndarray,
+    elements: list[str],
+    *,
+    beam_kv: float,
+    background: Component | None,
+    weights: str | None,
+    center_tol_kev: float,
+    strip_artifacts: bool,
+    escape_fraction: float,
+    fit: Callable[..., PeakFitResult] | None = None,
+) -> tuple[PeakFitResult, ArtifactRemoval | None]:
+    """:func:`fit_peaks` with an optional escape/sum-peak removal pre-pass.
+
+    The composition behind /eds/peakfit and /eds/zeta (#8), lifted out of
+    ``routes/_eds_common.py`` (wave D, ADR 0005 §1) so registered ops and
+    the HTTP routes run one code path: fit once; when ``strip_artifacts``,
+    run :func:`~fermiviewer.calc.eds_artifacts.artifact_prepass` on the
+    first fit and refit on the artifact-corrected spectrum. ValueError
+    from the fits propagates (the route layer maps it to 422).
+
+    ``fit`` overrides the peak-fit entry point (defaults to
+    :func:`fit_peaks`); the route layer binds its own module's ``fit_peaks``
+    through it so the call stays late-bound in ``routes/_eds_common.py`` —
+    the seam the endpoint tests patch. Both fit passes go through the same
+    callable.
+    """
+    fit_fn = fit_peaks if fit is None else fit
+    pf = fit_fn(
+        energy,
+        spectrum,
+        elements,
+        beam_kv=beam_kv,
+        background=background,
+        weights=weights,
+        center_tol_kev=center_tol_kev,
+    )
+    if not strip_artifacts:
+        return pf, None
+    removal = artifact_prepass(energy, spectrum, pf, escape_fraction)
+    pf = fit_fn(
+        energy,
+        removal.corrected,
+        elements,
+        beam_kv=beam_kv,
+        background=background,
+        weights=weights,
+        center_tol_kev=center_tol_kev,
+    )
+    return pf, removal
 
 
 def quantify_peaks(

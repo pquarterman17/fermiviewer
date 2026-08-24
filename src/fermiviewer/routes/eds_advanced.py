@@ -20,15 +20,21 @@ import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from fermiviewer.calc.eds import cliff_lorimer, line_energy
+from fermiviewer.calc.eds import cliff_lorimer
 from fermiviewer.calc.eds_artifacts import DEFAULT_ESCAPE_FRACTION
-from fermiviewer.calc.eds_calib import recalibrate as recalibrate_axis
+from fermiviewer.calc.eds_calib import (
+    recalibrate as recalibrate_axis,
+)
+from fermiviewer.calc.eds_calib import (
+    recalibrated_cal,
+    resolve_anchors,
+)
 from fermiviewer.calc.eds_continuum import fit_continuum
 from fermiviewer.calc.eds_peakfit import fit_peaks
-from fermiviewer.calc.energy_units import kev_factor, to_kev
+from fermiviewer.calc.energy_units import to_kev
 from fermiviewer.calc.fit_quality import r_squared
 from fermiviewer.calc.uncertainty import cliff_lorimer_uncertainty
-from fermiviewer.datastruct import AxisCal, DataStruct
+from fermiviewer.datastruct import DataStruct
 from fermiviewer.models import ImageMeta
 from fermiviewer.routes._eds_common import (
     artifact_block,
@@ -63,7 +69,9 @@ def eds_continuum(req: EdsContinuumRequest) -> dict:
     spectrum = ds.sum_spectrum()
     try:
         fit = fit_continuum(
-            energy, spectrum, req.e0_kev,
+            energy,
+            spectrum,
+            req.e0_kev,
             exclude_lines=list(req.exclude_lines),
             exclude_windows=list(req.exclude_windows),
             fit_absorption=req.fit_absorption,
@@ -87,13 +95,13 @@ class EdsPeakfitRequest(BaseModel):
     image_id: str
     elements: list[str]
     beam_kv: float = 200.0
-    background: str = "linear"          # "none" | "linear" | "bremsstrahlung"
-    e0_kev: float | None = None         # required when background="bremsstrahlung"
+    background: str = "linear"  # "none" | "linear" | "bremsstrahlung"
+    e0_kev: float | None = None  # required when background="bremsstrahlung"
     center_tol_kev: float = 0.0
     quantify: bool = False
     k_factors: list[float] | None = None
     weights: str | None = "poisson"
-    remove_artifacts: bool = False      # escape/sum pre-pass before the fit (#8)
+    remove_artifacts: bool = False  # escape/sum pre-pass before the fit (#8)
     escape_fraction: float = DEFAULT_ESCAPE_FRACTION
 
 
@@ -115,10 +123,13 @@ def eds_peakfit(req: EdsPeakfitRequest) -> dict:
     energy = to_kev(ds.energy_axis, ds.energy_cal.units)
     spectrum = ds.sum_spectrum()
     pf, removal = fit_summed_peaks(
-        energy, spectrum, req.elements,
+        energy,
+        spectrum,
+        req.elements,
         beam_kv=req.beam_kv,
         background=background_component(req.background, req.e0_kev),
-        weights=req.weights, center_tol_kev=req.center_tol_kev,
+        weights=req.weights,
+        center_tol_kev=req.center_tol_kev,
         strip_artifacts=req.remove_artifacts,
         escape_fraction=req.escape_fraction,
     )
@@ -130,8 +141,7 @@ def eds_peakfit(req: EdsPeakfitRequest) -> dict:
             "energy_kev": pf.line_energies[s],
             "net_area": pf.net_areas[s],
             "net_area_error": pf.net_area_errors[s],
-            "curve": pf.fit.component_curves[s].tolist()
-            if s in pf.fit.component_curves else None,
+            "curve": pf.fit.component_curves[s].tolist() if s in pf.fit.component_curves else None,
         }
         for s in req.elements
     ]
@@ -202,7 +212,9 @@ def eds_artifacts(req: EdsArtifactsRequest) -> dict:
     spectrum = ds.sum_spectrum()
     try:
         pf = fit_peaks(
-            energy, spectrum, req.elements,
+            energy,
+            spectrum,
+            req.elements,
             beam_kv=req.beam_kv,
             background=background_component(req.background, req.e0_kev),
             weights=req.weights,
@@ -221,11 +233,11 @@ def eds_artifacts(req: EdsArtifactsRequest) -> dict:
 
 class EdsRecalibrateRequest(BaseModel):
     image_id: str
-    elements: list[str] = []                  # known lines (true energies looked up)
-    pairs: list[tuple[float, float]] = []     # explicit (observed_kev, true_kev)
+    elements: list[str] = []  # known lines (true energies looked up)
+    pairs: list[tuple[float, float]] = []  # explicit (observed_kev, true_kev)
     beam_kv: float = 200.0
     search_kev: float = 0.15
-    apply: bool = True                        # apply to the image's energy axis
+    apply: bool = True  # apply to the image's energy axis
 
 
 @router.post("/eds/recalibrate")
@@ -242,45 +254,39 @@ def eds_recalibrate(req: EdsRecalibrateRequest) -> dict:
     energy = to_kev(ds.energy_axis, ds.energy_cal.units)
     spectrum = ds.sum_spectrum()
 
-    anchors: list[float | tuple[float, float]] = []
-    skipped: list[str] = []
-    for sym in req.elements:
-        e, fam = line_energy(sym, beam_kv=req.beam_kv)
-        if fam and np.isfinite(e):
-            anchors.append(float(e))
-        else:
-            skipped.append(sym)
-    anchors.extend((float(a), float(b)) for a, b in req.pairs)
-    if not anchors:
-        raise HTTPException(422, "no usable anchors (unknown elements and no pairs)")
+    try:
+        anchors, skipped = resolve_anchors(req.elements, req.pairs, req.beam_kv)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
 
     res = recalibrate_axis(energy, spectrum, anchors, search_kev=req.search_kev)
 
     resp: dict = {
         "gain": res.gain,
         "offset": res.offset,
-        "anchors": [list(p) for p in res.anchors],   # [[observed, true], ...]
+        "anchors": [list(p) for p in res.anchors],  # [[observed, true], ...]
         "skipped": skipped,
         "applied": False,
     }
 
     if req.apply:
         e_cal = ds.axes[-1]
-        scale2 = res.gain * e_cal.scale
-        if not np.isfinite(scale2) or scale2 == 0:
-            raise HTTPException(422, "recalibration produced a degenerate energy scale")
-        # gain is a ratio (unit-free), but offset is additive and was fitted
-        # in keV — express it in the axis's own unit before folding it in.
-        offset_native = res.offset / kev_factor(e_cal.units)
-        origin2 = e_cal.origin - offset_native / scale2
-        new_cal = AxisCal(scale=scale2, origin=origin2, units=e_cal.units)
+        try:
+            new_cal = recalibrated_cal(e_cal, res.gain, res.offset)
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from None
         new_ds = DataStruct(
-            data=ds.data, kind=ds.kind,
-            axes=(*ds.axes[:-1], new_cal), metadata=dict(ds.metadata),
+            data=ds.data,
+            kind=ds.kind,
+            axes=(*ds.axes[:-1], new_cal),
+            metadata=dict(ds.metadata),
         )
         store.replace(req.image_id, new_ds)
         resp.update(
-            applied=True, scale=scale2, origin=origin2, units=e_cal.units,
+            applied=True,
+            scale=new_cal.scale,
+            origin=new_cal.origin,
+            units=new_cal.units,
             image=ImageMeta.from_datastruct(
                 req.image_id, store.name(req.image_id), new_ds
             ).model_dump(),
