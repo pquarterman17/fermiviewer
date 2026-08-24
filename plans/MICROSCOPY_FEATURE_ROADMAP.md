@@ -364,14 +364,27 @@ predicate consolidated, README parity overclaim corrected.
       addendum names the would-be `figure` case "gap 3". The ops contract
       re-opening (gaps 1–2) now has its full evidence set and is its own
       high-capability item, not wave work.
-- [ ] Wave D: remaining spectroscopy (EELS background/thickness/KK/SVD/
+- [x] Wave D: remaining spectroscopy (EELS background/thickness/KK/SVD/
       alignment/deconvolution/maps/auto-assign, EDS zeta/continuum/artifacts/
       recalibration/auto-assign), measurement (profiles, ROI statistics,
       distances, spectra/histograms, scale-bar detect), and utility
       (databar strip) operations — every analysis endpoint the coverage
       table lists is in a wave or behind a named item-8/9 gate; item 3
       does not close with any endpoint unassigned (3A review finding).
-- [ ] Have registered operations emit the item-1 result contract.
+      **Shipped 2026-08-24** (3E): all 26 endpoints registered — 13 EELS,
+      5 EDS, 6 measurement (analysis), `sum_spectrum` (spectral) and
+      `strip_databar` (filter) — under the new optional-input omission
+      rule (ADR 0005 wave-D addendum), which annotates optional
+      variable-length modes as "no op" instead of bouncing whole
+      endpoints. Nine calc lifts (two new modules) shrank the three
+      route modules that sat at the 500-line ceiling. The audit stands at
+      57 of 80 op-backed; the 23 remaining rows are the gap-1/gap-2
+      bounce set plus the parked item-8/9 gates, all blocked on the ops
+      contract re-opening, which is its own high-capability item.
+- [x] Have registered operations emit the item-1 result contract.
+      Every wave-registered op (3B–3E) emits ADR 0005 §5 typed envelopes;
+      the pre-wave flat-dict set stays frozen behind 1C's legacy adapter
+      (ADR 0005 §5), so the contract holds registry-wide.
 - [ ] Add recipe validation, versioning, dry-run summaries, and clear failure
       provenance.
 - [ ] Correct public documentation until claimed GUI/headless parity matches

@@ -41,6 +41,7 @@ from fermiviewer.calc.phase_registry import registry, standard_d_spacing
 from fermiviewer.calc.raster import raster_of
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.ops._envelopes import nan_none, output, scalar
+from fermiviewer.ops._parsing import int_group as _int_group
 from fermiviewer.ops._parsing import sentinel_group
 from fermiviewer.ops.base import OpParam, OpResult, OpSpec
 from fermiviewer.ops.registry import register
@@ -67,15 +68,6 @@ _ROI_PARAMS = {
     "roi_radius": OpParam(float, float("nan"), doc="circle radius (px)"),
 }
 
-
-def _int_group(values: tuple[float, ...], what: str) -> tuple[int, ...]:
-    """NaN-sentinel groups ride float params; the underlying quantities are
-    integers, so a fractional value is rejected — `int()` truncation would
-    silently compute a DIFFERENT reflection/region than requested, where
-    the route's pydantic int fields reject the same input (self-review)."""
-    if any(v != int(v) for v in values):
-        raise ValueError(f"{what} must be whole numbers, got {list(values)}")
-    return tuple(int(v) for v in values)
 
 
 def _roi_from_params(params: dict[str, Any]) -> dict | None:

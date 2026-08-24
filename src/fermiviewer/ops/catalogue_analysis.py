@@ -50,12 +50,11 @@ from fermiviewer.calc.eds_maps import (
 )
 from fermiviewer.calc.eds_peakfit import quantify_peaks
 from fermiviewer.calc.eels_model import fit_edges
-from fermiviewer.calc.eels_quant import ElementEdge
 from fermiviewer.calc.energy_units import to_kev
 from fermiviewer.calc.profile_stats import fit_interface_width
 from fermiviewer.calc.uncertainty import atomic_fraction_sigma, default_k_factors
 from fermiviewer.datastruct import SPECTRAL_KINDS, DataKind, DataStruct
-from fermiviewer.ops._parsing import parse_windows, split_csv
+from fermiviewer.ops._parsing import edges_from_params, split_csv
 from fermiviewer.ops.base import OpParam, OpResult, OpSpec
 from fermiviewer.ops.registry import register
 
@@ -67,24 +66,7 @@ __all__: list[str] = []
 def _eels_fit(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     if ds.kind not in SPECTRAL_KINDS:
         raise ValueError(f"eels_fit requires spectral input (got {ds.kind.value})")
-    elements = split_csv(params["elements"])
-    shells = split_csv(params["shells"])
-    z_list = [int(v) for v in split_csv(params["z"])]
-    onsets = [float(v) for v in split_csv(params["onset_ev"])]
-    sig_windows = parse_windows(params["signal_windows"])
-    bg_windows = parse_windows(params["bg_windows"])
-    lengths = {len(elements), len(shells), len(z_list), len(onsets),
-              len(sig_windows), len(bg_windows)}
-    if len(lengths) != 1 or not elements:
-        raise ValueError(
-            "eels_fit: elements/shells/z/onset_ev/signal_windows/bg_windows "
-            f"must all list the same non-zero number of edges (got lengths {sorted(lengths)})"
-        )
-    edges = [
-        ElementEdge(elements[i], shells[i], z_list[i], onsets[i],
-                   sig_windows[i], bg_windows[i])
-        for i in range(len(elements))
-    ]
+    edges = edges_from_params(params, "eels_fit")
     fit_range = None
     if np.isfinite(params["fit_range_lo"]) and np.isfinite(params["fit_range_hi"]):
         fit_range = (params["fit_range_lo"], params["fit_range_hi"])
