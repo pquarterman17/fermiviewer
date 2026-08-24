@@ -51,8 +51,9 @@ parameters come from the persisted record.
 - `cancelled`: show **Analysis cancelled** and its reason.
 - unavailable source: preserve its saved name/ID and mark the source missing;
   never silently discard the link.
-- no results: explain that capture is not yet connected (item 1C), so the
-  empty state does not promise that current workshop runs are already saved.
+- no results: explain that supported analyses create project records and that
+  saved records reappear after reopen; do not imply that every analysis has
+  adopted result capture before the operation-parity waves finish.
 
 ## 1A consumability review
 

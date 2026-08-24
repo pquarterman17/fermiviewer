@@ -70,7 +70,7 @@ export default function ProjectResultsWorkshop() {
         <div className="fvd-project-results-empty">
           <div className="symbol" aria-hidden="true">◇</div>
           <strong>{results.length === 0 ? "No saved results yet" : "No results for the active image"}</strong>
-          <span>{results.length === 0 ? "Result capture arrives in roadmap item 1C. Existing project records will appear here automatically." : "Switch back to All results or select one of this result’s source images."}</span>
+          <span>{results.length === 0 ? "Run a supported analysis to create a project record. Saved results will reappear here when the project is reopened." : "Switch back to All results or select one of this result’s source images."}</span>
         </div>
       ) : (
         <div className="fvd-project-result-list">

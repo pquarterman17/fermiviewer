@@ -6,7 +6,7 @@ routine imaging, EDS, EELS, diffraction, particles, grains, layers, and sample
 comparison. Specialist 4D-STEM and tomography work is deliberately last and is
 not part of the default implementation schedule.
 
-**Status:** Active — planning only
+**Status:** Active — implementation in progress
 **Parent:** MAIN_PLAN.md
 **Created:** 2026-08-22
 **Audit base:** `origin/main` at `13044e1` (v0.1.32)
@@ -271,10 +271,17 @@ Add a typed `results` section to `.fvp` rather than storing more opaque state in
 `ui_state`. A result references source image IDs and keeps data products
 separate from lightweight metadata.
 
-**1A shipped 2026-08-22** (PR #162, ADR 0004): schema, member storage,
-migrations, session carry, review-hardening (calibration `extra` carry, region
-geometry snapshots, load-side identity invariants, corruption degrade). 1C
-awaits the 1B consumability review per the stack gate below.
+**Item-1 stack status (reconciled 2026-08-24):** 1A shipped 2026-08-22
+(PR #162, ADR 0004): schema, member storage, migrations, session carry, and
+review hardening. 1B shipped 2026-08-22 (PR #164): the consumability review,
+Results & Methods window, and representative persisted-result cards. 1C
+shipped 2026-08-23 (PR #165): the shared create/query/member API plus EDS
+quantification and particle-analysis adopters. The 1B implementation also
+delivered 1D's frontend project-load/reopen integration and UI/store test
+matrix, so no separate 1D PR remains. Item 1 itself stays open until the
+profile and diffraction representative adopters satisfy its cross-domain
+done condition; that adoption belongs in the operation/result waves rather
+than another persistence UI PR.
 
 - [x] Define a versioned result schema with stable result ID, analysis type,
       created time, application version, source IDs, derived IDs, region/mask
@@ -286,8 +293,8 @@ awaits the 1B consumability review per the stack gate below.
       JSON manifest.
 - [x] Add project migration, validation, round-trip, missing-member, and
       forward-compatibility tests.
-- [ ] Provide a small backend/frontend result API that workshops can adopt
-      incrementally. (1C — gated on the 1B review.)
+- [x] Provide a small backend/frontend result API that workshops can adopt
+      incrementally. (1C, PR #165; initial EDS and particle adopters.)
 - [x] Record failure/cancellation separately from completed scientific results.
 
 **Done when:** a project can save, close, reopen, and inspect a representative

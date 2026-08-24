@@ -42,10 +42,11 @@ function result(id: string, sourceId: string, created: string): PersistedResultR
 beforeEach(() => useViewer.setState(initialState, true));
 
 describe("ProjectResultsWorkshop", () => {
-  it("shows an honest empty state before result capture lands", () => {
+  it("explains how saved results appear when the project has none", () => {
     render(<ProjectResultsWorkshop />);
     expect(screen.getByText("No saved results yet")).toBeVisible();
-    expect(screen.getByText(/roadmap item 1C/)).toBeVisible();
+    expect(screen.getByText(/Run a supported analysis/)).toBeVisible();
+    expect(screen.getByText(/reappear here when the project is reopened/)).toBeVisible();
   });
 
   it("sorts newest first and filters to the active image", () => {
