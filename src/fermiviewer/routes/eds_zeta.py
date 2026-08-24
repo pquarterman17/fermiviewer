@@ -12,10 +12,14 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from fermiviewer.calc.eds_artifacts import DEFAULT_ESCAPE_FRACTION
-from fermiviewer.calc.eds_zeta import dose_electrons, zeta_from_k_factors, zeta_quantify
+from fermiviewer.calc.eds_zeta import (
+    dose_electrons,
+    zeta_from_k_factors,
+    zeta_quantify,
+    zeta_uncertainty,
+)
 from fermiviewer.calc.energy_units import to_kev
 from fermiviewer.calc.fit_quality import r_squared
-from fermiviewer.calc.uncertainty import cliff_lorimer_uncertainty
 from fermiviewer.routes._eds_common import (
     artifact_block,
     background_component,
@@ -34,8 +38,8 @@ class EdsZetaRequest(BaseModel):
     e0_kev: float | None = None
     center_tol_kev: float = 0.0
     weights: str | None = "poisson"
-    zeta_factors: list[float] | None = None   # explicit per-element ζ (kg/m²)
-    zeta_si: float | None = None              # or scale the 200 kV k table
+    zeta_factors: list[float] | None = None  # explicit per-element ζ (kg/m²)
+    zeta_si: float | None = None  # or scale the 200 kV k table
     probe_current_na: float = 1.0
     live_time_s: float = 100.0
     take_off_angle_deg: float = 20.0
@@ -69,10 +73,13 @@ def eds_zeta(req: EdsZetaRequest) -> dict:
         raise HTTPException(422, "provide zeta_factors or zeta_si")
 
     pf, removal = fit_summed_peaks(
-        energy, spectrum, req.elements,
+        energy,
+        spectrum,
+        req.elements,
         beam_kv=req.beam_kv,
         background=background_component(req.background, req.e0_kev),
-        weights=req.weights, center_tol_kev=req.center_tol_kev,
+        weights=req.weights,
+        center_tol_kev=req.center_tol_kev,
         strip_artifacts=req.remove_artifacts,
         escape_fraction=req.escape_fraction,
     )
@@ -83,7 +90,10 @@ def eds_zeta(req: EdsZetaRequest) -> dict:
         if not np.all(np.isfinite(net)):
             raise ValueError("an element has no fittable line")
         zr = zeta_quantify(
-            [np.array([[v]]) for v in net], list(req.elements), zeta, dose,
+            [np.array([[v]]) for v in net],
+            list(req.elements),
+            zeta,
+            dose,
             take_off_angle_deg=req.take_off_angle_deg,
             absorption=req.absorption,
             density_g_cm3=req.density_g_cm3,
@@ -91,14 +101,16 @@ def eds_zeta(req: EdsZetaRequest) -> dict:
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
 
-    # counting/fit 1σ → at%/wt% error bars. The ζ normalisation
-    # w_i = ζ_i·I_i/Σζ_j·I_j has the Cliff-Lorimer form with k→ζ, so the
-    # same delta-method core applies; absorption factors are treated as
-    # exact and scale value and σ alike.
-    a_f = zr.absorption_factors
-    var = np.array([pf.net_area_errors[s] ** 2 for s in req.elements])
-    unc = cliff_lorimer_uncertainty(net * a_f, var * a_f**2, req.elements, zeta)
-    rho_t_sigma = float(np.sqrt((zeta**2 * var * a_f**2).sum()) / dose)
+    # counting/fit 1σ → at%/wt% + ρt error bars (the ζ↔Cliff-Lorimer
+    # correspondence is documented on calc.eds_zeta.zeta_uncertainty)
+    unc, rho_t_sigma = zeta_uncertainty(
+        net,
+        [pf.net_area_errors[s] for s in req.elements],
+        req.elements,
+        zeta,
+        zr.absorption_factors,
+        dose,
+    )
 
     resp: dict = {
         "energy": energy.tolist(),
@@ -112,7 +124,8 @@ def eds_zeta(req: EdsZetaRequest) -> dict:
                 "net_area": pf.net_areas[s],
                 "net_area_error": pf.net_area_errors[s],
                 "curve": pf.fit.component_curves[s].tolist()
-                if s in pf.fit.component_curves else None,
+                if s in pf.fit.component_curves
+                else None,
             }
             for s in req.elements
         ],
@@ -132,8 +145,7 @@ def eds_zeta(req: EdsZetaRequest) -> dict:
             "mass_thickness_kg_m2": zr.mean_mass_thickness,
             "mass_thickness_error_kg_m2": rho_t_sigma,
             "mass_thickness_ug_cm2": zr.mean_mass_thickness * 1e5,
-            "thickness_nm": None if not np.isfinite(zr.mean_thickness_nm)
-            else zr.mean_thickness_nm,
+            "thickness_nm": None if not np.isfinite(zr.mean_thickness_nm) else zr.mean_thickness_nm,
             "absorption_factors": zr.absorption_factors.tolist(),
             "zeta_factors": zeta.tolist(),
             "dose_electrons": dose,

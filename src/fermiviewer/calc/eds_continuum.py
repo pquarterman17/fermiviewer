@@ -35,10 +35,16 @@ import numpy as np
 
 from fermiviewer.calc.eds import line_energy
 from fermiviewer.calc.eds_calib import fano_fwhm
-from fermiviewer.calc.spectral_fit import Component, FitResult, fit_spectrum
+from fermiviewer.calc.spectral_fit import (
+    Component,
+    FitResult,
+    fit_spectrum,
+    linear_background,
+)
 
 __all__ = [
     "ContinuumFit",
+    "background_component",
     "bremsstrahlung_component",
     "fit_continuum",
     "kramers_continuum",
@@ -88,7 +94,9 @@ def bremsstrahlung_component(
             return kramers_continuum(energy, e0_kev, a, b)
 
         return Component(
-            "continuum", ("amp", "absorption"), f2,
+            "continuum",
+            ("amp", "absorption"),
+            f2,
             (amp, absorption),
             (amp_bounds[0], absorption_bounds[0]),
             (amp_bounds[1], absorption_bounds[1]),
@@ -99,9 +107,38 @@ def bremsstrahlung_component(
         return kramers_continuum(energy, e0_kev, a, absorption)
 
     return Component(
-        "continuum", ("amp",), f1, (amp,),
-        (amp_bounds[0],), (amp_bounds[1],),
+        "continuum",
+        ("amp",),
+        f1,
+        (amp,),
+        (amp_bounds[0],),
+        (amp_bounds[1],),
     )
+
+
+def background_component(background: str, e0_kev: float | None) -> Component | None:
+    """Resolve a background *name* to its fit component.
+
+    The shared background vocabulary of the model-based EDS routes
+    (``"none" | "linear" | "bremsstrahlung"``), lifted out of
+    ``routes/_eds_common.py`` (wave D, ADR 0005 §1) so registered ops and
+    the HTTP routes share one resolution. Unknown names, and
+    ``"bremsstrahlung"`` without ``e0_kev``, raise ValueError (the route
+    layer maps both to 422).
+    """
+    if background == "none":
+        return None
+    if background == "linear":
+        return linear_background("bg")
+    if background == "bremsstrahlung":
+        if e0_kev is None:
+            raise ValueError("background='bremsstrahlung' needs e0_kev")
+        # pure Kramers (absorption fixed): keeps the joint peak+continuum fit
+        # linear in all amplitudes and well-conditioned. The low-energy
+        # detector rolloff is recovered separately by /eds/continuum, which
+        # fits absorption with the peaks masked out.
+        return bremsstrahlung_component(e0_kev, fit_absorption=False)
+    raise ValueError(f"unknown background '{background}'")
 
 
 def _resolve_line_energies(item: float | str, e0_kev: float) -> list[float]:

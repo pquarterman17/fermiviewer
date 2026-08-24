@@ -24,6 +24,7 @@ from fermiviewer.calc.eels_advanced import (
     svd,
 )
 from fermiviewer.calc.eels_quant import ElementEdge, quantify, quantify_map
+from fermiviewer.calc.eels_report import mean_atomic_percent, svd_view, thickness_summary
 from fermiviewer.calc.phase_registry import registry as _phase_registry
 from fermiviewer.calc.uncertainty import eels_atomic_sigma
 from fermiviewer.datastruct import SPECTRAL_KINDS, AxisCal, DataKind, DataStruct
@@ -183,10 +184,7 @@ def _eels_quantify_map(
     return {
         "elements": res.elements,
         "sigma": res.sigma.tolist(),
-        "mean_atomic_percent": [
-            float(np.nanmean(res.atomic_percent[:, :, k]))
-            for k in range(len(res.elements))
-        ],
+        "mean_atomic_percent": mean_atomic_percent(res.atomic_percent),
         "maps": maps,
     }
 
@@ -233,10 +231,11 @@ def eels_thickness(req: EelsThicknessRequest) -> dict:
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
     meta = _register_map(np.nan_to_num(t), "t/λ map", ds, req.image_id)
+    mean_t, valid_frac = thickness_summary(t, valid)
     return {
         "map": meta.model_dump(),
-        "mean_t_over_lambda": float(np.nanmean(t)) if valid.any() else 0.0,
-        "valid_fraction": float(valid.mean()),
+        "mean_t_over_lambda": mean_t,
+        "valid_fraction": valid_frac,
     }
 
 
@@ -321,17 +320,16 @@ def eels_svd(req: EelsSvdRequest) -> dict:
         res = svd(ds.data, ds.energy_axis, req.n_components, req.denoise)
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
-    k_show = min(req.n_score_maps, res.singular_values.size)
+    view = svd_view(res, req.n_score_maps)
     maps = [
-        _register_map(res.score_maps[:, :, j], f"SVD score {j + 1}",
-                      ds, req.image_id).model_dump()
-        for j in range(k_show)
+        _register_map(m, f"SVD score {j + 1}", ds, req.image_id).model_dump()
+        for j, m in enumerate(view.score_maps)
     ]
     out: dict = {
         "explained": res.explained.tolist(),
         "cumulative": res.cumulative.tolist(),
         "energy": ds.energy_axis.tolist(),
-        "eigenspectra": res.eigenspectra[:, :k_show].T.tolist(),
+        "eigenspectra": view.eigenspectra.tolist(),
         "score_maps": maps,
     }
     if res.denoised_cube is not None:
@@ -374,7 +372,8 @@ def eels_align_zlp(req: EelsAlignRequest) -> dict:
 
 class _Roi(BaseModel):
     """Analysis region-of-interest.  Two shapes are supported:
-      rect:   {kind:"rect",   r0, c0, r1, c1}  — 0-based inclusive corners
+      rect:   {kind:"rect",   r0, c0, r1, c1}  — 0-based, half-open (r1/c1
+              exclusive, numpy-slice style; see calc/diffraction.apply_roi)
       circle: {kind:"circle", cr, cc, radius}  — center row/col + radius (px)
     Passed from the frontend's ROI drawing tools; applied in calc before
     spot detection / indexing so both analyses see only the ROI pixels.
@@ -403,14 +402,14 @@ def diffraction_detect(req: DetectRequest) -> dict:
     ds = _get(req.image_id)
     if ds.kind is not DataKind.IMAGE:
         raise HTTPException(400, "spot detection needs a 2D image")
-    roi_dict = req.roi.model_dump() if req.roi else None
-    cropped, (row_off, col_off) = diff.apply_roi(ds.data, roi_dict)
-    spots_crop = diff.find_spots(cropped, req.min_radius, req.threshold,
-                                 req.min_separation, req.max_spots)
-    # shift 1-based (row, col) spots back into full-image coordinates
-    if spots_crop.shape[0] > 0 and (row_off or col_off):
-        spots_crop = spots_crop + np.array([[row_off, col_off]], dtype=np.float64)
-    return {"spots": spots_crop.tolist(), "n": int(spots_crop.shape[0])}
+    # crop -> detect -> offset-shift lives in calc (wave C, ADR 0005 §1 —
+    # shared with the registered `diffraction_detect` op)
+    spots = diff.find_spots_roi(
+        ds.data, req.roi.model_dump() if req.roi else None,
+        min_radius=req.min_radius, threshold=req.threshold,
+        min_separation=req.min_separation, max_spots=req.max_spots,
+    )
+    return {"spots": spots.tolist(), "n": int(spots.shape[0])}
 
 
 class IndexRequest(BaseModel):

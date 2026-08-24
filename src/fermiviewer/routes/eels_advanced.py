@@ -13,7 +13,7 @@ import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from fermiviewer.calc.eels_advanced import align_zlp, richardson_lucy
+from fermiviewer.calc.eels_advanced import align_zlp, richardson_lucy, zlp_psf
 from fermiviewer.datastruct import SPECTRAL_KINDS, DataKind, DataStruct
 from fermiviewer.models import ImageMeta
 from fermiviewer.session import UnknownImageError, store
@@ -91,19 +91,11 @@ def eels_richardson_lucy(req: EelsRichardsonLucyRequest) -> dict:
     ds = _spectral(req.image_id)
     energy = ds.energy_axis
     spectrum = ds.sum_spectrum()
-    ne = spectrum.size
 
-    mask = (energy >= req.zlp_window[0]) & (energy <= req.zlp_window[1])
-    if int(mask.sum()) < 2:
-        raise HTTPException(422, "ZLP window has fewer than 2 channels")
-    psf = np.zeros(ne)
-    psf[mask] = np.maximum(spectrum[mask], 0.0)
-    if psf.sum() <= 0:
-        raise HTTPException(422, "no ZLP intensity in the window")
-    # centre the ZLP peak at the array midpoint so RL does not shift the result
-    psf = np.roll(psf, ne // 2 - int(np.argmax(psf)))
-
+    # PSF construction lives in calc (wave D, ADR 0005 §1 — shared with the
+    # registered op); its ValueErrors keep mapping to 422, ZLP checks first.
     try:
+        psf = zlp_psf(energy, spectrum, req.zlp_window)
         deconv = richardson_lucy(spectrum, psf, iterations=req.iterations)
     except ValueError as e:
         raise HTTPException(422, str(e)) from None

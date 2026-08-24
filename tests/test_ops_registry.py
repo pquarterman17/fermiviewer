@@ -44,13 +44,18 @@ def test_every_op_runs_on_a_synthetic_image() -> None:
         if spec.name in (
             "particles", "efd_similarity", "propose_region",
             "grains", "layers", "layers_edit",
+            "diffraction_calibrate",
+            "strip_databar",
         ):
-            # these wave-A ops need real structure in the image (a seed for
-            # propose_region, detectable interfaces for layers) that this
+            # these ops need real structure in the image or its metadata
+            # (a seed for propose_region, detectable interfaces for layers,
+            # vendor databar metadata for strip_databar, a ring with
+            # ≥5 detectable points for diffraction_calibrate) that this
             # synthetic ramp can't provide — covered by their own fixtures
-            # in test_ops_structure.py. An explicit name set, not the whole
-            # structure category: wave B's atoms/defects DO run on the ramp
-            # and belong in this sweep.
+            # in test_ops_structure.py / test_ops_wave_c.py. An explicit
+            # name set, not whole categories: wave B's atoms/defects and
+            # wave C's diffraction_detect DO run on the ramp (0 spots is a
+            # valid result) and belong in this sweep.
             continue
         if any(p.required for p in spec.params.values()):
             # a required param (e.g. distribution_fit's "values") has no

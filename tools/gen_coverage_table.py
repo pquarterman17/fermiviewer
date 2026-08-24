@@ -106,7 +106,16 @@ DOMAINS: tuple[Domain, ...] = (
                 "shipped",
                 "`crop` and arbitrary-angle `rotate` kinds have no op",
             ),
-            Row("POST", "/api/strip-databar", "Image menu", (), "map (derived image)", "D"),
+            Row(
+                "POST",
+                "/api/strip-databar",
+                "Image menu",
+                ("strip_databar",),
+                "map (derived image)",
+                "shipped",
+                "the tree's first ops->io import (both pure layers); static "
+                "source name in the pure layer",
+            ),
             Row(
                 "POST",
                 "/api/image/{img_id}/fft",
@@ -206,8 +215,33 @@ DOMAINS: tuple[Domain, ...] = (
                 "the op fn (OpParam has no exclusive minimum — ADR 0005 "
                 "wave-B addendum)",
             ),
-            Row("POST", "/api/analyze/montage", "Image menu", (), "figure", "C"),
-            Row("POST", "/api/analyze/montage-compare", "— (no GUI caller)", (), "figure", "C"),
+            Row(
+                "POST",
+                "/api/analyze/montage",
+                "Image menu",
+                (),
+                "map (derived image)",
+                "C",
+                "wave-C bounce-back: N input images by session id (gap 1); "
+                "labels=True also bakes session names into the pixels — a "
+                "future multi-input op contract must carry per-input labels "
+                "(ADR 0005 wave-C addendum). Kinds cell corrected from "
+                "'figure': the route registers a session image, it renders "
+                "no export",
+            ),
+            Row(
+                "POST",
+                "/api/analyze/montage-compare",
+                "— (no GUI caller)",
+                (),
+                "map (derived image)",
+                "C",
+                "wave-C bounce-back: gap 1 AND gap 2 — tiles are an array of "
+                "nested models each naming a session image, with a "
+                "float|str|bool param_value no scalar encoding covers "
+                "(ADR 0005 wave-C addendum). Kinds cell corrected from "
+                "'figure' as for montage",
+            ),
         ),
     ),
     Domain(
@@ -395,10 +429,49 @@ DOMAINS: tuple[Domain, ...] = (
     Domain(
         "Stacks & mosaics",
         (
-            Row("POST", "/api/analyze/align-stack", "Image menu", (), "map ×N + table", "C"),
-            Row("POST", "/api/analyze/mip", "Image menu", (), "map", "C"),
-            Row("POST", "/api/analyze/stitch", "CTF/Stitch mode", (), "map + table", "C"),
-            Row("POST", "/api/analyze/image-math", "Image menu", (), "map", "C"),
+            Row(
+                "POST",
+                "/api/analyze/align-stack",
+                "Image menu",
+                (),
+                "map ×N + table",
+                "C",
+                "wave-C bounce-back: N input images by session id — "
+                "fn(ds, params) has exactly one subject (gap 1, ADR 0005 "
+                "wave-C addendum)",
+            ),
+            Row(
+                "POST",
+                "/api/analyze/mip",
+                "Image menu",
+                (),
+                "map",
+                "C",
+                "wave-C bounce-back: N input images by session id (gap 1); "
+                "its ONLY field is the blocking one",
+            ),
+            Row(
+                "POST",
+                "/api/analyze/stitch",
+                "CTF/Stitch mode",
+                (),
+                "map + table",
+                "C",
+                "wave-C bounce-back: N input images by session id (gap 1, "
+                "ADR 0005 wave-C addendum)",
+            ),
+            Row(
+                "POST",
+                "/api/analyze/image-math",
+                "Image menu",
+                (),
+                "map",
+                "C",
+                "wave-C bounce-back: TWO equal image inputs (a_id/b_id) — "
+                "reshaping as primary-ds + id param would smuggle a session "
+                "read into the pure op layer, the exact gap-1 anti-pattern "
+                "(ADR 0005 wave-C addendum)",
+            ),
             Row(
                 "POST",
                 "/api/analyze/back-project",
@@ -413,7 +486,14 @@ DOMAINS: tuple[Domain, ...] = (
     Domain(
         "EELS",
         (
-            Row("POST", "/api/eels/background", "EELS workshop", (), "curve ×3", "D"),
+            Row(
+                "POST",
+                "/api/eels/background",
+                "EELS workshop",
+                ("eels_background",),
+                "curve ×3",
+                "shipped",
+            ),
             Row("POST", "/api/eels/map", "EELS workshop", ("eels_map",), "map", "shipped"),
             Row(
                 "POST",
@@ -424,18 +504,117 @@ DOMAINS: tuple[Domain, ...] = (
                 "shipped",
             ),
             Row("POST", "/api/eels/fit", "EELS workshop", ("eels_fit",), "fit", "shipped"),
-            Row("POST", "/api/eels/fit-map", "EELS workshop", (), "map ×N + table", "D"),
-            Row("POST", "/api/eels/quantify-map", "EELS quant-map job", (), "map ×N", "D"),
-            Row("POST", "/api/eels/thickness", "EELS Advanced", (), "map + scalar ×2", "D"),
-            Row("POST", "/api/eels/kk", "EELS Advanced", (), "curve ×5 + scalar ×2", "D"),
-            Row("POST", "/api/eels/fourier-log", "EELS Advanced", (), "curve ×2 + scalar", "D"),
-            Row("POST", "/api/eels/svd", "EELS Advanced", (), "curve ×k + map ×k", "D"),
-            Row("POST", "/api/eels/align-zlp", "EELS Advanced", (), "map + scalar ×2", "D"),
-            Row("POST", "/api/eels/subpixel-align", "EELS Advanced", (), "map + scalar ×2", "D"),
-            Row("POST", "/api/eels/richardson-lucy", "EELS Advanced", (), "curve ×2 + scalar", "D"),
-            Row("POST", "/api/eels/maps", "Elemental workspace", (), "map ×N", "D"),
-            Row("POST", "/api/eels/auto-assign", "Elemental workspace", (), "table", "D"),
-            Row("POST", "/api/analyze/elnes", "EELS workshop", (), "curve", "D"),
+            Row(
+                "POST",
+                "/api/eels/fit-map",
+                "EELS workshop",
+                ("eels_fit_map",),
+                "map ×N + table",
+                "shipped",
+                "edges via the shipped six-CSV schema; per-element maps inline",
+            ),
+            Row(
+                "POST",
+                "/api/eels/quantify-map",
+                "EELS quant-map job",
+                ("eels_quantify_map",),
+                "map ×N",
+                "shipped",
+                "op registers the synchronous computation; run_async job "
+                "orchestration stays route-only (ADR 0005 §6)",
+            ),
+            Row(
+                "POST",
+                "/api/eels/thickness",
+                "EELS Advanced",
+                ("eels_thickness",),
+                "map + scalar ×2",
+                "shipped",
+                "op inlines the RAW t/lambda map (NaN -> null) where the route "
+                "registers nan_to_num(t) — zero-filling would bias headless means "
+                "(ADR 0005 wave-D addendum)",
+            ),
+            Row(
+                "POST",
+                "/api/eels/kk",
+                "EELS Advanced",
+                ("eels_kk",),
+                "curve ×5 + scalar ×2",
+                "shipped",
+            ),
+            Row(
+                "POST",
+                "/api/eels/fourier-log",
+                "EELS Advanced",
+                ("eels_fourier_log",),
+                "curve ×2 + scalar",
+                "shipped",
+            ),
+            Row(
+                "POST",
+                "/api/eels/svd",
+                "EELS Advanced",
+                ("eels_svd",),
+                "curve ×k + map ×k",
+                "shipped",
+                "denoise mode has no op (payload kind would depend on a param — "
+                "ADR 0005 wave-D addendum)",
+            ),
+            Row(
+                "POST",
+                "/api/eels/align-zlp",
+                "EELS Advanced",
+                ("eels_align_zlp",),
+                "map + scalar ×2",
+                "shipped",
+                "derived SI cube; shift diagnostics ride derived.metadata "
+                "(savgol_derivative precedent)",
+            ),
+            Row(
+                "POST",
+                "/api/eels/subpixel-align",
+                "EELS Advanced",
+                ("eels_subpixel_align",),
+                "map + scalar ×2",
+                "shipped",
+                "derived SI cube; diagnostics in derived.metadata",
+            ),
+            Row(
+                "POST",
+                "/api/eels/richardson-lucy",
+                "EELS Advanced",
+                ("eels_richardson_lucy",),
+                "curve ×2 + scalar",
+                "shipped",
+            ),
+            Row(
+                "POST",
+                "/api/eels/maps",
+                "Elemental workspace",
+                ("eels_maps",),
+                "map ×N",
+                "shipped",
+                "per-species method collapses to one shared choice and background "
+                "is all-or-nothing (the eds_element_maps divergence precedent)",
+            ),
+            Row(
+                "POST",
+                "/api/eels/auto-assign",
+                "Elemental workspace",
+                ("eels_auto_assign",),
+                "table",
+                "shipped",
+            ),
+            Row(
+                "POST",
+                "/api/analyze/elnes",
+                "EELS workshop",
+                ("elnes",),
+                "curve",
+                "shipped",
+                "optional reference_id overlay mode has no op (optional-input "
+                "omission rule, ADR 0005 wave-D addendum)",
+            ),
         ),
     ),
     Domain(
@@ -458,17 +637,44 @@ DOMAINS: tuple[Domain, ...] = (
                 "shipped",
                 "op and route use different entry points into calc/eds_peakfit",
             ),
-            Row("POST", "/api/eds/zeta", "EDS Model Fit", (), "fit + table + scalar", "D"),
-            Row("POST", "/api/eds/continuum", "EDS Model Fit", (), "fit + curve", "D"),
+            Row(
+                "POST",
+                "/api/eds/zeta",
+                "EDS Model Fit",
+                ("eds_zeta",),
+                "fit + table + scalar",
+                "shipped",
+                "mass-thickness scalar carries its counting-statistics sigma in- "
+                "envelope (§5)",
+            ),
+            Row(
+                "POST",
+                "/api/eds/continuum",
+                "EDS Model Fit",
+                ("eds_continuum",),
+                "fit + curve",
+                "shipped",
+            ),
             Row(
                 "POST",
                 "/api/eds/artifacts",
                 "— (wrapper only, no GUI caller)",
-                (),
+                ("eds_artifacts",),
                 "curve ×2 + table",
-                "D",
+                "shipped",
+                "headless reach is this endpoint's ONLY reach",
             ),
-            Row("POST", "/api/eds/recalibrate", "EDS Model Fit", (), "fit (calibration)", "D"),
+            Row(
+                "POST",
+                "/api/eds/recalibrate",
+                "EDS Model Fit",
+                ("eds_recalibrate",),
+                "fit (calibration)",
+                "shipped",
+                "the derived DataStruct IS the application (apply dropped); "
+                "optional pairs mode has no op (optional-input omission — the "
+                "first non-coordinate pair list to meet gap 2)",
+            ),
             Row(
                 "POST",
                 "/api/eds/element-map",
@@ -485,7 +691,14 @@ DOMAINS: tuple[Domain, ...] = (
                 "map ×N",
                 "shipped",
             ),
-            Row("POST", "/api/eds/auto-assign", "EDS Quantify panel, Maps tab", (), "table", "D"),
+            Row(
+                "POST",
+                "/api/eds/auto-assign",
+                "EDS Quantify panel, Maps tab",
+                ("eds_auto_assign",),
+                "table",
+                "shipped",
+            ),
             Row(
                 "POST",
                 "/api/analyze/composition-profile",
@@ -504,46 +717,120 @@ DOMAINS: tuple[Domain, ...] = (
                 "POST",
                 "/api/diffraction/detect",
                 "Diffraction workshop",
-                (),
+                ("diffraction_detect",),
                 "table + overlay",
-                "C",
+                "shipped",
+                "op flattens the rect/circle _Roi to a roi_kind discriminator "
+                "+ NaN-sentinel groups; a roi_kind without its coordinates is "
+                "an error, never a silent whole-image analysis (deliberate "
+                "tightening, ADR 0005 wave-C addendum)",
             ),
-            Row("POST", "/api/diffraction/index", "Diffraction workshop", (), "table", "C"),
+            Row(
+                "POST",
+                "/api/diffraction/index",
+                "Diffraction workshop",
+                (),
+                "table",
+                "C",
+                "wave-C bounce-back: `spots` is a variable-length "
+                "coordinate-pair list — the fit-shape/atoms-strain shape "
+                "exactly (gap 2, ADR 0005 wave-C addendum); would also need "
+                "the ROI re-centring lifted from routes/analysis.py",
+            ),
             Row(
                 "POST",
                 "/api/diffraction/calibrate",
                 "Diffraction calibration",
-                (),
+                ("diffraction_calibrate",),
                 "fit + scalar ×2",
-                "C",
+                "shipped",
+                "op anchors d via d_known_ang or standard_phase + "
+                "hkl_h/k/l NaN-sentinel floats (validated whole numbers); "
+                "the anchor scalars are absent — not null — when unresolved",
             ),
             Row(
                 "POST",
                 "/api/analyze/simulate",
                 "Diffraction simulation",
-                (),
+                ("diffraction_simulate",),
                 "table + map + scalar",
-                "C",
+                "shipped",
+                "no image subject — op ignores `ds` (distribution_fit "
+                "precedent); the rendered pattern inlines as a `map` "
+                "envelope while the route registers a session image only "
+                "when parented",
             ),
         ),
     ),
     Domain(
         "Measurement",
         (
-            Row("POST", "/api/measure/profile", "Measure panel, Stage", (), "curve + scalar", "D"),
-            Row("POST", "/api/measure/roi", "Measure panel", (), "scalar set", "D"),
-            Row("POST", "/api/measure/box-profile", "Measure panel", (), "curve ×2", "D"),
+            Row(
+                "POST",
+                "/api/measure/profile",
+                "Measure panel, Stage",
+                ("line_profile",),
+                "curve + scalar",
+                "shipped",
+                "optional polyline points mode (a different calc function) has no "
+                "op (optional-input omission rule)",
+            ),
+            Row(
+                "POST",
+                "/api/measure/roi",
+                "Measure panel",
+                ("roi_stats",),
+                "scalar set",
+                "shipped",
+                "rect is 1-based INCLUSIVE — not diffraction's 0-based half-open, "
+                "not the corner-ROI string",
+            ),
+            Row(
+                "POST",
+                "/api/measure/box-profile",
+                "Measure panel",
+                ("box_profile",),
+                "curve ×2",
+                "shipped",
+            ),
             Row(
                 "POST",
                 "/api/measure/distance-tilted",
                 "— (wrapper only, no GUI caller)",
-                (),
+                ("tilted_distance",),
                 "scalar set",
-                "D",
+                "shipped",
+                "headless reach is this endpoint's ONLY reach; calibrated "
+                "scalars absent — not null — when uncalibrated",
             ),
-            Row("GET", "/api/image/{img_id}/spectrum", "Spectrum panel", (), "curve", "D"),
-            Row("GET", "/api/image/{img_id}/histogram", "Histogram panel", (), "curve", "D"),
-            Row("POST", "/api/calibration/detect-bar", "Calibration dialog", (), "scalar set", "D"),
+            Row(
+                "GET",
+                "/api/image/{img_id}/spectrum",
+                "Spectrum panel",
+                ("sum_spectrum",),
+                "curve",
+                "shipped",
+                "a half-given or fractional region errors instead of silently "
+                "summing the whole cube (strict-ROI discipline)",
+            ),
+            Row(
+                "GET",
+                "/api/image/{img_id}/histogram",
+                "Histogram panel",
+                ("intensity_histogram",),
+                "curve",
+                "shipped",
+            ),
+            Row(
+                "POST",
+                "/api/calibration/detect-bar",
+                "Calibration dialog",
+                ("scalebar_detect",),
+                "scalar set",
+                "shipped",
+                "zero params — the route's reused request model's other fields "
+                "are dead here and not mirrored (efd_similarity precedent)",
+            ),
         ),
     ),
     Domain(

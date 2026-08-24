@@ -28,7 +28,7 @@ import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from fermiviewer.calc.eels import extract_map
+from fermiviewer.calc.eels_species_maps import SpeciesSpec, species_maps
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.models import ImageMeta
 from fermiviewer.session import UnknownImageError, store
@@ -85,18 +85,6 @@ class EelsMapsRequest(BaseModel):
     save_derived: bool = False
 
 
-def _outside_axis_reason(
-    win: EelsWindow, e_min: float, e_max: float, kind: str
-) -> str | None:
-    lo, hi = sorted((win.lo, win.hi))
-    if lo > e_max or hi < e_min:
-        return (
-            f"{kind} window [{lo:.3f}, {hi:.3f}] eV is outside the energy "
-            f"axis [{e_min:.3f}, {e_max:.3f}] eV"
-        )
-    return None
-
-
 @router.post("/eels/maps")
 def eels_maps(req: EelsMapsRequest) -> dict:
     """N species → N rasters, without going through quantification.
@@ -127,52 +115,47 @@ def eels_maps(req: EelsMapsRequest) -> dict:
     if not req.species:
         raise HTTPException(422, "no species requested")
     ds = _cube(req.image_id)
-    energy = ds.energy_axis            # EELS axis is native eV — no conversion
-    e_min, e_max = float(energy.min()), float(energy.max())
     h, w = ds.data.shape[:2]
 
+    # window sorting + axis-bounds validation + per-species extraction live
+    # in calc (wave D, ADR 0005 §1 — shared with the registered op); the
+    # EELS axis is native eV, no conversion
+    rows = species_maps(ds.data, ds.energy_axis, [
+        SpeciesSpec(
+            label=spec.label,
+            signal_window=(spec.signal.lo, spec.signal.hi),
+            bg_window=(spec.background.lo, spec.background.hi)
+            if spec.background is not None else None,
+            method=spec.method,
+        )
+        for spec in req.species
+    ])
+
     out: list[dict] = []
-    for spec in req.species:
-        label = spec.label.strip()
-        reason = _outside_axis_reason(spec.signal, e_min, e_max, "signal")
-        bg_window: tuple[float, float] | None = None
-        if spec.background is not None:
-            b_lo, b_hi = sorted((spec.background.lo, spec.background.hi))
-            bg_window = (b_lo, b_hi)
-            if reason is None:
-                reason = _outside_axis_reason(spec.background, e_min, e_max,
-                                              "background")
-
-        m: np.ndarray | None = None
-        if reason is None:
-            sig_lo, sig_hi = sorted((spec.signal.lo, spec.signal.hi))
-            try:
-                m = extract_map(ds.data, energy, (sig_lo, sig_hi),
-                                bg_window, spec.method)
-            except ValueError as e:
-                reason = str(e)
-
-        if reason is not None:
+    for row in rows:
+        if row.error is not None:
             out.append({
-                "label": label, "signal_window": None,
-                "background_window": None, "method": spec.method,
+                "label": row.label, "signal_window": None,
+                "background_window": None, "method": row.method,
                 "map": None, "total_counts": None, "map_meta": None,
-                "error": reason,
+                "error": row.error,
             })
             continue
 
-        assert m is not None
+        assert row.map is not None and row.signal_window is not None
         map_meta = None
         if req.save_derived:
-            meta = _register_map(m, f"{label} map".strip(), ds, req.image_id)
+            meta = _register_map(row.map, f"{row.label} map".strip(),
+                                 ds, req.image_id)
             map_meta = meta.model_dump()
         out.append({
-            "label": label,
-            "signal_window": [sig_lo, sig_hi],
-            "background_window": list(bg_window) if bg_window is not None else None,
-            "method": spec.method,
-            "map": m.tolist(),
-            "total_counts": float(m.sum()),
+            "label": row.label,
+            "signal_window": list(row.signal_window),
+            "background_window": list(row.bg_window)
+            if row.bg_window is not None else None,
+            "method": row.method,
+            "map": row.map.tolist(),
+            "total_counts": row.total_counts,
             "map_meta": map_meta,
             "error": None,
         })

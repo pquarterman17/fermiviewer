@@ -282,6 +282,10 @@ def test_ctf_op_enforces_the_routes_exclusive_pixel_size_bound() -> None:
     # op fn enforces it (ADR 0005 wave-B addendum)
     with pytest.raises(ValueError, match="pixel_size_a"):
         ops.run("ctf", _lattice_ds(), {"pixel_size_a": 0.0})
+    # NaN slips through both `< minimum` and `<= 0` — the fn's
+    # `not (x > 0)` spelling must reject it like the route's gt=0 does
+    with pytest.raises(ValueError, match="pixel_size_a"):
+        ops.run("ctf", _lattice_ds(), {"pixel_size_a": float("nan")})
 
 
 # ── atoms ─────────────────────────────────────────────────────────────
@@ -384,6 +388,9 @@ def test_defects_op_matches_direct_calc_composition() -> None:
         "value": pytest.approx(direct.density),
         "unit": direct.density_unit,
     }
+    # calc reports intercept length in the CALIBRATED unit (it multiplies
+    # by pixel_size), so the envelope must say "nm" here, never "px"
+    assert outs["total_line_length"]["data"]["unit"] == "nm"
     assert outs["test_lines"]["data"]["value"] == direct.num_test_lines
     assert outs["test_line_positions"]["data"]["h_rows"] == direct.h_rows.tolist()
     np.testing.assert_allclose(np.asarray(outs["enhanced"]["data"]["values"]), direct.enhanced)

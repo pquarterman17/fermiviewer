@@ -249,9 +249,21 @@ The registered operation catalogue: name, category, summary, params.
 
 ## Operation catalogue
 
-44 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
+73 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
 
 ### analysis
+
+#### `box_profile` — Axis-aligned box integrated along both axes → horizontal (x, over columns) and vertical (y, over rows) profiles (calc/profile_stats.box_integrate). Corners are 1-based inclusive; returned positions are 0-based px from the box edge
+
+*category: `analysis` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `row1` | `float` |  | yes |  |  | corner row, 1-based inclusive |
+| `col1` | `float` |  | yes |  |  | corner col, 1-based inclusive |
+| `row2` | `float` |  | yes |  |  | opposite row, 1-based inclusive |
+| `col2` | `float` |  | yes |  |  | opposite col, 1-based inclusive |
+| `reduce` | `str` | sum | no | 'sum', 'mean' |  | 'sum' is the true box integral |
 
 #### `ctf` — Defocus estimate from Thon rings: radial power spectrum + fitted |CTF|² (calc/ctf.estimate_ctf)
 
@@ -292,6 +304,14 @@ The registered operation catalogue: name, category, summary, params.
 
 *(no parameters)*
 
+#### `intensity_histogram` — Intensity histogram over the finite raster range (calc/render.histogram); x values are bin centers
+
+*category: `analysis` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `bins` | `int` | 256 | no |  | [2, 4096] | histogram bin count |
+
 #### `interface_width` — Erf/sigmoid interface-width fit over an extracted line profile (calc/profile_stats.fit_interface_width) — like distribution_fit, the input image is unused: the profile travels as x/y CSV lists
 
 *category: `analysis` · produces: value*
@@ -314,6 +334,22 @@ The registered operation catalogue: name, category, summary, params.
 | `spot2_col` | `float` |  | yes |  |  | 2nd FFT spot col, 1-based |
 | `pixel_size` | `float` | nan | no |  |  | real-space calibration (unit/px); leave unset (NaN) to use the image's own, falling back to 1.0 |
 
+#### `line_profile` — Sub-pixel two-point intensity profile with optional width averaging and tilt correction (calc/profiles.line_profile_stats). The route's optional polyline `points` mode has no op (optional-input omission rule; a different calc function)
+
+*category: `analysis` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `a_row` | `float` |  | yes |  |  | start row, 1-based pixel centre |
+| `a_col` | `float` |  | yes |  |  | start col, 1-based pixel centre |
+| `b_row` | `float` |  | yes |  |  | end row, 1-based pixel centre |
+| `b_col` | `float` |  | yes |  |  | end col, 1-based pixel centre |
+| `width` | `float` | 1.0 | no |  |  | perpendicular averaging width (px) |
+| `reduce` | `str` | mean | no | 'mean', 'sum' |  | 'mean' averages, 'sum' integrates |
+| `tilt_angle_deg` | `float` | 0.0 | no |  |  | stage tilt; must be in (-90, 90) |
+| `tilt_axis` | `str` | Y | no | 'Y', 'X' |  |  |
+| `geometry` | `str` | cross-section | no | 'cross-section', 'surface' |  | 1/sin vs 1/cos tilt scaling |
+
 #### `noise` — Noise, SNR, and type estimate
 
 *category: `analysis` · produces: value*
@@ -321,6 +357,18 @@ The registered operation catalogue: name, category, summary, params.
 | Param | Type | Default | Required | Choices | Bounds | Description |
 |---|---|---|---|---|---|---|
 | `method` | `str` | mad | no | 'mad', 'localvar', 'both' |  |  |
+
+#### `roi_stats` — Rectangle or inscribed-ellipse intensity statistics (calc/profile_stats.roi_stats). Corners are 1-BASED INCLUSIVE pixel coordinates — not the diffraction catalogue's 0-based half-open rect, and not the corner-ROI string other ops take
+
+*category: `analysis` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `row1` | `float` |  | yes |  |  | corner row, 1-based inclusive |
+| `col1` | `float` |  | yes |  |  | corner col, 1-based inclusive |
+| `row2` | `float` |  | yes |  |  | opposite row, 1-based inclusive |
+| `col2` | `float` |  | yes |  |  | opposite col, 1-based inclusive |
+| `shape` | `str` | rect | no | 'rect', 'ellipse' |  | 'ellipse': inscribed ellipse only |
 
 #### `roughness` — ISO-style surface roughness
 
@@ -330,7 +378,82 @@ The registered operation catalogue: name, category, summary, params.
 |---|---|---|---|---|---|---|
 | `level` | `str` | plane | no | 'none', 'plane', 'quadratic' |  |  |
 
+#### `scalebar_detect` — Auto-detect a burned-in scale bar in the bottom 15% strip (calc/scalebar_detect.detect_scale_bar). No params: the route reads only image_id from its reused request model, and dead request fields are not mirrored (the efd_similarity precedent). found=False is a valid result, not an error
+
+*category: `analysis` · produces: value*
+
+*(no parameters)*
+
+#### `tilted_distance` — Tilt-corrected Euclidean distance between two points (calc/profile_stats.measure_distance, the measureDistance.m port). x is the column axis, y the row axis, 1-based; the calibrated scalars are absent on an uncalibrated image
+
+*category: `analysis` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `x1` | `float` |  | yes |  |  | start col, 1-based pixel coords |
+| `y1` | `float` |  | yes |  |  | start row, 1-based pixel coords |
+| `x2` | `float` |  | yes |  |  | end col, 1-based pixel coords |
+| `y2` | `float` |  | yes |  |  | end row, 1-based pixel coords |
+| `tilt_angle_deg` | `float` | 0.0 | no |  |  | stage tilt; must be in (-90, 90) |
+| `tilt_axis` | `str` | Y | no | 'Y', 'X' |  |  |
+| `geometry` | `str` | cross-section | no | 'cross-section', 'surface' |  | 1/sin vs 1/cos tilt scaling |
+
 ### diffraction
+
+#### `diffraction_calibrate` — Elliptical-distortion + camera-constant calibration from the dominant ring (calc/diffraction_calib.calibrate_rings); anchor d via d_known_ang, or standard_phase + hkl_h/k/l (calc/phase_registry.standard_d_spacing)
+
+*category: `diffraction` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `d_known_ang` | `float` | nan | no |  |  | known ring d-spacing (Å); leave unset (NaN) to derive from standard_phase + hkl |
+| `standard_phase` | `str` |  | no |  |  | standard phase name, e.g. 'Gold'; empty = no phase anchor |
+| `hkl_h` | `float` | nan | no |  |  | anchored reflection h; give all three hkl_* |
+| `hkl_k` | `float` | nan | no |  |  |  |
+| `hkl_l` | `float` | nan | no |  |  |  |
+| `r_min` | `float` | 5.0 | no |  |  | ring search inner radius (px) |
+| `r_max` | `float` | nan | no |  |  | ring search outer radius (px); NaN = auto |
+| `n_angles` | `int` | 180 | no |  |  | radial profiles around the ring |
+
+#### `diffraction_detect` — Bright-spot detection on a diffraction pattern, optionally scoped to a rect/circle analysis ROI (calc/diffraction.find_spots_roi)
+
+*category: `diffraction` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `min_radius` | `float` | 10.0 | no |  |  | ignore spots closer than this to the centre (px) |
+| `threshold` | `float` | 0.05 | no |  |  | relative intensity threshold |
+| `min_separation` | `float` | 8.0 | no |  |  | minimum spot separation (px) |
+| `max_spots` | `int` | 50 | no |  |  | cap on returned spots |
+| `roi_kind` | `str` |  | no | '', 'rect', 'circle' |  | analysis ROI shape; empty = whole image. 'rect' needs roi_r0/c0/r1/c1 (0-based half-open, the frontend convention), 'circle' needs roi_cr/cc/radius |
+| `roi_r0` | `float` | nan | no |  |  | rect top row, 0-based |
+| `roi_c0` | `float` | nan | no |  |  | rect left col, 0-based |
+| `roi_r1` | `float` | nan | no |  |  | rect bottom row, half-open |
+| `roi_c1` | `float` | nan | no |  |  | rect right col, half-open |
+| `roi_cr` | `float` | nan | no |  |  | circle centre row, 0-based |
+| `roi_cc` | `float` | nan | no |  |  | circle centre col, 0-based |
+| `roi_radius` | `float` | nan | no |  |  | circle radius (px) |
+
+#### `diffraction_simulate` — Kinematic zone-axis pattern simulation (calc/diffraction.simulate) — like distribution_fit, the input image is unused: the subject is the named crystal phase. The rendered pattern inlines as a `map` envelope (the route registers it as a session image only when parented); at the default 512x512 that is ~260k floats per run, so batch scripts that only need the spot table should shrink image_rows/image_cols
+
+*category: `diffraction` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `phase_name` | `str` |  | yes |  |  | phase to simulate, e.g. 'Gold' (built-in database + imported/custom phases) |
+| `zone_u` | `int` | 0 | no |  |  | zone axis u |
+| `zone_v` | `int` | 0 | no |  |  | zone axis v |
+| `zone_w` | `int` | 1 | no |  |  | zone axis w |
+| `acc_voltage` | `float` | 200.0 | no |  |  | beam voltage (kV) |
+| `camera_length` | `float` | 200.0 | no |  |  | camera length (mm) |
+| `pixel_size` | `float` | 0.05 | no |  |  | detector pixel size (mm) |
+| `image_rows` | `int` | 512 | no |  |  | rendered pattern height (px) |
+| `image_cols` | `int` | 512 | no |  |  | rendered pattern width (px) |
+| `max_hkl` | `int` | 5 | no |  |  | reflection index cap |
+| `min_intensity` | `float` | 0.01 | no |  |  | relative intensity floor |
+| `spot_sigma` | `float` | 3.0 | no |  |  | rendered spot width (px) |
+| `scattering_model` | `str` | fe | no | 'fe', 'z' |  | Doyle-Turner form factors or atomic-number proxy (the calc's own closed set — the route leaves it unconstrained and lets calc reject) |
+| `debye_waller_B` | `float` | nan | no |  |  | isotropic Debye-Waller B (Å²); -1 = per-element defaults; leave unset (NaN) = off |
 
 #### `radial_profile` — Radial average/max intensity profile about a centre
 
@@ -362,6 +485,40 @@ The registered operation catalogue: name, category, summary, params.
 | `method` | `str` | cliff-lorimer | no | 'cliff-lorimer', 'zaf' |  |  |
 | `thickness_nm` | `float` | 100.0 | no |  | [0.0, ] | specimen thickness (zaf only, nm) |
 | `take_off_angle_deg` | `float` | 20.0 | no |  | [0.1, 89.9] | detector take-off angle (zaf only, deg) |
+
+#### `eds_artifacts` — Detect + measure escape/sum/pile-up peaks and subtract them (calc/eds_peakfit.fit_peaks -> calc/eds_artifacts.artifact_prepass); headless reach is this endpoint's only reach
+
+*category: `eds` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `elements` | `str` |  | yes |  |  | comma-separated element symbols, e.g. 'Fe,Cu' |
+| `beam_kv` | `float` | 200.0 | no |  | [0.0, ] | beam energy (kV), selects K/L/M line |
+| `background` | `str` | linear | no | 'none', 'linear', 'bremsstrahlung' |  | background fit jointly with the peaks; 'bremsstrahlung' needs e0_kev |
+| `e0_kev` | `float` | nan | no |  |  | beam energy (keV, the Duane-Hunt cutoff); required when background='bremsstrahlung', otherwise unused — leave unset (NaN) |
+| `weights` | `str` | poisson | no | 'poisson', 'uniform' |  | fit weighting scheme |
+| `escape_fraction` | `float` | 0.01 | no |  | [0.0, ] | Si escape probability for modeled (blocked) escape peaks |
+
+#### `eds_auto_assign` — Local-maxima peak detection + candidate K/L/M line matching (calc/eds.detect_peaks -> assign_elements); one assignments row per candidate, sorted closest-first within each peak
+
+*category: `eds` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `tolerance_kev` | `float` | 0.15 | no |  |  | line-match window half-width (keV) |
+| `threshold` | `float` | 0.05 | no |  |  | peak detection floor (fraction of the spectrum maximum) |
+
+#### `eds_continuum` — Kramers bremsstrahlung continuum fit through masked characteristic peaks (calc/eds_continuum.fit_continuum)
+
+*category: `eds` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `e0_kev` | `float` |  | yes |  |  | beam energy (keV, the Duane-Hunt cutoff); fixed, not fitted |
+| `exclude_lines` | `str` |  | no |  |  | comma-separated element symbols whose K/L/M peaks are masked before fitting, e.g. 'Fe,Cu'; empty = none |
+| `exclude_windows` | `str` |  | no |  |  | comma-separated 'lo:hi' keV regions also masked, e.g. '6.2:6.6,8.0:8.2'; empty = none |
+| `fit_absorption` | `bool` | True | no |  |  | free the low-energy detector-absorption rolloff |
+| `weights` | `str` | poisson | no | 'poisson', 'uniform' |  | fit weighting scheme |
 
 #### `eds_element_map` — EDS energy-window element map
 
@@ -410,7 +567,70 @@ The registered operation catalogue: name, category, summary, params.
 | `thickness_nm` | `float` | 100.0 | no |  | [0.0, ] | specimen thickness (zaf only, nm) |
 | `take_off_angle_deg` | `float` | 20.0 | no |  | [0.1, 89.9] | detector take-off angle (zaf only, deg) |
 
+#### `eds_recalibrate` — Linear energy-axis recalibration E' = gain*E + offset from known characteristic lines (calc/eds_calib.resolve_anchors + recalibrate + recalibrated_cal); the derived DataStruct IS the application (the route's apply flag) — pixels unchanged, new energy AxisCal, diagnostics in derived.metadata. The route's optional explicit (observed, true) pairs mode has no op (optional-input omission)
+
+*category: `eds` · produces: derived image*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `elements` | `str` |  | no |  |  | comma-separated element symbols whose principal-line true energies anchor the fit, e.g. 'Fe,Cu'; symbols with no known line are skipped (derived.metadata['skipped']); no usable anchors at all is an error |
+| `beam_kv` | `float` | 200.0 | no |  | [0.0, ] | beam energy (kV), selects K/L/M line |
+| `search_kev` | `float` | 0.15 | no |  |  | half-width for locating each observed peak centroid around its true energy (keV) |
+
+#### `eds_zeta` — Zeta-factor (Watanabe) quantification of the summed spectrum: composition + mass-thickness (calc/eds_peakfit.fit_summed_peaks -> calc/eds_zeta.zeta_quantify + zeta_uncertainty); give exactly one of zeta_factors / zeta_si
+
+*category: `eds` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `elements` | `str` |  | yes |  |  | comma-separated element symbols, e.g. 'Fe,Cu' |
+| `beam_kv` | `float` | 200.0 | no |  | [0.0, ] | beam energy (kV), selects K/L/M line |
+| `background` | `str` | linear | no | 'none', 'linear', 'bremsstrahlung' |  | background fit jointly with the peaks; 'bremsstrahlung' needs e0_kev |
+| `e0_kev` | `float` | nan | no |  |  | beam energy (keV, the Duane-Hunt cutoff); required when background='bremsstrahlung', otherwise unused — leave unset (NaN) |
+| `center_tol_kev` | `float` | 0.0 | no |  | [0.0, ] | allow each peak center to wander +/- this (keV); 0 = fixed at the known line energy |
+| `weights` | `str` | poisson | no | 'poisson', 'uniform' |  | fit weighting scheme |
+| `zeta_factors` | `str` |  | no |  |  | comma-separated per-element zeta factors (kg/m^2) matching elements, e.g. '500,800'; empty = unset (use zeta_si) |
+| `zeta_si` | `float` | nan | no |  |  | absolute zeta for Si scaling the built-in 200 kV k-factor table (kg/m^2); leave unset (NaN) when giving zeta_factors |
+| `probe_current_na` | `float` | 1.0 | no |  |  | probe current (nA) |
+| `live_time_s` | `float` | 100.0 | no |  |  | acquisition live time (s) |
+| `take_off_angle_deg` | `float` | 20.0 | no |  |  | X-ray take-off angle (deg, in (0, 90)) |
+| `absorption` | `bool` | True | no |  |  | iterate the self-consistent thin-film absorption correction |
+| `density_g_cm3` | `float` | nan | no |  |  | density for the rho*t -> thickness (nm) conversion; leave unset (NaN) to skip the thickness scalar |
+| `remove_artifacts` | `bool` | False | no |  |  | escape/sum pre-pass, then refit on the corrected spectrum |
+| `escape_fraction` | `float` | 0.01 | no |  | [0.0, ] | Si escape probability for modeled (blocked) escape peaks |
+
 ### eels
+
+#### `eels_align_zlp` — Integer-channel ZLP alignment of an SI cube (calc/eels_advanced.align_zlp): the aligned cube is the derived result, with max_shift (channels) and shifted_fraction diagnostics in its metadata (ADR 0005 wave-D addendum)
+
+*category: `eels` · produces: derived image*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `window_lo` | `float` | -20.0 | no |  |  | alignment window lower edge (eV) |
+| `window_hi` | `float` | 20.0 | no |  |  | alignment window upper edge (eV) |
+| `reference` | `str` | mean | no | 'mean', 'max' |  | alignment reference: the mean windowed spectrum, or the brightest pixel's |
+
+#### `eels_auto_assign` — Edge-jump significance for every tabulated EELS edge the energy axis supports (calc/eels_identify.identify_edges), sorted strongest first; an empty table is a valid result
+
+*category: `eels` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `fit_width_ev` | `float` | 50.0 | no |  |  | pre-edge background-fit window width (eV) |
+| `signal_width_ev` | `float` | 50.0 | no |  |  | post-onset signal window width (eV) |
+| `fit_gap_ev` | `float` | 2.0 | no |  |  | gap between the fit window's upper edge and the onset (eV) |
+| `method` | `str` | powerlaw | no | 'powerlaw', 'exponential' |  | pre-edge background model |
+
+#### `eels_background` — Pre-edge background fit + subtraction on the summed spectrum (calc/eels.background)
+
+*category: `eels` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `fit_lo` | `float` |  | yes |  |  | pre-edge fit window lower edge (eV) |
+| `fit_hi` | `float` |  | yes |  |  | pre-edge fit window upper edge (eV) |
+| `method` | `str` | powerlaw | no | 'powerlaw', 'exponential' |  | pre-edge background model |
 
 #### `eels_fit` — Simultaneous background + multi-edge model fit (calc/eels_model.fit_edges)
 
@@ -429,6 +649,46 @@ The registered operation catalogue: name, category, summary, params.
 | `fit_range_lo` | `float` | nan | no |  |  | fit window lower edge (eV); leave unset (with fit_range_hi) to use the resolved default |
 | `fit_range_hi` | `float` | nan | no |  |  | fit window upper edge (eV) |
 
+#### `eels_fit_map` — Per-pixel model fit over an SI cube (calc/eels_model.fit_edges_map) — background exponent fixed from the summed-spectrum fit, at% from per-pixel edge amplitudes; one H×W map per element inlines in the value, so large cubes make large payloads
+
+*category: `eels` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `elements` | `str` |  | yes |  |  | comma-separated element symbols, e.g. 'Fe,O' |
+| `shells` | `str` |  | yes |  |  | comma-separated shells matching elements, 'K'\|'L', e.g. 'L,K' |
+| `z` | `str` |  | yes |  |  | comma-separated atomic numbers matching elements, e.g. '26,8' |
+| `onset_ev` | `str` |  | yes |  |  | comma-separated edge onsets (eV), e.g. '708,532' |
+| `signal_windows` | `str` |  | yes |  |  | comma-separated 'lo:hi' signal windows (eV), e.g. '708:758,532:582' (unused by the fit itself, kept for parity with eels_quantify's edge schema) |
+| `bg_windows` | `str` |  | yes |  |  | comma-separated 'lo:hi' pre-edge windows (eV); the first edge's lower bound seeds the default fit range |
+| `e0_kv` | `float` | 200.0 | no |  | [0.0, ] | beam energy (kV) |
+| `beta_mrad` | `float` | 10.0 | no |  | [0.0, ] | collection semi-angle (mrad) |
+| `fit_range_lo` | `float` | nan | no |  |  | fit window lower edge (eV); leave unset (with fit_range_hi) to use the resolved default |
+| `fit_range_hi` | `float` | nan | no |  |  | fit window upper edge (eV) |
+
+#### `eels_fourier_log` — Fourier-log plural-scattering removal on the (spatially summed) spectrum (calc/eels_advanced.fourier_log)
+
+*category: `eels` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `zlp_lo` | `float` | -5.0 | no |  |  | ZLP window lower edge (eV) |
+| `zlp_hi` | `float` | 5.0 | no |  |  | ZLP window upper edge (eV) |
+| `regularize` | `float` | 1e-06 | no |  | [0.0, ] | relative regularisation floor for the deconvolution |
+
+#### `eels_kk` — Kramers-Kronig dielectric analysis of the (spatially summed) spectrum (calc/eels_advanced.kramers_kronig, Egerton Ch. 4); the thickness_nm/t_over_lambda scalars are absent when non-finite
+
+*category: `eels` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `zlp_lo` | `float` | -5.0 | no |  |  | ZLP window lower edge (eV) |
+| `zlp_hi` | `float` | 5.0 | no |  |  | ZLP window upper edge (eV) |
+| `refractive_index` | `float` | nan | no |  |  | refractive index for ELF normalisation; leave unset (NaN) for an unnormalised ELF — NaN is the calc's own default and passes through directly |
+| `collection_angle_mrad` | `float` | 10.0 | no |  |  | collection semi-angle (mrad) |
+| `acc_voltage_kv` | `float` | 200.0 | no |  |  | beam voltage (kV) |
+| `thickness_nm` | `float` | nan | no |  |  | specimen thickness (nm); leave unset (NaN) to estimate from t/λ |
+
 #### `eels_map` — EELS background-subtracted elemental map
 
 *category: `eels` · produces: derived image*
@@ -439,6 +699,17 @@ The registered operation catalogue: name, category, summary, params.
 | `signal_hi` | `float` |  | yes |  |  | signal window upper edge (eV) |
 | `bg_lo` | `float` | nan | no |  |  | pre-edge fit window lower edge (eV); leave unset (with bg_hi) for a direct window sum, no background fit |
 | `bg_hi` | `float` | nan | no |  |  | pre-edge fit window upper edge (eV) |
+| `method` | `str` | powerlaw | no | 'powerlaw', 'exponential' |  | pre-edge background model |
+
+#### `eels_maps` — Batch background-subtracted species maps over an SI cube (calc/eels_species_maps.species_maps) — one H×W map envelope per successful species plus a per-species status table (failed species keep their reason, the op never raises for them); large cubes make large payloads. bg_windows is all-or-nothing and method is shared across species — see the op docstring
+
+*category: `eels` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `labels` | `str` |  | yes |  |  | comma-separated species labels, e.g. 'Fe-L23,O-K' (free text; must be unique) |
+| `signal_windows` | `str` |  | yes |  |  | comma-separated 'lo:hi' signal windows (eV), one per label, e.g. '708:758,532:582' |
+| `bg_windows` | `str` |  | no |  |  | comma-separated 'lo:hi' pre-edge fit windows (eV), one per label; empty = direct window sum (no background fit) for ALL species — a blank entry cannot express per-species none |
 | `method` | `str` | powerlaw | no | 'powerlaw', 'exponential' |  | pre-edge background model |
 
 #### `eels_quantify` — EELS at% composition from core-loss edges
@@ -456,6 +727,75 @@ The registered operation catalogue: name, category, summary, params.
 | `e0_kv` | `float` | 200.0 | no |  | [0.0, ] | beam energy (kV) |
 | `beta_mrad` | `float` | 10.0 | no |  | [0.0, ] | collection semi-angle (mrad) |
 | `method` | `str` | powerlaw | no | 'powerlaw', 'exponential' |  |  |
+
+#### `eels_quantify_map` — Per-pixel SI at% composition maps from core-loss edges (calc/eels_quant.quantify_map); one H×W map per element inlines in the value — large cubes make large payloads. The route's run_async job mode stays route-only (ADR 0005 §6): this op is the synchronous computation
+
+*category: `eels` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `elements` | `str` |  | yes |  |  | comma-separated element symbols, e.g. 'Fe,O' |
+| `shells` | `str` |  | yes |  |  | comma-separated shells matching elements, 'K'\|'L', e.g. 'L,K' |
+| `z` | `str` |  | yes |  |  | comma-separated atomic numbers matching elements, e.g. '26,8' |
+| `onset_ev` | `str` |  | yes |  |  | comma-separated edge onsets (eV), e.g. '708,532' |
+| `signal_windows` | `str` |  | yes |  |  | comma-separated 'lo:hi' signal windows (eV), e.g. '708:758,532:582' |
+| `bg_windows` | `str` |  | yes |  |  | comma-separated 'lo:hi' pre-edge fit windows (eV), e.g. '650:700,490:520' |
+| `e0_kv` | `float` | 200.0 | no |  | [0.0, ] | beam energy (kV) |
+| `beta_mrad` | `float` | 10.0 | no |  | [0.0, ] | collection semi-angle (mrad) |
+| `method` | `str` | powerlaw | no | 'powerlaw', 'exponential' |  | pre-edge background model |
+
+#### `eels_richardson_lucy` — Richardson-Lucy deconvolution of the (spatially summed) spectrum using its own ZLP as the PSF (calc/eels_advanced.zlp_psf + richardson_lucy)
+
+*category: `eels` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `zlp_lo` | `float` | -5.0 | no |  |  | ZLP/PSF window lower edge (eV) |
+| `zlp_hi` | `float` | 5.0 | no |  |  | ZLP/PSF window upper edge (eV) |
+| `iterations` | `int` | 15 | no |  | [1, ] | RL update iterations |
+
+#### `eels_subpixel_align` — Sub-pixel ZLP alignment of an SI cube (calc/eels_advanced.align_zlp, subpixel=True — parabolic peak refine + fractional FFT shift): the aligned cube is the derived result, with float max_shift and |shift|>0.01 shifted_fraction diagnostics in its metadata
+
+*category: `eels` · produces: derived image*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `window_lo` | `float` | -20.0 | no |  |  | alignment window lower edge (eV) |
+| `window_hi` | `float` | 20.0 | no |  |  | alignment window upper edge (eV) |
+| `reference` | `str` | mean | no | 'mean', 'max' |  | alignment reference: the mean windowed spectrum, or the brightest pixel's |
+
+#### `eels_svd` — SVD/MSA decomposition of an SI cube (calc/eels_advanced.svd + calc/eels_report.svd_view): scree curves plus the first n_score_maps eigenspectra and score maps inlined as envelopes. The route's denoise=True derived-cube mode has no op — the payload kind would depend on a param (ADR 0005 wave-D addendum)
+
+*category: `eels` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `n_components` | `int` | 0 | no |  | [0, ] | components to keep; 0 = auto (min(20, rank)) |
+| `n_score_maps` | `int` | 4 | no |  | [1, ] | eigenspectrum/score-map pairs to emit (capped at the component count) |
+
+#### `eels_thickness` — Log-ratio t/λ relative-thickness map over an SI cube (calc/eels.thickness_map + calc/eels_report.thickness_summary). The raw map inlines with NaN -> null (the route zero-fills its session image instead), H×W floats per run — large cubes make large value payloads
+
+*category: `eels` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `zlp_lo` | `float` | -5.0 | no |  |  | zero-loss-peak window lower edge (eV) |
+| `zlp_hi` | `float` | 5.0 | no |  |  | zero-loss-peak window upper edge (eV) |
+| `min_counts` | `float` | 100.0 | no |  |  | minimum total counts for a pixel to be valid |
+
+#### `elnes` — Near-edge fine structure relative to the edge onset (calc/eels_quant.elnes); the route's optional reference_id overlay is route-only — run the op once per spectrum
+
+*category: `eels` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `edge_onset` | `float` |  | yes |  |  | edge onset energy (eV) |
+| `fit_lo` | `float` |  | yes |  |  | pre-edge fit window lower edge (eV); the window must lie entirely below edge_onset |
+| `fit_hi` | `float` |  | yes |  |  | pre-edge fit window upper edge (eV) |
+| `elnes_lo` | `float` | 0.0 | no |  |  | ELNES window lower edge, relative to the onset (eV) |
+| `elnes_hi` | `float` | 30.0 | no |  |  | ELNES window upper edge, relative to the onset (eV) |
+| `method` | `str` | powerlaw | no | 'powerlaw', 'exponential' |  | pre-edge background model |
+| `normalize` | `bool` | True | no |  |  | normalize intensity to the edge jump |
 
 ### filter
 
@@ -540,6 +880,12 @@ The registered operation catalogue: name, category, summary, params.
 |---|---|---|---|---|---|---|
 | `order` | `int` | 1 | no |  | [1, 2] |  |
 
+#### `strip_databar` — Crop the vendor-baked info bar (Thermo Fisher SEM/FIB TIFFs) off the bottom of an image using the recorded databar geometry (io.metadata.databar_content_rows); errors when no databar is recorded
+
+*category: `filter` · produces: derived image*
+
+*(no parameters)*
+
 #### `unsharp` — Unsharp mask (sharpen)
 
 *category: `filter` · produces: derived image*
@@ -613,6 +959,17 @@ The registered operation catalogue: name, category, summary, params.
 | `window` | `int` | 11 | no |  | [1, ] | filter window length (odd, samples); must be <= trace length |
 | `polyorder` | `int` | 3 | no |  | [0, ] | fitted polynomial degree; must be < window |
 | `order` | `int` | 1 | no |  | [1, ] | derivative order; must satisfy 1 <= order <= polyorder |
+
+#### `sum_spectrum` — Sum spectrum of an SI cube (or a 1D spectrum as-is), optionally region-scoped via region_row0/col0/row1/col1 (1-based inclusive; calc/raster.region_sum_spectrum). Spectral category (sweep-skipped), so the explicit flag is required
+
+*category: `spectral` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `region_row0` | `float` | nan | no |  |  | region corner row, 1-based inclusive; all four region_* or none |
+| `region_col0` | `float` | nan | no |  |  | region corner col |
+| `region_row1` | `float` | nan | no |  |  | region opposite row |
+| `region_col1` | `float` | nan | no |  |  | region opposite col |
 
 ### structure
 

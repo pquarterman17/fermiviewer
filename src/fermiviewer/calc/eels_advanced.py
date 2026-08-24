@@ -12,7 +12,7 @@ import numpy as np
 
 __all__ = [
     "KKResult", "SVDResult", "align_zlp", "fourier_log", "fourier_ratio",
-    "kramers_kronig", "richardson_lucy", "svd",
+    "kramers_kronig", "richardson_lucy", "svd", "zlp_psf",
 ]
 
 _EPS = np.finfo(np.float64).eps
@@ -385,8 +385,8 @@ def richardson_lucy(
     Recovers resolution lost to a known point-spread function (e.g. the
     ZLP) by the multiplicative RL update. ``psf`` must be the same length
     as ``spectrum`` and **centred** (peak at the array midpoint) so the
-    deconvolved spectrum is not shifted; the route extracts and centres the
-    ZLP before calling. Non-negative throughout (Poisson MLE).
+    deconvolved spectrum is not shifted; :func:`zlp_psf` builds exactly that
+    PSF from the spectrum's own ZLP. Non-negative throughout (Poisson MLE).
     """
     d = np.maximum(np.asarray(spectrum, dtype=np.float64).ravel(), 0.0)
     p = np.asarray(psf, dtype=np.float64).ravel()
@@ -404,3 +404,37 @@ def richardson_lucy(
         relative = d / np.maximum(conv, _EPS)
         u = u * np.convolve(relative, p_flip, mode="same")
     return np.maximum(u, 0.0)
+
+
+# ════════════════════════════════════════════════════════════════════
+def zlp_psf(
+    energy: np.ndarray,
+    spectrum: np.ndarray,
+    zlp_window: tuple[float, float],
+) -> np.ndarray:
+    """The spectrum's own ZLP as a centred PSF for :func:`richardson_lucy` —
+    the window-mask → clip → centre construction behind
+    POST /eels/richardson-lucy, lifted out of `routes/eels_advanced.py`
+    (wave D, ADR 0005 §1) so the registered op and the HTTP route build the
+    SAME point-spread function.
+
+    Zeros everywhere outside ``zlp_window``, the windowed intensity clipped
+    non-negative, and the peak rolled to the array midpoint so RL does not
+    shift the result. A window spanning fewer than 2 channels, or one
+    containing no positive intensity, raises ValueError (the route maps
+    both to 422).
+    """
+    energy = np.asarray(energy, dtype=np.float64).ravel()
+    spectrum = np.asarray(spectrum, dtype=np.float64).ravel()
+    ne = spectrum.size
+    if energy.size != ne:
+        raise ValueError("energy and spectrum must have equal length")
+    mask = (energy >= zlp_window[0]) & (energy <= zlp_window[1])
+    if int(mask.sum()) < 2:
+        raise ValueError("ZLP window has fewer than 2 channels")
+    psf = np.zeros(ne)
+    psf[mask] = np.maximum(spectrum[mask], 0.0)
+    if psf.sum() <= 0:
+        raise ValueError("no ZLP intensity in the window")
+    # centre the ZLP peak at the array midpoint so RL does not shift the result
+    return np.roll(psf, ne // 2 - int(np.argmax(psf)))

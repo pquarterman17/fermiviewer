@@ -34,6 +34,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -45,21 +46,26 @@ from fermiviewer.calc.spectral_fit import (
     linear_background,
 )
 
+if TYPE_CHECKING:  # typing only — eds_peakfit imports this module at runtime
+    from fermiviewer.calc.eds_peakfit import PeakFitResult
+
 __all__ = [
     "DEFAULT_ESCAPE_FRACTION",
     "SI_ESCAPE_KEV",
     "SI_K_EDGE_KEV",
     "ArtifactPeak",
     "ArtifactRemoval",
+    "artifact_block",
     "artifact_curve",
+    "artifact_prepass",
     "measure_artifacts",
     "partition_artifacts",
     "predict_artifacts",
     "remove_artifacts",
 ]
 
-SI_ESCAPE_KEV = 1.740      # Si-Kα carried away by the escaping photon
-SI_K_EDGE_KEV = 1.839      # parent must ionise Si-K for escape to occur
+SI_ESCAPE_KEV = 1.740  # Si-Kα carried away by the escaping photon
+SI_K_EDGE_KEV = 1.839  # parent must ionise Si-K for escape to occur
 
 # Typical Si-detector escape probability for mid-energy K lines (~0.1-2 %,
 # falling with parent energy). One knob, route-tunable; rigorous work
@@ -80,7 +86,7 @@ class ArtifactPeak:
 
     name: str
     label: str
-    kind: str                  # "escape" | "sum"
+    kind: str  # "escape" | "sum"
     energy_kev: float
     parents: tuple[str, ...]
 
@@ -109,26 +115,34 @@ def predict_artifacts(
     above the Si K edge (1.839 keV); sum peaks are all unordered pairs
     including self-sums (2·E_i, the same-line pile-up peak).
     """
-    lines = [
-        (sym, float(e)) for sym, e in line_energies.items() if np.isfinite(e)
-    ]
+    lines = [(sym, float(e)) for sym, e in line_energies.items() if np.isfinite(e)]
     out: list[ArtifactPeak] = []
     if include_escape:
         for sym, e in lines:
             if e <= SI_K_EDGE_KEV:
                 continue
             esc = e - SI_ESCAPE_KEV
-            out.append(ArtifactPeak(
-                name=f"esc_{sym}", label=f"{sym} esc", kind="escape",
-                energy_kev=esc, parents=(sym,),
-            ))
+            out.append(
+                ArtifactPeak(
+                    name=f"esc_{sym}",
+                    label=f"{sym} esc",
+                    kind="escape",
+                    energy_kev=esc,
+                    parents=(sym,),
+                )
+            )
     if include_sum:
         for i, (si, ei) in enumerate(lines):
             for sj, ej in lines[i:]:
-                out.append(ArtifactPeak(
-                    name=f"sum_{si}_{sj}", label=f"{si}+{sj}", kind="sum",
-                    energy_kev=ei + ej, parents=(si, sj),
-                ))
+                out.append(
+                    ArtifactPeak(
+                        name=f"sum_{si}_{sj}",
+                        label=f"{si}+{sj}",
+                        kind="sum",
+                        energy_kev=ei + ej,
+                        parents=(si, sj),
+                    )
+                )
     lo = e_min_kev
     hi = e_max_kev if e_max_kev is not None else math.inf
     out = [a for a in out if lo <= a.energy_kev <= hi]
@@ -154,23 +168,19 @@ def partition_artifacts(
     for a in artifacts:
         sig_a = float(fano_sigma_kev(a.energy_kev))
         near = any(
-            abs(a.energy_kev - e) <
-            clearance_sigmas * (sig_a + float(fano_sigma_kev(e)))
+            abs(a.energy_kev - e) < clearance_sigmas * (sig_a + float(fano_sigma_kev(e)))
             for e in lines
         )
         (blocked if near else free).append(a)
     return free, blocked
 
 
-def artifact_curve(
-    energy: np.ndarray, area: float, center_kev: float
-) -> np.ndarray:
+def artifact_curve(energy: np.ndarray, area: float, center_kev: float) -> np.ndarray:
     """Area-parametrised Gaussian at the detector (Fano) width."""
     sigma = max(float(fano_sigma_kev(center_kev)), 1e-9)
     amp = area / (sigma * _SQRT_2PI)
     return np.asarray(
-        amp * np.exp(-0.5 * ((np.asarray(energy, dtype=np.float64) - center_kev)
-                             / sigma) ** 2),
+        amp * np.exp(-0.5 * ((np.asarray(energy, dtype=np.float64) - center_kev) / sigma) ** 2),
         dtype=np.float64,
     )
 
@@ -179,7 +189,7 @@ def artifact_curve(
 class ArtifactMeasurement:
     """Freely-fitted artifact areas (over a residual or raw spectrum)."""
 
-    areas: dict[str, float]            # by ArtifactPeak.name
+    areas: dict[str, float]  # by ArtifactPeak.name
     area_errors: dict[str, float]
     curves: dict[str, np.ndarray]
     fit: FitResult
@@ -213,18 +223,13 @@ def measure_artifacts(
         sigmas[a.name] = sigma
         center = a.energy_kev
 
-        def gauss(e: np.ndarray, p: np.ndarray, c: float = center,
-                  s: float = sigma) -> np.ndarray:
+        def gauss(e: np.ndarray, p: np.ndarray, c: float = center, s: float = sigma) -> np.ndarray:
             (amp,) = p
-            return np.asarray(
-                amp * np.exp(-0.5 * ((e - c) / s) ** 2), dtype=np.float64
-            )
+            return np.asarray(amp * np.exp(-0.5 * ((e - c) / s) ** 2), dtype=np.float64)
 
         sel = np.abs(energy - center) <= 2 * sigma
         amp0 = max(float(counts[sel].max()), 1.0) if sel.any() else 1.0
-        components.append(
-            Component(a.name, ("amp",), gauss, (amp0,), (0.0,), (np.inf,))
-        )
+        components.append(Component(a.name, ("amp",), gauss, (amp0,), (0.0,), (np.inf,)))
 
     result = fit_spectrum(energy, counts, components, weights=weights)
 
@@ -297,20 +302,18 @@ def remove_artifacts(
 
     artifacts = predict_artifacts(
         line_energies,
-        e_min_kev=float(energy[0]), e_max_kev=float(energy[-1]),
-        include_escape=include_escape, include_sum=include_sum,
+        e_min_kev=float(energy[0]),
+        e_max_kev=float(energy[-1]),
+        include_escape=include_escape,
+        include_sum=include_sum,
     )
-    free, blocked = partition_artifacts(
-        artifacts, line_energies, clearance_sigmas=clearance_sigmas
-    )
+    free, blocked = partition_artifacts(artifacts, line_energies, clearance_sigmas=clearance_sigmas)
 
     corrected = counts.copy()
     measured: dict[str, float] = {}
     measured_err: dict[str, float] = {}
     if free:
-        surface = counts if residual is None else np.asarray(
-            residual, dtype=np.float64
-        ).ravel()
+        surface = counts if residual is None else np.asarray(residual, dtype=np.float64).ravel()
         m = measure_artifacts(energy, surface, free)
         measured, measured_err = m.areas, m.area_errors
         for a in free:
@@ -336,3 +339,60 @@ def remove_artifacts(
         skipped=skipped,
         corrected=corrected,
     )
+
+
+def artifact_prepass(
+    energy: np.ndarray,
+    spectrum: np.ndarray,
+    pf: PeakFitResult,
+    escape_fraction: float,
+) -> ArtifactRemoval:
+    """Predict + measure/model escape and sum peaks from an initial fit.
+
+    The bridge between a :class:`~fermiviewer.calc.eds_peakfit.PeakFitResult`
+    and :func:`remove_artifacts` — lifted out of ``routes/_eds_common.py``
+    (wave D, ADR 0005 §1) so registered ops and the HTTP routes share it.
+    ``PeakFitResult`` is consumed attribute-wise only (no runtime import of
+    ``eds_peakfit``), which keeps this module importable by ``eds_peakfit``
+    itself for :func:`~fermiviewer.calc.eds_peakfit.fit_summed_peaks`.
+    """
+    lines = {s: e for s, e in pf.line_energies.items() if np.isfinite(e)}
+    return remove_artifacts(
+        energy,
+        spectrum,
+        lines,
+        residual=spectrum - pf.fit.model,
+        parent_areas=pf.net_areas,
+        escape_fraction=escape_fraction,
+    )
+
+
+def artifact_block(removal: ArtifactRemoval) -> list[dict]:
+    """Serialise an ArtifactRemoval into per-peak marker dicts for the UI.
+
+    Lifted out of ``routes/_eds_common.py`` (wave D, ADR 0005 §1): plain
+    dict/float serialisation with no route-layer vocabulary, shared by the
+    /eds/peakfit, /eds/artifacts and /eds/zeta payloads (and by any
+    registered op emitting the same markers).
+    """
+    out = []
+    for a in removal.artifacts:
+        if a.name in removal.measured:
+            status, area = "measured", removal.measured[a.name]
+            err = removal.measured_errors.get(a.name)
+        elif a.name in removal.modeled:
+            status, area, err = "modeled", removal.modeled[a.name], None
+        else:
+            status, area, err = "skipped", None, None
+        out.append(
+            {
+                "name": a.name,
+                "label": a.label,
+                "kind": a.kind,
+                "energy_kev": a.energy_kev,
+                "status": status,
+                "area": area,
+                "area_error": err,
+            }
+        )
+    return out

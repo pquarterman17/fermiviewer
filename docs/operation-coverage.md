@@ -10,9 +10,9 @@ Route and op inventories are read live from the app and registry at generation t
 ## Summary
 
 - **144** HTTP endpoints; **80** perform analysis, 3 are physics-table lookups, and 61 are allowlisted infrastructure.
-- **28 of 80** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **44** ops in total.
+- **57 of 80** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **73** ops in total.
 - Registered-op reach IS headless reach: batch recipes, folder watch, `fv --script`, and the Python API all resolve steps through the same registry and cannot call anything else.
-- Remaining item-3 work: wave A (6), wave B (2), wave C (10), wave D (26) endpoints; 8 are parked behind the item-8/9 activation gates. Item 3 does not close while any analysis row lacks a wave or a named gate — every endpoint is assigned, none is silently deferred.
+- Remaining item-3 work: wave A (6), wave B (2), wave C (7), wave D (0) endpoints; 8 are parked behind the item-8/9 activation gates. Item 3 does not close while any analysis row lacks a wave or a named gate — every endpoint is assigned, none is silently deferred.
 
 ## Analysis endpoints
 
@@ -21,7 +21,7 @@ Route and op inventories are read live from the app and registry at generation t
 | Route | GUI action | Registered op (headless reach) | Result kinds (ADR 0004) | Wave |
 |---|---|---|---|---|
 | `POST /api/filter` | Image menu, Stage tools. *`crop` and arbitrary-angle `rotate` kinds have no op* | `gaussian`, `median`, `unsharp`, `butterworth`, `clahe`, `bin`, `plane_level`, `morph`, `multiotsu`, `rotate90`, `rotate180`, `rotate270`, `fliph`, `flipv` | map (derived image) | shipped |
-| `POST /api/strip-databar` | Image menu | — | map (derived image) | wave D |
+| `POST /api/strip-databar` | Image menu. *the tree's first ops->io import (both pure layers); static source name in the pure layer* | `strip_databar` | map (derived image) | shipped |
 | `POST /api/image/{img_id}/fft` | Image menu; Lattice/GPA/FFT-mask modes. *op flattens the optional local-FFT rect to NaN-sentinel floats; the derived image drops calibration (FFT space)* | `fft` | map | shipped |
 | `POST /api/analyze/fft-mask` | FFT Mask workshop. *wave-B bounce-back: `masks` is a variable-length (row, col, radius) coordinate-triple list — structured params, ADR 0005 addendum gap 2 (2026-08-23)* | — | map | wave B |
 | `POST /api/analyze/vdf` | Image menu. *op flattens the aperture centre to two required floats* | `vdf` | map | shipped |
@@ -32,8 +32,8 @@ Route and op inventories are read live from the app and registry at generation t
 | `POST /api/analyze/interface-width` | Interface Width workshop. *no image subject — op ignores `ds`, profile travels as x/y CSV (`distribution_fit` precedent, blessed in ADR 0005's wave-A addendum)* | `interface_width` | fit | shipped |
 | `POST /api/analyze/lattice` | Lattice mode. *op flattens the two FFT spot picks to four required floats; unset pixel_size (NaN) falls back to the image calibration* | `lattice` | scalar set | shipped |
 | `POST /api/analyze/ctf` | Structure workshop, CTF mode. *the route's exclusive pixel_size_a > 0 bound is enforced in the op fn (OpParam has no exclusive minimum — ADR 0005 wave-B addendum)* | `ctf` | fit + curve ×2 + scalar | shipped |
-| `POST /api/analyze/montage` | Image menu | — | figure | wave C |
-| `POST /api/analyze/montage-compare` | — (no GUI caller) | — | figure | wave C |
+| `POST /api/analyze/montage` | Image menu. *wave-C bounce-back: N input images by session id (gap 1); labels=True also bakes session names into the pixels — a future multi-input op contract must carry per-input labels (ADR 0005 wave-C addendum). Kinds cell corrected from 'figure': the route registers a session image, it renders no export* | — | map (derived image) | wave C |
+| `POST /api/analyze/montage-compare` | — (no GUI caller). *wave-C bounce-back: gap 1 AND gap 2 — tiles are an array of nested models each naming a session image, with a float\|str\|bool param_value no scalar encoding covers (ADR 0005 wave-C addendum). Kinds cell corrected from 'figure' as for montage* | — | map (derived image) | wave C |
 
 ### Structure & particles
 
@@ -66,32 +66,32 @@ Route and op inventories are read live from the app and registry at generation t
 
 | Route | GUI action | Registered op (headless reach) | Result kinds (ADR 0004) | Wave |
 |---|---|---|---|---|
-| `POST /api/analyze/align-stack` | Image menu | — | map ×N + table | wave C |
-| `POST /api/analyze/mip` | Image menu | — | map | wave C |
-| `POST /api/analyze/stitch` | CTF/Stitch mode | — | map + table | wave C |
-| `POST /api/analyze/image-math` | Image menu | — | map | wave C |
+| `POST /api/analyze/align-stack` | Image menu. *wave-C bounce-back: N input images by session id — fn(ds, params) has exactly one subject (gap 1, ADR 0005 wave-C addendum)* | — | map ×N + table | wave C |
+| `POST /api/analyze/mip` | Image menu. *wave-C bounce-back: N input images by session id (gap 1); its ONLY field is the blocking one* | — | map | wave C |
+| `POST /api/analyze/stitch` | CTF/Stitch mode. *wave-C bounce-back: N input images by session id (gap 1, ADR 0005 wave-C addendum)* | — | map + table | wave C |
+| `POST /api/analyze/image-math` | Image menu. *wave-C bounce-back: TWO equal image inputs (a_id/b_id) — reshaping as primary-ds + id param would smuggle a session read into the pure op layer, the exact gap-1 anti-pattern (ADR 0005 wave-C addendum)* | — | map | wave C |
 | `POST /api/analyze/back-project` | Analysis menu. *tomography — parked with roadmap item 9* | — | map | parked (item 8/9) |
 
 ### EELS
 
 | Route | GUI action | Registered op (headless reach) | Result kinds (ADR 0004) | Wave |
 |---|---|---|---|---|
-| `POST /api/eels/background` | EELS workshop | — | curve ×3 | wave D |
+| `POST /api/eels/background` | EELS workshop | `eels_background` | curve ×3 | shipped |
 | `POST /api/eels/map` | EELS workshop | `eels_map` | map | shipped |
 | `POST /api/eels/quantify` | EELS workshop | `eels_quantify` | table | shipped |
 | `POST /api/eels/fit` | EELS workshop | `eels_fit` | fit | shipped |
-| `POST /api/eels/fit-map` | EELS workshop | — | map ×N + table | wave D |
-| `POST /api/eels/quantify-map` | EELS quant-map job | — | map ×N | wave D |
-| `POST /api/eels/thickness` | EELS Advanced | — | map + scalar ×2 | wave D |
-| `POST /api/eels/kk` | EELS Advanced | — | curve ×5 + scalar ×2 | wave D |
-| `POST /api/eels/fourier-log` | EELS Advanced | — | curve ×2 + scalar | wave D |
-| `POST /api/eels/svd` | EELS Advanced | — | curve ×k + map ×k | wave D |
-| `POST /api/eels/align-zlp` | EELS Advanced | — | map + scalar ×2 | wave D |
-| `POST /api/eels/subpixel-align` | EELS Advanced | — | map + scalar ×2 | wave D |
-| `POST /api/eels/richardson-lucy` | EELS Advanced | — | curve ×2 + scalar | wave D |
-| `POST /api/eels/maps` | Elemental workspace | — | map ×N | wave D |
-| `POST /api/eels/auto-assign` | Elemental workspace | — | table | wave D |
-| `POST /api/analyze/elnes` | EELS workshop | — | curve | wave D |
+| `POST /api/eels/fit-map` | EELS workshop. *edges via the shipped six-CSV schema; per-element maps inline* | `eels_fit_map` | map ×N + table | shipped |
+| `POST /api/eels/quantify-map` | EELS quant-map job. *op registers the synchronous computation; run_async job orchestration stays route-only (ADR 0005 §6)* | `eels_quantify_map` | map ×N | shipped |
+| `POST /api/eels/thickness` | EELS Advanced. *op inlines the RAW t/lambda map (NaN -> null) where the route registers nan_to_num(t) — zero-filling would bias headless means (ADR 0005 wave-D addendum)* | `eels_thickness` | map + scalar ×2 | shipped |
+| `POST /api/eels/kk` | EELS Advanced | `eels_kk` | curve ×5 + scalar ×2 | shipped |
+| `POST /api/eels/fourier-log` | EELS Advanced | `eels_fourier_log` | curve ×2 + scalar | shipped |
+| `POST /api/eels/svd` | EELS Advanced. *denoise mode has no op (payload kind would depend on a param — ADR 0005 wave-D addendum)* | `eels_svd` | curve ×k + map ×k | shipped |
+| `POST /api/eels/align-zlp` | EELS Advanced. *derived SI cube; shift diagnostics ride derived.metadata (savgol_derivative precedent)* | `eels_align_zlp` | map + scalar ×2 | shipped |
+| `POST /api/eels/subpixel-align` | EELS Advanced. *derived SI cube; diagnostics in derived.metadata* | `eels_subpixel_align` | map + scalar ×2 | shipped |
+| `POST /api/eels/richardson-lucy` | EELS Advanced | `eels_richardson_lucy` | curve ×2 + scalar | shipped |
+| `POST /api/eels/maps` | Elemental workspace. *per-species method collapses to one shared choice and background is all-or-nothing (the eds_element_maps divergence precedent)* | `eels_maps` | map ×N | shipped |
+| `POST /api/eels/auto-assign` | Elemental workspace | `eels_auto_assign` | table | shipped |
+| `POST /api/analyze/elnes` | EELS workshop. *optional reference_id overlay mode has no op (optional-input omission rule, ADR 0005 wave-D addendum)* | `elnes` | curve | shipped |
 
 ### EDS
 
@@ -99,35 +99,35 @@ Route and op inventories are read live from the app and registry at generation t
 |---|---|---|---|---|
 | `POST /api/eds/quantify` | EDS Quantify panel | `eds_quantify` | table + map ×N | shipped |
 | `POST /api/eds/peakfit` | EDS Model Fit. *op and route use different entry points into calc/eds_peakfit* | `eds_peakfit` | fit + table | shipped |
-| `POST /api/eds/zeta` | EDS Model Fit | — | fit + table + scalar | wave D |
-| `POST /api/eds/continuum` | EDS Model Fit | — | fit + curve | wave D |
-| `POST /api/eds/artifacts` | — (wrapper only, no GUI caller) | — | curve ×2 + table | wave D |
-| `POST /api/eds/recalibrate` | EDS Model Fit | — | fit (calibration) | wave D |
+| `POST /api/eds/zeta` | EDS Model Fit. *mass-thickness scalar carries its counting-statistics sigma in- envelope (§5)* | `eds_zeta` | fit + table + scalar | shipped |
+| `POST /api/eds/continuum` | EDS Model Fit | `eds_continuum` | fit + curve | shipped |
+| `POST /api/eds/artifacts` | — (wrapper only, no GUI caller). *headless reach is this endpoint's ONLY reach* | `eds_artifacts` | curve ×2 + table | shipped |
+| `POST /api/eds/recalibrate` | EDS Model Fit. *the derived DataStruct IS the application (apply dropped); optional pairs mode has no op (optional-input omission — the first non-coordinate pair list to meet gap 2)* | `eds_recalibrate` | fit (calibration) | shipped |
 | `POST /api/eds/element-map` | Elemental workspace | `eds_element_map` | map + scalar | shipped |
 | `POST /api/eds/element-maps` | Elemental workspace | `eds_element_maps` | map ×N | shipped |
-| `POST /api/eds/auto-assign` | EDS Quantify panel, Maps tab | — | table | wave D |
+| `POST /api/eds/auto-assign` | EDS Quantify panel, Maps tab | `eds_auto_assign` | table | shipped |
 | `POST /api/analyze/composition-profile` | EDS Quantify panel. *op quantifies the cube itself; route samples pre-registered maps* | `composition_profile` | curve ×N (σ-bearing) | shipped |
 
 ### Diffraction
 
 | Route | GUI action | Registered op (headless reach) | Result kinds (ADR 0004) | Wave |
 |---|---|---|---|---|
-| `POST /api/diffraction/detect` | Diffraction workshop | — | table + overlay | wave C |
-| `POST /api/diffraction/index` | Diffraction workshop | — | table | wave C |
-| `POST /api/diffraction/calibrate` | Diffraction calibration | — | fit + scalar ×2 | wave C |
-| `POST /api/analyze/simulate` | Diffraction simulation | — | table + map + scalar | wave C |
+| `POST /api/diffraction/detect` | Diffraction workshop. *op flattens the rect/circle _Roi to a roi_kind discriminator + NaN-sentinel groups; a roi_kind without its coordinates is an error, never a silent whole-image analysis (deliberate tightening, ADR 0005 wave-C addendum)* | `diffraction_detect` | table + overlay | shipped |
+| `POST /api/diffraction/index` | Diffraction workshop. *wave-C bounce-back: `spots` is a variable-length coordinate-pair list — the fit-shape/atoms-strain shape exactly (gap 2, ADR 0005 wave-C addendum); would also need the ROI re-centring lifted from routes/analysis.py* | — | table | wave C |
+| `POST /api/diffraction/calibrate` | Diffraction calibration. *op anchors d via d_known_ang or standard_phase + hkl_h/k/l NaN-sentinel floats (validated whole numbers); the anchor scalars are absent — not null — when unresolved* | `diffraction_calibrate` | fit + scalar ×2 | shipped |
+| `POST /api/analyze/simulate` | Diffraction simulation. *no image subject — op ignores `ds` (distribution_fit precedent); the rendered pattern inlines as a `map` envelope while the route registers a session image only when parented* | `diffraction_simulate` | table + map + scalar | shipped |
 
 ### Measurement
 
 | Route | GUI action | Registered op (headless reach) | Result kinds (ADR 0004) | Wave |
 |---|---|---|---|---|
-| `POST /api/measure/profile` | Measure panel, Stage | — | curve + scalar | wave D |
-| `POST /api/measure/roi` | Measure panel | — | scalar set | wave D |
-| `POST /api/measure/box-profile` | Measure panel | — | curve ×2 | wave D |
-| `POST /api/measure/distance-tilted` | — (wrapper only, no GUI caller) | — | scalar set | wave D |
-| `GET /api/image/{img_id}/spectrum` | Spectrum panel | — | curve | wave D |
-| `GET /api/image/{img_id}/histogram` | Histogram panel | — | curve | wave D |
-| `POST /api/calibration/detect-bar` | Calibration dialog | — | scalar set | wave D |
+| `POST /api/measure/profile` | Measure panel, Stage. *optional polyline points mode (a different calc function) has no op (optional-input omission rule)* | `line_profile` | curve + scalar | shipped |
+| `POST /api/measure/roi` | Measure panel. *rect is 1-based INCLUSIVE — not diffraction's 0-based half-open, not the corner-ROI string* | `roi_stats` | scalar set | shipped |
+| `POST /api/measure/box-profile` | Measure panel | `box_profile` | curve ×2 | shipped |
+| `POST /api/measure/distance-tilted` | — (wrapper only, no GUI caller). *headless reach is this endpoint's ONLY reach; calibrated scalars absent — not null — when uncalibrated* | `tilted_distance` | scalar set | shipped |
+| `GET /api/image/{img_id}/spectrum` | Spectrum panel. *a half-given or fractional region errors instead of silently summing the whole cube (strict-ROI discipline)* | `sum_spectrum` | curve | shipped |
+| `GET /api/image/{img_id}/histogram` | Histogram panel | `intensity_histogram` | curve | shipped |
+| `POST /api/calibration/detect-bar` | Calibration dialog. *zero params — the route's reused request model's other fields are dead here and not mirrored (efd_similarity precedent)* | `scalebar_detect` | scalar set | shipped |
 
 ### 4D-STEM
 
