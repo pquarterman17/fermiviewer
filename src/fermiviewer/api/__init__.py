@@ -135,39 +135,51 @@ def _split_inputs(
     return inputs, supplied
 
 
-def _as_structs(op: str, inputs: dict[str, Any]) -> dict[str, Any]:
+def _as_structs(op: str, inputs: dict[str, Any], session: Session) -> dict[str, Any]:
     """``Image`` -> ``DataStruct`` (the pure layer speaks structs, not
     session objects).
 
-    ONLY session ``Image``s are accepted here. The façade records every
-    contributing dataset in provenance BY IMAGE ID, and a raw ``DataStruct``
-    has no identity in the session — so letting one through would either
-    break the recording or silently drop a contributor from the lineage.
-    Raw structs belong to the pure entry point (``fermiviewer.ops.run``),
-    which does not record provenance at all.
+    Only ``Image``s belonging to ``session`` are accepted. The façade records
+    every contributing dataset in provenance BY IMAGE ID, and that id is only
+    meaningful inside the session that issued it:
 
-    Validation happens before the op runs, so a rejected input cannot leave
-    a half-finished session behind.
+    - a raw ``DataStruct`` has no id at all — it belongs to the pure entry
+      point (``fermiviewer.ops.run``), which takes structs precisely because
+      it records no provenance;
+    - an ``Image`` from ANOTHER session has an id this session cannot
+      resolve, so the step would record a dangling parent and the lineage
+      could not be reopened faithfully.
+
+    Both are rejected before the op runs, so a bad input cannot leave a
+    half-finished session behind.
     """
     out: dict[str, Any] = {}
     for name, value in inputs.items():
         if value is None:  # an omitted optional input; the spec decides
             out[name] = None
         elif isinstance(value, (list, tuple)):
-            out[name] = [_one_struct(op, name, v) for v in value]
+            out[name] = [_one_struct(op, name, v, session) for v in value]
         else:
-            out[name] = _one_struct(op, name, value)
+            out[name] = _one_struct(op, name, value, session)
     return out
 
 
-def _one_struct(op: str, name: str, value: Any) -> DataStruct:
-    if isinstance(value, Image):
-        return value.datastruct
-    raise TypeError(
-        f"op '{op}' input '{name}': expected an Image from this session, got "
-        f"{type(value).__name__}. The Python API records provenance by image "
-        f"id; use fermiviewer.ops.run(...) to run an op over raw DataStructs."
-    )
+def _one_struct(op: str, name: str, value: Any, session: Session) -> DataStruct:
+    where = f"op '{op}' input '{name}'"
+    if not isinstance(value, Image):
+        raise TypeError(
+            f"{where}: expected an Image from this session, got "
+            f"{type(value).__name__}. The Python API records provenance by "
+            f"image id; use fermiviewer.ops.run(...) to run an op over raw "
+            f"DataStructs."
+        )
+    if value._session is not session:
+        raise ValueError(
+            f"{where}: {value.name!r} belongs to a different Session. Its id "
+            f"({value.id}) would record a parent this session cannot resolve, "
+            f"leaving a lineage that cannot be reopened."
+        )
+    return value.datastruct
 
 
 class Image:
@@ -248,7 +260,7 @@ class Image:
         inputs, params = _split_inputs(spec, params)
         # validated BEFORE anything runs: a bad input must not leave a
         # derived image adopted into the session with no provenance step
-        resolved = _as_structs(op, inputs)
+        resolved = _as_structs(op, inputs, self._session)
         op_result = _ops.run(op, self._ds, params, inputs=resolved)
         result = Result(op_result, self._session)
         out_id = result.image.id if result.image is not None else None

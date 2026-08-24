@@ -399,7 +399,7 @@ def test_facade_rejects_raw_datastructs_without_touching_the_session() -> None:
     for kwargs in ({"other": raw}, {"other": b, "op": "nope"}):
         images_before = dict(session.images)
         steps_before = len(session.provenance.steps)
-        with pytest.raises((TypeError, ParamError)):
+        with pytest.raises((TypeError, ValueError)):
             a.image_math(**kwargs)
         assert session.images == images_before, "a failed call adopted an image"
         assert len(session.provenance.steps) == steps_before
@@ -419,3 +419,35 @@ def test_raw_datastructs_still_run_through_the_pure_entry_point() -> None:
     a, b = _image(), _image(offset=3)
     result = ops.run("image_math", a, {"op": "add"}, inputs={"other": b})
     np.testing.assert_allclose(result.derived.data, image_math(a.data, b.data, "add"))
+
+
+def test_facade_rejects_images_from_another_session() -> None:
+    """An image id is only meaningful inside the session that issued it.
+    A cross-session input used to record a parent this session cannot
+    resolve — provenance that reads fine and cannot be reopened."""
+    import fermiviewer.api as fv
+
+    session, a, b = _session_with_images()
+    other_session = fv.Session()
+    foreign = other_session._adopt(_image(offset=9), "foreign.dm4")
+
+    images_before = dict(session.images)
+    steps_before = len(session.provenance.steps)
+
+    with pytest.raises(ValueError, match="belongs to a different Session"):
+        a.image_math(other=foreign)
+    with pytest.raises(ValueError, match="belongs to a different Session"):
+        a.mip(others=[b, foreign])  # variadic path checks every element
+
+    assert session.images == images_before
+    assert len(session.provenance.steps) == steps_before
+
+
+def test_every_recorded_parent_resolves_in_its_own_session() -> None:
+    """The invariant the cross-session check exists to protect."""
+    session, a, b = _session_with_images()
+    a.image_math(other=b, op="subtract")
+    a.mip(others=[b])
+    for step in session.provenance.steps:
+        for image_id in step.inputs:
+            assert image_id in session.images, f"{step.op} records unresolvable {image_id}"
