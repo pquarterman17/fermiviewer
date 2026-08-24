@@ -206,8 +206,33 @@ DOMAINS: tuple[Domain, ...] = (
                 "the op fn (OpParam has no exclusive minimum — ADR 0005 "
                 "wave-B addendum)",
             ),
-            Row("POST", "/api/analyze/montage", "Image menu", (), "figure", "C"),
-            Row("POST", "/api/analyze/montage-compare", "— (no GUI caller)", (), "figure", "C"),
+            Row(
+                "POST",
+                "/api/analyze/montage",
+                "Image menu",
+                (),
+                "map (derived image)",
+                "C",
+                "wave-C bounce-back: N input images by session id (gap 1); "
+                "labels=True also bakes session names into the pixels — a "
+                "future multi-input op contract must carry per-input labels "
+                "(ADR 0005 wave-C addendum). Kinds cell corrected from "
+                "'figure': the route registers a session image, it renders "
+                "no export",
+            ),
+            Row(
+                "POST",
+                "/api/analyze/montage-compare",
+                "— (no GUI caller)",
+                (),
+                "map (derived image)",
+                "C",
+                "wave-C bounce-back: gap 1 AND gap 2 — tiles are an array of "
+                "nested models each naming a session image, with a "
+                "float|str|bool param_value no scalar encoding covers "
+                "(ADR 0005 wave-C addendum). Kinds cell corrected from "
+                "'figure' as for montage",
+            ),
         ),
     ),
     Domain(
@@ -395,10 +420,49 @@ DOMAINS: tuple[Domain, ...] = (
     Domain(
         "Stacks & mosaics",
         (
-            Row("POST", "/api/analyze/align-stack", "Image menu", (), "map ×N + table", "C"),
-            Row("POST", "/api/analyze/mip", "Image menu", (), "map", "C"),
-            Row("POST", "/api/analyze/stitch", "CTF/Stitch mode", (), "map + table", "C"),
-            Row("POST", "/api/analyze/image-math", "Image menu", (), "map", "C"),
+            Row(
+                "POST",
+                "/api/analyze/align-stack",
+                "Image menu",
+                (),
+                "map ×N + table",
+                "C",
+                "wave-C bounce-back: N input images by session id — "
+                "fn(ds, params) has exactly one subject (gap 1, ADR 0005 "
+                "wave-C addendum)",
+            ),
+            Row(
+                "POST",
+                "/api/analyze/mip",
+                "Image menu",
+                (),
+                "map",
+                "C",
+                "wave-C bounce-back: N input images by session id (gap 1); "
+                "its ONLY field is the blocking one",
+            ),
+            Row(
+                "POST",
+                "/api/analyze/stitch",
+                "CTF/Stitch mode",
+                (),
+                "map + table",
+                "C",
+                "wave-C bounce-back: N input images by session id (gap 1, "
+                "ADR 0005 wave-C addendum)",
+            ),
+            Row(
+                "POST",
+                "/api/analyze/image-math",
+                "Image menu",
+                (),
+                "map",
+                "C",
+                "wave-C bounce-back: TWO equal image inputs (a_id/b_id) — "
+                "reshaping as primary-ds + id param would smuggle a session "
+                "read into the pure op layer, the exact gap-1 anti-pattern "
+                "(ADR 0005 wave-C addendum)",
+            ),
             Row(
                 "POST",
                 "/api/analyze/back-project",
@@ -504,26 +568,48 @@ DOMAINS: tuple[Domain, ...] = (
                 "POST",
                 "/api/diffraction/detect",
                 "Diffraction workshop",
-                (),
+                ("diffraction_detect",),
                 "table + overlay",
-                "C",
+                "shipped",
+                "op flattens the rect/circle _Roi to a roi_kind discriminator "
+                "+ NaN-sentinel groups; a roi_kind without its coordinates is "
+                "an error, never a silent whole-image analysis (deliberate "
+                "tightening, ADR 0005 wave-C addendum)",
             ),
-            Row("POST", "/api/diffraction/index", "Diffraction workshop", (), "table", "C"),
+            Row(
+                "POST",
+                "/api/diffraction/index",
+                "Diffraction workshop",
+                (),
+                "table",
+                "C",
+                "wave-C bounce-back: `spots` is a variable-length "
+                "coordinate-pair list — the fit-shape/atoms-strain shape "
+                "exactly (gap 2, ADR 0005 wave-C addendum); would also need "
+                "the ROI re-centring lifted from routes/analysis.py",
+            ),
             Row(
                 "POST",
                 "/api/diffraction/calibrate",
                 "Diffraction calibration",
-                (),
+                ("diffraction_calibrate",),
                 "fit + scalar ×2",
-                "C",
+                "shipped",
+                "op anchors d via d_known_ang or standard_phase + "
+                "hkl_h/k/l NaN-sentinel floats (validated whole numbers); "
+                "the anchor scalars are absent — not null — when unresolved",
             ),
             Row(
                 "POST",
                 "/api/analyze/simulate",
                 "Diffraction simulation",
-                (),
+                ("diffraction_simulate",),
                 "table + map + scalar",
-                "C",
+                "shipped",
+                "no image subject — op ignores `ds` (distribution_fit "
+                "precedent); the rendered pattern inlines as a `map` "
+                "envelope while the route registers a session image only "
+                "when parented",
             ),
         ),
     ),

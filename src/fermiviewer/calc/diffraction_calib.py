@@ -30,6 +30,8 @@ __all__ = [
     "detect_ring_points",
     "fit_ellipse",
     "undistort_radii",
+    "RingCalibration",
+    "calibrate_rings",
 ]
 
 
@@ -197,3 +199,38 @@ def camera_constant(d_known_ang: float, r_corrected_px: float) -> float:
     if d_known_ang <= 0 or not np.isfinite(r_corrected_px):
         return float("nan")
     return float(r_corrected_px * d_known_ang)
+
+
+@dataclass(frozen=True)
+class RingCalibration:
+    """One ring-calibration run: the fitted ellipse plus its point count
+    and the RMS radial residual of the un-distorted ring (px)."""
+
+    ellipse: EllipseFit
+    n_points: int
+    rms_residual_px: float
+
+
+def calibrate_rings(
+    img: np.ndarray,
+    *,
+    r_min: float = 5.0,
+    r_max: float | None = None,
+    n_angles: int = 180,
+) -> RingCalibration:
+    """Detect ring points, fit the ellipse, un-distort — the composition
+    behind POST /diffraction/calibrate, lifted out of
+    `routes/diffraction_setup.py` (wave C, ADR 0005 §1) so the registered
+    `diffraction_calibrate` op and the HTTP route share it. Too few ring
+    points raises ValueError (the route maps it to 422); anchoring the
+    camera constant stays with the caller (`camera_constant`), which also
+    resolves the standard d-spacing."""
+    pts = detect_ring_points(img, r_min=r_min, r_max=r_max, n_angles=n_angles)
+    if len(pts) < 5:
+        raise ValueError(
+            "too few ring points detected — adjust r_min/r_max or the image"
+        )
+    ellipse = fit_ellipse(pts)
+    corrected = undistort_radii(pts, ellipse)
+    rms = float(np.sqrt(np.mean((corrected - ellipse.mean_radius) ** 2)))
+    return RingCalibration(ellipse=ellipse, n_points=int(len(pts)), rms_residual_px=rms)

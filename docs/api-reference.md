@@ -249,7 +249,7 @@ The registered operation catalogue: name, category, summary, params.
 
 ## Operation catalogue
 
-44 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
+47 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
 
 ### analysis
 
@@ -331,6 +331,61 @@ The registered operation catalogue: name, category, summary, params.
 | `level` | `str` | plane | no | 'none', 'plane', 'quadratic' |  |  |
 
 ### diffraction
+
+#### `diffraction_calibrate` — Elliptical-distortion + camera-constant calibration from the dominant ring (calc/diffraction_calib.calibrate_rings); anchor d via d_known_ang, or standard_phase + hkl_h/k/l (calc/phase_registry.standard_d_spacing)
+
+*category: `diffraction` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `d_known_ang` | `float` | nan | no |  |  | known ring d-spacing (Å); leave unset (NaN) to derive from standard_phase + hkl |
+| `standard_phase` | `str` |  | no |  |  | standard phase name, e.g. 'Gold'; empty = no phase anchor |
+| `hkl_h` | `float` | nan | no |  |  | anchored reflection h; give all three hkl_* |
+| `hkl_k` | `float` | nan | no |  |  |  |
+| `hkl_l` | `float` | nan | no |  |  |  |
+| `r_min` | `float` | 5.0 | no |  |  | ring search inner radius (px) |
+| `r_max` | `float` | nan | no |  |  | ring search outer radius (px); NaN = auto |
+| `n_angles` | `int` | 180 | no |  |  | radial profiles around the ring |
+
+#### `diffraction_detect` — Bright-spot detection on a diffraction pattern, optionally scoped to a rect/circle analysis ROI (calc/diffraction.find_spots_roi)
+
+*category: `diffraction` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `min_radius` | `float` | 10.0 | no |  |  | ignore spots closer than this to the centre (px) |
+| `threshold` | `float` | 0.05 | no |  |  | relative intensity threshold |
+| `min_separation` | `float` | 8.0 | no |  |  | minimum spot separation (px) |
+| `max_spots` | `int` | 50 | no |  |  | cap on returned spots |
+| `roi_kind` | `str` |  | no | '', 'rect', 'circle' |  | analysis ROI shape; empty = whole image. 'rect' needs roi_r0/c0/r1/c1 (0-based half-open, the frontend convention), 'circle' needs roi_cr/cc/radius |
+| `roi_r0` | `float` | nan | no |  |  | rect top row, 0-based |
+| `roi_c0` | `float` | nan | no |  |  | rect left col, 0-based |
+| `roi_r1` | `float` | nan | no |  |  | rect bottom row, half-open |
+| `roi_c1` | `float` | nan | no |  |  | rect right col, half-open |
+| `roi_cr` | `float` | nan | no |  |  | circle centre row, 0-based |
+| `roi_cc` | `float` | nan | no |  |  | circle centre col, 0-based |
+| `roi_radius` | `float` | nan | no |  |  | circle radius (px) |
+
+#### `diffraction_simulate` — Kinematic zone-axis pattern simulation (calc/diffraction.simulate) — like distribution_fit, the input image is unused: the subject is the named crystal phase. The rendered pattern inlines as a `map` envelope (the route registers it as a session image only when parented); at the default 512x512 that is ~260k floats per run, so batch scripts that only need the spot table should shrink image_rows/image_cols
+
+*category: `diffraction` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `phase_name` | `str` |  | yes |  |  | phase to simulate, e.g. 'Gold' (built-in database + imported/custom phases) |
+| `zone_u` | `int` | 0 | no |  |  | zone axis u |
+| `zone_v` | `int` | 0 | no |  |  | zone axis v |
+| `zone_w` | `int` | 1 | no |  |  | zone axis w |
+| `acc_voltage` | `float` | 200.0 | no |  |  | beam voltage (kV) |
+| `camera_length` | `float` | 200.0 | no |  |  | camera length (mm) |
+| `pixel_size` | `float` | 0.05 | no |  |  | detector pixel size (mm) |
+| `image_rows` | `int` | 512 | no |  |  | rendered pattern height (px) |
+| `image_cols` | `int` | 512 | no |  |  | rendered pattern width (px) |
+| `max_hkl` | `int` | 5 | no |  |  | reflection index cap |
+| `min_intensity` | `float` | 0.01 | no |  |  | relative intensity floor |
+| `spot_sigma` | `float` | 3.0 | no |  |  | rendered spot width (px) |
+| `scattering_model` | `str` | fe | no | 'fe', 'z' |  | Doyle-Turner form factors or atomic-number proxy (the calc's own closed set — the route leaves it unconstrained and lets calc reject) |
+| `debye_waller_B` | `float` | nan | no |  |  | isotropic Debye-Waller B (Å²); -1 = per-element defaults; leave unset (NaN) = off |
 
 #### `radial_profile` — Radial average/max intensity profile about a centre
 
