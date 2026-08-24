@@ -268,7 +268,9 @@ def _ctf(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     raster = raster_of(ds)
     # OpParam has no exclusive minimum, so the route's Field(gt=0) is
     # enforced here (ADR 0005 wave-B addendum notes the vocabulary gap).
-    if params["pixel_size_a"] <= 0:
+    # `not (x > 0)` so NaN is also rejected, matching the route's
+    # Field(gt=0) exactly (self-review finding)
+    if not (params["pixel_size_a"] > 0):
         raise ValueError("pixel_size_a must be > 0")
     res = estimate_ctf(
         raster,

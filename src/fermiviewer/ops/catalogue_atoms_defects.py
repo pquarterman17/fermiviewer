@@ -33,7 +33,7 @@ from fermiviewer.calc.texture import template_match_rect
 from fermiviewer.datastruct import DataStruct
 from fermiviewer.ops._envelopes import nan_none as _nn
 from fermiviewer.ops._envelopes import output, scalar
-from fermiviewer.ops._parsing import parse_roi_param
+from fermiviewer.ops._parsing import parse_roi_param, pixel_cal_or_default
 from fermiviewer.ops.base import OpParam, OpResult, OpSpec
 from fermiviewer.ops.registry import register
 
@@ -220,8 +220,7 @@ def _defects(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     ft = params["foil_thickness"]
     if math.isfinite(ft) and ft <= 0:
         raise ValueError("foil_thickness must be > 0")
-    px = ds.pixel_size if np.isfinite(ds.pixel_size) and ds.pixel_size > 0 else 1.0
-    unit = ds.pixel_unit or "px"
+    px, unit = pixel_cal_or_default(ds)
     res = count_defect_lines(
         raster,
         roi=roi,
@@ -237,7 +236,9 @@ def _defects(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     outputs = [
         scalar("intersections", res.intersection_count),
         scalar("test_lines", res.num_test_lines),
-        scalar("total_line_length", res.total_line_length, unit="px"),
+        # calc multiplies the intercept lengths by pixel_size — the value
+        # is in the CALIBRATED unit, not px (self-review finding)
+        scalar("total_line_length", res.total_line_length, unit=unit),
         scalar("density", res.density, unit=res.density_unit),
         output(
             "overlay",

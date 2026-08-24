@@ -21,6 +21,7 @@ __all__ = [
     "parse_roi_param",
     "parse_windows",
     "pixel_cal",
+    "pixel_cal_or_default",
     "sentinel_group",
     "split_csv",
 ]
@@ -80,3 +81,14 @@ def pixel_cal(ds: DataStruct) -> tuple[float, str]:
     Wave A's `_px_cal`, promoted here for the later waves."""
     px = ds.pixel_size if np.isfinite(ds.pixel_size) else float("nan")
     return px, ds.pixel_unit or "px"
+
+
+def pixel_cal_or_default(ds: DataStruct) -> tuple[float, str]:
+    """(pixel_size or 1.0, unit) — the OTHER calibration idiom: fall back
+    to 1.0/px when uncalibrated, for calcs that always need a number
+    (defects, GPA-adjacent routes). Three pre-wave catalogues still carry
+    local spellings of this; migrate them when their code is next
+    touched, and never mint a new copy."""
+    if np.isfinite(ds.pixel_size) and ds.pixel_size > 0:
+        return ds.pixel_size, ds.pixel_unit or "px"
+    return 1.0, ds.pixel_unit or "px"
