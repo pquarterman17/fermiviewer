@@ -238,7 +238,8 @@ def _render_op(spec: OpSpec) -> str:
         lines.append(
             "*Auxiliary inputs are passed as resolved datasets "
             "(`ops.run(..., inputs={...})`, or `Image` keyword arguments in "
-            "the Python API); this op is not available as a recipe step.*"
+            "the Python API). Recipes map each op input to a portable symbolic "
+            "name and bind that name to dataset(s) when they run.*"
         )
         lines.append("")
     if spec.params:

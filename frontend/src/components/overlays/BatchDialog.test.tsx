@@ -77,6 +77,18 @@ const operations: BatchOperation[] = [
       },
     ],
   },
+  {
+    name: "image_math",
+    category: "combine",
+    summary: "Combine two images",
+    produces: "image",
+    params: [],
+    inputs: [{
+      name: "other", required: true, variadic: false,
+      min_count: null, max_count: null, kinds: ["image"],
+      doc: "reference image",
+    }],
+  },
 ];
 
 function derived(id: string): ImageMeta {
@@ -177,6 +189,34 @@ describe("BatchDialog", () => {
     expect(screen.getByText("Remove a fitted plane")).toBeVisible();
     fireEvent.click(screen.getByTitle("Remove step"));
     expect(screen.queryByText("Remove a fitted plane")).toBeNull();
+  });
+
+  it("validates and binds a named recipe input", async () => {
+    render(<BatchDialog />);
+    fireEvent.click(await screen.findByText("+ Combine two images"));
+    fireEvent.click(screen.getByRole("button", { name: "Run batch (2)" }));
+    expect(runBatchRecipe).not.toHaveBeenCalled();
+    expect(screen.getByText(/needs reference image/)).toBeVisible();
+
+    fireEvent.change(screen.getByLabelText("Step 1 other input"), {
+      target: { value: "b" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run batch (2)" }));
+    await waitFor(() => expect(runBatchRecipe).toHaveBeenCalled());
+    expect(runBatchRecipe.mock.calls[0][1]).toEqual([{
+      op: "image_math", params: {}, inputs: { other: "other" },
+    }]);
+    expect(runBatchRecipe.mock.calls[0][3]).toEqual({ other: "b" });
+  });
+
+  it("filters the operation palette by name, summary, or category", async () => {
+    render(<BatchDialog />);
+    await screen.findByText("+ Combine two images");
+    fireEvent.change(screen.getByLabelText("Find an operation"), {
+      target: { value: "combine" },
+    });
+    expect(screen.getByText("+ Combine two images")).toBeVisible();
+    expect(screen.queryByText("+ Remove a fitted plane")).toBeNull();
   });
 
   it("saves and restores the current recipe as a named preset", async () => {

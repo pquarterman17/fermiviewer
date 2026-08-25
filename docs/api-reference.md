@@ -295,7 +295,7 @@ The registered operation catalogue: name, category, summary, params.
 |---|---|---|---|
 | `others` | 1+ | yes | the remaining frames, in order; the subject is frame 0 (the alignment reference, kept as-is) |
 
-*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API); this op is not available as a recipe step.*
+*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API). Recipes map each op input to a portable symbolic name and bind that name to dataset(s) when they run.*
 
 *(no parameters)*
 
@@ -396,7 +396,7 @@ The registered operation catalogue: name, category, summary, params.
 |---|---|---|---|
 | `source` | 1 | yes | the intensity image the label map was derived from (the route recovers this from the map's metadata) |
 
-*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API); this op is not available as a recipe step.*
+*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API). Recipes map each op input to a portable symbolic name and bind that name to dataset(s) when they run.*
 
 | Param | Type | Default | Required | Choices | Bounds | Description |
 |---|---|---|---|---|---|---|
@@ -417,7 +417,7 @@ The registered operation catalogue: name, category, summary, params.
 |---|---|---|---|
 | `others` | 1+ | yes | the maps to compare against the subject, in order |
 
-*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API); this op is not available as a recipe step.*
+*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API). Recipes map each op input to a portable symbolic name and bind that name to dataset(s) when they run.*
 
 | Param | Type | Default | Required | Choices | Bounds | Description |
 |---|---|---|---|---|---|---|
@@ -978,7 +978,7 @@ The registered operation catalogue: name, category, summary, params.
 |---|---|---|---|
 | `other` | 1 | yes | the second operand; the subject is the left-hand one (the route's a_id) |
 
-*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API); this op is not available as a recipe step.*
+*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API). Recipes map each op input to a portable symbolic name and bind that name to dataset(s) when they run.*
 
 | Param | Type | Default | Required | Choices | Bounds | Description |
 |---|---|---|---|---|---|---|
@@ -1000,7 +1000,7 @@ The registered operation catalogue: name, category, summary, params.
 |---|---|---|---|
 | `others` | 1+ | yes | the remaining frames of the stack |
 
-*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API); this op is not available as a recipe step.*
+*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API). Recipes map each op input to a portable symbolic name and bind that name to dataset(s) when they run.*
 
 *(no parameters)*
 
@@ -1012,7 +1012,7 @@ The registered operation catalogue: name, category, summary, params.
 |---|---|---|---|
 | `others` | 0+ | no | the remaining frames, in tile order; the subject is tile 1. Optional — the route montages a single image too |
 
-*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API); this op is not available as a recipe step.*
+*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API). Recipes map each op input to a portable symbolic name and bind that name to dataset(s) when they run.*
 
 | Param | Type | Default | Required | Choices | Bounds | Description |
 |---|---|---|---|---|---|---|
@@ -1031,7 +1031,7 @@ The registered operation catalogue: name, category, summary, params.
 |---|---|---|---|
 | `tiles` | 0+ | no | the remaining tiles; the subject is tile 1 (the panel's provenance root, and the route's parent image). Optional — the route panels a single tile too |
 
-*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API); this op is not available as a recipe step.*
+*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API). Recipes map each op input to a portable symbolic name and bind that name to dataset(s) when they run.*
 
 | Param | Type | Default | Required | Choices | Bounds | Description |
 |---|---|---|---|---|---|---|
@@ -1078,7 +1078,7 @@ The registered operation catalogue: name, category, summary, params.
 |---|---|---|---|
 | `others` | 1+ | yes | the remaining tiles, in sequence order; the subject is tile 1. Every tile must have the SAME shape (the route's 422) |
 
-*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API); this op is not available as a recipe step.*
+*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API). Recipes map each op input to a portable symbolic name and bind that name to dataset(s) when they run.*
 
 | Param | Type | Default | Required | Choices | Bounds | Description |
 |---|---|---|---|---|---|---|
@@ -1260,7 +1260,7 @@ The registered operation catalogue: name, category, summary, params.
 |---|---|---|---|
 | `source` | 1 | yes | the intensity image the label map was segmented from (the route's metadata['grain_source']); the split watershed runs on it, and its calibration measures the grains |
 
-*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API); this op is not available as a recipe step.*
+*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API). Recipes map each op input to a portable symbolic name and bind that name to dataset(s) when they run.*
 
 | Param | Type | Default | Required | Choices | Bounds | Description |
 |---|---|---|---|---|---|---|

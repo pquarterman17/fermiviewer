@@ -4,7 +4,7 @@ const STORAGE_KEY = "fermiviewer.batchRecipePresets.v1";
 const FORMAT = "fermiviewer-batch-preset";
 
 export interface BatchRecipePreset {
-  version: 1;
+  version: 1 | 2;
   id: string;
   name: string;
   steps: BatchRecipeStep[];
@@ -14,7 +14,7 @@ export interface BatchRecipePreset {
 
 interface PresetExport {
   format: typeof FORMAT;
-  version: 1;
+  version: 2;
   preset: BatchRecipePreset;
 }
 
@@ -30,7 +30,19 @@ function recipeSteps(value: unknown): BatchRecipeStep[] | null {
       return null;
     }
     if (!record(item.params)) return null;
-    steps.push({ op: item.op, params: { ...item.params } });
+    if (item.inputs !== undefined && !record(item.inputs)) return null;
+    const inputs = item.inputs === undefined
+      ? undefined
+      : Object.fromEntries(
+          Object.entries(item.inputs).filter(
+            (entry): entry is [string, string] => typeof entry[1] === "string",
+          ),
+        );
+    steps.push({
+      op: item.op,
+      params: { ...item.params },
+      ...(inputs && Object.keys(inputs).length ? { inputs } : {}),
+    });
   }
   return steps;
 }
@@ -38,7 +50,7 @@ function recipeSteps(value: unknown): BatchRecipeStep[] | null {
 function preset(value: unknown): BatchRecipePreset | null {
   if (
     !record(value) ||
-    value.version !== 1 ||
+    (value.version !== 1 && value.version !== 2) ||
     typeof value.id !== "string" ||
     typeof value.name !== "string" ||
     !value.name.trim() ||
@@ -50,7 +62,7 @@ function preset(value: unknown): BatchRecipePreset | null {
   const steps = recipeSteps(value.steps);
   if (!steps) return null;
   return {
-    version: 1,
+    version: 2,
     id: value.id,
     name: value.name.trim(),
     steps,
@@ -89,7 +101,7 @@ export function saveBatchRecipePreset(
   if (!cleanSteps) throw new Error("Add at least one recipe step");
   const existing = presets.find((item) => item.id === replaceId);
   const saved: BatchRecipePreset = {
-    version: 1,
+    version: 2,
     id: existing?.id ?? crypto.randomUUID(),
     name: cleanName,
     steps: cleanSteps,
@@ -107,7 +119,7 @@ export function saveBatchRecipePreset(
 export function exportBatchRecipePreset(presetValue: BatchRecipePreset): string {
   const payload: PresetExport = {
     format: FORMAT,
-    version: 1,
+    version: 2,
     preset: presetValue,
   };
   return JSON.stringify(payload, null, 2) + "\n";
@@ -120,7 +132,10 @@ export function importBatchRecipePreset(text: string): BatchRecipePreset {
   } catch {
     throw new Error("Preset file is not valid JSON");
   }
-  if (!record(value) || value.format !== FORMAT || value.version !== 1) {
+  if (
+    !record(value) || value.format !== FORMAT ||
+    (value.version !== 1 && value.version !== 2)
+  ) {
     throw new Error("This is not a fermiviewer batch preset");
   }
   const imported = preset(value.preset);

@@ -11,10 +11,10 @@
 // Param-format notes (mirrors ops/catalogue_spectral.py's own docstring):
 // list params become comma-separated strings ("Fe,O"), window pairs become
 // comma-separated "lo:hi" pairs ("708:758,532:582"). A wire call whose shape
-// doesn't match (or that has no op at all — crop, arbitrary-angle rotate,
-// FFT, VDF/GPA/particles/grains, EELS background/thickness/KK/SVD/align/
-// fit, azimuthal /analyze/radial) returns null so the caller can keep it as
-// a legacy step instead of dropping it.
+// doesn't match the recorder's deliberately smaller translation table
+// returns null so the caller can keep it as a legacy step instead of
+// dropping it. This is not the operation-coverage inventory: many routes
+// are op-backed but have not yet been given a lossless wire-body mapping.
 
 export interface OpStep {
   op: string;

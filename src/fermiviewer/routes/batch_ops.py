@@ -314,11 +314,16 @@ def _run_batch(
                 ],
             })
         except Exception as exc:  # noqa: BLE001 - per-input failure is a result
+            step_number = getattr(exc, "recipe_step", None)
+            step_op = getattr(exc, "recipe_op", None)
+            detail = str(exc)
+            if step_number is not None:
+                detail = f"step {step_number} ({step_op}): {detail}"
             outputs.append({
                 "image_id": image_id,
                 "name": source_name,
                 "status": "error",
-                "error": str(exc),
+                "error": detail,
                 "derived": None,
                 "values": [],
             })

@@ -51,6 +51,29 @@ describe("batch recipe presets", () => {
     );
   });
 
+  it("preserves portable named inputs and migrates version 1 presets", () => {
+    localStorage.setItem(
+      "fermiviewer.batchRecipePresets.v1",
+      JSON.stringify([{
+        version: 1,
+        id: "old",
+        name: "Subtract reference",
+        steps: [{
+          op: "image_math",
+          params: { op: "subtract" },
+          inputs: { other: "reference" },
+        }],
+        createdAt: "2026-08-24T00:00:00Z",
+        updatedAt: "2026-08-24T00:00:00Z",
+      }]),
+    );
+
+    const loaded = loadBatchRecipePresets()[0];
+    expect(loaded.version).toBe(2);
+    expect(loaded.steps[0].inputs).toEqual({ other: "reference" });
+    expect(JSON.parse(exportBatchRecipePreset(loaded)).version).toBe(2);
+  });
+
   it("rejects unversioned or empty recipes", () => {
     expect(() => importBatchRecipePreset('{"steps":[]}')).toThrow(
       "not a fermiviewer",

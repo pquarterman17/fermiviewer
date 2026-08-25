@@ -3,7 +3,7 @@
 
 # GUI / headless operation coverage
 
-The parity audit for roadmap item 3 (`plans/MICROSCOPY_FEATURE_ROADMAP.md`): every analysis endpoint, the GUI surface that calls it, the registered op that makes it reachable headlessly (batch recipes, folder watch, `fv --script`, and `fermiviewer.api` all resolve through the ops registry — one column covers all four), the ADR 0004 output kinds of today's response, and the item-3 wave that will close each gap. Macro record/replay converges on the same registry for exactly the op-backed wire calls; everything else it records is replay-only (`frontend/src/lib/macroOpMap.ts` mirrors this table).
+The parity audit for roadmap item 3 (`plans/MICROSCOPY_FEATURE_ROADMAP.md`): every analysis endpoint, the GUI surface that calls it, the registered op that makes it reachable headlessly (batch recipes, folder watch, `fv --script`, and `fermiviewer.api` all resolve through the ops registry — one column covers all four), the ADR 0004 output kinds of today's response, and the item-3 wave that will close each gap. Macro record/replay uses the same registry where its narrower wire-call translation table has an explicit mapping; other recorded calls remain replay-only (`frontend/src/lib/macroOpMap.ts`).
 
 Route and op inventories are read live from the app and registry at generation time; classifications are curated in `tools/gen_coverage_table.py`. Every live route must be classified — analysis, reference, or allowlisted infrastructure — so ANY new route without a classification fails the build, and `tests/test_coverage_table.py` fails if this file drifts from a regeneration.
 

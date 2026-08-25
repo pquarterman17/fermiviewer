@@ -447,10 +447,17 @@ predicate consolidated, README parity overclaim corrected.
       palette's short-lived `recipe_step` flag is gone (no op is unscriptable
       now); derived-image `recipe_version` is 2, with the id binding recorded
       beside the steps.
-- [ ] Add recipe validation, versioning, dry-run summaries, and clear failure
-      provenance.
-- [ ] Correct public documentation until claimed GUI/headless parity matches
-      the generated coverage table.
+- [x] Add recipe validation, versioning, dry-run summaries, and clear failure
+      provenance. **Shipped 2026-08-25** (3F): the operation palette is
+      searchable; structured params accept JSON lists; named/variadic inputs
+      have open-image pickers and pre-run arity checks; preset format v2
+      preserves portable symbolic references while importing v1; batch and
+      watch runs bind those references separately; the dry-run card reports
+      workload, and per-image errors are visible beside progress.
+- [x] Correct public documentation until claimed GUI/headless parity matches
+      the generated coverage table. README now states 72/80 and names the
+      eight item-8/9 gates; generated API docs describe recipe input bindings;
+      macro docs no longer imply its narrower wire translator covers every op.
 
 **Done when:** every commonly used GUI analysis can be reproduced through a
 saved recipe and Python without maintaining different scientific logic.

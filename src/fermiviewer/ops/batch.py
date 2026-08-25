@@ -128,8 +128,16 @@ def run_recipe(
     values: list[OpResult] = []
     current = ds
     for index, step in enumerate(steps):
-        bound = {name: pool[ref] for name, ref in step_inputs(step).items()}
-        result = run(step["op"], current, step.get("params"), inputs=bound or None)
+        try:
+            bound = {name: pool[ref] for name, ref in step_inputs(step).items()}
+            result = run(step["op"], current, step.get("params"), inputs=bound or None)
+        except Exception as exc:
+            # Preserve the original exception type/message for Python callers,
+            # while giving adapters enough context to report which recipe step
+            # failed for a particular dataset.
+            setattr(exc, "recipe_step", index + 1)
+            setattr(exc, "recipe_op", step["op"])
+            raise
         results.append(result)
         if result.produces_image and result.derived is not None:
             current = result.derived
