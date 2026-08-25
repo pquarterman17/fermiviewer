@@ -315,3 +315,80 @@ def test_index_with_rect_roi(
     assert "center" in body
     assert "candidates" in body
     assert len(body["candidates"]) > 0
+
+
+# ── roi_frame / index_spots_roi (ADR 0005 §1 lift) ────────────────────
+
+
+def test_roi_frame_offset_and_size_describe_the_same_region() -> None:
+    """The bug this lift fixes: the crop origin was clamped to the image
+    while the effective size came from the RAW roi, so an overhanging ROI
+    left spots unshifted but shrank the width — and width scales d directly
+    in the uncalibrated branch, so d-spacings came back quietly wrong."""
+    import numpy as np
+
+    from fermiviewer.calc.diffraction import apply_roi, roi_frame
+
+    img = np.zeros((40, 50))
+    for roi in (
+        {"kind": "rect", "r0": 5, "c0": 6, "r1": 20, "c1": 30},
+        {"kind": "rect", "r0": -5, "c0": -5, "r1": 100, "c1": 100},  # overhangs
+        {"kind": "circle", "cr": 8, "cc": 9, "radius": 20},          # overhangs
+        {"kind": "circle", "cr": 20, "cc": 25, "radius": 5},
+    ):
+        cropped, (row_off, col_off) = apply_roi(img, roi)
+        frame = roi_frame(img.shape, roi)
+        assert (frame.row_off, frame.col_off) == (row_off, col_off), roi
+        assert (frame.height, frame.width) == cropped.shape[:2], roi
+
+
+def test_roi_frame_falls_back_to_the_whole_image_like_apply_roi() -> None:
+    from fermiviewer.calc.diffraction import roi_frame
+
+    frame = roi_frame((40, 50), None)
+    assert (frame.row_off, frame.col_off, frame.height, frame.width) == (0, 0, 40, 50)
+
+
+def test_index_spots_roi_refuses_a_roi_that_selects_nothing() -> None:
+    """Strict-ROI discipline (wave C): the route's zero-defaults would
+    otherwise index the full pattern while the caller believed a region
+    was in force."""
+    import numpy as np
+    import pytest
+
+    from fermiviewer.calc.diffraction_index import index_spots_roi
+
+    spots = np.array([[10.0, 12.0], [20.0, 22.0]])
+    with pytest.raises(ValueError, match="selects no pixels"):
+        index_spots_roi(
+            (40, 50), spots, {"kind": "rect", "r0": 10, "c0": 10, "r1": 10, "c1": 10}
+        )
+    with pytest.raises(ValueError, match="selects no pixels"):
+        index_spots_roi((40, 50), spots, {"kind": "circle", "cr": 5, "cc": 5, "radius": 0})
+
+
+def test_index_spots_roi_keeps_overlay_geometry_in_the_full_image_frame() -> None:
+    """center/measured_r drive the matched-ring overlay, drawn on the whole
+    image — only the indexing itself moves into the ROI frame."""
+    import numpy as np
+
+    from fermiviewer.calc.diffraction_index import index_spots_roi
+
+    spots = np.array([[10.0, 12.0], [30.0, 40.0]])
+    roi = {"kind": "rect", "r0": 5, "c0": 6, "r1": 35, "c1": 45}
+    scoped = index_spots_roi((40, 50), spots, roi)
+    whole = index_spots_roi((40, 50), spots, None)
+
+    assert scoped.center == whole.center == (21, 26)
+    assert scoped.measured_r == whole.measured_r
+
+
+def test_index_spots_roi_rejects_a_ragged_spot_list() -> None:
+    """It used to escape np.asarray as an unhandled 500."""
+    import numpy as np
+    import pytest
+
+    from fermiviewer.calc.diffraction_index import index_spots_roi
+
+    with pytest.raises(ValueError, match=r"\(N, 2\)"):
+        index_spots_roi((40, 50), np.array([[1.0, 2.0, 3.0]]))

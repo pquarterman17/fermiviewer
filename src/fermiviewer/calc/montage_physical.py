@@ -18,6 +18,7 @@ upsampled past its own real resolution.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -272,3 +273,45 @@ def montage_physical_scale(
         pixel_unit=target_unit,
         scale_bar=bar,
     )
+
+
+# ════════════════════════════════════════════════════════════════════
+# Panel ordering — read a sample series as a trend, not as request order
+# ════════════════════════════════════════════════════════════════════
+
+
+def order_by_param_value(values: Sequence[float | str | bool | None]) -> list[int]:
+    """Panel order as a permutation of INDICES into `values`, ascending by
+    parameter value (plan item 29).
+
+    Returns indices rather than reordered items so this stays a pure
+    numeric/ordering primitive: the caller keeps whatever tile objects it
+    has (pydantic models, dicts, ...) and this module keeps no opinion on
+    them — the layering rule that keeps calc/ server-free.
+
+    Only a genuinely numeric value (`int`/`float`) participates in the
+    ordering. `bool` is EXCLUDED even though it is an `int` subclass — a
+    sample flag is categorical, not a point on an ordinal scale — and so
+    is a numeric-LOOKING string like "300": a parameter recorded as text
+    is a label, and quietly parsing it would sort "300" against 3.37 as
+    if the two came from the same scale.
+
+    Every non-numeric or missing value keeps its original relative order
+    and is placed AFTER all the numeric ones (`list.sort` is stable, so
+    ties among numeric values keep request order too), which gives:
+
+      - a request where NO value is numeric is unchanged from
+        creation/request order (the pre-#29 behaviour) — every entry
+        falls into the "non-numeric" bucket, which is never reordered;
+      - a request mixing numeric and non-numeric values still produces a
+        usable trend for the entries that have one, without crashing or
+        silently dropping the rest.
+    """
+
+    def is_numeric(v: float | str | bool | None) -> bool:
+        return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+    numeric = [i for i, v in enumerate(values) if is_numeric(v)]
+    other = [i for i, v in enumerate(values) if not is_numeric(v)]
+    numeric.sort(key=lambda i: float(values[i]))  # type: ignore[arg-type]
+    return numeric + other

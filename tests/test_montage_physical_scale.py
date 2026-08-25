@@ -24,8 +24,8 @@ from scipy import ndimage as ndi
 from fermiviewer.calc.montage_physical import (
     PhysicalMontageResult,
     montage_physical_scale,
+    order_by_param_value,
 )
-from fermiviewer.routes.montage_compare import MontageTile, _order_tiles
 from fermiviewer.server import create_app
 from fermiviewer.session import store
 
@@ -266,50 +266,51 @@ def test_endpoint_empty_tiles_returns_422(client) -> None:
 
 
 # ── tile ordering by parameter value (plan item 29) ──────────────────────
+#
+# ADR 0005 §1: the ordering rule lives in calc.montage_physical (the route
+# only applies the permutation it returns), so these are calc-level tests
+# over plain values — no MontageTile, no server.
 
 
-def test_order_tiles_sorts_ascending_by_numeric_param_value() -> None:
-    tiles = [
-        MontageTile(image_id="c", param_value=500),
-        MontageTile(image_id="a", param_value=100),
-        MontageTile(image_id="b", param_value=300),
+def test_order_by_param_value_sorts_ascending() -> None:
+    assert order_by_param_value([500, 100, 300]) == [1, 2, 0]
+
+
+def test_order_by_param_value_excludes_bool() -> None:
+    """`bool` subclasses `int` but a sample flag is categorical, not a
+    point on an ordinal scale — True must NOT sort as 1.0 between 0 and 2."""
+    assert order_by_param_value([2.0, True, 0.0, False]) == [2, 0, 1, 3]
+
+
+def test_order_by_param_value_numeric_strings_sink_to_the_back() -> None:
+    """A parameter recorded as text is a label, not a measurement: "300"
+    is never parsed into the numeric ordering, it joins the tail."""
+    assert order_by_param_value(["300", 500, "100", 400]) == [3, 1, 0, 2]
+
+
+def test_order_by_param_value_non_numeric_and_missing_keep_order_at_the_end() -> None:
+    """A string value, a bool one and a missing one must not crash the
+    sort, and must all land after the numeric ones, preserving their own
+    relative order."""
+    values = ["cold", 200, None, 100, True]
+    assert order_by_param_value(values) == [
+        3, 1,        # numeric, ascending
+        0, 2, 4,     # everything else, original order
     ]
-    ordered = _order_tiles(tiles)
-    assert [t.image_id for t in ordered] == ["a", "b", "c"]
 
 
-def test_order_tiles_non_numeric_and_missing_values_keep_original_order_at_the_end() -> None:
-    """A string param_value, a bool one (excluded — categorical, not
-    ordinal), and a missing one must not crash the sort, and must all
-    land after the numeric ones, preserving their own relative order."""
-    tiles = [
-        MontageTile(image_id="str1", param_value="cold"),
-        MontageTile(image_id="num1", param_value=200),
-        MontageTile(image_id="missing1"),
-        MontageTile(image_id="num2", param_value=100),
-        MontageTile(image_id="bool1", param_value=True),
-    ]
-    ordered = _order_tiles(tiles)
-    assert [t.image_id for t in ordered] == [
-        "num2", "num1",       # numeric, ascending
-        "str1", "missing1", "bool1",  # everything else, original order
-    ]
-
-
-def test_order_tiles_with_no_param_values_is_request_order_unchanged() -> None:
+def test_order_by_param_value_all_none_is_identity_order() -> None:
     """The pre-#29 case: nobody sets param_value -> output order ==
     input order, exactly (the feature must be a strict no-op then)."""
-    tiles = [MontageTile(image_id=str(i)) for i in ["z", "y", "x"]]
-    assert [t.image_id for t in _order_tiles(tiles)] == ["z", "y", "x"]
+    assert order_by_param_value([None, None, None]) == [0, 1, 2]
 
 
-def test_order_tiles_is_a_stable_sort_for_tied_values() -> None:
-    tiles = [
-        MontageTile(image_id="first", param_value=1),
-        MontageTile(image_id="second", param_value=1),
-        MontageTile(image_id="third", param_value=1),
-    ]
-    assert [t.image_id for t in _order_tiles(tiles)] == ["first", "second", "third"]
+def test_order_by_param_value_is_stable_for_tied_values() -> None:
+    assert order_by_param_value([1, 1.0, 1]) == [0, 1, 2]
+
+
+def test_order_by_param_value_empty() -> None:
+    assert order_by_param_value([]) == []
 
 
 def test_endpoint_reorders_tiles_by_param_value(client, tmp_path) -> None:

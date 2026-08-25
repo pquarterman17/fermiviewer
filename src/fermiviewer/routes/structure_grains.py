@@ -12,14 +12,13 @@ import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from fermiviewer.calc.grain_edit import edit_grains
 from fermiviewer.calc.grain_report import grain_report
 from fermiviewer.calc.grains import (
     GrainSegmentation,
     WatershedSegmentation,
-    enforce_connected_grains,
     segment_auto,
     segment_watershed,
-    split_grain,
 )
 from fermiviewer.calc.roi import embed_rect_roi, extract_rect_roi, parse_rect_roi
 from fermiviewer.datastruct import DataStruct
@@ -142,36 +141,23 @@ def grains_edit(req: GrainEditRequest) -> dict:
     if not isinstance(source_id, str):
         raise HTTPException(422, "not an editable grain-label map")
     source_ds, raster = _raster(source_id)
-    labels = np.asarray(labels_ds.data, dtype=np.int64).copy()
-    h, w = labels.shape
 
-    pts = [
-        (int(round(y)), int(round(x)))
-        for x, y in req.points
-        if 0 <= int(round(y)) < h and 0 <= int(round(x)) < w
-    ]
-    if not pts:
-        raise HTTPException(422, "no points inside the image")
-
+    # One composition, shared with the `grains_edit` op (ADR 0005 §1):
+    # click rounding, the merge relabelling and the connectivity re-enforce
+    # all live in calc/grain_edit.py. `value_error_as_422` is new here — a
+    # ValueError out of split_grain used to escape as a 500, unlike the
+    # sibling /analyze/grains route which has always wrapped.
     base = str(labels_ds.metadata.get("grain_method", "edited"))
-    if req.op == "merge":
-        ids = {int(labels[r, c]) for r, c in pts if labels[r, c] > 0}
-        if len(ids) < 2:
-            raise HTTPException(422, "merge needs ≥2 distinct grains")
-        keep = min(ids)
-        for i in ids:
-            labels[labels == i] = keep
-        method = f"{base}+merge"
-    else:  # split
-        gid = int(labels[pts[0]])
-        if gid <= 0:
-            raise HTTPException(422, "click is not on a grain")
-        labels = split_grain(labels, raster, gid, granularity=req.granularity)
-        method = f"{base}+split"
-
-    # guarantee every grain is one connected region (a merge of non-adjacent
-    # grains, or a split, must not leave a label spanning disconnected pieces)
-    labels = enforce_connected_grains(labels)
+    with value_error_as_422():
+        edit = edit_grains(
+            np.asarray(labels_ds.data, dtype=np.int64),
+            raster,
+            req.op,
+            req.points,
+            granularity=req.granularity,
+        )
+    labels = edit.labels
+    method = f"{base}+{edit.op}"
     roi_text = labels_ds.metadata.get("grain_roi")
     roi = parse_rect_roi(roi_text)
     return _grains_payload(labels, method, source_ds, raster, source_id, roi)

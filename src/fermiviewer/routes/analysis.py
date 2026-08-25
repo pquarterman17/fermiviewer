@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from fermiviewer.calc import diffraction as diff
+from fermiviewer.calc.diffraction_index import index_spots_roi
 from fermiviewer.calc.eels import background, extract_map, thickness_map
 from fermiviewer.calc.eels_advanced import (
     align_zlp,
@@ -30,6 +31,7 @@ from fermiviewer.calc.uncertainty import eels_atomic_sigma
 from fermiviewer.datastruct import SPECTRAL_KINDS, AxisCal, DataKind, DataStruct
 from fermiviewer.jobs import JobQueueFullError, jobs
 from fermiviewer.models import ImageMeta
+from fermiviewer.routes._arrays import value_error_as_422
 from fermiviewer.session import UnknownImageError, store
 
 router = APIRouter(prefix="/api")
@@ -426,45 +428,27 @@ class IndexRequest(BaseModel):
 @router.post("/diffraction/index")
 def diffraction_index(req: IndexRequest) -> dict:
     ds = _get(req.image_id)
-    img_h, img_w = int(ds.data.shape[0]), int(ds.data.shape[1])
     cam = req.camera_length_mm if req.camera_length_mm is not None else float("nan")
-
-    # When an ROI is active we re-centre the index to the ROI sub-image so
-    # that the measured d-spacings use the correct image dimensions and
-    # centre.  Spots are already in full-image 1-based coords; shift them
-    # into the ROI frame before indexing, then shift the centre back.
-    roi_dict = req.roi.model_dump() if req.roi else None
-    spots = np.asarray(req.spots, dtype=np.float64)
-    if roi_dict is not None and spots.shape[0] > 0:
-        _, (row_off, col_off) = diff.apply_roi(ds.data, roi_dict)
-        spots = spots - np.array([[row_off, col_off]], dtype=np.float64)
-        # effective image size is the ROI bounding box
-        if roi_dict["kind"] == "rect":
-            img_h = max(1, roi_dict["r1"] - roi_dict["r0"])
-            img_w = max(1, roi_dict["c1"] - roi_dict["c0"])
-        elif roi_dict["kind"] == "circle":
-            rad = roi_dict["radius"]
-            img_h = img_w = 2 * rad + 1
-
-    cands = diff.index_spots(
-        spots, (img_h, img_w),
-        pixel_size=req.pixel_size_mm,
-        camera_length=cam,
-        acc_voltage=req.acc_voltage_kv,
-        tolerance=req.tolerance,
-        top_n=req.top_n,
-        extra_phases=list(_phase_registry.custom),  # imported/CIF phases
-    )
-
-    # Re-derive centre and measured radii so the frontend can draw matched
-    # rings at the correct positions (port of indexDiffraction.m output
-    # fields .center and .measuredR, used by drawMatchedRings.m).
-    full_spots = np.asarray(req.spots, dtype=np.float64)
-    full_center = (ds.data.shape[0] // 2 + 1, ds.data.shape[1] // 2 + 1)
-    measured_r = np.hypot(
-        full_spots[:, 0] - full_center[0],
-        full_spots[:, 1] - full_center[1],
-    ).tolist() if full_spots.shape[0] > 0 else []
+    # One composition, shared with the `diffraction_index` op: ROI framing,
+    # spot re-centring and the full-image overlay geometry all live in
+    # calc/diffraction_index.py (ADR 0005 §1). A degenerate or out-of-image
+    # ROI is now a 422 — it used to leave the spots unshifted while shrinking
+    # the effective width, which silently rescaled every measured d.
+    with value_error_as_422():
+        pattern = index_spots_roi(
+            ds.data.shape,
+            np.asarray(req.spots, dtype=np.float64),
+            req.roi.model_dump() if req.roi else None,
+            pixel_size=req.pixel_size_mm,
+            camera_length=cam,
+            acc_voltage=req.acc_voltage_kv,
+            tolerance=req.tolerance,
+            top_n=req.top_n,
+            extra_phases=list(_phase_registry.custom),  # imported/CIF phases
+        )
+    full_center = pattern.center
+    measured_r = pattern.measured_r
+    cands = pattern.candidates
 
     return {
         "center": list(full_center),       # [row, col] 1-based

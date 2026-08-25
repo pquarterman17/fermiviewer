@@ -33,6 +33,7 @@ __all__ = [
     "TrainedGrainModel",
     "TrainedPreview",
     "TrainedSegmentation",
+    "confidence_summary",
     "preview_trained",
     "rasterize_strokes",
     "segment_trained",
@@ -176,6 +177,32 @@ def preview_trained(
         classes=model.model.classes,
         fractions=fractions,
     )
+
+
+def confidence_summary(
+    max_prob: np.ndarray, threshold: float = 0.6
+) -> tuple[float, float]:
+    """(mean confidence, fraction below `threshold`) for a preview's
+    winning-class probability map.
+
+    Both numbers summarize `TrainedPreview.max_prob` — per pixel, the
+    probability the classifier gave the class it actually assigned. The
+    mean answers "how sure is this model overall"; the low-confidence
+    fraction answers "how much of the image is a coin flip", which is the
+    number that tells the user WHERE to paint more strokes, so it is
+    reported alongside the threshold it was measured at rather than
+    baked in silently.
+
+    The 0.6 default is a UI convention, not physics: with the typical 2-3
+    painted classes, chance is 0.33-0.5, so 0.6 flags pixels barely above
+    guessing while staying below the ~0.8+ a confidently-trained model
+    reaches. Callers may pass their own.
+
+    Returns plain floats (not 0-d arrays) so the values serialize as JSON
+    numbers straight from a route.
+    """
+    prob = np.asarray(max_prob, dtype=np.float64)
+    return float(np.mean(prob)), float(np.mean(prob < threshold))
 
 
 def segment_trained(

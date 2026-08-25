@@ -17,6 +17,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from fermiviewer.calc.grains_trained import (
+    confidence_summary,
     preview_trained,
     rasterize_strokes,
     segment_trained,
@@ -28,6 +29,13 @@ from fermiviewer.routes.structure_grains import _grains_payload
 from fermiviewer.session import store
 
 router = APIRouter(prefix="/api")
+
+# Probability below which a preview pixel counts as "uncertain" — the
+# number that tells the user where to paint more strokes. Echoed in the
+# response so the frontend labels the fraction instead of hard-coding the
+# threshold too, and passed explicitly to confidence_summary rather than
+# leaning on its default so the reported and measured values cannot drift.
+_CONFIDENCE_THRESHOLD = 0.6
 
 
 class Stroke(BaseModel):
@@ -140,6 +148,9 @@ def grains_train_preview(req: TrainPreviewRequest) -> dict:
         "grain_roi": roi_value,
     }
     source_name = store.name(req.image_id)
+    mean_confidence, low_confidence_fraction = confidence_summary(
+        prev.max_prob, threshold=_CONFIDENCE_THRESHOLD
+    )
     return {
         "classes": [
             {
@@ -163,7 +174,7 @@ def grains_train_preview(req: TrainPreviewRequest) -> dict:
             req.image_id,
             extra_meta={**preview_meta, "preview_kind": "confidence"},
         ),
-        "mean_confidence": float(np.mean(prev.max_prob)),
-        "low_confidence_fraction": float(np.mean(prev.max_prob < 0.6)),
-        "confidence_threshold": 0.6,
+        "mean_confidence": mean_confidence,
+        "low_confidence_fraction": low_confidence_fraction,
+        "confidence_threshold": _CONFIDENCE_THRESHOLD,
     }
