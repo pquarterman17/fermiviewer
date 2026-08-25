@@ -31,6 +31,8 @@ from fermiviewer import ops as _ops
 from fermiviewer.calc.raster import raster_of
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.io.registry import load_auto
+from fermiviewer.ops.batch import step_inputs as _step_inputs
+from fermiviewer.ops.batch import validate_recipe
 from fermiviewer.ops.provenance import ProvenanceLog, ProvenanceStep
 
 __all__ = ["Image", "Result", "Session", "open", "ops"]
@@ -276,14 +278,30 @@ class Image:
         )
         return result
 
-    def pipeline(self, steps: list[dict[str, Any]]) -> list[Result]:
+    def pipeline(
+        self,
+        steps: list[dict[str, Any]],
+        inputs: dict[str, Image | list[Image]] | None = None,
+    ) -> list[Result]:
         """Run an ordered recipe (``[{"op": name, "params": {...}}, ...]``),
         chaining derived images. Each step is recorded in provenance; returns
-        a Result per step. The final image is ``[r.image for r ...][-1]``."""
+        a Result per step. The final image is ``[r.image for r ...][-1]``.
+
+        A step may name auxiliary datasets for a multi-input op —
+        ``{"op": "image_math", "params": {...}, "inputs": {"other": "dark"}}``
+        — where ``"dark"`` is a key of ``inputs``. The names are symbolic so
+        the same recipe can run over many subjects with the pool rebound
+        (ADR 0005 §8); the datasets must be ``Image``s of this session.
+        """
+        pool = dict(inputs or {})
+        validate_recipe(steps, pool)
         results: list[Result] = []
         current: Image = self
         for step in steps:
-            r = current.run(step["op"], **(step.get("params") or {}))
+            bound = {
+                name: pool[ref] for name, ref in _step_inputs(step).items()
+            }
+            r = current.run(step["op"], **(step.get("params") or {}), **bound)
             results.append(r)
             if r.image is not None:
                 current = r.image
@@ -363,6 +381,17 @@ class Session:
         """Load a file (any registered format) into this session."""
         ds = load_auto(path)
         return self._adopt(ds, Path(path).name)
+
+    def adopt(self, ds: DataStruct, name: str) -> Image:
+        """Bring an already-loaded ``DataStruct`` into this session as a named
+        ``Image``, with its own id and provenance identity.
+
+        The complement of ``open``: a dataset parsed once (or computed in
+        ``calc``) can join several sessions without being re-read. Auxiliary
+        recipe inputs need exactly this — an op\'s extra datasets must belong
+        to the same session as its subject, and re-parsing a reference file
+        per batch input would be the only other way to get there."""
+        return self._adopt(ds, name)
 
     def _adopt(self, ds: DataStruct, name: str) -> Image:
         image_id = f"img{next(_ids)}"

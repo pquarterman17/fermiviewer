@@ -291,3 +291,88 @@ def test_register_final_image_with_nan_axis_origin_nulls_energy_bounds() -> None
     assert out["energy_first"] is None
     assert out["energy_last"] is None
     assert "NaN" not in jsonlib.dumps(out)
+
+
+# ── recipe auxiliary inputs (ADR 0005 §8) ─────────────────────────────
+
+
+def _subtract_recipe() -> list[dict]:
+    return [
+        {
+            "op": "image_math",
+            "params": {"op": "subtract"},
+            "inputs": {"other": "dark"},
+        }
+    ]
+
+
+def test_batch_run_binds_a_named_auxiliary_input(client) -> None:
+    subject, dark = _image("scan.dm4"), _image("dark.dm4", offset=3)
+    job = client.post(
+        "/api/batch/run",
+        json={
+            "image_ids": [subject],
+            "inputs": {"dark": dark},
+            "steps": _subtract_recipe(),
+        },
+    )
+    assert job.status_code == 200, job.text
+    body = _poll(client, job.json()["job_id"])
+    assert body["status"] == "done", body
+    result = body["result"]
+    assert result["succeeded"] == 1 and result["failed"] == 0
+    # the binding is recorded beside the steps: the steps alone no longer
+    # describe the computation once one of them names a dataset
+    assert result["inputs"] == {"dark": dark}
+    derived = result["outputs"][0]["derived"]
+    assert derived is not None
+
+
+def test_batch_run_404s_an_unknown_auxiliary_id_before_queueing(client) -> None:
+    subject = _image("scan.dm4")
+    response = client.post(
+        "/api/batch/run",
+        json={
+            "image_ids": [subject],
+            "inputs": {"dark": "no-such-image"},
+            "steps": _subtract_recipe(),
+        },
+    )
+    assert response.status_code == 404
+    assert "no-such-image" in response.text
+
+
+def test_batch_run_422s_a_step_naming_an_unbound_input(client) -> None:
+    """The reference is checked against the pool up front — a 200-input
+    batch must not start when every input would fail on step 1."""
+    subject = _image("scan.dm4")
+    response = client.post(
+        "/api/batch/run",
+        json={"image_ids": [subject], "steps": _subtract_recipe()},
+    )
+    assert response.status_code == 422
+    assert "does not supply" in response.text
+
+
+def test_batch_run_422s_a_multi_input_op_with_no_inputs_named(client) -> None:
+    subject = _image("scan.dm4")
+    response = client.post(
+        "/api/batch/run",
+        json={
+            "image_ids": [subject],
+            "steps": [{"op": "image_math", "params": {"op": "subtract"}}],
+        },
+    )
+    assert response.status_code == 422
+    assert "needs auxiliary input" in response.text
+
+
+def test_the_palette_no_longer_advertises_recipe_step(client) -> None:
+    """It existed for one release to mean "not scriptable"; every op is a
+    recipe step now, so the flag is gone rather than permanently true."""
+    ops_by_name = {
+        op["name"]: op
+        for op in client.get("/api/batch/operations").json()["operations"]
+    }
+    assert "recipe_step" not in ops_by_name["image_math"]
+    assert [i["name"] for i in ops_by_name["image_math"]["inputs"]] == ["other"]

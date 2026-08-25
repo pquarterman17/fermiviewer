@@ -241,13 +241,66 @@ def test_every_registered_fn_matches_its_declared_arity() -> None:
         )
 
 
-def test_multi_input_ops_are_rejected_as_recipe_steps() -> None:
-    """A recipe carries one subject and has no way to name a second dataset;
-    failing at validation beats failing halfway through a long run."""
+def test_a_multi_input_step_must_name_its_auxiliary_inputs() -> None:
+    """A recipe step CAN carry a multi-input op now, but only by naming the
+    datasets it needs — an unnamed required input fails at validation rather
+    than halfway through a long run."""
     from fermiviewer.ops.batch import validate_recipe
 
     with pytest.raises(ValueError, match="needs auxiliary input"):
-        validate_recipe([{"op": "gaussian"}, {"op": "image_math"}])
+        validate_recipe([{"op": "gaussian"}, {"op": "image_math"}], ["dark"])
+    # named and bound: accepted
+    validate_recipe(
+        [{"op": "image_math", "inputs": {"other": "dark"}}], ["dark"]
+    )
+
+
+def test_recipe_input_references_are_checked_against_the_pool() -> None:
+    from fermiviewer.ops.batch import validate_recipe
+
+    step = [{"op": "image_math", "inputs": {"other": "dark"}}]
+    with pytest.raises(ValueError, match="does not supply"):
+        validate_recipe(step, [])  # nothing bound
+    with pytest.raises(ValueError, match="does not supply"):
+        validate_recipe(step, ["flat"])  # a different name bound
+    with pytest.raises(ValueError, match="has no auxiliary input"):
+        validate_recipe([{"op": "image_math", "inputs": {"nope": "dark"}}], ["dark"])
+    with pytest.raises(ValueError, match="has no auxiliary input"):
+        validate_recipe([{"op": "gaussian", "inputs": {"other": "dark"}}], ["dark"])
+
+
+def test_recipe_binds_the_pool_and_runs_a_multi_input_step() -> None:
+    from fermiviewer.ops.batch import run_recipe
+
+    subject, dark = _image(), _image(offset=3)
+    result = run_recipe(
+        subject,
+        [{"op": "image_math", "params": {"op": "subtract"}, "inputs": {"other": "dark"}}],
+        inputs={"dark": dark},
+    )
+    np.testing.assert_allclose(
+        result.final.data, image_math(subject.data, dark.data, "subtract")
+    )
+
+
+def test_a_recipe_chains_a_multi_input_step_onto_the_derived_image() -> None:
+    """The subject keeps chaining; only the auxiliary input comes from the
+    pool, so the pool is NOT re-bound to each step's output."""
+    from fermiviewer.ops.batch import run_recipe
+
+    subject, dark = _image(), _image(offset=3)
+    result = run_recipe(
+        subject,
+        [
+            {"op": "gaussian", "params": {"sigma": 1.0}},
+            {"op": "image_math", "params": {"op": "subtract"}, "inputs": {"other": "dark"}},
+        ],
+        inputs={"dark": dark},
+    )
+    blurred = result.steps[0].derived
+    np.testing.assert_allclose(
+        result.final.data, image_math(blurred.data, dark.data, "subtract")
+    )
 
 
 # ── the exemplar ops run the same calc path as their routes ───────────
@@ -364,7 +417,6 @@ def test_batch_palette_publishes_input_and_shape_schemas() -> None:
     palette = {op["name"]: op for op in batch_operations()["operations"]}
 
     math_op = palette["image_math"]
-    assert math_op["recipe_step"] is False
     assert math_op["inputs"] == [
         {
             "name": "other",
@@ -384,7 +436,9 @@ def test_batch_palette_publishes_input_and_shape_schemas() -> None:
     assert masks["shape"]["min_rows"] == 1
 
     assert palette["gaussian"]["inputs"] == []
-    assert palette["gaussian"]["recipe_step"] is True
+    # `recipe_step` is gone: it existed only to say "not scriptable", which
+    # is no longer true of any op now that recipe steps can name inputs
+    assert "recipe_step" not in math_op
 
 
 def test_facade_rejects_raw_datastructs_without_touching_the_session() -> None:
@@ -451,3 +505,39 @@ def test_every_recorded_parent_resolves_in_its_own_session() -> None:
     for step in session.provenance.steps:
         for image_id in step.inputs:
             assert image_id in session.images, f"{step.op} records unresolvable {image_id}"
+
+
+# ── recipe inputs reach every scripting surface ───────────────────────
+
+
+def test_python_pipeline_binds_a_named_input() -> None:
+    session, a, b = _session_with_images()
+    results = a.pipeline(
+        [{"op": "image_math", "params": {"op": "subtract"}, "inputs": {"other": "dark"}}],
+        inputs={"dark": b},
+    )
+    np.testing.assert_allclose(
+        results[-1].image.to_numpy(),
+        image_math(a.datastruct.data, b.datastruct.data, "subtract"),
+    )
+    step = session.provenance.steps[-1]
+    assert step.inputs == (a.id, b.id)  # the pool member is a recorded parent
+
+
+def test_pipeline_rejects_an_unbound_reference_before_running() -> None:
+    session, a, b = _session_with_images()
+    images_before = dict(session.images)
+    with pytest.raises(ValueError, match="does not supply"):
+        a.pipeline(
+            [{"op": "image_math", "inputs": {"other": "dark"}}], inputs={"flat": b}
+        )
+    assert session.images == images_before  # nothing ran
+
+
+def test_session_adopt_brings_a_struct_in_without_reparsing() -> None:
+    import fermiviewer.api as fv
+
+    session = fv.Session()
+    img = session.adopt(_image(), "dark.dm4")
+    assert session.images[img.id] is img
+    assert img.name == "dark.dm4"

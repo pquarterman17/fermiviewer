@@ -45,6 +45,7 @@ from fermiviewer.routes.batch_ops import (
     BatchStepRequest,
     json_safe,
     register_final_image,
+    resolve_recipe_inputs,
     validate_recipe_steps,
 )
 from fermiviewer.session import store
@@ -66,6 +67,10 @@ class WatchStartRequest(BaseModel):
     dir: str
     steps: list[BatchStepRequest] = Field(min_length=1, max_length=30)
     interval: float = Field(default=1.0, gt=0, le=60)
+    # the recipe's auxiliary-input pool (ADR 0005 §8): recipe input name ->
+    # session image id(s). Bound once when the watch starts, so every file
+    # the watch picks up is processed against the SAME reference datasets
+    inputs: dict[str, str | list[str]] = Field(default_factory=dict)
 
 
 def is_watch_active() -> bool:
@@ -89,7 +94,10 @@ def shutdown_watch() -> None:
 
 
 def _run_watch_job(
-    path: Path, steps: list[dict[str, Any]], report: ProgressFn
+    path: Path,
+    steps: list[dict[str, Any]],
+    report: ProgressFn,
+    recipe_inputs: dict[str, str | list[str]] | None = None,
 ) -> dict[str, Any]:
     """The job body queued per new file: load it fresh, register it, run
     the recipe, and register the final chained image — the single-input
@@ -100,10 +108,13 @@ def _run_watch_job(
     def step_progress(index: int, total: int, result: Any) -> None:
         report(index / total, result.label)
 
-    recipe = run_recipe(ds, steps, progress=step_progress)
+    bindings = dict(recipe_inputs or {})
+    recipe = run_recipe(
+        ds, steps, progress=step_progress, inputs=resolve_recipe_inputs(bindings)
+    )
     has_image = any(step.produces_image for step in recipe.steps)
     derived = (
-        register_final_image(image_id, path.name, recipe.final, steps)
+        register_final_image(image_id, path.name, recipe.final, steps, bindings)
         if has_image
         else None
     )
@@ -123,12 +134,18 @@ def _run_watch_job(
     }
 
 
-def _on_new_file(path: Path, steps: list[dict[str, Any]]) -> None:
+def _on_new_file(
+    path: Path,
+    steps: list[dict[str, Any]],
+    recipe_inputs: dict[str, str | list[str]] | None = None,
+) -> None:
     """``FolderWatcher``'s ``on_file`` callback: submit and return right
     away so a slow recipe never blocks the poll loop from noticing the next
     file (a JobQueueFullError here is caught by FolderWatcher and surfaced
     through ``last_error`` — the file stays marked processed, not retried)."""
-    job_id = jobs.submit(lambda report: _run_watch_job(path, steps, report))
+    job_id = jobs.submit(
+        lambda report: _run_watch_job(path, steps, report, recipe_inputs)
+    )
     with _lock:
         _job_ids.append(job_id)
 
@@ -140,7 +157,12 @@ def watch_start(req: WatchStartRequest) -> dict[str, str]:
         raise HTTPException(404, f"directory not found: {req.dir}")
     if not directory.is_dir():
         raise HTTPException(422, f"not a directory: {req.dir}")
-    steps = validate_recipe_steps([step.model_dump() for step in req.steps])
+    steps = validate_recipe_steps(
+        [step.model_dump() for step in req.steps], req.inputs
+    )
+    # fail the START call on an unknown auxiliary id, rather than every file
+    # the watch later picks up
+    resolve_recipe_inputs(req.inputs)
 
     global _watcher, _job_ids
     with _lock:
@@ -151,7 +173,7 @@ def watch_start(req: WatchStartRequest) -> dict[str, str]:
         _job_ids = []
         watcher = FolderWatcher(
             directory=directory,
-            on_file=lambda path: _on_new_file(path, steps),
+            on_file=lambda path: _on_new_file(path, steps, req.inputs),
             is_openable=default_is_openable,
             interval=req.interval,
         )

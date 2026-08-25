@@ -51,6 +51,8 @@ from fermiviewer.calc.table_export import (
     table_to_csv_bytes,
     table_to_json_bytes,
 )
+from fermiviewer.datastruct import DataStruct
+from fermiviewer.io.registry import load_auto
 from fermiviewer.ops import UnknownOpError, get_spec
 from fermiviewer.ops.batch import validate_recipe
 from fermiviewer.watch import default_is_openable
@@ -137,11 +139,45 @@ def _normalize_steps(raw_steps: Any, path: Path) -> list[dict[str, Any]]:
             raise RecipeError(
                 f"recipe file '{path}': step {i}'s 'params' must be an object"
             )
-        steps.append({"op": step["op"], "params": dict(params)})
+        refs = step.get("inputs") or {}
+        if not isinstance(refs, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in refs.items()
+        ):
+            raise RecipeError(
+                f"recipe file '{path}': step {i}'s 'inputs' must map an op "
+                "input name to a recipe input name, both strings"
+            )
+        steps.append({
+            "op": step["op"],
+            "params": dict(params),
+            **({"inputs": dict(refs)} if refs else {}),
+        })
     return steps
 
 
-def load_recipe(path: Path) -> tuple[list[dict[str, Any]], str | None]:
+def _recipe_input_paths(data: dict[str, Any], path: Path) -> dict[str, Path]:
+    """The recipe's auxiliary-input pool: recipe input name -> a FILE.
+
+    A recipe file has no session, so its pool names files rather than image
+    ids. Paths resolve relative to the RECIPE file, not the working
+    directory, so a recipe and the reference data it needs travel together.
+    """
+    block = data.get("preset", data) if isinstance(data.get("preset"), dict) else data
+    raw = block.get("inputs") or {}
+    if not isinstance(raw, dict) or not all(
+        isinstance(k, str) and isinstance(v, str) for k, v in raw.items()
+    ):
+        raise RecipeError(
+            f"recipe file '{path}': 'inputs' must map a recipe input name to "
+            "a file path, both strings"
+        )
+    base = path.parent
+    return {name: (base / value) for name, value in raw.items()}
+
+
+def load_recipe(
+    path: Path,
+) -> tuple[list[dict[str, Any]], str | None, dict[str, Path]]:
     """Load + structurally validate a recipe file.
 
     Accepts a full ``.fvbatch.json`` preset export — exactly what
@@ -161,15 +197,19 @@ def load_recipe(path: Path) -> tuple[list[dict[str, Any]], str | None]:
     data = _read_json_object(path)
     raw_steps, name = _extract_steps_and_name(data, path)
     steps = _normalize_steps(raw_steps, path)
-    return steps, name
+    return steps, name, _recipe_input_paths(data, path)
 
 
-def _validate_ops(steps: list[dict[str, Any]], recipe_path: Path) -> None:
+def _validate_ops(
+    steps: list[dict[str, Any]],
+    recipe_path: Path,
+    input_names: Any = (),
+) -> None:
     """Every op + its params must resolve against the ops registry BEFORE any
     input is touched — an unknown op or a bad param is always a recipe
     error (exit 2), never a per-input failure."""
     try:
-        validate_recipe(steps)
+        validate_recipe(steps, input_names)
         for step in steps:
             spec = get_spec(step["op"])
             spec.resolve_params(step.get("params"))
@@ -227,11 +267,32 @@ def _dedupe_stem(used: dict[str, int], stem: str) -> str:
     return stem if n == 1 else f"{stem}_{n}"
 
 
+def _load_recipe_inputs(
+    input_paths: dict[str, Path],
+) -> dict[str, DataStruct]:
+    """Parse each auxiliary input ONCE for the whole run.
+
+    Every subject gets a fresh session, and an op\'s auxiliary datasets must
+    belong to the same session as its subject — so these structs are adopted
+    per subject (cheap) rather than re-read per subject (a full parse of a
+    reference cube for every file in the batch)."""
+    pool: dict[str, DataStruct] = {}
+    for name, path in input_paths.items():
+        try:
+            pool[name] = load_auto(path)
+        except Exception as exc:  # noqa: BLE001 - reported as a recipe error
+            raise RecipeError(
+                f"recipe input {name!r}: cannot load '{path}' ({exc})"
+            ) from None
+    return pool
+
+
 def _process_one(
     path: Path,
     steps: list[dict[str, Any]],
     recipe_name_slug: str | None,
     out_dir: Path,
+    aux: dict[str, DataStruct] | None = None,
 ) -> list[str]:
     """Run the recipe over one input and write its outputs. Returns the
     names of the files written (for the per-input summary line); raises on
@@ -240,7 +301,10 @@ def _process_one(
 
     session = Session()  # fresh session per input — no cross-input provenance
     img = session.open(path)
-    results = img.pipeline(steps)
+    pool: dict[str, Any] = {
+        name: session.adopt(ds, name) for name, ds in (aux or {}).items()
+    }
+    results = img.pipeline(steps, inputs=pool or None)
 
     stem = path.stem
     written: list[str] = []
@@ -309,8 +373,9 @@ def run_script(
     """
     recipe_path = Path(recipe_path)
     try:
-        steps, name = load_recipe(recipe_path)
-        _validate_ops(steps, recipe_path)
+        steps, name, input_paths = load_recipe(recipe_path)
+        _validate_ops(steps, recipe_path, input_paths)
+        aux = _load_recipe_inputs(input_paths)
     except RecipeError as exc:
         print(f"error: {exc}", file=stdout)
         return 2
@@ -331,7 +396,9 @@ def run_script(
     failures = 0
     for path in paths:
         try:
-            written = _process_one(path, steps, recipe_name_slug, out_path)
+            written = _process_one(
+                path, steps, recipe_name_slug, out_path, aux
+            )
         except Exception as exc:  # noqa: BLE001 — one bad input must not stop the run
             failures += 1
             print(f"FAIL  {path}: {exc}", file=stdout)
