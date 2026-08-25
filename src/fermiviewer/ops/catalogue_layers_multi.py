@@ -73,12 +73,19 @@ def _layers_multi(
     if len(shapes) != 1:
         raise ValueError("every compared map must have the same pixel grid")
 
-    cals = [pixel_cal_or_default(f) for f in frames]
     roi = parse_roi_param(params["roi"])
     result = compare_layers_across_maps(
         [np.asarray(f.data) for f in frames],
-        [px for px, _ in cals],
-        [unit for _, unit in cals],
+        # RAW `pixel_size`/`pixel_unit`, as the route passes them — NOT
+        # `pixel_cal_or_default`. That helper maps an uncalibrated map to
+        # (1.0, "px"), which `uniform_pixel_cal` cannot tell apart from a
+        # genuinely calibrated 1.0 px/px map, so an uncalibrated map would
+        # be accepted beside a calibrated reference and its σ_erf/σ_w
+        # compared as if they shared a physical scale. `NaN`/"" is what
+        # carries "uncalibrated" through to the check; the calc owns the
+        # 1.0/px fallback and applies it AFTER deciding compatibility.
+        [f.pixel_size for f in frames],
+        [f.pixel_unit for f in frames],
         reference=0,  # the subject IS the reference (see the module docstring)
         roi=roi,  # RectRoi IS the (r1, c1, r2, c2) tuple, 1-based inclusive
         axis=params["axis"],
