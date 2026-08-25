@@ -376,3 +376,49 @@ def test_the_palette_no_longer_advertises_recipe_step(client) -> None:
     }
     assert "recipe_step" not in ops_by_name["image_math"]
     assert [i["name"] for i in ops_by_name["image_math"]["inputs"]] == ["other"]
+
+
+def test_a_queued_batch_uses_the_pool_resolved_at_submit(client) -> None:
+    """The 200 accepted the recipe as runnable; a queue wait can be long,
+    and removing an auxiliary image before a worker picks the job up must
+    not turn that acceptance into a failure.
+
+    The store has no per-id delete, so the whole store is cleared and the
+    subject re-added — the subject is re-read per input by design, only the
+    auxiliary pool is snapshotted."""
+    from fermiviewer.routes.batch_ops import _run_batch, resolve_recipe_inputs
+
+    dark = _image("dark.dm4", offset=3)
+    pool = resolve_recipe_inputs({"dark": dark})  # what /batch/run closes over
+
+    store.clear()
+    subject = _image("scan.dm4")
+
+    result = _run_batch(
+        [subject], _subtract_recipe(), lambda *_: None, pool, {"dark": dark}
+    )
+
+    assert result["succeeded"] == 1, result
+    assert result["inputs"] == {"dark": dark}  # the id binding is still recorded
+
+
+def test_a_watch_run_uses_the_pool_resolved_at_start(tmp_path) -> None:
+    """A watch runs for hours; every file it picks up must see the reference
+    data bound at /watch/start, not whatever the store holds later."""
+    import numpy as np
+    from PIL import Image as PILImage
+
+    from fermiviewer.routes.batch_ops import resolve_recipe_inputs
+    from fermiviewer.routes.watch import _run_watch_job
+
+    dark = _image("dark.dm4", offset=3)
+    pool = resolve_recipe_inputs({"dark": dark})  # what /watch/start closes over
+
+    path = tmp_path / "incoming.png"
+    PILImage.fromarray(np.full((8, 8), 7, dtype=np.uint8)).save(path, format="PNG")
+
+    store.clear()  # the auxiliary image is deleted after the watch started
+    body = _run_watch_job(
+        path, _subtract_recipe(), lambda *_: None, pool, {"dark": dark}
+    )
+    assert body["derived"] is not None

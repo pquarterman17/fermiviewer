@@ -97,6 +97,7 @@ def _run_watch_job(
     path: Path,
     steps: list[dict[str, Any]],
     report: ProgressFn,
+    pool: dict[str, Any] | None = None,
     recipe_inputs: dict[str, str | list[str]] | None = None,
 ) -> dict[str, Any]:
     """The job body queued per new file: load it fresh, register it, run
@@ -109,9 +110,10 @@ def _run_watch_job(
         report(index / total, result.label)
 
     bindings = dict(recipe_inputs or {})
-    recipe = run_recipe(
-        ds, steps, progress=step_progress, inputs=resolve_recipe_inputs(bindings)
-    )
+    # the datasets resolved when the watch STARTED, closed over — a watch
+    # runs for hours over many files, and every one of them must see the
+    # same reference data the caller bound at /watch/start
+    recipe = run_recipe(ds, steps, progress=step_progress, inputs=dict(pool or {}))
     has_image = any(step.produces_image for step in recipe.steps)
     derived = (
         register_final_image(image_id, path.name, recipe.final, steps, bindings)
@@ -137,6 +139,7 @@ def _run_watch_job(
 def _on_new_file(
     path: Path,
     steps: list[dict[str, Any]],
+    pool: dict[str, Any] | None = None,
     recipe_inputs: dict[str, str | list[str]] | None = None,
 ) -> None:
     """``FolderWatcher``'s ``on_file`` callback: submit and return right
@@ -144,7 +147,7 @@ def _on_new_file(
     file (a JobQueueFullError here is caught by FolderWatcher and surfaced
     through ``last_error`` — the file stays marked processed, not retried)."""
     job_id = jobs.submit(
-        lambda report: _run_watch_job(path, steps, report, recipe_inputs)
+        lambda report: _run_watch_job(path, steps, report, pool, recipe_inputs)
     )
     with _lock:
         _job_ids.append(job_id)
@@ -161,8 +164,10 @@ def watch_start(req: WatchStartRequest) -> dict[str, str]:
         [step.model_dump() for step in req.steps], req.inputs
     )
     # fail the START call on an unknown auxiliary id, rather than every file
-    # the watch later picks up
-    resolve_recipe_inputs(req.inputs)
+    # the watch later picks up — and keep the resolved datasets, so a watch
+    # running for hours is not re-reading ids that may since have been
+    # removed (which is what the "bound once at start" promise means)
+    pool = resolve_recipe_inputs(req.inputs)
 
     global _watcher, _job_ids
     with _lock:
@@ -173,7 +178,7 @@ def watch_start(req: WatchStartRequest) -> dict[str, str]:
         _job_ids = []
         watcher = FolderWatcher(
             directory=directory,
-            on_file=lambda path: _on_new_file(path, steps, req.inputs),
+            on_file=lambda path: _on_new_file(path, steps, pool, req.inputs),
             is_openable=default_is_openable,
             interval=req.interval,
         )

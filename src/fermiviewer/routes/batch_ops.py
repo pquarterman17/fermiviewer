@@ -258,14 +258,17 @@ def _run_batch(
     image_ids: list[str],
     steps: list[dict[str, Any]],
     report: ProgressFn,
+    pool: dict[str, Any] | None = None,
     recipe_inputs: dict[str, str | list[str]] | None = None,
 ) -> dict[str, Any]:
     total = len(image_ids) * len(steps)
     bindings = dict(recipe_inputs or {})
-    # resolved ONCE for the whole batch: the pool is the same datasets for
-    # every subject, and re-reading the store per input would let a
-    # mid-batch deletion change the computation half way through
-    pool = resolve_recipe_inputs(bindings)
+    # `pool` is the datasets resolved at SUBMIT time and closed over — not
+    # ids re-read here. A queue wait can be long, and a recipe the caller
+    # was told (200) is runnable must not fail because an auxiliary image
+    # was removed while it waited. `bindings` is kept only to record which
+    # ids that snapshot came from.
+    pool = dict(pool or {})
     outputs: list[dict[str, Any]] = []
     for input_index, image_id in enumerate(image_ids):
         source_name = store.name(image_id)
@@ -338,13 +341,16 @@ def batch_run(req: BatchRunRequest) -> dict[str, str]:
     """Queue a recipe and retain independent success/failure per input."""
     steps = _validated_steps(req)
     _validate_images(req.image_ids)
-    # resolve the pool here too, so an unknown auxiliary id is a 404 BEFORE
-    # the job is queued — the same "never queue a recipe that must fail"
-    # rule the param validation above follows
-    resolve_recipe_inputs(req.inputs)
+    # Resolve ONCE, here: an unknown auxiliary id is a 404 before the job is
+    # queued (the "never queue a recipe that must fail" rule the param
+    # validation above follows), AND the job closes over these datasets, so
+    # what runs is the snapshot the 200 accepted.
+    pool = resolve_recipe_inputs(req.inputs)
     try:
         job_id = jobs.submit(
-            lambda report: _run_batch(req.image_ids, steps, report, req.inputs)
+            lambda report: _run_batch(
+                req.image_ids, steps, report, pool, req.inputs
+            )
         )
     except JobQueueFullError as exc:
         raise HTTPException(429, str(exc)) from None
