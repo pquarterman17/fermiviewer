@@ -218,28 +218,28 @@ DOMAINS: tuple[Domain, ...] = (
                 "POST",
                 "/api/analyze/montage",
                 "Image menu",
-                (),
+                ("montage",),
                 "map (derived image)",
-                "C",
-                "wave-C bounce-back: N input images by session id (gap 1); "
-                "labels=True also bakes session names into the pixels — a "
-                "future multi-input op contract must carry per-input labels "
-                "(ADR 0005 wave-C addendum). Kinds cell corrected from "
-                "'figure': the route registers a session image, it renders "
-                "no export",
+                "shipped",
+                "subject = first frame, rest variadic (ADR 0005 §8). "
+                "Per-input labels come from each dataset's metadata "
+                "`source` — the pure layer composes no session names, the "
+                "divergence the wave-C addendum predicted. `overlap`'s "
+                "lt=1.0 now has a real schema spelling (exclusive_maximum)",
             ),
             Row(
                 "POST",
                 "/api/analyze/montage-compare",
                 "— (no GUI caller)",
-                (),
+                ("montage_compare",),
                 "map (derived image)",
-                "C",
-                "wave-C bounce-back: gap 1 AND gap 2 — tiles are an array of "
-                "nested models each naming a session image, with a "
-                "float|str|bool param_value no scalar encoding covers "
-                "(ADR 0005 wave-C addendum). Kinds cell corrected from "
-                "'figure' as for montage",
+                "shipped",
+                "the joint gap-1 + gap-2 case: tiles are a variadic input "
+                "(§8) and their per-tile metadata a RecordSpec (§9). "
+                "`param_value` MUST be ANY_SCALAR — the panel order "
+                "distinguishes real numerics from numeric-looking strings "
+                "and excludes bool, so any narrower ptype would reorder the "
+                "panels differently from the route",
             ),
         ),
     ),
@@ -269,11 +269,12 @@ DOMAINS: tuple[Domain, ...] = (
                 "POST",
                 "/api/analyze/fit-shape",
                 "Inspector, Regions card",
-                (),
+                ("fit_shape",),
                 "fit ×2 + overlay",
-                "A",
-                "wave-A bounce-back: no image subject AND a variable-length "
-                "coordinate-pair list (ADR 0005 addendum 2026-08-23)",
+                "shipped",
+                "`points` rides a RowSpec list param (ADR 0005 §9); the op "
+                "takes the subject and ignores it, the wave-A no-subject "
+                "precedent. Points are 1-based (row, col)",
             ),
             Row(
                 "POST",
@@ -299,13 +300,13 @@ DOMAINS: tuple[Domain, ...] = (
                 "POST",
                 "/api/atoms/strain",
                 "Atom Column panel",
-                (),
+                ("atoms_strain",),
                 "table + scalar",
-                "B",
-                "wave-B bounce-back: `positions` is a variable-length "
-                "coordinate-pair list AND there is no image subject — the "
-                "fit-shape shape exactly (structured params, ADR 0005 "
-                "addendum gap 2, 2026-08-23)",
+                "shipped",
+                "`positions` rides a RowSpec list param (ADR 0005 §9), "
+                "1-based (x, y) — the OPPOSITE order to fit_shape's "
+                "(row, col). Optional `origin` is a NaN-sentinel pair, the "
+                "route's field being a flat [x0, y0]",
             ),
             Row(
                 "POST",
@@ -356,33 +357,37 @@ DOMAINS: tuple[Domain, ...] = (
                 "POST",
                 "/api/grains/edit",
                 "Stage grain merge/split",
-                (),
+                ("grains_edit",),
                 "table + map + overlay + scalar",
-                "A",
-                "wave-A bounce-back: input is a label map by session id whose "
-                "source image comes from metadata, plus a click list "
-                "(ADR 0005 addendum 2026-08-23)",
+                "shipped",
+                "subject = the label map, source image as a named input "
+                "(§8) instead of a metadata + store lookup; clicks ride a "
+                "RowSpec list, 0-based (x, y). Numerics lifted to "
+                "calc/grain_edit.py, which also adds the labels/raster "
+                "shape check the route never had",
             ),
             Row(
                 "POST",
                 "/api/grains/train-segment",
                 "Grains mode, Trained panel",
-                (),
+                ("train_segment",),
                 "table + map + overlay + scalar",
-                "A",
-                "wave-A bounce-back: scribble strokes are an array of nested "
-                "models with coordinate lists (ADR 0005 addendum 2026-08-23)",
+                "shipped",
+                "scribble strokes are the RecordSpec case §9 opened — a "
+                "record whose `points` field is itself a row list, the one "
+                "level of nesting the contract allows",
             ),
             Row(
                 "POST",
                 "/api/grains/train-preview",
                 "Grains mode, Trained panel",
-                (),
+                ("train_preview",),
                 "map ×2 + scalar ×2",
-                "A",
-                "wave-A bounce-back: same scribble-stroke shape as "
-                "train-segment, plus two derived maps "
-                "(ADR 0005 addendum 2026-08-23)",
+                "shipped",
+                "same RecordSpec strokes as train-segment (minus min_area); "
+                "the two maps inline as `map` envelopes on the wave-B "
+                "standing rule. The route's 0.6 confidence threshold is "
+                "lifted to calc/grains_trained.confidence_summary",
             ),
             Row(
                 "POST",
@@ -405,23 +410,27 @@ DOMAINS: tuple[Domain, ...] = (
                 "POST",
                 "/api/analyze/layers/grains",
                 "Cross-section per-layer view",
-                (),
+                ("layers_grains",),
                 "table",
-                "A",
-                "wave-A bounce-back: label map by session id + nested layer "
-                "bands + ragged interface traces "
-                "(ADR 0005 addendum 2026-08-23)",
+                "shipped",
+                "subject = the label map, with the source image as a named "
+                "input (ADR 0005 §8) instead of a metadata + store lookup. "
+                "Layer bands ride a RecordSpec; `interface_traces` is the "
+                "one ragged, null-accepting row list (§9)",
             ),
             Row(
                 "POST",
                 "/api/analyze/layers/multi",
                 "Layers multi-compare",
-                (),
+                ("layers_multi",),
                 "table + map refs",
-                "A",
-                "wave-A bounce-back: N input images by session id — "
-                "`fn(ds, params)` takes exactly one DataStruct "
-                "(ADR 0005 addendum 2026-08-23)",
+                "shipped",
+                "subject = the REFERENCE map (its detected axis and "
+                "interface positions govern every other map), with the rest "
+                "as a variadic input (ADR 0005 §8); the route's `reference` "
+                "index param is dropped as a second way to say the same "
+                "thing. Cross-map calibration checks lifted to "
+                "calc/layers_multi.py",
             ),
         ),
     ),
@@ -453,11 +462,13 @@ DOMAINS: tuple[Domain, ...] = (
                 "POST",
                 "/api/analyze/stitch",
                 "CTF/Stitch mode",
-                (),
+                ("stitch",),
                 "map + table",
-                "C",
-                "wave-C bounce-back: N input images by session id (gap 1, "
-                "ADR 0005 wave-C addendum)",
+                "shipped",
+                "subject = first tile, rest variadic (ADR 0005 §8). The "
+                "equal-size precondition is reproduced in the op: "
+                "`stitch_images` sizes its canvas from the first tile, so "
+                "unequal tiles would silently crop",
             ),
             Row(
                 "POST",
@@ -727,13 +738,15 @@ DOMAINS: tuple[Domain, ...] = (
                 "POST",
                 "/api/diffraction/index",
                 "Diffraction workshop",
-                (),
+                ("diffraction_index",),
                 "table",
-                "C",
-                "wave-C bounce-back: `spots` is a variable-length "
-                "coordinate-pair list — the fit-shape/atoms-strain shape "
-                "exactly (gap 2, ADR 0005 wave-C addendum); would also need "
-                "the ROI re-centring lifted from routes/analysis.py",
+                "shipped",
+                "`spots` rides a RowSpec list param, 1-based (row, col); the "
+                "ROI re-centring is lifted to calc/diffraction_index.py. "
+                "centre/measured_r stay in the FULL-image frame (they drive "
+                "the whole-image ring overlay) while indexing uses the ROI "
+                "frame. A degenerate ROI now errors instead of silently "
+                "indexing everything with a shrunken d-scale",
             ),
             Row(
                 "POST",

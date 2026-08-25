@@ -19,6 +19,13 @@ and ``others`` carries the rest.
 ``align_stack`` produces N−1 aligned rasters, more than ``OpResult.derived``
 can hold, so it follows the wave-B standing rule: inline ``map`` envelopes
 in ``value`` while the route registers session images.
+
+``stitch`` closes the last of this module's wave-C bounces. The montage
+pair (``montage``, ``montage_compare``) needs the same auxiliary-input
+machinery but would have pushed this file past the repo's 500-line ratchet,
+so it lives in ``catalogue_montage`` and imports the helpers from here —
+the ``catalogue_analysis``/``catalogue_spectral`` precedent (ADR 0005 §2:
+never grow an existing catalogue past the ratchet).
 """
 
 from __future__ import annotations
@@ -29,6 +36,7 @@ import numpy as np
 
 from fermiviewer.calc.raster import raster_of
 from fermiviewer.calc.stack import align_stack, image_math, mip
+from fermiviewer.calc.stitch import stitch_images
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.ops._envelopes import output
 from fermiviewer.ops.base import OpInput, OpParam, OpResult, OpSpec
@@ -41,15 +49,26 @@ __all__: list[str] = []
 _RASTER_KINDS = (DataKind.IMAGE, DataKind.RGB_IMAGE, DataKind.SPECTRUM_IMAGE)
 
 
-def _derived_image(arr: np.ndarray, parent: DataStruct, source: str) -> DataStruct:
+def _derived_image(
+    arr: np.ndarray,
+    parent: DataStruct,
+    source: str,
+    extra: dict[str, Any] | None = None,
+) -> DataStruct:
     """A derived raster carrying the subject's spatial calibration — the
     routes' ``_register`` behaviour, minus the session name (the pure layer
-    composes no display names; wave B's static-``source`` convention)."""
+    composes no display names; wave B's static-``source`` convention).
+
+    ``extra`` rides ``metadata`` alongside it, for the image producers whose
+    route ALSO returns non-image evidence (stitch's offsets/layout, a
+    montage's baked labels) — an ``OpResult`` carries a derived image or a
+    value, not both, and wave D's standing rule puts a derived struct's
+    diagnostics in its metadata."""
     return DataStruct(
         data=np.ascontiguousarray(arr),
         kind=DataKind.IMAGE,
         axes=(parent.axes[0], parent.axes[1]),
-        metadata={"parser": "derived", "source": source},
+        metadata={"parser": "derived", "source": source, **(extra or {})},
     )
 
 
@@ -184,3 +203,99 @@ register(
         fn=_mip,
     )
 )
+
+
+# ── stitch (derived mosaic; variadic input) ───────────────────────────
+
+
+def _stitch(ds: DataStruct, params: dict[str, Any], inputs: dict[str, Any]) -> OpResult:
+    frames = [ds, *inputs["others"]]
+    rasters = [raster_of(f) for f in frames]
+    shapes = {r.shape for r in rasters}
+    if len(shapes) != 1:
+        # the route's own precondition (routes/structure.py's 422), kept
+        # route-side there and reproduced here: `stitch_images` blends onto a
+        # canvas sized from the FIRST tile, so unequal tiles would silently
+        # crop rather than fail.
+        raise ValueError(
+            f"stitch requires equal-size tiles (got {sorted(shapes)})"
+        )
+    res = stitch_images(
+        rasters,
+        layout=params["layout"],
+        overlap_frac=params["overlap_frac"],
+        blend_width=params["blend_width"],
+    )
+    return OpResult(
+        op="stitch",
+        params=params,
+        label=f"mosaic ({len(rasters)} tiles, {res.layout})",
+        derived=_derived_image(
+            res.mosaic,
+            ds,
+            "stitch",
+            {
+                # The route returns `offsets` and the RESOLVED `layout`
+                # ('auto' -> the orientation the first-pair peak chose)
+                # alongside its registered mosaic. They ride the derived
+                # struct's metadata rather than a parallel `value`: an
+                # OpResult carries EITHER a derived image or a value, and a
+                # value set beside a derived image is dropped by both
+                # headless consumers (`run_recipe` collects values only from
+                # non-image steps; `Image.run` records `value` only when
+                # nothing was derived). `layout` could not be a `scalar`
+                # envelope anyway — that envelope's `value` is numeric and
+                # this one is a word. Wave D's derived-diagnostics rule
+                # (`eds_recalibrate`, `savgol_derivative`).
+                "layout": res.layout,
+                "offsets": res.offsets.tolist(),  # cumulative [dy, dx] per tile
+                "n_images": res.n_images,
+            },
+        ),
+    )
+
+
+register(
+    OpSpec(
+        name="stitch",
+        category="filter",
+        summary="Panoramic stitch of equal-size tiles: pairwise FFT "
+        "cross-correlation offsets, ramp-blended onto one mosaic "
+        "(calc/stitch.stitch_images). The subject is tile 1 (the offset "
+        "origin); the resolved layout and the per-tile offsets ride the "
+        "mosaic's metadata",
+        params={
+            "layout": OpParam(
+                str,
+                "horizontal",
+                choices=("horizontal", "vertical", "auto"),
+                doc="'auto' picks the orientation whose first-pair "
+                "correlation peak is stronger",
+            ),
+            "overlap_frac": OpParam(
+                float,
+                0.2,
+                minimum=0.0,
+                maximum=0.5,
+                doc="fraction of each tile searched for the seam",
+            ),
+            "blend_width": OpParam(
+                float, 50.0, doc="linear seam ramp width, in pixels"
+            ),
+        },
+        inputs={
+            "others": OpInput(
+                doc="the remaining tiles, in sequence order; the subject is "
+                "tile 1. Every tile must have the SAME shape (the route's "
+                "422)",
+                variadic=True,
+                min_count=1,
+                kinds=_RASTER_KINDS,
+            ),
+        },
+        fn=_stitch,
+    )
+)
+
+
+# ── the montage half of the wave-C multi-image cluster ────────────────

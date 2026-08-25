@@ -10,9 +10,9 @@ Route and op inventories are read live from the app and registry at generation t
 ## Summary
 
 - **144** HTTP endpoints; **80** perform analysis, 3 are physics-table lookups, and 61 are allowlisted infrastructure.
-- **61 of 80** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **77** ops in total.
+- **72 of 80** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **88** ops in total.
 - Registered-op reach IS headless reach: batch recipes, folder watch, `fv --script`, and the Python API all resolve steps through the same registry and cannot call anything else.
-- Remaining item-3 work: wave A (6), wave B (1), wave C (4), wave D (0) endpoints; 8 are parked behind the item-8/9 activation gates. Item 3 does not close while any analysis row lacks a wave or a named gate — every endpoint is assigned, none is silently deferred.
+- Remaining item-3 work: wave A (0), wave B (0), wave C (0), wave D (0) endpoints; 8 are parked behind the item-8/9 activation gates. Item 3 does not close while any analysis row lacks a wave or a named gate — every endpoint is assigned, none is silently deferred.
 
 ## Analysis endpoints
 
@@ -32,8 +32,8 @@ Route and op inventories are read live from the app and registry at generation t
 | `POST /api/analyze/interface-width` | Interface Width workshop. *no image subject — op ignores `ds`, profile travels as x/y CSV (`distribution_fit` precedent, blessed in ADR 0005's wave-A addendum)* | `interface_width` | fit | shipped |
 | `POST /api/analyze/lattice` | Lattice mode. *op flattens the two FFT spot picks to four required floats; unset pixel_size (NaN) falls back to the image calibration* | `lattice` | scalar set | shipped |
 | `POST /api/analyze/ctf` | Structure workshop, CTF mode. *the route's exclusive pixel_size_a > 0 bound is enforced in the op fn (OpParam has no exclusive minimum — ADR 0005 wave-B addendum)* | `ctf` | fit + curve ×2 + scalar | shipped |
-| `POST /api/analyze/montage` | Image menu. *wave-C bounce-back: N input images by session id (gap 1); labels=True also bakes session names into the pixels — a future multi-input op contract must carry per-input labels (ADR 0005 wave-C addendum). Kinds cell corrected from 'figure': the route registers a session image, it renders no export* | — | map (derived image) | wave C |
-| `POST /api/analyze/montage-compare` | — (no GUI caller). *wave-C bounce-back: gap 1 AND gap 2 — tiles are an array of nested models each naming a session image, with a float\|str\|bool param_value no scalar encoding covers (ADR 0005 wave-C addendum). Kinds cell corrected from 'figure' as for montage* | — | map (derived image) | wave C |
+| `POST /api/analyze/montage` | Image menu. *subject = first frame, rest variadic (ADR 0005 §8). Per-input labels come from each dataset's metadata `source` — the pure layer composes no session names, the divergence the wave-C addendum predicted. `overlap`'s lt=1.0 now has a real schema spelling (exclusive_maximum)* | `montage` | map (derived image) | shipped |
+| `POST /api/analyze/montage-compare` | — (no GUI caller). *the joint gap-1 + gap-2 case: tiles are a variadic input (§8) and their per-tile metadata a RecordSpec (§9). `param_value` MUST be ANY_SCALAR — the panel order distinguishes real numerics from numeric-looking strings and excludes bool, so any narrower ptype would reorder the panels differently from the route* | `montage_compare` | map (derived image) | shipped |
 
 ### Structure & particles
 
@@ -41,10 +41,10 @@ Route and op inventories are read live from the app and registry at generation t
 |---|---|---|---|---|
 | `POST /api/analyze/particles` | Structure workshop, Particles mode. *op flattens `class_thresholds` to four NaN-sentinel floats resolved against calc defaults* | `particles` | table + map (label map) | shipped |
 | `POST /api/analyze/efd-similarity` | Particles mode. *op drops the route's dead inherited `class_thresholds` field* | `efd_similarity` | table | shipped |
-| `POST /api/analyze/fit-shape` | Inspector, Regions card. *wave-A bounce-back: no image subject AND a variable-length coordinate-pair list (ADR 0005 addendum 2026-08-23)* | — | fit ×2 + overlay | wave A |
+| `POST /api/analyze/fit-shape` | Inspector, Regions card. *`points` rides a RowSpec list param (ADR 0005 §9); the op takes the subject and ignores it, the wave-A no-subject precedent. Points are 1-based (row, col)* | `fit_shape` | fit ×2 + overlay | shipped |
 | `POST /api/regions/propose` | Inspector, Regions card. *op flattens seed/rect to NaN-sentinel floats (`composition_profile` x1/y1 precedent)* | `propose_region` | overlay | shipped |
 | `POST /api/analyze/atoms` | Atom Column panel. *the detect/refine/lattice/sublattice/strain composition is lifted to calc/atom_report.py, shared with /atoms/strain* | `atoms` | table + overlay + scalar | shipped |
-| `POST /api/atoms/strain` | Atom Column panel. *wave-B bounce-back: `positions` is a variable-length coordinate-pair list AND there is no image subject — the fit-shape shape exactly (structured params, ADR 0005 addendum gap 2, 2026-08-23)* | — | table + scalar | wave B |
+| `POST /api/atoms/strain` | Atom Column panel. *`positions` rides a RowSpec list param (ADR 0005 §9), 1-based (x, y) — the OPPOSITE order to fit_shape's (row, col). Optional `origin` is a NaN-sentinel pair, the route's field being a flat [x0, y0]* | `atoms_strain` | table + scalar | shipped |
 | `POST /api/analyze/template-match` | Template/GPA mode. *op flattens the template rect to four required ints — (row, col, height, width), deliberately NOT the corner-ROI string other ops use* | `template_match` | table + overlay | shipped |
 | `POST /api/analyze/defects` | Defect workshop. *the two diagnostic maps inline as `map` envelopes in the op; the route registers them as session images (grains precedent, ADR 0005 wave-B addendum)* | `defects` | scalar + overlay + map ×2 | shipped |
 | `POST /api/analyze/distribution` | Population histogram panel | `distribution_fit` | scalar set + curve + fit ×3 | shipped |
@@ -54,13 +54,13 @@ Route and op inventories are read live from the app and registry at generation t
 | Route | GUI action | Registered op (headless reach) | Result kinds (ADR 0004) | Wave |
 |---|---|---|---|---|
 | `POST /api/analyze/grains` | Structure workshop, Grains mode. *op registers the synchronous computation; `run_async` job orchestration stays route-only (ADR 0005 §6)* | `grains` | table + map + overlay + scalar (job) | shipped |
-| `POST /api/grains/edit` | Stage grain merge/split. *wave-A bounce-back: input is a label map by session id whose source image comes from metadata, plus a click list (ADR 0005 addendum 2026-08-23)* | — | table + map + overlay + scalar | wave A |
-| `POST /api/grains/train-segment` | Grains mode, Trained panel. *wave-A bounce-back: scribble strokes are an array of nested models with coordinate lists (ADR 0005 addendum 2026-08-23)* | — | table + map + overlay + scalar | wave A |
-| `POST /api/grains/train-preview` | Grains mode, Trained panel. *wave-A bounce-back: same scribble-stroke shape as train-segment, plus two derived maps (ADR 0005 addendum 2026-08-23)* | — | map ×2 + scalar ×2 | wave A |
+| `POST /api/grains/edit` | Stage grain merge/split. *subject = the label map, source image as a named input (§8) instead of a metadata + store lookup; clicks ride a RowSpec list, 0-based (x, y). Numerics lifted to calc/grain_edit.py, which also adds the labels/raster shape check the route never had* | `grains_edit` | table + map + overlay + scalar | shipped |
+| `POST /api/grains/train-segment` | Grains mode, Trained panel. *scribble strokes are the RecordSpec case §9 opened — a record whose `points` field is itself a row list, the one level of nesting the contract allows* | `train_segment` | table + map + overlay + scalar | shipped |
+| `POST /api/grains/train-preview` | Grains mode, Trained panel. *same RecordSpec strokes as train-segment (minus min_area); the two maps inline as `map` envelopes on the wave-B standing rule. The route's 0.6 confidence threshold is lifted to calc/grains_trained.confidence_summary* | `train_preview` | map ×2 + scalar ×2 | shipped |
 | `POST /api/analyze/layers` | Layers workshop | `layers` | curve + table + fit (per interface) | shipped |
 | `POST /api/analyze/layers/edit` | Layers workshop. *op flattens `positions` to a CSV float list (`distribution_fit` values precedent)* | `layers_edit` | curve + table + fit | shipped |
-| `POST /api/analyze/layers/grains` | Cross-section per-layer view. *wave-A bounce-back: label map by session id + nested layer bands + ragged interface traces (ADR 0005 addendum 2026-08-23)* | — | table | wave A |
-| `POST /api/analyze/layers/multi` | Layers multi-compare. *wave-A bounce-back: N input images by session id — `fn(ds, params)` takes exactly one DataStruct (ADR 0005 addendum 2026-08-23)* | — | table + map refs | wave A |
+| `POST /api/analyze/layers/grains` | Cross-section per-layer view. *subject = the label map, with the source image as a named input (ADR 0005 §8) instead of a metadata + store lookup. Layer bands ride a RecordSpec; `interface_traces` is the one ragged, null-accepting row list (§9)* | `layers_grains` | table | shipped |
+| `POST /api/analyze/layers/multi` | Layers multi-compare. *subject = the REFERENCE map (its detected axis and interface positions govern every other map), with the rest as a variadic input (ADR 0005 §8); the route's `reference` index param is dropped as a second way to say the same thing. Cross-map calibration checks lifted to calc/layers_multi.py* | `layers_multi` | table + map refs | shipped |
 
 ### Stacks & mosaics
 
@@ -68,7 +68,7 @@ Route and op inventories are read live from the app and registry at generation t
 |---|---|---|---|---|
 | `POST /api/analyze/align-stack` | Image menu. *a gap-1 exemplar: subject = reference frame, `others` is a variadic input (ADR 0005 §8). The N-1 aligned rasters inline as `map` envelopes; the route registers session images* | `align_stack` | map ×N + table | shipped |
 | `POST /api/analyze/mip` | Image menu. *a gap-1 exemplar: subject = first frame, `others` is a variadic input (ADR 0005 §8)* | `mip` | map | shipped |
-| `POST /api/analyze/stitch` | CTF/Stitch mode. *wave-C bounce-back: N input images by session id (gap 1, ADR 0005 wave-C addendum)* | — | map + table | wave C |
+| `POST /api/analyze/stitch` | CTF/Stitch mode. *subject = first tile, rest variadic (ADR 0005 §8). The equal-size precondition is reproduced in the op: `stitch_images` sizes its canvas from the first tile, so unequal tiles would silently crop* | `stitch` | map + table | shipped |
 | `POST /api/analyze/image-math` | Image menu. *the gap-1 exemplar: the subject is a_id and `other` is a named input the CALLER resolves (ADR 0005 §8), so the op still never reads the session store* | `image_math` | map | shipped |
 | `POST /api/analyze/back-project` | Analysis menu. *tomography — parked with roadmap item 9* | — | map | parked (item 8/9) |
 
@@ -113,7 +113,7 @@ Route and op inventories are read live from the app and registry at generation t
 | Route | GUI action | Registered op (headless reach) | Result kinds (ADR 0004) | Wave |
 |---|---|---|---|---|
 | `POST /api/diffraction/detect` | Diffraction workshop. *op flattens the rect/circle _Roi to a roi_kind discriminator + NaN-sentinel groups; a roi_kind without its coordinates is an error, never a silent whole-image analysis (deliberate tightening, ADR 0005 wave-C addendum)* | `diffraction_detect` | table + overlay | shipped |
-| `POST /api/diffraction/index` | Diffraction workshop. *wave-C bounce-back: `spots` is a variable-length coordinate-pair list — the fit-shape/atoms-strain shape exactly (gap 2, ADR 0005 wave-C addendum); would also need the ROI re-centring lifted from routes/analysis.py* | — | table | wave C |
+| `POST /api/diffraction/index` | Diffraction workshop. *`spots` rides a RowSpec list param, 1-based (row, col); the ROI re-centring is lifted to calc/diffraction_index.py. centre/measured_r stay in the FULL-image frame (they drive the whole-image ring overlay) while indexing uses the ROI frame. A degenerate ROI now errors instead of silently indexing everything with a shrunken d-scale* | `diffraction_index` | table | shipped |
 | `POST /api/diffraction/calibrate` | Diffraction calibration. *op anchors d via d_known_ang or standard_phase + hkl_h/k/l NaN-sentinel floats (validated whole numbers); the anchor scalars are absent — not null — when unresolved* | `diffraction_calibrate` | fit + scalar ×2 | shipped |
 | `POST /api/analyze/simulate` | Diffraction simulation. *no image subject — op ignores `ds` (distribution_fit precedent); the rendered pattern inlines as a `map` envelope while the route registers a session image only when parented* | `diffraction_simulate` | table + map + scalar | shipped |
 
