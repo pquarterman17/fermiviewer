@@ -298,3 +298,88 @@ def test_layers_ops_accept_a_roi_string() -> None:
         inputs={"source": _image(20, 20)},
     )
     assert grains.value["outputs"]
+
+
+def test_layer_grains_table_holds_only_scalars() -> None:
+    """A table cell is a scalar (ADR 0004 §3 — rows go to a 2-D member in
+    column order). `LayerGrainSummary.grains` is a tuple of nested
+    `GrainSlice` records, so it rides its own table instead of a cell."""
+    result = ops.run(
+        "layers_grains",
+        _label_map(),
+        {
+            "axis": "y",
+            "layers": _BANDS,
+            "selected_indices": "0,1",
+            "interface_traces": [],
+        },
+        inputs={"source": _image(20, 20)},
+    )
+    by_name = {o["name"]: o for o in result.value["outputs"]}
+    summary = by_name["layer_grains"]["data"]
+    assert "grains" not in summary["columns"]
+    for row in summary["rows"]:
+        for cell in row:
+            assert isinstance(cell, (int, float, str, bool)) or cell is None
+
+    slices = by_name["layer_grain_slices"]["data"]
+    assert slices["columns"][0] == "layer"
+    assert "source_grain_id" in slices["columns"]
+    # both seeded grains are clipped into a band, so neither is lost
+    assert {row[0] for row in slices["rows"]} == {0, 1}
+    assert all(len(row) == len(slices["columns"]) for row in slices["rows"])
+
+
+def test_layers_grains_rejects_an_empty_interface_trace() -> None:
+    """An EMPTY trace is a length mismatch (the route's 422), not "no
+    trace" — treating it as absent would silently measure the grains
+    against a flat band boundary instead."""
+    with pytest.raises(ValueError, match="interface trace length"):
+        ops.run(
+            "layers_grains",
+            _label_map(),
+            {
+                "axis": "y",
+                "layers": _BANDS,
+                "selected_indices": "0,1",
+                "interface_traces": [[]],
+            },
+            inputs={"source": _image(20, 20)},
+        )
+
+
+# ── grains_edit subject rank ──────────────────────────────────────────
+
+
+def test_grains_edit_refuses_a_non_2d_subject() -> None:
+    """A 3-D subject shares its first two axes with the source raster, so
+    the shape check alone let it through — and it died inside
+    `merge_labels_at` on numpy's ambiguous-truth-value error."""
+    labels = np.zeros((20, 20, 3), dtype=np.float64)
+    labels[2:8, 2:8, :] = 1
+    labels[12:18, 12:18, :] = 2
+    cube = DataStruct(
+        data=labels,
+        kind=DataKind.SPECTRUM_IMAGE,
+        axes=(
+            AxisCal(0.5, 0.0, "nm"),
+            AxisCal(0.5, 0.0, "nm"),
+            AxisCal(1.0, 0.0, "eV"),
+        ),
+    )
+    with pytest.raises(ValueError, match="grain-label map"):
+        ops.run(
+            "grains_edit",
+            cube,
+            {"op": "merge", "points": [[4.0, 4.0], [14.0, 14.0]]},
+            inputs={"source": _image(20, 20)},
+        )
+
+
+def test_edit_grains_rejects_a_3d_label_map() -> None:
+    """The calc guard itself, independent of the op's kind check."""
+    from fermiviewer.calc.grain_edit import edit_grains
+
+    labels = np.ones((8, 8, 3), dtype=np.int64)
+    with pytest.raises(ValueError, match="must be 2-D"):
+        edit_grains(labels, np.zeros((8, 8)), "merge", [(1.0, 1.0)])

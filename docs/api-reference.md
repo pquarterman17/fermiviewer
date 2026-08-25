@@ -388,7 +388,7 @@ The registered operation catalogue: name, category, summary, params.
 | `spot2_col` | `float` |  | yes |  |  | 2nd FFT spot col, 1-based |
 | `pixel_size` | `float` | nan | no |  |  | real-space calibration (unit/px); leave unset (NaN) to use the image's own, falling back to 1.0 |
 
-#### `layers_grains` — Assign a grain-label map to reviewed cross-section layer bands (calc/grain_layers.measure_grains_by_layer). Shape angle is morphological, not crystallographic; grains crossing a reviewed interface are clipped and reported in each layer
+#### `layers_grains` — Assign a grain-label map to reviewed cross-section layer bands (calc/grain_layers.measure_grains_by_layer). Shape angle is morphological, not crystallographic; grains crossing a reviewed interface are clipped and reported in each layer — once per band in `layer_grain_slices`, beside the per-band `layer_grains` summary
 
 *category: `analysis` · produces: value*
 

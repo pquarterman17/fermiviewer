@@ -24,12 +24,16 @@ Two subject choices worth stating, because both are judgement calls:
 
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, fields
 from typing import Any
 
 import numpy as np
 
-from fermiviewer.calc.grain_layers import LayerBounds, measure_grains_by_layer
+from fermiviewer.calc.grain_layers import (
+    GrainSlice,
+    LayerBounds,
+    measure_grains_by_layer,
+)
 from fermiviewer.calc.layers_multi import compare_layers_across_maps
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.ops._envelopes import output, scalar
@@ -47,6 +51,13 @@ from fermiviewer.ops.registry import register
 __all__: list[str] = []
 
 _RASTER_KINDS = (DataKind.IMAGE, DataKind.RGB_IMAGE, DataKind.SPECTRUM_IMAGE)
+
+#: `LayerGrainSummary.grains` holds a tuple of nested `GrainSlice` records.
+#: A table cell is a scalar (ADR 0004 §3: rows inline when small, else the
+#: member holds a 2-D array in column order), so the nested tuple cannot
+#: ride the per-layer summary row — it becomes its own table, one row per
+#: clipped grain, keyed by the layer it fell in.
+_SLICE_COLUMNS = tuple(f.name for f in fields(GrainSlice))
 
 
 # ── layers_multi (analysis; variadic input) ───────────────────────────
@@ -179,7 +190,11 @@ def _layers_grains(
         for row in params["layers"]
     ]
     traces = [
-        None if not trace else np.asarray(trace, dtype=np.float64)
+        # `is None`, not falsy: an EMPTY trace is a length mismatch against
+        # the ROI's lateral dimension, and the route raises for it (422).
+        # Treating [] as "no trace" would silently substitute a FLAT band
+        # boundary and return grain measurements for the wrong geometry.
+        None if trace is None else np.asarray(trace, dtype=np.float64)
         for trace in params["interface_traces"]
     ]
     roi = parse_roi_param(params["roi"])
@@ -194,6 +209,8 @@ def _layers_grains(
         unit=unit,
     )
     layer_rows = [asdict(layer) for layer in result.layers]
+    for row in layer_rows:
+        row.pop("grains", None)
     columns = list(layer_rows[0]) if layer_rows else []
     outputs = [
         scalar("pixel_size", result.pixel_size, unit=result.unit),
@@ -201,6 +218,18 @@ def _layers_grains(
             "table",
             "layer_grains",
             {"columns": columns, "rows": [list(row.values()) for row in layer_rows]},
+        ),
+        output(
+            "table",
+            "layer_grain_slices",
+            {
+                "columns": ["layer", *_SLICE_COLUMNS],
+                "rows": [
+                    [layer.index, *(getattr(sl, name) for name in _SLICE_COLUMNS)]
+                    for layer in result.layers
+                    for sl in layer.grains
+                ],
+            },
         ),
         # the assignment raster: the route registers it as a session image,
         # the op inlines it (the wave-B standing rule for extra rasters)
@@ -230,7 +259,8 @@ register(
         summary="Assign a grain-label map to reviewed cross-section layer "
         "bands (calc/grain_layers.measure_grains_by_layer). Shape angle is "
         "morphological, not crystallographic; grains crossing a reviewed "
-        "interface are clipped and reported in each layer",
+        "interface are clipped and reported in each layer — once per band "
+        "in `layer_grain_slices`, beside the per-band `layer_grains` summary",
         params={
             "axis": OpParam(
                 str, required=True, choices=("x", "y"), doc="depth axis"

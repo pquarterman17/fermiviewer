@@ -83,16 +83,28 @@ def edit_grains(
 ) -> GrainEdit:
     """Apply one interactive edit to a grain-label map.
 
-    ``labels`` and ``image`` must be the same shape — the label map and the
-    intensity raster it was derived from. Nothing checked that before this
-    lift (the route fetched them from two different session entries), and a
-    mismatch would surface as an obscure index error inside the watershed.
+    ``labels`` must be a 2-D label map and must match ``image`` — the
+    intensity raster it was derived from — in its first two axes. Nothing
+    checked that before this lift (the route fetched them from two
+    different session entries), and a mismatch would surface as an obscure
+    index error inside the watershed.
+
+    The rank check is separate from the shape check on purpose: a 3-D
+    subject (an RGB image, or a spectrum cube handed over unreduced) shares
+    its first two axes with a 2-D raster, so ``shape[:2]`` alone lets it
+    through, and it then dies inside ``merge_labels_at`` on numpy's "truth
+    value of an array with more than one element is ambiguous" — an error
+    that names nothing the caller passed.
     """
     labels = np.asarray(labels, dtype=np.int64)
     image = np.asarray(image)
-    if labels.shape[:2] != image.shape[:2]:
+    if labels.ndim != 2:
         raise ValueError(
-            f"label map {labels.shape[:2]} and image {image.shape[:2]} "
+            f"label map must be 2-D (got shape {labels.shape})"
+        )
+    if labels.shape != image.shape[:2]:
+        raise ValueError(
+            f"label map {labels.shape} and image {image.shape[:2]} "
             f"must have the same shape"
         )
     if op not in ("merge", "split"):

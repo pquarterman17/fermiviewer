@@ -235,6 +235,13 @@ def _grains_edit(
     image the split watershed needs arrives as the `source` input, because
     the route reaches it through `metadata["grain_source"]` + a store
     lookup and `ops/` may not read the store (§8)."""
+    if ds.kind is not DataKind.IMAGE:
+        # the route's own precondition ("labels_id must be an editable
+        # grain-label map", a 400). `_RASTER_KINDS` is right for the SOURCE
+        # input — `raster_of` reduces a cube or an RGB frame to a raster —
+        # but a label map is not reducible: summing a 3-D subject would
+        # invent label ids that were never segmented.
+        raise ValueError("the subject must be a grain-label map (a 2-D image)")
     source_ds: DataStruct = inputs["source"]
     raster = raster_of(source_ds)
     edit = edit_grains(
