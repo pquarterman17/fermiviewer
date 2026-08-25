@@ -138,12 +138,18 @@ image id (see ``_as_structs``).
 ### `Image.pipeline()`
 
 ```python
-def pipeline(steps: list[dict[str, Any]]) -> list[Result]
+def pipeline(steps: list[dict[str, Any]], inputs: dict[str, Image | list[Image]] | None = None) -> list[Result]
 ```
 
 Run an ordered recipe (``[{"op": name, "params": {...}}, ...]``),
 chaining derived images. Each step is recorded in provenance; returns
 a Result per step. The final image is ``[r.image for r ...][-1]``.
+
+A step may name auxiliary datasets for a multi-input op —
+``{"op": "image_math", "params": {...}, "inputs": {"other": "dark"}}``
+— where ``"dark"`` is a key of ``inputs``. The names are symbolic so
+the same recipe can run over many subjects with the pool rebound
+(ADR 0005 §8); the datasets must be ``Image``s of this session.
 
 ### `Image.methods()`
 
@@ -241,6 +247,21 @@ def open(path: str | Path) -> Image
 ```
 
 Load a file (any registered format) into this session.
+
+### `Session.adopt()`
+
+```python
+def adopt(ds: DataStruct, name: str) -> Image
+```
+
+Bring an already-loaded ``DataStruct`` into this session as a named
+``Image``, with its own id and provenance identity.
+
+The complement of ``open``: a dataset parsed once (or computed in
+``calc``) can join several sessions without being re-read. Auxiliary
+recipe inputs need exactly this — an op's extra datasets must belong
+to the same session as its subject, and re-parsing a reference file
+per batch input would be the only other way to get there.
 
 ## `open()`
 

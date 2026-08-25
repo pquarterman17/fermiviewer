@@ -209,6 +209,10 @@ waves adopt it is expensive; catch it here, before adoption.
   pattern.
 - **3F — Codex/terra medium:** recipe-builder discoverability, validation and
   progress/error UI; documentation truth pass.
+- **3H — Claude/high capability:** recipe-level named auxiliary inputs, so the
+  multi-input ops 3G unlocked are scriptable and not merely callable. Shipped
+  2026-08-24. The frontend's preset serializer and recipe builder still
+  rebuild steps as `{op, params}` and need the key carried through (Codex).
 - **3G — Claude/high capability:** the operation-contract re-opening (gaps 1–2
   from the wave addenda). Shipped 2026-08-24; ADR 0005 §8–§9. Its follow-on
   registrations (the eleven remaining bounces) are lower-cost wave work again,
@@ -418,9 +422,20 @@ predicate consolidated, README parity overclaim corrected.
       contract (fit-shape, atoms/strain, diffraction/index, train-segment,
       train-preview, stitch, montage, grains/edit, layers/grains,
       layers/multi, montage-compare).
-- [ ] Give recipe steps a named-input vocabulary so multi-input ops are
+- [x] Give recipe steps a named-input vocabulary so multi-input ops are
       scriptable, not just callable — required by this item's done
       condition, which asks for a saved recipe, not merely an op.
+      **Shipped 2026-08-24** (3H, ADR 0005 §8 + its recipe addendum): a step
+      carries `"inputs": {"<op input>": "<recipe input>"}` and the run binds
+      the pool those symbolic names resolve against, so one saved recipe
+      still runs over many subjects. Bound by each caller from what it owns —
+      `/batch/run` and `/watch/start` from session image ids (resolved once
+      per batch, 404 before queueing), `fv --script` from files named
+      relative to the recipe file, `Image.pipeline` from session Images.
+      References are checked against the pool before the first step. The
+      palette's short-lived `recipe_step` flag is gone (no op is unscriptable
+      now); derived-image `recipe_version` is 2, with the id binding recorded
+      beside the steps.
 - [ ] Add recipe validation, versioning, dry-run summaries, and clear failure
       provenance.
 - [ ] Correct public documentation until claimed GUI/headless parity matches

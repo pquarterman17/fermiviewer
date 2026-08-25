@@ -393,3 +393,71 @@ def test_main_script_mode_never_starts_the_server(
 
     assert exc_info.value.code == 7
     assert calls == ["run_script"]
+
+
+# ── recipe auxiliary inputs (ADR 0005 §8) ─────────────────────────────
+
+
+def test_script_binds_a_named_input_file(tmp_path: Path) -> None:
+    """A recipe file names its auxiliary datasets as FILES (there is no
+    session on the CLI), resolved relative to the recipe file."""
+    subject = _write_png(tmp_path / "scan.png", value=200)
+    _write_png(tmp_path / "dark.png", value=50)
+    recipe_path = tmp_path / "recipe.json"
+    recipe_path.write_text(
+        json.dumps({
+            "steps": [{
+                "op": "image_math",
+                "params": {"op": "subtract"},
+                "inputs": {"other": "dark"},
+            }],
+            "inputs": {"dark": "dark.png"},
+        }),
+        encoding="utf-8",
+    )
+    out_dir = tmp_path / "out"
+
+    code = run_script(recipe_path, [str(subject)], out_dir, stdout=io.StringIO())
+
+    assert code == 0
+    written = sorted(p.name for p in out_dir.iterdir())
+    assert written, "the multi-input recipe produced no output"
+
+
+def test_script_rejects_an_unbound_input_reference(tmp_path: Path) -> None:
+    """Exit 2 (a recipe error), not a per-input failure — and before any
+    input file is opened."""
+    subject = _write_png(tmp_path / "scan.png")
+    recipe_path = tmp_path / "recipe.json"
+    recipe_path.write_text(
+        json.dumps({
+            "steps": [{"op": "image_math", "inputs": {"other": "dark"}}]
+        }),
+        encoding="utf-8",
+    )
+    buf = io.StringIO()
+
+    code = run_script(recipe_path, [str(subject)], tmp_path / "out", stdout=buf)
+
+    assert code == 2
+    assert "does not supply" in buf.getvalue()
+
+
+def test_script_reports_an_unloadable_input_file_as_a_recipe_error(
+    tmp_path: Path,
+) -> None:
+    subject = _write_png(tmp_path / "scan.png")
+    recipe_path = tmp_path / "recipe.json"
+    recipe_path.write_text(
+        json.dumps({
+            "steps": [{"op": "image_math", "inputs": {"other": "dark"}}],
+            "inputs": {"dark": "missing.png"},
+        }),
+        encoding="utf-8",
+    )
+    buf = io.StringIO()
+
+    code = run_script(recipe_path, [str(subject)], tmp_path / "out", stdout=buf)
+
+    assert code == 2
+    assert "recipe input 'dark'" in buf.getvalue()

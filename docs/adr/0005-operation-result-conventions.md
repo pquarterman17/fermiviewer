@@ -144,13 +144,18 @@ Consequences recorded with the mechanism:
   the log needed nothing; `ancestry()` walks the PRIMARY spine, and
   `_describe` names the other contributors ("… with b.dm4") so a methods
   paragraph cannot silently omit a dataset that went into the number.
-- **Recipes cannot express them yet.** A step is `{op, params}` with one
-  chained subject and no vocabulary for naming a second dataset, so
-  `validate_recipe` rejects a multi-input op up front rather than failing
-  mid-run, and the palette marks it `recipe_step: false`. Giving recipes a
-  named-input vocabulary is real follow-on work, not a hole to paper over:
-  it needs an id→dataset resolution step that belongs to the caller, not
-  to `ops/`.
+- **Recipes name auxiliary inputs symbolically** (added 2026-08-24; this
+  paragraph previously recorded the gap). A step may carry
+  `"inputs": {"<op input>": "<recipe input>"}`, and the run supplies the
+  pool those names resolve against: `run_recipe(ds, steps, inputs={...})`.
+  The indirection is the point — a saved recipe runs over many subjects, so
+  an auxiliary dataset cannot be frozen into a step as a session id, and the
+  pure layer could not resolve such an id anyway. Each caller binds the pool
+  from what it owns: `/batch/run` and `/watch/start` from session image ids,
+  `fv --script` from files named relative to the recipe file, and
+  `Image.pipeline` from session `Image`s. References are validated against
+  the pool BEFORE the first step, so a 200-input batch cannot start on a
+  recipe that would fail on every one of them.
 - **Per-input labels ride `metadata`**, not a parallel param: an op that
   must letter its inputs (montage) reads each struct's `source`, the
   static-name convention wave B set for the pure layer.
@@ -533,3 +538,51 @@ the registration.
 a null INSIDE a param value. It stays opt-in per param: a null coordinate
 is almost always a caller bug, and the one route that means it (a layer
 with no measured interface) says so in its own schema.
+
+
+## Addendum — recipe auxiliary inputs (2026-08-24)
+
+§8 left multi-input ops callable but not scriptable, which was a real gap
+against item 3's "done when" (a saved *recipe*, not merely an op). Closed
+here; §8's bullet above is rewritten to describe the mechanism.
+
+### Symbolic names, bound per run
+
+A step names what it needs (`{"other": "dark"}`); the run says what "dark"
+is. The alternative — an image id inside the step — was rejected for the
+reason the whole §8 design turns on: it would freeze a recipe to one
+session, and resolving it would drag the session store into `ops/`.
+
+The pool is resolved ONCE per batch, not per subject: the datasets are the
+same for every input, and re-reading the store per input would let a
+mid-batch deletion silently change the computation half way through.
+
+### What each caller had to change
+
+The step dict was never "closed" — nothing rejected unknown keys — but
+three layers silently REBUILT it as `{op, params}`, so an `inputs` key
+would have been dropped in transit rather than rejected: the pydantic
+`BatchStepRequest` (pydantic's default `extra="ignore"`), the CLI's
+`_normalize_steps`, and the frontend's preset serializer. Transport had to
+be opened deliberately at each. The frontend rebuilders are the Codex lane's
+to update; until they are, a preset saved from the UI still round-trips
+only `{op, params}`.
+
+### Notes for the record
+
+- **`recipe_step` is gone from the palette.** It shipped one release earlier
+  meaning "this op cannot be a recipe step"; that is now false for every op,
+  and a permanently-true flag is worse than none. `inputs[]` already tells a
+  builder how many pickers to render. No consumer read it.
+- **`recipe_version` in derived-image metadata is now 2**, with a sibling
+  `recipe_inputs` recording the id binding. Once a step can name a dataset,
+  the steps alone no longer describe the computation, so a v1 reader must
+  not silently treat a v2 recipe as complete.
+- **`Session.adopt` is new public API.** The façade could previously only
+  bring datasets in by parsing a file, but an op's auxiliary datasets must
+  belong to the same session as its subject — without `adopt`, `fv --script`
+  would have to re-parse every reference file once per batch input.
+- The recipe pool binds AUXILIARY inputs only. The subject still chains
+  through the recipe, so a later step's `other` is the pool's dataset, never
+  the previous step's output; `test_a_recipe_chains_a_multi_input_step_onto_the_derived_image`
+  pins that.
