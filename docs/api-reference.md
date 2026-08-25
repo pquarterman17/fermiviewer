@@ -283,7 +283,7 @@ The registered operation catalogue: name, category, summary, params.
 
 ## Operation catalogue
 
-77 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
+88 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
 
 ### analysis
 
@@ -329,6 +329,14 @@ The registered operation catalogue: name, category, summary, params.
 |---|---|---|---|---|---|---|
 | `values` | `str` |  | yes |  |  | comma-separated numeric values, e.g. particle equivalent diameters '12.3,45.6,78.9' |
 | `fit` | `str` | all | no | 'all', 'normal', 'lognormal', 'weibull', 'none' |  | 'all' fits + AIC-picks the best; a single kind fits only that one; 'none' returns summary + histogram only |
+
+#### `fit_shape` — Least-squares circle AND ellipse through a drawn ring of points (calc/shape_fit.py); both are always fitted so their RMS can be compared
+
+*category: `analysis` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `points` | `list[2 x row/col]` |  | yes |  |  | the ring, 1-based (row, col) px; calc enforces its own per-shape minimums (circle >= 3, ellipse >= 5) |
 
 #### `gpa` — Geometric phase analysis strain/rotation maps + field means (calc/gpa.geometric_phase_analysis + gpa_mean_strain). The four maps inline as `map` envelopes — the route registers them as session images instead (grains precedent, ADR 0005 wave-B addendum)
 
@@ -379,6 +387,46 @@ The registered operation catalogue: name, category, summary, params.
 | `spot2_row` | `float` |  | yes |  |  | 2nd FFT spot row, 1-based |
 | `spot2_col` | `float` |  | yes |  |  | 2nd FFT spot col, 1-based |
 | `pixel_size` | `float` | nan | no |  |  | real-space calibration (unit/px); leave unset (NaN) to use the image's own, falling back to 1.0 |
+
+#### `layers_grains` — Assign a grain-label map to reviewed cross-section layer bands (calc/grain_layers.measure_grains_by_layer). Shape angle is morphological, not crystallographic; grains crossing a reviewed interface are clipped and reported in each layer — once per band in `layer_grain_slices`, beside the per-band `layer_grains` summary
+
+*category: `analysis` · produces: value*
+
+| Input | Datasets | Required | Description |
+|---|---|---|---|
+| `source` | 1 | yes | the intensity image the label map was derived from (the route recovers this from the map's metadata) |
+
+*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API); this op is not available as a recipe step.*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `axis` | `str` |  | yes | 'x', 'y' |  | depth axis |
+| `layers` | `list[record(index, top, bottom)]` |  | yes |  |  | the reviewed layer bands |
+| &nbsp;&nbsp;`layers[].index` | `int` |  | yes |  |  |  |
+| &nbsp;&nbsp;`layers[].top` | `float` |  | yes |  |  |  |
+| &nbsp;&nbsp;`layers[].bottom` | `float` |  | yes |  |  |  |
+| `selected_indices` | `str` |  | no |  |  | comma-separated layer indices to report |
+| `interface_traces` | `list[... x float]` | () | no |  |  | per-interface traces; ragged, and an entry may be null for an interface with no measured trace |
+| `roi` | `str` |  | no |  |  | 'r1,c1,r2,c2', 1-based inclusive; empty = whole image |
+
+#### `layers_multi` — Compare interface positions and roughness across several maps of one cross-section (calc/layers_multi). The SUBJECT is the reference map: its detected axis and interface positions govern every other map, so the route's `reference` index is not a param
+
+*category: `analysis` · produces: value*
+
+| Input | Datasets | Required | Description |
+|---|---|---|---|
+| `others` | 1+ | yes | the maps to compare against the subject, in order |
+
+*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API); this op is not available as a recipe step.*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `roi` | `str` |  | no |  |  | 'r1,c1,r2,c2', 1-based inclusive; empty = whole image |
+| `axis` | `str` | auto | no | 'auto', 'x', 'y' |  | depth axis |
+| `sensitivity` | `float` | 0.3 | no |  |  | interface detection sensitivity |
+| `n_layers` | `int` | 0 | no |  | [0, ] | 0 = auto |
+| `modality` | `str` | haadf | no |  |  | imaging modality |
+| `waviness` | `bool` | True | no |  |  | separate waviness from roughness (the /layers/multi default; the single-map /analyze/layers route defaults False) |
 
 #### `line_profile` — Sub-pixel two-point intensity profile with optional width averaging and tilt correction (calc/profiles.line_profile_stats). The route's optional polyline `points` mode has no op (optional-input omission rule; a different calc function)
 
@@ -471,6 +519,27 @@ The registered operation catalogue: name, category, summary, params.
 | `threshold` | `float` | 0.05 | no |  |  | relative intensity threshold |
 | `min_separation` | `float` | 8.0 | no |  |  | minimum spot separation (px) |
 | `max_spots` | `int` | 50 | no |  |  | cap on returned spots |
+| `roi_kind` | `str` |  | no | '', 'rect', 'circle' |  | analysis ROI shape; empty = whole image. 'rect' needs roi_r0/c0/r1/c1 (0-based half-open, the frontend convention), 'circle' needs roi_cr/cc/radius |
+| `roi_r0` | `float` | nan | no |  |  | rect top row, 0-based |
+| `roi_c0` | `float` | nan | no |  |  | rect left col, 0-based |
+| `roi_r1` | `float` | nan | no |  |  | rect bottom row, half-open |
+| `roi_c1` | `float` | nan | no |  |  | rect right col, half-open |
+| `roi_cr` | `float` | nan | no |  |  | circle centre row, 0-based |
+| `roi_cc` | `float` | nan | no |  |  | circle centre col, 0-based |
+| `roi_radius` | `float` | nan | no |  |  | circle radius (px) |
+
+#### `diffraction_index` — Match picked diffraction spots to database phases (calc/diffraction_index.index_spots_roi); centre and measured radii come back in the FULL-image frame even when an ROI scopes the indexing, because they drive the whole-image ring overlay
+
+*category: `diffraction` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `spots` | `list[2 x row/col]` |  | yes |  |  | picked spots, 1-based (row, col) in the FULL image — note (row, col), unlike atoms_strain's (x, y) |
+| `pixel_size_mm` | `float` | 1.0 | no |  |  | detector pixel size (mm) |
+| `camera_length_mm` | `float` | nan | no |  |  | camera length (mm); absent selects the uncalibrated branch, where d scales with the effective image WIDTH |
+| `acc_voltage_kv` | `float` | 200.0 | no |  |  | beam voltage (kV) |
+| `tolerance` | `float` | 0.05 | no |  |  | relative d-spacing tolerance |
+| `top_n` | `int` | 5 | no |  |  | how many candidate phases to return |
 | `roi_kind` | `str` |  | no | '', 'rect', 'circle' |  | analysis ROI shape; empty = whole image. 'rect' needs roi_r0/c0/r1/c1 (0-based half-open, the frontend convention), 'circle' needs roi_cr/cc/radius |
 | `roi_r0` | `float` | nan | no |  |  | rect top row, 0-based |
 | `roi_c0` | `float` | nan | no |  |  | rect left col, 0-based |
@@ -935,6 +1004,46 @@ The registered operation catalogue: name, category, summary, params.
 
 *(no parameters)*
 
+#### `montage` — Contact-sheet montage of the subject and the remaining frames, tiled pixel-for-pixel (calc/montage.montage). Labels DIVERGE from the route: the pure layer has no session store, so a tile is captioned from its own metadata['source'], not its library name (ADR 0005 §8)
+
+*category: `filter` · produces: derived image*
+
+| Input | Datasets | Required | Description |
+|---|---|---|---|
+| `others` | 0+ | no | the remaining frames, in tile order; the subject is tile 1. Optional — the route montages a single image too |
+
+*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API); this op is not available as a recipe step.*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `cols` | `float` | nan | no |  |  | grid columns; NaN (the default) is the route's null -> ceil(sqrt(n)) |
+| `labels` | `bool` | True | no |  |  | bake a per-tile caption (metadata['source'], NOT the route's session name) into the pixels |
+| `gap` | `int` | 4 | no |  | [0, 64] | px between tiles; ignored when overlap > 0 |
+| `bg` | `float` | 0.0 | no |  |  | background fill value |
+| `overlap` | `float` | 0.0 | no |  | [0.0, 1.0) | fractional tile overlap [0, 1) — the route's Field(ge=0.0, lt=1.0) |
+| `font_size` | `int` | 14 | no |  | [6, 48] |  |
+
+#### `montage_compare` — Comparison montage: every tile resampled to ONE common physical scale (the coarsest input's) with ONE shared scale bar baked in (calc/montage_physical.montage_physical_scale). Tiles are ordered by tile_meta[].param_value first; an uncalibrated tile is refused, as in the route. The bar geometry rides the derived image's metadata
+
+*category: `filter` · produces: derived image*
+
+| Input | Datasets | Required | Description |
+|---|---|---|---|
+| `tiles` | 0+ | no | the remaining tiles; the subject is tile 1 (the panel's provenance root, and the route's parent image). Optional — the route panels a single tile too |
+
+*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API); this op is not available as a recipe step.*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `tile_meta` | `list[record(label, param_value)]` |  | no |  |  | the route's per-tile fields minus image_id (the caller resolves that into the `tiles` input): one record per tile in [subject, *tiles] order, or none at all for request order with metadata captions |
+| &nbsp;&nbsp;`tile_meta[].label` | `str` |  | no |  |  | baked tile caption; blank falls back to the dataset's metadata['source'] (where the route falls back to its session name) |
+| &nbsp;&nbsp;`tile_meta[].param_value` | `scalar` |  | no |  |  | the compared parameter's value. ANY_SCALAR because only a real int/float orders the panel: a numeric-LOOKING string ('300') and a bool are categorical and keep request order at the back (calc order_by_param_value). A float or str ptype here would coerce that distinction away and silently re-order the panel |
+| `cols` | `float` | nan | no |  |  | grid columns; NaN (the default) is the route's null -> ceil(sqrt(n)) |
+| `gap` | `int` | 4 | no |  | [0, 64] |  |
+| `bg` | `float` | 0.0 | no |  |  | background fill value |
+| `font_size` | `int` | 14 | no |  | [6, 48] |  |
+| `bar_color` | `str` | #ffffff | no |  |  | baked as an intensity — the canvas is single-channel |
+
 #### `morph` — Binary morphology at image mean
 
 *category: `filter` · produces: derived image*
@@ -960,6 +1069,22 @@ The registered operation catalogue: name, category, summary, params.
 | Param | Type | Default | Required | Choices | Bounds | Description |
 |---|---|---|---|---|---|---|
 | `order` | `int` | 1 | no |  | [1, 2] |  |
+
+#### `stitch` — Panoramic stitch of equal-size tiles: pairwise FFT cross-correlation offsets, ramp-blended onto one mosaic (calc/stitch.stitch_images). The subject is tile 1 (the offset origin); the resolved layout and the per-tile offsets ride the mosaic's metadata
+
+*category: `filter` · produces: derived image*
+
+| Input | Datasets | Required | Description |
+|---|---|---|---|
+| `others` | 1+ | yes | the remaining tiles, in sequence order; the subject is tile 1. Every tile must have the SAME shape (the route's 422) |
+
+*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API); this op is not available as a recipe step.*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `layout` | `str` | horizontal | no | 'horizontal', 'vertical', 'auto' |  | 'auto' picks the orientation whose first-pair correlation peak is stronger |
+| `overlap_frac` | `float` | 0.2 | no |  | [0.0, 0.5] | fraction of each tile searched for the seam |
+| `blend_width` | `float` | 50.0 | no |  |  | linear seam ramp width, in pixels |
 
 #### `strip_databar` — Crop the vendor-baked info bar (Thermo Fisher SEM/FIB TIFFs) off the bottom of an image using the recorded databar geometry (io.metadata.databar_content_rows); errors when no databar is recorded
 
@@ -1069,6 +1194,18 @@ The registered operation catalogue: name, category, summary, params.
 | `strain` | `bool` | False | no |  |  | also compute peak-pair strain |
 | `sublattices` | `int` | 1 | no |  | [1, 4] | cluster columns into this many sublattices |
 
+#### `atoms_strain` — Peak-pair strain from already-fitted atom-column positions (calc/atom_strain.peak_pair_strain) — no re-detection
+
+*category: `structure` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `positions` | `list[2 x x/y]` |  | yes |  |  | column positions, 1-based (x, y) — note this is (x, y), unlike fit_shape's (row, col) |
+| `ref_vectors` | `list[2 x x/y]` | () | no |  |  | the two reference lattice vectors [[a1x,a1y],[a2x,a2y]]; empty to derive them from the positions |
+| `origin_x` | `float` | nan | no |  |  | reference origin x, 1-based; give both origin_* or neither (derived from the positions when absent) |
+| `origin_y` | `float` | nan | no |  |  | reference origin y |
+| `neighbors` | `int` | 8 | no |  | [3, 32] | neighbours per column |
+
 #### `defects` — Line-defect density via oriented filtering + line intercepts (calc/defects.count_defect_lines); the two diagnostic maps inline as `map` envelopes — the route registers them as session images instead (grains precedent, ADR 0005 wave-B addendum)
 
 *category: `structure` · produces: value*
@@ -1114,6 +1251,23 @@ The registered operation catalogue: name, category, summary, params.
 | `denoise_sigma` | `float` | 0.0 | no |  | [0.0, 10.0] | denoise pre-pass (watershed methods) |
 | `robust` | `bool` | True | no |  |  | outlier-clipped stretch (watershed methods) |
 | `min_area` | `int` | 25 | no |  |  | drop grains smaller than this (px) |
+
+#### `grains_edit` — Interactive merge/split of a grain-label map at clicked points, re-enforcing connectivity and re-measuring the morphometrics (calc/grain_edit.edit_grains + calc/grain_report.grain_report)
+
+*category: `structure` · produces: value*
+
+| Input | Datasets | Required | Description |
+|---|---|---|---|
+| `source` | 1 | yes | the intensity image the label map was segmented from (the route's metadata['grain_source']); the split watershed runs on it, and its calibration measures the grains |
+
+*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API); this op is not available as a recipe step.*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `op` | `str` |  | yes | 'merge', 'split' |  | 'merge' fuses every distinct grain under the points (needs >= 2 of them); 'split' watersheds the grain under the FIRST point |
+| `points` | `list[2 x x/y]` |  | yes |  |  | clicks in 0-BASED (x, y) image px — note (x, y) and 0-based, the OPPOSITE of diffraction_index's 1-based (row, col); order matters, split acts on the first click that lands inside the image |
+| `granularity` | `float` | 0.03 | no |  | [0.0, 1.0] | split watershed granularity (unused by merge) |
+| `roi` | `str` |  | no |  |  | the rectangle the label map was segmented in, 'r1,c1,r2,c2' 1-based inclusive; carried through to the result map so a follow-up edit can pass it back (the route carries it in metadata['grain_roi'], which a pure op has no chain to read) |
 
 #### `layers` — Cross-section layer stack: auto-orient, depth profile, detect + erf-refine interfaces, thicknesses, σ_erf and (with waviness) the full roughness metrology (calc/layers.analyze_layers + calc/layers_report)
 
@@ -1191,4 +1345,37 @@ The registered operation catalogue: name, category, summary, params.
 | `rect_width` | `int` |  | yes |  |  | template width (px) |
 | `threshold` | `float` | 0.7 | no |  | [0.0, 1.0] | NCC score floor |
 | `max_matches` | `int` | 100 | no |  |  | cap on returned matches |
+
+#### `train_preview` — Non-committing preview of the scribble-trained classifier: per-pixel class + confidence rasters and the class composition, with no grain labelling — shows where the paint generalizes before train_segment commits (calc/grains_trained.preview_trained + confidence_summary)
+
+*category: `structure` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `strokes` | `list[record(class_id, radius, points)]` |  | yes |  |  | painted class scribbles; the classifier needs >= 2 distinct class_ids among them (calc enforces that) |
+| &nbsp;&nbsp;`strokes[].class_id` | `int` |  | yes |  | [1, 16] | painted class (1..16); which ones are boundary/background is declared separately by boundary_class |
+| &nbsp;&nbsp;`strokes[].radius` | `float` | 4.0 | no |  | [0.5, 200.0] | brush radius (px) |
+| &nbsp;&nbsp;`strokes[].points` | `list[2 x x/y]` |  | yes |  |  | the painted polyline, 0-based (x, y) image px — note (x, y), unlike diffraction_index's 1-based (row, col) |
+| `roi` | `str` |  | no |  |  | 'r1,c1,r2,c2' 1-based inclusive rectangle; empty = whole image |
+| `scales` | `list[1 x scale]` | ((2.0,), (4.0,)) | no |  | [0.0, ] | feature-stack smoothing scales (px), one per row: [[2],[4]]; empty falls back to the (2, 4) default, as in the route |
+| `gradient_sigma` | `float` | 0.0 | no |  | [0.0, 10.0] | extra gradient-magnitude feature sigma (px); 0 disables it |
+| `boundary_class` | `list[1 x class_id]` | () | no |  |  | class id(s) painted on grain boundaries / background, one per row: [[1]] |
+| `classifier` | `str` | softmax | no | 'softmax', 'forest' |  | 'softmax' is the linear ported path; 'forest' is the nonlinear random forest, for texture classes that are not linearly separable |
+
+#### `train_segment` — Scribble-trained grain segmentation: fit a pixel classifier on painted strokes, label connected components per class, and report the same morphometrics as `grains` (calc/grains_trained + calc/grain_report)
+
+*category: `structure` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `strokes` | `list[record(class_id, radius, points)]` |  | yes |  |  | painted class scribbles; the classifier needs >= 2 distinct class_ids among them (calc enforces that) |
+| &nbsp;&nbsp;`strokes[].class_id` | `int` |  | yes |  | [1, 16] | painted class (1..16); which ones are boundary/background is declared separately by boundary_class |
+| &nbsp;&nbsp;`strokes[].radius` | `float` | 4.0 | no |  | [0.5, 200.0] | brush radius (px) |
+| &nbsp;&nbsp;`strokes[].points` | `list[2 x x/y]` |  | yes |  |  | the painted polyline, 0-based (x, y) image px — note (x, y), unlike diffraction_index's 1-based (row, col) |
+| `roi` | `str` |  | no |  |  | 'r1,c1,r2,c2' 1-based inclusive rectangle; empty = whole image |
+| `scales` | `list[1 x scale]` | ((2.0,), (4.0,)) | no |  | [0.0, ] | feature-stack smoothing scales (px), one per row: [[2],[4]]; empty falls back to the (2, 4) default, as in the route |
+| `gradient_sigma` | `float` | 0.0 | no |  | [0.0, 10.0] | extra gradient-magnitude feature sigma (px); 0 disables it |
+| `min_area` | `int` | 25 | no |  | [0, ] | drop connected components smaller than this (px) — train_segment only; the preview labels no grains |
+| `boundary_class` | `list[1 x class_id]` | () | no |  |  | class id(s) painted on grain boundaries / background, one per row: [[1]] |
+| `classifier` | `str` | softmax | no | 'softmax', 'forest' |  | 'softmax' is the linear ported path; 'forest' is the nonlinear random forest, for texture classes that are not linearly separable |
 

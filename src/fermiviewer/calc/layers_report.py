@@ -19,7 +19,7 @@ import numpy as np
 from fermiviewer.calc.layers import LayerResult
 from fermiviewer.calc.trace_roughness import analyze_trace, conformality, sigma_chem
 
-__all__ = ["layer_result_to_dict", "roughness_blocks"]
+__all__ = ["interface_layer_blocks", "layer_result_to_dict", "roughness_blocks"]
 
 
 def _nan_none(x: float) -> float | None:
@@ -65,6 +65,39 @@ def roughness_blocks(
         a, b = resids[k], resids[k + 1]
         conf.append(_nan_none(conformality(a, b)) if a is not None and b is not None else None)
     return reports, conf
+
+
+def interface_layer_blocks(res: LayerResult) -> dict[str, list[dict]]:
+    """The comparison-sized slice of a `LayerResult`: sharpness + thickness.
+
+    What a cross-map comparison (POST /analyze/layers/multi) needs per map —
+    per interface ``position`` (profile pixels) with ``sigma_erf``/``sigma_w``,
+    per layer ``index`` with ``thickness``/``thickness_std`` (all calibrated
+    units) — and nothing else: no depth profile, no traces, no PSD. One row
+    per map times a handful of maps, so the full `layer_result_to_dict`
+    payload would be mostly per-map bulk nobody plots.
+
+    Non-finite values become None (JSON has no NaN); ``thickness`` cannot be
+    NaN — it is a difference of two refined positions — so it passes through.
+    """
+    return {
+        "interfaces": [
+            {
+                "position": i.position,
+                "sigma_erf": _nan_none(i.sigma_erf),
+                "sigma_w": _nan_none(i.sigma_w),
+            }
+            for i in res.interfaces
+        ],
+        "layers": [
+            {
+                "index": lyr.index,
+                "thickness": lyr.thickness,
+                "thickness_std": _nan_none(lyr.thickness_std),
+            }
+            for lyr in res.layers
+        ],
+    }
 
 
 def layer_result_to_dict(res: LayerResult) -> dict:

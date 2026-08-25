@@ -1,0 +1,311 @@
+"""Cross-section layer operations over more than one dataset — the last two
+gap-1 bounces (ADR 0005 §8).
+
+`layers_multi` compares interface roughness across several maps of the same
+region; `layers_grains` assigns a grain-label map to reviewed layer bands,
+which needs the label map AND the intensity image it came from.
+
+New module rather than growing `catalogue_grains_layers.py` (395 lines) past
+the ratchet (§2).
+
+Two subject choices worth stating, because both are judgement calls:
+
+- `layers_multi`'s subject is the REFERENCE map, and the route's `reference`
+  index param is dropped. The reference is what governs the detected axis
+  and the interface positions every other map is re-measured against, so it
+  is the provenance spine in the sense §8 means; `align_stack` and `mip`
+  already set that precedent. A caller who wants a different reference
+  passes a different subject.
+- `layers_grains`'s subject is the LABEL map (the route's `labels_id`), with
+  the intensity image as a named input — the route recovers the latter from
+  `metadata["grain_source"]` plus a store read, which the pure layer cannot
+  do.
+"""
+
+from __future__ import annotations
+
+from dataclasses import asdict, fields
+from typing import Any
+
+import numpy as np
+
+from fermiviewer.calc.grain_layers import (
+    GrainSlice,
+    LayerBounds,
+    measure_grains_by_layer,
+)
+from fermiviewer.calc.layers_multi import compare_layers_across_maps
+from fermiviewer.datastruct import DataKind, DataStruct
+from fermiviewer.ops._envelopes import output, scalar
+from fermiviewer.ops._parsing import parse_roi_param, pixel_cal_or_default, split_csv
+from fermiviewer.ops.base import (
+    OpInput,
+    OpParam,
+    OpResult,
+    OpSpec,
+    RecordSpec,
+    RowSpec,
+)
+from fermiviewer.ops.registry import register
+
+__all__: list[str] = []
+
+_RASTER_KINDS = (DataKind.IMAGE, DataKind.RGB_IMAGE, DataKind.SPECTRUM_IMAGE)
+
+#: `LayerGrainSummary.grains` holds a tuple of nested `GrainSlice` records.
+#: A table cell is a scalar (ADR 0004 §3: rows inline when small, else the
+#: member holds a 2-D array in column order), so the nested tuple cannot
+#: ride the per-layer summary row — it becomes its own table, one row per
+#: clipped grain, keyed by the layer it fell in.
+_SLICE_COLUMNS = tuple(f.name for f in fields(GrainSlice))
+
+
+# ── layers_multi (analysis; variadic input) ───────────────────────────
+
+
+def _layers_multi(
+    ds: DataStruct, params: dict[str, Any], inputs: dict[str, Any]
+) -> OpResult:
+    frames = [ds, *inputs["others"]]
+    if any(f.kind is not DataKind.IMAGE for f in frames):
+        raise ValueError("layer comparison needs 2D images")
+    shapes = {f.data.shape[:2] for f in frames}
+    if len(shapes) != 1:
+        raise ValueError("every compared map must have the same pixel grid")
+
+    roi = parse_roi_param(params["roi"])
+    result = compare_layers_across_maps(
+        [np.asarray(f.data) for f in frames],
+        # RAW `pixel_size`/`pixel_unit`, as the route passes them — NOT
+        # `pixel_cal_or_default`. That helper maps an uncalibrated map to
+        # (1.0, "px"), which `uniform_pixel_cal` cannot tell apart from a
+        # genuinely calibrated 1.0 px/px map, so an uncalibrated map would
+        # be accepted beside a calibrated reference and its σ_erf/σ_w
+        # compared as if they shared a physical scale. `NaN`/"" is what
+        # carries "uncalibrated" through to the check; the calc owns the
+        # 1.0/px fallback and applies it AFTER deciding compatibility.
+        [f.pixel_size for f in frames],
+        [f.pixel_unit for f in frames],
+        reference=0,  # the subject IS the reference (see the module docstring)
+        roi=roi,  # RectRoi IS the (r1, c1, r2, c2) tuple, 1-based inclusive
+        axis=params["axis"],
+        sensitivity=params["sensitivity"],
+        n_layers=params["n_layers"],
+        modality=params["modality"],
+        waviness=params["waviness"],
+    )
+
+    outputs: list[dict[str, Any]] = [
+        scalar("n_maps", len(frames)),
+        scalar("pixel_size", result.pixel_size, unit=result.unit),
+        output(
+            "curve",
+            "reference_positions",
+            {
+                "x": list(range(len(result.reference_positions))),
+                "y": result.reference_positions,
+                "x_label": "interface",
+                "y_label": "position (profile px)",
+            },
+        ),
+    ]
+    for index, block in enumerate(result.maps):
+        outputs.append(
+            output(
+                "table",
+                f"map_{index}_interfaces",
+                {
+                    "columns": ["position", "sigma_erf", "sigma_w"],
+                    "rows": [
+                        [row["position"], row["sigma_erf"], row["sigma_w"]]
+                        for row in block["interfaces"]
+                    ],
+                },
+            )
+        )
+        outputs.append(
+            output(
+                "table",
+                f"map_{index}_layers",
+                {
+                    "columns": ["index", "thickness", "thickness_std"],
+                    "rows": [
+                        [row["index"], row["thickness"], row["thickness_std"]]
+                        for row in block["layers"]
+                    ],
+                },
+            )
+        )
+    return OpResult(
+        op="layers_multi",
+        params=params,
+        label=f"layer comparison across {len(frames)} maps (axis {result.axis})",
+        value={"outputs": outputs},
+    )
+
+
+register(
+    OpSpec(
+        name="layers_multi",
+        category="analysis",
+        summary="Compare interface positions and roughness across several "
+        "maps of one cross-section (calc/layers_multi). The SUBJECT is the "
+        "reference map: its detected axis and interface positions govern "
+        "every other map, so the route's `reference` index is not a param",
+        params={
+            "roi": OpParam(
+                str, "", doc="'r1,c1,r2,c2', 1-based inclusive; empty = whole image"
+            ),
+            "axis": OpParam(
+                str, "auto", choices=("auto", "x", "y"), doc="depth axis"
+            ),
+            "sensitivity": OpParam(float, 0.3, doc="interface detection sensitivity"),
+            "n_layers": OpParam(int, 0, minimum=0, doc="0 = auto"),
+            "modality": OpParam(str, "haadf", doc="imaging modality"),
+            "waviness": OpParam(
+                bool,
+                True,
+                doc="separate waviness from roughness (the /layers/multi "
+                "default; the single-map /analyze/layers route defaults False)",
+            ),
+        },
+        inputs={
+            "others": OpInput(
+                doc="the maps to compare against the subject, in order",
+                variadic=True,
+                min_count=1,
+                kinds=_RASTER_KINDS,
+            ),
+        },
+        fn=_layers_multi,
+    )
+)
+
+
+# ── layers_grains (analysis; one named input) ─────────────────────────
+
+
+def _layers_grains(
+    ds: DataStruct, params: dict[str, Any], inputs: dict[str, Any]
+) -> OpResult:
+    if ds.kind is not DataKind.IMAGE:
+        raise ValueError("the subject must be a grain-label map")
+    source = inputs["source"]
+    px, unit = pixel_cal_or_default(source)
+    bands = [
+        LayerBounds(int(row["index"]), float(row["top"]), float(row["bottom"]))
+        for row in params["layers"]
+    ]
+    traces = [
+        # `is None`, not falsy: an EMPTY trace is a length mismatch against
+        # the ROI's lateral dimension, and the route raises for it (422).
+        # Treating [] as "no trace" would silently substitute a FLAT band
+        # boundary and return grain measurements for the wrong geometry.
+        None if trace is None else np.asarray(trace, dtype=np.float64)
+        for trace in params["interface_traces"]
+    ]
+    roi = parse_roi_param(params["roi"])
+    result = measure_grains_by_layer(
+        np.asarray(ds.data),
+        bands,
+        selected_indices=[int(v) for v in split_csv(params["selected_indices"])],
+        axis=params["axis"],
+        roi=roi,  # RectRoi IS the (r1, c1, r2, c2) tuple, 1-based inclusive
+        interface_traces=traces,
+        pixel_size=px,
+        unit=unit,
+    )
+    layer_rows = [asdict(layer) for layer in result.layers]
+    for row in layer_rows:
+        row.pop("grains", None)
+    columns = list(layer_rows[0]) if layer_rows else []
+    outputs = [
+        scalar("pixel_size", result.pixel_size, unit=result.unit),
+        output(
+            "table",
+            "layer_grains",
+            {"columns": columns, "rows": [list(row.values()) for row in layer_rows]},
+        ),
+        output(
+            "table",
+            "layer_grain_slices",
+            {
+                "columns": ["layer", *_SLICE_COLUMNS],
+                "rows": [
+                    [layer.index, *(getattr(sl, name) for name in _SLICE_COLUMNS)]
+                    for layer in result.layers
+                    for sl in layer.grains
+                ],
+            },
+        ),
+        # the assignment raster: the route registers it as a session image,
+        # the op inlines it (the wave-B standing rule for extra rasters)
+        output(
+            "map",
+            "assignment",
+            {
+                "values": np.asarray(
+                    result.assignment, dtype=np.float64
+                ).tolist(),
+                "unit": "",
+            },
+        ),
+    ]
+    return OpResult(
+        op="layers_grains",
+        params=params,
+        label=f"grains by layer ({len(layer_rows)} bands)",
+        value={"outputs": outputs},
+    )
+
+
+register(
+    OpSpec(
+        name="layers_grains",
+        category="analysis",
+        summary="Assign a grain-label map to reviewed cross-section layer "
+        "bands (calc/grain_layers.measure_grains_by_layer). Shape angle is "
+        "morphological, not crystallographic; grains crossing a reviewed "
+        "interface are clipped and reported in each layer — once per band "
+        "in `layer_grain_slices`, beside the per-band `layer_grains` summary",
+        params={
+            "axis": OpParam(
+                str, required=True, choices=("x", "y"), doc="depth axis"
+            ),
+            "layers": OpParam(
+                list,
+                required=True,
+                record=RecordSpec(
+                    fields={
+                        "index": OpParam(int, required=True),
+                        "top": OpParam(float, required=True),
+                        "bottom": OpParam(float, required=True),
+                    },
+                    min_rows=1,
+                ),
+                doc="the reviewed layer bands",
+            ),
+            "selected_indices": OpParam(
+                str, "", doc="comma-separated layer indices to report"
+            ),
+            "interface_traces": OpParam(
+                list,
+                default=(),
+                row=RowSpec(width=None, allow_none_rows=True),
+                doc="per-interface traces; ragged, and an entry may be null "
+                "for an interface with no measured trace",
+            ),
+            "roi": OpParam(
+                str, "", doc="'r1,c1,r2,c2', 1-based inclusive; empty = whole image"
+            ),
+        },
+        inputs={
+            "source": OpInput(
+                doc="the intensity image the label map was derived from "
+                "(the route recovers this from the map's metadata)",
+                kinds=_RASTER_KINDS,
+            ),
+        },
+        fn=_layers_grains,
+    )
+)

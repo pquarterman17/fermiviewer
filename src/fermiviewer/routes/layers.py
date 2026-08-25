@@ -7,12 +7,13 @@ frontend renders as a stage overlay (no derived image registered).
 
 The per-interface roughness composition and payload shaping live in
 calc/layers_report.py (lifted there for wave A, ADR 0005 §1, so the
-registered `layers`/`layers_edit` ops and these routes run the SAME code).
+registered `layers`/`layers_edit` ops and these routes run the SAME code);
+the cross-map comparison behind /analyze/layers/multi lives in
+calc/layers_multi.py for the same reason.
 """
 
 from __future__ import annotations
 
-import math
 from dataclasses import asdict
 from typing import Literal
 
@@ -22,6 +23,12 @@ from pydantic import BaseModel
 
 from fermiviewer.calc.grain_layers import LayerBounds, measure_grains_by_layer
 from fermiviewer.calc.layers import analyze_layers, recompute_layers
+from fermiviewer.calc.layers_multi import (
+    MapCalibrationError,
+    MapMeasureError,
+    compare_layers_across_maps,
+    uniform_pixel_cal,
+)
 from fermiviewer.calc.layers_report import layer_result_to_dict
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.models import ImageMeta
@@ -35,10 +42,6 @@ def _get(img_id: str) -> DataStruct:
         return store.get(img_id)
     except UnknownImageError:
         raise HTTPException(404, f"unknown image id: {img_id}") from None
-
-
-def _nan_none(x: float) -> float | None:
-    return None if not math.isfinite(x) else float(x)
 
 
 class LayersRequest(BaseModel):
@@ -204,8 +207,6 @@ def multi_layers_route(req: LayersMultiRequest) -> dict:
     """
     if not req.image_ids:
         raise HTTPException(422, "give at least one image_id")
-    ref_idx = max(0, min(req.reference, len(req.image_ids) - 1))
-
     structs = []
     for img_id in req.image_ids:
         ds = _get(img_id)
@@ -216,72 +217,33 @@ def multi_layers_route(req: LayersMultiRequest) -> dict:
     if any(s.data.shape != shape0 for s in structs):
         raise HTTPException(422, "all maps must share the same shape")
 
-    ref = structs[ref_idx]
-    px = ref.pixel_size if np.isfinite(ref.pixel_size) and ref.pixel_size > 0 else 1.0
-    unit = ref.pixel_unit if ref.pixel_unit else "px"
-    ref_calibrated = bool(
-        np.isfinite(ref.pixel_size) and ref.pixel_size > 0 and ref.pixel_unit
-    )
-    for img_id, ds in zip(req.image_ids, structs, strict=True):
-        calibrated = bool(
-            np.isfinite(ds.pixel_size) and ds.pixel_size > 0 and ds.pixel_unit
-        )
-        if calibrated != ref_calibrated:
-            raise HTTPException(
-                422, f"{store.name(img_id)} has incompatible spatial calibration",
-            )
-        if calibrated and (
-            ds.pixel_unit != ref.pixel_unit
-            or not np.isclose(ds.pixel_size, ref.pixel_size, rtol=1e-6, atol=0)
-        ):
-            raise HTTPException(
-                422, f"{store.name(img_id)} has incompatible spatial calibration",
-            )
+    sizes = [ds.pixel_size for ds in structs]
+    units = [ds.pixel_unit for ds in structs]
     try:
-        ref_res = analyze_layers(
-            ref.data, axis=req.axis, sensitivity=req.sensitivity,
-            n_layers=req.n_layers, modality=req.modality, waviness=req.waviness,
-            pixel_size=px, unit=unit, roi=req.roi,
+        uniform_pixel_cal(sizes, units, reference=req.reference)
+    except MapCalibrationError as e:
+        name = store.name(req.image_ids[e.index])
+        raise HTTPException(
+            422, f"{name} has incompatible spatial calibration",
+        ) from None
+    try:
+        result = compare_layers_across_maps(
+            [ds.data for ds in structs], sizes, units,
+            reference=req.reference, roi=req.roi, axis=req.axis,
+            sensitivity=req.sensitivity, n_layers=req.n_layers,
+            modality=req.modality, waviness=req.waviness,
         )
-    except ValueError as e:
-        raise HTTPException(422, str(e)) from None
-    positions = [i.position for i in ref_res.interfaces]
-    use_axis = ref_res.axis
-
-    maps = []
-    for img_id, ds in zip(req.image_ids, structs, strict=True):
-        m_px = ds.pixel_size if np.isfinite(ds.pixel_size) and ds.pixel_size > 0 else px
-        m_unit = ds.pixel_unit if ds.pixel_unit else unit
-        try:
-            res = recompute_layers(
-                ds.data, positions, axis=use_axis, roi=req.roi,
-                pixel_size=m_px, unit=m_unit,
-                waviness=req.waviness,
-            )
-        except ValueError as e:  # e.g. non-finite pixels in a comparison map
-            raise HTTPException(
-                422, f"{store.name(img_id)}: {e}"
-            ) from None
-        maps.append({
-            "image_id": img_id,
-            "name": store.name(img_id),
-            "interfaces": [
-                {"position": i.position, "sigma_erf": _nan_none(i.sigma_erf),
-                 "sigma_w": _nan_none(i.sigma_w)}
-                for i in res.interfaces
-            ],
-            "layers": [
-                {"index": lyr.index, "thickness": lyr.thickness,
-                 "thickness_std": _nan_none(lyr.thickness_std)}
-                for lyr in res.layers
-            ],
-        })
+    except MapMeasureError as e:
+        raise HTTPException(422, f"{store.name(req.image_ids[e.index])}: {e}") from None
 
     return {
-        "axis": use_axis,
-        "unit": unit,
-        "reference_id": req.image_ids[ref_idx],
-        "reference_positions": positions,
+        "axis": result.axis,
+        "unit": result.unit,
+        "reference_id": req.image_ids[result.reference_index],
+        "reference_positions": result.reference_positions,
         "roi": req.roi,
-        "maps": maps,
+        "maps": [
+            {"image_id": img_id, "name": store.name(img_id), **blocks}
+            for img_id, blocks in zip(req.image_ids, result.maps, strict=True)
+        ],
     }

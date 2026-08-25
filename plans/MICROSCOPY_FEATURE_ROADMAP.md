@@ -209,6 +209,9 @@ waves adopt it is expensive; catch it here, before adoption.
   pattern.
 - **3F — Codex/terra medium:** recipe-builder discoverability, validation and
   progress/error UI; documentation truth pass.
+- **3I — Claude/lower-cost after 3G/3H:** the eleven remaining registrations
+  plus their `calc/` lifts. Shipped 2026-08-25; pattern-following, as the
+  contract re-opening predicted.
 - **3H — Claude/high capability:** recipe-level named auxiliary inputs, so the
   multi-input ops 3G unlocked are scriptable and not merely callable. Shipped
   2026-08-24. The frontend's preset serializer and recipe builder still
@@ -418,10 +421,18 @@ predicate consolidated, README parity overclaim corrected.
       (public surface, cross-lane), and recipes still have no vocabulary for
       naming a second dataset, so multi-input ops are callable from the API
       and HTTP but are not recipe steps.
-- [ ] Register the remaining eleven bounced endpoints against the re-opened
+- [x] Register the remaining eleven bounced endpoints against the re-opened
       contract (fit-shape, atoms/strain, diffraction/index, train-segment,
       train-preview, stitch, montage, grains/edit, layers/grains,
       layers/multi, montage-compare).
+      **Shipped 2026-08-25** (3I): all eleven registered — 88 ops, audit at
+      72 of 80, every wave at zero and only the eight item-8/9 gated rows
+      left. Five `calc/` lifts came with them (§1), one of which exposed a
+      d-spacing correctness bug in `/diffraction/index`: a ROI overhanging
+      the image left spot coordinates unshifted while shrinking the width
+      that scales d, so measured d-spacings were quietly wrong. No shape
+      needed a mechanism the contract lacked; the one rough edge found is
+      flat scalar lists, recorded in ADR 0005 rather than worked around.
 - [x] Give recipe steps a named-input vocabulary so multi-input ops are
       scriptable, not just callable — required by this item's done
       condition, which asks for a saved recipe, not merely an op.

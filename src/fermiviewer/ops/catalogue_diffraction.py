@@ -35,20 +35,23 @@ from __future__ import annotations
 import math
 from typing import Any
 
+import numpy as np
+
 from fermiviewer.calc.diffraction import find_spots_roi, roi_selects_pixels, simulate
 from fermiviewer.calc.diffraction_calib import calibrate_rings, camera_constant
+from fermiviewer.calc.diffraction_index import index_spots_roi
 from fermiviewer.calc.phase_registry import registry, standard_d_spacing
 from fermiviewer.calc.raster import raster_of
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.ops._envelopes import nan_none, output, scalar
 from fermiviewer.ops._parsing import int_group as _int_group
 from fermiviewer.ops._parsing import sentinel_group
-from fermiviewer.ops.base import OpParam, OpResult, OpSpec
+from fermiviewer.ops.base import OpParam, OpResult, OpSpec, RowSpec
 from fermiviewer.ops.registry import register
 
 __all__: list[str] = []
 
-#: shared by detect (and index, when gap 2 ever unblocks it)
+#: shared by detect and index
 _ROI_PARAMS = {
     "roi_kind": OpParam(
         str,
@@ -374,5 +377,96 @@ register(
             ),
         },
         fn=_simulate,
+    )
+)
+
+
+# ── index (analysis over picked spots) ────────────────────────────────
+
+
+def _index(ds: DataStruct, params: dict[str, Any]) -> OpResult:
+    # the route has no kind check, so raster_of would silently SUM a
+    # spectrum-image cube here; `detect` already refuses that and index
+    # reads the same geometry, so refuse it the same way
+    if ds.kind is not DataKind.IMAGE:
+        raise ValueError("spot indexing needs a 2D image")
+    pattern = index_spots_roi(
+        ds.data.shape,
+        np.asarray(params["spots"], dtype=np.float64),
+        _roi_from_params(params),
+        pixel_size=params["pixel_size_mm"],
+        camera_length=params["camera_length_mm"],
+        acc_voltage=params["acc_voltage_kv"],
+        tolerance=params["tolerance"],
+        top_n=params["top_n"],
+        # the CIF-import registry is module-level mutable state; the route
+        # passes it too, and an op that skipped it would index against a
+        # smaller phase set than the GUI for the same picture
+        extra_phases=list(registry.custom),
+    )
+    outputs: list[dict[str, Any]] = [
+        output(
+            "table",
+            "candidates",
+            {
+                "columns": ["phase", "formula", "score", "n_matched", "zone_axis"],
+                "rows": [
+                    [c.phase_name, c.formula, c.score, c.n_matched, list(c.zone_axis)]
+                    for c in pattern.candidates
+                ],
+            },
+        ),
+        output(
+            "table",
+            "measured_radii",
+            {
+                "columns": ["spot", "r_px"],
+                "rows": [
+                    [i, nan_none(r)] for i, r in enumerate(pattern.measured_r)
+                ],
+            },
+        ),
+        scalar("center_row", pattern.center[0], unit="px"),
+        scalar("center_col", pattern.center[1], unit="px"),
+        scalar("n_candidates", len(pattern.candidates)),
+    ]
+    return OpResult(
+        op="diffraction_index",
+        params=params,
+        label=f"indexed {len(pattern.candidates)} candidate phase(s)",
+        value={"outputs": outputs},
+    )
+
+
+register(
+    OpSpec(
+        name="diffraction_index",
+        category="diffraction",
+        produces_value=True,
+        summary="Match picked diffraction spots to database phases "
+        "(calc/diffraction_index.index_spots_roi); centre and measured "
+        "radii come back in the FULL-image frame even when an ROI scopes "
+        "the indexing, because they drive the whole-image ring overlay",
+        params={
+            "spots": OpParam(
+                list,
+                required=True,
+                row=RowSpec(width=2, columns=("row", "col"), min_rows=1),
+                doc="picked spots, 1-based (row, col) in the FULL image — "
+                "note (row, col), unlike atoms_strain's (x, y)",
+            ),
+            "pixel_size_mm": OpParam(float, 1.0, doc="detector pixel size (mm)"),
+            "camera_length_mm": OpParam(
+                float,
+                float("nan"),
+                doc="camera length (mm); absent selects the uncalibrated "
+                "branch, where d scales with the effective image WIDTH",
+            ),
+            "acc_voltage_kv": OpParam(float, 200.0, doc="beam voltage (kV)"),
+            "tolerance": OpParam(float, 0.05, doc="relative d-spacing tolerance"),
+            "top_n": OpParam(int, 5, doc="how many candidate phases to return"),
+            **_ROI_PARAMS,
+        },
+        fn=_index,
     )
 )

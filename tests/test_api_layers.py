@@ -398,3 +398,60 @@ def test_layers_invalid_reduce_422(client, image_id) -> None:
         "image_id": image_id, "reduce": "bogus",
     })
     assert r.status_code == 422
+
+
+def _open_map_with_units(
+    client, tmp_path, name: str, sig: float, *, scale: float, units: str
+) -> str:
+    """`_open_map`, but with the calibration UNIT under test — the collision
+    below needs a reference calibrated in "px" at exactly 1.0, which is what
+    an uncalibrated map is indistinguishable from once a default is applied."""
+    y = np.arange(H, dtype=np.float64)
+    prof = np.full(H, LEVELS[0])
+    for c, (lo, hi) in zip(CENTERS, zip(LEVELS, LEVELS[1:], strict=False), strict=True):
+        prof += (hi - lo) * 0.5 * (1 + erf((y - c) / (sig * np.sqrt(2))))
+    img = np.tile(prof[:, None], (1, W))
+    f = write_mini_dm4(
+        tmp_path / f"{name}.dm4", dims=[W, H],
+        data=img.ravel().astype(np.float32), data_type=2,
+        cal=[{"scale": scale, "origin": 0, "units": units},
+             {"scale": scale, "origin": 0, "units": units}],
+    )
+    return client.post("/api/session/open", json={"paths": [str(f)]}).json()[0]["id"]
+
+
+def test_layers_multi_route_and_op_both_reject_an_uncalibrated_map(
+    client, tmp_path
+) -> None:
+    """Route/op parity on the calibrated-vs-uncalibrated collision.
+
+    An uncalibrated map defaulted to (1.0, "px") is INDISTINGUISHABLE from a
+    genuinely calibrated 1.0 px/px reference once the default is applied, so
+    the op has to pass the raw calibration into the check — otherwise it
+    accepts a pair the route rejects and compares σ_erf/σ_w across two maps
+    that share no physical scale.
+    """
+    import fermiviewer.ops as ops
+    from fermiviewer.calc.layers_multi import MapCalibrationError
+
+    reference = _open_map_with_units(
+        client, tmp_path, "px-cal-ref", 2.0, scale=1.0, units="px"
+    )
+    uncalibrated = _open_map_with_units(
+        client, tmp_path, "px-uncal", 2.0, scale=1.0, units=""
+    )
+    ref_ds, other_ds = store.get(reference), store.get(uncalibrated)
+    # the collision: the reference is GENUINELY calibrated at 1.0 px/px, and
+    # the uncalibrated map defaults to the very same (1.0, "px") pair
+    assert (ref_ds.pixel_size, ref_ds.pixel_unit) == (1.0, "px")
+    assert not np.isfinite(other_ds.pixel_size)
+    assert other_ds.pixel_unit == ""
+
+    r = client.post("/api/analyze/layers/multi", json={
+        "image_ids": [reference, uncalibrated],
+    })
+    assert r.status_code == 422
+    assert "incompatible spatial calibration" in r.json()["detail"]
+
+    with pytest.raises(MapCalibrationError, match="incompatible spatial calibration"):
+        ops.run("layers_multi", ref_ds, {"axis": "y"}, inputs={"others": [other_ds]})

@@ -218,3 +218,79 @@ def test_astm_grain_size_number() -> None:
     # unknown unit / non-positive diameter → NaN
     assert math.isnan(astm_grain_size_number(50.0, "furlong"))
     assert math.isnan(astm_grain_size_number(0.0, "nm"))
+
+
+# ── calc/grain_edit (ADR 0005 §1 lift) ────────────────────────────────
+
+
+def test_clip_clicks_uses_bankers_rounding_and_keeps_order() -> None:
+    """The GUI has always used int(round(...)); np.round and int(x+0.5)
+    disagree at .5 and would move a click onto a neighbouring grain."""
+    from fermiviewer.calc.grain_edit import clip_clicks
+
+    # (x, y) in -> (row, col) out; 2.5 -> 2 (half-to-even), 3.5 -> 4
+    assert clip_clicks([(2.5, 3.5), (0.4, 0.6)], (10, 10)) == [(4, 2), (1, 0)]
+    # out-of-bounds dropped, survivors keep their relative order
+    assert clip_clicks([(99, 1), (3, 4), (-5, 2)], (10, 10)) == [(4, 3)]
+
+
+def test_edit_grains_requires_matching_shapes() -> None:
+    """The route fetched labels and raster from two different session
+    entries and never checked; a mismatch surfaced deep inside watershed."""
+    import numpy as np
+    import pytest
+
+    from fermiviewer.calc.grain_edit import edit_grains
+
+    labels = np.ones((8, 8), dtype=np.int64)
+    with pytest.raises(ValueError, match="must have the same shape"):
+        edit_grains(labels, np.zeros((4, 4)), "split", [(1.0, 1.0)])
+
+
+def test_edit_grains_rejects_an_empty_click_set_and_a_background_click() -> None:
+    import numpy as np
+    import pytest
+
+    from fermiviewer.calc.grain_edit import edit_grains
+
+    labels = np.zeros((8, 8), dtype=np.int64)
+    labels[1:4, 1:4] = 1
+    image = np.zeros((8, 8))
+
+    with pytest.raises(ValueError, match="no points inside the image"):
+        edit_grains(labels, image, "split", [(99.0, 99.0)])
+    with pytest.raises(ValueError, match="not on a grain"):
+        edit_grains(labels, image, "split", [(6.0, 6.0)])  # background pixel
+
+
+def test_merging_non_adjacent_grains_leaves_them_separate() -> None:
+    """merge_labels_at rewrites BY LABEL, then connectivity enforcement
+    splits the disconnected pieces apart again — the pair comes back as two
+    grains with fresh ids, not one. That interaction is the semantics."""
+    import numpy as np
+
+    from fermiviewer.calc.grain_edit import edit_grains
+
+    labels = np.zeros((10, 10), dtype=np.int64)
+    labels[1:3, 1:3] = 1
+    labels[7:9, 7:9] = 2  # nowhere near grain 1
+    image = np.zeros((10, 10))
+
+    edit = edit_grains(labels, image, "merge", [(1.0, 1.0), (7.0, 7.0)])
+
+    assert edit.op == "merge"
+    assert len(set(edit.labels[edit.labels > 0].tolist())) == 2
+    # and they are still the same two regions, just renumbered
+    assert edit.labels[1, 1] != edit.labels[7, 7]
+
+
+def test_merge_needs_two_distinct_grains() -> None:
+    import numpy as np
+    import pytest
+
+    from fermiviewer.calc.grain_edit import edit_grains
+
+    labels = np.zeros((8, 8), dtype=np.int64)
+    labels[1:5, 1:5] = 1
+    with pytest.raises(ValueError, match="≥2 distinct grains"):
+        edit_grains(labels, np.zeros((8, 8)), "merge", [(1.0, 1.0), (2.0, 2.0)])

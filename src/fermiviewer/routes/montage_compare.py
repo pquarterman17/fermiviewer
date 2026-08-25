@@ -21,7 +21,10 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from fermiviewer.calc.export import ScaleBar
-from fermiviewer.calc.montage_physical import montage_physical_scale
+from fermiviewer.calc.montage_physical import (
+    montage_physical_scale,
+    order_by_param_value,
+)
 from fermiviewer.calc.raster import NoRasterError, raster_of
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.models import ImageMeta
@@ -61,7 +64,8 @@ class MontageTile(BaseModel):
     # `primary_param`, io/project_manifest.py), for ordering the panel as
     # a trend rather than in creation/request order. The caller (frontend
     # or a future "Montage samples" action) resolves the value; this
-    # endpoint only knows how to sort by it — see `_order_tiles`.
+    # endpoint only knows how to sort by it — see
+    # calc.montage_physical.order_by_param_value.
     param_value: float | str | bool | None = None
 
 
@@ -72,34 +76,6 @@ class MontageCompareRequest(BaseModel):
     bg: float = 0.0
     font_size: int = Field(default=14, ge=6, le=48)
     bar_color: str = "#ffffff"
-
-
-def _order_tiles(tiles: list[MontageTile]) -> list[MontageTile]:
-    """Stable-sort `tiles` ascending by `param_value` (plan item 29).
-
-    Only a genuinely numeric `param_value` (`int`/`float`, `bool`
-    EXCLUDED even though it is an `int` subclass — a sample flag is
-    categorical, not a point on an ordinal scale) participates in the
-    ordering. Every tile with a non-numeric or missing `param_value`
-    keeps its original relative order and is placed AFTER all the
-    numeric ones, so:
-
-      - a request where NO tile sets `param_value` is unchanged from
-        creation/request order (the pre-#29 behaviour) — every tile
-        falls into the "non-numeric" bucket, which is never reordered;
-      - a request mixing numeric and non-numeric values still produces a
-        usable trend for the tiles that have one, without crashing or
-        silently dropping the rest.
-    """
-
-    def is_numeric(tile: MontageTile) -> bool:
-        v = tile.param_value
-        return isinstance(v, (int, float)) and not isinstance(v, bool)
-
-    numeric = [t for t in tiles if is_numeric(t)]
-    other = [t for t in tiles if not is_numeric(t)]
-    numeric.sort(key=lambda t: float(t.param_value))  # type: ignore[arg-type]
-    return numeric + other
 
 
 @router.post("/analyze/montage-compare")
@@ -118,9 +94,10 @@ def analyze_montage_compare(req: MontageCompareRequest) -> dict:
     Tiles are reordered ascending by `param_value` before tiling (plan
     item 29), so a panel built from a sample series reads as a trend left-
     to-right / top-to-bottom instead of in creation order — see
-    `_order_tiles` for the exact rule, including the non-numeric/missing
-    case. A request that never sets `param_value` tiles in request order,
-    unchanged from before this existed.
+    calc.montage_physical.order_by_param_value for the exact rule,
+    including the non-numeric/missing case. A request that never sets
+    `param_value` tiles in request order, unchanged from before this
+    existed.
 
     Request
     -------
@@ -139,7 +116,10 @@ def analyze_montage_compare(req: MontageCompareRequest) -> dict:
     if not req.tiles:
         raise HTTPException(422, "montage-compare: provide at least 1 tile")
 
-    ordered_tiles = _order_tiles(req.tiles)
+    ordered_tiles = [
+        req.tiles[i]
+        for i in order_by_param_value([t.param_value for t in req.tiles])
+    ]
 
     frames: list[np.ndarray] = []
     pixel_sizes: list[float] = []

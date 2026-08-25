@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from fermiviewer.calc.grains_trained import (
+    confidence_summary,
     preview_trained,
     rasterize_strokes,
     segment_trained,
@@ -185,6 +186,52 @@ def test_boundary_class_is_excluded_from_grains() -> None:
     seg = segment_trained(img, model, boundary_class=(3,), min_area=10)
     # class 3 pixels are never assigned a grain id
     assert (seg.labels[seg.class_map == 3] == 0).all()
+
+
+# ── confidence summary ───────────────────────────────────────────────
+#
+# ADR 0005 §1: /grains/train-preview reports these two numbers by calling
+# confidence_summary, so they are tested here at the calc level.
+
+
+def test_confidence_summary_known_answer() -> None:
+    prob = np.array([[0.4, 0.5], [0.9, 1.0]])
+    mean, low = confidence_summary(prob)
+    assert mean == pytest.approx(0.7)
+    assert low == pytest.approx(0.5)  # 0.4 and 0.5 are below the 0.6 default
+
+
+def test_confidence_summary_threshold_is_strict_and_overridable() -> None:
+    """A pixel exactly AT the threshold counts as confident (`< threshold`),
+    and the threshold is a UI convention the caller may change."""
+    prob = np.array([0.6, 0.6, 0.6])
+    assert confidence_summary(prob)[1] == 0.0
+    assert confidence_summary(prob, threshold=0.61)[1] == 1.0
+
+
+def test_confidence_summary_returns_plain_floats() -> None:
+    mean, low = confidence_summary(np.full((4, 4), 0.75))
+    assert type(mean) is float and type(low) is float
+    assert mean == pytest.approx(0.75)
+    assert low == 0.0
+
+
+def test_confidence_summary_matches_a_real_preview() -> None:
+    """End of the lift: the numbers the endpoint reports are exactly what
+    this function computes over TrainedPreview.max_prob."""
+    img = _two_region_image()
+    mask = rasterize_strokes(
+        (60, 90),
+        [
+            {"class_id": 1, "radius": 3.0, "points": [[10, 20], [30, 40]]},
+            {"class_id": 2, "radius": 3.0, "points": [[65, 20], [80, 40]]},
+        ],
+    )
+    prev = preview_trained(img, train_from_scribbles(img, mask))
+    mean, low = confidence_summary(prev.max_prob)
+    assert mean == pytest.approx(float(np.mean(prev.max_prob)))
+    assert low == pytest.approx(float(np.mean(prev.max_prob < 0.6)))
+    assert 0.5 <= mean <= 1.0
 
 
 # ── endpoint ─────────────────────────────────────────────────────────

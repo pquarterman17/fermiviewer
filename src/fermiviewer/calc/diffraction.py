@@ -362,6 +362,51 @@ def roi_selects_pixels(img_shape: tuple[int, ...], roi: dict) -> bool:
     return False
 
 
+@dataclass(frozen=True)
+class RoiFrame:
+    """Where an analysis ROI sits, and how big it effectively is."""
+
+    row_off: int  # 0-based crop origin, as `apply_roi` reports it
+    col_off: int
+    height: int  # effective image size for centre/d-spacing arithmetic
+    width: int
+
+
+def roi_frame(img_shape: tuple[int, ...], roi: dict | None) -> RoiFrame:
+    """Crop origin + effective size for an analysis ROI, without touching
+    pixels — the offset half of `apply_roi` plus the bounding-box sizing.
+
+    The sizes come from the SAME clamped arithmetic `apply_roi` uses for
+    the offsets, which is the point of having this here. Computing the two
+    separately is how they drift: the offset would be clamped to the image
+    while the size was taken from the raw ROI, so an ROI overhanging the
+    edge left spot coordinates unshifted but shrank the width — and width
+    scales d directly in the uncalibrated branch of `index_spots`
+    (d = W·pixel_size/r), so the d-spacings came back quietly wrong rather
+    than erroring.
+
+    A ROI that selects nothing falls back to the whole image, matching
+    `apply_roi`; callers that must not silently analyse everything check
+    `roi_selects_pixels` first.
+    """
+    h, w = int(img_shape[0]), int(img_shape[1])
+    if roi is None or not roi_selects_pixels(img_shape, roi):
+        return RoiFrame(0, 0, h, w)
+    kind = roi.get("kind")
+    if kind == "rect":
+        r0 = max(0, int(roi["r0"]))
+        c0 = max(0, int(roi["c0"]))
+        r1 = min(h, int(roi["r1"]))
+        c1 = min(w, int(roi["c1"]))
+    else:  # circle — roi_selects_pixels has already rejected radius <= 0
+        rad = int(roi["radius"])
+        r0 = max(0, int(roi["cr"]) - rad)
+        c0 = max(0, int(roi["cc"]) - rad)
+        r1 = min(h, int(roi["cr"]) + rad + 1)
+        c1 = min(w, int(roi["cc"]) + rad + 1)
+    return RoiFrame(r0, c0, r1 - r0, c1 - c0)
+
+
 def find_spots_roi(
     img: np.ndarray,
     roi: dict | None = None,

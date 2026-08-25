@@ -20,6 +20,12 @@ from fermiviewer.calc.layers import (
     recompute_layers,
     trace_interface,
 )
+from fermiviewer.calc.layers_multi import (
+    MapCalibrationError,
+    MapMeasureError,
+    compare_layers_across_maps,
+    uniform_pixel_cal,
+)
 
 pytestmark = pytest.mark.imaging
 
@@ -433,3 +439,120 @@ def test_detect_interfaces_scale_space_short_profile_is_empty() -> None:
 
 def test_detect_interfaces_scale_space_flat_profile_is_empty() -> None:
     assert detect_interfaces_scale_space(np.full(50, 5.0)).size == 0
+
+
+# ── calc/layers_multi.py: cross-map comparison (one reference geometry) ──
+
+
+def _erf_stack(sig: float, size: int = 120) -> np.ndarray:
+    """A square horizontally-layered stack: interfaces at 40/80, erf width `sig`."""
+    y = np.arange(size, dtype=np.float64)
+    levels = (0.2, 0.8, 0.4)
+    prof = np.full(size, levels[0])
+    steps = zip(levels, levels[1:], strict=False)
+    for c, (lo, hi) in zip((40.0, 80.0), steps, strict=True):
+        prof += (hi - lo) * 0.5 * (1 + erf((y - c) / (sig * np.sqrt(2))))
+    return np.tile(prof[:, None], (1, size))
+
+
+def _mean_sigma_erf(block: dict) -> float:
+    return float(np.mean([i["sigma_erf"] for i in block["interfaces"]]))
+
+
+def test_uniform_pixel_cal_matching_maps() -> None:
+    px, unit, calibrated = uniform_pixel_cal([0.5, 0.5, 0.5], ["nm", "nm", "nm"])
+    assert (px, unit, calibrated) == (0.5, "nm", True)
+
+
+def test_uniform_pixel_cal_uncalibrated_everywhere_falls_back_to_pixels() -> None:
+    px, unit, calibrated = uniform_pixel_cal([np.nan, 0.0], ["", ""])
+    assert (px, unit, calibrated) == (1.0, "px", False)
+
+
+def test_uniform_pixel_cal_mismatched_unit() -> None:
+    with pytest.raises(MapCalibrationError) as exc:
+        uniform_pixel_cal([0.5, 0.5, 0.5], ["nm", "nm", "um"])
+    assert exc.value.index == 2          # the offending map, not the reference
+
+
+def test_uniform_pixel_cal_mismatched_size() -> None:
+    with pytest.raises(MapCalibrationError) as exc:
+        uniform_pixel_cal([0.5, 1.0], ["nm", "nm"])
+    assert exc.value.index == 1
+    # ...but a difference below rtol is the same calibration
+    px, _, _ = uniform_pixel_cal([0.5, 0.5 * (1 + 1e-9)], ["nm", "nm"])
+    assert px == 0.5
+
+
+def test_uniform_pixel_cal_calibrated_vs_uncalibrated_mismatch() -> None:
+    # calibrated reference, uncalibrated comparison map
+    with pytest.raises(MapCalibrationError) as exc:
+        uniform_pixel_cal([0.5, 0.5], ["nm", ""])
+    assert exc.value.index == 1
+    # ...and the reverse: an uncalibrated reference rejects a calibrated map
+    with pytest.raises(MapCalibrationError) as exc:
+        uniform_pixel_cal([np.nan, 0.5], ["", "nm"], reference=0)
+    assert exc.value.index == 1
+
+
+def test_uniform_pixel_cal_reference_index_is_clamped() -> None:
+    # a stale UI reference must still compare, against the last map: with
+    # reference=99 clamped to index 1 it is map 0 that reads as incompatible
+    with pytest.raises(MapCalibrationError) as exc:
+        uniform_pixel_cal([0.5, 0.5], ["nm", "um"], reference=99)
+    assert exc.value.index == 0
+    px, unit, _ = uniform_pixel_cal([2.0, 2.0], ["um", "um"], reference=99)
+    assert (px, unit) == (2.0, "um")
+
+
+def test_compare_layers_across_maps_preserves_input_order() -> None:
+    sharp, diffuse = _erf_stack(1.5), _erf_stack(5.0)
+    px, units = [0.5, 0.5], ["nm", "nm"]
+
+    forward = compare_layers_across_maps([sharp, diffuse], px, units)
+    reverse = compare_layers_across_maps([diffuse, sharp], px, units, reference=1)
+
+    assert forward.unit == "nm" and forward.pixel_size == 0.5
+    assert len(forward.reference_positions) == 2
+    assert _mean_sigma_erf(forward.maps[1]) > 1.5 * _mean_sigma_erf(forward.maps[0])
+    # same two maps, swapped in → swapped out (rows are keyed by input index)
+    assert _mean_sigma_erf(reverse.maps[0]) > 1.5 * _mean_sigma_erf(reverse.maps[1])
+    assert reverse.reference_index == 1
+
+
+def test_compare_layers_across_maps_reference_axis_governs_every_map() -> None:
+    horizontal = _erf_stack(2.0)
+    vertical = horizontal.T.copy()       # same layers, growth axis rotated 90°
+    # left alone, the two maps auto-detect OPPOSITE growth axes
+    assert analyze_layers(horizontal).axis == "y"
+    assert analyze_layers(vertical).axis == "x"
+
+    px, units = [0.5, 0.5], ["nm", "nm"]
+    from_horizontal = compare_layers_across_maps([horizontal, vertical], px, units)
+    from_vertical = compare_layers_across_maps(
+        [horizontal, vertical], px, units, reference=1
+    )
+    # the REFERENCE map's axis is imposed on both, so which map is the
+    # reference — not each map's own detection — decides the depth direction
+    assert from_horizontal.axis == "y"
+    assert from_vertical.axis == "x"
+    # and the imposed axis reaches the comparison map: the map whose layers
+    # run along the imposed depth axis measures the interfaces, the other
+    # collapses to a flat profile with no measurable transition
+    assert np.isfinite(_mean_sigma_erf(from_horizontal.maps[0]))
+    assert np.isfinite(_mean_sigma_erf(from_vertical.maps[1]))
+
+
+def test_compare_layers_across_maps_clamps_reference_index() -> None:
+    maps = [_erf_stack(1.5), _erf_stack(5.0)]
+    res = compare_layers_across_maps(maps, [1.0, 1.0], ["nm", "nm"], reference=99)
+    assert res.reference_index == 1
+
+
+def test_compare_layers_across_maps_names_the_failing_map() -> None:
+    good = _erf_stack(2.0)
+    bad = good.copy()
+    bad[10, 3] = np.nan                  # non-finite pixels break the profile
+    with pytest.raises(MapMeasureError) as exc:
+        compare_layers_across_maps([good, bad], [1.0, 1.0], ["nm", "nm"])
+    assert exc.value.index == 1

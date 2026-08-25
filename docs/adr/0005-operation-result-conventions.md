@@ -586,3 +586,73 @@ only `{op, params}`.
   through the recipe, so a later step's `other` is the pool's dataset, never
   the previous step's output; `test_a_recipe_chains_a_multi_input_step_onto_the_derived_image`
   pins that.
+
+## Addendum — the eleven remaining bounces (2026-08-25)
+
+The follow-on §8/§9 predicted: pattern-following registration plus the
+`calc/` lifts §1 requires. All eleven landed, closing every wave. The audit
+reads **72 of 80** op-backed with **88** ops; the only rows left are the
+eight parked behind the item-8/9 gates, so wave A/B/C/D all stand at zero.
+
+### The mechanisms held
+
+No shape needed anything the contract did not already have — which is what
+the re-opening was for. `fit_shape`/`atoms_strain`/`diffraction_index` took
+`RowSpec` coordinate lists; `train_segment`/`train_preview`/`layers_grains`
+/`montage_compare` took `RecordSpec` records (one with a row-list field,
+the single level §9 allows); `stitch`/`montage`/`montage_compare`/
+`layers_multi` took variadic inputs; `grains_edit`/`layers_grains` took one
+named input each. Gap 3 still has not arisen.
+
+### Five lifts, and a correctness bug one of them exposed
+
+`/diffraction/index` clamped its ROI crop origin to the image but took the
+effective size from the RAW roi. An ROI overhanging an edge therefore left
+the spot coordinates unshifted while shrinking the width — and width scales
+d directly in the uncalibrated branch (`d = W·pixel_size/r`), so the
+d-spacings came back quietly WRONG rather than erroring. `roi_frame` now
+derives offset and size from one clamped calculation, and a ROI selecting
+nothing errors (the wave-C strict-ROI discipline) instead of silently
+indexing the whole pattern. Two smaller ones fell out with it: the route
+had no kind guard (a spectrum cube was silently summed) and a ragged
+`spots` list escaped as a 500.
+
+The other four: `grains/edit`'s merge branch and click rounding (banker's
+rounding, copied exactly — `np.round` disagrees at .5 and would move a
+click onto a neighbouring grain), `layers/multi`'s cross-map calibration
+checks, `montage-compare`'s tile ordering, and `train-preview`'s confidence
+reduction. `grains/edit` also gained the labels/raster shape check nothing
+performed and the `value_error_as_422` wrapper its sibling always had.
+
+### A contract gap this wave found: flat scalar lists
+
+`train_segment`'s `scales` and `boundary_class` are flat lists of numbers.
+§9 has no native shape for that — `RowSpec` describes ROWS, and forbidding
+new CSV flattenings (rightly) leaves width-1 rows as the only in-contract
+spelling: `[[2.0], [4.0]]` where the route takes `[2.0, 4.0]`. The values
+are identical and the divergence is one bracket pair, but it is real, and
+it is the first shape the re-opened contract expresses awkwardly rather
+than cleanly. A `ScalarList` shape would fix it; recorded here rather than
+papered over, and NOT worth a contract change on one consumer.
+
+### Notes for the record
+
+- **`layers_multi` drops the route's `reference` param.** The subject IS
+  the reference — its detected axis and interface positions govern every
+  other map — so an index param would be a second, contradictory way to say
+  the same thing. The `align_stack`/`mip` precedent.
+- **Derived-image ops put diagnostics in `derived.metadata`, not `value`.**
+  `stitch`'s offsets/layout and `montage_compare`'s scale bar ride the
+  struct, because `run_recipe` collects `value` only from non-image steps
+  and `Image.run` records it only when there is no output image — a `value`
+  set beside `derived` would vanish on exactly the headless paths ops exist
+  for. The wave-D `savgol_derivative` rule, generalised.
+- **`montage`'s `others` is optional but `stitch`'s is not**: the montage
+  route accepts a single image, the stitch route requires two. §4 fidelity
+  beats symmetry between neighbouring ops.
+- **Per-input labels come from `metadata["source"]`**, the divergence the
+  wave-C addendum predicted when it said a multi-input contract would have
+  to carry them; the pure layer composes no session names.
+- `grains_edit` and `train_segment` emit their label map as an inline `map`
+  envelope and stay value ops, following wave A's `grains` rather than
+  `OpResult.derived` — the two label-map ops must agree.
