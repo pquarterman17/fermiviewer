@@ -5,33 +5,30 @@ import {
   runBatchRecipe,
   type BatchOperation,
   type BatchInputBindings,
-  type BatchInputSchema,
-  type BatchRecipeStep,
   type BatchRunResult,
-  type ImageMeta,
 } from "../../lib/api";
 import type { BatchRecipePreset } from "../../lib/batchRecipePresets";
-import type { ParamField } from "../../lib/params";
 import {
   downloadCsv,
   downloadJson,
   tableToCsv,
   tableToJson,
-  type Cell,
 } from "../../lib/resultsExport";
 import { askParams } from "../../store/params";
 import { useViewer } from "../../store/viewer";
 import BatchPresetControls from "./BatchPresetControls";
+import BatchResults, { batchResultTable } from "./BatchResults";
+import RecipeInputs, {
+  allocateInputReferences,
+  paramFields,
+  parsedParams,
+  recipeErrors,
+  recipeInputNames,
+  type RecipeStep,
+} from "./BatchRecipeInputs";
 import MacroBridge from "./MacroBridge";
 import ModalDialog from "./ModalDialog";
 import WatchFolderSection from "./WatchFolderSection";
-
-interface RecipeStep extends BatchRecipeStep {
-  uid: number;
-  label: string;
-  produces: BatchOperation["produces"];
-  inputSchemas: BatchInputSchema[];
-}
 
 type RunState = "pending" | "running" | "done" | "fail";
 
@@ -48,131 +45,7 @@ function paramSummary(params: Record<string, unknown>): string {
     .join(" · ");
 }
 
-function paramFields(operation: BatchOperation): ParamField[] {
-  return operation.params.map((param) => {
-    const fallback =
-      param.default ??
-      (param.type === "bool" ? false : param.type === "str" ? "" : 0);
-    if (param.choices) {
-      return {
-        key: param.name,
-        label: param.name.replaceAll("_", " "),
-        type: "select",
-        default: String(fallback),
-        options: param.choices.map(String),
-        hint: param.doc,
-      };
-    }
-    return {
-      key: param.name,
-      label: param.name.replaceAll("_", " "),
-      type:
-        param.shape
-          ? "text"
-          : param.type === "bool"
-          ? "boolean"
-          : param.type === "str"
-            ? "text"
-            : "number",
-      default: (param.shape ? JSON.stringify(fallback) : fallback) as number | string | boolean,
-      hint: [
-        param.doc,
-        param.shape ? "JSON list" : "",
-        param.minimum != null ? `min ${param.minimum}` : "",
-        param.maximum != null ? `max ${param.maximum}` : "",
-      ].filter(Boolean).join(" · "),
-    };
-  });
-}
-
-function parsedParams(
-  operation: BatchOperation,
-  values: Record<string, unknown>,
-): Record<string, unknown> {
-  const result = { ...values };
-  for (const schema of operation.params) {
-    if (!schema.shape || typeof result[schema.name] !== "string") continue;
-    try {
-      result[schema.name] = JSON.parse(result[schema.name] as string);
-    } catch {
-      throw new Error(`${schema.name.replaceAll("_", " ")} must be a JSON list`);
-    }
-  }
-  return result;
-}
-
-function recipeInputNames(steps: RecipeStep[]): Set<string> {
-  return new Set(steps.flatMap((step) => Object.values(step.inputs ?? {})));
-}
-
-function recipeErrors(
-  steps: RecipeStep[],
-  bindings: BatchInputBindings,
-): string[] {
-  const errors: string[] = [];
-  steps.forEach((step, index) => {
-    for (const schema of step.inputSchemas) {
-      const ref = step.inputs?.[schema.name];
-      const binding = ref ? bindings[ref] : undefined;
-      const count = Array.isArray(binding) ? binding.length : binding ? 1 : 0;
-      const minimum = schema.variadic ? (schema.min_count ?? (schema.required ? 1 : 0)) : 1;
-      if ((schema.required || count > 0) && count < minimum) {
-        errors.push(`Step ${index + 1} needs ${schema.doc || schema.name}`);
-      }
-      if (schema.max_count != null && count > schema.max_count) {
-        errors.push(`Step ${index + 1} allows at most ${schema.max_count} ${schema.name} images`);
-      }
-    }
-  });
-  return errors;
-}
-
-function flatten(
-  value: Record<string, unknown>,
-  prefix: string,
-): Record<string, Cell> {
-  const out: Record<string, Cell> = {};
-  for (const [key, item] of Object.entries(value)) {
-    const column = `${prefix}.${key}`;
-    if (
-      item == null ||
-      typeof item === "string" ||
-      typeof item === "number"
-    ) {
-      out[column] = item as Cell;
-    } else {
-      out[column] = JSON.stringify(item);
-    }
-  }
-  return out;
-}
-
-export function batchResultTable(result: BatchRunResult): {
-  columns: string[];
-  rows: Cell[][];
-} {
-  const records = result.outputs.map((output) => {
-    const record: Record<string, Cell> = {
-      input: output.name,
-      status: output.status,
-      error: output.error ?? "",
-      derived: output.derived?.name ?? "",
-    };
-    for (const value of output.values) {
-      Object.assign(record, flatten(value.value, value.op));
-    }
-    return record;
-  });
-  const fixed = ["input", "status", "error", "derived"];
-  const extras = [...new Set(records.flatMap((record) => Object.keys(record)))]
-    .filter((key) => !fixed.includes(key))
-    .sort();
-  const columns = [...fixed, ...extras];
-  return {
-    columns,
-    rows: records.map((record) => columns.map((column) => record[column] ?? null)),
-  };
-}
+export { batchResultTable };
 
 export default function BatchDialog() {
   const open = useViewer((s) => s.batchOpen);
@@ -232,14 +105,7 @@ export default function BatchDialog() {
     setSchemaError("");
     setSteps((current) => {
       const used = recipeInputNames(current);
-      const inputs: Record<string, string> = {};
-      for (const schema of operation.inputs ?? []) {
-        let reference = schema.name;
-        let suffix = 2;
-        while (used.has(reference)) reference = `${schema.name}_${suffix++}`;
-        used.add(reference);
-        inputs[schema.name] = reference;
-      }
+      const inputs = allocateInputReferences(operation.inputs ?? [], used);
       return [...current, {
         uid: uid.current++,
         op: operation.name,
@@ -271,11 +137,16 @@ export default function BatchDialog() {
     if (missing.length) {
       return `Unavailable operation${missing.length === 1 ? "" : "s"}: ${missing.join(", ")}`;
     }
+    const used = new Set<string>();
     setSteps(
       preset.steps.map((step) => {
         const operation = byName.get(step.op)!;
+        const inputs = allocateInputReferences(
+          operation.inputs ?? [], used, step.inputs,
+        );
         return {
           ...step,
+          ...(Object.keys(inputs).length ? { inputs } : {}),
           uid: uid.current++,
           label: operation.summary,
           produces: operation.produces,
@@ -380,7 +251,11 @@ export default function BatchDialog() {
     const table = batchResultTable(result);
     const provenance = {
       analysis: "Batch recipe",
-      params: { version: result.version, steps: result.steps },
+      params: {
+        version: result.version,
+        steps: result.steps,
+        inputs: result.inputs ?? {},
+      },
     };
     if (format === "csv") {
       downloadCsv(
@@ -416,6 +291,7 @@ export default function BatchDialog() {
 
       <MacroBridge
         steps={steps.map(({ op, params, inputs }) => ({ op, params, inputs }))}
+        inputBindings={inputBindings}
         disabled={running || operations.length === 0}
         onLoad={(macroSteps) =>
           loadPreset({
@@ -493,11 +369,14 @@ export default function BatchDialog() {
               <button
                 className="rm"
                 disabled={running}
-                onClick={() =>
-                  setSteps((current) =>
-                    current.filter((candidate) => candidate.uid !== step.uid),
-                  )
-                }
+                onClick={() => setSteps((current) => {
+                  const next = current.filter((candidate) => candidate.uid !== step.uid);
+                  const retained = recipeInputNames(next);
+                  setInputBindings((bindings) => Object.fromEntries(
+                    Object.entries(bindings).filter(([name]) => retained.has(name)),
+                  ));
+                  return next;
+                })}
                 title="Remove step"
               >
                 ×
@@ -580,95 +459,5 @@ export default function BatchDialog() {
         </button>
       </div>
     </ModalDialog>
-  );
-}
-
-function RecipeInputs({
-  steps,
-  images,
-  order,
-  bindings,
-  disabled,
-  onChange,
-}: {
-  steps: RecipeStep[];
-  images: Record<string, ImageMeta>;
-  order: string[];
-  bindings: BatchInputBindings;
-  disabled: boolean;
-  onChange: (next: BatchInputBindings) => void;
-}) {
-  const entries = steps.flatMap((step, stepIndex) =>
-    step.inputSchemas.map((schema) => ({
-      schema,
-      stepIndex,
-      reference: step.inputs?.[schema.name] ?? schema.name,
-    })),
-  );
-  return (
-    <section className="fvd-batch-inputs" aria-label="Recipe inputs">
-      <div className="fvd-batch-preset-head">
-        <span>Recipe inputs</span>
-        <span className="fvd-ws-note">Choose open images for portable named references</span>
-      </div>
-      {entries.map(({ schema, stepIndex, reference }) => {
-        const value = bindings[reference];
-        return (
-          <label key={`${stepIndex}:${schema.name}`} className="fvd-batch-input-row">
-            <span>
-              Step {stepIndex + 1} · {schema.name.replaceAll("_", " ")}
-              {schema.required ? " *" : ""}
-            </span>
-            <select
-              aria-label={`Step ${stepIndex + 1} ${schema.name} input`}
-              multiple={schema.variadic}
-              value={schema.variadic ? (Array.isArray(value) ? value : []) : (typeof value === "string" ? value : "")}
-              disabled={disabled}
-              onChange={(event) => {
-                const nextValue = schema.variadic
-                  ? Array.from(event.currentTarget.selectedOptions, (option) => option.value)
-                  : event.currentTarget.value;
-                onChange({ ...bindings, [reference]: nextValue });
-              }}
-              title={schema.doc}
-            >
-              {!schema.variadic && <option value="">Choose an image…</option>}
-              {order.map((id) => (
-                <option key={id} value={id}>{images[id]?.name ?? id}</option>
-              ))}
-            </select>
-            <code>{reference}</code>
-          </label>
-        );
-      })}
-    </section>
-  );
-}
-
-function BatchResults({ result }: { result: BatchRunResult }) {
-  const table = batchResultTable(result);
-  return (
-    <div style={{ overflow: "auto", maxHeight: 230 }}>
-      <table className="fvd-ws-table">
-        <thead>
-          <tr>
-            {table.columns.map((column) => <th key={column}>{column}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {table.rows.map((row, index) => (
-            <tr key={result.outputs[index].image_id}>
-              {row.map((value, column) => (
-                <td key={table.columns[column]}>
-                  {typeof value === "number"
-                    ? Number(value.toPrecision(5))
-                    : (value ?? "—")}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
   );
 }

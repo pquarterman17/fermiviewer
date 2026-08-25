@@ -11,6 +11,7 @@ import {
   type WatchStatus,
 } from "../../lib/api";
 import { loadBatchRecipePresets } from "../../lib/batchRecipePresets";
+import { allocateInputReferences } from "./BatchRecipeInputs";
 
 const POLL_MS = 1500;
 
@@ -39,7 +40,15 @@ export default function WatchFolderSection({
   const [inputs, setInputs] = useState<BatchInputBindings>({});
 
   const preset = presets.find((item) => item.id === presetId);
-  const inputFields = (preset?.steps ?? []).flatMap((step, stepIndex) => {
+  const usedReferences = new Set<string>();
+  const normalizedSteps = (preset?.steps ?? []).map((step) => {
+    const operation = operations.find((candidate) => candidate.name === step.op);
+    const named = allocateInputReferences(
+      operation?.inputs ?? [], usedReferences, step.inputs,
+    );
+    return { ...step, ...(Object.keys(named).length ? { inputs: named } : {}) };
+  });
+  const inputFields = normalizedSteps.flatMap((step, stepIndex) => {
     const operation = operations.find((candidate) => candidate.name === step.op);
     return Object.entries(step.inputs ?? {}).map(([inputName, reference]) => ({
       stepIndex,
@@ -115,9 +124,13 @@ export default function WatchFolderSection({
     setMessage("");
     try {
       if (inputFields.length) {
-        await startWatch(dir.trim(), preset.steps, undefined, inputs);
+        const references = new Set(inputFields.map((field) => field.reference));
+        const activeInputs = Object.fromEntries(
+          Object.entries(inputs).filter(([name]) => references.has(name)),
+        );
+        await startWatch(dir.trim(), normalizedSteps, undefined, activeInputs);
       } else {
-        await startWatch(dir.trim(), preset.steps);
+        await startWatch(dir.trim(), normalizedSteps);
       }
       setMessage(`Watching ${dir.trim()}`);
     } catch (error) {
@@ -183,7 +196,10 @@ export default function WatchFolderSection({
           aria-label="Recipe to watch with"
           value={presetId}
           disabled={busy || watching || presets.length === 0}
-          onChange={(event) => setPresetId(event.target.value)}
+          onChange={(event) => {
+            setPresetId(event.target.value);
+            setInputs({});
+          }}
         >
           <option value="">Choose a preset…</option>
           {presets.map((item) => (

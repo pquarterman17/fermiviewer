@@ -276,6 +276,21 @@ describe("macro record/replay", () => {
     ]);
   });
 
+  it("persists and supplies named input bindings when replaying a macro", async () => {
+    setMacroFromRecipe(
+      [{ op: "image_math", params: { op: "subtract" }, inputs: { other: "dark" } }],
+      { dark: "reference-id" },
+    );
+    runBatchRecipe.mockResolvedValue({
+      version: 1, steps: [], succeeded: 1, failed: 0,
+      outputs: [{ image_id: "a", status: "done", derived: null, values: [] }],
+    });
+
+    await replayMacro("a", () => {});
+
+    expect(runBatchRecipe.mock.calls[0][3]).toEqual({ dark: "reference-id" });
+  });
+
   it("a recorded macro's op steps save and re-import as a portable preset", () => {
     startRecording();
     record("/api/filter", { image_id: "a", kind: "gaussian", params: { sigma: 2 } });

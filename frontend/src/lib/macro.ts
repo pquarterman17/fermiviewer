@@ -3,8 +3,8 @@
 // macroOpMap.wireToOp: a call with a server-op equivalent (filter/geometry
 // kinds, eels_map, eels_quantify, eds_quantify) is stored as an {op, params}
 // step in the SAME vocabulary ops/catalogue*.py registers and
-// POST /api/batch/run accepts; a call with no op equivalent (crop,
-// currently translated wire shape) is kept as a
+// POST /api/batch/run accepts; a call without a currently translated wire
+// shape is kept as a
 // "legacy" step so the macro stays complete and replayable, but is excluded
 // from anything that needs a pure op recipe (saving as a preset, exporting
 // .fvbatch.json) — the macro is "partially convergent" in that case, and
@@ -15,7 +15,11 @@
 // on load: mappable ones become op steps, the rest become legacy steps, so
 // nothing written by the previous version of this module crashes the new one.
 
-import { runBatchRecipe, type BatchRecipeStep } from "./api/batch";
+import {
+  runBatchRecipe,
+  type BatchInputBindings,
+  type BatchRecipeStep,
+} from "./api/batch";
 import type { ImageMeta } from "./api/core";
 import { wireToOp } from "./macroOpMap";
 
@@ -25,6 +29,7 @@ export type MacroStep =
       op: string;
       params: Record<string, unknown>;
       inputs?: Record<string, string>;
+      bindings?: BatchInputBindings;
     }
   | { kind: "legacy"; path: string; body: Record<string, unknown> };
 
@@ -99,7 +104,14 @@ function migrate(raw: unknown): MacroStep | null {
     const inputs = isPlainObject(raw.inputs)
       ? Object.fromEntries(Object.entries(raw.inputs).filter(([, value]) => typeof value === "string")) as Record<string, string>
       : undefined;
-    return { kind: "op", op: raw.op, params: raw.params, ...(inputs ? { inputs } : {}) };
+    const bindings = isPlainObject(raw.bindings)
+      ? raw.bindings as BatchInputBindings
+      : undefined;
+    return {
+      kind: "op", op: raw.op, params: raw.params,
+      ...(inputs ? { inputs } : {}),
+      ...(bindings ? { bindings } : {}),
+    };
   }
   if (raw.kind === "legacy" && typeof raw.path === "string" && isPlainObject(raw.body)) {
     return { kind: "legacy", path: raw.path, body: raw.body };
@@ -141,9 +153,18 @@ export function macroLegacyCount(macro: MacroStep[] = loadMacro()): number {
  *  count and whether the save actually persisted (see `trySetItem`). */
 export function setMacroFromRecipe(
   recipeSteps: BatchRecipeStep[],
+  inputBindings: BatchInputBindings = {},
 ): { n: number; persisted: boolean } {
   const next: MacroStep[] = recipeSteps.map(({ op, params, inputs }) => ({
-    kind: "op", op, params, ...(inputs ? { inputs } : {}),
+    kind: "op", op, params,
+    ...(inputs ? { inputs } : {}),
+    ...(inputs
+      ? { bindings: Object.fromEntries(
+          Object.values(inputs)
+            .filter((name) => inputBindings[name] !== undefined)
+            .map((name) => [name, inputBindings[name]]),
+        ) }
+      : {}),
   }));
   const persisted = trySetItem(KEY, JSON.stringify(next));
   return { n: next.length, persisted };
@@ -167,6 +188,7 @@ export async function replayMacro(
         [current],
         [{ op: st.op, params: st.params, ...(st.inputs ? { inputs: st.inputs } : {}) }],
         () => {},
+        st.bindings ?? {},
       );
       const output = result.outputs[0];
       if (output.status !== "done") {

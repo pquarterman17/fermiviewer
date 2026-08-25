@@ -40,6 +40,38 @@ beforeEach(() => {
 });
 
 describe("WatchFolderSection — Start button disabled reason", () => {
+  it("synthesizes and resets bindings for legacy named-input presets", async () => {
+    presets = [
+      { ...preset("p1"), steps: [{ op: "image_math", params: {} }] },
+      { ...preset("p2"), steps: [{ op: "image_math", params: {} }] },
+    ];
+    const operations = [{
+      name: "image_math", category: "combine", summary: "Combine images",
+      produces: "image" as const, params: [],
+      inputs: [{
+        name: "other", required: true, variadic: false,
+        min_count: null, max_count: null, kinds: ["image"], doc: "other image",
+      }],
+    }];
+    const image = { id: "ref", name: "reference.dm4" } as never;
+    render(
+      <WatchFolderSection
+        onDerived={() => undefined}
+        operations={operations}
+        images={{ ref: image }}
+        order={["ref"]}
+      />,
+    );
+    const presetSelect = await screen.findByLabelText("Recipe to watch with");
+    fireEvent.change(presetSelect, { target: { value: "p1" } });
+    const input = screen.getByLabelText("Watch input other") as HTMLSelectElement;
+    fireEvent.change(input, { target: { value: "ref" } });
+    expect(input.value).toBe("ref");
+
+    fireEvent.change(presetSelect, { target: { value: "p2" } });
+    expect((screen.getByLabelText("Watch input other") as HTMLSelectElement).value).toBe("");
+  });
+
   it("explains that a preset must be saved first when none exist yet", async () => {
     render(<WatchFolderSection onDerived={() => undefined} />);
     await screen.findByLabelText("Folder to watch");

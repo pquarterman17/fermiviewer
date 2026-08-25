@@ -209,6 +209,24 @@ describe("BatchDialog", () => {
     expect(runBatchRecipe.mock.calls[0][3]).toEqual({ other: "b" });
   });
 
+  it("does not reuse a removed step's image binding", async () => {
+    render(<BatchDialog />);
+    const add = await screen.findByText("+ Combine two images");
+    fireEvent.click(add);
+    fireEvent.change(screen.getByLabelText("Step 1 other input"), {
+      target: { value: "a" },
+    });
+    fireEvent.click(add);
+    fireEvent.change(screen.getByLabelText("Step 2 other input"), {
+      target: { value: "b" },
+    });
+    fireEvent.click(screen.getAllByTitle("Remove step")[0]);
+    fireEvent.click(add);
+
+    expect((screen.getByLabelText("Step 2 other input") as HTMLSelectElement).value)
+      .toBe("");
+  });
+
   it("filters the operation palette by name, summary, or category", async () => {
     render(<BatchDialog />);
     await screen.findByText("+ Combine two images");
@@ -264,6 +282,27 @@ describe("BatchDialog", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Load" }));
     expect(screen.getByText("Noise, SNR, and type estimate")).toBeVisible();
+  });
+
+  it("makes a legacy preset's required named input bindable", async () => {
+    localStorage.setItem(
+      "fermiviewer.batchRecipePresets.v1",
+      JSON.stringify([{
+        version: 1, id: "legacy", name: "Legacy image math",
+        steps: [{ op: "image_math", params: {} }],
+        createdAt: "2026-08-01T00:00:00Z",
+        updatedAt: "2026-08-01T00:00:00Z",
+      }]),
+    );
+    render(<BatchDialog />);
+    await screen.findByText("+ Combine two images");
+    fireEvent.change(screen.getByLabelText("Saved recipe preset"), {
+      target: { value: "legacy" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Load" }));
+
+    expect(screen.getByLabelText("Step 1 other input")).toBeVisible();
+    expect(screen.getByText("other")).toBeVisible();
   });
 
   it("renders the watch-folder controls and reports status once mounted", async () => {
