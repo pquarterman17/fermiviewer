@@ -135,8 +135,16 @@ def run_recipe(
             # Preserve the original exception type/message for Python callers,
             # while giving adapters enough context to report which recipe step
             # failed for a particular dataset.
-            setattr(exc, "recipe_step", index + 1)
-            setattr(exc, "recipe_op", step["op"])
+            #
+            # Plain assignment, not `setattr` with a literal name (ruff B010).
+            # The ignores are load-bearing: these attributes are exactly the
+            # ad-hoc annotation mypy is right to object to on a bare
+            # `Exception`, and the alternative — a recipe-specific wrapper
+            # exception — is what the comment above deliberately avoids, since
+            # a Python caller of `run_recipe` should still catch the op's own
+            # error type.
+            exc.recipe_step = index + 1  # type: ignore[attr-defined]
+            exc.recipe_op = step["op"]  # type: ignore[attr-defined]
             raise
         results.append(result)
         if result.produces_image and result.derived is not None:
