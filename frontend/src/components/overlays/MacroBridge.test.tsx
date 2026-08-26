@@ -61,8 +61,20 @@ describe("MacroBridge", () => {
 
     fireEvent.click(screen.getByText("Save Steps as Macro"));
 
-    expect(setMacroFromRecipe).toHaveBeenCalledWith(steps);
+    expect(setMacroFromRecipe).toHaveBeenCalledWith(steps, {});
     expect(screen.getByText(/Saved 2 steps as the recorded macro/)).toBeVisible();
+  });
+
+  it("requires bindings before saving a named-input macro", () => {
+    const steps = [{
+      op: "image_math", params: {}, inputs: { other: "reference" },
+    }];
+    render(<MacroBridge steps={steps} disabled={false} onLoad={vi.fn()} />);
+
+    fireEvent.click(screen.getByText("Save Steps as Macro"));
+
+    expect(setMacroFromRecipe).not.toHaveBeenCalled();
+    expect(screen.getByText(/Choose every recipe input/)).toBeVisible();
   });
 
   it("reports when saving the macro fails to persist (e.g. storage full)", () => {

@@ -1147,9 +1147,9 @@ def build_markdown() -> str:
         "and `fermiviewer.api` all resolve through the ops registry — one "
         "column covers all four), the ADR 0004 output kinds of today's "
         "response, and the item-3 wave that will close each gap. Macro "
-        "record/replay converges on the same registry for exactly the "
-        "op-backed wire calls; everything else it records is replay-only "
-        "(`frontend/src/lib/macroOpMap.ts` mirrors this table).",
+        "record/replay uses the same registry where its narrower wire-call "
+        "translation table has an explicit mapping; other recorded calls "
+        "remain replay-only (`frontend/src/lib/macroOpMap.ts`).",
         "",
         "Route and op inventories are read live from the app and registry "
         "at generation time; classifications are curated in "

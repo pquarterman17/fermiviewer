@@ -4,30 +4,31 @@ import {
   fetchBatchOperations,
   runBatchRecipe,
   type BatchOperation,
-  type BatchRecipeStep,
+  type BatchInputBindings,
   type BatchRunResult,
 } from "../../lib/api";
 import type { BatchRecipePreset } from "../../lib/batchRecipePresets";
-import type { ParamField } from "../../lib/params";
 import {
   downloadCsv,
   downloadJson,
   tableToCsv,
   tableToJson,
-  type Cell,
 } from "../../lib/resultsExport";
 import { askParams } from "../../store/params";
 import { useViewer } from "../../store/viewer";
 import BatchPresetControls from "./BatchPresetControls";
+import BatchResults, { batchResultTable } from "./BatchResults";
+import RecipeInputs, {
+  allocateInputReferences,
+  paramFields,
+  parsedParams,
+  recipeErrors,
+  recipeInputNames,
+  type RecipeStep,
+} from "./BatchRecipeInputs";
 import MacroBridge from "./MacroBridge";
 import ModalDialog from "./ModalDialog";
 import WatchFolderSection from "./WatchFolderSection";
-
-interface RecipeStep extends BatchRecipeStep {
-  uid: number;
-  label: string;
-  produces: BatchOperation["produces"];
-}
 
 type RunState = "pending" | "running" | "done" | "fail";
 
@@ -44,86 +45,7 @@ function paramSummary(params: Record<string, unknown>): string {
     .join(" · ");
 }
 
-function paramFields(operation: BatchOperation): ParamField[] {
-  return operation.params.map((param) => {
-    const fallback =
-      param.default ??
-      (param.type === "bool" ? false : param.type === "str" ? "" : 0);
-    if (param.choices) {
-      return {
-        key: param.name,
-        label: param.name.replaceAll("_", " "),
-        type: "select",
-        default: String(fallback),
-        options: param.choices.map(String),
-        hint: param.doc,
-      };
-    }
-    return {
-      key: param.name,
-      label: param.name.replaceAll("_", " "),
-      type:
-        param.type === "bool"
-          ? "boolean"
-          : param.type === "str"
-            ? "text"
-            : "number",
-      default: fallback as number | string | boolean,
-      hint: [
-        param.doc,
-        param.minimum != null ? `min ${param.minimum}` : "",
-        param.maximum != null ? `max ${param.maximum}` : "",
-      ].filter(Boolean).join(" · "),
-    };
-  });
-}
-
-function flatten(
-  value: Record<string, unknown>,
-  prefix: string,
-): Record<string, Cell> {
-  const out: Record<string, Cell> = {};
-  for (const [key, item] of Object.entries(value)) {
-    const column = `${prefix}.${key}`;
-    if (
-      item == null ||
-      typeof item === "string" ||
-      typeof item === "number"
-    ) {
-      out[column] = item as Cell;
-    } else {
-      out[column] = JSON.stringify(item);
-    }
-  }
-  return out;
-}
-
-export function batchResultTable(result: BatchRunResult): {
-  columns: string[];
-  rows: Cell[][];
-} {
-  const records = result.outputs.map((output) => {
-    const record: Record<string, Cell> = {
-      input: output.name,
-      status: output.status,
-      error: output.error ?? "",
-      derived: output.derived?.name ?? "",
-    };
-    for (const value of output.values) {
-      Object.assign(record, flatten(value.value, value.op));
-    }
-    return record;
-  });
-  const fixed = ["input", "status", "error", "derived"];
-  const extras = [...new Set(records.flatMap((record) => Object.keys(record)))]
-    .filter((key) => !fixed.includes(key))
-    .sort();
-  const columns = [...fixed, ...extras];
-  return {
-    columns,
-    rows: records.map((record) => columns.map((column) => record[column] ?? null)),
-  };
-}
+export { batchResultTable };
 
 export default function BatchDialog() {
   const open = useViewer((s) => s.batchOpen);
@@ -136,6 +58,8 @@ export default function BatchDialog() {
   const [operations, setOperations] = useState<BatchOperation[]>([]);
   const [schemaError, setSchemaError] = useState("");
   const [steps, setSteps] = useState<RecipeStep[]>([]);
+  const [inputBindings, setInputBindings] = useState<BatchInputBindings>({});
+  const [operationSearch, setOperationSearch] = useState("");
   const [progress, setProgress] = useState<Record<string, RunState>>({});
   const [progressText, setProgressText] = useState("");
   const [progressValue, setProgressValue] = useState(0);
@@ -152,7 +76,12 @@ export default function BatchDialog() {
 
   if (!open) return null;
   const targets = selected.length > 0 ? selected : order;
-  const groups = operations.reduce<Record<string, BatchOperation[]>>(
+  const visibleOperations = operations.filter((operation) =>
+    `${operation.name} ${operation.summary} ${operation.category}`
+      .toLowerCase()
+      .includes(operationSearch.trim().toLowerCase()),
+  );
+  const groups = visibleOperations.reduce<Record<string, BatchOperation[]>>(
     (current, operation) => {
       (current[operation.category] ??= []).push(operation);
       return current;
@@ -166,16 +95,27 @@ export default function BatchDialog() {
       ? await askParams(operation.summary, fields)
       : {};
     if (params === null) return;
-    setSteps((current) => [
-      ...current,
-      {
+    let converted: Record<string, unknown>;
+    try {
+      converted = parsedParams(operation, params);
+    } catch (error) {
+      setSchemaError(error instanceof Error ? error.message : String(error));
+      return;
+    }
+    setSchemaError("");
+    setSteps((current) => {
+      const used = recipeInputNames(current);
+      const inputs = allocateInputReferences(operation.inputs ?? [], used);
+      return [...current, {
         uid: uid.current++,
         op: operation.name,
         label: operation.summary,
         produces: operation.produces,
-        params,
-      },
-    ]);
+        params: converted,
+        inputSchemas: operation.inputs ?? [],
+        ...(Object.keys(inputs).length ? { inputs } : {}),
+      }];
+    });
   };
 
   const move = (index: number, direction: -1 | 1) =>
@@ -197,23 +137,40 @@ export default function BatchDialog() {
     if (missing.length) {
       return `Unavailable operation${missing.length === 1 ? "" : "s"}: ${missing.join(", ")}`;
     }
+    const used = new Set<string>();
     setSteps(
       preset.steps.map((step) => {
         const operation = byName.get(step.op)!;
+        const inputs = allocateInputReferences(
+          operation.inputs ?? [], used, step.inputs,
+        );
         return {
           ...step,
+          ...(Object.keys(inputs).length ? { inputs } : {}),
           uid: uid.current++,
           label: operation.summary,
           produces: operation.produces,
+          inputSchemas: operation.inputs ?? [],
         };
       }),
     );
     setProgress({});
+    setInputBindings({});
     setResult(null);
   };
 
   const run = async () => {
     if (!steps.length || !targets.length || running) return;
+    const usedInputNames = recipeInputNames(steps);
+    const activeBindings = Object.fromEntries(
+      Object.entries(inputBindings).filter(([name]) => usedInputNames.has(name)),
+    );
+    const validationErrors = recipeErrors(steps, activeBindings);
+    if (validationErrors.length) {
+      setSchemaError(validationErrors.join(" · "));
+      return;
+    }
+    setSchemaError("");
     const states = Object.fromEntries(
       targets.map((imageId) => [imageId, "pending" as RunState]),
     );
@@ -226,7 +183,18 @@ export default function BatchDialog() {
     try {
       const next = await runBatchRecipe(
         targets,
-        steps.map(({ op, params }) => ({ op, params })),
+        steps.map(({ op, params, inputs }) => ({
+          op,
+          params,
+          ...(inputs
+            ? { inputs: Object.fromEntries(Object.entries(inputs).filter(
+                ([, ref]) => {
+                  const value = activeBindings[ref];
+                  return Array.isArray(value) ? value.length > 0 : Boolean(value);
+                },
+              )) }
+            : {}),
+        })),
         (fraction, message) => {
           setProgressValue(fraction);
           setProgressText(message);
@@ -248,6 +216,7 @@ export default function BatchDialog() {
             ),
           );
         },
+        activeBindings,
       );
       setResult(next);
       setProgress(
@@ -282,7 +251,11 @@ export default function BatchDialog() {
     const table = batchResultTable(result);
     const provenance = {
       analysis: "Batch recipe",
-      params: { version: result.version, steps: result.steps },
+      params: {
+        version: result.version,
+        steps: result.steps,
+        inputs: result.inputs ?? {},
+      },
     };
     if (format === "csv") {
       downloadCsv(
@@ -311,25 +284,40 @@ export default function BatchDialog() {
       </p>
 
       <BatchPresetControls
-        steps={steps.map(({ op, params }) => ({ op, params }))}
+        steps={steps.map(({ op, params, inputs }) => ({ op, params, inputs }))}
         disabled={running || operations.length === 0}
         onLoad={loadPreset}
       />
 
       <MacroBridge
-        steps={steps.map(({ op, params }) => ({ op, params }))}
+        steps={steps.map(({ op, params, inputs }) => ({ op, params, inputs }))}
+        inputBindings={inputBindings}
         disabled={running || operations.length === 0}
         onLoad={(macroSteps) =>
           loadPreset({
-            version: 1, id: "macro", name: "Recorded macro",
+            version: 2, id: "macro", name: "Recorded macro",
             steps: macroSteps, createdAt: "", updatedAt: "",
           })
         }
       />
 
-      <WatchFolderSection onDerived={ingestDerived} />
+      <WatchFolderSection
+        onDerived={ingestDerived}
+        operations={operations}
+        images={images}
+        order={order}
+      />
 
       {schemaError && <div className="fvd-batch-empty">{schemaError}</div>}
+      <input
+        className="fvd-batch-search"
+        type="search"
+        aria-label="Find an operation"
+        placeholder={`Find among ${operations.length} operations…`}
+        value={operationSearch}
+        disabled={running}
+        onChange={(event) => setOperationSearch(event.target.value)}
+      />
       {Object.entries(groups).map(([category, entries]) => (
         <section key={category}>
           <div className="fvd-ws-note">{category}</div>
@@ -381,11 +369,14 @@ export default function BatchDialog() {
               <button
                 className="rm"
                 disabled={running}
-                onClick={() =>
-                  setSteps((current) =>
-                    current.filter((candidate) => candidate.uid !== step.uid),
-                  )
-                }
+                onClick={() => setSteps((current) => {
+                  const next = current.filter((candidate) => candidate.uid !== step.uid);
+                  const retained = recipeInputNames(next);
+                  setInputBindings((bindings) => Object.fromEntries(
+                    Object.entries(bindings).filter(([name]) => retained.has(name)),
+                  ));
+                  return next;
+                })}
                 title="Remove step"
               >
                 ×
@@ -394,6 +385,28 @@ export default function BatchDialog() {
           ))
         )}
       </div>
+
+      {recipeInputNames(steps).size > 0 && (
+        <RecipeInputs
+          steps={steps}
+          images={images}
+          order={order}
+          bindings={inputBindings}
+          disabled={running}
+          onChange={setInputBindings}
+        />
+      )}
+
+      {steps.length > 0 && (
+        <div className="fvd-batch-summary" aria-label="Run summary">
+          <strong>Ready to run:</strong> {targets.length} input image
+          {targets.length === 1 ? "" : "s"} × {steps.length} step
+          {steps.length === 1 ? "" : "s"} = {targets.length * steps.length} operations
+          {recipeInputNames(steps).size
+            ? ` · ${recipeInputNames(steps).size} named recipe input${recipeInputNames(steps).size === 1 ? "" : "s"}`
+            : ""}
+        </div>
+      )}
 
       {Object.keys(progress).length > 0 && (
         <>
@@ -409,6 +422,7 @@ export default function BatchDialog() {
                 <div key={id} className="row" title={error}>
                   <span className={`st ${state}`}>{GLYPH[state]}</span>
                   <span className="nm">{images[id]?.name ?? id}</span>
+                  {error && <span className="err">Error: {error}</span>}
                 </div>
               );
             })}
@@ -445,33 +459,5 @@ export default function BatchDialog() {
         </button>
       </div>
     </ModalDialog>
-  );
-}
-
-function BatchResults({ result }: { result: BatchRunResult }) {
-  const table = batchResultTable(result);
-  return (
-    <div style={{ overflow: "auto", maxHeight: 230 }}>
-      <table className="fvd-ws-table">
-        <thead>
-          <tr>
-            {table.columns.map((column) => <th key={column}>{column}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {table.rows.map((row, index) => (
-            <tr key={result.outputs[index].image_id}>
-              {row.map((value, column) => (
-                <td key={table.columns[column]}>
-                  {typeof value === "number"
-                    ? Number(value.toPrecision(5))
-                    : (value ?? "—")}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
   );
 }

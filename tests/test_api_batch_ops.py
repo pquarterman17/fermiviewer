@@ -191,6 +191,7 @@ def test_batch_retains_other_inputs_when_one_operation_fails(client) -> None:
     assert final["failed"] == 1
     assert [item["status"] for item in final["outputs"]] == ["done", "error"]
     assert final["outputs"][0]["derived"] is not None
+    assert final["outputs"][1]["error"].startswith("step 1 (bin):")
 
 
 def test_batch_rejects_bad_recipe_before_queueing(client) -> None:

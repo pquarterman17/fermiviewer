@@ -128,8 +128,24 @@ def run_recipe(
     values: list[OpResult] = []
     current = ds
     for index, step in enumerate(steps):
-        bound = {name: pool[ref] for name, ref in step_inputs(step).items()}
-        result = run(step["op"], current, step.get("params"), inputs=bound or None)
+        try:
+            bound = {name: pool[ref] for name, ref in step_inputs(step).items()}
+            result = run(step["op"], current, step.get("params"), inputs=bound or None)
+        except Exception as exc:
+            # Preserve the original exception type/message for Python callers,
+            # while giving adapters enough context to report which recipe step
+            # failed for a particular dataset.
+            #
+            # Plain assignment, not `setattr` with a literal name (ruff B010).
+            # The ignores are load-bearing: these attributes are exactly the
+            # ad-hoc annotation mypy is right to object to on a bare
+            # `Exception`, and the alternative — a recipe-specific wrapper
+            # exception — is what the comment above deliberately avoids, since
+            # a Python caller of `run_recipe` should still catch the op's own
+            # error type.
+            exc.recipe_step = index + 1  # type: ignore[attr-defined]
+            exc.recipe_op = step["op"]  # type: ignore[attr-defined]
+            raise
         results.append(result)
         if result.produces_image and result.derived is not None:
             current = result.derived

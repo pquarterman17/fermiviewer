@@ -3,7 +3,7 @@
 // polling the WatchFolderSection component uses while the dialog is open.
 
 import type { ImageMeta } from "./core";
-import type { BatchRecipeStep } from "./batch";
+import type { BatchInputBindings, BatchRecipeStep } from "./batch";
 import { json, post } from "./transport";
 
 export interface WatchStatus {
@@ -37,8 +37,9 @@ export function startWatch(
   dir: string,
   steps: BatchRecipeStep[],
   interval?: number,
+  inputs: BatchInputBindings = {},
 ): Promise<{ status: string }> {
-  return post("/api/watch/start", { dir, steps, interval });
+  return post("/api/watch/start", { dir, steps, interval, inputs });
 }
 
 export function stopWatch(): Promise<{ status: string }> {

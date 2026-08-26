@@ -237,9 +237,10 @@ Feature walkthroughs, screenshots, and how-tos live in the
 
 Every **registered operation** is also a headless Python surface —
 `fermiviewer.api` — the same engine the server and a notebook both use,
-with no FastAPI/browser dependency. Registered-op coverage of the GUI's
-analysis surface is partial and growing wave by wave; the generated
-audit of exactly what is reachable headlessly is
+with no FastAPI/browser dependency. Registered-op coverage is **72 of 80
+analysis endpoints**; the eight remaining endpoints are 4D-STEM/tomography
+work parked behind roadmap items 8 and 9. The generated audit of exactly
+what is reachable headlessly is
 [`docs/operation-coverage.md`](docs/operation-coverage.md):
 
 ```python
@@ -258,7 +259,7 @@ print(denoised.methods())       # "scan.dm4 was processed with fermiviewer X.Y.Z
 |---|---|
 | `fv.open(path)` / `fv.Session()` | Load any registered format into an `Image`; a `Session` tracks opened + derived images and their lineage |
 | `Image.<op>(**params)` | Every registered op as a method — `.gaussian()`, `.eds_quantify()`, `.roughness()`, ... — returns a `Result` |
-| `Image.pipeline([{"op": ..., "params": {...}}, ...])` | Run a whole recipe (the same shape a saved batch preset uses) in one call |
+| `Image.pipeline([{"op": ..., "params": {...}, "inputs": {...}}], reference=other)` | Run a whole recipe, including portable named auxiliary inputs (the same shape a saved batch preset uses) |
 | `Result.value` / `.image` / `.params` | A plain value (scalar/table), a derived `Image`, and the resolved parameters |
 | `Result.to_csv()` / `.to_json()` | Export a dict-shaped result as a table |
 | `Image.methods()` / `.provenance_json()` | A reproducible methods paragraph / full JSON ancestry for that image's pipeline |

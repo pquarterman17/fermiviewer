@@ -6,9 +6,12 @@ import {
   startWatch,
   stopWatch,
   type ImageMeta,
+  type BatchInputBindings,
+  type BatchOperation,
   type WatchStatus,
 } from "../../lib/api";
 import { loadBatchRecipePresets } from "../../lib/batchRecipePresets";
+import { allocateInputReferences } from "./BatchRecipeInputs";
 
 const POLL_MS = 1500;
 
@@ -16,24 +19,52 @@ interface WatchFolderSectionProps {
   /** Called with any derived image a watch job produces — the caller
    *  wires this to the same ingestDerived the batch run uses. */
   onDerived: (metas: ImageMeta[]) => void;
+  operations?: BatchOperation[];
+  images?: Record<string, ImageMeta>;
+  order?: string[];
 }
 
 /** "Watch folder…" — pick a saved recipe preset + a server-side directory,
  *  start/stop the folder watch, and surface its status while this section
  *  is mounted (i.e. while BatchDialog is open). Its own file per the
  *  size ratchet: BatchDialog.tsx is already near the 500-line ceiling. */
-export default function WatchFolderSection({ onDerived }: WatchFolderSectionProps) {
+export default function WatchFolderSection({
+  onDerived, operations = [], images = {}, order = [],
+}: WatchFolderSectionProps) {
   const [presets] = useState(loadBatchRecipePresets);
   const [presetId, setPresetId] = useState("");
   const [dir, setDir] = useState("");
   const [status, setStatus] = useState<WatchStatus | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [inputs, setInputs] = useState<BatchInputBindings>({});
 
   const preset = presets.find((item) => item.id === presetId);
+  const usedReferences = new Set<string>();
+  const normalizedSteps = (preset?.steps ?? []).map((step) => {
+    const operation = operations.find((candidate) => candidate.name === step.op);
+    const named = allocateInputReferences(
+      operation?.inputs ?? [], usedReferences, step.inputs,
+    );
+    return { ...step, ...(Object.keys(named).length ? { inputs: named } : {}) };
+  });
+  const inputFields = normalizedSteps.flatMap((step, stepIndex) => {
+    const operation = operations.find((candidate) => candidate.name === step.op);
+    return Object.entries(step.inputs ?? {}).map(([inputName, reference]) => ({
+      stepIndex,
+      inputName,
+      reference,
+      schema: operation?.inputs?.find((candidate) => candidate.name === inputName),
+    }));
+  });
+  const missingInputs = inputFields.some(({ reference, schema }) => {
+    if (schema?.required === false) return false;
+    const value = inputs[reference];
+    return Array.isArray(value) ? value.length === 0 : !value;
+  });
   const watching = status?.watching ?? false;
   const noPresets = presets.length === 0;
-  const startDisabled = busy || watching || !preset || !dir.trim();
+  const startDisabled = busy || watching || !preset || !dir.trim() || missingInputs;
   // A disabled Start button gave zero explanation for why it stayed dead —
   // with a directory typed but no preset chosen, or (worse) with no saved
   // presets to choose from at all. Mirror FloatTools' disabled-compare-button
@@ -49,6 +80,8 @@ export default function WatchFolderSection({ onDerived }: WatchFolderSectionProp
           ? "Choose a saved preset."
           : !dir.trim()
             ? "Enter a folder path."
+            : missingInputs
+              ? "Choose every required recipe input."
             : null;
 
   useEffect(() => {
@@ -90,7 +123,15 @@ export default function WatchFolderSection({ onDerived }: WatchFolderSectionProp
     setBusy(true);
     setMessage("");
     try {
-      await startWatch(dir.trim(), preset.steps);
+      if (inputFields.length) {
+        const references = new Set(inputFields.map((field) => field.reference));
+        const activeInputs = Object.fromEntries(
+          Object.entries(inputs).filter(([name]) => references.has(name)),
+        );
+        await startWatch(dir.trim(), normalizedSteps, undefined, activeInputs);
+      } else {
+        await startWatch(dir.trim(), normalizedSteps);
+      }
       setMessage(`Watching ${dir.trim()}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not start watch");
@@ -125,12 +166,40 @@ export default function WatchFolderSection({ onDerived }: WatchFolderSectionProp
         <span>Watch folder…</span>
         <span className="fvd-ws-note">Auto-runs a saved recipe on new files</span>
       </div>
+      {inputFields.map(({ stepIndex, inputName, reference, schema }) => {
+        const variadic = schema?.variadic ?? false;
+        const value = inputs[reference];
+        return (
+          <label key={`${stepIndex}:${inputName}`} className="fvd-batch-input-row">
+            <span>Step {stepIndex + 1} · {inputName.replaceAll("_", " ")}</span>
+            <select
+              aria-label={`Watch input ${reference}`}
+              multiple={variadic}
+              value={variadic ? (Array.isArray(value) ? value : []) : (typeof value === "string" ? value : "")}
+              disabled={busy || watching}
+              onChange={(event) => setInputs({
+                ...inputs,
+                [reference]: variadic
+                  ? Array.from(event.currentTarget.selectedOptions, (option) => option.value)
+                  : event.currentTarget.value,
+              })}
+            >
+              {!variadic && <option value="">Choose an image…</option>}
+              {order.map((id) => <option key={id} value={id}>{images[id]?.name ?? id}</option>)}
+            </select>
+            <code>{reference}</code>
+          </label>
+        );
+      })}
       <div className="fvd-batch-preset-row">
         <select
           aria-label="Recipe to watch with"
           value={presetId}
           disabled={busy || watching || presets.length === 0}
-          onChange={(event) => setPresetId(event.target.value)}
+          onChange={(event) => {
+            setPresetId(event.target.value);
+            setInputs({});
+          }}
         >
           <option value="">Choose a preset…</option>
           {presets.map((item) => (

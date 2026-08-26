@@ -240,6 +240,44 @@ button.fvd-cmd-group:hover {
   gap: 5px;
 }
 
+.fvd-batch-search {
+  width: 100%;
+}
+
+.fvd-batch-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+
+.fvd-batch-input-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(180px, 2fr) auto;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-sm);
+}
+
+.fvd-batch-input-row select[multiple] {
+  min-height: 72px;
+}
+
+.fvd-batch-input-row code {
+  color: var(--text-faint);
+}
+
+.fvd-batch-summary {
+  padding: 8px 10px;
+  border-left: 3px solid var(--accent);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+}
+
 .fvd-batch-recipe {
   display: flex;
   flex-direction: column;
@@ -335,6 +373,12 @@ button.fvd-cmd-group:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.fvd-batch-prog .err {
+  margin-left: auto;
+  color: var(--danger);
+  text-align: right;
 }
 
 .fvd-batch-prog .st {

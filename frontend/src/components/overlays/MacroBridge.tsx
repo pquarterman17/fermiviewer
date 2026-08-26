@@ -1,11 +1,12 @@
 import { useState } from "react";
 
-import type { BatchRecipeStep } from "../../lib/api";
+import type { BatchInputBindings, BatchRecipeStep } from "../../lib/api";
 import { macroLegacyCount, macroOpSteps, setMacroFromRecipe } from "../../lib/macro";
 
 interface MacroBridgeProps {
   /** The dialog's current recipe steps (op + params only). */
   steps: BatchRecipeStep[];
+  inputBindings?: BatchInputBindings;
   disabled: boolean;
   /** Loads steps into the dialog's recipe — reuses BatchDialog's own preset
    *  loader, so a macro is resolved against the server schema exactly like
@@ -18,7 +19,9 @@ interface MacroBridgeProps {
  *  preset controls save/export it), or push the dialog's current steps
  *  into the persisted macro so "Replay Macro" plays them back. Kept out of
  *  BatchDialog.tsx (near its line ceiling) per the size ratchet. */
-export default function MacroBridge({ steps, disabled, onLoad }: MacroBridgeProps) {
+export default function MacroBridge({
+  steps, inputBindings = {}, disabled, onLoad,
+}: MacroBridgeProps) {
   const [message, setMessage] = useState("");
 
   const loadFromMacro = () => {
@@ -37,7 +40,18 @@ export default function MacroBridge({ steps, disabled, onLoad }: MacroBridgeProp
   };
 
   const saveAsMacro = () => {
-    const { n, persisted } = setMacroFromRecipe(steps);
+    const references = new Set(
+      steps.flatMap((step) => Object.values(step.inputs ?? {})),
+    );
+    const missing = [...references].filter((name) => {
+      const value = inputBindings[name];
+      return Array.isArray(value) ? value.length === 0 : !value;
+    });
+    if (missing.length) {
+      setMessage("Choose every recipe input before saving this macro");
+      return;
+    }
+    const { n, persisted } = setMacroFromRecipe(steps, inputBindings);
     setMessage(
       persisted
         ? `Saved ${n} step${n === 1 ? "" : "s"} as the recorded macro — ` +

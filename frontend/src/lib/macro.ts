@@ -3,9 +3,8 @@
 // macroOpMap.wireToOp: a call with a server-op equivalent (filter/geometry
 // kinds, eels_map, eels_quantify, eds_quantify) is stored as an {op, params}
 // step in the SAME vocabulary ops/catalogue*.py registers and
-// POST /api/batch/run accepts; a call with no op equivalent (crop,
-// arbitrary-angle rotate, FFT, VDF/GPA/particles/grains, EELS background/
-// thickness/KK/SVD/align/fit, azimuthal /analyze/radial) is kept as a
+// POST /api/batch/run accepts; a call without a currently translated wire
+// shape is kept as a
 // "legacy" step so the macro stays complete and replayable, but is excluded
 // from anything that needs a pure op recipe (saving as a preset, exporting
 // .fvbatch.json) — the macro is "partially convergent" in that case, and
@@ -16,12 +15,22 @@
 // on load: mappable ones become op steps, the rest become legacy steps, so
 // nothing written by the previous version of this module crashes the new one.
 
-import { runBatchRecipe, type BatchRecipeStep } from "./api/batch";
+import {
+  runBatchRecipe,
+  type BatchInputBindings,
+  type BatchRecipeStep,
+} from "./api/batch";
 import type { ImageMeta } from "./api/core";
 import { wireToOp } from "./macroOpMap";
 
 export type MacroStep =
-  | { kind: "op"; op: string; params: Record<string, unknown> }
+  | {
+      kind: "op";
+      op: string;
+      params: Record<string, unknown>;
+      inputs?: Record<string, string>;
+      bindings?: BatchInputBindings;
+    }
   | { kind: "legacy"; path: string; body: Record<string, unknown> };
 
 const KEY = "fv_macro";
@@ -92,7 +101,17 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 function migrate(raw: unknown): MacroStep | null {
   if (!isPlainObject(raw)) return null;
   if (raw.kind === "op" && typeof raw.op === "string" && isPlainObject(raw.params)) {
-    return { kind: "op", op: raw.op, params: raw.params };
+    const inputs = isPlainObject(raw.inputs)
+      ? Object.fromEntries(Object.entries(raw.inputs).filter(([, value]) => typeof value === "string")) as Record<string, string>
+      : undefined;
+    const bindings = isPlainObject(raw.bindings)
+      ? raw.bindings as BatchInputBindings
+      : undefined;
+    return {
+      kind: "op", op: raw.op, params: raw.params,
+      ...(inputs ? { inputs } : {}),
+      ...(bindings ? { bindings } : {}),
+    };
   }
   if (raw.kind === "legacy" && typeof raw.path === "string" && isPlainObject(raw.body)) {
     return { kind: "legacy", path: raw.path, body: raw.body };
@@ -120,7 +139,7 @@ export function loadMacro(): MacroStep[] {
 export function macroOpSteps(macro: MacroStep[] = loadMacro()): BatchRecipeStep[] {
   return macro
     .filter((s): s is Extract<MacroStep, { kind: "op" }> => s.kind === "op")
-    .map(({ op, params }) => ({ op, params }));
+    .map(({ op, params, inputs }) => ({ op, params, ...(inputs ? { inputs } : {}) }));
 }
 
 /** How many of the macro's steps have no op equivalent (dropped by
@@ -134,8 +153,19 @@ export function macroLegacyCount(macro: MacroStep[] = loadMacro()): number {
  *  count and whether the save actually persisted (see `trySetItem`). */
 export function setMacroFromRecipe(
   recipeSteps: BatchRecipeStep[],
+  inputBindings: BatchInputBindings = {},
 ): { n: number; persisted: boolean } {
-  const next: MacroStep[] = recipeSteps.map(({ op, params }) => ({ kind: "op", op, params }));
+  const next: MacroStep[] = recipeSteps.map(({ op, params, inputs }) => ({
+    kind: "op", op, params,
+    ...(inputs ? { inputs } : {}),
+    ...(inputs
+      ? { bindings: Object.fromEntries(
+          Object.values(inputs)
+            .filter((name) => inputBindings[name] !== undefined)
+            .map((name) => [name, inputBindings[name]]),
+        ) }
+      : {}),
+  }));
   const persisted = trySetItem(KEY, JSON.stringify(next));
   return { n: next.length, persisted };
 }
@@ -156,8 +186,9 @@ export async function replayMacro(
     if (st.kind === "op") {
       const result = await runBatchRecipe(
         [current],
-        [{ op: st.op, params: st.params }],
+        [{ op: st.op, params: st.params, ...(st.inputs ? { inputs: st.inputs } : {}) }],
         () => {},
+        st.bindings ?? {},
       );
       const output = result.outputs[0];
       if (output.status !== "done") {
