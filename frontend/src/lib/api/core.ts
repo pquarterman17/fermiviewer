@@ -1,6 +1,7 @@
 // Typed client for the FastAPI backend (handoff §8). Mirrors the
 // Pydantic wire models in src/fermiviewer/models.py — keep in sync.
 
+import type { CapturedResultRef } from "./project";
 import { json } from "./transport";
 
 export type DataKind = "image" | "rgb_image" | "spectrum" | "spectrum_image";
@@ -247,6 +248,9 @@ export interface ProfileResult {
    *  polyline profiles, and old cached results. DockPlot shades
    *  intensity ± intensity_sigma when present. */
   intensity_sigma?: (number | null)[];
+  /** Present only when the call asked to persist the run (`record`). The
+   *  full record arrives on the next project load; this is the handle. */
+  result?: CapturedResultRef;
 }
 
 /** Line profile. a/b are 0-based image (x, y); backend wants 1-based (row, col). */
@@ -261,6 +265,7 @@ export async function measureProfile(
     geometry: "cross-section" | "surface";
   } | null,
   reduce: ProfileReduce = "mean",
+  record = false,
 ): Promise<ProfileResult> {
   return json(
     await fetch("/api/measure/profile", {
@@ -272,6 +277,10 @@ export async function measureProfile(
         b: [b.y + 1, b.x + 1],
         width,
         reduce,
+        // Persisting is a user decision, not a side effect of every
+        // exploratory drag — the flag is only sent when set, so the wire
+        // shape is unchanged for the measure-as-you-go path.
+        ...(record ? { record: true } : {}),
         // #34: line_profile applies the same tilt correction as
         // measure_distance; 0/absent → off
         ...(tilt && tilt.angle !== 0
@@ -292,6 +301,7 @@ export async function measurePolyline(
   pts: { x: number; y: number }[],
   width = 1,
   reduce: ProfileReduce = "mean",
+  record = false,
 ): Promise<ProfileResult> {
   return json(
     await fetch("/api/measure/profile", {
@@ -302,6 +312,7 @@ export async function measurePolyline(
         points: pts.map((p) => [p.y + 1, p.x + 1]),
         width,
         reduce,
+        ...(record ? { record: true } : {}),
       }),
     }),
   );

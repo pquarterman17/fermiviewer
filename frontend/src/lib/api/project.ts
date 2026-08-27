@@ -51,6 +51,16 @@ export interface PersistedResultOutput {
   [key: string]: unknown;
 }
 
+/** The handle an analysis route returns when it was asked to persist its run
+ *  (`record: true`). The record itself rides the server-carried session and
+ *  reaches the client on the next project load as a `PersistedResultRecord` —
+ *  this is only the acknowledgement, so callers can reference what they just
+ *  captured without re-fetching the whole list. */
+export interface CapturedResultRef {
+  id: string;
+  created_at: string;
+}
+
 /** Manifest-shaped result record returned by project load. Member arrays stay
  *  server-side; missing_members is a route-only health flag. */
 export interface PersistedResultRecord {
