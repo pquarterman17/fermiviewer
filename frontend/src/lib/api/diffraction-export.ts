@@ -1,4 +1,5 @@
 // Extracted from lib/api.ts; public imports remain stable via the barrel.
+import type { CapturedResultRef } from "./project";
 import { post } from "./transport";
 
 export interface DetectResult {
@@ -39,6 +40,8 @@ export interface IndexResult {
   center: [number, number];   // [row, col] 1-based pattern centre
   measured_r: number[];       // px radius per spot (same order as input spots)
   candidates: PhaseCandidate[];
+  /** Present only when the call asked to persist the run (`record`). */
+  result?: CapturedResultRef;
 }
 
 export function diffractionIndex(
@@ -49,6 +52,9 @@ export function diffractionIndex(
     cameraLengthMm?: number;
     accKv?: number;
     roi?: AnalysisRoi;
+    /** Persist this run as a result record. Off by default — recording is
+     *  a user decision, not a side effect of every indexing pass. */
+    record?: boolean;
   } = {},
 ): Promise<IndexResult> {
   return post("/api/diffraction/index", {
@@ -58,6 +64,7 @@ export function diffractionIndex(
     camera_length_mm: opts.cameraLengthMm ?? null,
     acc_voltage_kv: opts.accKv ?? 200,
     roi: opts.roi ?? null,
+    ...(opts.record ? { record: true } : {}),
   });
 }
 

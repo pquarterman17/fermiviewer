@@ -289,10 +289,13 @@ Results & Methods window, and representative persisted-result cards. 1C
 shipped 2026-08-23 (PR #165): the shared create/query/member API plus EDS
 quantification and particle-analysis adopters. The 1B implementation also
 delivered 1D's frontend project-load/reopen integration and UI/store test
-matrix, so no separate 1D PR remains. Item 1 itself stays open until the
-profile and diffraction representative adopters satisfy its cross-domain
-done condition; that adoption belongs in the operation/result waves rather
-than another persistence UI PR.
+matrix, so no separate 1D PR remains. The remaining two representative
+adopters — `measure.profile` and `diffraction.index` — shipped 2026-08-26,
+closing item 1's cross-domain done condition: all four analysis families
+named there now save, close, reopen and inspect with their parameters,
+calibration snapshot, geometry and provenance intact. Capture stays
+opt-in (`record`) on every adopter; the client affordance that offers it to
+a user belongs to item 2's Results workspace, not here.
 
 - [x] Define a versioned result schema with stable result ID, analysis type,
       created time, application version, source IDs, derived IDs, region/mask
@@ -310,7 +313,9 @@ than another persistence UI PR.
 
 **Done when:** a project can save, close, reopen, and inspect a representative
 EDS quantification, profile, particle table, and diffraction indexing result
-with their original parameters and provenance intact.
+with their original parameters and provenance intact. **Met 2026-08-26** —
+EDS quantification and particle analysis via PR #165, intensity profile and
+diffraction indexing via the adopters above.
 
 ### 2. Results browser, rerun, comparison, and reporting
 
