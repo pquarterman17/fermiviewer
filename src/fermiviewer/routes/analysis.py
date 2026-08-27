@@ -32,6 +32,7 @@ from fermiviewer.datastruct import SPECTRAL_KINDS, AxisCal, DataKind, DataStruct
 from fermiviewer.jobs import JobQueueFullError, jobs
 from fermiviewer.models import ImageMeta
 from fermiviewer.routes._arrays import value_error_as_422
+from fermiviewer.routes._diffraction_result import capture_index, capture_index_failure
 from fermiviewer.session import UnknownImageError, store
 
 router = APIRouter(prefix="/api")
@@ -423,6 +424,10 @@ class IndexRequest(BaseModel):
     tolerance: float = 0.05
     top_n: int = 5
     roi: _Roi | None = None   # optional analysis ROI (scopes the image size)
+    #: Capture this run as a persisted ResultRecord (1C). Default off until
+    #: the client grows its capture affordance — recording is a user
+    #: decision, not a side effect of every exploratory run.
+    record: bool = False
 
 
 @router.post("/diffraction/index")
@@ -434,23 +439,30 @@ def diffraction_index(req: IndexRequest) -> dict:
     # calc/diffraction_index.py (ADR 0005 §1). A degenerate or out-of-image
     # ROI is now a 422 — it used to leave the spots unshifted while shrinking
     # the effective width, which silently rescaled every measured d.
-    with value_error_as_422():
-        pattern = index_spots_roi(
-            ds.data.shape,
-            np.asarray(req.spots, dtype=np.float64),
-            req.roi.model_dump() if req.roi else None,
-            pixel_size=req.pixel_size_mm,
-            camera_length=cam,
-            acc_voltage=req.acc_voltage_kv,
-            tolerance=req.tolerance,
-            top_n=req.top_n,
-            extra_phases=list(_phase_registry.custom),  # imported/CIF phases
-        )
+    # The 422 that conversion raises is a COMPUTATION failure (the inputs
+    # already resolved), so a requested capture must record it, not lose it.
+    try:
+        with value_error_as_422():
+            pattern = index_spots_roi(
+                ds.data.shape,
+                np.asarray(req.spots, dtype=np.float64),
+                req.roi.model_dump() if req.roi else None,
+                pixel_size=req.pixel_size_mm,
+                camera_length=cam,
+                acc_voltage=req.acc_voltage_kv,
+                tolerance=req.tolerance,
+                top_n=req.top_n,
+                extra_phases=list(_phase_registry.custom),  # imported/CIF phases
+            )
+    except HTTPException as exc:
+        if req.record:
+            capture_index_failure(req, str(exc.detail))
+        raise
     full_center = pattern.center
     measured_r = pattern.measured_r
     cands = pattern.candidates
 
-    return {
+    body = {
         "center": list(full_center),       # [row, col] 1-based
         "measured_r": measured_r,          # px, one per spot (same order as req.spots)
         "candidates": [
@@ -471,3 +483,6 @@ def diffraction_index(req: IndexRequest) -> dict:
             for c in cands
         ],
     }
+    if req.record:
+        body["result"] = capture_index(req, pattern)
+    return body

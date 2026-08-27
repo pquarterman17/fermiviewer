@@ -12,7 +12,9 @@ from fermiviewer.calc.profile_stats import box_integrate, measure_distance, roi_
 from fermiviewer.calc.profiles import line_profile_stats, polyline_profile
 from fermiviewer.calc.raster import NoRasterError, raster_of
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
+from fermiviewer.io.project_results import ResultOutput
 from fermiviewer.models import ImageMeta
+from fermiviewer.result_capture import capture_result
 from fermiviewer.session import UnknownImageError, store
 
 router = APIRouter(prefix="/api")
@@ -39,6 +41,10 @@ class ProfileRequest(BaseModel):
     tilt_angle_deg: float = 0.0
     tilt_axis: str = "Y"
     geometry: str = "cross-section"
+    #: Capture this run as a persisted ResultRecord (1C). Default off until
+    #: the client grows its capture affordance — recording is a user
+    #: decision, not a side effect of every exploratory run.
+    record: bool = False
 
 
 @router.post("/measure/profile")
@@ -56,6 +62,12 @@ def measure_profile(req: ProfileRequest) -> dict:
     ds, raster = _raster(req.image_id)
     px = ds.pixel_size if ds.kind is not DataKind.SPECTRUM else float("nan")
     sem: np.ndarray | None = None
+    # Input resolution is done; from here a ValueError out of the calc layer
+    # is a COMPUTATION failure, which a requested capture must record rather
+    # than lose (the 1B contract's failed-state requirement). The
+    # "need either a+b or points" HTTPException raised below is deliberately
+    # NOT caught here: that is request validation — no computation was
+    # attempted — so it is never captured.
     try:
         if req.points is not None and len(req.points) >= 2:
             pts = np.asarray(req.points, dtype=np.float64)
@@ -77,20 +89,131 @@ def measure_profile(req: ProfileRequest) -> dict:
         else:
             raise HTTPException(422, "need either a+b or points (≥2)")
     except ValueError as e:
+        if req.record:
+            capture_result(
+                analysis="measure.profile",
+                label=f"Intensity profile of {store.name(req.image_id)}",
+                source_ids=[req.image_id],
+                params=req.model_dump(exclude={"record"}),
+                regions=_profile_regions(req),
+                status="failed",
+                error=str(e),
+            )
         raise HTTPException(422, str(e)) from None
-    unit = ds.pixel_unit or "px"
-    result: dict = {
+    calibrated = bool(np.isfinite(px))
+    unit = (ds.pixel_unit or "px") if calibrated else "px"
+    body: dict = {
         "dist": dist.tolist(),
         "intensity": [None if not np.isfinite(v) else v for v in inten],
         "length": float(dist[-1]),
-        "unit": unit if np.isfinite(px) else "px",
+        "unit": unit,
         "reduce": req.reduce,
     }
     if sem is not None:
-        result["intensity_sigma"] = [
+        body["intensity_sigma"] = [
             None if not np.isfinite(v) else float(v) for v in sem
         ]
-    return result
+    if req.record:
+        body["result"] = _capture_profile(req, dist, inten, sem, unit, calibrated)
+    return body
+
+
+def _profile_regions(req: ProfileRequest) -> list[dict]:
+    """The geometry this run measured, snapshotted so the record can be
+    reopened after the live region is edited or deleted (ADR 0004 §6).
+
+    Each shape names its coordinate convention explicitly: this repo's
+    families genuinely differ (profile endpoints take (row, col) 1-based
+    points, the ROI/box endpoints a (row1, col1, row2, col2) rect), so a
+    bare list of numbers would not be self-describing on reopen. Empty
+    when neither branch is satisfied — that request never computes.
+    """
+    if req.points is not None and len(req.points) >= 2:
+        return [{
+            "kind": "polyline",
+            "convention": "(row, col), 1-based",
+            "points": [list(p) for p in req.points],
+            "width": req.width,
+        }]
+    if req.a is not None and req.b is not None:
+        return [{
+            "kind": "line",
+            "convention": "(row, col), 1-based",
+            "a": list(req.a),
+            "b": list(req.b),
+            "width": req.width,
+        }]
+    return []
+
+
+def _capture_profile(
+    req: ProfileRequest,
+    dist: np.ndarray,
+    inten: np.ndarray,
+    sem: np.ndarray | None,
+    unit: str,
+    calibrated: bool,
+) -> dict:
+    """This run as a persisted ResultRecord (ADR 0004 §3): the sampled
+    profile as a member-backed curve — (N, 2) [dist, intensity], or (N, 3)
+    with the per-point sem when the two-point branch estimated one — plus
+    the measured length and the sample count as scalars.
+    """
+    columns = [dist, inten] if sem is None else [dist, inten, sem]
+    # NaN stays in the member array: it is .npy, not JSON, and a sample that
+    # ran off the raster is a real gap, not a zero. The JSON surfaces (the
+    # wire body above, /api/results/.../data) scrub it to null themselves.
+    curve = np.column_stack([np.asarray(c, dtype=np.float64) for c in columns])
+    warnings: list[str] = []
+    if not calibrated:
+        warnings.append(
+            "image has no finite pixel size — distances are in pixels, "
+            "not calibrated units"
+        )
+    n_nonfinite = int(np.count_nonzero(~np.isfinite(inten)))
+    if n_nonfinite:
+        warnings.append(
+            f"{n_nonfinite} of {inten.size} sampled intensities are "
+            f"non-finite — the profile ran outside the image raster"
+        )
+    outputs = [
+        ResultOutput(
+            kind="curve",
+            name="profile",
+            data={
+                "x_name": "distance",
+                "x_unit": unit,
+                "y_name": "intensity",
+                # Raster values carry no calibrated intensity unit in this
+                # build; "" is the honest answer, not an invented "counts".
+                "y_unit": "",
+                "reduce": req.reduce,
+            },
+            array=curve,
+        ),
+        ResultOutput(
+            kind="scalar",
+            name="length",
+            data={"value": float(dist[-1]), "unit": unit},
+        ),
+        ResultOutput(
+            kind="scalar",
+            name="n_samples",
+            data={"value": int(dist.size), "unit": ""},
+        ),
+    ]
+    record = capture_result(
+        analysis="measure.profile",
+        label=f"Intensity profile of {store.name(req.image_id)}",
+        source_ids=[req.image_id],
+        # The fully resolved reproduction key, defaults filled — never the
+        # capture toggle itself.
+        params=req.model_dump(exclude={"record"}),
+        outputs=outputs,
+        regions=_profile_regions(req),
+        warnings=warnings,
+    )
+    return {"id": record.id, "created_at": record.created_at}
 
 
 class RoiRequest(BaseModel):
