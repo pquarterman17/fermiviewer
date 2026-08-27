@@ -327,12 +327,24 @@ Build one result experience on the schema from item 1.
       source/ROI links, and produced images.
 - [ ] Reopen the originating workshop with saved parameters and offer explicit
       **Rerun** and **Duplicate with changes** actions.
-- [ ] Compare compatible results across images or samples with shared units and
-      explicit incompatibility messages.
-- [ ] Build a report from selected results: figures, tables, captions,
+- [x] Compare compatible results across images or samples with shared units and
+      explicit incompatibility messages. (2B: `results_compare` +
+      `POST /api/results/compare`. Backend only — 2C renders the verdicts.)
+- [x] Build a report from selected results: figures, tables, captions,
       calibration summary, software version, and generated methods text.
-- [ ] Export selected results as a structured bundle in addition to existing
-      per-tool CSV/JSON/figure exports.
+      (2B: `results_report`/`results_methods` + `POST /api/results/report`.
+      Captions and per-record prose are generated here; PDF/HTML layout is 2C.)
+- [x] Export selected results as a structured bundle in addition to existing
+      per-tool CSV/JSON/figure exports. (2B: the same bundle, JSON-safe and
+      deterministic. A file-download affordance is 2A/2C.)
+
+**Item-2 stack status (2026-08-27):** 2B shipped — the compatible-result
+query and the report bundle, with deterministic provenance and export
+tests. The three checked boxes above are its backend; the three unchecked
+ones are 2A/2C's workspace, cards and rendered layout, which consume it.
+Item 2 stays open until a user can reach any of this without an HTTP client:
+nothing in the UI calls `/api/results/compare` or `/api/results/report` yet,
+and the capture affordance item 1's adopters wait on is the same gap.
 
 **Done when:** a user can create a short, reproducible sample report without
 manually collecting outputs from several transient workshops.
