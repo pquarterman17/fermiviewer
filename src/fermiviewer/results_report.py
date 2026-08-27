@@ -1,13 +1,26 @@
-"""Report bundles over persisted results — roadmap item 2B, export half.
+"""Report MANIFESTS over persisted results — roadmap item 2B, report half.
 
-One selection of `ResultRecord`s in, one JSON-safe, self-describing bundle
-out: the records themselves (with their arrays either inlined or cited),
-a deduped calibration summary across every source they name, generated
+One selection of `ResultRecord`s in, one JSON-safe manifest out: the
+records themselves (with their arrays either inlined or *cited*), a
+deduped calibration summary across every source they name, generated
 methods prose, and every warning attributed to the record that raised it.
-This is what "export selected results as a structured bundle" and "build a
-report ... figures, tables, captions, calibration summary, software
-version, and generated methods text" reduce to once the numbers already
-live in the item-1 record contract (ADR 0004).
+This is what "build a report ... figures, tables, captions, calibration
+summary, software version, and generated methods text" reduces to once the
+numbers already live in the item-1 record contract (ADR 0004).
+
+**This is a manifest, not a self-contained export**, and the distinction is
+load-bearing rather than pedantic. An output whose array exceeds
+`MAX_INLINE_ARRAY_VALUES` contributes its `member` name, shape and dtype
+and no values — and that member is a path *inside the originating `.fvp`
+container*, not a durable reference anyone outside this session can
+resolve. Saving a manifest for such a result therefore yields a document
+that cannot reconstruct the table or curve it names without the original
+project and a second API call. That is fine for the report/preview this
+module exists to build, and it is NOT the roadmap's "export selected
+results as a structured bundle": that item stays open, and satisfying it
+needs a container that carries the member payloads (or durable references
+to them) alongside this manifest. Do not let the word "bundle" in
+`ReportBundle` blur the two — the name is kept for API stability.
 
 Three properties this module owes its callers:
 
@@ -25,7 +38,8 @@ Three properties this module owes its callers:
   holds at most `MAX_INLINE_ARRAY_VALUES` values; a larger one contributes
   its member name, shape and dtype and no values at all. Silently
   truncating a 10^6-row particle table into "the first few rows" would
-  misrepresent the data, so the bundle cites it instead of abridging it.
+  misrepresent the data, so the manifest cites it instead of abridging it
+  — with the citation's limits stated above, not implied.
 
 App layer only by placement: this module is pure (stdlib + numpy +
 `fermiviewer.io.*`), takes `app_version` as an argument rather than
