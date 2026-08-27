@@ -107,8 +107,37 @@ def results_compare(req: CompareRequest) -> dict[str, Any]:
     result = compare_results(reference, candidates)
     return {
         "reference_id": result.reference_id,
+        # The cumulative intersection: comparable with EVERY entry below.
+        # Honestly empty when the candidates are only pairwise comparable
+        # (each match carries its own `outputs`, which is what a pairwise
+        # comparison view should render), and `notes` says so when it is.
         "outputs": list(result.outputs),
-        "compatible": list(result.compatible),
+        "compatible": [
+            {
+                "id": match.id,
+                "outputs": list(match.outputs),
+                # Structured, not collapsed to its differences: "agrees" and
+                # "nothing in common to compare" are different answers, and
+                # for the cross-image case — the primary one — the second is
+                # what actually happens. `verified` is the honest boolean;
+                # `agrees` is vacuously true with no shared source.
+                "calibration_agreement": {
+                    "verified": match.calibration_agreement.verified,
+                    "agrees": match.calibration_agreement.agrees,
+                    "shared_sources": list(
+                        match.calibration_agreement.shared_sources
+                    ),
+                    "reference_only": list(
+                        match.calibration_agreement.reference_only
+                    ),
+                    "candidate_only": list(
+                        match.calibration_agreement.candidate_only
+                    ),
+                    "differences": list(match.calibration_agreement.differences),
+                },
+            }
+            for match in result.compatible
+        ],
         "rejected": [
             {"id": rid, "code": why.code, "message": why.message}
             for rid, why in result.rejected

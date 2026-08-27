@@ -9,12 +9,14 @@ unit that disagree — rather than showing a greyed-out row.
 So `compare_results` never returns a bare boolean. It returns a
 `Comparison` carrying three separately-actionable things:
 
-* `compatible` — the candidate ids that can be shown next to the reference;
+* `compatible` — one `CandidateMatch` per candidate that can be shown next
+  to the reference, carrying the outputs comparable with THE REFERENCE and
+  that pair's `CalibrationAgreement`;
 * `rejected` — every other candidate with a stable `code` and a sentence
   naming both sides concretely;
 * `notes` — non-fatal observations a view should surface but that
-  disqualify nobody (an output only some records carry, an unrecorded
-  unit, a pixel size that changed between records).
+  disqualify nobody (an output only some records carry, a unit that could
+  not be verified, a pixel size that changed between records).
 
 ## The rules
 
@@ -28,8 +30,9 @@ So `compare_results` never returns a bare boolean. It returns a
 4. **Shared output names must agree on units** (`output_unit_mismatch`),
    read per kind from where ADR 0004 §3 keeps them (see below).
 5. **A missing output is not fatal.** An output the reference has and a
-   candidate lacks is dropped from `outputs` with a note; the candidate is
-   rejected (`no_shared_outputs`) only when nothing comparable is left.
+   candidate lacks is dropped from that candidate's `outputs` with a note;
+   the candidate is rejected (`no_shared_outputs`) only when nothing
+   comparable is left.
 6. **The reference is trivially comparable with itself.**
 
 A kind or unit disagreement rejects the whole candidate rather than just
@@ -37,30 +40,37 @@ that output: same analysis and output name but different units is a
 *discrepancy*, not an absence, and dropping it silently would hide the
 mistake this query exists to catch. Absence (rule 5) is the benign case.
 
-## Where units live, per kind (ADR 0004 §3)
+## Pairwise, with a cumulative summary
 
-* `scalar` — `data["unit"]`.
-* `curve` and `fit` — `data["x_unit"]` and `data["y_unit"]` (a fit is a
-  curve plus model/coefficient keys, so it carries the same axis units).
-* `table` — `data["units"]`, positionally aligned to `data["columns"]`;
-  compared per COLUMN NAME, so reordering columns is not a unit change and
-  a column only one side carries is a note.
-* `map`, `overlay`, `figure` — ADR 0004 §3 defines no unit convention for
-  these (`data` is display hints / caption inputs), so only rule 3 applies.
+Every rule is decided PAIRWISE against the reference, so a
+`CandidateMatch.outputs` is that one pair's comparable set and is never
+empty — nothing comparable is rule 5's rejection. (The reflexive case is
+the sole exception: a `failed` reference has no outputs yet rule 6 still
+holds.)
 
-## Missing unit vs empty unit
+`Comparison.outputs` is the intersection across every compatible
+candidate: the outputs one side-by-side view can render for the WHOLE
+group. It can therefore be empty while `compatible` is not — a reference
+with outputs A and B, one candidate carrying only A and one carrying only
+B are each pairwise comparable but share nothing between them. That case
+emits a note rather than passing as an empty render.
 
-**A missing unit key is UNKNOWN; an explicitly empty string is a real,
-dimensionless unit.** `{"unit": ""}` matches only another `""` and
-mismatches `{"unit": "at.%"}`; `{}` (or a `None`/non-string value) matches
-nothing and mismatches nothing — it notes that the unit could not be
-verified, and the output stays comparable.
+## Units: where they live, and when they count (`results_units`)
 
-The asymmetry follows `AxisCal.units`, where `""` already means
-"uncalibrated" as a recorded fact. Treating an absent key as `""` would let
-a record that never recorded units certify as "same units" against one that
-did; treating `""` as unknown would discard a real statement. Unknown must
-manufacture neither agreement nor rejection — hence the note.
+The sibling module holds both answers — the per-kind `data` keys ADR 0004
+§3 defines, and the rule that a unit is compared only when it was actually
+RECORDED. A missing key, a null, a non-string value and a bare `""` are
+all UNVERIFIED: rule 4 neither matches nor rejects on them, it emits a
+note and the output stays comparable.
+
+`""` counts as a real dimensionless unit only when its output opts in with
+`DIMENSIONLESS_KEY` (re-exported here). `""` is overloaded across this
+codebase's records — a genuinely dimensionless particle-table column, but
+also `measure.profile`'s uncalibrated raster intensity — and reading the
+two alike would certify unrelated intensity domains as sharing units with
+no note at all. The full argument is that module's docstring.
+
+Unknown must manufacture neither agreement nor rejection — hence the note.
 
 ## Calibration
 
@@ -68,12 +78,20 @@ The other half of "were these measured the same way" lives in the sibling
 `results_calibration.py`: `calibration_agreement` reports whether two
 records' SOURCE calibration snapshots agree, so a caller can tell "same
 units, different pixel size" from "same everything". It is a NOTE, never a
-rejection (the reasoning is in that module), and `compare_results` folds
-its `differences` into `notes` for every compatible candidate.
+rejection (the reasoning is in that module).
 
-`CalibrationAgreement` and `calibration_agreement` are **re-exported from
-here**, so the whole 2B comparison surface stays one import site and the
-split remains an implementation detail for callers.
+For every compatible candidate `compare_results` folds in both halves of
+that report: the concrete `differences`, and `calibration_coverage_notes`
+for what was never checked — records on different images share no snapshot
+and so produce no differences at all, which must not read as agreement.
+The full `CalibrationAgreement` stays reachable as
+`CandidateMatch.calibration_agreement` so a route can return it
+structured rather than re-deriving it from prose.
+
+`CalibrationAgreement`, `calibration_agreement` and
+`calibration_coverage_notes` are **re-exported from here**, so the whole
+2B comparison surface stays one import site and the split remains an
+implementation detail for callers.
 
 Pure layer: stdlib over the frozen record types, no session/route imports.
 """
@@ -82,17 +100,18 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
 
 from fermiviewer.io.results_model import ResultOutput, ResultRecord
 from fermiviewer.results_calibration import (
-    # Re-exported below: routes and tests reach the whole 2B comparison
-    # surface through this module, so the split stays an implementation
-    # detail rather than a second import site for callers.
+    # Re-exported below, with `DIMENSIONLESS_KEY`: routes and tests reach
+    # the whole 2B comparison surface through this module, so the splits
+    # stay an implementation detail rather than extra import sites.
     CalibrationAgreement,
     calibration_agreement,
+    calibration_coverage_notes,
     record_name,
 )
+from fermiviewer.results_units import DIMENSIONLESS_KEY, unit_slots
 
 __all__ = [
     "CODE_ANALYSIS_MISMATCH",
@@ -101,11 +120,14 @@ __all__ = [
     "CODE_OUTPUT_UNIT_MISMATCH",
     "CODE_STATUS_NOT_COMPLETED",
     "COMPARABLE_STATUS",
+    "DIMENSIONLESS_KEY",
     "INCOMPATIBILITY_CODES",
     "CalibrationAgreement",
+    "CandidateMatch",
     "Comparison",
     "Incompatibility",
     "calibration_agreement",
+    "calibration_coverage_notes",
     "compare_results",
 ]
 
@@ -128,15 +150,6 @@ INCOMPATIBILITY_CODES: tuple[str, ...] = (
     CODE_OUTPUT_UNIT_MISMATCH,
 )
 
-#: Per-kind unit keys in `ResultOutput.data` (ADR 0004 §3). `table` is
-#: positional against `data["columns"]` and handled separately; the raster
-#: and figure kinds define no unit convention, so are absent here.
-_UNIT_KEYS: dict[str, tuple[str, ...]] = {
-    "scalar": ("unit",),
-    "curve": ("x_unit", "y_unit"),
-    "fit": ("x_unit", "y_unit"),
-}
-
 
 # ── structures ───────────────────────────────────────────────────────
 
@@ -154,11 +167,33 @@ class Incompatibility:
 
 
 @dataclass(frozen=True)
+class CandidateMatch:
+    """One candidate that CAN be shown beside the reference.
+
+    `outputs` are the output names comparable between this candidate and
+    the reference alone, in the reference's own output order — the pair's
+    verdict, not the group's. Non-empty, except for the reflexive match of
+    a reference that has no outputs (rule 6).
+
+    `calibration_agreement` is that pair's full source-calibration report,
+    kept structured here so a caller can render it rather than parse the
+    sentences `Comparison.notes` already carries.
+    """
+
+    id: str
+    outputs: tuple[str, ...]
+    calibration_agreement: CalibrationAgreement
+
+
+@dataclass(frozen=True)
 class Comparison:
     """The comparable set around one reference record.
 
     `outputs` are the output names comparable across the reference AND
-    every id in `compatible`, in the reference's own output order. With no
+    EVERY member of `compatible` — the cumulative intersection, in the
+    reference's output order. It is honestly allowed to be empty while
+    `compatible` is not (candidates comparable pairwise but sharing no
+    output between them); that case is called out in `notes`. With no
     compatible candidates it is simply the reference's own output names:
     nothing constrains them yet.
 
@@ -169,60 +204,20 @@ class Comparison:
 
     reference_id: str
     outputs: tuple[str, ...]
-    compatible: tuple[str, ...]
+    compatible: tuple[CandidateMatch, ...]
     rejected: tuple[tuple[str, Incompatibility], ...]
     notes: tuple[str, ...]
 
 
 @dataclass(frozen=True)
-class _Check:
-    """One candidate's verdict, before it joins the accumulated sets."""
+class _Verdict:
+    """A candidate that passed every rule: its match, plus its notes."""
 
-    incompatibility: Incompatibility | None
-    shared: tuple[str, ...]
+    match: CandidateMatch
     notes: tuple[str, ...]
 
 
-# ── naming and unit reading ──────────────────────────────────────────
-
-
-def _unit_text(value: Any) -> str | None:
-    """A recorded unit, or None for UNKNOWN (absent, null, or not a string).
-
-    `""` is a recorded unit meaning dimensionless — see the module
-    docstring's missing-vs-empty rule.
-    """
-    return value if isinstance(value, str) else None
-
-
-def _describe_unit(unit: str | None) -> str:
-    return "no recorded unit" if unit is None else repr(unit)
-
-
-def _table_slots(data: dict[str, Any]) -> tuple[tuple[str, str | None], ...]:
-    """Table unit slots keyed by column NAME, from positional `units`."""
-    columns = data.get("columns")
-    if not isinstance(columns, (list, tuple)):
-        return ()
-    raw_units = data.get("units")
-    units: Sequence[Any] = raw_units if isinstance(raw_units, (list, tuple)) else ()
-    slots: list[tuple[str, str | None]] = []
-    seen: set[str] = set()
-    for index, column in enumerate(columns):
-        label = f"column {str(column)!r}"
-        if label in seen:  # a duplicated column name: the first one wins
-            continue
-        seen.add(label)
-        slots.append((label, _unit_text(units[index]) if index < len(units) else None))
-    return tuple(slots)
-
-
-def _unit_slots(output: ResultOutput) -> tuple[tuple[str, str | None], ...]:
-    """The `(slot label, unit)` pairs this output's kind defines, in order."""
-    data = output.data if isinstance(output.data, dict) else {}
-    if output.kind == "table":
-        return _table_slots(data)
-    return tuple((key, _unit_text(data.get(key))) for key in _UNIT_KEYS.get(output.kind, ()))
+# ── output lookup ────────────────────────────────────────────────────
 
 
 def _outputs_by_name(record: ResultRecord) -> dict[str, ResultOutput]:
@@ -245,8 +240,8 @@ def _compare_units(
 ) -> tuple[Incompatibility | None, tuple[str, ...]]:
     """Rule 4 for one shared output: a mismatch, or notes for what is unknown."""
     ref_name, cand_name = record_name(reference), record_name(candidate)
-    ref_slots = dict(_unit_slots(ref_output))
-    cand_slots = dict(_unit_slots(cand_output))
+    ref_slots = dict(unit_slots(ref_output))
+    cand_slots = dict(unit_slots(cand_output))
     notes: list[str] = []
     for slot, ref_unit in ref_slots.items():
         if slot not in cand_slots:
@@ -256,18 +251,18 @@ def _compare_units(
             )
             continue
         cand_unit = cand_slots[slot]
-        if ref_unit is None or cand_unit is None:
+        if ref_unit.text is None or cand_unit.text is None:
             notes.append(
                 f"output {name!r}: units not verified for {slot} — reference "
-                f"{ref_name} has {_describe_unit(ref_unit)}, result "
-                f"{cand_name} has {_describe_unit(cand_unit)}"
+                f"{ref_name} has {ref_unit.description}, result "
+                f"{cand_name} has {cand_unit.description}"
             )
-        elif ref_unit != cand_unit:
+        elif ref_unit.text != cand_unit.text:
             return (
                 Incompatibility(
                     CODE_OUTPUT_UNIT_MISMATCH,
-                    f"output {name!r}: {slot} is {ref_unit!r} in reference "
-                    f"{ref_name} but {cand_unit!r} in result {cand_name} — "
+                    f"output {name!r}: {slot} is {ref_unit.text!r} in reference "
+                    f"{ref_name} but {cand_unit.text!r} in result {cand_name} — "
                     f"comparing them would mix units",
                 ),
                 (),
@@ -285,23 +280,19 @@ def _check_outputs(
     reference: ResultRecord,
     ref_outputs: dict[str, ResultOutput],
     candidate: ResultRecord,
-) -> _Check:
-    """Rules 3-5: shared names, then kind and units on each."""
+) -> Incompatibility | _Verdict:
+    """Rules 3-5: shared names, then kind and units on each, then calibration."""
     ref_name, cand_name = record_name(reference), record_name(candidate)
     cand_outputs = _outputs_by_name(candidate)
     shared = tuple(name for name in ref_outputs if name in cand_outputs)
     if not shared:
         ref_names = ", ".join(repr(n) for n in ref_outputs) or "no outputs"
         cand_names = ", ".join(repr(n) for n in cand_outputs) or "no outputs"
-        return _Check(
-            Incompatibility(
-                CODE_NO_SHARED_OUTPUTS,
-                f"result {cand_name} shares no output name with reference "
-                f"{ref_name}: the reference has {ref_names}; the candidate has "
-                f"{cand_names}",
-            ),
-            (),
-            (),
+        return Incompatibility(
+            CODE_NO_SHARED_OUTPUTS,
+            f"result {cand_name} shares no output name with reference "
+            f"{ref_name}: the reference has {ref_names}; the candidate has "
+            f"{cand_names}",
         )
     notes: list[str] = [
         f"output {name!r} is not compared: reference {ref_name} has it but result "
@@ -312,55 +303,66 @@ def _check_outputs(
     for name in shared:
         ref_output, cand_output = ref_outputs[name], cand_outputs[name]
         if ref_output.kind != cand_output.kind:
-            return _Check(
-                Incompatibility(
-                    CODE_OUTPUT_KIND_MISMATCH,
-                    f"output {name!r} is a {ref_output.kind!r} in reference "
-                    f"{ref_name} but a {cand_output.kind!r} in result "
-                    f"{cand_name}",
-                ),
-                (),
-                (),
+            return Incompatibility(
+                CODE_OUTPUT_KIND_MISMATCH,
+                f"output {name!r} is a {ref_output.kind!r} in reference "
+                f"{ref_name} but a {cand_output.kind!r} in result {cand_name}",
             )
         bad, slot_notes = _compare_units(reference, candidate, name, ref_output, cand_output)
         if bad is not None:
-            return _Check(bad, (), ())
+            return bad
         notes.extend(slot_notes)
-    notes.extend(calibration_agreement(reference, candidate).differences)
-    return _Check(None, shared, tuple(notes))
+    agreement = calibration_agreement(reference, candidate)
+    notes.extend(agreement.differences)
+    notes.extend(calibration_coverage_notes(agreement, ref_name, cand_name))
+    return _Verdict(CandidateMatch(candidate.id, shared, agreement), tuple(notes))
 
 
 def _check_candidate(
     reference: ResultRecord,
     ref_outputs: dict[str, ResultOutput],
     candidate: ResultRecord,
-) -> _Check:
+) -> Incompatibility | _Verdict:
     """All rules for one candidate, in rule order; the first failure wins."""
     ref_name, cand_name = record_name(reference), record_name(candidate)
     if candidate.analysis != reference.analysis:
-        return _Check(
-            Incompatibility(
-                CODE_ANALYSIS_MISMATCH,
-                f"result {cand_name} is analysis {candidate.analysis!r} but reference "
-                f"{ref_name} is analysis {reference.analysis!r} — different analyses "
-                f"are not comparable",
-            ),
-            (),
-            (),
+        return Incompatibility(
+            CODE_ANALYSIS_MISMATCH,
+            f"result {cand_name} is analysis {candidate.analysis!r} but reference "
+            f"{ref_name} is analysis {reference.analysis!r} — different analyses "
+            f"are not comparable",
         )
     if candidate.status != COMPARABLE_STATUS:
         reason = f" (error: {candidate.error})" if candidate.error else ""
-        return _Check(
-            Incompatibility(
-                CODE_STATUS_NOT_COMPLETED,
-                f"result {cand_name} has status {candidate.status!r}{reason}, so it "
-                f"carries no completed outputs to compare against reference "
-                f"{ref_name}",
-            ),
-            (),
-            (),
+        return Incompatibility(
+            CODE_STATUS_NOT_COMPLETED,
+            f"result {cand_name} has status {candidate.status!r}{reason}, so it "
+            f"carries no completed outputs to compare against reference {ref_name}",
         )
     return _check_outputs(reference, ref_outputs, candidate)
+
+
+def _no_common_output_note(
+    reference: ResultRecord, compatible: Sequence[CandidateMatch]
+) -> str:
+    """Rule for the honest empty `Comparison.outputs` (see the class docstring).
+
+    Every candidate matched the reference, each on its own outputs, and the
+    intersection came out empty — so a grouped view has nothing to render
+    even though no candidate was rejected. The sentence names each
+    candidate's own comparable set, since that is what the caller must look
+    at to split the group into renderable subsets.
+    """
+    pairs = "; ".join(
+        f"{match.id} on " + (", ".join(repr(n) for n in match.outputs) or "no outputs")
+        for match in compatible
+    )
+    return (
+        f"no output is comparable across all {len(compatible)} compatible results: "
+        f"reference {record_name(reference)} matches each of them, but on different "
+        f"outputs ({pairs}) — a single side-by-side view of the whole group has "
+        f"nothing to show"
+    )
 
 
 # ── entry point ──────────────────────────────────────────────────────
@@ -375,28 +377,37 @@ def compare_results(reference: ResultRecord, candidates: Sequence[ResultRecord])
     here iterates a set, so the result is byte-identical run to run.
 
     A candidate whose id equals the reference's is trivially compatible
-    and skips every rule (rule 6). Record ids are unique within a project
-    (ADR 0004 §6 enforces it on save AND load), so an id match means the
-    same record and the reflexive case holds even for a reference no other
-    record could be compared against.
+    and skips every rule (rule 6), notes included — a record cannot
+    disagree with itself about units or calibration. Record ids are unique
+    within a project (ADR 0004 §6 enforces it on save AND load), so an id
+    match means the same record and the reflexive case holds even for a
+    reference no other record could be compared against.
     """
     ref_outputs = _outputs_by_name(reference)
     surviving = list(ref_outputs)
-    compatible: list[str] = []
+    compatible: list[CandidateMatch] = []
     rejected: list[tuple[str, Incompatibility]] = []
     notes: list[str] = []
     for candidate in candidates:
         if candidate.id == reference.id:
-            compatible.append(candidate.id)
+            compatible.append(
+                CandidateMatch(
+                    candidate.id,
+                    tuple(ref_outputs),
+                    calibration_agreement(reference, candidate),
+                )
+            )
             continue
-        check = _check_candidate(reference, ref_outputs, candidate)
-        if check.incompatibility is not None:
-            rejected.append((candidate.id, check.incompatibility))
+        verdict = _check_candidate(reference, ref_outputs, candidate)
+        if isinstance(verdict, Incompatibility):
+            rejected.append((candidate.id, verdict))
             continue
-        compatible.append(candidate.id)
-        notes.extend(check.notes)
-        shared = set(check.shared)
+        compatible.append(verdict.match)
+        notes.extend(verdict.notes)
+        shared = set(verdict.match.outputs)
         surviving = [name for name in surviving if name in shared]
+    if ref_outputs and compatible and not surviving:
+        notes.append(_no_common_output_note(reference, compatible))
     return Comparison(
         reference_id=reference.id,
         outputs=tuple(surviving),

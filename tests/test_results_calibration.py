@@ -9,15 +9,28 @@ That crossing point is asserted from the compare side.
 
 Covered: shared vs unshared sources; scale, units, axis-count and
 provenance differences; the "same units, different pixel size" case the
-roadmap names; NaN-as-uncalibrated; determinism of `differences`; and
-`record_name`, the naming convention every 2B message shares.
+roadmap names; NaN-as-uncalibrated; `verified` and the coverage notes that
+keep "nothing was compared" from reading as "everything agreed";
+determinism of `differences`; and `record_name`, the naming convention
+every 2B message shares.
 """
 
 from __future__ import annotations
 
 from fermiviewer.datastruct import AxisCal
 from fermiviewer.io.results_model import CalibrationSnapshot, ResultRecord
-from fermiviewer.results_calibration import calibration_agreement, record_name
+from fermiviewer.results_calibration import (
+    calibration_agreement,
+    calibration_coverage_notes,
+    record_name,
+)
+
+
+def notes(ref: ResultRecord, cand: ResultRecord) -> tuple[str, ...]:
+    """The coverage notes for a pair, named the way a 2B message names it."""
+    return calibration_coverage_notes(
+        calibration_agreement(ref, cand), record_name(ref), record_name(cand)
+    )
 
 
 def record(
@@ -210,3 +223,98 @@ def test_differences_are_ordered_by_source_then_axis_and_reproducible() -> None:
     assert "calibration provenance differs" in first.differences[4]
     for _ in range(5):
         assert calibration_agreement(ref, other) == first
+
+
+# ── coverage: what was never compared ────────────────────────────────
+
+
+def test_full_overlap_and_agreement_produces_no_coverage_note() -> None:
+    """The one case where an empty `differences` really does mean
+    "same everything" — and the only case that stays silent."""
+    ref = record("aaa", calibration=(snapshot("img1", 0.5, "nm"),))
+    other = record("bbb", calibration=(snapshot("img1", 0.5, "nm"),))
+    assert calibration_agreement(ref, other).verified is True
+    assert notes(ref, other) == ()
+
+
+def test_disjoint_sources_are_reported_as_not_verified_with_both_inventories() -> None:
+    """The CROSS-IMAGE case 2B exists for: no shared source, no
+    differences, and therefore nothing established."""
+    ref = record("aaa", label="EDS A", calibration=(snapshot("img1", 0.5, "nm"),))
+    other = record("bbb", label="EDS B", calibration=(snapshot("img9", 3.0, "um"),))
+    assert calibration_agreement(ref, other).verified is False
+    (note,) = notes(ref, other)
+    assert note == (
+        "calibration agreement not verified between reference aaa ('EDS A') and "
+        "result bbb ('EDS B'): they share no source image — reference aaa ('EDS A') "
+        "snapshotted 'img1', result bbb ('EDS B') snapshotted 'img9', so whether they "
+        "were measured at the same pixel size is unknown"
+    )
+
+
+def test_neither_record_snapshotting_anything_says_so_in_those_words() -> None:
+    (note,) = notes(record("aaa", label="A"), record("bbb", label="B"))
+    assert "calibration agreement not verified between reference aaa ('A') and " in note
+    assert "result bbb ('B'): neither record snapshotted any source calibration" in note
+    assert "measured at the same pixel size is unknown" in note
+
+
+def test_a_one_sided_inventory_names_which_side_is_empty() -> None:
+    with_cal = record("aaa", label="A", calibration=(snapshot("img1", 0.5, "nm"),))
+    without = record("bbb", label="B")
+    (from_ref,) = notes(with_cal, without)
+    assert "result bbb ('B') snapshotted no source calibration, while reference " in from_ref
+    assert "aaa ('A') snapshotted 'img1'" in from_ref
+    (from_cand,) = notes(without, with_cal)
+    assert "reference bbb ('B') snapshotted no source calibration, while result " in from_cand
+    assert "aaa ('A') snapshotted 'img1'" in from_cand
+
+
+def test_partial_overlap_says_what_the_agreement_does_not_cover() -> None:
+    """Some sources were compared; the leftovers must not ride along as if
+    they had been."""
+    ref = record(
+        "aaa",
+        label="A",
+        calibration=(snapshot("img1", 0.5, "nm"), snapshot("img2", 0.5, "nm")),
+    )
+    other = record(
+        "bbb",
+        label="B",
+        calibration=(snapshot("img1", 0.5, "nm"), snapshot("img3", 0.5, "nm")),
+    )
+    assert calibration_agreement(ref, other).verified is True
+    (note,) = notes(ref, other)
+    assert note == (
+        "calibration agreement between reference aaa ('A') and result bbb ('B') "
+        "covers only the shared source 'img1': reference aaa ('A') also snapshotted "
+        "'img2'; result bbb ('B') also snapshotted 'img3', not compared"
+    )
+
+
+def test_a_one_sided_extra_source_is_reported_alone() -> None:
+    ref = record(
+        "aaa",
+        label="A",
+        calibration=(snapshot("img1", 0.5, "nm"), snapshot("img2", 0.5, "nm")),
+    )
+    other = record("bbb", label="B", calibration=(snapshot("img1", 0.5, "nm"),))
+    (note,) = notes(ref, other)
+    assert "covers only the shared source 'img1'" in note
+    assert "reference aaa ('A') also snapshotted 'img2', not compared" in note
+    assert "result bbb ('B') also" not in note
+
+
+def test_coverage_notes_are_independent_of_the_differences() -> None:
+    """A pair can disagree AND be incompletely covered; the two reports are
+    separate so a caller can show both."""
+    ref = record(
+        "aaa",
+        calibration=(snapshot("img1", 0.5, "nm"), snapshot("img2", 0.5, "nm")),
+    )
+    other = record("bbb", calibration=(snapshot("img1", 0.25, "nm"),))
+    agreement = calibration_agreement(ref, other)
+    assert agreement.agrees is False
+    assert agreement.verified is True
+    (note,) = notes(ref, other)
+    assert "covers only the shared source 'img1'" in note

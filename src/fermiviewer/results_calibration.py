@@ -26,6 +26,15 @@ not the same as agreeing — `shared_sources`, `reference_only` and
 `candidate_only` make that visible instead of letting an empty
 `differences` read as "same everything".
 
+That distinction only helps a user if somebody says it out loud, and the
+CROSS-IMAGE comparison is 2B's primary case: two records on different
+images produce no shared source and no differences, which reads exactly
+like genuine agreement to a caller that only folds `differences` into its
+notes. So `calibration_coverage_notes` turns the inventory into sentences:
+"not verified, and here is why" when nothing is shared, and "verified only
+over these sources" when each side also snapshotted images the other did
+not. `verified` is the one-line form of the same fact.
+
 ## What counts as a disagreement
 
 Per shared source: the number of snapshotted axes, then per axis the
@@ -56,6 +65,7 @@ from fermiviewer.io.results_model import CalibrationSnapshot, ResultRecord
 __all__ = [
     "CalibrationAgreement",
     "calibration_agreement",
+    "calibration_coverage_notes",
     "record_name",
 ]
 
@@ -93,9 +103,20 @@ class CalibrationAgreement:
 
     @property
     def agrees(self) -> bool:
-        """True when no shared source disagrees — vacuously true when the
-        records share no source image at all (see `shared_sources`)."""
+        """True when no shared source disagrees — VACUOUSLY true when the
+        records share no source image at all (see `shared_sources`). Read
+        it with `verified`, never alone."""
         return not self.differences
+
+    @property
+    def verified(self) -> bool:
+        """True when at least one source image was actually compared.
+
+        `agrees and verified` is "measured the same way"; `agrees and not
+        verified` is "nothing was checked" — the cross-image case, which
+        `calibration_coverage_notes` puts into words.
+        """
+        return bool(self.shared_sources)
 
 
 def _same_scale(left: float, right: float) -> bool:
@@ -183,4 +204,63 @@ def calibration_agreement(reference: ResultRecord, candidate: ResultRecord) -> C
         reference_only=tuple(i for i in ref_snaps if i not in cand_snaps),
         candidate_only=tuple(i for i in cand_snaps if i not in ref_snaps),
         differences=tuple(differences),
+    )
+
+
+def _ids(image_ids: tuple[str, ...]) -> str:
+    return ", ".join(repr(image_id) for image_id in image_ids)
+
+
+def calibration_coverage_notes(
+    agreement: CalibrationAgreement, ref_name: str, cand_name: str
+) -> tuple[str, ...]:
+    """What the agreement did NOT establish, as sentences naming both records.
+
+    `differences` alone cannot distinguish "these agree" from "there was
+    nothing to compare": both are an empty tuple. This turns the source
+    inventory into the missing half of that report —
+
+    * nothing shared: agreement was not verified at all, and the sentence
+      says which side snapshotted what (the cross-image case);
+    * shared plus only-side sources: agreement covers the shared images
+      only, and the leftovers are named so nobody reads it as global.
+
+    Empty when every source of both records was compared, which is the
+    only case where an empty `differences` means "same everything".
+    Names come from `record_name` so 2B messages read alike everywhere.
+    """
+    pair = f"reference {ref_name} and result {cand_name}"
+    if not agreement.shared_sources:
+        if not agreement.reference_only and not agreement.candidate_only:
+            reason = "neither record snapshotted any source calibration"
+        elif not agreement.reference_only:
+            reason = (
+                f"reference {ref_name} snapshotted no source calibration, while result "
+                f"{cand_name} snapshotted {_ids(agreement.candidate_only)}"
+            )
+        elif not agreement.candidate_only:
+            reason = (
+                f"result {cand_name} snapshotted no source calibration, while reference "
+                f"{ref_name} snapshotted {_ids(agreement.reference_only)}"
+            )
+        else:
+            reason = (
+                f"they share no source image — reference {ref_name} snapshotted "
+                f"{_ids(agreement.reference_only)}, result {cand_name} snapshotted "
+                f"{_ids(agreement.candidate_only)}"
+            )
+        return (
+            f"calibration agreement not verified between {pair}: {reason}, so whether "
+            f"they were measured at the same pixel size is unknown",
+        )
+    extras: list[str] = []
+    if agreement.reference_only:
+        extras.append(f"reference {ref_name} also snapshotted {_ids(agreement.reference_only)}")
+    if agreement.candidate_only:
+        extras.append(f"result {cand_name} also snapshotted {_ids(agreement.candidate_only)}")
+    if not extras:
+        return ()
+    return (
+        f"calibration agreement between {pair} covers only the shared source "
+        f"{_ids(agreement.shared_sources)}: " + "; ".join(extras) + ", not compared",
     )

@@ -73,9 +73,13 @@ def _profile(client: TestClient, image_id: str, *, width: float = 3.0) -> str:
 # ── /api/results/compare ─────────────────────────────────────────────
 
 
-def test_two_profiles_on_matching_calibration_are_compatible(
+def test_two_profiles_across_images_compare_but_do_not_certify_calibration(
     client, tmp_path
 ) -> None:
+    """Two profiles on DIFFERENT images are comparable — and the response
+    says plainly that their calibration agreement was never verified,
+    because they share no source image. That is the cross-image case, and
+    it must not read the same as genuine agreement."""
     a = _image(client, tmp_path, "a", 0.5)
     b = _image(client, tmp_path, "b", 0.5)
     first, second = _profile(client, a), _profile(client, b)
@@ -84,9 +88,33 @@ def test_two_profiles_on_matching_calibration_are_compatible(
         "/api/results/compare", json={"reference_id": first}
     ).json()
     assert body["reference_id"] == first
-    assert body["compatible"] == [second]
     assert body["rejected"] == []
+    (match,) = body["compatible"]
+    assert match["id"] == second
+    assert "profile" in match["outputs"]
     assert "profile" in body["outputs"]
+
+    agreement = match["calibration_agreement"]
+    assert agreement["verified"] is False       # nothing in common to compare
+    assert agreement["shared_sources"] == []
+    assert agreement["differences"] == []       # NOT the same as agreeing
+    assert any("not verified" in note for note in body["notes"])
+
+
+def test_profile_intensity_units_are_never_silently_certified(
+    client, tmp_path
+) -> None:
+    """`measure.profile` records y_unit="" because raster intensity has no
+    calibrated unit (PR #175). The comparison must not read that empty
+    string as a verified dimensionless unit and certify two unrelated
+    intensity domains as sharing units."""
+    a = _image(client, tmp_path, "a", 0.5)
+    first, second = _profile(client, a), _profile(client, a)
+    body = client.post(
+        "/api/results/compare", json={"reference_id": first}
+    ).json()
+    assert [m["id"] for m in body["compatible"]] == [second]
+    assert any("y_unit" in note for note in body["notes"])
 
 
 def test_a_different_analysis_is_rejected_with_a_message_naming_both(
@@ -135,8 +163,9 @@ def test_an_explicit_candidate_list_narrows_the_question(
         json={"reference_id": first, "candidate_ids": [third]},
     ).json()
     # `second` exists in the session but was not asked about
-    assert body["compatible"] == [third]
-    assert second not in body["compatible"]
+    ids = [match["id"] for match in body["compatible"]]
+    assert ids == [third]
+    assert second not in ids
 
 
 def test_omitting_candidates_never_compares_the_reference_to_itself(
