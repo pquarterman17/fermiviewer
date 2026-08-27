@@ -19,10 +19,14 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
+from fermiviewer import __version__
 from fermiviewer.io.project_results import ResultRecord
 from fermiviewer.io.project_sections import finite_json
 from fermiviewer.project_session import project
+from fermiviewer.results_compare import compare_results
+from fermiviewer.results_report import build_report, bundle_payload
 from fermiviewer.routes._project_adapter import results_payload
 
 router = APIRouter(prefix="/api")
@@ -73,6 +77,75 @@ def output_data(result_id: str, index: int) -> dict[str, Any]:
         "dtype": str(array.dtype) if array is not None else None,
         "values": finite_json(array.tolist()) if array is not None else None,
     }
+
+
+class CompareRequest(BaseModel):
+    reference_id: str
+    #: Omit to compare the reference against every other record in the
+    #: session — the "what else can I put beside this?" question a results
+    #: browser asks first. An explicit list answers "can I put THESE
+    #: beside it?", and each id gets its own verdict either way.
+    candidate_ids: list[str] | None = None
+
+
+@router.post("/results/compare")
+def results_compare(req: CompareRequest) -> dict[str, Any]:
+    """Which of `candidate_ids` can be compared with `reference_id`, and —
+    for each that cannot — exactly why (item 2B).
+
+    The rejection MESSAGE is the payload here, not the boolean: "different
+    analyses", "units differ", "this one failed" are all answerable from
+    the record, and a browser that only greys a card out makes the user
+    guess which of those it was.
+    """
+    records = project.current().results
+    reference = _record(req.reference_id)
+    if req.candidate_ids is None:
+        candidates = [r for r in records if r.id != req.reference_id]
+    else:
+        candidates = [_record(rid) for rid in req.candidate_ids]
+    result = compare_results(reference, candidates)
+    return {
+        "reference_id": result.reference_id,
+        "outputs": list(result.outputs),
+        "compatible": list(result.compatible),
+        "rejected": [
+            {"id": rid, "code": why.code, "message": why.message}
+            for rid, why in result.rejected
+        ],
+        "notes": list(result.notes),
+    }
+
+
+class ReportRequest(BaseModel):
+    #: The records to report on, in the order the caller wants them read —
+    #: a report is a composed document, so selection order is the author's
+    #: and is preserved rather than re-sorted here.
+    result_ids: list[str] = Field(min_length=1, max_length=200)
+
+
+@router.post("/results/report")
+def results_report(req: ReportRequest) -> dict[str, Any]:
+    """A structured report bundle over the selected records (item 2B).
+
+    Deterministic apart from `generated_at`: the same selection of the same
+    records yields the same bundle, which is what makes a report worth
+    citing. Large member arrays are referenced by member name with their
+    shape and dtype rather than inlined or — worse — truncated; the
+    threshold is `results_report.MAX_INLINE_ARRAY_VALUES`.
+
+    Unknown ids are a 404 naming ALL of them, not just the first: a report
+    is assembled from a selection, and telling the caller about one missing
+    id at a time turns fixing the selection into a guessing game.
+    """
+    known = {record.id: record for record in project.current().results}
+    missing = [rid for rid in req.result_ids if rid not in known]
+    if missing:
+        raise HTTPException(404, f"unknown result id(s): {missing}")
+    bundle = build_report(
+        [known[rid] for rid in req.result_ids], app_version=__version__
+    )
+    return bundle_payload(bundle)
 
 
 @router.delete("/results/{result_id}")
