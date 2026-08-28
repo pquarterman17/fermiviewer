@@ -29,10 +29,17 @@ a saved recipe instead of only from a mouse.
   not become an unreadable JSON file. Older projects load unchanged and
   round-trip losslessly; a result written by a newer build survives an
   older one untouched.
-- **A Results & Methods window.** Persisted results come back as cards
+- **A Results & Methods workspace.** Persisted results come back as cards
   showing their primary values, uncertainty, warnings, calibration and the
-  images they came from, grouped and readable without reopening the
-  workshop that produced them.
+  images they came from, readable without reopening the workshop that
+  produced them. The window is searchable and groups by time, sample,
+  source image or analysis, and each card links back to the images it came
+  from and forward to any it produced.
+- **Reopen, Rerun and Duplicate a saved result.** Reopen restores a
+  result's settings and geometry into the workshop that produced it, for
+  inspection; Rerun recomputes it exactly as recorded; Duplicate with
+  changes reopens it as an editable starting point and captures the run as
+  a new result. Reopen and Rerun leave the original untouched.
 - **EDS quantification, particle analysis, intensity profiles and
   diffraction indexing can be saved as results.** Each records what it
   actually computed — the fully resolved parameters, not just the ones you
