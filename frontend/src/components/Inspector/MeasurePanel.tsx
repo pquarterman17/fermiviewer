@@ -5,11 +5,13 @@ import { Fragment, useMemo, useState } from "react";
 
 import {
   measureBoxProfile,
+  measurePolyline,
   measureProfile,
   type ProfileReduce,
 } from "../../lib/api";
 import { computeMeasureStats } from "../../lib/measureStats";
 import { fuzzy } from "../../lib/fuzzy";
+import { refreshPersistedResults } from "../../lib/persistedResultActions";
 import { MEASURE_GROUPS, MEASURE_TOOLS } from "../../lib/measureTools";
 import {
   boxProfileToCsv,
@@ -103,6 +105,23 @@ export default function MeasurePanel() {
         setStatus(`box profile exported (${reduce})`);
       })
       .catch((e: Error) => setStatus(e.message));
+  };
+
+  const onSaveProfile = (m: Measure) => {
+    const profile = useViewer.getState();
+    const px = m.pts.map((p) => ({ x: p.x * img.w, y: p.y * img.h }));
+    const request = m.kind === "polyline"
+      ? measurePolyline(activeId, px, m.width ?? profile.profileWidth, profile.profileReduce, true)
+      : measureProfile(activeId, px[0], px[1], m.width ?? profile.profileWidth, tilt, profile.profileReduce, true);
+    request
+      .then(() => {
+        setStatus("profile saved to Results & Methods");
+        void refreshPersistedResults().catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error);
+          setStatus(`profile saved · results refresh failed: ${message}`);
+        });
+      })
+      .catch((e: Error) => setStatus(`save profile: ${e.message}`));
   };
 
   const sel = measures.find((m) => m.id === selected);
@@ -321,6 +340,13 @@ export default function MeasurePanel() {
                   Reset
                 </button>
               )}
+            </div>
+          )}
+          {sel && (sel.kind === "profile" || sel.kind === "polyline") && (
+            <div className="fvd-ws-row">
+              <button className="fvd-btn" onClick={() => onSaveProfile(sel)} title="Keep this profile, geometry and settings in Results & Methods">
+                Save result
+              </button>
             </div>
           )}
           {selIsAnnotation && sel && (

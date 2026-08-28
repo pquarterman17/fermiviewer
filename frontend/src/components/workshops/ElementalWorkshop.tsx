@@ -11,7 +11,7 @@
 // resolveSpectralModality (metadata → filename → format → energy range) and
 // re-routable from the badge for an ambiguous one.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { EdsQuantResult } from "../../lib/api";
 import {
@@ -21,6 +21,7 @@ import {
 } from "../../lib/spectralModality";
 import { edsSettingsOf, useSpecies } from "../../store/species";
 import { useViewer } from "../../store/viewer";
+import { useResultWorkflow } from "../../store/resultWorkflow";
 import EelsMapsTab from "../elemental/EelsMapsTab";
 import MapsTab from "../elemental/MapsTab";
 import EdsModelFit from "./EdsModelFit";
@@ -54,6 +55,19 @@ export default function ElementalWorkshop() {
   const [tab, setTab] = useState<Tab>("maps");
   const [elements, setElements] = useState("Fe, O");
   const [quant, setQuant] = useState<EdsQuantResult | null>(null);
+  const workflow = useResultWorkflow((s) => s.request);
+
+  useEffect(() => {
+    if (workflow?.record.analysis !== "eds.quantify") return;
+    if (meta && !workflow.record.source_ids?.includes(meta.id)) {
+      useResultWorkflow.getState().clear();
+      return;
+    }
+    if (meta) saveSpectralModality(meta, "eds");
+    setTab("quantify");
+    const saved = workflow.record.params?.elements;
+    if (Array.isArray(saved)) setElements(saved.filter((x): x is string => typeof x === "string").join(", "));
+  }, [workflow, meta]);
   // Maps' bg/beam-energy used to be hardcoded here; now they live in the
   // species store, keyed per image, so a later Explore control writing to
   // them (via setEdsSettings) reaches the same values Maps extracts with.
@@ -63,7 +77,11 @@ export default function ElementalWorkshop() {
   // resolveSpectralModality returns the classification AND why, so the badge
   // can explain itself rather than looking like an arbitrary guess.
   const classification = meta ? resolveSpectralModality(meta) : null;
-  const modality: SpectralModality = classification?.modality ?? "eds";
+  const workflowTargetsSource = workflow?.record.analysis === "eds.quantify" &&
+    workflow.record.source_ids?.includes(meta?.id ?? "");
+  const modality: SpectralModality = workflowTargetsSource
+    ? "eds"
+    : classification?.modality ?? "eds";
   const isEels = modality === "eels";
 
   // Once Quantify has run, the Maps legend can carry at% instead of raw net

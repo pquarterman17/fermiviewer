@@ -118,10 +118,14 @@ describe("record is opt-in on the capture-capable endpoints", () => {
     stubFetch({ ...INDEX_BODY, result: { id: "r3", created_at: "t" } });
     const res = await diffractionIndex("img-1", [[10, 12]], {
       cameraLengthMm: 200,
+      tolerance: 0.1,
+      topN: 9,
       record: true,
     });
     expect(sent[0].body.record).toBe(true);
     expect(sent[0].body.camera_length_mm).toBe(200);
+    expect(sent[0].body.tolerance).toBe(0.1);
+    expect(sent[0].body.top_n).toBe(9);
     expect(res.result?.id).toBe("r3");
   });
 

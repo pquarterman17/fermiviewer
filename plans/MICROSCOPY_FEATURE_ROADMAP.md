@@ -321,11 +321,11 @@ diffraction indexing via the adopters above.
 
 Build one result experience on the schema from item 1.
 
-- [ ] Add a Results/Methods workspace grouped by sample, source, analysis type,
+- [x] Add a Results/Methods workspace grouped by sample, source, analysis type,
       and creation time.
-- [ ] Result cards show primary values, uncertainty, warnings, calibration,
+- [x] Result cards show primary values, uncertainty, warnings, calibration,
       source/ROI links, and produced images.
-- [ ] Reopen the originating workshop with saved parameters and offer explicit
+- [x] Reopen the originating workshop with saved parameters and offer explicit
       **Rerun** and **Duplicate with changes** actions.
 - [x] Compare compatible results across images or samples with shared units and
       explicit incompatibility messages. (2B: `results_compare` +
@@ -345,14 +345,17 @@ Build one result experience on the schema from item 1.
       this needs a container carrying the member payloads (or durable
       references) beside the manifest; the download affordance is 2A/2C's.
 
-**Item-2 stack status (2026-08-27):** 2B shipped — the compatible-result
-query and the report manifest, with deterministic provenance tests. The
-two checked boxes above are its backend; the four unchecked ones are
-2A/2C's workspace, cards and rendered layout, plus the self-contained
-export 2B deliberately does not deliver (see that box).
-Item 2 stays open until a user can reach any of this without an HTTP client:
-nothing in the UI calls `/api/results/compare` or `/api/results/report` yet,
-and the capture affordance item 1's adopters wait on is the same gap.
+**Item-2 backend status (2026-08-27):** 2B shipped the compatible-result
+query and report manifest with deterministic provenance tests. It deliberately
+does not deliver the self-contained export described above. The compare and
+report endpoints still await 2C's user-facing composition and layout.
+
+**2A completed 2026-08-27:** the Results & Methods workspace now searches,
+filters and groups saved runs; cards link sources and produced images; EDS,
+particle, profile and diffraction workflows offer explicit capture; and the
+four representative adopters support saved-setting reopen, exact recorded
+rerun, and Duplicate with changes. The remaining UI work is 2C's comparison,
+report composition/layout and a genuinely self-contained structured bundle.
 
 **Done when:** a user can create a short, reproducible sample report without
 manually collecting outputs from several transient workshops.

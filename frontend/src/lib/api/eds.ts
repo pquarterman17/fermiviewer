@@ -1,5 +1,6 @@
 // Extracted from lib/api.ts; public imports remain stable via the barrel.
 import type { ImageMeta } from "./core";
+import type { CapturedResultRef } from "./project";
 import { json, post } from "./transport";
 
 export interface EdsQuantResult {
@@ -14,6 +15,8 @@ export interface EdsQuantResult {
   /** One at% map per element, aligned with `elements`; null where the map is
    *  blank (element not really present) and was skipped to keep the library clean. */
   maps: (ImageMeta | null)[];
+  /** Present only when this run was explicitly saved. */
+  result?: CapturedResultRef;
 }
 
 export function edsQuantify(
@@ -23,6 +26,8 @@ export function edsQuantify(
     method?: "cliff-lorimer" | "zaf";
     thicknessNm?: number;
     takeOffAngleDeg?: number;
+    halfWindowKev?: number;
+    record?: boolean;
   } = {},
 ): Promise<EdsQuantResult> {
   return post("/api/eds/quantify", {
@@ -31,6 +36,8 @@ export function edsQuantify(
     method: opts.method ?? "cliff-lorimer",
     thickness_nm: opts.thicknessNm ?? 100,
     take_off_angle_deg: opts.takeOffAngleDeg ?? 20,
+    half_window_kev: opts.halfWindowKev ?? 0.085,
+    ...(opts.record ? { record: true } : {}),
   });
 }
 
