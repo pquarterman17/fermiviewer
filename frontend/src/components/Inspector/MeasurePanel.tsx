@@ -114,9 +114,12 @@ export default function MeasurePanel() {
       ? measurePolyline(activeId, px, m.width ?? profile.profileWidth, profile.profileReduce, true)
       : measureProfile(activeId, px[0], px[1], m.width ?? profile.profileWidth, tilt, profile.profileReduce, true);
     request
-      .then(async () => {
-        await refreshPersistedResults();
+      .then(() => {
         setStatus("profile saved to Results & Methods");
+        void refreshPersistedResults().catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error);
+          setStatus(`profile saved · results refresh failed: ${message}`);
+        });
       })
       .catch((e: Error) => setStatus(`save profile: ${e.message}`));
   };

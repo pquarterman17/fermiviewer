@@ -1,7 +1,16 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ImageMeta, PersistedResultRecord } from "./api";
-import { openPersistedResult } from "./persistedResultActions";
+vi.mock("./api", async (importActual) => {
+  const actual = await importActual<typeof import("./api")>();
+  return {
+    ...actual,
+    diffractionIndex: vi.fn(),
+    listPersistedResults: vi.fn(),
+  };
+});
+
+import { diffractionIndex, listPersistedResults, type ImageMeta, type PersistedResultRecord } from "./api";
+import { openPersistedResult, rerunPersistedResult } from "./persistedResultActions";
 import { useResultWorkflow } from "../store/resultWorkflow";
 import { useViewer } from "../store/viewer";
 import { useWorkshop } from "../store/workshop";
@@ -19,10 +28,12 @@ const record = (analysis: string, params: Record<string, unknown> = {}): Persist
 });
 
 beforeEach(() => {
+  vi.clearAllMocks();
   useViewer.setState(initialViewer, true);
   useViewer.setState({ images: { source: image }, order: ["source"], activeId: null });
   useResultWorkflow.setState({ request: null });
   useWorkshop.setState({ structureMode: "Atoms" });
+  vi.mocked(listPersistedResults).mockResolvedValue([]);
 });
 
 describe("openPersistedResult", () => {
@@ -47,5 +58,40 @@ describe("openPersistedResult", () => {
     expect(measure.pts).toEqual([{ x: 0.1, y: 0.1 }, { x: 0.5, y: 0.5 }]);
     expect(measure.width).toBe(5);
     expect(useViewer.getState().profileReduce).toBe("sum");
+  });
+
+  it("reuses an exact live profile on reopen but creates a copy for duplicate", () => {
+    const saved = record("measure.profile", { a: [11, 21], b: [51, 101], width: 5 });
+    openPersistedResult(saved, "reopen");
+    openPersistedResult(saved, "reopen");
+    expect(useViewer.getState().measures.source).toHaveLength(1);
+    openPersistedResult(saved, "duplicate");
+    expect(useViewer.getState().measures.source).toHaveLength(2);
+  });
+
+  it("validates the analysis before publishing a handoff", () => {
+    expect(() => openPersistedResult(record("unknown.analysis"), "reopen")).toThrow(
+      "does not yet have a reopenable workshop",
+    );
+    expect(useResultWorkflow.getState().request).toBeNull();
+  });
+});
+
+describe("rerunPersistedResult", () => {
+  it("preserves diffraction tolerance and result count exactly", async () => {
+    vi.mocked(diffractionIndex).mockResolvedValue({ center: [1, 1], measured_r: [], candidates: [] });
+    await rerunPersistedResult(record("diffraction.index", {
+      spots: [[10, 12]], pixel_size_mm: 0.014, camera_length_mm: 200,
+      acc_voltage_kv: 300, tolerance: 0.1, top_n: 9,
+    }));
+    expect(diffractionIndex).toHaveBeenCalledWith("source", [[10, 12]], expect.objectContaining({
+      tolerance: 0.1, topN: 9, record: true,
+    }));
+  });
+
+  it("reports incomplete saved profile geometry clearly", async () => {
+    await expect(rerunPersistedResult(record("measure.profile", { width: 2 }))).rejects.toThrow(
+      "The saved profile geometry is incomplete.",
+    );
   });
 });

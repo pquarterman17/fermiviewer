@@ -52,6 +52,8 @@ export function diffractionIndex(
     cameraLengthMm?: number;
     accKv?: number;
     roi?: AnalysisRoi;
+    tolerance?: number;
+    topN?: number;
     /** Persist this run as a result record. Off by default — recording is
      *  a user decision, not a side effect of every indexing pass. */
     record?: boolean;
@@ -64,6 +66,8 @@ export function diffractionIndex(
     camera_length_mm: opts.cameraLengthMm ?? null,
     acc_voltage_kv: opts.accKv ?? 200,
     roi: opts.roi ?? null,
+    tolerance: opts.tolerance ?? 0.05,
+    top_n: opts.topN ?? 5,
     ...(opts.record ? { record: true } : {}),
   });
 }

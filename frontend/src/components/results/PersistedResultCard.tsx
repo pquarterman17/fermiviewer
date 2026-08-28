@@ -112,6 +112,11 @@ export default function PersistedResultCard({
   const calibrations = result.calibration ?? [];
   const regions = result.regions ?? [];
   const products = derived ?? [];
+  const calibratedAxes = calibrations.flatMap((calibration) =>
+    (calibration.axes ?? []).map((axis, index) => ({ axis, index })),
+  ).filter(({ axis }) =>
+    Number.isFinite(axis.scale) && axis.scale !== 0 && axis.units.trim() !== "",
+  );
 
   return (
     <article className={`fvd-result-card ${result.status}`} aria-labelledby={titleId}>
@@ -180,8 +185,8 @@ export default function PersistedResultCard({
           <div className="fvd-result-context-row">
             <span className="key">Calibration</span>
             <span>
-              {calibrations.flatMap((cal) => cal.axes ?? []).filter((axis) => axis.units.trim() !== "").map((axis) =>
-                `${compactNumber(axis.scale)} ${axis.units || "units"}/px`,
+              {calibratedAxes.map(({ axis, index }) =>
+                `${compactNumber(axis.scale)} ${axis.units}/${index < 2 ? "px" : "channel"}`,
               ).join(" · ") || `${calibrations.length} source snapshot${calibrations.length === 1 ? "" : "s"}`}
               {calibrations[0].source ? ` · ${calibrations[0].source}` : ""}
             </span>

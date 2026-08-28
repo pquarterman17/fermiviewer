@@ -65,6 +65,8 @@ export default function DiffractionWorkshop() {
   const [pixelSize, setPixelSize] = useState("1.0");
   const [cameraLen, setCameraLen] = useState("");
   const [accKv, setAccKv] = useState("200");
+  const [tolerance, setTolerance] = useState("0.05");
+  const [topN, setTopN] = useState("5");
   const [spots, setSpots] = useState<[number, number][]>([]);
   const [indexResult, setIndexResult] = useState<IndexResult | null>(null);
   const [candidates, setCandidates] = useState<PhaseCandidate[]>([]);
@@ -117,7 +119,10 @@ export default function DiffractionWorkshop() {
     if (typeof p.pixel_size_mm === "number") setPixelSize(String(p.pixel_size_mm));
     setCameraLen(typeof p.camera_length_mm === "number" ? String(p.camera_length_mm) : "");
     if (typeof p.acc_voltage_kv === "number") setAccKv(String(p.acc_voltage_kv));
+    if (typeof p.tolerance === "number") setTolerance(String(p.tolerance));
+    if (typeof p.top_n === "number") setTopN(String(p.top_n));
     setCommittedRoi((p.roi ?? null) as AnalysisRoi | null);
+    setSaveResult(workflow.mode === "duplicate");
     clearWorkflow();
   }, [workflow, activeId, clearWorkflow]);
 
@@ -173,6 +178,8 @@ export default function DiffractionWorkshop() {
       cameraLengthMm: cameraLen ? Number(cameraLen) : undefined,
       accKv: Number(accKv) || 200,
       roi: committedRoi ?? undefined,
+      tolerance: Number(tolerance) || 0.05,
+      topN: Number(topN) || 5,
       record: saveResult,
     })
       .then((r) => {
@@ -183,7 +190,7 @@ export default function DiffractionWorkshop() {
       })
       .catch((e: Error) => setStatus(`index: ${e.message}`))
       .finally(() => setBusy(false));
-  }, [activeId, spots, pixelSize, cameraLen, accKv, committedRoi, saveResult, setStatus]);
+  }, [activeId, spots, pixelSize, cameraLen, accKv, tolerance, topN, committedRoi, saveResult, setStatus]);
 
   if (!isImage) {
     return (
@@ -435,6 +442,7 @@ export default function DiffractionWorkshop() {
           pixelSize={pixelSize} setPixelSize={setPixelSize}
           cameraLen={cameraLen} setCameraLen={setCameraLen}
           accKv={accKv} setAccKv={setAccKv} busy={busy} detect={detect}
+          tolerance={tolerance} setTolerance={setTolerance} topN={topN} setTopN={setTopN}
           rings={rings} setRings={setRings} labels={labels} setLabels={setLabels}
           clickMode={clickMode} setClickMode={setClickMode} spotsLength={spots.length}
           typedD={typedD} setTypedD={setTypedD} typedRingR={typedRingR}

@@ -123,7 +123,12 @@ export default function ParticlesMode({ id }: { id: string }) {
   }, [id, setStatus]);
 
   useEffect(() => {
-    if (workflow?.record.analysis !== "structure.particles" || !rasterRef.current) return;
+    if (workflow?.record.analysis !== "structure.particles") return;
+    if (!workflow.record.source_ids?.includes(id)) {
+      clearWorkflow();
+      return;
+    }
+    if (!rasterRef.current) return;
     const p = workflow.record.params ?? {};
     const r = rasterRef.current;
     if (typeof p.threshold === "number" && r.vmax !== r.vmin) {
@@ -132,8 +137,9 @@ export default function ParticlesMode({ id }: { id: string }) {
     if (p.polarity === "bright" || p.polarity === "dark") setPolarity(p.polarity);
     if (typeof p.min_area === "number") setMinArea(String(p.min_area));
     setWatershed(Boolean(p.use_watershed));
+    setSaveResult(workflow.mode === "duplicate");
     clearWorkflow();
-  }, [workflow, dims, clearWorkflow]);
+  }, [workflow, dims, id, clearWorkflow]);
 
   // live preview: grayscale base + tinted mask at the threshold
   useEffect(() => {

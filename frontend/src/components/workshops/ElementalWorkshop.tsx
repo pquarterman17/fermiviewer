@@ -59,10 +59,15 @@ export default function ElementalWorkshop() {
 
   useEffect(() => {
     if (workflow?.record.analysis !== "eds.quantify") return;
+    if (meta && !workflow.record.source_ids?.includes(meta.id)) {
+      useResultWorkflow.getState().clear();
+      return;
+    }
+    if (meta) saveSpectralModality(meta, "eds");
     setTab("quantify");
     const saved = workflow.record.params?.elements;
     if (Array.isArray(saved)) setElements(saved.filter((x): x is string => typeof x === "string").join(", "));
-  }, [workflow]);
+  }, [workflow, meta]);
   // Maps' bg/beam-energy used to be hardcoded here; now they live in the
   // species store, keyed per image, so a later Explore control writing to
   // them (via setEdsSettings) reaches the same values Maps extracts with.
@@ -72,7 +77,11 @@ export default function ElementalWorkshop() {
   // resolveSpectralModality returns the classification AND why, so the badge
   // can explain itself rather than looking like an arbitrary guess.
   const classification = meta ? resolveSpectralModality(meta) : null;
-  const modality: SpectralModality = classification?.modality ?? "eds";
+  const workflowTargetsSource = workflow?.record.analysis === "eds.quantify" &&
+    workflow.record.source_ids?.includes(meta?.id ?? "");
+  const modality: SpectralModality = workflowTargetsSource
+    ? "eds"
+    : classification?.modality ?? "eds";
   const isEels = modality === "eels";
 
   // Once Quantify has run, the Maps legend can carry at% instead of raw net

@@ -71,6 +71,18 @@ describe("PersistedResultCard", () => {
     expect(screen.getByText("Whole-particle composition")).toBeVisible();
   });
 
+  it("shows only valid calibration and labels spectral increments per channel", () => {
+    render(<PersistedResultCard result={{ ...RESULT, calibration: [{
+      image_id: "img1", source: null, axes: [
+        { scale: 0, origin: 0, units: "nm" },
+        { scale: 0.5, origin: 0, units: "nm" },
+        { scale: 10, origin: 0, units: "eV" },
+      ],
+    }] }} sources={[]} />);
+    expect(screen.queryByText(/0 nm\/px/)).toBeNull();
+    expect(screen.getByText(/0.5 nm\/px · 10 eV\/channel/)).toBeVisible();
+  });
+
   it.each([
     ["failed", "Analysis failed", "matrix was singular"],
     ["cancelled", "Analysis cancelled", "cancelled by user"],

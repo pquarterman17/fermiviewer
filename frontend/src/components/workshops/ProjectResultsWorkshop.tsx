@@ -116,8 +116,8 @@ export default function ProjectResultsWorkshop() {
     {visible.length === 0 ? <div className="fvd-project-results-empty"><div className="symbol" aria-hidden="true">◇</div>
       <strong>{results.length === 0 ? "No saved results yet" : "No results match these filters"}</strong>
       <span>{results.length === 0 ? "Run a supported analysis and use Save result to keep a reproducible project record. Saved results reappear here when the project is reopened." : "Clear the search or broaden the type, status or image filter."}</span></div>
-      : <div className="fvd-project-result-list">{sections.map(([heading, records]) => {
-        const headingId = `result-group-${heading.replace(/\W+/g, "-")}`;
+      : <div className="fvd-project-result-list">{sections.map(([heading, records], sectionIndex) => {
+        const headingId = `result-group-${groupBy}-${sectionIndex}`;
         return <section className="fvd-result-group" key={heading} aria-labelledby={headingId}>
           <header><h3 id={headingId}>{heading}</h3><span>{records.length}</span></header>
           {records.map((result) => <PersistedResultCard key={result.id} result={result}

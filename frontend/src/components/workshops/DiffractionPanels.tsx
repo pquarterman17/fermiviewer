@@ -21,6 +21,10 @@ interface IndexPanelProps {
   setCameraLen: Dispatch<SetStateAction<string>>;
   accKv: string;
   setAccKv: Dispatch<SetStateAction<string>>;
+  tolerance: string;
+  setTolerance: Dispatch<SetStateAction<string>>;
+  topN: string;
+  setTopN: Dispatch<SetStateAction<string>>;
   busy: boolean;
   detect: () => void;
   rings: boolean;
@@ -53,7 +57,7 @@ export function DiffractionIndexPanel(props: IndexPanelProps) {
     labels, setLabels, clickMode, setClickMode, spotsLength, typedD, setTypedD,
     typedRingR, index, candidates, selectedCandIdx, setSelectedCandIdx,
     downloadReport, roiMode, setRoiMode, committedRoi, clearRoi,
-    saveResult, setSaveResult,
+    saveResult, setSaveResult, tolerance, setTolerance, topN, setTopN,
   } = props;
   const selected = candidates[selectedCandIdx];
   return <>
@@ -79,6 +83,10 @@ export function DiffractionIndexPanel(props: IndexPanelProps) {
       <span className="k">kV</span><input value={accKv} style={{ width: 44 }} onChange={(e) => setAccKv(e.target.value)} />
       <button className="fvd-btn" title="Index the detected spots against candidate phases" onClick={index} disabled={busy || spotsLength === 0}>Index</button>
       <label className="fvd-check" title="Keep this indexing run and its settings in Results & Methods"><input type="checkbox" checked={saveResult} onChange={(e) => setSaveResult(e.target.checked)} />Save result</label>
+    </div>
+    <div className="fvd-ws-row">
+      <span className="k">d tolerance</span><input value={tolerance} style={{ width: 52 }} title="Allowed relative d-spacing mismatch" onChange={(e) => setTolerance(e.target.value)} />
+      <span className="k">top phases</span><input value={topN} type="number" min={1} style={{ width: 44 }} onChange={(e) => setTopN(e.target.value)} />
     </div>
     {candidates.length > 0 && <>
       <table className="fvd-ws-table"><thead><tr><th></th><th>Phase</th><th>Zone</th><th>Matched</th><th>Score</th></tr></thead><tbody>

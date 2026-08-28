@@ -33,11 +33,14 @@ Provenance disclosure.
 ## Reproduction actions
 
 - **Reopen** selects the source and restores the saved geometry/settings in the
-  originating workshop for inspection.
+  originating workshop for inspection, with result saving off. An exact live
+  profile overlay is reused rather than duplicated.
 - **Rerun** executes the recorded reproduction key unchanged and saves the new
   run as a separate result. Derived maps/labels are added to the image library.
 - **Duplicate with changes** opens an editable copy of the saved settings. The
-  original record is never mutated.
+  original record is never mutated. For workshop analyses, **Save result** is
+  armed so the edited run becomes a new record; profiles receive a separate
+  editable overlay.
 
 If the source image is unavailable, actions fail honestly in the status bar;
 the card and its metadata remain inspectable. Failed and cancelled records do
@@ -45,8 +48,8 @@ not offer reproduction actions because they may not have usable outputs.
 
 ## Scope boundary
 
-This workspace consumes the compare and report-manifest backend delivered by
-roadmap item 2B, but item 2C owns their visual comparison/report builder. A
-report manifest is not a self-contained export bundle: large member-backed
-arrays still live in the project container, so the structured-bundle roadmap
-item remains open.
+The compare and report-manifest backend delivered by roadmap item 2B is not yet
+called by this workspace; item 2C owns that user-facing comparison and report
+builder. A report manifest is not a self-contained export bundle: large
+member-backed arrays still live in the project container, so the structured-
+bundle roadmap item remains open.

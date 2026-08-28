@@ -148,6 +148,7 @@ export default function EdsQuantifyPanel({
     if (p.method === "cliff-lorimer" || p.method === "zaf") setMethod(p.method);
     if (typeof p.thickness_nm === "number") setThickness(String(p.thickness_nm));
     if (typeof p.take_off_angle_deg === "number") setTakeOff(String(p.take_off_angle_deg));
+    setSaveResult(workflow.mode === "duplicate");
     clearWorkflow();
   }, [workflow, clearWorkflow]);
 
