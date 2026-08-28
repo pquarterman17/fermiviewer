@@ -10,7 +10,7 @@
 // Mirrors the route's Pydantic wire models — keep in sync.
 
 import type { ImageMeta } from "./core";
-import { post } from "./transport";
+import { json, post } from "./transport";
 import type { SessionClientState } from "./workspace";
 
 /** `light` references source pixels and embeds derived images (everyday save,
@@ -132,6 +132,14 @@ export interface ProjectSaveResponse {
   n_results: number;
   dropped_samples: number;
   dropped_measures: number;
+}
+
+/** Fresh server-carried result records after an opt-in capture or rerun. */
+export async function listPersistedResults(): Promise<PersistedResultRecord[]> {
+  const body = await json<{ results: PersistedResultRecord[] }>(
+    await fetch("/api/results"),
+  );
+  return body.results;
 }
 
 /** A resolved file whose byte count is not the one recorded at save time.

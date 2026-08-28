@@ -16,9 +16,11 @@ import {
   type EdsQuantResult,
 } from "../../lib/api";
 import { sigmaBand } from "../../lib/charts/sigmaBand";
+import { refreshPersistedResults } from "../../lib/persistedResultActions";
 import { useElementColors } from "../../lib/elemental/elementColors";
 import { formatPlusMinus } from "../../lib/formatUncertainty";
 import { useViewer } from "../../store/viewer";
+import { useResultWorkflow } from "../../store/resultWorkflow";
 import PlotContextSurface from "../plots/PlotContextSurface";
 
 /** Per-element at% line plot for the composition profile (#46/A4), each line
@@ -136,6 +138,18 @@ export default function EdsQuantifyPanel({
   const [autoAssignBusy, setAutoAssignBusy] = useState(false);
   const [comp, setComp] = useState<CompositionProfileResult | null>(null);
   const [compBusy, setCompBusy] = useState(false);
+  const [saveResult, setSaveResult] = useState(false);
+  const workflow = useResultWorkflow((s) => s.request);
+  const clearWorkflow = useResultWorkflow((s) => s.clear);
+
+  useEffect(() => {
+    if (workflow?.record.analysis !== "eds.quantify") return;
+    const p = workflow.record.params ?? {};
+    if (p.method === "cliff-lorimer" || p.method === "zaf") setMethod(p.method);
+    if (typeof p.thickness_nm === "number") setThickness(String(p.thickness_nm));
+    if (typeof p.take_off_angle_deg === "number") setTakeOff(String(p.take_off_angle_deg));
+    clearWorkflow();
+  }, [workflow, clearWorkflow]);
 
   /** at% maps registered by the last quantify run — the only maps a
    *  *composition* profile can legitimately run across. */
@@ -198,6 +212,7 @@ export default function EdsQuantifyPanel({
       method,
       thicknessNm: Number(thickness) || 100,
       takeOffAngleDeg: Number(takeOff) || 20,
+      record: saveResult,
     })
       .then((r) => {
         setResult(r);
@@ -216,11 +231,12 @@ export default function EdsQuantifyPanel({
         });
         const nSkipped = r.maps.length - kept.length;
         setStatus(
-          `EDS: quantified ${r.elements.join(", ")}` +
+          `EDS: quantified ${r.elements.join(", ")}${r.result ? " · saved to Results" : ""}` +
             (nSkipped > 0
               ? ` · ${nSkipped} blank map${nSkipped > 1 ? "s" : ""} skipped`
               : ""),
         );
+        if (r.result) void refreshPersistedResults();
       })
       .catch((e: Error) => setStatus(`EDS: ${e.message}`))
       .finally(() => setBusy(false));
@@ -310,6 +326,10 @@ export default function EdsQuantifyPanel({
         >
           {busy ? "Quantifying…" : "Quantify"}
         </button>
+        <label className="fvd-check" title="Keep this run, its settings and outputs in Results & Methods">
+          <input type="checkbox" checked={saveResult} onChange={(e) => setSaveResult(e.target.checked)} />
+          Save result
+        </label>
       </div>
 
       {result && (

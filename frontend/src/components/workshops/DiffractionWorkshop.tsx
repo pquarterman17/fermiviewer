@@ -43,6 +43,8 @@ import {
   type Cell,
 } from "../../lib/resultsExport";
 import { useViewer } from "../../store/viewer";
+import { useResultWorkflow } from "../../store/resultWorkflow";
+import { refreshPersistedResults } from "../../lib/persistedResultActions";
 
 export { matchedSpotIndices } from "./diffraction/diffractionGeometry";
 
@@ -70,6 +72,7 @@ export default function DiffractionWorkshop() {
   const [rings, setRings] = useState(false);
   const [labels, setLabels] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [saveResult, setSaveResult] = useState(false);
   // A8 simulate
   const {
     phases, simPhase, setSimPhase, simZa, setSimZa, simResult,
@@ -91,6 +94,8 @@ export default function DiffractionWorkshop() {
   const [roiMode, setRoiMode] = useState<RoiMode>("none");
   const [roiDraw, setRoiDraw] = useState<RoiDraw>({ mode: "none", p1: null, p2: null });
   const [committedRoi, setCommittedRoi] = useState<AnalysisRoi | null>(null);
+  const workflow = useResultWorkflow((s) => s.request);
+  const clearWorkflow = useResultWorkflow((s) => s.clear);
 
   const isImage = meta?.kind === "image";
 
@@ -103,6 +108,18 @@ export default function DiffractionWorkshop() {
     setRoiDraw({ mode: "none", p1: null, p2: null });
     setRoiMode("none");
   }, [activeId]);
+
+  useEffect(() => {
+    if (workflow?.record.analysis !== "diffraction.index") return;
+    const p = workflow.record.params ?? {};
+    setTab("index");
+    if (Array.isArray(p.spots)) setSpots(p.spots as [number, number][]);
+    if (typeof p.pixel_size_mm === "number") setPixelSize(String(p.pixel_size_mm));
+    setCameraLen(typeof p.camera_length_mm === "number" ? String(p.camera_length_mm) : "");
+    if (typeof p.acc_voltage_kv === "number") setAccKv(String(p.acc_voltage_kv));
+    setCommittedRoi((p.roi ?? null) as AnalysisRoi | null);
+    clearWorkflow();
+  }, [workflow, activeId, clearWorkflow]);
 
   const scale = natural ? VIEW_W / natural.w : 0;
   const viewH = natural ? natural.h * scale : VIEW_W;
@@ -156,15 +173,17 @@ export default function DiffractionWorkshop() {
       cameraLengthMm: cameraLen ? Number(cameraLen) : undefined,
       accKv: Number(accKv) || 200,
       roi: committedRoi ?? undefined,
+      record: saveResult,
     })
       .then((r) => {
         setIndexResult(r);
         setCandidates(r.candidates);
         setSelectedCandIdx(0);
+        if (r.result) void refreshPersistedResults();
       })
       .catch((e: Error) => setStatus(`index: ${e.message}`))
       .finally(() => setBusy(false));
-  }, [activeId, spots, pixelSize, cameraLen, accKv, committedRoi, setStatus]);
+  }, [activeId, spots, pixelSize, cameraLen, accKv, committedRoi, saveResult, setStatus]);
 
   if (!isImage) {
     return (
@@ -427,6 +446,7 @@ export default function DiffractionWorkshop() {
             setRoiDraw({ mode: "none", p1: null, p2: null });
             setRoiMode("none");
           }}
+          saveResult={saveResult} setSaveResult={setSaveResult}
         />
       )}
       {tab === "calibrate" && (

@@ -117,4 +117,22 @@ describe("ProjectResultsWorkshop", () => {
     expect(useViewer.getState().activeId).toBe("b");
     expect(useViewer.getState().selected).toEqual(["b"]);
   });
+
+  it("searches records and groups them by sample", () => {
+    useViewer.setState({
+      images: { a: image("a"), b: image("b") },
+      order: ["a", "b"],
+      imageGroups: [{ id: "sample-1", name: "Annealed", ids: ["a"] }],
+      persistedResults: [
+        { ...result("iron", "a", "2026-08-22T12:00:00Z"), label: "Iron map" },
+        { ...result("oxygen", "b", "2026-08-21T12:00:00Z"), label: "Oxygen map" },
+      ],
+    });
+    render(<ProjectResultsWorkshop />);
+    fireEvent.change(screen.getByLabelText("Search saved results"), { target: { value: "Iron" } });
+    expect(screen.getByText("Iron map")).toBeVisible();
+    expect(screen.queryByText("Oxygen map")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Group results by"), { target: { value: "sample" } });
+    expect(screen.getByRole("heading", { name: "Annealed" })).toBeVisible();
+  });
 });

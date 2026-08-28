@@ -1,96 +1,131 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { PersistedResultRecord } from "../../lib/api";
+import { openPersistedResult, refreshPersistedResults, rerunPersistedResult } from "../../lib/persistedResultActions";
 import { useViewer } from "../../store/viewer";
 import PersistedResultCard from "../results/PersistedResultCard";
 
 type Scope = "all" | "active";
+type GroupBy = "time" | "sample" | "source" | "analysis";
+type ResultAction = "reopen" | "rerun" | "duplicate";
 
-function createdAt(result: PersistedResultRecord): number {
-  // A record written by another tool can legally carry a non-ISO timestamp
-  // (the card already renders those as "Unknown date"); NaN in a comparator
-  // would make the whole sort order arbitrary, so pin unparseable to 0.
+const timeOf = (result: PersistedResultRecord): number => {
   const parsed = Date.parse(result.created_at);
   return Number.isNaN(parsed) ? 0 : parsed;
-}
-
-function newestFirst(a: PersistedResultRecord, b: PersistedResultRecord): number {
-  return createdAt(b) - createdAt(a);
-}
-
-function involvesImage(result: PersistedResultRecord, imageId: string): boolean {
-  // A result is "about" the active image whether that image was its input
-  // or its product — a user inspecting an element map expects to find the
-  // quantification that produced it.
-  return Boolean(
-    result.source_ids?.includes(imageId) || result.derived_ids?.includes(imageId),
-  );
-}
+};
+const involvesImage = (result: PersistedResultRecord, imageId: string): boolean =>
+  Boolean(result.source_ids?.includes(imageId) || result.derived_ids?.includes(imageId));
+const analysisLabel = (analysis: string): string => analysis.split(/[._-]+/)
+  .map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
 
 export default function ProjectResultsWorkshop() {
   const results = useViewer((s) => s.persistedResults);
   const images = useViewer((s) => s.images);
   const unavailable = useViewer((s) => s.unavailable);
+  const groups = useViewer((s) => s.imageGroups);
   const activeId = useViewer((s) => s.activeId);
   const setActive = useViewer((s) => s.setActive);
+  const setStatus = useViewer((s) => s.setStatus);
   const [scope, setScope] = useState<Scope>("all");
+  const [query, setQuery] = useState("");
+  const [analysis, setAnalysis] = useState("all");
+  const [status, setResultStatus] = useState("all");
+  const [groupBy, setGroupBy] = useState<GroupBy>("time");
+  const [busy, setBusy] = useState<{ id: string; action: ResultAction } | null>(null);
+  const nameOf = (id: string): string => images[id]?.name ?? unavailable[id]?.name ?? id;
+  const analyses = useMemo(() => [...new Set(results.map((r) => r.analysis))].sort(), [results]);
+
+  useEffect(() => {
+    // The server owns persisted records. Refreshing on open also catches a
+    // capture made in another workshop while this lazy window was closed.
+    void refreshPersistedResults().catch(() => undefined);
+  }, []);
 
   const visible = useMemo(() => {
-    const filtered = scope === "active" && activeId
-      ? results.filter((result) => involvesImage(result, activeId))
-      : results;
-    return [...filtered].sort(newestFirst);
-  }, [activeId, results, scope]);
+    const q = query.trim().toLocaleLowerCase();
+    return results.filter((result) => {
+      if (scope === "active" && activeId && !involvesImage(result, activeId)) return false;
+      if (analysis !== "all" && result.analysis !== analysis) return false;
+      if (status !== "all" && result.status !== status) return false;
+      if (!q) return true;
+      return [result.label, result.analysis, ...(result.source_ids ?? []).map(nameOf),
+        ...(result.derived_ids ?? []).map(nameOf)].filter(Boolean).join(" ").toLocaleLowerCase().includes(q);
+    }).sort((a, b) => timeOf(b) - timeOf(a));
+  // nameOf reads the image dictionaries already listed here.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, analysis, images, query, results, scope, status, unavailable]);
 
-  return (
-    <section className="fvd-project-results" aria-label="Saved analysis results">
-      <div className="fvd-project-results-intro">
-        <div>
-          <div className="fvd-project-results-kicker">PROJECT RECORD</div>
-          <h2>Results &amp; Methods</h2>
-          <p>Scientific results saved with this project, including the inputs, settings, calibration and review notes that give each number context.</p>
-        </div>
-        <div className="fvd-project-results-count" aria-label={`${results.length} saved results`}>
-          <strong>{results.length}</strong>
-          <span>saved</span>
-        </div>
+  const sections = useMemo(() => {
+    const headingOf = (result: PersistedResultRecord): string => {
+      const sourceId = result.source_ids?.[0];
+      if (groupBy === "analysis") return analysisLabel(result.analysis);
+      if (groupBy === "source") return sourceId ? nameOf(sourceId) : "No source";
+      if (groupBy === "sample") {
+        const membership = groups.filter((group) => sourceId && group.ids.includes(sourceId));
+        return membership.at(-1)?.name ?? "Ungrouped";
+      }
+      const date = new Date(result.created_at);
+      if (Number.isNaN(date.valueOf())) return "Unknown date";
+      if (date.toDateString() === new Date().toDateString()) return "Today";
+      return new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(date);
+    };
+    const map = new Map<string, PersistedResultRecord[]>();
+    for (const result of visible) {
+      const heading = headingOf(result);
+      map.set(heading, [...(map.get(heading) ?? []), result]);
+    }
+    return [...map.entries()];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupBy, groups, images, unavailable, visible]);
+
+  const act = async (result: PersistedResultRecord, action: ResultAction) => {
+    setBusy({ id: result.id, action });
+    try {
+      if (action === "rerun") {
+        await rerunPersistedResult(result);
+        setStatus(`${result.label || analysisLabel(result.analysis)} rerun and saved`);
+      } else {
+        openPersistedResult(result, action);
+        setStatus(action === "reopen" ? "Saved result reopened" : "Editable copy opened with saved settings");
+      }
+    } catch (error) {
+      setStatus(`result: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return <section className="fvd-project-results" aria-label="Saved analysis results">
+    <div className="fvd-project-results-intro">
+      <div><div className="fvd-project-results-kicker">PROJECT RECORD</div><h2>Results &amp; Methods</h2>
+        <p>Find, inspect and reproduce saved analyses without losing their source, settings or calibration context.</p></div>
+      <div className="fvd-project-results-count" aria-label={`${results.length} saved results`}><strong>{results.length}</strong><span>saved</span></div>
+    </div>
+    {results.length > 0 && <div className="fvd-project-results-toolbar" aria-label="Result filters">
+      <div className="fvd-results-filter-row"><div className="fvd-seg">
+        <button className={`fvd-seg-btn${scope === "all" ? " active" : ""}`} aria-pressed={scope === "all"} onClick={() => setScope("all")}>All</button>
+        <button className={`fvd-seg-btn${scope === "active" ? " active" : ""}`} aria-pressed={scope === "active"} disabled={!activeId} onClick={() => setScope("active")}>Active image</button>
+      </div><input className="fvd-results-search" aria-label="Search saved results" value={query} placeholder="Search results…" onChange={(e) => setQuery(e.target.value)} /></div>
+      <div className="fvd-results-filter-row">
+        <label>Type<select aria-label="Analysis type" value={analysis} onChange={(e) => setAnalysis(e.target.value)}><option value="all">All analyses</option>{analyses.map((value) => <option key={value} value={value}>{analysisLabel(value)}</option>)}</select></label>
+        <label>Status<select aria-label="Result status" value={status} onChange={(e) => setResultStatus(e.target.value)}><option value="all">Any status</option><option value="completed">Complete</option><option value="failed">Failed</option><option value="cancelled">Cancelled</option></select></label>
+        <label>Group<select aria-label="Group results by" value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)}><option value="time">Time</option><option value="sample">Sample</option><option value="source">Source</option><option value="analysis">Analysis</option></select></label>
+        <span className="fvd-results-shown">{visible.length} shown</span>
       </div>
-
-      {results.length > 0 && (
-        <div className="fvd-project-results-toolbar" aria-label="Result filters">
-          <div className="fvd-seg">
-            <button className={`fvd-seg-btn${scope === "all" ? " active" : ""}`} aria-pressed={scope === "all"} onClick={() => setScope("all")}>All results</button>
-            <button className={`fvd-seg-btn${scope === "active" ? " active" : ""}`} aria-pressed={scope === "active"} disabled={!activeId} onClick={() => setScope("active")}>Active image</button>
-          </div>
-          <span>{visible.length} shown</span>
-        </div>
-      )}
-
-      {visible.length === 0 ? (
-        <div className="fvd-project-results-empty">
-          <div className="symbol" aria-hidden="true">◇</div>
-          <strong>{results.length === 0 ? "No saved results yet" : "No results for the active image"}</strong>
-          <span>{results.length === 0 ? "Run a supported analysis to create a project record. Saved results will reappear here when the project is reopened." : "Switch back to All results or select one of this result’s source images."}</span>
-        </div>
-      ) : (
-        <div className="fvd-project-result-list">
-          {visible.map((result) => {
-            const sources = (result.source_ids ?? []).map((id) => ({
-              id,
-              name: images[id]?.name ?? unavailable[id]?.name ?? id,
-              available: id in images,
-            }));
-            return (
-              <PersistedResultCard
-                key={result.id}
-                result={result}
-                sources={sources}
-                onSelectSource={(id) => setActive(id)}
-              />
-            );
-          })}
-        </div>
-      )}
-    </section>
-  );
+    </div>}
+    {visible.length === 0 ? <div className="fvd-project-results-empty"><div className="symbol" aria-hidden="true">◇</div>
+      <strong>{results.length === 0 ? "No saved results yet" : "No results match these filters"}</strong>
+      <span>{results.length === 0 ? "Run a supported analysis and use Save result to keep a reproducible project record. Saved results reappear here when the project is reopened." : "Clear the search or broaden the type, status or image filter."}</span></div>
+      : <div className="fvd-project-result-list">{sections.map(([heading, records]) => {
+        const headingId = `result-group-${heading.replace(/\W+/g, "-")}`;
+        return <section className="fvd-result-group" key={heading} aria-labelledby={headingId}>
+          <header><h3 id={headingId}>{heading}</h3><span>{records.length}</span></header>
+          {records.map((result) => <PersistedResultCard key={result.id} result={result}
+            sources={(result.source_ids ?? []).map((id) => ({ id, name: nameOf(id), available: id in images }))}
+            derived={(result.derived_ids ?? []).map((id) => ({ id, name: nameOf(id), available: id in images }))}
+            onSelectSource={setActive} onAction={(action) => void act(result, action)}
+            busyAction={busy?.id === result.id ? busy.action : null} />)}
+        </section>;
+      })}</div>}
+  </section>;
 }

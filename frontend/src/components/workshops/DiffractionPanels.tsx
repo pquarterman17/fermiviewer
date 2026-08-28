@@ -42,6 +42,8 @@ interface IndexPanelProps {
   setRoiMode: Dispatch<SetStateAction<RoiMode>>;
   committedRoi: AnalysisRoi | null;
   clearRoi: () => void;
+  saveResult: boolean;
+  setSaveResult: Dispatch<SetStateAction<boolean>>;
 }
 
 export function DiffractionIndexPanel(props: IndexPanelProps) {
@@ -51,6 +53,7 @@ export function DiffractionIndexPanel(props: IndexPanelProps) {
     labels, setLabels, clickMode, setClickMode, spotsLength, typedD, setTypedD,
     typedRingR, index, candidates, selectedCandIdx, setSelectedCandIdx,
     downloadReport, roiMode, setRoiMode, committedRoi, clearRoi,
+    saveResult, setSaveResult,
   } = props;
   const selected = candidates[selectedCandIdx];
   return <>
@@ -75,6 +78,7 @@ export function DiffractionIndexPanel(props: IndexPanelProps) {
       <span className="k">L (mm)</span><input value={cameraLen} placeholder="auto" style={{ width: 52 }} onChange={(e) => setCameraLen(e.target.value)} />
       <span className="k">kV</span><input value={accKv} style={{ width: 44 }} onChange={(e) => setAccKv(e.target.value)} />
       <button className="fvd-btn" title="Index the detected spots against candidate phases" onClick={index} disabled={busy || spotsLength === 0}>Index</button>
+      <label className="fvd-check" title="Keep this indexing run and its settings in Results & Methods"><input type="checkbox" checked={saveResult} onChange={(e) => setSaveResult(e.target.checked)} />Save result</label>
     </div>
     {candidates.length > 0 && <>
       <table className="fvd-ws-table"><thead><tr><th></th><th>Phase</th><th>Zone</th><th>Matched</th><th>Score</th></tr></thead><tbody>

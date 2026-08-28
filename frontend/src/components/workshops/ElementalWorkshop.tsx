@@ -11,7 +11,7 @@
 // resolveSpectralModality (metadata → filename → format → energy range) and
 // re-routable from the badge for an ambiguous one.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { EdsQuantResult } from "../../lib/api";
 import {
@@ -21,6 +21,7 @@ import {
 } from "../../lib/spectralModality";
 import { edsSettingsOf, useSpecies } from "../../store/species";
 import { useViewer } from "../../store/viewer";
+import { useResultWorkflow } from "../../store/resultWorkflow";
 import EelsMapsTab from "../elemental/EelsMapsTab";
 import MapsTab from "../elemental/MapsTab";
 import EdsModelFit from "./EdsModelFit";
@@ -54,6 +55,14 @@ export default function ElementalWorkshop() {
   const [tab, setTab] = useState<Tab>("maps");
   const [elements, setElements] = useState("Fe, O");
   const [quant, setQuant] = useState<EdsQuantResult | null>(null);
+  const workflow = useResultWorkflow((s) => s.request);
+
+  useEffect(() => {
+    if (workflow?.record.analysis !== "eds.quantify") return;
+    setTab("quantify");
+    const saved = workflow.record.params?.elements;
+    if (Array.isArray(saved)) setElements(saved.filter((x): x is string => typeof x === "string").join(", "));
+  }, [workflow]);
   // Maps' bg/beam-energy used to be hardcoded here; now they live in the
   // species store, keyed per image, so a later Explore control writing to
   // them (via setEdsSettings) reaches the same values Maps extracts with.

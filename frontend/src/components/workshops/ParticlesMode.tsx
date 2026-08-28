@@ -17,7 +17,9 @@ import {
   pickParticleMetricValues,
   type ParticleMetric,
 } from "../../lib/populationHistogram";
+import { refreshPersistedResults } from "../../lib/persistedResultActions";
 import { useViewer } from "../../store/viewer";
+import { useResultWorkflow } from "../../store/resultWorkflow";
 import OrientationRose from "../analysis/OrientationRose";
 import PopulationHistogram from "../analysis/PopulationHistogram";
 import { useResults } from "../overlays/ResultsWindow";
@@ -94,6 +96,9 @@ export default function ParticlesMode({ id }: { id: string }) {
   // normal particle table.
   const [similarity, setSimilarity] = useState<SimilarityState | null>(null);
   const [simBusyId, setSimBusyId] = useState<number | null>(null);
+  const [saveResult, setSaveResult] = useState(false);
+  const workflow = useResultWorkflow((s) => s.request);
+  const clearWorkflow = useResultWorkflow((s) => s.clear);
 
   // fetch the raw raster once per image
   useEffect(() => {
@@ -116,6 +121,19 @@ export default function ParticlesMode({ id }: { id: string }) {
       stale = true;
     };
   }, [id, setStatus]);
+
+  useEffect(() => {
+    if (workflow?.record.analysis !== "structure.particles" || !rasterRef.current) return;
+    const p = workflow.record.params ?? {};
+    const r = rasterRef.current;
+    if (typeof p.threshold === "number" && r.vmax !== r.vmin) {
+      setThresh(Math.max(0, Math.min(1, (p.threshold - r.vmin) / (r.vmax - r.vmin))));
+    }
+    if (p.polarity === "bright" || p.polarity === "dark") setPolarity(p.polarity);
+    if (typeof p.min_area === "number") setMinArea(String(p.min_area));
+    setWatershed(Boolean(p.use_watershed));
+    clearWorkflow();
+  }, [workflow, dims, clearWorkflow]);
 
   // live preview: grayscale base + tinted mask at the threshold
   useEffect(() => {
@@ -157,7 +175,7 @@ export default function ParticlesMode({ id }: { id: string }) {
       minArea: Number(minArea) || 1,
       watershed,
     };
-    analyzeParticles(id, params)
+    analyzeParticles(id, { ...params, record: saveResult })
       .then((res) => {
         const s = useViewer.getState();
         s.ingestDerived([res.labels]);
@@ -165,6 +183,7 @@ export default function ParticlesMode({ id }: { id: string }) {
         setParticles(res.particles);
         setUnit(res.unit);
         setRunParams(params);
+        if (res.result) void refreshPersistedResults();
         useResults.getState().show({
           title: `Particles (${res.n_particles}) — ${res.unit}`,
           columns: [
@@ -289,6 +308,10 @@ export default function ParticlesMode({ id }: { id: string }) {
           {busy ? "Counting…" : "Count"}
         </button>
       </div>
+      <label className="fvd-check" title="Keep this run, its settings and particle table in Results & Methods">
+        <input type="checkbox" checked={saveResult} onChange={(e) => setSaveResult(e.target.checked)} />
+        Save result
+      </label>
       <label
         className="k"
         style={{ display: "flex", alignItems: "center", gap: 4 }}
