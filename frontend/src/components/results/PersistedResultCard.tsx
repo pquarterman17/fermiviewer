@@ -4,6 +4,7 @@ import type {
 } from "../../lib/api";
 
 type SourceLabel = { id: string; name: string; available: boolean };
+type ResultAction = "reopen" | "rerun" | "duplicate";
 
 const ANALYSIS_LABELS: Record<string, string> = {
   "eds.quantify": "EDS quantification",
@@ -19,6 +20,17 @@ function analysisLabel(analysis: string): string {
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 }
+
+function analysisMark(analysis: string): string {
+  if (analysis.startsWith("eds.")) return "EDS";
+  if (analysis.startsWith("eels.")) return "EELS";
+  if (analysis.startsWith("structure.")) return "S";
+  if (analysis.startsWith("diffraction.")) return "D";
+  if (analysis.startsWith("measure.")) return "M";
+  return "R";
+}
+
+const outputLabel = (name: string): string => name.replaceAll("_", " ");
 
 function formatDate(value: string): string {
   const date = new Date(value);
@@ -75,11 +87,17 @@ function StatusPill({ result }: { result: PersistedResultRecord }) {
 export default function PersistedResultCard({
   result,
   sources,
+  derived,
   onSelectSource,
+  onAction,
+  busyAction,
 }: {
   result: PersistedResultRecord;
   sources: SourceLabel[];
+  derived?: SourceLabel[];
   onSelectSource?: (id: string) => void;
+  onAction?: (action: ResultAction) => void;
+  busyAction?: ResultAction | null;
 }) {
   const cardTitle = result.label?.trim() || analysisLabel(result.analysis);
   const titleId = `result-${result.id}-title`;
@@ -93,12 +111,18 @@ export default function PersistedResultCard({
   const missing = result.missing_members ?? [];
   const calibrations = result.calibration ?? [];
   const regions = result.regions ?? [];
+  const products = derived ?? [];
+  const calibratedAxes = calibrations.flatMap((calibration) =>
+    (calibration.axes ?? []).map((axis, index) => ({ axis, index })),
+  ).filter(({ axis }) =>
+    Number.isFinite(axis.scale) && axis.scale !== 0 && axis.units.trim() !== "",
+  );
 
   return (
     <article className={`fvd-result-card ${result.status}`} aria-labelledby={titleId}>
       <header className="fvd-result-head">
         <div className="fvd-result-mark" aria-hidden="true">
-          {result.analysis.startsWith("eds.") ? "EDS" : result.analysis.startsWith("eels.") ? "EELS" : "R"}
+          {analysisMark(result.analysis)}
         </div>
         <div className="fvd-result-title-block">
           <div className="fvd-result-eyebrow">{analysisLabel(result.analysis)}</div>
@@ -131,7 +155,7 @@ export default function PersistedResultCard({
                 {scalar.sigma != null && <span className="sigma"> ± {compactNumber(scalar.sigma)}</span>}
               </div>
               <div className="unit">{scalar.unit || "unitless"}</div>
-              <div className="label">{output.name}</div>
+              <div className="label">{outputLabel(output.name)}</div>
             </div>
           ))}
         </div>
@@ -160,7 +184,25 @@ export default function PersistedResultCard({
         {calibrations.length > 0 && (
           <div className="fvd-result-context-row">
             <span className="key">Calibration</span>
-            <span>{calibrations.length} source snapshot{calibrations.length === 1 ? "" : "s"}{calibrations[0].source ? ` · ${calibrations[0].source}` : ""}</span>
+            <span>
+              {calibratedAxes.map(({ axis, index }) =>
+                `${compactNumber(axis.scale)} ${axis.units}/${index < 2 ? "px" : "channel"}`,
+              ).join(" · ") || `${calibrations.length} source snapshot${calibrations.length === 1 ? "" : "s"}`}
+              {calibrations[0].source ? ` · ${calibrations[0].source}` : ""}
+            </span>
+          </div>
+        )}
+        {products.length > 0 && (
+          <div className="fvd-result-context-row">
+            <span className="key">Produced</span>
+            <div className="fvd-result-source-list">
+              {products.map((product) => (
+                <button key={product.id} className="fvd-result-source" disabled={!product.available || !onSelectSource}
+                  onClick={() => onSelectSource?.(product.id)} title={product.available ? `Show ${product.name}` : `${product.name} is unavailable`}>
+                  {product.name}{!product.available && <span>missing</span>}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -173,10 +215,17 @@ export default function PersistedResultCard({
       )}
 
       <footer className="fvd-result-footer">
+        {onAction && result.status === "completed" && (
+          <div className="fvd-result-actions" aria-label="Result actions">
+            <button className="fvd-btn primary" disabled={busyAction != null} onClick={() => onAction("reopen")}>Reopen</button>
+            <button className="fvd-btn" disabled={busyAction != null} onClick={() => onAction("rerun")}>{busyAction === "rerun" ? "Rerunning…" : "Rerun"}</button>
+            <button className="fvd-btn" disabled={busyAction != null} onClick={() => onAction("duplicate")}>Duplicate with changes</button>
+          </div>
+        )}
         <div className="fvd-result-output-list" aria-label="Saved outputs">
           {outputs.length === 0 ? <span>No scientific outputs</span> : outputs.map((output) => (
             <span className="fvd-result-output" key={`${output.kind}-${output.name}`}>
-              {output.name}<small>{output.kind}</small>
+              {outputLabel(output.name)}<small>{output.kind}</small>
             </span>
           ))}
         </div>

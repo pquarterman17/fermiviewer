@@ -1,0 +1,93 @@
+/* Item 2A workspace controls and action chrome. Kept separate from the
+   scientific result-card foundation so both modules stay comfortably below
+   the repository's stylesheet ceiling. */
+
+.fvd-project-results-toolbar {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface-2) 78%, transparent);
+}
+
+.fvd-results-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fvd-results-filter-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-faint);
+  font-size: 9px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.fvd-results-filter-row select {
+  max-width: 150px;
+  text-transform: none;
+}
+
+.fvd-results-search {
+  flex: 1;
+  min-width: 100px;
+}
+
+.fvd-results-shown {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: var(--font-size-sm);
+}
+
+.fvd-result-group {
+  display: grid;
+  gap: 8px;
+}
+
+.fvd-result-group > header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 2px 1px;
+}
+
+.fvd-result-group > header h3 {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: var(--weight-semibold);
+}
+
+.fvd-result-group > header span {
+  display: grid;
+  min-width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-faint);
+  font-size: 9px;
+}
+
+.fvd-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 9px;
+}
+
+@media (max-width: 680px) {
+  .fvd-results-filter-row {
+    flex-wrap: wrap;
+  }
+
+  .fvd-results-shown {
+    margin-left: 0;
+  }
+}

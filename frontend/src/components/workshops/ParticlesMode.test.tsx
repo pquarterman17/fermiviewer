@@ -34,11 +34,13 @@ vi.mock("../analysis/PopulationHistogram", () => ({
 import type { ParticleRow } from "../../lib/api";
 import { analyzeParticles, efdSimilarity, fetchData16 } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
+import { useResultWorkflow } from "../../store/resultWorkflow";
 import { useResults } from "../overlays/ResultsWindow";
 import ParticlesMode, { countShapeClasses } from "./ParticlesMode";
 
 afterEach(() => {
   vi.clearAllMocks();
+  useResultWorkflow.setState({ request: null });
   useResults.getState().close();
 });
 
@@ -129,6 +131,28 @@ function particleRows(): ParticleRow[] {
 }
 
 describe("ParticlesMode", () => {
+  it("arms saving only for Duplicate with changes", async () => {
+    vi.mocked(fetchData16).mockResolvedValue(raster());
+    useResultWorkflow.getState().open({
+      id: "saved", analysis: "structure.particles", created_at: "t", status: "completed",
+      source_ids: ["img"], params: { threshold: 0.5, min_area: 7 },
+    }, "duplicate");
+    render(<ParticlesMode id="img" />);
+    await waitFor(() => expect(screen.getByLabelText("Save result")).toBeChecked());
+    expect(screen.getByDisplayValue("7")).toBeVisible();
+  });
+
+  it("discards a pending restore when the source image changes", async () => {
+    vi.mocked(fetchData16).mockImplementation(() => new Promise(() => undefined));
+    useResultWorkflow.getState().open({
+      id: "saved", analysis: "structure.particles", created_at: "t", status: "completed",
+      source_ids: ["original"], params: { threshold: 500 },
+    }, "reopen");
+    const view = render(<ParticlesMode id="original" />);
+    view.rerender(<ParticlesMode id="other" />);
+    await waitFor(() => expect(useResultWorkflow.getState().request).toBeNull());
+  });
+
   it("forwards the watershed split option to the endpoint", async () => {
     // The menu dialog that owned this option was replaced by this mode; if
     // the toggle stops reaching the API, touching particles silently merge

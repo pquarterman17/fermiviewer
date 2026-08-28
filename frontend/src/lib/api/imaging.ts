@@ -1,6 +1,7 @@
 // Extracted from lib/api.ts; public imports remain stable via the barrel.
 import { recordPathOp } from "../macro";
 import type { ImageMeta } from "./core";
+import type { CapturedResultRef } from "./project";
 import { json, post } from "./transport";
 
 // ── item-28 analysis surface ────────────────────────────────────────
@@ -137,6 +138,9 @@ export function analyzeParticles(
     minArea?: number;
     watershed?: boolean;
     polarity?: "bright" | "dark";
+    minMarkerDistance?: number;
+    classThresholds?: Record<string, number>;
+    record?: boolean;
   },
 ): Promise<{
   n_particles: number;
@@ -144,6 +148,7 @@ export function analyzeParticles(
   labels: ImageMeta;
   particles: ParticleRow[];
   unit: string;
+  result?: CapturedResultRef;
 }> {
   return post("/api/analyze/particles", {
     image_id: id,
@@ -151,6 +156,9 @@ export function analyzeParticles(
     min_area: opts.minArea ?? 1,
     use_watershed: opts.watershed ?? false,
     polarity: opts.polarity ?? "bright",
+    min_marker_distance: opts.minMarkerDistance ?? 3,
+    class_thresholds: opts.classThresholds ?? null,
+    ...(opts.record ? { record: true } : {}),
   });
 }
 
