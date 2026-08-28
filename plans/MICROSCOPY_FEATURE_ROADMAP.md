@@ -327,12 +327,32 @@ Build one result experience on the schema from item 1.
       source/ROI links, and produced images.
 - [ ] Reopen the originating workshop with saved parameters and offer explicit
       **Rerun** and **Duplicate with changes** actions.
-- [ ] Compare compatible results across images or samples with shared units and
-      explicit incompatibility messages.
-- [ ] Build a report from selected results: figures, tables, captions,
+- [x] Compare compatible results across images or samples with shared units and
+      explicit incompatibility messages. (2B: `results_compare` +
+      `POST /api/results/compare`. Backend only — 2C renders the verdicts.)
+- [x] Build a report from selected results: figures, tables, captions,
       calibration summary, software version, and generated methods text.
+      (2B: `results_report`/`results_methods` + `POST /api/results/report`.
+      Captions and per-record prose are generated here; PDF/HTML layout is 2C.)
 - [ ] Export selected results as a structured bundle in addition to existing
-      per-tool CSV/JSON/figure exports.
+      per-tool CSV/JSON/figure exports. NOT met by 2B, and this box was
+      wrongly checked when it shipped. `POST /api/results/report` returns a
+      report MANIFEST: an output whose array exceeds the inline threshold
+      contributes only its `member` name, and that member is a path inside
+      the originating `.fvp`, not a durable reference. Saving that JSON for
+      a large table or curve produces a document that cannot reconstruct
+      what it names without the original project and another call. Closing
+      this needs a container carrying the member payloads (or durable
+      references) beside the manifest; the download affordance is 2A/2C's.
+
+**Item-2 stack status (2026-08-27):** 2B shipped — the compatible-result
+query and the report manifest, with deterministic provenance tests. The
+two checked boxes above are its backend; the four unchecked ones are
+2A/2C's workspace, cards and rendered layout, plus the self-contained
+export 2B deliberately does not deliver (see that box).
+Item 2 stays open until a user can reach any of this without an HTTP client:
+nothing in the UI calls `/api/results/compare` or `/api/results/report` yet,
+and the capture affordance item 1's adopters wait on is the same gap.
 
 **Done when:** a user can create a short, reproducible sample report without
 manually collecting outputs from several transient workshops.
