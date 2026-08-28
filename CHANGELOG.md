@@ -13,6 +13,70 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-08-28
+
+Results stop being transient. Until now every analysis lived only as long as
+its window was open — this release gives them a schema, a place in the
+project file, and a browser, and makes almost every analysis reachable from
+a saved recipe instead of only from a mouse.
+
+### Added
+- **Analysis results survive save, close and reopen.** A project now carries
+  a typed `results` section: the resolved parameters, a calibration snapshot
+  taken at compute time, the geometry that was measured, warnings, and the
+  outputs themselves. Large arrays are stored as project members, never
+  inlined into the manifest, so a project with thousands of particles does
+  not become an unreadable JSON file. Older projects load unchanged and
+  round-trip losslessly; a result written by a newer build survives an
+  older one untouched.
+- **A Results & Methods window.** Persisted results come back as cards
+  showing their primary values, uncertainty, warnings, calibration and the
+  images they came from, grouped and readable without reopening the
+  workshop that produced them.
+- **EDS quantification, particle analysis, intensity profiles and
+  diffraction indexing can be saved as results.** Each records what it
+  actually computed — the fully resolved parameters, not just the ones you
+  touched — so a saved result says exactly how to reproduce it. Failures
+  are recorded as failures rather than quietly dropped. Saving is opt-in;
+  nothing is captured unless asked.
+- **88 operations are now scriptable.** Batch recipes, recorded macros and
+  the CLI share one operation vocabulary covering imaging, EELS, EDS,
+  diffraction, structure, measurement and utility endpoints — 72 of 80
+  analysis endpoints, up from a small hand-picked set. Multi-image
+  operations (image math, stack alignment, MIP, stitch, montage) work in
+  recipes too, through named auxiliary inputs that stay portable across
+  sessions instead of freezing an image id into the recipe.
+- **A recipe builder that shows you the vocabulary.** Searchable operation
+  palette, structured parameter editors, pickers for named and variadic
+  inputs, up-front validation and dry-run summaries, plus per-image and
+  per-step failure provenance when a batch run goes wrong.
+- **Compare results and build a report from them.** A comparison endpoint
+  says which saved results can sit beside each other and, for those that
+  cannot, exactly why — different analysis, different units, a failed run —
+  naming both sides rather than greying a card out. A report endpoint
+  assembles a selection into a deterministic manifest with a calibration
+  summary, the software version, attributed warnings and generated methods
+  prose.
+
+### Fixed
+- **Diffraction indexing returned wrong d-spacings for an off-edge ROI.**
+  The crop origin was clamped to the image while the effective width came
+  from the raw ROI, so an ROI hanging over an edge left the spot
+  coordinates unshifted but shrank the width that scales `d` in the
+  uncalibrated branch. Measured d-spacings were quietly wrong, with nothing
+  to indicate it. A degenerate or out-of-image ROI is now rejected outright.
+- Diffraction indexing no longer accepts a spectrum cube as if it were a
+  diffraction pattern, and a ragged spot list is a clear error rather than
+  a server fault.
+- Grain merge/split failures now report what went wrong instead of
+  surfacing as a server fault, and a label map whose shape does not match
+  its source image is caught with a message naming both shapes.
+- Cross-map layer comparison no longer treats an uncalibrated map as
+  calibrated at 1.0 px, which had let it compare roughness across maps that
+  share no physical scale.
+- Whole-number parameters reject fractional values everywhere instead of
+  truncating them — asking for pixel 1.5 no longer silently measures pixel 1.
+
 ## [0.1.32] - 2026-08-18
 
 ### Added
