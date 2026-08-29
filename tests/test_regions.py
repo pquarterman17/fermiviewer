@@ -17,6 +17,7 @@ from fermiviewer.calc.profile_stats import roi_stats
 from fermiviewer.calc.regions import (
     Part,
     Region,
+    Shape,
     bounding_box,
     circle,
     ellipse,
@@ -275,3 +276,85 @@ def test_unknown_kinds_and_modes_are_rejected_at_construction() -> None:
         Part(rect(1, 1, 3, 3), mode="maybe")
     with pytest.raises(ValueError, match="must be \\(N, 2\\)"):
         polygon([1, 2, 3])
+
+
+# ── what rasterization actually does ─────────────────────────────────
+
+
+def test_a_pixel_is_in_when_its_centre_lies_on_the_edge() -> None:
+    """The inclusive rectangle rests on this and nothing else: the edges
+    of `rect(1, 1, 3, 3)` run exactly THROUGH the centres of rows and
+    columns 1 and 3. If `polygon2mask` ever treated an edge as outside,
+    every inclusive rect here would silently lose its first row and
+    column — 4 px instead of 9 — so the dependency is pinned rather than
+    trusted to survive a scikit-image upgrade."""
+    edge = rasterize(one(polygon([(1, 1), (1, 3), (3, 3), (3, 1)])), SHAPE)
+    assert edge.sum() == 9
+    assert edge[1, 1] and edge[1, 3] and edge[3, 1]   # corners: vertices
+    assert edge[1, 2] and edge[2, 1]                  # sides: on an edge
+
+
+@pytest.mark.parametrize(
+    ("offset", "expected"), [(0.0, 9), (0.001, 4), (0.5, 4), (0.999, 4), (1.0, 9)]
+)
+def test_a_sub_pixel_shift_changes_the_mask_when_an_edge_crosses_a_centre(
+    offset, expected
+) -> None:
+    """Sampling is centre-in-polygon, NOT rounding to the nearest centre:
+    the count changes at 0 and at 1 — where the edges cross centres — and
+    not at 0.5. An adapter written against a rounding model would place
+    every converted sub-pixel outline wrong by up to a pixel, so the real
+    rule is pinned here.
+    """
+    square = np.array([[1.0, 1.0], [1.0, 3.0], [3.0, 3.0], [3.0, 1.0]]) + offset
+    assert rasterize(one(polygon(square)), SHAPE).sum() == expected
+
+
+def test_a_sliver_between_two_centres_masks_nothing() -> None:
+    """The cost of centre sampling, stated in the module docstring: a mask
+    population count is not a sub-pixel area. A caller needing true area
+    wants the shoelace area of the outline instead."""
+    sliver = polygon([(1.1, 1.0), (1.1, 7.0), (1.4, 7.0), (1.4, 1.0)])
+    assert not rasterize(one(sliver), SHAPE).any()
+
+
+# ── Shape is the persistence contract, so it validates itself ────────
+
+
+def test_a_shape_cannot_carry_two_contradictory_geometries() -> None:
+    """`Shape` is exported and is what the persistence and wire adapters
+    will build directly, so the invariant the docstring states has to be
+    enforced here — not only in the constructors. Carrying both would
+    serialize two geometries and silently rasterize one."""
+    ring = [(1, 1), (1, 3), (3, 3)]
+    with pytest.raises(ValueError, match="bounds, not an outline"):
+        Shape(kind="rect", bounds=(0, 0, 1, 1), outline=np.array(ring, float))
+    with pytest.raises(ValueError, match="outline, not bounds"):
+        Shape(kind="polygon", outline=np.array(ring, float), bounds=(0, 0, 1, 1))
+
+
+def test_unsorted_or_non_finite_bounds_are_rejected() -> None:
+    """The constructors sort; a deserialized Shape will not have been.
+    Unsorted bounds are a DIFFERENT ellipse rather than an invalid one,
+    which is the sort of quiet disagreement this contract exists to end."""
+    with pytest.raises(ValueError, match="r0 <= r1"):
+        Shape(kind="ellipse", bounds=(3, 1, 1, 3))
+    with pytest.raises(ValueError, match="c0 <= c1"):
+        Shape(kind="rect", bounds=(1, 3, 3, 1))
+    with pytest.raises(ValueError, match="must be finite"):
+        Shape(kind="rect", bounds=(0, 0, float("nan"), 2))
+
+
+def test_a_hole_must_be_a_ring_that_can_enclose_something() -> None:
+    """Holes reach `Shape` unchecked from every constructor, and a
+    two-point or non-finite hole encloses nothing while still round-
+    tripping through persistence as if it did."""
+    with pytest.raises(ValueError, match="a hole needs at least 3 vertices"):
+        rect(1, 1, 5, 5, holes=[[(2, 2), (3, 3)]])
+    with pytest.raises(ValueError, match="a hole has non-finite"):
+        rect(1, 1, 5, 5, holes=[[(2, 2), (2, 4), (float("inf"), 4)]])
+
+
+def test_a_polygon_outline_must_be_finite() -> None:
+    with pytest.raises(ValueError, match="a polygon has non-finite"):
+        polygon([(1, 1), (1, 3), (np.nan, 3)])

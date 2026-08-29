@@ -58,15 +58,28 @@ Neither is `skimage.draw.disk`, which uses `dist < r` (`disk(c, 1)` is a
 single pixel, `disk(c, 2)` is 3×3); building on it would have made a
 region of radius `r` disagree with the diffraction ROI of radius `r`.
 
-## What rasterization does NOT preserve
+## What rasterization actually does
 
-`skimage.draw.polygon2mask` rounds vertices to the nearest pixel centre:
-a corner at 0.2, 0.49, 0.51 and 0.99 all produce the same mask, snapping
-at .5. Sub-pixel outline precision is therefore LOST at rasterization.
-That is fine for selecting pixels, but it means `mask.sum()` is a pixel
-count, not a sub-pixel-accurate area — a lasso drawn 0.4 px outside a
-feature masks the same pixels as one drawn on it. Callers wanting true
-geometric area should use the shoelace area of the outline
+A pixel belongs to a polygon iff its CENTRE is inside it, lies ON an edge,
+or IS a vertex. That is `skimage.measure.grid_points_in_poly`, which
+labels those three cases 1, 3 and 2, and `polygon2mask` keeps all three.
+Centre sampling, boundary INCLUSIVE — nothing is rounded to a centre.
+
+The boundary half of that rule is load-bearing here, not incidental:
+`rect(1, 1, 3, 3)` puts its edges exactly THROUGH the centres of rows and
+columns 1 and 3, so those pixels are in and the rectangle is 9 px. A
+rasterizer treating edges as outside would return 4 px for the same
+inclusive bounds, so `test_regions.py` pins the edge case directly rather
+than trusting it to stay true across a scikit-image upgrade.
+
+Sub-pixel coordinates are therefore NOT discarded — they change the mask
+whenever an edge crosses a pixel centre. Shifting that same square by
++0.001 drops its top row and left column (4 px); +1.0 restores nine, one
+pixel down and right. What centre sampling does cost is area fidelity:
+`mask.sum()` counts pixels whose centres were captured, so a lasso drawn
+0.4 px outside a feature usually masks the same pixels as one drawn on
+it, and a sliver crossing no centre masks nothing at all. Callers wanting
+true geometric area should take the shoelace area of the outline
 (`calc/contours`), not the mask's population count.
 
 Pure layer: numpy + scikit-image (already a runtime dependency, BSD) and
@@ -129,6 +142,12 @@ class Shape:
     holes: tuple[np.ndarray, ...] = ()
 
     def __post_init__(self) -> None:
+        # Validated HERE and not only in the constructors below, because
+        # `Shape` is exported and is what persistence and the wire
+        # adapters will build directly. A variant that carried both
+        # `bounds` and an `outline` would serialize as two contradictory
+        # geometries with one silently dropped at rasterization, which is
+        # exactly the kind of disagreement this module exists to end.
         if self.kind not in REGION_KINDS:
             raise ValueError(
                 f"region kind must be one of {REGION_KINDS}, got {self.kind!r}"
@@ -136,10 +155,27 @@ class Shape:
         if self.kind == "polygon":
             if self.outline is None:
                 raise ValueError("a polygon needs an outline")
-            if _ring(self.outline).shape[0] < 3:
-                raise ValueError("a polygon needs at least 3 vertices")
-        elif self.bounds is None:
-            raise ValueError(f"a {self.kind} needs bounds")
+            if self.bounds is not None:
+                raise ValueError("a polygon carries an outline, not bounds")
+            _checked_ring(self.outline, "a polygon")
+        else:
+            if self.bounds is None:
+                raise ValueError(f"a {self.kind} needs bounds")
+            if self.outline is not None:
+                raise ValueError(f"a {self.kind} carries bounds, not an outline")
+            if not all(np.isfinite(self.bounds)):
+                raise ValueError(f"bounds must be finite, got {self.bounds!r}")
+            r0, c0, r1, c1 = self.bounds
+            if r0 > r1 or c0 > c1:
+                # The constructors sort; a hand-built or deserialized
+                # Shape may not, and unsorted bounds mean a different
+                # ellipse rather than a rejected one.
+                raise ValueError(
+                    f"bounds must be (r0, c0, r1, c1) with r0 <= r1 and "
+                    f"c0 <= c1, got {self.bounds!r}"
+                )
+        for hole in self.holes:
+            _checked_ring(hole, "a hole")
 
 
 @dataclass(frozen=True)
@@ -198,13 +234,29 @@ class Region:
 
 
 def _ring(points: Any) -> np.ndarray:
-    """`(N, 2)` float64 `(row, col)`, validated. Accepts any array-like so
-    a caller can hand over a list of tuples without ceremony."""
+    """`(N, 2)` float64 `(row, col)`, shape-checked. Accepts any array-like
+    so a caller can hand over a list of tuples without ceremony."""
     ring = np.asarray(points, dtype=np.float64)
     if ring.ndim != 2 or ring.shape[1] != 2:
         raise ValueError(
             f"a ring must be (N, 2) (row, col) points, got shape {ring.shape}"
         )
+    return ring
+
+
+def _checked_ring(points: Any, what: str) -> np.ndarray:
+    """`_ring` plus the two conditions a ring must meet to enclose area.
+
+    Fewer than three vertices encloses nothing, and a non-finite vertex
+    makes the whole mask undefined rather than merely clipped — both are
+    rejected at construction so a malformed region cannot be persisted
+    and then silently rasterize to something.
+    """
+    ring = _ring(points)
+    if ring.shape[0] < 3:
+        raise ValueError(f"{what} needs at least 3 vertices, got {ring.shape[0]}")
+    if not np.isfinite(ring).all():
+        raise ValueError(f"{what} has non-finite coordinates")
     return ring
 
 
