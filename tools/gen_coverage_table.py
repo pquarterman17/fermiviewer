@@ -928,6 +928,7 @@ INFRASTRUCTURE: tuple[tuple[str, str], ...] = (
     # analysis and produce no new science, so they are infrastructure like
     # the rest of the results surface, not an unregistered operation.
     ("POST", "/api/results/compare"),
+    ("POST", "/api/results/export"),
     ("POST", "/api/results/report"),
     ("DELETE", "/api/results/{result_id}"),
     ("GET", "/api/results/{result_id}"),

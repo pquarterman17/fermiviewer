@@ -18,18 +18,28 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from fermiviewer import __version__
+from fermiviewer.io.project_manifest import ProjectFormatError
 from fermiviewer.io.project_results import ResultRecord
 from fermiviewer.io.project_sections import finite_json
 from fermiviewer.project_session import project
 from fermiviewer.results_compare import compare_results
+from fermiviewer.results_export import archive_bytes, build_archive
 from fermiviewer.results_report import build_report, bundle_payload
 from fermiviewer.routes._project_adapter import results_payload
+from fermiviewer.routes.export_table import _safe_filename
 
 router = APIRouter(prefix="/api")
+
+
+def _safe_zip_name(filename: str | None) -> str:
+    """The repo's one download-name sanitiser, with the extension forced to
+    `.zip` — reused rather than re-derived so the latin-1 header hazard it
+    documents stays fixed in one place."""
+    return _safe_filename(filename, "zip")
 
 
 def _record(result_id: str) -> ResultRecord:
@@ -175,6 +185,52 @@ def results_report(req: ReportRequest) -> dict[str, Any]:
         [known[rid] for rid in req.result_ids], app_version=__version__
     )
     return bundle_payload(bundle)
+
+
+class ExportRequest(ReportRequest):
+    """Same selection contract as a report — an export IS a report plus the
+    arrays it cites, so the two must not drift on which records they can
+    take or in what order they read."""
+
+    #: Download name; the extension is forced to `.zip` server-side.
+    filename: str | None = None
+
+
+@router.post("/results/export")
+def results_export(req: ExportRequest) -> Response:
+    """The selected records as a SELF-CONTAINED archive (item 2's last box).
+
+    `/results/report` returns a manifest whose `member` citations point
+    into the originating `.fvp`; this returns a ZIP in which those same
+    citations resolve, because the member arrays travel with it. Nothing in
+    the download needs the project it came from.
+
+    A degraded output — its member already lost when the project loaded —
+    contributes no entry, keeps its citation, and is named in the
+    manifest's warnings. Filling the gap with zeros would turn a missing
+    array into a wrong one.
+    """
+    known = {record.id: record for record in project.current().results}
+    missing = [rid for rid in req.result_ids if rid not in known]
+    if missing:
+        raise HTTPException(404, f"unknown result id(s): {missing}")
+    try:
+        archive = build_archive(
+            [known[rid] for rid in req.result_ids], app_version=__version__
+        )
+    except ProjectFormatError as exc:
+        # `prepare_results` rejects duplicate ids and unsafe member names.
+        # A malformed selection is the caller's 422, not a 500 — and it is
+        # caught before any bytes are produced, so no half-written download.
+        raise HTTPException(422, f"cannot export this selection: {exc}") from None
+    return Response(
+        content=archive_bytes(archive),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition":
+                f'attachment; filename="{_safe_zip_name(req.filename)}"'
+        },
+    )
 
 
 @router.delete("/results/{result_id}")

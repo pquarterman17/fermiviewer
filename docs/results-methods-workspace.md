@@ -78,5 +78,17 @@ not offer reproduction actions because they may not have usable outputs.
 The workspace consumes the compare and report-manifest backend delivered by
 roadmap item 2B. **Manifest JSON** remains explicitly labelled as a manifest,
 not a self-contained data bundle: large member-backed arrays still live in the
-project container. Packaging those member payloads beside the manifest remains
-a separate backend/export item.
+project container, so that button's output is only as portable as the project
+beside it. That label is still accurate and should stay.
+
+Packaging the member payloads *is* now available, as a separate artifact:
+`POST /api/results/export` (roadmap item 2D) returns a ZIP carrying the same
+manifest plus every cited array at `results/<result-id>/<n>.npy`, the entry
+names the project container itself uses — so a `member` citation that points
+into the `.fvp` resolves inside the archive instead. Nothing in that download
+needs the originating project.
+
+The two are deliberately both offered: the manifest is a small, readable,
+diffable document, and the archive is the portable one. **The workspace does
+not yet expose a control for the archive** — wiring a download affordance to
+that endpoint is the remaining 2C piece.

@@ -334,16 +334,18 @@ Build one result experience on the schema from item 1.
       calibration summary, software version, and generated methods text.
       (2B: `results_report`/`results_methods` + `POST /api/results/report`.
       Captions and per-record prose are generated here; PDF/HTML layout is 2C.)
-- [ ] Export selected results as a structured bundle in addition to existing
-      per-tool CSV/JSON/figure exports. NOT met by 2B, and this box was
-      wrongly checked when it shipped. `POST /api/results/report` returns a
-      report MANIFEST: an output whose array exceeds the inline threshold
-      contributes only its `member` name, and that member is a path inside
-      the originating `.fvp`, not a durable reference. Saving that JSON for
-      a large table or curve produces a document that cannot reconstruct
-      what it names without the original project and another call. Closing
-      this needs a container carrying the member payloads (or durable
-      references) beside the manifest; the download affordance is 2A/2C's.
+- [x] Export selected results as a structured bundle in addition to existing
+      per-tool CSV/JSON/figure exports. (2D: `results_export` +
+      `POST /api/results/export`.) A ZIP carrying the report manifest, the
+      methods prose, a README, and every cited array as
+      `results/<result-id>/<n>.npy` — the same entry names
+      `prepare_results` allocates inside a `.fvp`, so the manifest's
+      existing `member` citations resolve *within the archive* and nothing
+      in the download needs the project it came from. Byte-reproducible
+      apart from `generated_at`. An output whose member was already lost
+      writes no entry, keeps its citation and is named in the warnings,
+      rather than being filled with invented zeros. The download
+      affordance in the workspace is still 2A/2C's.
 
 **Item-2 backend status (2026-08-27):** 2B shipped the compatible-result
 query and report manifest with deterministic provenance tests. It deliberately
@@ -363,6 +365,16 @@ rejection/calibration states, ordered result and per-output report composition,
 an isolated print/HTML preview, vector curve rendering, and HTML/PDF-facing
 export. The structured-bundle checkbox remains open: Manifest JSON still cites
 large arrays inside the originating project and is labelled accordingly.
+
+**2D completed 2026-08-29:** `POST /api/results/export` closes the
+structured-bundle box the note above left open, and with it item 2. The
+archive reuses the project container's own member layout, so a manifest
+citation that pointed into the `.fvp` now resolves inside the download
+itself; `results_export` composes `prepare_results` and `build_report`
+rather than re-deriving either. Manifest JSON's "project-dependent" label
+in the workspace is still correct for *that* button — it is a different,
+lighter artifact, and both are worth offering. Wiring the archive to a
+download control in Results & Methods is 2C's remaining piece.
 
 **Done when:** a user can create a short, reproducible sample report without
 manually collecting outputs from several transient workshops.
