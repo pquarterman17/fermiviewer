@@ -172,6 +172,19 @@ here. A genuine collision is kept under the first free `id~2`, `id~3`.
 Renaming is safe where dropping is not: nothing references a set id yet,
 and a visible rename is recoverable where a silent deletion is not.
 
+The rename creates its own trap, which is why `OpenProject` also carries
+`region_set_origins`, mapping `(source path, the id the set had in that
+file)` to the id it ended up under. A set from `two.fvp` stored as
+`s1~2` no longer answers to `s1`, so without this a second append of
+`two.fvp` would look up `s1`, find the FIRST project's different set, and
+allocate `s1~3` — growing the session by another copy on every reload.
+Provenance and value comparison each cover a case the other misses:
+provenance recognises a file's own renamed contribution, and value
+comparison recognises the same set arriving from a COPY of the project at
+another path, which has no shared provenance. A file already recognised
+is skipped even if it changed on disk, which is how a repeated image or
+result id is treated too.
+
 **Classes deliberately keep the opposite rule**: a colliding class id
 keeps the first definition's label and colour. A class id is a shared
 vocabulary key — two projects both saying `substrate` mean the same

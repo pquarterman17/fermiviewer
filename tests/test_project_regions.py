@@ -722,6 +722,51 @@ def test_a_third_colliding_set_gets_the_next_free_id() -> None:
     assert [g.id for g in session.current().region_sets] == ["s1", "s1~2", "s1~3"]
 
 
+def test_re_appending_a_project_whose_set_was_renamed_does_not_duplicate_it() -> None:
+    """The trap the rename itself creates, and the one the test above
+    cannot see because it feeds a DIFFERENT set each time.
+
+    Once `two.fvp`'s `s1` is stored as `s1~2` it no longer answers to
+    `s1`, so a second append of `two.fvp` looks up `s1`, finds the FIRST
+    project's different set, and allocates `s1~3` — growing the session by
+    another copy on every single reload. Recognising a file's own renamed
+    contribution is what `region_set_origins` is for.
+    """
+    session = ProjectSession()
+    session.adopt(LoadedProject(region_sets=(_set("s1"),)), Path("one.fvp"))
+    for _ in range(4):
+        session.adopt(
+            LoadedProject(region_sets=(_other_set("s1"),)),
+            Path("two.fvp"),
+            merge=True,
+        )
+        assert [g.id for g in session.current().region_sets] == ["s1", "s1~2"]
+
+    # and a genuinely new third project still gets its own id
+    session.adopt(
+        LoadedProject(region_sets=(replace(_other_set("s1"), name="pores"),)),
+        Path("three.fvp"),
+        merge=True,
+    )
+    kept = session.current().region_sets
+    assert [g.id for g in kept] == ["s1", "s1~2", "s1~3"]
+    assert [g.name for g in kept] == ["grain boundaries", "voids", "pores"]
+
+
+def test_the_same_set_arriving_from_a_copied_file_is_not_renamed() -> None:
+    """The other half, which provenance alone would get wrong: a COPY of
+    one project at a second path carries the same set under the same id.
+    That is the same data, so it is skipped rather than stored again as
+    `s1~2`. Value comparison and provenance each cover a case the other
+    misses."""
+    session = ProjectSession()
+    session.adopt(LoadedProject(region_sets=(_set("s1"),)), Path("one.fvp"))
+    session.adopt(
+        LoadedProject(region_sets=(_set("s1"),)), Path("copy-of-one.fvp"), merge=True
+    )
+    assert [g.id for g in session.current().region_sets] == ["s1"]
+
+
 def test_a_colliding_class_id_keeps_the_first_decoration() -> None:
     """Deliberately NOT the same rule as sets, and the asymmetry is the
     point: a class id is a shared VOCABULARY key, so two projects both
@@ -743,3 +788,26 @@ def test_a_colliding_class_id_keeps_the_first_decoration() -> None:
     )
     (only,) = session.current().region_classes
     assert (only.id, only.label, only.color) == ("substrate", "Substrate", "#111111")
+
+
+def test_a_file_is_recognised_however_it_first_arrived() -> None:
+    """Provenance is seeded by a REPLACING load too, not only by an
+    append. Without that, re-appending the file the session was opened
+    with falls through to the value compare — which agrees only while the
+    file is unchanged, so an edited-and-re-appended project would arrive
+    as a stranger and be stored a second time under `s1~2`.
+
+    Recognising it means the arriving copy is skipped, exactly as a
+    repeated image or result id is. The session keeps what it already
+    holds for that file rather than growing a near-duplicate the user
+    never asked for.
+    """
+    session = ProjectSession()
+    session.adopt(LoadedProject(region_sets=(_set("s1"),)), Path("one.fvp"))
+    # the same file, edited on disk and appended back over itself
+    session.adopt(
+        LoadedProject(region_sets=(_other_set("s1"),)), Path("one.fvp"), merge=True
+    )
+    kept = session.current().region_sets
+    assert [g.id for g in kept] == ["s1"]
+    assert [g.name for g in kept] == ["grain boundaries"]

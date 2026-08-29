@@ -75,6 +75,12 @@ class OpenProject:
     #: regions a user drew.
     region_sets: tuple[RegionSet, ...] = ()
     region_classes: tuple[RegionClass, ...] = ()
+    #: Where each carried set came from: `(source path, the id it had in
+    #: that file)` → the id it ended up under here. An append load renames
+    #: a genuine id collision (see `_merge_region_sets`), so without this
+    #: a second append of the SAME project would not recognise its own
+    #: renamed set and would add another copy on every reload.
+    region_set_origins: dict[tuple[str, str], str] = field(default_factory=dict)
 
     @property
     def project_dir(self) -> Path:
@@ -188,6 +194,10 @@ class ProjectSession:
                     results=loaded.results,
                     region_sets=loaded.region_sets,
                     region_classes=loaded.region_classes,
+                    region_set_origins={
+                        (str(path), group.id): group.id
+                        for group in loaded.region_sets
+                    },
                 )
                 return
             known = {img.id for img in previous.placeholders}
@@ -196,8 +206,11 @@ class ProjectSession:
             # re-loading the same file twice must not double them.
             known_results = {rec.id for rec in previous.results}
             known_classes = {entry.id for entry in previous.region_classes}
-            merged_sets = _merge_region_sets(
-                previous.region_sets, loaded.region_sets
+            merged_sets, merged_origins = _merge_region_sets(
+                previous.region_sets,
+                loaded.region_sets,
+                origins=previous.region_set_origins,
+                source=str(path),
             )
             extra = list(previous.extra_roots)
             for root in (loaded.data_root_hint, str(Path(path).parent)):
@@ -214,6 +227,7 @@ class ProjectSession:
                     *(r for r in loaded.results if r.id not in known_results),
                 ),
                 region_sets=merged_sets,
+                region_set_origins=merged_origins,
                 region_classes=(
                     *previous.region_classes,
                     *(c for c in loaded.region_classes if c.id not in known_classes),
@@ -352,33 +366,51 @@ project = ProjectSession()
 
 
 def _merge_region_sets(
-    previous: tuple[RegionSet, ...], arriving: tuple[RegionSet, ...]
-) -> tuple[RegionSet, ...]:
-    """Append arriving sets, deduping only what is genuinely the same.
+    previous: tuple[RegionSet, ...],
+    arriving: tuple[RegionSet, ...],
+    *,
+    origins: dict[tuple[str, str], str],
+    source: str,
+) -> tuple[tuple[RegionSet, ...], dict[tuple[str, str], str]]:
+    """Append arriving sets, deduping only what is genuinely already here.
 
     Deduping by id alone — the rule images and results use — is wrong for
     region sets, because their ids are the USER's. Two projects both
     naming a set "grains" is ordinary, not a collision to resolve by
     dropping one: that would silently discard the second project's
     regions while appending its images, and the next save would make the
-    loss permanent.
+    loss permanent. So a genuine collision is KEPT under a free id.
 
-    So the arriving set is skipped only when it is the same data (the
-    same file adopted twice, which must not double it), and otherwise
-    kept under a free id. Renaming is safe where dropping is not: nothing
-    references a set id yet, and a visible rename is recoverable where a
-    silent deletion is not.
+    Renaming then creates its own trap, which is why `origins` exists. A
+    set from `two.fvp` stored as `s1~2` no longer answers to `s1`, so a
+    second append of `two.fvp` would look up `s1`, find the FIRST
+    project's different set, and allocate `s1~3` — growing the session by
+    another copy on every reload. Recording `(source, original id)` is
+    what lets a file recognise the set it already contributed, whatever
+    it ended up called.
+
+    Value comparison still covers the other case: the same set arriving
+    from a different path (a copy of the project) is skipped rather than
+    renamed, since it is the same data under the same id. Both rules are
+    needed and neither subsumes the other.
     """
     merged = list(previous)
     taken = {group.id for group in previous}
     by_id = {group.id: group for group in previous}
+    updated = dict(origins)
     for group in arriving:
+        key = (source, group.id)
+        already = updated.get(key)
+        if already is not None and already in taken:
+            continue
         existing = by_id.get(group.id)
         if existing is not None and same_region_set(existing, group):
+            updated[key] = group.id
             continue
         if existing is not None:
             group = replace(group, id=free_set_id(group.id, taken))
         taken.add(group.id)
         by_id[group.id] = group
+        updated[key] = group.id
         merged.append(group)
-    return tuple(merged)
+    return tuple(merged), updated
