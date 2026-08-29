@@ -357,6 +357,13 @@ four representative adopters support saved-setting reopen, exact recorded
 rerun, and Duplicate with changes. The remaining UI work is 2C's comparison,
 report composition/layout and a genuinely self-contained structured bundle.
 
+**2C UI completed 2026-08-28:** the workspace now consumes 2B's compatibility
+and report endpoints. It provides reference-based comparison with explicit
+rejection/calibration states, ordered result and per-output report composition,
+an isolated print/HTML preview, vector curve rendering, and HTML/PDF-facing
+export. The structured-bundle checkbox remains open: Manifest JSON still cites
+large arrays inside the originating project and is labelled accordingly.
+
 **Done when:** a user can create a short, reproducible sample report without
 manually collecting outputs from several transient workshops.
 

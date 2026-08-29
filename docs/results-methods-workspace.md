@@ -30,6 +30,33 @@ warnings/failure state, source links, region/calibration summary, produced-image
 links and saved outputs. Full parameters and stable IDs remain under the
 Provenance disclosure.
 
+## Comparing results
+
+The **Compare** view chooses one completed result as a reference and asks the
+backend's canonical compatibility rules which saved runs can be placed beside
+it. Compatible records can be included or removed from a shared-output matrix.
+Scalar outputs retain their uncertainty and units; tables, curves and other
+outputs are identified by kind without pretending that unlike payloads are
+scalar values. Calibration is labelled as matched, different, or not verified.
+
+Rejected records remain inspectable under **Compatibility review**, with the
+specific scientific reason (analysis, status, output kind, unit, or shared-
+output mismatch) rather than an unexplained disabled control.
+
+## Composing a report
+
+The **Report** view lets the author select and order saved results, then choose
+individual scalar, table, curve, fit, map, overlay, or figure outputs. Methods,
+calibration summary, and review notes can be included independently. The
+generated paper preview is the same self-contained HTML document used by
+**Export HTML** and **Print / Save PDF**, so page output does not inherit the
+application window's dark theme or controls.
+
+Curves with embedded values render as vector SVG; inline tables and scalar
+uncertainties remain selectable text. If a large member-backed output is only
+cited by the report manifest, the report says that it remains stored in the
+project rather than silently truncating it.
+
 ## Reproduction actions
 
 - **Reopen** selects the source and restores the saved geometry/settings in the
@@ -48,8 +75,8 @@ not offer reproduction actions because they may not have usable outputs.
 
 ## Scope boundary
 
-The compare and report-manifest backend delivered by roadmap item 2B is not yet
-called by this workspace; item 2C owns that user-facing comparison and report
-builder. A report manifest is not a self-contained export bundle: large
-member-backed arrays still live in the project container, so the structured-
-bundle roadmap item remains open.
+The workspace consumes the compare and report-manifest backend delivered by
+roadmap item 2B. **Manifest JSON** remains explicitly labelled as a manifest,
+not a self-contained data bundle: large member-backed arrays still live in the
+project container. Packaging those member payloads beside the manifest remains
+a separate backend/export item.

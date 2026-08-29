@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { comparePersistedResults } from "./results";
+import { buildPersistedResultsReport, comparePersistedResults } from "./results";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -26,5 +26,14 @@ describe("comparePersistedResults", () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
       reference_id: "ref", candidate_ids: ["b", "a"],
     });
+  });
+
+  it("preserves the authored report order", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      version: 1, generated_at: "t", app_version: "v", results: [], calibration: [], methods: "", warnings: [],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    await buildPersistedResultsReport(["second", "first"]);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ result_ids: ["second", "first"] });
   });
 });
