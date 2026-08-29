@@ -290,7 +290,20 @@ interface RegionRowProps {
 function RegionRow(props: RegionRowProps) {
   const classEntry = props.classes.find((entry) => entry.id === props.region.region_class);
   return (
-    <div className={`fvd-region-row${props.selected ? " selected" : ""}`} role="listitem" onClick={props.onSelect}>
+    <div
+      className={`fvd-region-row${props.selected ? " selected" : ""}`}
+      role="listitem"
+      tabIndex={0}
+      aria-current={props.selected ? "true" : undefined}
+      onClick={props.onSelect}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          props.onSelect();
+        }
+      }}
+    >
       <button className="fvd-region-eye" aria-label={props.visible ? "Hide region" : "Show region"} aria-pressed={props.visible} onClick={(event) => { event.stopPropagation(); props.onToggle(); }}>
         {props.visible ? "●" : "○"}
       </button>

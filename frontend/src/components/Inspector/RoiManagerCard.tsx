@@ -15,6 +15,10 @@
 import { useState } from "react";
 
 import {
+  measureToRegionShape,
+  nextRegionId,
+} from "../../lib/regionWorkspace";
+import {
   useViewer,
   type Measure,
   type SavedRoi,
@@ -45,6 +49,13 @@ export default function RoiManagerCard() {
   const recallRoi = useViewer((s) => s.recallRoi);
   const deleteRoi = useViewer((s) => s.deleteRoi);
   const setStatus = useViewer((s) => s.setStatus);
+  const imageShape = useViewer((s) =>
+    s.activeId ? s.images[s.activeId]?.shape : undefined,
+  );
+  const regions = useViewer((s) => s.regions);
+  const selectedSetId = useViewer((s) => s.regionUi.selectedSetId);
+  const replaceRegions = useViewer((s) => s.replaceRegions);
+  const selectRegion = useViewer((s) => s.selectRegion);
 
   const [nameInput, setNameInput] = useState("");
 
@@ -72,12 +83,53 @@ export default function RoiManagerCard() {
     setStatus(`saved ROI "${name}"`);
   };
 
+  const promoteToRegion = async (roi: SavedRoi) => {
+    const height = imageShape?.[0] ?? 0;
+    const width = imageShape?.[1] ?? 0;
+    const shape = measureToRegionShape({ id: roi.id, kind: roi.kind, pts: roi.pts }, width, height);
+    if (!shape) {
+      setStatus(`could not convert saved ROI “${roi.name}”`);
+      return;
+    }
+    const imageSets = regions.sets.filter((group) => group.image_id === activeId);
+    const selected = imageSets.find((group) => group.id === selectedSetId);
+    const target = selected ?? imageSets[0];
+    const setId = target?.id ?? nextRegionId("region-set", regions.sets.map((group) => group.id));
+    const regionId = nextRegionId(roi.name, regions.sets.flatMap((group) =>
+      group.regions.map((entry) => entry.id)));
+    const region = {
+      id: regionId,
+      name: roi.name,
+      region_class: null,
+      parts: [{ mode: "include" as const, shape }],
+      meta: { source: "saved-roi", saved_roi_id: roi.id },
+    };
+    const sets = target
+      ? regions.sets.map((group) => group.id === target.id
+        ? { ...group, regions: [...group.regions, region] }
+        : group)
+      : [...regions.sets, {
+        id: setId,
+        name: "Saved ROI regions",
+        image_id: activeId,
+        regions: [region],
+        meta: {},
+      }];
+    try {
+      await replaceRegions({ ...regions, sets });
+      selectRegion(setId, regionId);
+      setStatus(`converted “${roi.name}” to an analysis region`);
+    } catch (error) {
+      setStatus(`region conversion failed: ${(error as Error).message}`);
+    }
+  };
+
   return (
     <Card title="Saved ROIs" count={savedRois.length} defaultOpen={false}>
       <div className="fvd-ws-note">
         Rectangle and ellipse bookmarks for quick recall. Use Analysis Regions
-        above when an analysis needs an exact reusable mask; recall one here,
-        then choose New region above to convert it explicitly.
+        above when an analysis needs an exact reusable mask. Convert a bookmark
+        directly with its hexagon button, or recall it for editing first.
       </div>
 
       {/* Save row */}
@@ -133,11 +185,22 @@ export default function RoiManagerCard() {
               <div
                 key={roi.id}
                 className="fvd-measure-row"
+                role="group"
+                aria-label={`Saved ROI ${roi.name}. Press Enter to recall.`}
+                tabIndex={0}
                 title={`Recall "${roi.name}" (${roi.kind}, ${fmtPts(roi)})\nSaved ${new Date(roi.createdAt).toLocaleString()}`}
                 style={{ cursor: "pointer" }}
                 onClick={() => {
                   recallRoi(activeId, roi.id);
                   setStatus(`recalled ROI "${roi.name}"`);
+                }}
+                onKeyDown={(event) => {
+                  if (event.target !== event.currentTarget) return;
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    recallRoi(activeId, roi.id);
+                    setStatus(`recalled ROI "${roi.name}"`);
+                  }
                 }}
               >
                 <span className="glyph">
@@ -155,6 +218,17 @@ export default function RoiManagerCard() {
                     {`μ${Number(stats.mean.toPrecision(3))}`}
                   </span>
                 )}
+                <button
+                  className="fvd-icon-btn"
+                  aria-label={`Convert ${roi.name} to analysis region`}
+                  title={`Convert “${roi.name}” to an exact analysis region`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void promoteToRegion(roi);
+                  }}
+                >
+                  ⬡
+                </button>
                 <button
                   className="fvd-icon-btn"
                   title={`Delete "${roi.name}"`}

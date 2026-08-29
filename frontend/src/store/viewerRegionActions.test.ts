@@ -24,6 +24,12 @@ beforeEach(() => {
 });
 
 describe("replaceRegions", () => {
+  it("hydrates server-carried regions without writing them back", () => {
+    useViewer.getState().hydrateRegions(next);
+    expect(useViewer.getState().regions).toEqual(next);
+    expect(apiReplaceRegionSets).not.toHaveBeenCalled();
+  });
+
   it("publishes only the server-accepted workspace", async () => {
     vi.mocked(apiReplaceRegionSets).mockResolvedValue(next);
     await useViewer.getState().replaceRegions(next);

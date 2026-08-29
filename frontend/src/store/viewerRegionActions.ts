@@ -18,11 +18,18 @@ export function createRegionActions(
 ): Pick<
   ViewerState,
   | "replaceRegions"
+  | "hydrateRegions"
   | "selectRegion"
   | "toggleRegionSetVisibility"
   | "toggleRegionVisibility"
 > {
   return {
+    hydrateRegions: (regions) => {
+      set((state) => ({
+        regions,
+        regionUi: sanitizeRegionUi(state.regionUi, regions),
+      }));
+    },
     replaceRegions: async (regions: ProjectRegions) => {
       const accepted = await apiReplaceRegionSets(regions);
       set((state) => ({

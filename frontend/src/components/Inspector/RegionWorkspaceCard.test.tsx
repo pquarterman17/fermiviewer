@@ -192,4 +192,14 @@ describe("RegionWorkspaceCard", () => {
     expect(useViewer.getState().regionUi.selectedRegionId).toBe("grain-1");
     expect(screen.getByRole("button", { name: "+ Disconnected part" })).toBeInTheDocument();
   });
+
+  it("selects a region row from the keyboard", async () => {
+    useViewer.setState({ regions: loaded });
+    render(<RegionWorkspaceCard />);
+    const row = screen.getByRole("listitem");
+    row.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(useViewer.getState().regionUi.selectedRegionId).toBe("grain-1");
+    expect(row).toHaveAttribute("aria-current", "true");
+  });
 });

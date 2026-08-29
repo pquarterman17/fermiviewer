@@ -102,6 +102,29 @@ The reverse divides column by width and row by height. No rounding, clamping
 or 1-based offset is introduced; exact server rasterization remains the
 authority for pixel membership.
 
+## On-stage preview and refresh behavior
+
+Visible analysis regions are drawn over their source image in their class
+color. The selected region has a stronger boundary; inclusions use a light
+fill and exclusions use a hatched, dashed treatment so compound masks remain
+legible over both dark and light microscopy images. Set and region visibility
+buttons affect only this presentation layer and never rewrite geometry.
+
+The preview reads canonical row/column coordinates directly. Polygon holes
+use SVG's even-odd fill rule, and bounded shapes extend half a pixel around
+their inclusive endpoint centers to match the backend rasterizer's pixel
+footprint convention.
+
+Region sets are carried by the live backend session even when the user opened
+loose images rather than a project. Browser refresh reloads region sets in
+parallel with the image list. This hydration is read-only: it does not issue a
+replace request or accidentally rewrite the workspace during startup.
+
+Saved rectangle and ellipse bookmarks have a direct **Convert to analysis
+region** action. Conversion creates an image-bound set when needed, records
+the saved ROI id as provenance, and selects the new canonical region. Recall
+the bookmark first only when its annotation geometry needs adjustment.
+
 ## Stacked delivery
 
 - **4B-1:** typed transport, atomic server bridge, project/workspace restore.

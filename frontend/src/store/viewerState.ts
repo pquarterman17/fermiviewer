@@ -177,6 +177,8 @@ export interface ViewerState {
   locateData: (root: string) => Promise<void>;
   /** Validate and atomically replace the live named-region workspace. */
   replaceRegions: (regions: ProjectRegions) => Promise<void>;
+  /** Seed the server-carried workspace after a browser refresh. No write. */
+  hydrateRegions: (regions: ProjectRegions) => void;
   selectRegion: (setId: string | null, regionId?: string | null) => void;
   toggleRegionSetVisibility: (setId: string) => void;
   toggleRegionVisibility: (setId: string, regionId: string) => void;
