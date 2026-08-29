@@ -5,11 +5,12 @@ import { openPersistedResult, refreshPersistedResults, rerunPersistedResult } fr
 import { useViewer } from "../../store/viewer";
 import PersistedResultCard from "../results/PersistedResultCard";
 import ResultsComparePanel from "../results/ResultsComparePanel";
+import ResultsReportPanel from "../results/ResultsReportPanel";
 
 type Scope = "all" | "active";
 type GroupBy = "time" | "sample" | "source" | "analysis";
 type ResultAction = "reopen" | "rerun" | "duplicate";
-type WorkspaceView = "browse" | "compare";
+type WorkspaceView = "browse" | "compare" | "report";
 
 const timeOf = (result: PersistedResultRecord): number => {
   const parsed = Date.parse(result.created_at);
@@ -109,8 +110,11 @@ export default function ProjectResultsWorkshop() {
         onClick={() => setView("browse")}><span>Browse</span><small>Inspect &amp; reproduce</small></button>
       <button className={view === "compare" ? "active" : ""} aria-current={view === "compare" ? "page" : undefined}
         onClick={() => setView("compare")}><span>Compare</span><small>Outputs &amp; calibration</small></button>
+      <button className={view === "report" ? "active" : ""} aria-current={view === "report" ? "page" : undefined}
+        onClick={() => setView("report")}><span>Report</span><small>Figures, tables &amp; methods</small></button>
     </nav>}
-    {view === "compare" && results.length > 0 ? <ResultsComparePanel results={results} nameOf={nameOf} /> : <>
+    {view === "compare" && results.length > 0 ? <ResultsComparePanel results={results} nameOf={nameOf}
+      /> : view === "report" && results.length > 0 ? <ResultsReportPanel results={results} nameOf={nameOf} /> : <>
     {results.length > 0 && <div className="fvd-project-results-toolbar" aria-label="Result filters">
       <div className="fvd-results-filter-row"><div className="fvd-seg">
         <button className={`fvd-seg-btn${scope === "all" ? " active" : ""}`} aria-pressed={scope === "all"} onClick={() => setScope("all")}>All</button>
