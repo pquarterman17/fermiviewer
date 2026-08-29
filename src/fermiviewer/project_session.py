@@ -34,7 +34,12 @@ from fermiviewer.io import project_paths as paths
 from fermiviewer.io import project_resolve as resolving
 from fermiviewer.io.project_manifest import LoadedProject, ProjectImage
 from fermiviewer.io.project_results import ResultRecord
-from fermiviewer.io.regions_model import RegionClass, RegionSet
+from fermiviewer.io.regions_model import (
+    RegionClass,
+    RegionSet,
+    free_set_id,
+    same_region_set,
+)
 
 __all__ = [
     "HashMismatch",
@@ -190,8 +195,10 @@ class ProjectSession:
             # must not drop the first project's recorded results, and
             # re-loading the same file twice must not double them.
             known_results = {rec.id for rec in previous.results}
-            known_sets = {group.id for group in previous.region_sets}
             known_classes = {entry.id for entry in previous.region_classes}
+            merged_sets = _merge_region_sets(
+                previous.region_sets, loaded.region_sets
+            )
             extra = list(previous.extra_roots)
             for root in (loaded.data_root_hint, str(Path(path).parent)):
                 if root and root not in extra:
@@ -206,10 +213,7 @@ class ProjectSession:
                     *previous.results,
                     *(r for r in loaded.results if r.id not in known_results),
                 ),
-                region_sets=(
-                    *previous.region_sets,
-                    *(g for g in loaded.region_sets if g.id not in known_sets),
-                ),
+                region_sets=merged_sets,
                 region_classes=(
                     *previous.region_classes,
                     *(c for c in loaded.region_classes if c.id not in known_classes),
@@ -345,3 +349,36 @@ class ProjectSession:
 #: Process-wide instance (one open project per running app), mirroring
 #: `session.store`.
 project = ProjectSession()
+
+
+def _merge_region_sets(
+    previous: tuple[RegionSet, ...], arriving: tuple[RegionSet, ...]
+) -> tuple[RegionSet, ...]:
+    """Append arriving sets, deduping only what is genuinely the same.
+
+    Deduping by id alone — the rule images and results use — is wrong for
+    region sets, because their ids are the USER's. Two projects both
+    naming a set "grains" is ordinary, not a collision to resolve by
+    dropping one: that would silently discard the second project's
+    regions while appending its images, and the next save would make the
+    loss permanent.
+
+    So the arriving set is skipped only when it is the same data (the
+    same file adopted twice, which must not double it), and otherwise
+    kept under a free id. Renaming is safe where dropping is not: nothing
+    references a set id yet, and a visible rename is recoverable where a
+    silent deletion is not.
+    """
+    merged = list(previous)
+    taken = {group.id for group in previous}
+    by_id = {group.id: group for group in previous}
+    for group in arriving:
+        existing = by_id.get(group.id)
+        if existing is not None and same_region_set(existing, group):
+            continue
+        if existing is not None:
+            group = replace(group, id=free_set_id(group.id, taken))
+        taken.add(group.id)
+        by_id[group.id] = group
+        merged.append(group)
+    return tuple(merged)

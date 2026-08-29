@@ -76,13 +76,16 @@ from typing import Any
 import numpy as np
 
 from fermiviewer.calc.regions import Part, Region, Shape
+from fermiviewer.io.project_sections import finite_json
 
 __all__ = [
     "REGIONS_SCHEMA",
     "RegionClass",
     "RegionSet",
+    "free_set_id",
     "load_regions",
     "regions_to_manifest",
+    "same_region_set",
 ]
 
 #: Version of the `regions` section's own structure, written into it and
@@ -155,7 +158,16 @@ def _region_json(region: Region) -> dict[str, Any]:
             {"mode": part.mode, "shape": _shape_json(part.shape)}
             for part in region.parts
         ],
-        "meta": dict(region.meta),
+        # `meta` is typed `dict[str, Any]` and is where a caller puts
+        # whatever it likes, which in this app means ordinary scientific
+        # metadata: a `np.float32` dose, a small ndarray, a NaN drift.
+        # A numpy value reaches `json.dumps` AFTER the manifest has
+        # validated and raises there, leaving a project that cannot be
+        # saved at all; a NaN survives as the bare token `NaN`, which is
+        # valid to `json.dumps` and rejected by every other JSON parser
+        # including the browser's. `finite_json` is what `results` already
+        # runs its carried values through, for exactly this.
+        "meta": finite_json(region.meta) or {},
     }
 
 
@@ -192,7 +204,7 @@ def regions_to_manifest(
                 "name": group.name,
                 "image_id": group.image_id,
                 "regions": [_region_json(r) for r in group.regions],
-                "meta": dict(group.meta),
+                "meta": finite_json(group.meta) or {},
             }
         )
 
@@ -216,6 +228,53 @@ def regions_to_manifest(
         "classes": payload_classes,
         "sets": payload_sets,
     }
+
+
+def _unique(ids: Any, what: str) -> None:
+    """Reject repeated ids, naming the offender.
+
+    Enforced on LOAD as well as on save. JSON Schema cannot express
+    uniqueness by an object property, so without this a hand-edited or
+    externally produced project opens with ambiguous ids and then fails
+    only when the user tries to save it — the worst possible moment, since
+    by then they have done work they cannot write down. An id is the
+    addressing contract; two of them is not a thing this reader can
+    represent.
+    """
+    from fermiviewer.io.project_manifest import ProjectFormatError
+
+    seen: set[str] = set()
+    for value in ids:
+        if value in seen:
+            raise ProjectFormatError(f"duplicate {what}: {value!r}")
+        seen.add(value)
+
+
+def same_region_set(a: RegionSet, b: RegionSet) -> bool:
+    """Whether two sets are the same data, by value.
+
+    Compares their SERIALIZED form rather than the objects. `Shape` is a
+    frozen dataclass holding `np.ndarray` rings, so its generated
+    `__eq__` returns an array and raises "truth value of an array is
+    ambiguous" for any shape with an `outline` or `holes` — while working
+    for a plain rect, which makes `a == b` a trap rather than a
+    comparison. Serializing is also exactly the right notion of "same"
+    here: two sets are the same iff they would be written to a `.fvp`
+    identically.
+    """
+    return regions_to_manifest([a]) == regions_to_manifest([b])
+
+
+def free_set_id(wanted: str, taken: Any) -> str:
+    """`wanted` if it is free, else the first `wanted~2`, `wanted~3`, … that
+    is not in `taken`. Deterministic, so re-running an append load twice
+    produces the same ids rather than a new one each time."""
+    if wanted not in taken:
+        return wanted
+    n = 2
+    while f"{wanted}~{n}" in taken:
+        n += 1
+    return f"{wanted}~{n}"
 
 
 def _ring(raw: Any) -> np.ndarray:
@@ -309,6 +368,7 @@ def load_regions(raw: Any) -> LoadedRegions:
         for entry in raw.get("classes") or ()
         if isinstance(entry, Mapping) and entry.get("id")
     )
+    _unique((c.id for c in classes), "region class id")
 
     sets = []
     for group in raw.get("sets") or ():
@@ -326,6 +386,7 @@ def load_regions(raw: Any) -> LoadedRegions:
                     f"region {entry.get('id')!r} in set {set_id!r} is not a "
                     f"valid region: {exc}"
                 ) from None
+        _unique((r.id for r in regions), f"region id in set {set_id!r}")
         sets.append(
             RegionSet(
                 id=set_id,
@@ -335,4 +396,5 @@ def load_regions(raw: Any) -> LoadedRegions:
                 meta=dict(group.get("meta") or {}),
             )
         )
+    _unique((g.id for g in sets), "region set id")
     return LoadedRegions(sets=tuple(sets), classes=classes)

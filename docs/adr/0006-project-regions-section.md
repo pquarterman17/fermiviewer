@@ -97,9 +97,9 @@ The client never echoes region sets back — it posts only its own
 `client_state`. A save route that took regions from the client would
 therefore write an empty section over the user's regions on the very next
 save. `OpenProject` carries them between calls and `_project_adapter`
-passes them back down, with the same append-not-overwrite merge rule as
-results: a replacing load swaps the sets, an append load adds arriving
-sets and dedupes by id.
+passes them back down. A replacing load swaps the sets; an append load
+adds the arriving ones — but NOT by the id-only dedupe images and results
+use, for the reason in §9.
 
 The wire form **is** the manifest form — `regions_payload` calls
 `regions_to_manifest` rather than deriving a second shape — so the
@@ -154,6 +154,50 @@ Unknown TOP-LEVEL manifest keys still round-trip verbatim, so an older
 build does not degrade a newer project generally — but geometry it would
 misread is not carried, it is refused. Failing to open is recoverable;
 silently reinterpreting someone's regions is not.
+
+### 9. An append load dedupes by VALUE, and keeps a genuine collision
+
+Images and results dedupe an append load by id, and that rule is wrong
+here. Their ids are allocated — a result id comes from capture — so a
+repeat means the same thing arrived twice. A region set id is the
+**user's**, so two projects both naming a set `grains` is ordinary. Under
+id-only dedupe the second project's images would be appended while its
+regions were silently discarded, and the next save would make that
+permanent.
+
+So an arriving set is skipped only when it is the same DATA — compared by
+serializing both, since `Shape` has no usable `__eq__` (see Consequences)
+and "would be written identically" is anyway the right notion of same
+here. A genuine collision is kept under the first free `id~2`, `id~3`.
+Renaming is safe where dropping is not: nothing references a set id yet,
+and a visible rename is recoverable where a silent deletion is not.
+
+**Classes deliberately keep the opposite rule**: a colliding class id
+keeps the first definition's label and colour. A class id is a shared
+vocabulary key — two projects both saying `substrate` mean the same
+class, decorated differently, and the id carries the meaning while the
+label and colour are presentation. Renaming a class would also break the
+`region_class` of every region in the arriving set, which renaming a set
+cannot do.
+
+### 10. `meta` is scrubbed, and ids are unique on load as well as save
+
+`meta` is `dict[str, Any]` on both a set and a region — the extension
+point of §Consequences — so it is where ordinary scientific metadata
+lands: a `np.float32` dose, a small ndarray, a NaN drift. Verbatim, a
+numpy value reaches `json.dumps` AFTER the manifest has validated and
+raises there, leaving a project the user cannot save at all; a NaN
+survives as the bare token `NaN`, valid to `json.dumps` and rejected by
+every other parser including the browser's. Both dictionaries therefore
+go through `finite_json`, which is what `results` already does with the
+values it carries.
+
+Duplicate set, region and class ids are refused **on load** as well as on
+save. JSON Schema cannot express uniqueness by an object property, so
+without the load-side check a hand-edited or externally produced project
+opened with ambiguous ids and failed only when the user tried to save —
+the worst moment, since by then they have done work they cannot write
+down.
 
 ## Consequences
 
@@ -212,6 +256,11 @@ silently reinterpreting someone's regions is not.
   `load_project` and would otherwise leave the JSON Schema's `required`
   and `const` untested;
 * the session carries sets across a replacing and an appending load,
-  deduping by id;
+  deduping by VALUE — a re-adopted file does not double, and a genuinely
+  different set sharing an id is kept under a free one;
+* metadata carrying numpy scalars, ndarrays, NaN or Inf still saves and
+  reloads, and finite metadata survives untouched (so the scrub cannot
+  pass by discarding everything);
+* duplicate set, region and class ids are refused on load, not only save;
 * **the save route preserves regions the client never sent back** — the
   data-loss trap of §4, and the only test here that goes through HTTP.

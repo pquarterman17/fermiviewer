@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import zipfile
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -573,3 +574,172 @@ def test_the_json_schema_refuses_the_section_on_its_own(mutate) -> None:
     mutate(manifest["regions"])
     with pytest.raises(ProjectFormatError, match="regions"):
         validate_manifest(manifest)
+
+
+# ── metadata is JSON-safe, or the project cannot be saved ────────────
+
+
+@pytest.mark.parametrize(
+    ("label", "meta"),
+    [
+        ("numpy scalar", {"dose": np.float32(1.5)}),
+        ("ndarray", {"pts": np.zeros(3)}),
+        ("nan", {"drift": float("nan")}),
+        ("inf", {"ratio": float("inf")}),
+        ("nested numpy", {"run": {"gain": np.float64(2.0), "n": np.int32(7)}}),
+    ],
+)
+@pytest.mark.parametrize("where", ["set", "region"])
+def test_metadata_cannot_make_a_project_unsavable(tmp_path, label, meta, where) -> None:
+    """`meta` is `dict[str, Any]` and is where a caller puts whatever it
+    likes — which in this app means ordinary scientific metadata. A numpy
+    value reaches `json.dumps` AFTER the manifest has validated, so it
+    raises with the container half-decided and the user unable to save at
+    all. A NaN is worse in a quieter way: `json.dumps` writes the bare
+    token `NaN`, which every other JSON parser rejects, so the `.fvp`
+    stops being portable while still looking fine here.
+    """
+    region = Region(id="r1", parts=(Part(rect(1, 1, 3, 3)),),
+                    meta=meta if where == "region" else {})
+    group = RegionSet("s1", (region,), meta=meta if where == "set" else {})
+
+    path = _save(tmp_path, region_sets=[group])          # must not raise
+    raw = zipfile.ZipFile(path).read("manifest.json").decode()
+    assert "NaN" not in raw and "Infinity" not in raw
+    json.loads(raw)                                       # strict parse
+    load_project(path)
+
+
+def test_finite_metadata_still_round_trips_untouched(tmp_path: Path) -> None:
+    """The scrub must not be a blanket flattening — ordinary metadata has
+    to survive, or the test above would pass on a `meta` that was simply
+    thrown away."""
+    meta = {"drawn_by": "paige", "pass": 2, "scale": 0.125, "tags": ["a", "b"]}
+    loaded = load_project(
+        _save(tmp_path, region_sets=[RegionSet("s1", (_region(),), meta=meta)])
+    )
+    assert loaded.region_sets[0].meta == meta
+
+
+# ── duplicate ids are refused on LOAD too ────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("mutate", "match"),
+    [
+        pytest.param(
+            lambda r: r["sets"].append(dict(r["sets"][0])),
+            "duplicate region set id",
+            id="two-sets-one-id",
+        ),
+        pytest.param(
+            lambda r: r["sets"][0]["regions"].append(dict(r["sets"][0]["regions"][0])),
+            "duplicate region id",
+            id="two-regions-one-id",
+        ),
+        pytest.param(
+            lambda r: r["classes"].extend([{"id": "a"}, {"id": "a"}]),
+            "duplicate region class id",
+            id="two-classes-one-id",
+        ),
+    ],
+)
+def test_duplicate_ids_are_refused_on_load_not_only_on_save(
+    tmp_path: Path, mutate, match
+) -> None:
+    """The serializer already rejects these, but JSON Schema cannot express
+    uniqueness by an object property — so before this, a hand-edited or
+    externally produced project OPENED with ambiguous ids and only failed
+    when the user tried to save it. That is the worst moment to find out:
+    by then they have done work they cannot write down.
+    """
+    path = _save(tmp_path, region_sets=[_set()])
+    _rewrite_manifest(path, lambda m: mutate(m["regions"]))
+    with pytest.raises(ProjectFormatError, match=match):
+        load_project(path)
+
+
+# ── append-load must not silently drop a colliding set ───────────────
+
+
+def _other_set(set_id: str = "s1") -> RegionSet:
+    """Same id as `_set()`, deliberately different geometry — what a second
+    project that also called its set "s1" looks like."""
+    return RegionSet(
+        id=set_id,
+        name="voids",
+        image_id="img2",
+        regions=(Region(id="v1", parts=(Part(rect(6, 6, 7, 7)),)),),
+    )
+
+
+def test_an_append_load_keeps_a_colliding_set_instead_of_dropping_it() -> None:
+    """Region set ids are the USER's, so two projects both naming a set
+    "s1" is ordinary rather than a collision to resolve by deletion.
+    Deduping by id alone — the rule images and results use — would append
+    the second project's images while silently discarding its regions, and
+    the next save would make that permanent.
+
+    Renaming is safe where dropping is not: nothing references a set id
+    yet, and a visible rename is recoverable where a silent deletion is
+    not.
+    """
+    session = ProjectSession()
+    session.adopt(LoadedProject(region_sets=(_set("s1"),)), Path("one.fvp"))
+    session.adopt(
+        LoadedProject(region_sets=(_other_set("s1"),)), Path("two.fvp"), merge=True
+    )
+
+    kept = session.current().region_sets
+    assert [g.id for g in kept] == ["s1", "s1~2"]
+    assert [g.name for g in kept] == ["grain boundaries", "voids"]
+    # and the arriving geometry is intact, not the first set's
+    assert [r.id for r in kept[1].regions] == ["v1"]
+
+
+def test_re_adopting_the_same_file_still_does_not_double_a_set() -> None:
+    """The behaviour the id-dedupe was there for, which the value compare
+    must preserve — otherwise every re-load of one project would grow the
+    session by another copy of its regions."""
+    session = ProjectSession()
+    session.adopt(LoadedProject(region_sets=(_set("s1"),)), Path("one.fvp"))
+    for _ in range(3):
+        session.adopt(
+            LoadedProject(region_sets=(_set("s1"),)), Path("one.fvp"), merge=True
+        )
+    assert [g.id for g in session.current().region_sets] == ["s1"]
+
+
+def test_a_third_colliding_set_gets_the_next_free_id() -> None:
+    session = ProjectSession()
+    session.adopt(LoadedProject(region_sets=(_set("s1"),)), Path("one.fvp"))
+    for name in ("two", "three"):
+        session.adopt(
+            LoadedProject(region_sets=(replace(_other_set("s1"), name=name),)),
+            Path(f"{name}.fvp"),
+            merge=True,
+        )
+    assert [g.id for g in session.current().region_sets] == ["s1", "s1~2", "s1~3"]
+
+
+def test_a_colliding_class_id_keeps_the_first_decoration() -> None:
+    """Deliberately NOT the same rule as sets, and the asymmetry is the
+    point: a class id is a shared VOCABULARY key, so two projects both
+    saying "substrate" mean the same class differently decorated, and the
+    id carries the meaning while the label and colour are presentation.
+    A set id is an ADDRESS for distinct data, so a collision there is two
+    things and both must be kept.
+
+    Renaming a class would also break the `region_class` of every region
+    in the arriving set, which renaming a set cannot do.
+    """
+    session = ProjectSession()
+    first = RegionClass(id="substrate", label="Substrate", color="#111111")
+    second = RegionClass(id="substrate", label="Base layer", color="#222222")
+
+    session.adopt(LoadedProject(region_classes=(first,)), Path("one.fvp"))
+    session.adopt(
+        LoadedProject(region_classes=(second,)), Path("two.fvp"), merge=True
+    )
+    (only,) = session.current().region_classes
+    assert (only.id, only.label, only.color) == ("substrate", "Substrate", "#111111")
