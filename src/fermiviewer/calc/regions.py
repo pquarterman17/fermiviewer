@@ -28,16 +28,35 @@ A half-open rect would make those differ by a row and a column, which is
 the shape of bug this contract exists to prevent. `test_regions.py` pins
 the equality.
 
-## Why circles are not `skimage.draw.disk`
+## Two inclusive round conventions, which are NOT the same set
 
-`disk(centre, r)` includes pixels at distance **strictly less than** `r`:
-`disk(c, 1)` is a single pixel and `disk(c, 2)` is 3×3. Every existing
-radius convention in this repo is INCLUSIVE — `calc/diffraction.apply_roi`
-(`> rad**2` is excluded), `calc/fourier.fft_mask_inverse` (`<= radius`),
-`calc/fourd/geometry.aperture_mask` (`dist <= outer_r`). An ellipse here
-therefore uses an explicit `<= 1` normalized-distance test, so a region of
-radius `r` covers the same pixels as the diffraction ROI of radius `r`.
-Adopting skimage's boundary would have made those silently disagree.
+Everything round in this repo is inclusive at its boundary: the radius of
+`calc/diffraction.apply_roi` (`> rad**2` is excluded),
+`calc/fourier.fft_mask_inverse` (`<= radius`) and
+`calc/fourd/geometry.aperture_mask` (`dist <= outer_r`), and equally the
+inscribed ellipse of `calc/profile_stats.roi_stats`. But "inclusive"
+selects DIFFERENT pixels in those two cases, and collapsing them into one
+primitive is itself the bug:
+
+    ellipse(3, 3, 5, 5)     9 px — inscribed in a 3×3 ROI
+    circle(4, 4, 1)         5 px — within distance 1 of (4, 4)
+
+Same centre, same nominal size, both inclusive. `ellipse` takes BOUNDS
+and inscribes into their pixel FOOTPRINT — a bound at row 5 contributes
+its whole cell out to 5.5, so the semi-axis is `(5 - 3 + 1) / 2`, which is
+exactly `roi_stats`' `ry = sh / 2` over the inclusive extent `sh`.
+`circle` takes a CENTRE AND RADIUS and keeps `dist <= radius`.
+
+Both are needed because both have callers to migrate: a drag rectangle
+becomes an `ellipse`, and `test_regions.py` pins it pixel-for-pixel
+against `roi_stats` over odd AND even bounds; a diffraction ROI or FFT
+mask becomes a `circle`. Reading bounds with radius semantics is not a
+boundary quibble — it makes an ordinary 2×2 drag select nothing at all,
+because all four pixel centres lie outside an ellipse of semi-axis 0.5.
+
+Neither is `skimage.draw.disk`, which uses `dist < r` (`disk(c, 1)` is a
+single pixel, `disk(c, 2)` is 3×3); building on it would have made a
+region of radius `r` disagree with the diffraction ROI of radius `r`.
 
 ## What rasterization does NOT preserve
 
@@ -70,6 +89,7 @@ __all__ = [
     "Region",
     "Shape",
     "bounding_box",
+    "circle",
     "ellipse",
     "polygon",
     "rasterize",
@@ -210,17 +230,57 @@ def rect(
 def ellipse(
     r0: float, c0: float, r1: float, c1: float, *, holes: Any = ()
 ) -> Shape:
-    """The ellipse inscribed in the given INCLUSIVE bounds.
+    """The ellipse inscribed in the FOOTPRINT of the given INCLUSIVE bounds.
 
     Bounds rather than centre+radii because that is what a drag produces
-    and what `roi_stats(shape="ellipse")` already means by an ellipse. A
-    circle is the case where the bounds are square.
+    and what `roi_stats(shape="ellipse")` already means by an ellipse —
+    the two select the same pixels for the same bounds, which is the point
+    of routing an existing elliptical ROI through here.
+
+    "Footprint" is the load-bearing word: the bounds name PIXELS, and each
+    named pixel is included whole, so bounds spanning `n` pixels give a
+    semi-axis of `n / 2` rather than `(n - 1) / 2`. For a square-bounds
+    circle that is NOT the same as a radius — see `circle`, and the module
+    docstring for why both exist.
     """
     lo_r, hi_r = sorted((float(r0), float(r1)))
     lo_c, hi_c = sorted((float(c0), float(c1)))
     return Shape(
         kind="ellipse",
         bounds=(lo_r, lo_c, hi_r, hi_c),
+        holes=tuple(_ring(h) for h in holes),
+    )
+
+
+def circle(
+    centre_row: float, centre_col: float, radius: float, *, holes: Any = ()
+) -> Shape:
+    """The pixels within an INCLUSIVE `radius` of a centre — `dist <= r`.
+
+    The convention `calc/diffraction.apply_roi`, `fourier.fft_mask_inverse`
+    and `fourd.geometry.aperture_mask` all use, and the one to convert
+    those ROIs into. It is deliberately NOT `ellipse` over the square
+    bounds `(cr - r, cc - r, cr + r, cc + r)`: those bounds span `2r + 1`
+    pixels, so the inscribed ellipse has semi-axis `r + 0.5` and takes in
+    a ring of pixels the radius excludes.
+
+    Carried as an `ellipse` shape rather than a fourth kind, since it is
+    one — the bounds are inset by half a pixel so that the footprint
+    semi-axis works out to exactly `radius`. A radius under half a pixel
+    is the centre pixel alone, which is what `dist <= r` says and what a
+    click without a drag should give.
+    """
+    if not radius >= 0:                      # also rejects NaN
+        raise ValueError(f"a circle needs a radius >= 0, got {radius!r}")
+    inset = max(float(radius) - 0.5, 0.0)
+    return Shape(
+        kind="ellipse",
+        bounds=(
+            float(centre_row) - inset,
+            float(centre_col) - inset,
+            float(centre_row) + inset,
+            float(centre_col) + inset,
+        ),
         holes=tuple(_ring(h) for h in holes),
     )
 
@@ -263,26 +323,24 @@ def _shape_mask(item: Shape, shape: tuple[int, int]) -> np.ndarray:
             rows = np.arange(shape[0], dtype=np.float64)[:, None]
             cols = np.arange(shape[1], dtype=np.float64)[None, :]
             centre_r, centre_c = (r0 + r1) / 2.0, (c0 + c1) / 2.0
-            # Half-extents of the INCLUSIVE bounds: bounds (1, 1, 3, 3)
-            # span three pixel centres, so the semi-axis is 1.0, and the
-            # `<= 1` test below then admits the centre pixel at each end.
-            semi_r = max((r1 - r0) / 2.0, 0.0)
-            semi_c = max((c1 - c0) / 2.0, 0.0)
-            if semi_r == 0.0 or semi_c == 0.0:
-                # A degenerate ellipse is a line of pixels, not an error:
-                # a zero-height drag is a real thing a user can do, and
-                # the honest answer is the pixels it actually covers.
-                mask = _outline_mask(
-                    np.array(
-                        [[r0, c0], [r0, c1], [r1, c1], [r1, c0]], float
-                    ),
-                    shape,
-                )
-            else:
-                norm = ((rows - centre_r) / semi_r) ** 2 + (
-                    (cols - centre_c) / semi_c
-                ) ** 2
-                mask = norm <= 1.0  # INCLUSIVE — see the module docstring
+            # Semi-axes span the bounds' pixel FOOTPRINT, not the distance
+            # between the endpoint centres: bounds (1, 1, 3, 3) name three
+            # pixels whose cells run from 0.5 to 3.5, so the semi-axis is
+            # 1.5. That is `roi_stats`' `ry = sh / 2` over the inclusive
+            # extent, and `test_regions.py` pins the two equal over odd and
+            # even bounds. Endpoint-centre distance would give 1.0 here and
+            # 0.5 for a 2x2 drag, where all four pixel centres then fall
+            # outside and the drag selects nothing at all.
+            #
+            # Bounds are sorted, so each extent is >= 0 and each semi-axis
+            # is >= 0.5: there is no degenerate case to special-case, and a
+            # zero-height drag falls out as the line of pixels it covers.
+            semi_r = (r1 - r0 + 1.0) / 2.0
+            semi_c = (c1 - c0 + 1.0) / 2.0
+            norm = ((rows - centre_r) / semi_r) ** 2 + (
+                (cols - centre_c) / semi_c
+            ) ** 2
+            mask = norm <= 1.0  # INCLUSIVE — see the module docstring
     for hole in item.holes:
         mask &= ~_outline_mask(hole, shape)
     return mask

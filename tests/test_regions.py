@@ -13,10 +13,12 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from fermiviewer.calc.profile_stats import roi_stats
 from fermiviewer.calc.regions import (
     Part,
     Region,
     bounding_box,
+    circle,
     ellipse,
     polygon,
     rasterize,
@@ -47,16 +49,98 @@ def test_a_rect_and_its_corner_polygon_are_the_same_pixels() -> None:
     assert as_rect.sum() == 9        # 3x3 inclusive, not 2x2 half-open
 
 
-def test_an_ellipse_radius_is_inclusive_like_every_other_radius_here() -> None:
+# ── the two round conventions, which are not the same set ────────────
+
+# Odd and even extents, square and oblong, degenerate and offset. Even
+# extents are the ones that matter: they are where a footprint semi-axis
+# and an endpoint-centre one diverge most, and (0, 0, 1, 1) is the 2x2
+# drag that selected NOTHING before this was pinned.
+ELLIPSE_BOUNDS = [
+    (0, 0, 1, 1),      # 2x2 — a short drag
+    (0, 0, 2, 2),      # 3x3
+    (1, 1, 4, 4),      # 4x4
+    (0, 0, 4, 4),      # 5x5
+    (2, 2, 7, 7),      # 6x6, offset from the origin
+    (1, 1, 2, 5),      # oblong, even rows
+    (2, 2, 6, 5),      # oblong, odd rows
+    (3, 3, 3, 3),      # a single pixel
+    (4, 1, 4, 6),      # zero height — a flat drag
+]
+
+
+@pytest.mark.parametrize("bounds", ELLIPSE_BOUNDS)
+def test_an_ellipse_selects_exactly_what_roi_stats_selects(bounds) -> None:
+    """`ellipse` takes BOUNDS, and the repo already has an inscribed
+    ellipse over bounds: `roi_stats(shape="ellipse")`. Migrating an
+    existing elliptical ROI through this contract must not change which
+    pixels an analysis reads, so the two are pinned pixel-for-pixel — over
+    even extents as well as odd, since that is where a semi-axis taken
+    between endpoint CENTRES diverges from one taken over the pixels'
+    FOOTPRINT (and where a 2x2 drag came out empty).
+
+    `n_pixels` alone would pass for any mask of the right size; comparing
+    the mean of an all-distinct image pins the actual selection.
+    """
+    r0, c0, r1, c1 = bounds
+    image = np.arange(SHAPE[0] * SHAPE[1], dtype=np.float64).reshape(SHAPE)
+    mask = rasterize(one(ellipse(r0, c0, r1, c1)), SHAPE)
+    # roi_stats is 1-based inclusive; this contract is 0-based inclusive.
+    stats = roi_stats(image, r0 + 1, c0 + 1, r1 + 1, c1 + 1, shape="ellipse")
+
+    assert mask.sum() == stats["n_pixels"]
+    assert image[mask].mean() == pytest.approx(stats["mean"])
+
+
+def test_a_two_by_two_drag_is_four_pixels_not_an_empty_region() -> None:
+    """Called out on its own because the failure mode was silent: with a
+    semi-axis of 0.5 all four pixel centres sit outside the ellipse, so an
+    ordinary short drag selected nothing — and an empty region has no
+    bounding box, so the caller downstream raised instead."""
+    mask = rasterize(one(ellipse(0, 0, 1, 1)), SHAPE)
+    assert mask.sum() == 4
+    assert bounding_box(one(ellipse(0, 0, 1, 1)), SHAPE) == (0, 0, 1, 1)
+
+
+def test_a_circle_radius_is_inclusive_like_every_other_radius_here() -> None:
     """`skimage.draw.disk` would give 1 px for r=1 and 9 px for r=2, since
     it tests distance < r. Every radius convention in this repo is <= —
-    diffraction's ROI, the FFT mask, the 4D aperture. A region of radius 1
+    diffraction's ROI, the FFT mask, the 4D aperture. A circle of radius 1
     must therefore cover the centre pixel AND its four neighbours."""
-    mask = rasterize(one(ellipse(3, 3, 5, 5)), SHAPE)   # centre (4,4), semi 1
+    mask = rasterize(one(circle(4, 4, 1)), SHAPE)
     assert mask.sum() == 5                               # plus-shape, not 1 px
     assert mask[4, 4] and mask[3, 4] and mask[5, 4]
     assert mask[4, 3] and mask[4, 5]
     assert not mask[3, 3]                                # corners are outside
+
+
+@pytest.mark.parametrize(
+    ("radius", "expected"),
+    [(0, 1), (0.4, 1), (0.5, 1), (1, 5), (1.5, 9), (2, 13)],
+)
+def test_a_circle_is_the_pixels_within_the_radius(radius, expected) -> None:
+    """The `dist <= r` set, counted directly — `disk` would give 1, 1, 1,
+    1, 5 and 9 for these, one step behind at every radius."""
+    mask = rasterize(one(circle(4, 4, radius)), SHAPE)
+    rows, cols = np.nonzero(mask)
+    assert np.all((rows - 4) ** 2 + (cols - 4) ** 2 <= radius**2 + 1e-9)
+    assert mask.sum() == expected
+
+
+def test_a_circle_is_not_the_ellipse_over_its_square_bounds() -> None:
+    """The two conventions are kept apart on purpose. If `circle(c, r)`
+    were spelled `ellipse(cr-r, cc-r, cr+r, cc+r)`, the footprint would add
+    half a pixel to the semi-axis and pull in a ring the radius excludes —
+    which is how a converted diffraction ROI would quietly grow."""
+    as_circle = rasterize(one(circle(4, 4, 2)), SHAPE)
+    as_ellipse = rasterize(one(ellipse(2, 2, 6, 6)), SHAPE)
+    assert as_circle.sum() == 13
+    assert as_ellipse.sum() == 21
+    assert np.all(as_ellipse[as_circle])                 # strictly contained
+
+
+def test_a_negative_radius_is_rejected() -> None:
+    with pytest.raises(ValueError, match="radius >= 0"):
+        circle(4, 4, -1)
 
 
 def test_a_square_ellipse_is_a_circle_and_stays_inside_its_bounds() -> None:
