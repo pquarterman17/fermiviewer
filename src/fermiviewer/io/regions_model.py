@@ -272,12 +272,32 @@ def load_regions(raw: Any) -> LoadedRegions:
     complaint from two layers down.
 
     A manifest with no `regions` key — every project written before this
-    section existed — yields empty tuples rather than an error.
+    section existed — yields empty tuples rather than an error. A section
+    that IS present must declare a `schema` this build understands; see
+    below for why an unknown one is refused rather than best-guessed.
     """
     from fermiviewer.io.project_manifest import ProjectFormatError
 
     if not isinstance(raw, Mapping):
         return LoadedRegions()
+
+    # Checked HERE as well as in the JSON Schema, because the number is
+    # the whole statement of the coordinate convention and this function
+    # is public: a caller reaching it without `validate_manifest` must
+    # not get geometry silently reinterpreted. Accepting a higher number
+    # would parse a future build's regions under this build's convention
+    # and then rewrite them as schema 1 on the next save, destroying the
+    # newer fields — a silent downgrade precisely where the meaning of
+    # the coordinates may have changed. Refusing to open is the safe
+    # failure, and it is why there is no `>=` here.
+    schema = raw.get("schema")
+    if schema != REGIONS_SCHEMA:
+        raise ProjectFormatError(
+            f"unsupported regions schema {schema!r}; this build reads "
+            f"schema {REGIONS_SCHEMA}. A project written by a newer build "
+            f"is not opened rather than reinterpreted under an older "
+            f"coordinate convention."
+        )
 
     classes = tuple(
         RegionClass(

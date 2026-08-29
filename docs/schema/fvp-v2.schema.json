@@ -345,12 +345,12 @@
     "regions": {
       "type": "object",
       "description": "Named region sets and the class vocabulary they use (ADR 0006, roadmap item 4). Geometry is 0-based (row, col) float with INCLUSIVE bounds and implicitly-closed rings \u2014 the calc.regions convention, stated by the schema number alone and deliberately NOT repeated as a prose 'convention' field, which is how results[].regions ended up carrying three mutually inconsistent spellings. Distinct from measures (normalized 0-1 (x, y) annotations, drawn to read a number off) and from results[].regions (a compute-time snapshot, frozen so editing a set cannot rewrite what a past result reports). Supersedes the unvalidated ui_state.savedRois.",
+      "required": ["schema"],
       "properties": {
         "schema": {
           "type": "integer",
-          "minimum": 1,
-          "default": 1,
-          "description": "Revision of this section's shape AND the sole statement of its coordinate convention, so a future build can migrate region sets without re-versioning the container."
+          "const": 1,
+          "description": "Revision of this section's shape AND the sole statement of its coordinate convention. REQUIRED, and pinned rather than open-ended: a reader that accepted a higher number would parse a future build's geometry under THIS build's convention and then rewrite it as schema 1 on the next save, destroying the newer fields \u2014 a silent downgrade exactly where the meaning of the coordinates may have changed. Refusing to open is the safe failure. A build that understands a later revision widens this and dispatches on the value."
         },
         "classes": {
           "type": "array",

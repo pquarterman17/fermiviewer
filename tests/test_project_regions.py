@@ -41,11 +41,16 @@ from fermiviewer.calc.regions import (
 )
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.io.project_file import load_project, save_project
-from fermiviewer.io.project_manifest import LoadedProject, ProjectFormatError
+from fermiviewer.io.project_manifest import (
+    LoadedProject,
+    ProjectFormatError,
+    validate_manifest,
+)
 from fermiviewer.io.regions_model import (
     REGIONS_SCHEMA,
     RegionClass,
     RegionSet,
+    load_regions,
 )
 from fermiviewer.project_session import ProjectSession, project
 from fermiviewer.server import create_app
@@ -484,3 +489,87 @@ def test_the_save_route_preserves_regions_the_client_never_sent_back(
     assert group.name == "grain boundaries"
     assert [r.id for r in group.regions] == ["r1"]
     assert same_shape(group.regions[0].parts[0].shape, _region().parts[0].shape)
+
+
+# ── the schema number is load-bearing, so it is enforced ─────────────
+
+
+def test_a_newer_regions_schema_is_refused_rather_than_reinterpreted(
+    tmp_path: Path,
+) -> None:
+    """`schema` is the SOLE statement of the coordinate convention, so a
+    reader that ignored it would parse a future build's geometry under
+    this build's convention — and then rewrite it as schema 1 on the next
+    save, destroying whatever the newer revision added. That is a silent
+    downgrade exactly where the meaning of the coordinates may have
+    changed, so opening fails instead."""
+    path = _save(tmp_path, region_sets=[_set()])
+
+    def to_v2(manifest):
+        manifest["regions"]["schema"] = 2
+        manifest["regions"]["sets"][0]["coordinate_origin"] = "centre"
+
+    _rewrite_manifest(path, to_v2)
+    with pytest.raises(ProjectFormatError, match="const|schema"):
+        load_project(path)
+
+
+def test_a_regions_section_must_declare_its_schema(tmp_path: Path) -> None:
+    """Absent is not "assume 1": a section with no schema was written by
+    something that did not agree to this convention, and guessing is the
+    same mistake as accepting a higher number."""
+    path = _save(tmp_path, region_sets=[_set()])
+    _rewrite_manifest(path, lambda m: m["regions"].pop("schema"))
+    with pytest.raises(ProjectFormatError, match="schema"):
+        load_project(path)
+
+
+@pytest.mark.parametrize("declared", [0, 2, 99, "1", None])
+def test_load_regions_refuses_an_unsupported_schema_on_its_own(declared) -> None:
+    """`load_regions` is public and reachable without `validate_manifest`,
+    so it does not rely on the JSON Schema having run. `"1"` and `None` are
+    in the sweep because a JSON-typed check that only compared magnitude
+    would let a string or a null through."""
+    with pytest.raises(ProjectFormatError, match="unsupported regions schema"):
+        load_regions({"schema": declared, "sets": [], "classes": []})
+
+
+def test_a_supported_schema_still_loads() -> None:
+    """The refusal above must not be a blanket one — the positive case is
+    what proves the check discriminates rather than just rejecting."""
+    loaded = load_regions(
+        {"schema": REGIONS_SCHEMA, "classes": [{"id": "a"}], "sets": []}
+    )
+    assert [c.id for c in loaded.classes] == ["a"]
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        pytest.param(lambda r: r.update(schema=2), id="a-newer-schema"),
+        pytest.param(lambda r: r.pop("schema"), id="no-schema-at-all"),
+    ],
+)
+def test_the_json_schema_refuses_the_section_on_its_own(mutate) -> None:
+    """The refusal is deliberately in two layers, and this proves the
+    OUTER one. The tests above all reach the section through
+    `load_project`, where `load_regions` rejects first — so removing the
+    `required`/`const` from the JSON Schema leaves every one of them
+    green, and the manifest contract would silently stop guaranteeing
+    what the loader happens to enforce.
+
+    `validate_manifest` is what a save runs before committing a container,
+    so this is also what stops THIS build writing a section it could not
+    read back.
+    """
+    manifest = {
+        "format": "fermiviewer-project",
+        "version": 2,
+        "generation": "abc12345",
+        "payload_mode": "light",
+        "images": [],
+        "regions": {"schema": REGIONS_SCHEMA, "classes": [], "sets": []},
+    }
+    mutate(manifest["regions"])
+    with pytest.raises(ProjectFormatError, match="regions"):
+        validate_manifest(manifest)

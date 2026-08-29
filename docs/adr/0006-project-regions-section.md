@@ -47,7 +47,8 @@ unharmed, and a newer build's section is not a breaking change.
 
 `schema: 1` inside the section versions its own structure, exactly as
 `RESULT_SCHEMA` does for a record, so region sets can be migrated later
-without re-versioning the `.fvp`.
+without re-versioning the `.fvp`. It is **required and pinned**, not
+open-ended: see §8.
 
 ### 2. The schema number is the coordinate convention. There is no `convention` string
 
@@ -135,6 +136,25 @@ the same reason an unavailable image keeps its reference (ADR 0002 §4).
 Dropping it would destroy the user's work to enforce a link that the next
 re-point would have restored.
 
+### 8. An unsupported `schema` is refused, not best-guessed
+
+Because the number is the whole statement of the coordinate convention
+(§2), a reader that accepted a higher one would parse a future build's
+geometry under *this* build's convention — and then, on the next save,
+rewrite it as schema 1 and drop whatever the newer revision added. A
+silent downgrade, precisely where the meaning of the coordinates may have
+changed. `schema` is therefore `required` and `const: 1` in the JSON
+Schema, and `load_regions` refuses an unsupported value independently,
+since it is public and reachable without `validate_manifest`. Absent is
+not "assume 1": a section that declares no schema was written by
+something that never agreed to this convention.
+
+This is a deliberate exception to ADR 0002 §6's forward-compat carry.
+Unknown TOP-LEVEL manifest keys still round-trip verbatim, so an older
+build does not degrade a newer project generally — but geometry it would
+misread is not carried, it is refused. Failing to open is recoverable;
+silently reinterpreting someone's regions is not.
+
 ## Consequences
 
 * Regions a user draws survive a reopen in a form the backend can
@@ -153,6 +173,11 @@ re-point would have restored.
   round-trip verbatim. This is a deliberate limit of schema 1, not an
   oversight; a second version that needs sibling-key carry should add it
   at the same time.
+* A project whose `regions.schema` this build does not know **fails to
+  open entirely**, rather than opening without its regions. That is the
+  intended trade (§8) but it is a real behaviour change for a future
+  revision, and the migration dispatch that softens it belongs to
+  whichever build introduces schema 2.
 * **`Shape` cannot be compared with `==`.** It is a frozen dataclass
   holding `np.ndarray` rings, so the generated `__eq__` raises "truth
   value of an array is ambiguous" for any shape with an `outline` or
@@ -182,6 +207,10 @@ re-point would have restored.
   written;
 * a malformed region names itself rather than leaking a `ValueError`;
 * the schema refuses a shape carrying both `bounds` and an `outline`;
+* a section declaring `schema: 2`, or declaring none, is refused — proven
+  at BOTH layers, since the loader's check fires first through
+  `load_project` and would otherwise leave the JSON Schema's `required`
+  and `const` untested;
 * the session carries sets across a replacing and an appending load,
   deduping by id;
 * **the save route preserves regions the client never sent back** — the
