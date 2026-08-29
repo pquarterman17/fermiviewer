@@ -923,6 +923,8 @@ INFRASTRUCTURE: tuple[tuple[str, str], ...] = (
     ("POST", "/api/project/load"),
     ("POST", "/api/project/relocate"),
     ("POST", "/api/project/save"),
+    ("GET", "/api/region-sets"),
+    ("POST", "/api/region-sets/replace"),
     ("GET", "/api/results"),
     # Query and composition over ALREADY-persisted records — they run no
     # analysis and produce no new science, so they are infrastructure like

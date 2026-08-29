@@ -221,8 +221,13 @@ down.
 * `ui_state.savedRois` is superseded and should be migrated by the UI
   work in 4B; this ADR does not remove it, because removing a key the
   frontend still writes would lose data mid-transition.
-* Nothing consumes the section yet. Populating it from the drawing tools
-  is 4B; migrating analyses to read it is 4C.
+* Roadmap 4B exposes the server-carried section through `GET /api/region-sets`
+  and atomic `POST /api/region-sets/replace`. The browser publishes a complete,
+  typed section only after server validation succeeds, so a malformed edit
+  cannot partially mutate either side. Project save remains server-carried:
+  geometry is never duplicated inside the save request's `client_state`.
+  Drawing-tool population and legacy ROI migration remain 4B; migrating
+  analyses to consume the exact geometry remains 4C.
 * **Unknown keys nested inside the section are not carried.** Top-level
   manifest keys round-trip verbatim (ADR 0002 §6), but a future build's
   extra key *inside* a set or a region is dropped by this reader. `meta`

@@ -5,6 +5,7 @@ import type {
   ProjectInfo,
   UnavailableImage,
 } from "./project";
+import type { ProjectRegions } from "./regionSets";
 import { json, post } from "./transport";
 
 // ── workspace persistence ───────────────────────────────────────────
@@ -70,6 +71,8 @@ export async function loadWorkspaceNamed(slug: string): Promise<{
   unavailable: UnavailableImage[];
   /** Persisted scientific results carried by the same .fvp container. */
   results: PersistedResultRecord[];
+  /** Live named analysis regions carried by the same .fvp container. */
+  regions: ProjectRegions;
   project: ProjectInfo;
   name: string;
 }> {

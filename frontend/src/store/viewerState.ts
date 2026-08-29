@@ -5,6 +5,7 @@
 import type {
   ImageMeta,
   PersistedResultRecord,
+  ProjectRegions,
   ProjectPayloadMode,
   RoiStats,
   UnavailableImage,
@@ -50,6 +51,9 @@ export interface ViewerState {
   unavailable: Record<string, UnavailableImage>;
   /** Scientific result records restored from the current .fvp project. */
   persistedResults: PersistedResultRecord[];
+  /** Live named analysis regions from ADR 0006. Unlike `measures`, these
+   *  are 0-based [row, col] geometry and are server-carried project data. */
+  regions: ProjectRegions;
   selected: string[];
   listView: ListView;
   compareSet: string[] | null;
@@ -168,6 +172,8 @@ export interface ViewerState {
    *  Invokable at any time and repeatable — different samples may have moved
    *  to different folders. */
   locateData: (root: string) => Promise<void>;
+  /** Validate and atomically replace the live named-region workspace. */
+  replaceRegions: (regions: ProjectRegions) => Promise<void>;
   saveWorkspaceNamed: (name: string) => Promise<void>;
   loadWorkspaceNamed: (slug: string) => Promise<void>;
   setActive: (id: string) => void;

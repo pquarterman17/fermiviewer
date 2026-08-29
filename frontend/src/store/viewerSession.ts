@@ -9,6 +9,7 @@ import {
   type FourDMeta,
   type ImageMeta,
   type PersistedResultRecord,
+  type ProjectRegions,
   type SessionClientState,
   type UnavailableImage,
 } from "../lib/api";
@@ -393,6 +394,8 @@ export function sessionSlice(
     unavailable?: UnavailableImage[];
     /** Persisted project results; absent only for pre-1B test/mocked callers. */
     results?: PersistedResultRecord[];
+    /** Canonical named-region section; absent for older mocked callers. */
+    regions?: ProjectRegions;
   },
   fallbackOverlay: OverlayStyle,
 ): Partial<ViewerState> {
@@ -458,6 +461,7 @@ export function sessionSlice(
     images,
     unavailable,
     persistedResults: r.results ?? [],
+    regions: r.regions ?? { schema: 1, classes: [], sets: [] },
     order,
     activeId,
     selected: activeId ? [activeId] : [],
