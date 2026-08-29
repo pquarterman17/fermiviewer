@@ -36,11 +36,14 @@ that has JSON but not numpy, and `README.txt` says so inside the archive.
 ## Determinism
 
 The archive is byte-reproducible for the same records and the same
-`app_version`, apart from `generated_at`. Entry timestamps are pinned to
-the ZIP epoch rather than the wall clock, because an exported archive is a
-citable artifact someone may hash — the `.fvp` container has no such
-requirement, which is why `write_result_members` is not reused for the
-member entries here.
+`app_version`, apart from `generated_at` — and reproducible ACROSS HOSTS,
+not merely across two runs on one machine. Every header field `zipfile`
+would otherwise take from the environment is pinned: the timestamp (else
+the wall clock), the mode (else the umask), and `create_system` (else
+`sys.platform`, which differs on Windows). See `_entry`. An exported
+archive is a citable artifact someone may hash; the `.fvp` container has
+no such requirement, which is why `write_result_members` is not reused
+for the member entries here.
 
 An output whose member was lost before the export (`array is None` after a
 degraded load) writes no entry. The manifest keeps the citation and the
@@ -92,6 +95,10 @@ README_NAME = "README.txt"
 #: earliest fixed stamp available, and a fixed stamp is what makes two
 #: exports of the same records hash alike.
 _FIXED_DATE = (1980, 1, 1, 0, 0, 0)
+
+#: `ZipInfo.create_system` for Unix. Pinned so a Windows-built archive is
+#: byte-identical to a Linux one; see `_entry`.
+_UNIX_CREATE_SYSTEM = 3
 
 _README = """\
 FermiViewer result export
@@ -198,13 +205,23 @@ def build_archive(
 
 
 def _entry(name: str) -> zipfile.ZipInfo:
-    """A ZIP entry header at the fixed stamp (see the module docstring).
+    """A ZIP entry header with every host-derived field pinned.
 
-    The mode is pinned too: `zipfile` would otherwise derive it from the
-    process umask, which is as much an environment input as the clock.
+    Three of them, each an environment input the archive must not inherit
+    if two exports of one selection are to hash alike:
+
+    * the timestamp, which would otherwise be the wall clock;
+    * the mode, which `zipfile` derives from the process umask;
+    * `create_system`, which `ZipInfo.__init__` sets from `sys.platform` —
+      ``0`` on Windows and ``3`` elsewhere. It is written into the central
+      directory, so leaving it alone makes the same records produce
+      different bytes on Windows than on macOS or Linux. It is pinned to
+      Unix beside the mode because the two belong together: `external_attr`
+      only reads as a Unix mode when `create_system` says Unix.
     """
     info = zipfile.ZipInfo(name, date_time=_FIXED_DATE)
     info.compress_type = zipfile.ZIP_DEFLATED
+    info.create_system = _UNIX_CREATE_SYSTEM
     info.external_attr = 0o644 << 16
     return info
 

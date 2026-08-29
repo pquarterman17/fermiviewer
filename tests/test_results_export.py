@@ -176,6 +176,41 @@ def test_two_exports_of_one_selection_are_byte_identical() -> None:
     assert first == second
 
 
+def test_every_host_derived_header_field_is_pinned() -> None:
+    """Byte-reproducibility has to hold ACROSS hosts, not just across two
+    runs on one machine — the determinism test above compares two archives
+    built by the same process, so it cannot see a field that varies by
+    platform. Each of these is one `zipfile` would otherwise take from the
+    environment:
+
+    * `date_time` — the wall clock;
+    * `external_attr` — the process umask;
+    * `create_system` — `sys.platform`; `ZipInfo.__init__` writes 0 on
+      Windows and 3 elsewhere, into the central directory, so an archive
+      built on a Windows runner would not hash equal to a Linux one.
+    """
+    zf = export(with_array(np.zeros((4, 2))))
+    infos = zf.infolist()
+    assert infos, "fixture produced no entries to check"
+    for info in infos:
+        assert info.date_time == (1980, 1, 1, 0, 0, 0), info.filename
+        assert info.create_system == 3, info.filename        # Unix, not the host
+        assert info.external_attr == (0o644 << 16), info.filename
+
+
+def test_the_creator_system_is_pinned_rather_than_inherited(monkeypatch) -> None:
+    """The assertion above reads `create_system == 3`, which a Linux host
+    satisfies by accident — it only discriminates on the Windows runner.
+    Pretending to be Windows makes the check bite everywhere: `ZipInfo`
+    reads `sys.platform` in its constructor, so an unpinned entry would
+    come back 0 here.
+    """
+    monkeypatch.setattr(zipfile.sys, "platform", "win32")
+    assert zipfile.ZipInfo("probe").create_system == 0     # the default we override
+    zf = export(with_array(np.zeros((4, 2))))
+    assert [i.create_system for i in zf.infolist()] == [3] * len(zf.infolist())
+
+
 def test_selection_order_is_the_archive_order() -> None:
     """A report is a composed document; the export inherits that, so the
     author's order is what ships."""
