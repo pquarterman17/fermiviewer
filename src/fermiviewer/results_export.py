@@ -210,7 +210,14 @@ def _entry(name: str) -> zipfile.ZipInfo:
     Three of them, each an environment input the archive must not inherit
     if two exports of one selection are to hash alike:
 
-    * the timestamp, which would otherwise be the wall clock;
+    * the timestamp. `ZipInfo`'s own default is already 1980-01-01, so
+      this is not what rescues the current code — the wall clock enters
+      when an entry is written by NAME, since `ZipFile.writestr` then
+      builds its own `ZipInfo` with `time.localtime(time.time())`. Setting
+      it here states the requirement where a future `writestr(name, ...)`
+      would otherwise reintroduce it silently, and
+      `test_results_export.py` freezes and advances the clock to check
+      that no entry has picked it up;
     * the mode, which `zipfile` derives from the process umask;
     * `create_system`, which `ZipInfo.__init__` sets from `sys.platform` —
       ``0`` on Windows and ``3`` elsewhere. It is written into the central
@@ -232,6 +239,10 @@ def write_archive(archive: ResultArchive, dest: IO[bytes]) -> None:
     Entries are written in a fixed order (manifest, readme, methods, then
     arrays in record and output order) so two exports of one selection are
     byte-identical apart from whatever `generated_at` the manifest carries.
+    That order is part of the format, not an implementation detail: the
+    central directory records it, so reordering changes the bytes of an
+    archive someone may have hashed. `test_results_export.py` pins the
+    entry names in sequence.
 
     Arrays are STREAMED into their entries, as `write_result_members` does
     for a `.fvp`: an elemental-map stack or a spectrum cube is exactly the

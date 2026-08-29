@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import io
 import json
+import time
 import zipfile
 
 import numpy as np
@@ -32,6 +33,10 @@ from fermiviewer.results_export import (
 )
 from fermiviewer.results_report import MAX_INLINE_ARRAY_VALUES
 from test_results_report import APP, fixed_clock, make_record
+
+#: A fixed "much later" struct_time for the wall-clock test below.
+_LATER = time.struct_time((2031, 6, 1, 12, 0, 0, 0, 152, 0))
+_LATER_EPOCH = 1938000000.0
 
 
 def export(*records: ResultRecord) -> zipfile.ZipFile:
@@ -165,6 +170,46 @@ def test_the_archive_explains_itself_without_the_app() -> None:
     assert "member" in readme
     assert APP in readme
     assert manifest_of(zf)["archive_version"] == ARCHIVE_VERSION
+
+
+def test_the_entry_order_is_part_of_the_format() -> None:
+    """Determinism between two runs cannot see this: both would reorder
+    the same way and still compare equal. The central directory records
+    the order, so shuffling it changes the bytes of an archive a reader
+    may have hashed — the very property the module promises.
+    """
+    zf = export(
+        with_array(np.zeros((2, 2)), result_id="bbb222"),
+        with_array(np.zeros((2, 2)), result_id="aaa111"),
+    )
+    assert zf.namelist() == [
+        MANIFEST_NAME,
+        README_NAME,
+        METHODS_NAME,
+        "results/bbb222/0.npy",      # selection order, not sorted order
+        "results/aaa111/0.npy",
+    ]
+
+
+def test_no_entry_picks_up_the_wall_clock(monkeypatch) -> None:
+    """The determinism test below builds both archives moments apart, and
+    a ZIP timestamp has two-second resolution — so it would pass even if
+    every entry were stamped with `time.time()`. Advancing the clock by
+    years between the two exports is what actually discriminates.
+
+    It matters because `ZipInfo`'s default date is already 1980: the
+    explicit pin in `_entry` looks redundant until an entry is written by
+    NAME, at which point `writestr` builds its own `ZipInfo` from the wall
+    clock. This is the test that would notice that change.
+    """
+    records = (with_array(np.linspace(0, 1, 32).reshape(-1, 2)),)
+    first = archive_bytes(build_archive(records, app_version=APP, clock=fixed_clock))
+
+    monkeypatch.setattr(time, "time", lambda: _LATER_EPOCH)
+    monkeypatch.setattr(time, "localtime", lambda *a: _LATER)
+    second = archive_bytes(build_archive(records, app_version=APP, clock=fixed_clock))
+
+    assert first == second
 
 
 def test_two_exports_of_one_selection_are_byte_identical() -> None:
