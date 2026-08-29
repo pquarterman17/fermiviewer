@@ -219,6 +219,16 @@
   text-transform: capitalize;
 }
 
+.fvd-compare-unit-note {
+  display: block;
+  margin-top: 4px;
+  color: var(--capture);
+  font-size: 8px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
 .fvd-compare-value {
   color: var(--text);
   font-family: var(--font-mono);

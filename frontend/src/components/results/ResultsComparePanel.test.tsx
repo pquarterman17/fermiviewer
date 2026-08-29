@@ -38,7 +38,7 @@ beforeEach(() => {
       },
     }],
     rejected: [{ id: "wrong", code: "output_unit_mismatch", message: "Fe uses incompatible units" }],
-    notes: ["Calibration agreement was not verified across different sources."],
+    notes: ["Calibration agreement was not verified across different sources.", "output 'Fe': units not verified for unit — neither record carries a trustworthy unit"],
   });
 });
 
@@ -57,10 +57,20 @@ describe("ResultsComparePanel", () => {
     expect(screen.getByText("48.8")).toBeVisible();
     expect(screen.getAllByText("table")).toHaveLength(2);
     expect(screen.getByText("Calibration not verified")).toBeVisible();
+    expect(screen.getByText("units not verified")).toBeVisible();
 
     fireEvent.click(screen.getByText(/Compatibility review/));
     expect(screen.getByText(/Calibration agreement was not verified/)).toBeVisible();
     expect(screen.getByText(/Fe uses incompatible units/)).toBeVisible();
+  });
+
+  it("preserves a curated empty selection when the result inventory refreshes", async () => {
+    const view = render(<ResultsComparePanel results={RESULTS} nameOf={(id) => `${id}.dm4`} />);
+    const checkbox = await screen.findByRole("checkbox");
+    fireEvent.click(checkbox);
+    view.rerender(<ResultsComparePanel results={[...RESULTS, result("new", "d", 12)]} nameOf={(id) => `${id}.dm4`} />);
+    await waitFor(() => expect(comparePersistedResults).toHaveBeenCalledTimes(2));
+    expect(screen.getByText("0 selected")).toBeVisible();
   });
 
   it("removes an unchecked candidate from the comparison matrix", async () => {

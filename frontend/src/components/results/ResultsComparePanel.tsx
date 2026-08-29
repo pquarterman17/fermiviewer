@@ -42,7 +42,7 @@ export default function ResultsComparePanel({ results, nameOf }: Props) {
   const completed = useMemo(() => results.filter((result) => result.status === "completed"), [results]);
   const [referenceId, setReferenceId] = useState(completed[0]?.id ?? "");
   const [comparison, setComparison] = useState<ResultComparison | null>(null);
-  const [selected, setSelected] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -51,10 +51,12 @@ export default function ResultsComparePanel({ results, nameOf }: Props) {
     setReferenceId(completed[0]?.id ?? "");
   }, [completed, referenceId]);
 
+  const completedKey = completed.map((result) => result.id).join("\u0000");
   useEffect(() => {
     if (!referenceId || completed.length < 2) {
       setComparison(null);
-      setSelected([]);
+      setSelected(null);
+      setBusy(false);
       return;
     }
     const controller = new AbortController();
@@ -63,23 +65,33 @@ export default function ResultsComparePanel({ results, nameOf }: Props) {
     void comparePersistedResults(referenceId, undefined, controller.signal)
       .then((next) => {
         setComparison(next);
-        setSelected(next.compatible.map((match) => match.id));
+        const ids = next.compatible.map((match) => match.id);
+        setSelected((current) => {
+          if (current === null) return ids;
+          const kept = current.filter((id) => ids.includes(id));
+          return kept.length === 0 && current.length > 0 ? ids : kept;
+        });
       })
       .catch((reason: unknown) => {
         if (reason instanceof DOMException && reason.name === "AbortError") return;
         setComparison(null);
-        setSelected([]);
+        setSelected(null);
         setError(reason instanceof Error ? reason.message : String(reason));
       })
       .finally(() => {
         if (!controller.signal.aborted) setBusy(false);
       });
     return () => controller.abort();
-  }, [completed.length, referenceId]);
+  }, [completed.length, completedKey, referenceId]);
 
   const byId = useMemo(() => new Map(results.map((result) => [result.id, result])), [results]);
   const reference = byId.get(referenceId);
-  const selectedMatches = comparison?.compatible.filter((match) => selected.includes(match.id)) ?? [];
+  const selectedIds = selected ?? [];
+  const selectedMatches = comparison?.compatible.filter((match) => selectedIds.includes(match.id)) ?? [];
+  const unverifiedOutputs = new Set((comparison?.notes ?? []).flatMap((note) => {
+    const match = /^output '([^']+)': units not verified/.exec(note);
+    return match ? [match[1]] : [];
+  }));
   const commonOutputs = reference?.outputs?.map((output) => output.name).filter((name) =>
     selectedMatches.every((match) => match.outputs.includes(name))) ?? [];
   const columns = reference ? [reference, ...selectedMatches.map((match) => byId.get(match.id)).filter(
@@ -96,7 +108,7 @@ export default function ResultsComparePanel({ results, nameOf }: Props) {
       <div><span className="fvd-project-results-kicker">REFERENCE</span>
         <h3>Choose the result others should be compared against</h3></div>
       <label>Reference result<select aria-label="Reference result" value={referenceId}
-        onChange={(event) => setReferenceId(event.target.value)}>
+        onChange={(event) => { setSelected(null); setReferenceId(event.target.value); }}>
         {completed.map((result) => <option key={result.id} value={result.id}>{labelOf(result)}</option>)}
       </select></label>
     </div>
@@ -107,15 +119,15 @@ export default function ResultsComparePanel({ results, nameOf }: Props) {
       <section className="fvd-compare-candidates" aria-labelledby="compare-candidates-heading">
         <header><div><span className="fvd-project-results-kicker">COMPARABLE SET</span>
           <h3 id="compare-candidates-heading">Select results to place beside the reference</h3></div>
-          <span>{selected.length} selected</span></header>
+          <span>{selectedIds.length} selected</span></header>
         {comparison.compatible.length === 0 ? <p className="fvd-compare-empty">No compatible results were found for this reference.</p>
           : <div className="fvd-compare-choice-list">{comparison.compatible.map((match) => {
             const record = byId.get(match.id);
             const agreement = match.calibration_agreement;
             const calibration = agreement.verified ? (agreement.agrees ? "Calibration matched" : "Calibration differs") : "Calibration not verified";
             return <label key={match.id} className="fvd-compare-choice">
-              <input type="checkbox" checked={selected.includes(match.id)} onChange={(event) => setSelected((current) =>
-                event.target.checked ? [...current, match.id] : current.filter((id) => id !== match.id))} />
+              <input type="checkbox" checked={selectedIds.includes(match.id)} onChange={(event) => setSelected((current) =>
+                event.target.checked ? [...(current ?? []), match.id] : (current ?? []).filter((id) => id !== match.id))} />
               <span><strong>{record ? labelOf(record) : match.id}</strong>
                 <small>{record?.source_ids?.map(nameOf).join(", ") || "No source"} · {match.outputs.length} shared output{match.outputs.length === 1 ? "" : "s"}</small></span>
               <span className={`fvd-compare-calibration ${agreement.verified && !agreement.agrees ? "warn" : ""}`}>{calibration}</span>
@@ -131,7 +143,8 @@ export default function ResultsComparePanel({ results, nameOf }: Props) {
           : <div className="fvd-compare-table-wrap"><table className="fvd-compare-table">
             <thead><tr><th>Output</th>{columns.map((record, index) => <th key={record.id}>
               <span>{index === 0 ? "Reference" : `Result ${index}`}</span>{labelOf(record)}</th>)}</tr></thead>
-            <tbody>{commonOutputs.map((name) => <tr key={name}><th>{name.replaceAll("_", " ")}</th>
+            <tbody>{commonOutputs.map((name) => <tr key={name}><th>{name.replaceAll("_", " ")}
+              {unverifiedOutputs.has(name) && <span className="fvd-compare-unit-note" title="The unit was not recorded or could not be verified">units not verified</span>}</th>
               {columns.map((record) => <td key={record.id}><OutputValue output={outputOf(record, name)} /></td>)}</tr>)}</tbody>
           </table></div>}
       </section>}
