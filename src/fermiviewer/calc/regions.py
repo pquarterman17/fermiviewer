@@ -47,6 +47,16 @@ its whole cell out to 5.5, so the semi-axis is `(5 - 3 + 1) / 2`, which is
 exactly `roi_stats`' `ry = sh / 2` over the inclusive extent `sh`.
 `circle` takes a CENTRE AND RADIUS and keeps `dist <= radius`.
 
+They are separate KINDS, and deliberately not one kind with the other's
+coordinates massaged to fit. Encoding a radius as ellipse bounds inset by
+half a pixel reproduces `dist <= r` for `r >= 0.5` and then silently fails
+below it: the inset would go negative, and clamping it to zero widens the
+region. `circle(4.2, 4.2, 0)` would select pixel (4, 4) — 0.283 px away —
+when the exact set is empty. Fitted diffraction centres are fractional, so
+that is a live case, not a corner one. Storing the convention in the kind
+also means persistence round-trips the radius the user set rather than a
+derived box that has to be decoded back.
+
 Both are needed because both have callers to migrate: a drag rectangle
 becomes an `ellipse`, and `test_regions.py` pins it pixel-for-pixel
 against `roi_stats` over odd AND even bounds; a diffraction ROI or FFT
@@ -89,6 +99,7 @@ owns the wire adapters.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -113,7 +124,7 @@ __all__ = [
 #: The primitive outline kinds. A LASSO is a `polygon` — a free-hand trace
 #: differs from a clicked one only in vertex count, and giving it its own
 #: kind would mean two code paths that must never disagree.
-REGION_KINDS = ("rect", "ellipse", "polygon")
+REGION_KINDS = ("rect", "ellipse", "circle", "polygon")
 
 #: How a part combines with the parts before it. `exclude` is what carves
 #: a bite out of a region; `holes` is what carves one out of a single
@@ -126,10 +137,14 @@ REGION_MODES = ("include", "exclude")
 class Shape:
     """One primitive outline in canonical coordinates.
 
-    `bounds` is `(r0, c0, r1, c1)`, 0-based and INCLUSIVE, for `rect` and
-    `ellipse`; an ellipse is the one inscribed in those bounds. `outline`
-    is the `(N, 2)` float `(row, col)` ring for `polygon`, closed
-    implicitly. Exactly one of the two is set for a given kind.
+    `bounds` is `(r0, c0, r1, c1)`, 0-based and INCLUSIVE, for `rect`,
+    `ellipse` and `circle`. For `rect` and `ellipse` they name PIXELS and
+    are read as their footprint; for `circle` they are the true bounding
+    box of the disc, so the centre is their midpoint and the radius half
+    their extent — which is why a circle's bounds may be fractional and
+    its row and column extents must match. `outline` is the `(N, 2)` float
+    `(row, col)` ring for `polygon`, closed implicitly. Exactly one of the
+    two is set for a given kind.
 
     `holes` are inner rings subtracted from THIS shape, in the same
     `(N, 2)` form. They are supported for every kind: a rectangle with a
@@ -166,6 +181,16 @@ class Shape:
             if not all(np.isfinite(self.bounds)):
                 raise ValueError(f"bounds must be finite, got {self.bounds!r}")
             r0, c0, r1, c1 = self.bounds
+            if self.kind == "circle" and not math.isclose(
+                r1 - r0, c1 - c0, rel_tol=1e-9, abs_tol=1e-12
+            ):
+                # A circle's bounds ARE its centre and radius; unequal
+                # extents describe an ellipse and would be rasterized as
+                # a circle of the row extent, quietly dropping the other.
+                raise ValueError(
+                    f"a circle needs equal row and column extents, got "
+                    f"{r1 - r0} and {c1 - c0}"
+                )
             if r0 > r1 or c0 > c1:
                 # The constructors sort; a hand-built or deserialized
                 # Shape may not, and unsorted bounds mean a different
@@ -316,23 +341,18 @@ def circle(
     pixels, so the inscribed ellipse has semi-axis `r + 0.5` and takes in
     a ring of pixels the radius excludes.
 
-    Carried as an `ellipse` shape rather than a fourth kind, since it is
-    one — the bounds are inset by half a pixel so that the footprint
-    semi-axis works out to exactly `radius`. A radius under half a pixel
-    is the centre pixel alone, which is what `dist <= r` says and what a
-    click without a drag should give.
+    Its own kind, storing the true bounding box of the disc — centre at
+    the midpoint, radius at half the extent — so `dist <= radius` holds
+    for EVERY radius, fractional centres included. A small radius on a
+    fractional centre selects nothing, which is what the distance test
+    says: a click landing between pixel centres covers none of them.
     """
     if not radius >= 0:                      # also rejects NaN
         raise ValueError(f"a circle needs a radius >= 0, got {radius!r}")
-    inset = max(float(radius) - 0.5, 0.0)
+    r, cr, cc = float(radius), float(centre_row), float(centre_col)
     return Shape(
-        kind="ellipse",
-        bounds=(
-            float(centre_row) - inset,
-            float(centre_col) - inset,
-            float(centre_row) + inset,
-            float(centre_col) + inset,
-        ),
+        kind="circle",
+        bounds=(cr - r, cc - r, cr + r, cc + r),
         holes=tuple(_ring(h) for h in holes),
     )
 
@@ -375,6 +395,19 @@ def _shape_mask(item: Shape, shape: tuple[int, int]) -> np.ndarray:
             rows = np.arange(shape[0], dtype=np.float64)[:, None]
             cols = np.arange(shape[1], dtype=np.float64)[None, :]
             centre_r, centre_c = (r0 + r1) / 2.0, (c0 + c1) / 2.0
+            if item.kind == "circle":
+                # RADIUS semantics: the bounds are the disc's bounding
+                # box, so the radius is half the extent and the test is
+                # the plain `dist <= r` of `diffraction.apply_roi` and
+                # friends. No footprint half-pixel here — adding one is
+                # what makes a circle disagree with the ROI it came from.
+                radius = (r1 - r0) / 2.0
+                mask = (rows - centre_r) ** 2 + (
+                    cols - centre_c
+                ) ** 2 <= radius**2
+                for hole in item.holes:
+                    mask &= ~_outline_mask(hole, shape)
+                return mask
             # Semi-axes span the bounds' pixel FOOTPRINT, not the distance
             # between the endpoint centres: bounds (1, 1, 3, 3) name three
             # pixels whose cells run from 0.5 to 3.5, so the semi-axis is

@@ -114,17 +114,33 @@ def test_a_circle_radius_is_inclusive_like_every_other_radius_here() -> None:
     assert not mask[3, 3]                                # corners are outside
 
 
-@pytest.mark.parametrize(
-    ("radius", "expected"),
-    [(0, 1), (0.4, 1), (0.5, 1), (1, 5), (1.5, 9), (2, 13)],
-)
-def test_a_circle_is_the_pixels_within_the_radius(radius, expected) -> None:
-    """The `dist <= r` set, counted directly — `disk` would give 1, 1, 1,
-    1, 5 and 9 for these, one step behind at every radius."""
-    mask = rasterize(one(circle(4, 4, radius)), SHAPE)
-    rows, cols = np.nonzero(mask)
-    assert np.all((rows - 4) ** 2 + (cols - 4) ** 2 <= radius**2 + 1e-9)
-    assert mask.sum() == expected
+@pytest.mark.parametrize("centre", [(4.0, 4.0), (4.2, 4.2), (4.5, 3.5), (3.7, 5.1)])
+@pytest.mark.parametrize("radius", [0, 0.1, 0.49, 0.5, 1, 1.5, 2, 2.7])
+def test_a_circle_is_exactly_the_distance_grid(centre, radius) -> None:
+    """Compared against an explicit `dist <= r` grid rather than a hand
+    counted number, over FRACTIONAL centres and radii including 0 — fitted
+    diffraction centres are fractional, so integer-centre cases alone
+    cannot see a representation that widens a small radius.
+
+    An earlier draft stored a circle as ellipse bounds inset by half a
+    pixel. That reproduces `dist <= r` from 0.5 up and then fails below
+    it: the inset goes negative, clamping it to zero rounds the region
+    outwards, and `circle(4.2, 4.2, 0)` selected the pixel 0.283 px away
+    when the exact set is empty.
+    """
+    cr, cc = centre
+    rows, cols = np.mgrid[0 : SHAPE[0], 0 : SHAPE[1]]
+    expected = np.hypot(rows - cr, cols - cc) <= radius
+    assert np.array_equal(rasterize(one(circle(cr, cc, radius)), SHAPE), expected)
+
+
+def test_a_sub_pixel_circle_off_centre_selects_nothing() -> None:
+    """Called out on its own because it is the case the old encoding got
+    wrong, and because "radius 0 is one pixel" is only true when the
+    centre sits exactly on a pixel centre."""
+    assert rasterize(one(circle(4.2, 4.2, 0)), SHAPE).sum() == 0
+    assert rasterize(one(circle(4.2, 4.2, 0.1)), SHAPE).sum() == 0
+    assert rasterize(one(circle(4.0, 4.0, 0)), SHAPE).sum() == 1   # on-centre
 
 
 def test_a_circle_is_not_the_ellipse_over_its_square_bounds() -> None:
@@ -142,6 +158,8 @@ def test_a_circle_is_not_the_ellipse_over_its_square_bounds() -> None:
 def test_a_negative_radius_is_rejected() -> None:
     with pytest.raises(ValueError, match="radius >= 0"):
         circle(4, 4, -1)
+    with pytest.raises(ValueError, match="radius >= 0"):
+        circle(4, 4, float("nan"))
 
 
 def test_a_square_ellipse_is_a_circle_and_stays_inside_its_bounds() -> None:
@@ -358,3 +376,13 @@ def test_a_hole_must_be_a_ring_that_can_enclose_something() -> None:
 def test_a_polygon_outline_must_be_finite() -> None:
     with pytest.raises(ValueError, match="a polygon has non-finite"):
         polygon([(1, 1), (1, 3), (np.nan, 3)])
+
+
+def test_a_circle_shape_must_really_be_round() -> None:
+    """A circle's bounds ARE its centre and radius, so unequal extents are
+    an ellipse wearing the wrong kind — it would rasterize with the row
+    extent and drop the column one. Reachable only by building the Shape
+    directly, which persistence will do."""
+    with pytest.raises(ValueError, match="equal row and column extents"):
+        Shape(kind="circle", bounds=(3.0, 3.0, 5.0, 6.0))
+    Shape(kind="circle", bounds=(3.0, 4.0, 5.0, 6.0))       # offset, still round
