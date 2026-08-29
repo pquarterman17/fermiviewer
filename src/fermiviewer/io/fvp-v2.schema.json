@@ -342,9 +342,121 @@
         }
       }
     },
+    "regions": {
+      "type": "object",
+      "description": "Named region sets and the class vocabulary they use (ADR 0006, roadmap item 4). Geometry is 0-based (row, col) float with INCLUSIVE bounds and implicitly-closed rings \u2014 the calc.regions convention, stated by the schema number alone and deliberately NOT repeated as a prose 'convention' field, which is how results[].regions ended up carrying three mutually inconsistent spellings. Distinct from measures (normalized 0-1 (x, y) annotations, drawn to read a number off) and from results[].regions (a compute-time snapshot, frozen so editing a set cannot rewrite what a past result reports). Supersedes the unvalidated ui_state.savedRois.",
+      "required": ["schema"],
+      "properties": {
+        "schema": {
+          "type": "integer",
+          "const": 1,
+          "description": "Revision of this section's shape AND the sole statement of its coordinate convention. REQUIRED, and pinned rather than open-ended: a reader that accepted a higher number would parse a future build's geometry under THIS build's convention and then rewrite it as schema 1 on the next save, destroying the newer fields \u2014 a silent downgrade exactly where the meaning of the coordinates may have changed. Refusing to open is the safe failure. A build that understands a later revision widens this and dispatches on the value."
+        },
+        "classes": {
+          "type": "array",
+          "description": "The project's class vocabulary. DESCRIPTIVE, not a foreign key: Region.region_class is free text by contract, so a region may carry a class never declared here and it round-trips intact.",
+          "items": {
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "label": { "type": ["string", "null"], "description": "Display name; the id is used when absent." },
+              "color": { "type": ["string", "null"], "description": "Presentational only; no format is imposed." },
+              "note": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "sets": {
+          "type": "array",
+          "description": "Each set is a named group of regions drawn on one image.",
+          "items": {
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1, "description": "Stable set id, unique within the project." },
+              "name": { "type": ["string", "null"] },
+              "image_id": {
+                "type": ["string", "null"],
+                "description": "The images[].id this set was drawn on. NOT validated against images: a set whose image is temporarily unresolvable is data to preserve, exactly as an unavailable image keeps its reference (ADR 0002 \u00a74)."
+              },
+              "meta": { "type": "object" },
+              "regions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["id", "parts"],
+                  "properties": {
+                    "id": { "type": "string", "minLength": 1, "description": "Stable region id, unique within its set." },
+                    "name": { "type": ["string", "null"] },
+                    "region_class": { "type": ["string", "null"], "description": "Free text; the vocabulary is the user's. See classes[]." },
+                    "meta": { "type": "object" },
+                    "parts": {
+                      "type": "array",
+                      "minItems": 1,
+                      "description": "Applied left to right, so an include after an exclude puts pixels back. ORDER IS SIGNIFICANT, and the first part must include, since an exclusion subtracts from nothing.",
+                      "items": {
+                        "type": "object",
+                        "required": ["shape"],
+                        "properties": {
+                          "mode": { "enum": ["include", "exclude"], "default": "include" },
+                          "shape": {
+                            "type": "object",
+                            "required": ["kind"],
+                            "description": "One primitive outline. Exactly one of bounds and outline is present, decided by kind: a polygon carries an outline, every other kind carries bounds. Carrying both would serialize two contradictory geometries with one silently ignored at rasterization.",
+                            "properties": {
+                              "kind": {
+                                "enum": ["rect", "ellipse", "circle", "polygon"],
+                                "description": "rect and ellipse read bounds as the PIXEL FOOTPRINT they name, so an ellipse over n pixels has semi-axis n/2 and matches the inscribed-ellipse ROI of calc.profile_stats.roi_stats. circle reads bounds as the disc's true bounding box, so its centre is the midpoint and its radius half the extent, giving dist <= r. Those are not the same set of pixels, and the kind is what tells them apart."
+                              },
+                              "bounds": {
+                                "type": "array",
+                                "minItems": 4,
+                                "maxItems": 4,
+                                "items": { "type": "number" },
+                                "description": "[r0, c0, r1, c1], 0-based and INCLUSIVE on all four sides, normalized so r0 <= r1 and c0 <= c1. A circle's row and column extents must be equal."
+                              },
+                              "outline": { "$ref": "#/$defs/regionRing" },
+                              "holes": {
+                                "type": "array",
+                                "description": "Inner rings subtracted from THIS shape. Distinct from an exclude part, which subtracts from the whole region.",
+                                "items": { "$ref": "#/$defs/regionRing" }
+                              }
+                            },
+                            "allOf": [
+                              {
+                                "if": { "required": ["kind"], "properties": { "kind": { "const": "polygon" } } },
+                                "then": { "required": ["outline"], "not": { "required": ["bounds"] } },
+                                "else": { "required": ["bounds"], "not": { "required": ["outline"] } }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "ui_state": {
       "type": "object",
       "description": "Presentational state, deliberately UNVALIDATED beyond being an object: views, display windows, overlay style, savedRois, sbsPanes/sbsRows/sbsCols, browseScale. Passed through verbatim so its shape stays free to change without a format revision."
+    }
+  },
+  "$defs": {
+    "regionRing": {
+      "type": "array",
+      "minItems": 3,
+      "description": "A closed ring of at least 3 vertices, as [row, col] pairs. The closing edge is implicit: do NOT repeat the first vertex.",
+      "items": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 2,
+        "items": { "type": "number" }
+      }
     }
   }
 }

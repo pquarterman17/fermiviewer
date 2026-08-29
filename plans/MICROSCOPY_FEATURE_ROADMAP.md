@@ -514,10 +514,10 @@ saved recipe and Python without maintaining different scientific logic.
 Stop reducing precise regions to bounding rectangles where an operation can
 consume a mask.
 
-- [ ] Define a shared region contract for rectangle, ellipse, polygon, lasso,
+- [x] Define a shared region contract for rectangle, ellipse, polygon, lasso,
       holes, disjoint regions, inclusion masks, and exclusion masks.
-- [ ] Persist named ROI sets and region classes in `.fvp`.
-- [ ] Supply both exact masks and bounding boxes so older calculations can be
+- [x] Persist named ROI sets and region classes in `.fvp`.
+- [x] Supply both exact masks and bounding boxes so older calculations can be
       migrated safely.
 - [ ] Make spectrum integration, statistics, segmentation, particles, grains,
       layers, and batch recipes consume the same contract.
@@ -528,6 +528,19 @@ consume a mask.
 
 **Done when:** the same irregular specimen region produces consistent results
 in EDS/EELS, imaging statistics, and structural analysis.
+
+> **4A completed 2026-08-29.** `calc/regions.py` is the contract (PR #183);
+> the `regions` manifest section persists named sets and their class
+> vocabulary (ADR 0006). `rasterize` supplies the exact mask and
+> `bounding_box`/`to_rect_roi` the boxes older calculations migrate through,
+> the latter in `calc.roi.RectRoi`'s 1-based inclusive form.
+>
+> The three unchecked boxes are deliberately not started: nothing consumes
+> the contract yet. Drawing and editing regions in the workspace is 4B,
+> migrating analyses onto them is 4C, and previews/QA are 4D. Two
+> constraints for whoever picks those up: `calc/regions.py` stands at 491 of
+> its 500-line ceiling, and `Shape` cannot be compared with `==` (it holds
+> numpy rings) — both point at splitting that module first.
 
 ### 5. Calibration profiles and quantitative standards
 
