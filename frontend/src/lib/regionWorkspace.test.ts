@@ -4,10 +4,13 @@ import type { ProjectRegion, ProjectRegions } from "./api";
 import {
   duplicateRegionSet,
   nextRegionId,
+  measureToRegionShape,
+  regionShapeToMeasure,
   regionVisibilityKey,
   sanitizeRegionUi,
   regionSummary,
 } from "./regionWorkspace";
+import type { Measure } from "../store/viewerTypes";
 
 const region: ProjectRegion = {
   id: "grain-1",
@@ -70,4 +73,54 @@ it("scopes visibility and selection to a set", () => {
   }, workspace);
   expect(ui.hiddenRegionKeys).toEqual([regionVisibilityKey("b", "grain-1")]);
   expect(ui.hiddenSetIds).toEqual(["a"]);
+});
+
+describe("annotation ↔ canonical region conversion", () => {
+  it("converts normalized x/y rings to exact 0-based row/col geometry", () => {
+    const measure: Measure = {
+      id: "m1",
+      kind: "lasso",
+      pts: [{ x: 0.1, y: 0.25 }, { x: 0.8, y: 0.25 }, { x: 0.8, y: 0.75 }],
+      holes: [[{ x: 0.2, y: 0.4 }, { x: 0.3, y: 0.4 }, { x: 0.3, y: 0.5 }]],
+    };
+    expect(measureToRegionShape(measure, 100, 80)).toEqual({
+      kind: "polygon",
+      outline: [[20, 10], [20, 80], [60, 80]],
+      holes: [[[32, 20], [32, 30], [40, 30]]],
+    });
+  });
+
+  it("sorts drag bounds and preserves the ROI/ellipse distinction", () => {
+    const ellipse: Measure = {
+      id: "m2",
+      kind: "ellipse",
+      pts: [{ x: 0.8, y: 0.75 }, { x: 0.1, y: 0.25 }],
+    };
+    expect(measureToRegionShape(ellipse, 100, 80)).toEqual({
+      kind: "ellipse",
+      bounds: [20, 10, 60, 80],
+    });
+  });
+
+  it("loads editable shapes back onto the same normalized annotation rails", () => {
+    const shape = {
+      kind: "polygon" as const,
+      outline: [[20, 10], [20, 80], [60, 80]] as [number, number][],
+      holes: [[[32, 20], [32, 30], [40, 30]]] as [number, number][][],
+    };
+    expect(regionShapeToMeasure(shape, 100, 80)).toEqual({
+      kind: "polygon",
+      pts: [{ x: 0.1, y: 0.25 }, { x: 0.8, y: 0.25 }, { x: 0.8, y: 0.75 }],
+      holes: [[{ x: 0.2, y: 0.4 }, { x: 0.3, y: 0.4 }, { x: 0.3, y: 0.5 }]],
+    });
+  });
+
+  it("refuses a lossy annotation representation", () => {
+    expect(regionShapeToMeasure({ kind: "circle", bounds: [1, 1, 5, 5] }, 10, 10)).toBeNull();
+    expect(regionShapeToMeasure({
+      kind: "rect",
+      bounds: [1, 1, 5, 5],
+      holes: [[[2, 2], [2, 3], [3, 3]]],
+    }, 10, 10)).toBeNull();
+  });
 });

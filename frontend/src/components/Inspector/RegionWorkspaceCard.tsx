@@ -14,6 +14,7 @@ import {
 } from "../../lib/regionWorkspace";
 import { useViewer } from "../../store/viewer";
 import Card from "./Card";
+import RegionGeometryEditor from "./RegionGeometryEditor";
 
 const DEFAULT_CLASS_COLOR = "#8b5cf6";
 
@@ -21,6 +22,9 @@ export default function RegionWorkspaceCard() {
   const activeId = useViewer((state) => state.activeId);
   const activeName = useViewer((state) =>
     state.activeId ? state.images[state.activeId]?.name : undefined,
+  );
+  const activeShape = useViewer((state) =>
+    state.activeId ? state.images[state.activeId]?.shape : undefined,
   );
   const regions = useViewer((state) => state.regions);
   const regionUi = useViewer((state) => state.regionUi);
@@ -179,6 +183,16 @@ export default function RegionWorkspaceCard() {
             />
           </label>
 
+          <RegionGeometryEditor
+            imageId={activeId}
+            width={activeShape?.[1] ?? 0}
+            height={activeShape?.[0] ?? 0}
+            regionSet={selectedSet!}
+            selectedRegion={selectedRegion}
+            disabled={pending}
+            onChange={(updated, message) => replaceSet(updated, message)}
+          />
+
           {selectedSet!.regions.length === 0 ? (
             <div className="fvd-region-list-empty">This set is ready for its first precise region.</div>
           ) : (
@@ -288,6 +302,7 @@ function RegionRow(props: RegionRowProps) {
           defaultValue={props.region.name ?? ""}
           disabled={props.disabled}
           onClick={(event) => event.stopPropagation()}
+          onFocus={props.onSelect}
           onBlur={(event) => {
             const name = event.target.value.trim() || null;
             if (name !== props.region.name) props.onChange({ ...props.region, name }, `renamed region to “${name ?? props.region.id}”`);
@@ -300,6 +315,7 @@ function RegionRow(props: RegionRowProps) {
         value={props.region.region_class ?? ""}
         disabled={props.disabled}
         onClick={(event) => event.stopPropagation()}
+        onFocus={props.onSelect}
         onChange={(event) => props.onChange({ ...props.region, region_class: event.target.value || null }, `classified “${props.region.name ?? props.region.id}”`)}
       >
         <option value="">Unclassified</option>

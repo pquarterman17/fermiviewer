@@ -76,7 +76,8 @@ export default function RoiManagerCard() {
     <Card title="Saved ROIs" count={savedRois.length} defaultOpen={false}>
       <div className="fvd-ws-note">
         Rectangle and ellipse bookmarks for quick recall. Use Analysis Regions
-        above when an analysis needs an exact reusable mask.
+        above when an analysis needs an exact reusable mask; recall one here,
+        then choose New region above to convert it explicitly.
       </div>
 
       {/* Save row */}

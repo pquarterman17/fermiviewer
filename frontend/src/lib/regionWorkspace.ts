@@ -2,8 +2,85 @@ import type {
   ProjectRegion,
   ProjectRegionSet,
   ProjectRegions,
+  RegionShape,
   RegionWorkspaceUi,
 } from "./api";
+import type { Measure } from "../store/viewerTypes";
+
+export const REGION_DRAWING_KINDS = new Set<Measure["kind"]>([
+  "polygon",
+  "lasso",
+  "roi",
+  "ellipse",
+]);
+
+export function measureToRegionShape(
+  measure: Measure,
+  width: number,
+  height: number,
+): RegionShape | null {
+  if (!REGION_DRAWING_KINDS.has(measure.kind) || width <= 0 || height <= 0) {
+    return null;
+  }
+  const allRings = [measure.pts, ...(measure.holes ?? [])];
+  if (allRings.some((points) => points.some(({ x, y }) => !Number.isFinite(x) || !Number.isFinite(y)))) {
+    return null;
+  }
+  const ring = (points: Measure["pts"]) =>
+    points.map(({ x, y }) => [y * height, x * width] as [number, number]);
+  if (measure.kind === "polygon" || measure.kind === "lasso") {
+    if (measure.pts.length < 3 || measure.holes?.some((hole) => hole.length < 3)) {
+      return null;
+    }
+    return {
+      kind: "polygon",
+      outline: ring(measure.pts),
+      holes: measure.holes?.map(ring),
+    };
+  }
+  if (measure.pts.length < 2) return null;
+  const [a, b] = measure.pts;
+  const rows = [a.y * height, b.y * height].sort((x, y) => x - y);
+  const cols = [a.x * width, b.x * width].sort((x, y) => x - y);
+  return {
+    kind: measure.kind === "ellipse" ? "ellipse" : "rect",
+    bounds: [rows[0], cols[0], rows[1], cols[1]],
+  };
+}
+
+export function regionShapeToMeasure(
+  shape: RegionShape,
+  width: number,
+  height: number,
+): Omit<Measure, "id"> | null {
+  if (width <= 0 || height <= 0) return null;
+  const point = ([row, col]: [number, number]) => ({
+    x: col / width,
+    y: row / height,
+  });
+  if (shape.kind === "polygon") {
+    return {
+      kind: "polygon",
+      pts: shape.outline.map(point),
+      holes: shape.holes?.map((ring) => ring.map(point)),
+    };
+  }
+  if (shape.kind === "circle" || shape.holes?.length) return null;
+  const [r0, c0, r1, c1] = shape.bounds;
+  return {
+    kind: shape.kind === "ellipse" ? "ellipse" : "roi",
+    pts: [point([r0, c0]), point([r1, c1])],
+  };
+}
+
+export function regionShapeSummary(shape: RegionShape): string {
+  if (shape.kind === "polygon") {
+    const holes = shape.holes?.length ?? 0;
+    return `${shape.outline.length} vertices${holes ? ` · ${holes} hole${holes === 1 ? "" : "s"}` : ""}`;
+  }
+  if (shape.kind === "circle") return "circle";
+  return shape.kind === "ellipse" ? "ellipse bounds" : "rectangle bounds";
+}
 
 export function regionVisibilityKey(setId: string, regionId: string): string {
   return JSON.stringify([setId, regionId]);
