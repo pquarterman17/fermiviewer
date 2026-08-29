@@ -49,4 +49,43 @@ describe("resultsReportHtml", () => {
     expect(html).toContain("review &lt;this&gt;");
     expect(html).not.toContain("<A>");
   });
+
+  it("renders failure, degraded storage, units, and timestamps explicitly", () => {
+    const changed: ResultsReport = { ...REPORT, results: [{
+      ...REPORT.results[0], status: "failed", error: "fit failed", missing_members: ["arrays/lost.npy"],
+      outputs: [
+        { kind: "scalar", name: "count", data: { value: 123456789, unit: "" }, caption: "Count caption" },
+        { kind: "table", name: "composition", data: { columns: ["atomic_pct", "ratio"], units: ["at%", ""], dimensionless: true }, values: [[12.5, null]], values_inlined: true },
+        { kind: "curve", name: "lost", member: "arrays/lost.npy", values: null, values_inlined: false, shape: null, dtype: null },
+      ],
+    }] };
+    const html = resultsReportHtml(changed, {
+      title: "Report", note: "", sourceNames: {}, outputNamesByResult: { r1: ["count", "composition", "lost"] },
+      includeMethods: false, includeCalibration: false, includeWarnings: false,
+    });
+    expect(html).toContain("FAILED</strong> — fit failed");
+    expect(html).toContain("DEGRADED");
+    expect(html).toContain("123456789");
+    expect(html).toContain("unit not recorded");
+    expect(html).toContain("atomic_pct<small>at%</small>");
+    expect(html).toContain("ratio<small>dimensionless</small>");
+    expect(html).toContain("not finite</td>");
+    expect(html).toContain("missing or unreadable");
+    expect(html).toContain("2026-08-28T11:00:00.000Z");
+    expect(html).toContain("Result r1");
+    expect(html).toContain("Count caption");
+  });
+
+  it("distinguishes empty inline data from a cited project member", () => {
+    const changed: ResultsReport = { ...REPORT, results: [{ ...REPORT.results[0], outputs: [
+      { kind: "table", name: "empty", values: [], values_inlined: true, shape: [0, 2], dtype: "float64" },
+      { kind: "fit", name: "large_fit", member: "arrays/fit.npy", values: null, values_inlined: false, shape: [5000, 2], dtype: "float64" },
+    ] }] };
+    const html = resultsReportHtml(changed, {
+      title: "Report", note: "", sourceNames: {}, outputNamesByResult: { r1: ["empty", "large_fit"] },
+      includeMethods: false, includeCalibration: false, includeWarnings: false,
+    });
+    expect(html).toContain("0 rows were recorded");
+    expect(html).toContain("cited as project member arrays/fit.npy (5000 × 2, float64)");
+  });
 });

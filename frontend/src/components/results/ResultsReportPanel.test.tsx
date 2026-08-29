@@ -38,17 +38,22 @@ describe("ResultsReportPanel", () => {
 
   it("uses output selections in the generated document and exports both formats", async () => {
     render(<ResultsReportPanel results={RESULTS} nameOf={(id) => `${id}.dm4`} />);
-    const outputChecks = screen.getAllByRole("checkbox", { name: /lengthscalar/ });
-    fireEvent.click(outputChecks[0]);
     fireEvent.click(screen.getByRole("button", { name: "Build report preview" }));
     const frame = await screen.findByTitle("Analysis report preview");
-    expect(frame.getAttribute("srcdoc")).not.toContain("<div>10<small>");
+    expect(frame.getAttribute("srcdoc")).toContain("<div>10<small>");
     expect(frame.getAttribute("srcdoc")).toContain("<div>20<small>");
 
     fireEvent.click(screen.getByRole("button", { name: "Export HTML" }));
     expect(downloadText).toHaveBeenCalledWith("microscopy-analysis-report.html", expect.stringContaining("<!doctype html>"), "text/html");
     fireEvent.click(screen.getByRole("button", { name: "Manifest JSON" }));
     expect(downloadJson).toHaveBeenCalledWith("microscopy-analysis-report-manifest.json", expect.stringContaining('"version": 1'));
+  });
+
+  it("prevents a selected result from being exported without scientific outputs", () => {
+    render(<ResultsReportPanel results={RESULTS} nameOf={(id) => id} />);
+    fireEvent.click(screen.getAllByRole("checkbox", { name: /lengthscalar/ })[0]);
+    expect(screen.getByText("Select at least one scientific output for every included result.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Build report preview" })).toBeDisabled();
   });
 
   it("disables report generation when the selection is empty", () => {

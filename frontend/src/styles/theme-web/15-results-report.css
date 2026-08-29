@@ -200,6 +200,13 @@
   margin-top: 10px;
 }
 
+.fvd-report-limit-note {
+  margin: 8px 0 0;
+  color: var(--capture);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
 .fvd-report-preview > header > div:last-child {
   display: flex;
   flex-wrap: wrap;

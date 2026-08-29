@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { buildPersistedResultsReport, type PersistedResultRecord, type ResultsReport } from "../../lib/api";
 import { resultsReportHtml } from "../../lib/reportDocument";
@@ -28,11 +28,26 @@ export default function ResultsReportPanel({ results, nameOf }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const previewRef = useRef<HTMLIFrameElement>(null);
+  const availableKey = available.map((result) => result.id).join("\u0000");
+
+  useEffect(() => {
+    setOutputNames((current) => {
+      const next = { ...current };
+      for (const result of available) {
+        if (!(result.id in next)) next[result.id] = (result.outputs ?? []).map((output) => output.name);
+      }
+      return next;
+    });
+  // The joined key updates only when the inventory changes, not on every render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableKey]);
 
   const byId = useMemo(() => new Map(results.map((result) => [result.id, result])), [results]);
   const selected = selectedIds.map((id) => byId.get(id)).filter(
     (result): result is PersistedResultRecord => Boolean(result),
   );
+  const hasOutputForEveryResult = selected.every((result) =>
+    (outputNames[result.id] ?? (result.outputs ?? []).map((output) => output.name)).length > 0);
   const sourceNames = useMemo(() => Object.fromEntries(results.flatMap((result) =>
     (result.source_ids ?? []).map((id) => [id, nameOf(id)]))), [nameOf, results]);
   const html = useMemo(() => report ? resultsReportHtml(report, {
@@ -88,7 +103,7 @@ export default function ResultsReportPanel({ results, nameOf }: Props) {
         <label><input type="checkbox" checked={includeWarnings} onChange={(event) => setIncludeWarnings(event.target.checked)} />Review notes</label>
       </div>
       <div className="fvd-report-selection-actions">
-        <button className="fvd-btn" onClick={() => { setSelectedIds(available.map((result) => result.id)); setReport(null); }}>Select all</button>
+        <button className="fvd-btn" onClick={() => { setSelectedIds(available.filter((result) => result.status === "completed").map((result) => result.id)); setReport(null); }}>Select all completed</button>
         <button className="fvd-btn" onClick={() => { setSelectedIds([]); setReport(null); }}>Clear</button>
       </div>
       <div className="fvd-report-result-list">{available.map((result) => {
@@ -109,7 +124,9 @@ export default function ResultsReportPanel({ results, nameOf }: Props) {
           </div>}
         </div>;
       })}</div>
-      <button className="fvd-btn primary fvd-report-build" disabled={selected.length === 0 || busy} onClick={() => void build()}>
+      {results.length > 200 && <p className="fvd-report-limit-note" role="status">Showing the newest 200 of {results.length} saved results, matching the report limit. Filter or remove older records before reporting them.</p>}
+      {!hasOutputForEveryResult && selected.length > 0 && <p className="fvd-report-limit-note" role="alert">Select at least one scientific output for every included result.</p>}
+      <button className="fvd-btn primary fvd-report-build" disabled={selected.length === 0 || !hasOutputForEveryResult || busy} onClick={() => void build()}>
         {busy ? "Building preview…" : "Build report preview"}</button>
       {error && <div className="fvd-result-message failed" role="alert"><strong>Report unavailable</strong><span>{error}</span></div>}
     </section>
