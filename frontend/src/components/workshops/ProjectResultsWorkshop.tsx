@@ -4,10 +4,12 @@ import type { PersistedResultRecord } from "../../lib/api";
 import { openPersistedResult, refreshPersistedResults, rerunPersistedResult } from "../../lib/persistedResultActions";
 import { useViewer } from "../../store/viewer";
 import PersistedResultCard from "../results/PersistedResultCard";
+import ResultsComparePanel from "../results/ResultsComparePanel";
 
 type Scope = "all" | "active";
 type GroupBy = "time" | "sample" | "source" | "analysis";
 type ResultAction = "reopen" | "rerun" | "duplicate";
+type WorkspaceView = "browse" | "compare";
 
 const timeOf = (result: PersistedResultRecord): number => {
   const parsed = Date.parse(result.created_at);
@@ -31,6 +33,7 @@ export default function ProjectResultsWorkshop() {
   const [analysis, setAnalysis] = useState("all");
   const [status, setResultStatus] = useState("all");
   const [groupBy, setGroupBy] = useState<GroupBy>("time");
+  const [view, setView] = useState<WorkspaceView>("browse");
   const [busy, setBusy] = useState<{ id: string; action: ResultAction } | null>(null);
   const nameOf = (id: string): string => images[id]?.name ?? unavailable[id]?.name ?? id;
   const analyses = useMemo(() => [...new Set(results.map((r) => r.analysis))].sort(), [results]);
@@ -101,6 +104,13 @@ export default function ProjectResultsWorkshop() {
         <p>Find, inspect and reproduce saved analyses without losing their source, settings or calibration context.</p></div>
       <div className="fvd-project-results-count" aria-label={`${results.length} saved results`}><strong>{results.length}</strong><span>saved</span></div>
     </div>
+    {results.length > 0 && <nav className="fvd-results-view-nav" aria-label="Results workspace views">
+      <button className={view === "browse" ? "active" : ""} aria-current={view === "browse" ? "page" : undefined}
+        onClick={() => setView("browse")}><span>Browse</span><small>Inspect &amp; reproduce</small></button>
+      <button className={view === "compare" ? "active" : ""} aria-current={view === "compare" ? "page" : undefined}
+        onClick={() => setView("compare")}><span>Compare</span><small>Outputs &amp; calibration</small></button>
+    </nav>}
+    {view === "compare" && results.length > 0 ? <ResultsComparePanel results={results} nameOf={nameOf} /> : <>
     {results.length > 0 && <div className="fvd-project-results-toolbar" aria-label="Result filters">
       <div className="fvd-results-filter-row"><div className="fvd-seg">
         <button className={`fvd-seg-btn${scope === "all" ? " active" : ""}`} aria-pressed={scope === "all"} onClick={() => setScope("all")}>All</button>
@@ -127,5 +137,6 @@ export default function ProjectResultsWorkshop() {
             busyAction={busy?.id === result.id ? busy.action : null} />)}
         </section>;
       })}</div>}
+    </>}
   </section>;
 }
