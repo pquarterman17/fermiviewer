@@ -1,0 +1,253 @@
+/* Item 2C report composition and print-preview shell. The report document
+   itself owns isolated paper/print styles inside its iframe. */
+.fvd-report-workspace {
+  display: grid;
+  gap: 12px;
+}
+
+.fvd-report-builder,
+.fvd-report-preview {
+  padding: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface-2) 82%, transparent);
+}
+
+.fvd-report-builder > header,
+.fvd-report-preview > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fvd-report-builder h3,
+.fvd-report-preview h3 {
+  margin: 3px 0 0;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.fvd-report-builder > header > span {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.fvd-report-fields {
+  display: grid;
+  grid-template-columns: minmax(180px, .8fr) minmax(220px, 1.2fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.fvd-report-fields label {
+  display: grid;
+  gap: 4px;
+  color: var(--text-faint);
+  font-size: 9px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.fvd-report-fields textarea {
+  min-height: 48px;
+  resize: vertical;
+}
+
+.fvd-report-option-row,
+.fvd-report-selection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.fvd-report-option-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.fvd-report-selection-actions {
+  gap: 5px;
+  padding-top: 9px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.fvd-report-result-list {
+  display: grid;
+  gap: 5px;
+  max-height: 410px;
+  margin-top: 8px;
+  overflow-y: auto;
+}
+
+.fvd-report-result {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px 10px;
+  padding: 8px 9px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+
+.fvd-report-result.selected {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+}
+
+.fvd-report-result-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fvd-report-result-main > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.fvd-report-result-main strong,
+.fvd-report-result-main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fvd-report-result-main strong {
+  color: var(--text);
+  font-size: 11px;
+}
+
+.fvd-report-result-main small {
+  color: var(--text-faint);
+  font-size: 9px;
+  text-transform: capitalize;
+}
+
+.fvd-report-order {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.fvd-report-order span {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.fvd-report-order button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-dim);
+}
+
+.fvd-report-order button:disabled {
+  opacity: .35;
+}
+
+.fvd-report-outputs {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 7px 0 0 25px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.fvd-report-outputs label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-size: 9px;
+  text-transform: capitalize;
+}
+
+.fvd-report-outputs span {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.fvd-report-outputs small {
+  color: var(--text-faint);
+  font-size: 8px;
+}
+
+.fvd-report-build {
+  width: 100%;
+  margin-top: 10px;
+}
+
+.fvd-report-limit-note {
+  margin: 8px 0 0;
+  color: var(--capture);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.fvd-report-preview > header > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.fvd-report-manifest-note {
+  margin: 9px 0;
+  color: var(--text-faint);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.fvd-report-frame {
+  width: 100%;
+  height: 620px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: white;
+}
+
+@media (max-width: 680px) {
+  .fvd-results-view-nav small {
+    display: none;
+  }
+
+  .fvd-report-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .fvd-report-preview > header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .fvd-report-preview > header > div:last-child {
+    justify-content: flex-start;
+  }
+
+  .fvd-report-frame {
+    height: 520px;
+  }
+}
