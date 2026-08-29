@@ -58,7 +58,7 @@ import json
 import zipfile
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import IO, Any
 
 import numpy as np
 
@@ -74,6 +74,7 @@ __all__ = [
     "ResultArchive",
     "build_archive",
     "archive_bytes",
+    "write_archive",
 ]
 
 #: Layout version for the ARCHIVE — which entries exist and where. Bumped
@@ -208,8 +209,8 @@ def _entry(name: str) -> zipfile.ZipInfo:
     return info
 
 
-def archive_bytes(archive: ResultArchive) -> bytes:
-    """Serialize `archive` to ZIP bytes — deterministic for the same input.
+def write_archive(archive: ResultArchive, dest: IO[bytes]) -> None:
+    """Serialize `archive` into `dest` — deterministic for the same input.
 
     Entries are written in a fixed order (manifest, readme, methods, then
     arrays in record and output order) so two exports of one selection are
@@ -221,9 +222,16 @@ def archive_bytes(archive: ResultArchive) -> bytes:
     `bytes` would defeat the reason the project writer streams. Hence
     `force_zip64`, since the compressed size is unknown when the entry
     header goes down.
+
+    `dest` is any writable binary file — the CALLER chooses where the
+    archive accumulates, which is the half of "bounded memory" this
+    function cannot decide for itself. Streaming each array into its entry
+    only avoids one array-sized copy; the archive still has to go
+    somewhere, so a caller exporting the multi-gigabyte payloads named
+    above should pass a spooled or on-disk file rather than an in-memory
+    buffer. `routes/results_api.py` does.
     """
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr(
             _entry(MANIFEST_NAME),
             json.dumps(archive.manifest, indent=2).encode("utf-8"),
@@ -234,6 +242,19 @@ def archive_bytes(archive: ResultArchive) -> bytes:
             for output in record.outputs:
                 if output.member is None or output.array is None:
                     continue
-                with zf.open(_entry(output.member), "w", force_zip64=True) as dest:
-                    np.save(dest, output.array, allow_pickle=False)
+                with zf.open(_entry(output.member), "w", force_zip64=True) as entry:
+                    np.save(entry, output.array, allow_pickle=False)
+
+
+def archive_bytes(archive: ResultArchive) -> bytes:
+    """The whole archive as one `bytes`.
+
+    A convenience for callers that already hold the payload in memory and
+    want the bytes — tests, and anything comparing two archives. It costs
+    a full in-memory copy of the archive, so it is NOT what an export
+    endpoint should use: see `write_archive` and the spooled file in
+    `routes/results_api.py`.
+    """
+    buf = io.BytesIO()
+    write_archive(archive, buf)
     return buf.getvalue()

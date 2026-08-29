@@ -16,9 +16,12 @@ naming the member, never invented zeros.
 
 from __future__ import annotations
 
-from typing import Any
+import tempfile
+from collections.abc import Iterator
+from typing import IO, Any
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from fermiviewer import __version__
@@ -27,7 +30,7 @@ from fermiviewer.io.project_results import ResultRecord
 from fermiviewer.io.project_sections import finite_json
 from fermiviewer.project_session import project
 from fermiviewer.results_compare import compare_results
-from fermiviewer.results_export import archive_bytes, build_archive
+from fermiviewer.results_export import build_archive, write_archive
 from fermiviewer.results_report import build_report, bundle_payload
 from fermiviewer.routes._project_adapter import results_payload
 from fermiviewer.routes.export_table import _safe_filename
@@ -35,11 +38,35 @@ from fermiviewer.routes.export_table import _safe_filename
 router = APIRouter(prefix="/api")
 
 
+#: Archive bytes held in RAM before the spool rolls to a temp file. 32 MiB
+#: covers an ordinary selection outright; past it the cost of a disk file
+#: is much cheaper than the alternative, which is the whole ZIP resident.
+SPOOL_MAX_BYTES = 32 << 20
+
+#: Read size when draining the spool to the client.
+_CHUNK_BYTES = 1 << 20
+
+
 def _safe_zip_name(filename: str | None) -> str:
     """The repo's one download-name sanitiser, with the extension forced to
     `.zip` — reused rather than re-derived so the latin-1 header hazard it
     documents stays fixed in one place."""
     return _safe_filename(filename, "zip")
+
+
+def _drain(spool: IO[bytes]) -> Iterator[bytes]:
+    """Yield the spooled archive in chunks, closing it however we leave.
+
+    `finally` rather than a plain close at the end: a client that
+    disconnects mid-download causes the generator to be closed rather than
+    exhausted, and a spool that rolled to disk would otherwise leak its
+    temp file for the life of the process.
+    """
+    try:
+        while chunk := spool.read(_CHUNK_BYTES):
+            yield chunk
+    finally:
+        spool.close()
 
 
 def _record(result_id: str) -> ResultRecord:
@@ -197,7 +224,7 @@ class ExportRequest(ReportRequest):
 
 
 @router.post("/results/export")
-def results_export(req: ExportRequest) -> Response:
+def results_export(req: ExportRequest) -> StreamingResponse:
     """The selected records as a SELF-CONTAINED archive (item 2's last box).
 
     `/results/report` returns a manifest whose `member` citations point
@@ -223,8 +250,22 @@ def results_export(req: ExportRequest) -> Response:
         # A malformed selection is the caller's 422, not a 500 — and it is
         # caught before any bytes are produced, so no half-written download.
         raise HTTPException(422, f"cannot export this selection: {exc}") from None
-    return Response(
-        content=archive_bytes(archive),
+
+    # The archive accumulates in a SPOOLED file, not a `BytesIO`: an
+    # ordinary export stays in RAM, but a selection carrying elemental-map
+    # stacks or spectrum cubes — the payloads this endpoint exists to make
+    # portable — rolls to disk instead of holding the whole ZIP, and a
+    # second copy of it, in memory. `write_archive` streams each array into
+    # its entry; this is the other half of keeping the endpoint bounded.
+    spool = tempfile.SpooledTemporaryFile(max_size=SPOOL_MAX_BYTES)
+    try:
+        write_archive(archive, spool)
+        spool.seek(0)
+    except BaseException:
+        spool.close()
+        raise
+    return StreamingResponse(
+        _drain(spool),
         media_type="application/zip",
         headers={
             "Content-Disposition":

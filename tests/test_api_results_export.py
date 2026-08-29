@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import json
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -18,11 +19,17 @@ import pytest
 from fastapi.testclient import TestClient
 
 from fermiviewer.project_session import project
+from fermiviewer.routes import results_api
 from fermiviewer.server import create_app
 from fermiviewer.session import store
 from fixtures.minidm4 import write_mini_dm4
 
 pytestmark = [pytest.mark.api]
+
+#: The pristine class, captured before any test patches it — two patches
+#: in one test would otherwise stack, the second wrapping the first and
+#: silently ignoring its own max_size.
+_REAL_SPOOL = tempfile.SpooledTemporaryFile
 
 
 @pytest.fixture()
@@ -137,3 +144,72 @@ def test_the_default_filename_is_used_when_none_is_given(client, tmp_path) -> No
     result_id = _profile(client, _image(client, tmp_path))
     response = client.post("/api/results/export", json={"result_ids": [result_id]})
     assert 'filename="results.zip"' in response.headers["content-disposition"]
+
+
+def _spy_spools(monkeypatch, max_size: int) -> list:
+    """Replace the route's spool factory so the test can see whether the
+    archive actually rolled to disk, instead of trusting a threshold.
+
+    Worth the indirection: `SpooledTemporaryFile(max_size=0)` never rolls
+    (`_check` tests `if self._max_size and ...`), so a test that merely set
+    the threshold to zero would assert nothing about the disk path while
+    appearing to cover it.
+    """
+    made = []
+
+    def factory(*args, **kwargs):
+        spool = _REAL_SPOOL(max_size=max_size)
+        made.append(spool)
+        return spool
+
+    monkeypatch.setattr(results_api.tempfile, "SpooledTemporaryFile", factory)
+    return made
+
+
+def test_the_archive_rolls_to_disk_rather_than_holding_the_whole_zip(
+    client, tmp_path, monkeypatch
+) -> None:
+    """The endpoint must not accumulate the whole ZIP in RAM — the payloads
+    it exists to make portable are elemental-map stacks and spectrum cubes.
+
+    A 1-byte threshold forces the rolled path for any real archive, and the
+    spy asserts the roll HAPPENED rather than inferring it from the config.
+    """
+    made = _spy_spools(monkeypatch, max_size=1)
+    result_id = _profile(client, _image(client, tmp_path))
+    response = client.post("/api/results/export", json={"result_ids": [result_id]})
+
+    assert response.status_code == 200
+    (spool,) = made
+    assert spool._rolled is True                      # actually went to disk
+    zf = _archive(response)
+    assert zf.testzip() is None                       # and came back intact
+    manifest = json.loads(zf.read("manifest.json"))
+    assert manifest["results"][0]["id"] == result_id
+
+
+def test_a_rolled_export_matches_an_in_memory_one_array_for_array(
+    client, tmp_path, monkeypatch
+) -> None:
+    """Rolling to disk is a memory decision, not a format one: the download
+    a user gets must not depend on which side of the threshold it fell."""
+    result_id = _profile(client, _image(client, tmp_path))
+    body = {"result_ids": [result_id]}
+
+    kept = _spy_spools(monkeypatch, max_size=1 << 30)          # stays in RAM
+    in_memory = client.post("/api/results/export", json=body).content
+    assert kept[0]._rolled is False
+
+    rolled = _spy_spools(monkeypatch, max_size=1)              # rolls to disk
+    spooled = client.post("/api/results/export", json=body).content
+    assert rolled[-1]._rolled is True
+
+    # `generated_at` differs between the two calls, so compare the entry
+    # names and every array — the parts a spill could plausibly corrupt.
+    a = zipfile.ZipFile(io.BytesIO(in_memory))
+    b = zipfile.ZipFile(io.BytesIO(spooled))
+    assert a.namelist() == b.namelist()
+    assert any(n.endswith(".npy") for n in a.namelist())
+    for name in a.namelist():
+        if name.endswith(".npy"):
+            assert a.read(name) == b.read(name)
