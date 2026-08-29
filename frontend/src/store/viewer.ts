@@ -62,6 +62,12 @@ export const useViewer = create<ViewerState>((set, get) => ({
   unavailable: {},
   persistedResults: [],
   regions: { schema: 1, classes: [], sets: [] },
+  regionUi: {
+    selectedSetId: null,
+    selectedRegionId: null,
+    hiddenSetIds: [],
+    hiddenRegionKeys: [],
+  },
   selected: [],
   listView: "thumbs",
   compareSet: null,

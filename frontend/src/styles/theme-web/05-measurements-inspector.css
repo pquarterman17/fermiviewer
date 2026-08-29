@@ -231,6 +231,95 @@
   padding-top: var(--pad);
 }
 
+/* ── canonical analysis-region workspace (roadmap 4B) ── */
+.fvd-region-intro,
+.fvd-region-empty,
+.fvd-region-row-main {
+  display: flex;
+  flex-direction: column;
+}
+
+.fvd-region-intro {
+  gap: 2px;
+  margin-bottom: var(--pad);
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+}
+
+.fvd-region-muted,
+.fvd-region-row-main > span,
+.fvd-region-list-empty {
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.fvd-region-empty {
+  align-items: center;
+  gap: 6px;
+  padding: 14px 10px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+.fvd-region-empty strong { color: var(--text-dim); }
+.fvd-region-empty-icon { color: var(--accent); font-size: 25px; line-height: 1; }
+.fvd-region-primary { flex: none; padding-inline: 12px; border-color: var(--accent); color: var(--accent-text); }
+
+.fvd-region-toolbar,
+.fvd-region-name-field,
+.fvd-region-row,
+.fvd-region-class-row,
+.fvd-region-class-add {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.fvd-region-toolbar select,
+.fvd-region-name-field input,
+.fvd-region-row input,
+.fvd-region-row select,
+.fvd-region-class-row input:not([type="color"]),
+.fvd-region-class-add input:not([type="color"]) {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+}
+
+.fvd-region-toolbar select { flex: 1; height: 27px; }
+.fvd-region-eye { width: 22px; padding: 0; border: 0; background: transparent; color: var(--text-faint); }
+.fvd-region-eye[aria-pressed="true"] { color: var(--accent); }
+.fvd-region-danger:hover { color: var(--danger, #ef4444); }
+
+.fvd-region-name-field { margin: 7px 0; }
+.fvd-region-name-field span { width: 54px; color: var(--text-faint); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
+.fvd-region-name-field input { flex: 1; padding: 4px 6px; }
+
+.fvd-region-list { display: flex; flex-direction: column; gap: 3px; }
+.fvd-region-list-empty { padding: 9px 6px; text-align: center; border-radius: var(--radius-sm); background: var(--surface-1); }
+.fvd-region-row { padding: 5px 3px; border: 1px solid transparent; border-radius: var(--radius-sm); }
+.fvd-region-row:hover { background: var(--surface-3); }
+.fvd-region-row.selected { border-color: var(--accent); background: var(--accent-soft); }
+.fvd-region-swatch { width: 7px; height: 22px; flex: 0 0 7px; border-radius: 4px; }
+.fvd-region-row-main { flex: 1; min-width: 60px; gap: 1px; }
+.fvd-region-row-main input { width: 100%; padding: 1px 3px; border-color: transparent; background: transparent; }
+.fvd-region-row-main input:focus { border-color: var(--accent); background: var(--surface-2); }
+.fvd-region-row select { width: 76px; padding: 2px; color: var(--text-dim); }
+
+.fvd-region-classes { margin-top: 8px; border-top: 1px solid var(--border-soft); padding-top: 7px; }
+.fvd-region-classes > summary { color: var(--text-faint); font-size: var(--font-size-sm); cursor: default; }
+.fvd-region-classes > summary span { margin-left: 4px; font-family: var(--font-mono); }
+.fvd-region-class-list { display: flex; flex-direction: column; gap: 4px; margin-top: 7px; }
+.fvd-region-class-row input:not([type="color"]), .fvd-region-class-add input:not([type="color"]) { flex: 1; padding: 3px 5px; }
+.fvd-region-class-row input[type="color"], .fvd-region-class-add input[type="color"] { width: 24px; height: 24px; padding: 1px; border: 0; background: transparent; }
+.fvd-region-class-add { margin-top: 5px; }
+
 /* Aggregate measurement statistics summary (displayMeasurementStats port) */
 .fvd-mstats-summary {
   border-top: 1px solid var(--border-soft);
@@ -344,4 +433,3 @@
 .fvd-swatch.active {
   border-color: var(--accent);
 }
-

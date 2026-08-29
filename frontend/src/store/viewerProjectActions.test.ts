@@ -99,6 +99,12 @@ const PARTIAL_LOAD: ProjectLoadResponse = {
     measures: {
       gone: [{ id: "m1", kind: "polygon", pts: [{ x: 0.1, y: 0.2 }] }],
     },
+    regionUi: {
+      selectedSetId: "set-1",
+      selectedRegionId: null,
+      hiddenSetIds: ["set-1", "stale-set"],
+      hiddenRegionKeys: ['["stale-set","stale-region"]'],
+    },
   },
 };
 
@@ -126,6 +132,12 @@ describe("openProject", () => {
     expect(s.status).toContain("1 unavailable");
     expect(s.persistedResults.map((result) => result.id)).toEqual(["result-1"]);
     expect(s.regions.sets.map((set) => set.id)).toEqual(["set-1"]);
+    expect(s.regionUi).toEqual({
+      selectedSetId: "set-1",
+      selectedRegionId: null,
+      hiddenSetIds: ["set-1"],
+      hiddenRegionKeys: [],
+    });
   });
 
   it("keeps pointing at the session's project, not the file just read", async () => {
@@ -222,6 +234,12 @@ describe("saveProject", () => {
       },
     ]);
     expect(sent.measures).toHaveProperty("gone");
+    expect(sent.regionUi).toEqual({
+      selectedSetId: "set-1",
+      selectedRegionId: null,
+      hiddenSetIds: ["set-1"],
+      hiddenRegionKeys: [],
+    });
   });
 });
 

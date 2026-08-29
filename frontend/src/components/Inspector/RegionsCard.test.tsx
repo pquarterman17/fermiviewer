@@ -76,7 +76,7 @@ describe("RegionsCard", () => {
 
   it("shows the empty-state note when the image has no regions", () => {
     render(<RegionsCard />);
-    expect(screen.getByText("Regions")).toBeInTheDocument();
+    expect(screen.getByText("Region Measurements")).toBeInTheDocument();
     expect(
       screen.getByText(/No regions drawn yet/),
     ).toBeInTheDocument();

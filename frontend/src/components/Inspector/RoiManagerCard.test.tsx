@@ -68,7 +68,7 @@ describe("RoiManagerCard", () => {
 
   it("renders empty list and enables Save when an roi is selected", () => {
     render(<RoiManagerCard />);
-    expect(screen.getByText("ROI Manager")).toBeInTheDocument();
+    expect(screen.getByText("Saved ROIs")).toBeInTheDocument();
     expect(screen.getByText("No saved ROIs yet.")).toBeInTheDocument();
     const btn = screen.getByRole("button", { name: /save/i });
     expect(btn).not.toBeDisabled();
