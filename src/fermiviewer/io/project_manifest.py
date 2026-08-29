@@ -42,8 +42,9 @@ from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 
 if TYPE_CHECKING:
     # Import-time would be circular: project_results builds on the helpers
-    # and error type defined here.
+    # and error type defined here. regions_model likewise.
     from fermiviewer.io.project_results import ResultRecord
+    from fermiviewer.io.regions_model import RegionClass, RegionSet
 
 __all__ = [
     "FORMAT_MAGIC",
@@ -99,6 +100,7 @@ MANIFEST_KEYS = frozenset(
         "samples",
         "measures",
         "results",
+        "regions",
         "ui_state",
     }
 )
@@ -233,6 +235,12 @@ class LoadedProject:
     samples: tuple[dict[str, Any], ...] = ()
     measures: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     results: tuple[ResultRecord, ...] = ()
+    #: Named region sets and the class vocabulary they draw on (ADR 0006).
+    #: Two fields, one manifest section: `regions` carries both, since the
+    #: classes are the sets' vocabulary and splitting them across two
+    #: top-level keys would double the wiring for no reader's benefit.
+    region_sets: tuple[RegionSet, ...] = ()
+    region_classes: tuple[RegionClass, ...] = ()
     ui_state: dict[str, Any] = field(default_factory=dict)
     payload_mode: str = "light"
     data_root_hint: str | None = None

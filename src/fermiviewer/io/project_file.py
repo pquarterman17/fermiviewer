@@ -91,6 +91,7 @@ from fermiviewer.io.project_v1 import V1_SUFFIXES, load_v1_as_project
 # names in this module's own signature space, and shadowing either helper with
 # one would be silent.
 from fermiviewer.io import project_paths as paths  # isort: skip
+from fermiviewer.io import regions_model  # isort: skip
 from fermiviewer.io import project_resolve as resolving  # isort: skip
 
 __all__ = [
@@ -123,6 +124,8 @@ def save_project(
     samples: Sequence[Mapping[str, Any]] | None = None,
     measures: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
     results: Sequence[ResultRecord] | None = None,
+    region_sets: Sequence[regions_model.RegionSet] | None = None,
+    region_classes: Sequence[regions_model.RegionClass] | None = None,
     ui_state: Mapping[str, Any] | None = None,
     data_root: str | Path | None = None,
     primary_param: str | None = None,
@@ -182,6 +185,9 @@ def save_project(
             str(k): [dict(m) for m in v] for k, v in (measures or {}).items()
         },
         "results": results_to_manifest(prepared_results),
+        "regions": regions_model.regions_to_manifest(
+            region_sets or (), region_classes or ()
+        ),
         "ui_state": dict(ui_state or {}),
     }
     merge_extra(manifest, unknown_keys or {}, MANIFEST_KEYS)
@@ -355,6 +361,9 @@ def load_project(path: str | Path) -> LoadedProject:
             f"{project.name} is not a readable .fvp ZIP container: {exc}"
         ) from None
 
+    # Outside the `with`: region geometry is inline in the manifest, so
+    # unlike results it needs no member read from the open container.
+    regions = regions_model.load_regions(manifest.get("regions"))
     return LoadedProject(
         images=images,
         samples=tuple(dict(s) for s in manifest.get("samples") or ()),
@@ -363,6 +372,8 @@ def load_project(path: str | Path) -> LoadedProject:
             for k, v in (manifest.get("measures") or {}).items()
         },
         results=results,
+        region_sets=regions.sets,
+        region_classes=regions.classes,
         ui_state=dict(manifest.get("ui_state") or {}),
         payload_mode=str(manifest["payload_mode"]),
         data_root_hint=manifest.get("data_root_hint"),

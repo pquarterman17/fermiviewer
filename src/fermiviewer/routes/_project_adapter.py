@@ -41,8 +41,9 @@ from fermiviewer.io.project_file import (
 from fermiviewer.io.project_manifest import LoadedProject, ProjectImage
 from fermiviewer.io.project_results import ResultRecord, results_to_manifest
 from fermiviewer.io.project_sections import join_sections, split_client_state
+from fermiviewer.io.regions_model import regions_to_manifest
 from fermiviewer.models import ImageMeta
-from fermiviewer.project_session import project
+from fermiviewer.project_session import OpenProject, project
 from fermiviewer.session import store
 
 __all__ = [
@@ -141,8 +142,24 @@ def load_into_session(path: str | Path, *, replace: bool = True) -> dict[str, An
         # references only, never the arrays. Session-wide for the same
         # reason `unavailable` is (ADR 0004).
         "results": results_payload(project.current().results),
+        # Named region sets and the class vocabulary they use (ADR 0006).
+        # Session-wide like `results`, and in the canonical 0-based
+        # (row, col) inclusive form — NOT the normalized 0-1 (x, y) that
+        # `measures` speaks, which is why they are a separate key rather
+        # than folded in beside the annotations.
+        "regions": regions_payload(project.current()),
         "project": _project_info(loaded),
     }
+
+
+def regions_payload(state: OpenProject) -> dict[str, Any]:
+    """The `regions` section in exactly its manifest form.
+
+    Reuses `regions_to_manifest` rather than re-deriving a wire shape, so
+    the browser and the `.fvp` cannot drift into two spellings of one
+    region — the failure this whole item exists to remove.
+    """
+    return regions_to_manifest(state.region_sets, state.region_classes)
 
 
 def results_payload(records: tuple[ResultRecord, ...]) -> list[dict[str, Any]]:
@@ -172,6 +189,7 @@ def _project_info(loaded: LoadedProject) -> dict[str, Any]:
         "primary_param": state.primary_param,
         "n_unavailable": len(state.placeholders),
         "n_results": len(state.results),
+        "n_region_sets": len(state.region_sets),
         # The one field that describes the FILE rather than the session, so an
         # append load can still say what it just read.
         "loaded_payload_mode": loaded.payload_mode,
@@ -212,6 +230,11 @@ def save_current(
         # Server-carried, like placeholders: results survive a save even
         # when the client never mentions them (ADR 0004).
         results=state.results,
+        # Server-carried for the same reason (ADR 0006 §4): the client
+        # never echoes region sets back, so omitting them here would make
+        # every save through this route destroy the user's regions.
+        region_sets=state.region_sets,
+        region_classes=state.region_classes,
         ui_state=sections.ui_state,
         # See rule 2 in the module docstring.
         data_root=state.data_root_hint if placeholders else None,
@@ -227,6 +250,7 @@ def save_current(
         "n_images": len(entries),
         "n_unavailable": len(placeholders),
         "n_results": len(state.results),
+        "n_region_sets": len(state.region_sets),
         "dropped_samples": sections.dropped_samples,
         "dropped_measures": sections.dropped_measures,
     }

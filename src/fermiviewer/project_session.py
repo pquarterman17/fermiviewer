@@ -34,6 +34,7 @@ from fermiviewer.io import project_paths as paths
 from fermiviewer.io import project_resolve as resolving
 from fermiviewer.io.project_manifest import LoadedProject, ProjectImage
 from fermiviewer.io.project_results import ResultRecord
+from fermiviewer.io.regions_model import RegionClass, RegionSet
 
 __all__ = [
     "HashMismatch",
@@ -63,6 +64,12 @@ class OpenProject:
     #: same reason placeholders are: the client never echoes them back, so
     #: a re-save that forgot them would silently destroy recorded science.
     results: tuple[ResultRecord, ...] = ()
+    #: Named region sets and their class vocabulary (ADR 0006), carried for
+    #: exactly the same reason as `results`: the client does not echo them
+    #: back, so a re-save that forgot them would silently destroy the
+    #: regions a user drew.
+    region_sets: tuple[RegionSet, ...] = ()
+    region_classes: tuple[RegionClass, ...] = ()
 
     @property
     def project_dir(self) -> Path:
@@ -174,6 +181,8 @@ class ProjectSession:
                     unknown_keys=dict(loaded.unknown_keys),
                     placeholders=arriving,
                     results=loaded.results,
+                    region_sets=loaded.region_sets,
+                    region_classes=loaded.region_classes,
                 )
                 return
             known = {img.id for img in previous.placeholders}
@@ -181,6 +190,8 @@ class ProjectSession:
             # must not drop the first project's recorded results, and
             # re-loading the same file twice must not double them.
             known_results = {rec.id for rec in previous.results}
+            known_sets = {group.id for group in previous.region_sets}
+            known_classes = {entry.id for entry in previous.region_classes}
             extra = list(previous.extra_roots)
             for root in (loaded.data_root_hint, str(Path(path).parent)):
                 if root and root not in extra:
@@ -194,6 +205,14 @@ class ProjectSession:
                 results=(
                     *previous.results,
                     *(r for r in loaded.results if r.id not in known_results),
+                ),
+                region_sets=(
+                    *previous.region_sets,
+                    *(g for g in loaded.region_sets if g.id not in known_sets),
+                ),
+                region_classes=(
+                    *previous.region_classes,
+                    *(c for c in loaded.region_classes if c.id not in known_classes),
                 ),
                 extra_roots=tuple(extra),
             )
