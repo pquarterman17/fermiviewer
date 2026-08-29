@@ -146,24 +146,51 @@ def test_the_default_filename_is_used_when_none_is_given(client, tmp_path) -> No
     assert 'filename="results.zip"' in response.headers["content-disposition"]
 
 
-def _spy_spools(monkeypatch, max_size: int) -> list:
-    """Replace the route's spool factory so the test can see whether the
-    archive actually rolled to disk, instead of trusting a threshold.
+def _spy_spools(monkeypatch, max_size: int | None = None) -> tuple[list, list]:
+    """Replace the route's spool factory, recording both the spools made
+    and the `max_size` the ROUTE asked for.
 
-    Worth the indirection: `SpooledTemporaryFile(max_size=0)` never rolls
-    (`_check` tests `if self._max_size and ...`), so a test that merely set
-    the threshold to zero would assert nothing about the disk path while
-    appearing to cover it.
+    Two things are worth the indirection. `SpooledTemporaryFile(max_size=0)`
+    never rolls (`_check` tests `if self._max_size and ...`), so a test that
+    merely set the threshold to zero would assert nothing about the disk
+    path while appearing to cover it. And overriding `max_size` on every
+    call — which this helper used to do unconditionally — means the route's
+    own threshold is never exercised: the test then proves that
+    `SpooledTemporaryFile` rolls, which is stdlib behaviour, not that the
+    endpoint chose a bounded one. Pass `max_size=None` to let the route's
+    real value through.
     """
-    made = []
+    made: list = []
+    asked: list = []
 
     def factory(*args, **kwargs):
-        spool = _REAL_SPOOL(max_size=max_size)
+        asked.append(kwargs.get("max_size"))
+        spool = _REAL_SPOOL(
+            max_size=kwargs.get("max_size") if max_size is None else max_size
+        )
         made.append(spool)
         return spool
 
     monkeypatch.setattr(results_api.tempfile, "SpooledTemporaryFile", factory)
-    return made
+    return made, asked
+
+
+def test_the_endpoint_asks_for_a_bounded_spool(client, tmp_path, monkeypatch) -> None:
+    """The route's OWN threshold, which every other spool test overrides
+    and therefore cannot see. Without this, raising `SPOOL_MAX_BYTES` to
+    something effectively infinite — restoring exactly the unbounded-RAM
+    behaviour the spool was introduced to fix — leaves the suite green.
+    """
+    _, asked = _spy_spools(monkeypatch)
+    result_id = _profile(client, _image(client, tmp_path))
+    assert client.post(
+        "/api/results/export", json={"result_ids": [result_id]}
+    ).status_code == 200
+
+    assert asked == [results_api.SPOOL_MAX_BYTES]
+    # Bounded in both directions: large enough that an ordinary export is
+    # never pushed to disk, small enough that a real payload still rolls.
+    assert 1 << 20 <= results_api.SPOOL_MAX_BYTES <= 256 << 20
 
 
 def test_the_archive_rolls_to_disk_rather_than_holding_the_whole_zip(
@@ -175,7 +202,7 @@ def test_the_archive_rolls_to_disk_rather_than_holding_the_whole_zip(
     A 1-byte threshold forces the rolled path for any real archive, and the
     spy asserts the roll HAPPENED rather than inferring it from the config.
     """
-    made = _spy_spools(monkeypatch, max_size=1)
+    made, _ = _spy_spools(monkeypatch, max_size=1)
     result_id = _profile(client, _image(client, tmp_path))
     response = client.post("/api/results/export", json={"result_ids": [result_id]})
 
@@ -196,11 +223,11 @@ def test_a_rolled_export_matches_an_in_memory_one_array_for_array(
     result_id = _profile(client, _image(client, tmp_path))
     body = {"result_ids": [result_id]}
 
-    kept = _spy_spools(monkeypatch, max_size=1 << 30)          # stays in RAM
+    kept, _ = _spy_spools(monkeypatch, max_size=1 << 30)       # stays in RAM
     in_memory = client.post("/api/results/export", json=body).content
     assert kept[0]._rolled is False
 
-    rolled = _spy_spools(monkeypatch, max_size=1)              # rolls to disk
+    rolled, _ = _spy_spools(monkeypatch, max_size=1)           # rolls to disk
     spooled = client.post("/api/results/export", json=body).content
     assert rolled[-1]._rolled is True
 

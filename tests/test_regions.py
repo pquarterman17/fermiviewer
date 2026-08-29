@@ -3,9 +3,31 @@
 
 The contract exists because this repo has nine disagreeing ways to name a
 region. So the tests that matter are the ones pinning the choices that
-make it ONE thing: that two spellings of the same square agree, that an
-inclusive radius means what the rest of the repo means by it, and that
-holes/exclusions/disjoint parts compose in a stated order.
+make it ONE thing: that a rectangle covers the pixels its inclusive
+bounds name, that a radius means what the rest of the repo means by it,
+and that holes/exclusions/disjoint parts compose in a stated order.
+
+## Ground truth comes from outside the module under test
+
+Review caught two defects here that the first round of tests could not
+have caught, both the same mistake: the expected values were derived from
+the same assumption the implementation made, so they could only confirm
+it. A hand-counted "5 px" for a circle of radius 1, and integer centres
+throughout, agreed with a representation that widened every sub-half-pixel
+radius on a fractional centre.
+
+So expectations here are computed independently wherever one can be:
+
+* `inclusive_box` builds an axis-aligned mask straight from the definition
+  of inclusive bounds, never through the rasterizer under test;
+* an ellipse over bounds is compared against `profile_stats.roi_stats`,
+  the inscribed-ellipse ROI this contract claims parity with;
+* a circle is compared against an explicit `dist <= r` grid AND against
+  `fourd.geometry.aperture_mask` and `diffraction.apply_roi`, the repo
+  functions whose convention it claims to share.
+
+Where a literal number is unavoidable it is a fact about the pixel grid
+("a 2x2 drag is 4 pixels"), not a restatement of a formula in the source.
 """
 
 from __future__ import annotations
@@ -13,6 +35,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from fermiviewer.calc.diffraction import apply_roi
+from fermiviewer.calc.fourd.geometry import aperture_mask
 from fermiviewer.calc.profile_stats import roi_stats
 from fermiviewer.calc.regions import (
     Part,
@@ -35,19 +59,63 @@ def one(shape, **kw) -> Region:
     return Region(id="r1", parts=(Part(shape),), **kw)
 
 
+def inclusive_box(r0, c0, r1, c1) -> np.ndarray:
+    """Ground truth for an axis-aligned inclusive rectangle.
+
+    Built from the DEFINITION — a pixel is in when its `(row, col)` falls
+    within the bounds on both axes, endpoints included — rather than
+    through `polygon2mask`, so it is independent of the code it checks.
+    Clamping falls out for free: the grid only spans the image, so bounds
+    reaching off the edge simply contribute nothing there.
+    """
+    rows, cols = np.mgrid[0 : SHAPE[0], 0 : SHAPE[1]]
+    return (rows >= r0) & (rows <= r1) & (cols >= c0) & (cols <= c1)
+
+
+def distance_grid(centre_row, centre_col) -> np.ndarray:
+    """Euclidean distance from every pixel centre to a point."""
+    rows, cols = np.mgrid[0 : SHAPE[0], 0 : SHAPE[1]]
+    return np.hypot(rows - centre_row, cols - centre_col)
+
+
 # ── the equalities the contract is FOR ───────────────────────────────
 
 
+RECTS = [
+    (1, 1, 3, 3),        # odd extent
+    (0, 0, 1, 1),        # even extent, at the origin
+    (2, 3, 6, 4),        # oblong
+    (4, 4, 4, 4),        # a single pixel
+    (-4, -4, 2, 2),      # over the top-left edge
+    (6, 6, 20, 20),      # over the bottom-right edge
+    (-3, -3, -1, -1),    # entirely off the image
+]
+
+
+@pytest.mark.parametrize("bounds", RECTS)
+def test_a_rect_covers_exactly_the_pixels_its_bounds_name(bounds) -> None:
+    """Against `inclusive_box`, which is built from the definition rather
+    than from the rasterizer — so a half-open rect, an off-by-one, or a
+    change in how `polygon2mask` treats an edge all show up here.
+
+    The off-edge cases are in the same sweep on purpose: clamping is a
+    property of the same rule ("the pixels within the bounds that exist"),
+    not a separate behaviour needing separate expectations.
+    """
+    assert np.array_equal(rasterize(one(rect(*bounds)), SHAPE), inclusive_box(*bounds))
+
+
 def test_a_rect_and_its_corner_polygon_are_the_same_pixels() -> None:
-    """The reason bounds are inclusive. If these differed by a row and a
-    column, every caller converting between the two spellings would
-    silently move the region — the exact bug this contract prevents."""
-    as_rect = rasterize(one(rect(1, 1, 3, 3)), SHAPE)
-    as_poly = rasterize(
-        one(polygon([(1, 1), (1, 3), (3, 3), (3, 1)])), SHAPE
+    """Documentation of a guarantee, not a discriminating test: `rect` is
+    RASTERIZED as its corner polygon, so this equality holds by
+    construction and could only fail if the corners were built wrong. The
+    assertion that actually pins the inclusive convention is the one
+    above, against a ground truth computed outside this module.
+    """
+    assert np.array_equal(
+        rasterize(one(rect(1, 1, 3, 3)), SHAPE),
+        rasterize(one(polygon([(1, 1), (1, 3), (3, 3), (3, 1)])), SHAPE),
     )
-    assert np.array_equal(as_rect, as_poly)
-    assert as_rect.sum() == 9        # 3x3 inclusive, not 2x2 half-open
 
 
 # ── the two round conventions, which are not the same set ────────────
@@ -66,6 +134,8 @@ ELLIPSE_BOUNDS = [
     (2, 2, 6, 5),      # oblong, odd rows
     (3, 3, 3, 3),      # a single pixel
     (4, 1, 4, 6),      # zero height — a flat drag
+    (1, 1, 7, 7),      # 7x7, nearly the whole grid
+    (0, 3, 8, 4),      # tall and narrow
 ]
 
 
@@ -98,20 +168,54 @@ def test_a_two_by_two_drag_is_four_pixels_not_an_empty_region() -> None:
     ordinary short drag selected nothing — and an empty region has no
     bounding box, so the caller downstream raised instead."""
     mask = rasterize(one(ellipse(0, 0, 1, 1)), SHAPE)
-    assert mask.sum() == 4
+    image = np.arange(SHAPE[0] * SHAPE[1], dtype=np.float64).reshape(SHAPE)
+    assert mask.sum() == roi_stats(image, 1, 1, 2, 2, shape="ellipse")["n_pixels"]
+    assert mask.sum() == 4                    # all four, which is the whole 2x2
     assert bounding_box(one(ellipse(0, 0, 1, 1)), SHAPE) == (0, 0, 1, 1)
 
 
-def test_a_circle_radius_is_inclusive_like_every_other_radius_here() -> None:
-    """`skimage.draw.disk` would give 1 px for r=1 and 9 px for r=2, since
-    it tests distance < r. Every radius convention in this repo is <= —
-    diffraction's ROI, the FFT mask, the 4D aperture. A circle of radius 1
-    must therefore cover the centre pixel AND its four neighbours."""
-    mask = rasterize(one(circle(4, 4, 1)), SHAPE)
-    assert mask.sum() == 5                               # plus-shape, not 1 px
-    assert mask[4, 4] and mask[3, 4] and mask[5, 4]
-    assert mask[4, 3] and mask[4, 5]
-    assert not mask[3, 3]                                # corners are outside
+@pytest.mark.parametrize("centre", [(4.0, 4.0), (4.2, 4.2), (4.5, 3.5), (3.7, 5.1)])
+@pytest.mark.parametrize("radius", [0, 0.4, 1, 2, 3.3])
+def test_a_circle_is_the_same_mask_as_the_4d_aperture(centre, radius) -> None:
+    """The docstring claims a region of radius `r` covers the same pixels
+    as the existing radius ROIs. That claim was never checked against any
+    of them — it was checked against numbers I derived the same way the
+    code did, which is how a representation that widened small radii got
+    through. `aperture_mask` produces a boolean mask directly, so the
+    claim can simply be asserted against the real thing.
+    """
+    mask = rasterize(one(circle(*centre, radius)), SHAPE)
+    assert np.array_equal(mask, aperture_mask(SHAPE, centre, 0.0, radius))
+
+
+@pytest.mark.parametrize("radius", [1, 2, 3])
+def test_a_circle_keeps_what_the_diffraction_roi_keeps(radius) -> None:
+    """The other radius consumer, and the one item 4C has to migrate.
+    `apply_roi` zeroes pixels outside the circle instead of returning a
+    mask, so the kept set is recovered by cropping an all-ones image —
+    still its selection rule, not a restatement of ours.
+    """
+    ones = np.ones(SHAPE, dtype=np.float64)
+    patch, (r0, c0) = apply_roi(ones, {"kind": "circle", "cr": 4, "cc": 4,
+                                       "radius": radius})
+    kept = np.zeros(SHAPE, dtype=bool)
+    kept[r0 : r0 + patch.shape[0], c0 : c0 + patch.shape[1]] = patch > 0
+
+    assert np.array_equal(rasterize(one(circle(4, 4, radius)), SHAPE), kept)
+
+
+def test_a_circle_is_not_skimage_draw_disk() -> None:
+    """The disagreement the module docstring rests on, asserted rather
+    than described: `disk` tests `dist < r`, so it is one ring behind at
+    every radius and would silently shrink a migrated ROI."""
+    from skimage.draw import disk
+
+    for radius in (1, 2, 3):
+        theirs = np.zeros(SHAPE, dtype=bool)
+        theirs[disk((4, 4), radius, shape=SHAPE)] = True
+        ours = rasterize(one(circle(4, 4, radius)), SHAPE)
+        assert not np.array_equal(ours, theirs)
+        assert np.all(ours[theirs])              # strictly larger, not different
 
 
 @pytest.mark.parametrize("centre", [(4.0, 4.0), (4.2, 4.2), (4.5, 3.5), (3.7, 5.1)])
@@ -134,6 +238,29 @@ def test_a_circle_is_exactly_the_distance_grid(centre, radius) -> None:
     assert np.array_equal(rasterize(one(circle(cr, cc, radius)), SHAPE), expected)
 
 
+@pytest.mark.parametrize("nudge", [-1e-9, 0.0, 1e-9])
+def test_the_radius_is_used_exactly_with_no_tolerance(nudge) -> None:
+    """Pixel (4, 6) lies at distance exactly 2 from (4, 4), so a radius a
+    hair under 2 must drop it and a hair over must keep it.
+
+    Worth its own case because the sweeps above cannot see this: a radius
+    perturbed by less than the gap between neighbouring pixel distances
+    changes no mask anywhere, so an epsilon slipped into the comparison —
+    or a radius quietly padded to be "safe" — passes every one of them.
+    Only a radius sitting on an exact pixel distance discriminates.
+
+    A circle is the only kind where this test exists to be written. An
+    ellipse's footprint semi-axis is a half-integer when its extent is
+    even and an integer when it is odd, and the pixel offsets are the
+    other one of the two, so an ellipse boundary always falls BETWEEN
+    pixel centres and never lands on one.
+    """
+    mask = rasterize(one(circle(4, 4, 2.0 + nudge)), SHAPE)
+    assert bool(mask[4, 6]) is (nudge >= 0)
+    assert np.array_equal(mask, distance_grid(4, 4) <= 2.0 + nudge)
+    assert np.array_equal(mask, aperture_mask(SHAPE, (4.0, 4.0), 0.0, 2.0 + nudge))
+
+
 def test_a_sub_pixel_circle_off_centre_selects_nothing() -> None:
     """Called out on its own because it is the case the old encoding got
     wrong, and because "radius 0 is one pixel" is only true when the
@@ -150,8 +277,13 @@ def test_a_circle_is_not_the_ellipse_over_its_square_bounds() -> None:
     which is how a converted diffraction ROI would quietly grow."""
     as_circle = rasterize(one(circle(4, 4, 2)), SHAPE)
     as_ellipse = rasterize(one(ellipse(2, 2, 6, 6)), SHAPE)
-    assert as_circle.sum() == 13
-    assert as_ellipse.sum() == 21
+    image = np.arange(SHAPE[0] * SHAPE[1], dtype=np.float64).reshape(SHAPE)
+
+    assert np.array_equal(as_circle, distance_grid(4, 4) <= 2)
+    assert as_ellipse.sum() == roi_stats(image, 3, 3, 7, 7, shape="ellipse")[
+        "n_pixels"
+    ]
+    assert as_circle.sum() < as_ellipse.sum()
     assert np.all(as_ellipse[as_circle])                 # strictly contained
 
 
@@ -173,13 +305,15 @@ def test_a_square_ellipse_is_a_circle_and_stays_inside_its_bounds() -> None:
 
 
 def test_a_hole_is_subtracted_from_its_own_shape() -> None:
-    solid = rasterize(one(rect(1, 1, 7, 7)), SHAPE)
+    """Against the composed ground truth — outer box AND NOT inner box —
+    so a hole that came out shifted, or clipped to the wrong side, fails
+    here rather than passing on a pixel count that happens to match."""
     holed = rasterize(
         one(rect(1, 1, 7, 7, holes=[[(3, 3), (3, 5), (5, 5), (5, 3)]])), SHAPE
     )
-    assert solid.sum() == 49
-    assert holed.sum() == 49 - 9
-    assert not holed[4, 4] and holed[1, 1]
+    assert np.array_equal(
+        holed, inclusive_box(1, 1, 7, 7) & ~inclusive_box(3, 3, 5, 5)
+    )
 
 
 def test_an_exclusion_carves_the_whole_region_not_one_shape() -> None:
@@ -187,9 +321,28 @@ def test_an_exclusion_carves_the_whole_region_not_one_shape() -> None:
         id="r1",
         parts=(Part(rect(1, 1, 7, 7)), Part(rect(3, 3, 5, 5), mode="exclude")),
     )
-    mask = rasterize(region, SHAPE)
-    assert mask.sum() == 49 - 9
-    assert not mask[4, 4]
+    assert np.array_equal(
+        rasterize(region, SHAPE),
+        inclusive_box(1, 1, 7, 7) & ~inclusive_box(3, 3, 5, 5),
+    )
+
+
+def test_a_hole_and_an_exclusion_of_the_same_box_agree() -> None:
+    """They are different mechanisms — a hole belongs to its shape, an
+    exclusion to the region — and over one shape they must still select
+    the same pixels, or converting between the two spellings moves the
+    region. Neither side is the module's own count of the other."""
+    holed = rasterize(
+        one(rect(1, 1, 7, 7, holes=[[(3, 3), (3, 5), (5, 5), (5, 3)]])), SHAPE
+    )
+    excluded = rasterize(
+        Region(
+            id="r1",
+            parts=(Part(rect(1, 1, 7, 7)), Part(rect(3, 3, 5, 5), mode="exclude")),
+        ),
+        SHAPE,
+    )
+    assert np.array_equal(holed, excluded)
 
 
 def test_two_includes_make_one_disjoint_region() -> None:
@@ -197,9 +350,10 @@ def test_two_includes_make_one_disjoint_region() -> None:
     region = Region(
         id="r1", parts=(Part(rect(1, 1, 2, 2)), Part(rect(6, 6, 7, 7)))
     )
-    mask = rasterize(region, SHAPE)
-    assert mask.sum() == 8
-    assert mask[1, 1] and mask[7, 7] and not mask[4, 4]
+    assert np.array_equal(
+        rasterize(region, SHAPE),
+        inclusive_box(1, 1, 2, 2) | inclusive_box(6, 6, 7, 7),
+    )
 
 
 def test_part_order_decides_the_answer() -> None:
@@ -210,8 +364,10 @@ def test_part_order_decides_the_answer() -> None:
     back = rasterize(
         Region(id="x", parts=(Part(a), Part(b, mode="exclude"), Part(b))), SHAPE
     )
-    assert minus.sum() < back.sum()
-    assert not minus[4, 4] and back[4, 4]
+    # Both answers pinned, not merely ordered by size: `minus.sum() <
+    # back.sum()` would also hold if either were the wrong set.
+    assert np.array_equal(minus, inclusive_box(1, 1, 5, 5) & ~inclusive_box(3, 3, 7, 7))
+    assert np.array_equal(back, inclusive_box(1, 1, 5, 5) | inclusive_box(3, 3, 7, 7))
 
 
 # ── bounding boxes: the migration seam ───────────────────────────────
@@ -254,10 +410,14 @@ def test_an_empty_selection_has_no_bounding_box() -> None:
 
 def test_a_region_over_the_edge_masks_the_part_that_exists() -> None:
     """Clamping, not raising — every ROI helper in this repo already
-    clamps, and a half-visible region is a normal thing to draw."""
-    mask = rasterize(one(rect(-4, -4, 2, 2)), SHAPE)
-    assert mask[0, 0] and mask[2, 2]
-    assert not mask[3, 3]
+    clamps, and a half-visible region is a normal thing to draw. The
+    pixels themselves are checked in the `RECTS` sweep, which carries
+    three off-edge cases; what is asserted here is that none of them
+    raises and one lying entirely outside is empty rather than an error.
+    """
+    assert rasterize(one(rect(-4, -4, 2, 2)), SHAPE).any()
+    assert not rasterize(one(rect(-3, -3, -1, -1)), SHAPE).any()
+    assert not rasterize(one(circle(-5.0, -5.0, 1.0)), SHAPE).any()
 
 
 def test_corners_may_be_given_in_any_order() -> None:
@@ -307,25 +467,32 @@ def test_a_pixel_is_in_when_its_centre_lies_on_the_edge() -> None:
     column — 4 px instead of 9 — so the dependency is pinned rather than
     trusted to survive a scikit-image upgrade."""
     edge = rasterize(one(polygon([(1, 1), (1, 3), (3, 3), (3, 1)])), SHAPE)
-    assert edge.sum() == 9
+    assert np.array_equal(edge, inclusive_box(1, 1, 3, 3))
     assert edge[1, 1] and edge[1, 3] and edge[3, 1]   # corners: vertices
     assert edge[1, 2] and edge[2, 1]                  # sides: on an edge
 
 
 @pytest.mark.parametrize(
-    ("offset", "expected"), [(0.0, 9), (0.001, 4), (0.5, 4), (0.999, 4), (1.0, 9)]
+    "offset", [0.0, 0.001, 0.2, 0.49, 0.5, 0.51, 0.99, 0.999, 1.0, 1.5]
 )
-def test_a_sub_pixel_shift_changes_the_mask_when_an_edge_crosses_a_centre(
-    offset, expected
+def test_a_sub_pixel_shift_moves_the_mask_by_the_centre_in_polygon_rule(
+    offset,
 ) -> None:
-    """Sampling is centre-in-polygon, NOT rounding to the nearest centre:
-    the count changes at 0 and at 1 — where the edges cross centres — and
-    not at 0.5. An adapter written against a rounding model would place
-    every converted sub-pixel outline wrong by up to a pixel, so the real
-    rule is pinned here.
+    """Against `inclusive_box` at the shifted bounds — the centre-in-square
+    rule stated directly — rather than against counts read off a run.
+
+    This is the test that would have caught the wrong docstring. The
+    original sampled 0.2/0.49/0.51/0.99, four offsets that all happen to
+    cross no pixel centre, saw one mask from all four, and concluded
+    "rounds to nearest centre, snapping at .5". The oracle here disagrees
+    with a rounding model at 0.001 and at 0.999 without anyone having to
+    guess which offsets are the interesting ones.
     """
     square = np.array([[1.0, 1.0], [1.0, 3.0], [3.0, 3.0], [3.0, 1.0]]) + offset
-    assert rasterize(one(polygon(square)), SHAPE).sum() == expected
+    assert np.array_equal(
+        rasterize(one(polygon(square)), SHAPE),
+        inclusive_box(1 + offset, 1 + offset, 3 + offset, 3 + offset),
+    )
 
 
 def test_a_sliver_between_two_centres_masks_nothing() -> None:
