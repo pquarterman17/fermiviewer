@@ -61,16 +61,38 @@ def scoped_spectrum(
     EXACT mask. Both together is a 422 rather than a precedence rule — a
     caller sending two scopes has a bug, and honouring one would hide it.
 
-    A scope on a 1D spectrum is ignored, as it always has been: that
-    behaviour predates 4C and changing it here would break clients that
-    pass a rect unconditionally.
+    **A scope parameter is never silently discarded.** The mutual-exclusion
+    check keys off ANY corner rather than all four, because a half-given
+    rect is still a caller saying "scope this": ranking a complete
+    `region_ref` above it would drop the half a caller believed in. And a
+    half-given rect on its own is refused rather than widened to the whole
+    cube — the strict-ROI discipline `parse_roi_param` already applies,
+    and the `sum_spectrum` op already raises "must be given together" for
+    exactly this input, so the route was the odd one out.
+
+    A COMPLETE rect on a 1D spectrum is still ignored, as it always has
+    been: clients pass one unconditionally and 4C-1 is not the place to
+    break them. `region_ref` gets no such grace — it is new, so there is
+    no client to protect, and silently ignoring a named spatial region
+    would report whole-spectrum numbers for a scoped request.
     """
-    corners = None not in (row0, col0, row1, col1)
-    if corners and region_ref:
+    any_corner = any(v is not None for v in (row0, col0, row1, col1))
+    all_corners = None not in (row0, col0, row1, col1)
+    if any_corner and region_ref:
         raise HTTPException(
             422, "give either row0/col0/row1/col1 or region_ref, not both"
         )
+    if any_corner and not all_corners:
+        raise HTTPException(
+            422, "row0, col0, row1, col1 must be given together"
+        )
     if ds.kind is not DataKind.SPECTRUM_IMAGE:
+        if region_ref:
+            raise HTTPException(
+                422,
+                "region_ref needs a spectrum-image cube "
+                "(a 1D spectrum has no spatial region)",
+            )
         return ScopedSpectrum(ds.sum_spectrum(), None, False)
 
     if region_ref:
@@ -87,7 +109,7 @@ def scoped_spectrum(
         counts = masked_sum_spectrum(ds.data, resolved.rect, resolved.mask)
         return ScopedSpectrum(counts, list(resolved.rect), resolved.is_exact)
 
-    if corners:
+    if all_corners:
         assert row0 is not None and row1 is not None
         assert col0 is not None and col1 is not None
         # clamp → slice → sum lives in calc (wave D, ADR 0005 §1 — shared

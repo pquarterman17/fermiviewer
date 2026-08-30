@@ -24,6 +24,8 @@ what the region means rather than that two spellings drifted apart.
 
 from __future__ import annotations
 
+import tracemalloc
+
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
@@ -229,6 +231,40 @@ def test_giving_both_scopes_is_refused(client) -> None:
 
 
 @pytest.mark.parametrize(
+    "params",
+    [
+        {"row0": 3},
+        {"row0": 3, "col0": 4},
+        {"row0": 3, "col0": 4, "row1": 6},
+    ],
+    ids=["one", "two", "three"],
+)
+def test_an_incomplete_rectangle_is_refused_not_widened(client, params) -> None:
+    """A half-given rect used to be dropped and the WHOLE cube summed —
+    the strict-ROI failure `parse_roi_param` exists to prevent, and the
+    `sum_spectrum` op already raised for exactly this input, so the route
+    was the odd one out."""
+    load_cube(client, a_cube())
+    resp = client.get("/api/image/img1/spectrum", params=params)
+    assert resp.status_code == 422, resp.text
+    assert "given together" in resp.text
+    assert "counts" not in resp.text
+
+
+def test_a_partial_rectangle_alongside_a_region_is_refused(client) -> None:
+    """The mutual-exclusion check keys off ANY corner, not all four.
+    Otherwise a half-given rect slips past it and is silently discarded in
+    favour of the region — dropping a scope the caller believed in."""
+    load_cube(client, a_cube())
+    put_regions(Region(id="r1", parts=(Part(rect(0, 0, 1, 1)),)))
+    resp = client.get(
+        "/api/image/img1/spectrum", params={"row0": 3, "region_ref": "s1/r1"}
+    )
+    assert resp.status_code == 422, resp.text
+    assert "not both" in resp.text
+
+
+@pytest.mark.parametrize(
     "reference", ["nope/r1", "s1/nope", "s1/", ""], ids=["set", "region", "half", "none"]
 )
 def test_an_unresolvable_reference_never_widens_to_the_whole_cube(
@@ -260,23 +296,38 @@ def test_a_region_drawn_on_another_image_is_refused(client) -> None:
     assert "drawn on image" in resp.text
 
 
-def test_a_region_reference_on_a_1d_spectrum_is_ignored_as_before(client) -> None:
-    """Pre-4C behaviour, deliberately unchanged: a scope on a 1D spectrum
-    is ignored rather than refused, because clients pass one
-    unconditionally and 4C-1 is not the place to break them."""
-    spec = np.arange(C, dtype=np.uint16)
+def load_spectrum(img_id: str = "spec1") -> str:
     store.restore(
-        "spec1",
+        img_id,
         DataStruct(
-            data=spec,
+            data=np.arange(C, dtype=np.uint16),
             kind=DataKind.SPECTRUM,
             axes=(AxisCal(0.01, units="keV"),),
         ),
         "line.msa",
     )
-    got = spectrum(client, "spec1", region_ref="s1/r1")
+    return img_id
+
+
+def test_a_complete_rect_on_a_1d_spectrum_is_still_ignored(client) -> None:
+    """Pre-4C behaviour, deliberately unchanged: clients pass a rect
+    unconditionally and 4C-1 is not the place to break them."""
+    load_spectrum()
+    got = spectrum(client, "spec1", row0=1, col0=1, row1=2, col1=2)
     assert got["region"] is None
     assert got["exact_mask"] is False
+
+
+def test_a_region_reference_on_a_1d_spectrum_is_refused(client) -> None:
+    """`region_ref` gets no such grace. It is NEW, so no client depends on
+    it being ignored, and answering with the whole spectrum would report
+    unscoped numbers for a scoped request."""
+    load_spectrum()
+    resp = client.get(
+        "/api/image/spec1/spectrum", params={"region_ref": "s1/r1"}
+    )
+    assert resp.status_code == 422
+    assert "spectrum-image cube" in resp.text
 
 
 # ── the calc function both paths share ───────────────────────────────
@@ -294,13 +345,82 @@ def test_masked_sum_spectrum_without_a_mask_is_the_legacy_expression() -> None:
         )
 
 
-def test_masked_sum_spectrum_refuses_a_mask_of_the_wrong_shape() -> None:
-    """A shape mismatch means the caller paired a mask with someone else's
-    rect; summing whatever broadcast would produce is not a defensible
-    number."""
+@pytest.mark.parametrize(
+    "bad, why",
+    [
+        (np.ones((4, 4), dtype=bool), "crop-local, and it slices to the right shape"),
+        (np.ones((3, 3), dtype=bool), "truncated"),
+        (np.ones((H, W + 1), dtype=bool), "wrong width"),
+    ],
+)
+def test_masked_sum_spectrum_refuses_a_mask_that_is_not_full_image(bad, why) -> None:
+    """The crop-local case is the dangerous one: a (4, 4) mask paired with
+    rect (1, 1, 4, 4) slices to exactly (4, 4), so a window-only check
+    accepts it while it means something entirely different. The check has
+    to be against the CUBE."""
+    with pytest.raises(ValueError, match="full-image"):
+        masked_sum_spectrum(a_cube(), (1, 1, 4, 4), bad)
+
+
+@pytest.mark.parametrize("dtype", [np.int64, np.uint8, np.float64])
+def test_masked_sum_spectrum_refuses_a_non_boolean_mask(dtype) -> None:
+    """An integer array is not a mask to NumPy but an INDEX LIST, and
+    indexing with one returns a 4-D block rather than a spectrum — a
+    wrongly-shaped answer, not merely a wrong one."""
+    with pytest.raises(ValueError, match="boolean"):
+        masked_sum_spectrum(a_cube(), (1, 1, 4, 4), np.ones((H, W), dtype=dtype))
+
+
+def test_masked_sum_spectrum_does_not_materialize_the_selected_spectra() -> None:
+    """The bounded-memory guard. `block[window]` builds a dense
+    (selected, channels) copy, which on the multi-gigabyte cubes this
+    endpoint serves is gigabytes of its own for a broad mask. The `where=`
+    reduction accumulates in place. numpy reports its data allocations to
+    tracemalloc, so a regression to the fancy-index form shows up directly
+    as peak memory (same technique as tests/test_eds_maps.py)."""
+    tracemalloc.start()
+    try:
+        probe = np.empty(2_000_000, dtype=np.float64)  # 16 MB
+        _, probe_peak = tracemalloc.get_traced_memory()
+        del probe
+        if probe_peak < 8_000_000:  # pragma: no cover - platform dependent
+            pytest.skip("tracemalloc does not observe numpy data allocations here")
+
+        cube = np.ones((64, 64, 4096), dtype=np.uint16)  # 32 MB
+        mask = np.ones((64, 64), dtype=bool)
+        mask[0, 0] = False  # broad and irregular: the worst case for a copy
+        selection_copy = int(mask.sum()) * cube.shape[2] * cube.itemsize
+
+        # The baseline already holds the cube, and reset_peak floors the
+        # peak at it — so the meaningful number is the ADDED allocation.
+        before, _ = tracemalloc.get_traced_memory()
+        tracemalloc.reset_peak()
+        counts = masked_sum_spectrum(cube, (1, 1, 64, 64), mask)
+        _, peak = tracemalloc.get_traced_memory()
+        overhead = peak - before
+    finally:
+        tracemalloc.stop()
+
+    assert counts.shape == (4096,)
+    assert overhead < selection_copy / 4, (
+        f"allocated {overhead / 1e6:.1f} MB on top of the cube; a dense "
+        f"selection copy alone would be {selection_copy / 1e6:.1f} MB, so "
+        "the selected spectra are being materialized"
+    )
+
+
+def test_the_where_reduction_matches_the_fancy_index_answer() -> None:
+    """Bounded memory must not have cost correctness: the `where=` form has
+    to agree with the straightforward `block[mask]` sum it replaced, on a
+    partial mask and on an empty one."""
     cube = a_cube()
-    with pytest.raises(ValueError, match="does not match"):
-        masked_sum_spectrum(cube, (1, 1, 4, 4), np.ones((3, 3), dtype=bool))
+    for mask in (
+        np.zeros((H, W), dtype=bool),
+        np.eye(H, W, dtype=bool),
+        np.ones((H, W), dtype=bool),
+    ):
+        naive = cube[mask].sum(axis=0, dtype=np.float64)
+        assert np.array_equal(masked_sum_spectrum(cube, (1, 1, H, W), mask), naive)
 
 
 def test_an_all_true_mask_equals_the_no_mask_answer() -> None:

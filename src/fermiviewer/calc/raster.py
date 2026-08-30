@@ -122,20 +122,39 @@ def masked_sum_spectrum(
     `region_resolve.ResolvedRegion.mask`, and ``None`` means every pixel
     of `rect` is selected. That is not merely an optimization: the
     no-mask branch is the pre-4C expression verbatim, so a rectangle
-    keeps summing bit for bit as it always did, and it avoids the
-    fancy-index copy of the whole block that a needless all-True mask
-    would force on a multi-gigabyte cube.
+    keeps summing bit for bit as it always did.
 
-    Slicing happens before accumulating so a one-pixel probe never
-    materializes a float64 copy of the entire spectrum image.
+    Its shape is checked against the WHOLE cube, not against the window
+    it slices to. Checking only the window lets a crop-local mask through
+    whenever the rect starts at the top-left — a ``(4, 4)`` mask paired
+    with rect ``(1, 1, 4, 4)`` on an ``[8, 8, C]`` cube slices to the
+    right shape while meaning something entirely different — and this
+    helper is public, so the mask it advertises is the one it must
+    require. dtype is checked too: an integer array is not a mask to
+    NumPy but an index list, and indexing with one returns a 4-D block
+    rather than a spectrum.
+
+    **Memory.** Neither branch materializes the selected data.
+    ``block[window]`` would: advanced indexing builds a dense
+    ``(selected, channels)`` copy, which on the multi-gigabyte cubes this
+    exists to serve is gigabytes of its own for a broad mask. The
+    ``where=`` reduction accumulates in place instead — same answer,
+    bounded memory (guarded in tests/test_spectrum_regions.py) — and the
+    slice happens before accumulating so a one-pixel probe never touches
+    the rest of the cube.
     """
     r0, c0, r1, c1 = rect
     block = cube[r0 - 1:r1, c0 - 1:c1, :]
     if mask is None:
         return np.asarray(np.sum(block, axis=(0, 1), dtype=np.float64))
-    window = np.asarray(mask)[r0 - 1:r1, c0 - 1:c1]
-    if window.shape != block.shape[:2]:
+    mask = np.asarray(mask)
+    if mask.dtype != bool:
+        raise ValueError(f"mask must be boolean, got dtype {mask.dtype}")
+    if mask.shape != cube.shape[:2]:
         raise ValueError(
-            f"mask window {window.shape} does not match rect {block.shape[:2]}"
+            f"mask must be a full-image {cube.shape[:2]} array, got {mask.shape}"
         )
-    return np.asarray(block[window].sum(axis=0, dtype=np.float64))
+    window = mask[r0 - 1:r1, c0 - 1:c1]
+    return np.asarray(
+        np.sum(block, axis=(0, 1), where=window[..., None], dtype=np.float64)
+    )
