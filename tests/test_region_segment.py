@@ -222,6 +222,41 @@ def test_particles_region_selects_only_the_blob_it_covers() -> None:
     assert not labels[21:, :].any(), "nothing outside the region is labelled"
 
 
+def test_the_particle_table_and_the_label_map_share_one_frame() -> None:
+    """The table's centroid must locate the blob the map shows.
+
+    `particle_analysis` measures the CROP, so its centroids are crop-local
+    while the map is full-image. Before this wave `particles` had no ROI
+    and the two frames coincided, which is precisely why cropping it split
+    them silently: a 7x7 blob at full-image rows 27-33 inside region
+    [20,20,39,39] reported centroid (10, 10) in the table and (30, 30) in
+    the map.
+
+    The map is the oracle, and the region is deliberately NOT at the
+    origin — an origin-anchored region has a zero offset and would pass
+    against the broken code.
+    """
+    img = np.zeros((40, 40))
+    img[26:33, 26:33] = 10.0
+    ds = _image(img)
+
+    # Every region is ASYMMETRIC: a square one gives equal row and column
+    # offsets, so transposing them would still pass.
+    for region in (
+        None,
+        _rect(20, 12, 39, 35),
+        [{"kind": "ellipse", "bounds": [[18, 10, 39, 37]]}],
+    ):
+        run = ops.run("particles", ds, {} if region is None else {"region": region})
+        table = _named(run, "particles")
+        row = dict(zip(table["columns"], table["rows"][0], strict=True))
+        placed = _labels(run) == int(row["id"])
+        got_rows, got_cols = np.nonzero(placed)
+        assert row["centroid_row"] == pytest.approx(float(got_rows.mean()) + 1), region
+        assert row["centroid_col"] == pytest.approx(float(got_cols.mean()) + 1), region
+        assert row["area"] == pytest.approx(float(placed.sum())), region
+
+
 def test_particles_auto_threshold_ignores_pixels_outside_the_mask() -> None:
     """The scientific claim of this wave, in both directions.
 
