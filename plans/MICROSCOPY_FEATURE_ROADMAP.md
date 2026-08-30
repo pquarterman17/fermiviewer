@@ -548,6 +548,26 @@ in EDS/EELS, imaging statistics, and structural analysis.
 > `rasterize`/`bounding_box`/`to_rect_roi` moved. Still outstanding:
 > `Shape` cannot be compared with `==` (it holds numpy rings), and
 > `io.regions_model.same_region_set` is the working substitute.
+>
+> **4C-0 landed 2026-08-30 — the shared resolver, before any wave.**
+> `region_resolve.resolve_region` (ADR 0007) is the one place a region
+> reference becomes pixels: a named `"set_id"`/`"set_id/region_id"` from the
+> ADR 0006 workspace, the frozen `"r1,c1,r2,c2"` string, or nothing at all.
+> It returns a `ResolvedRegion` carrying BOTH an exact mask and the 1-based
+> inclusive `RectRoi` every bbox-shaped analysis already speaks, so a
+> consumer adopts it without changing anything downstream.
+>
+> The load-bearing invariant is that `mask is None` exactly when the
+> selection fills its own bounding box — which makes a rectangle-only
+> consumer *correct* rather than merely unbroken, and keeps a rectangle a
+> slice instead of forcing a multi-gigabyte cube through an all-True mask.
+> Provenance names the frame in typed fields rather than adding an eleventh
+> dialect to the free-text `convention` string (16 sites, ten incompatible
+> kinds of claim: coordinate frames, label encodings, value semantics).
+>
+> Waves 1–5 remain: EDS/EELS integration, imaging statistics, segmentation
+> and particles and grains, layers and structural, then batch recipes plus
+> the cross-consumer consistency test item 4's "Done when" asks for.
 
 ### 5. Calibration profiles and quantitative standards
 
