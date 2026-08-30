@@ -73,10 +73,10 @@ export default function RoiManagerCard() {
   };
 
   return (
-    <Card title="ROI Manager" count={savedRois.length} defaultOpen={false}>
+    <Card title="Saved ROIs" count={savedRois.length} defaultOpen={false}>
       <div className="fvd-ws-note">
-        Draw an ROI or ellipse on the image, select it in the Measurements
-        card, then save it here under a name to recall it later.
+        Rectangle and ellipse bookmarks for quick recall. Use Analysis Regions
+        above when an analysis needs an exact reusable mask.
       </div>
 
       {/* Save row */}

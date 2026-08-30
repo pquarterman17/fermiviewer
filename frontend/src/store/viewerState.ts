@@ -6,6 +6,7 @@ import type {
   ImageMeta,
   PersistedResultRecord,
   ProjectRegions,
+  RegionWorkspaceUi,
   ProjectPayloadMode,
   RoiStats,
   UnavailableImage,
@@ -54,6 +55,8 @@ export interface ViewerState {
   /** Live named analysis regions from ADR 0006. Unlike `measures`, these
    *  are 0-based [row, col] geometry and are server-carried project data. */
   regions: ProjectRegions;
+  /** Selection/visibility for the region manager and future stage overlay. */
+  regionUi: RegionWorkspaceUi;
   selected: string[];
   listView: ListView;
   compareSet: string[] | null;
@@ -174,6 +177,9 @@ export interface ViewerState {
   locateData: (root: string) => Promise<void>;
   /** Validate and atomically replace the live named-region workspace. */
   replaceRegions: (regions: ProjectRegions) => Promise<void>;
+  selectRegion: (setId: string | null, regionId?: string | null) => void;
+  toggleRegionSetVisibility: (setId: string) => void;
+  toggleRegionVisibility: (setId: string, regionId: string) => void;
   saveWorkspaceNamed: (name: string) => Promise<void>;
   loadWorkspaceNamed: (slug: string) => Promise<void>;
   setActive: (id: string) => void;

@@ -59,6 +59,15 @@ export interface ProjectRegions {
   sets: ProjectRegionSet[];
 }
 
+/** Presentational manager state persisted in ui_state, never geometry. */
+export interface RegionWorkspaceUi {
+  selectedSetId: string | null;
+  selectedRegionId: string | null;
+  hiddenSetIds: string[];
+  /** Opaque set+region keys; region ids need only be unique inside one set. */
+  hiddenRegionKeys: string[];
+}
+
 export const EMPTY_PROJECT_REGIONS: ProjectRegions = {
   schema: 1,
   classes: [],

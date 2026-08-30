@@ -5,7 +5,7 @@ import type {
   ProjectInfo,
   UnavailableImage,
 } from "./project";
-import type { ProjectRegions } from "./regionSets";
+import type { ProjectRegions, RegionWorkspaceUi } from "./regionSets";
 import { json, post } from "./transport";
 
 // ── workspace persistence ───────────────────────────────────────────
@@ -36,6 +36,8 @@ export interface SessionClientState {
    *  Additive (plan item 11): absent on a project saved before this key
    *  existed, and the lock loads back off in that case. */
   browseScale?: { locked: boolean; scale: number | null };
+  /** Selection and visibility are presentation, not canonical geometry. */
+  regionUi?: RegionWorkspaceUi;
 }
 
 // ── named workspaces (design WS4b) ──────────────────────────────────

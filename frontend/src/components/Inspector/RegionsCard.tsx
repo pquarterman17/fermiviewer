@@ -203,7 +203,7 @@ export default function RegionsCard() {
   };
 
   return (
-    <Card title="Regions" count={rows.length} defaultOpen={false}>
+    <Card title="Region Measurements" count={rows.length} defaultOpen={false}>
       <div className="fvd-ws-note">
         Polygon and lasso regions on this image, with area in physical units
         derived from the current calibration.

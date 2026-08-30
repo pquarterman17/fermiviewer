@@ -38,4 +38,17 @@ describe("replaceRegions", () => {
     await expect(useViewer.getState().replaceRegions(next)).rejects.toThrow("invalid ring");
     expect(useViewer.getState().regions).toBe(previous);
   });
+
+  it("tracks selection and visibility without mutating geometry", () => {
+    useViewer.getState().selectRegion("s1", "r1");
+    useViewer.getState().toggleRegionSetVisibility("s1");
+    useViewer.getState().toggleRegionVisibility("s1", "r1");
+    expect(useViewer.getState().regionUi).toEqual({
+      selectedSetId: "s1",
+      selectedRegionId: "r1",
+      hiddenSetIds: ["s1"],
+      hiddenRegionKeys: ['["s1","r1"]'],
+    });
+    expect(apiReplaceRegionSets).not.toHaveBeenCalled();
+  });
 });

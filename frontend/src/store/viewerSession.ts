@@ -20,6 +20,7 @@ import {
   type ComparePane,
   type ImageGroup,
 } from "../lib/groups";
+import { restoreRegionUi } from "../lib/regionWorkspace";
 import { useBrowseScale } from "./browseScale";
 import { applyHoleUndoEntry } from "./viewerHoleUndo";
 import type { ViewerState } from "./viewerState";
@@ -340,6 +341,7 @@ export function clientState(s: ViewerState): SessionClientState {
     measures: s.measures,
     overlay: s.overlay,
     savedRois: s.savedRois,
+    regionUi: s.regionUi,
     imageGroups: s.imageGroups,
     sbsPanes: s.sbsPanes,
     sbsRows: s.sbsRows,
@@ -445,6 +447,8 @@ export function sessionSlice(
     sbsCols,
   );
   const measures = (cs.measures as Record<string, Measure[]>) ?? {};
+  const loadedRegions = r.regions ?? { schema: 1 as const, classes: [], sets: [] };
+  const regionUi = restoreRegionUi(cs.regionUi, loadedRegions);
   // re-seed the module id counters past whatever this session contains —
   // see reseedSeq above for why.
   measureSeq = reseedSeq(
@@ -461,7 +465,8 @@ export function sessionSlice(
     images,
     unavailable,
     persistedResults: r.results ?? [],
-    regions: r.regions ?? { schema: 1, classes: [], sets: [] },
+    regions: loadedRegions,
+    regionUi,
     order,
     activeId,
     selected: activeId ? [activeId] : [],

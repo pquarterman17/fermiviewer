@@ -19,6 +19,7 @@ import HistoryCard from "./HistoryCard";
 import MeasurePanel from "./MeasurePanel";
 import RegionsCard from "./RegionsCard";
 import RoiManagerCard from "./RoiManagerCard";
+import RegionWorkspaceCard from "./RegionWorkspaceCard";
 import ScaleBarCard from "./ScaleBarCard";
 import ToolsBrowser from "./ToolsBrowser";
 import TransformPanel from "./TransformPanel";
@@ -238,6 +239,7 @@ export default function Inspector() {
       </Suspense>
       {tab === "Image" && unified && <ToolsBrowser />}
       {tab === "Image" && !unified && <MeasurePanel />}
+      {tab === "Image" && meta.kind !== "spectrum" && <RegionWorkspaceCard />}
       {tab === "Image" && meta.kind !== "spectrum" && <RoiManagerCard />}
       {tab === "Image" && meta.kind !== "spectrum" && <RegionsCard />}
       {tab === "Image" && !unified && meta.kind !== "spectrum" && (
