@@ -34,7 +34,7 @@ from fermiviewer.calc.regions import Part, Region, circle, polygon, rect
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.io.regions_model import RegionSet
 from fermiviewer.ops._region_param import REGION_PARAM, region_from_params
-from fermiviewer.ops.base import ParamError
+from fermiviewer.ops.base import OpParam, ParamError, RowSpec
 from fermiviewer.ops.registry import run
 from fermiviewer.project_session import project
 from fermiviewer.server import create_app
@@ -128,7 +128,7 @@ def test_a_polygon_and_a_hole_survive_the_json_round_trip() -> None:
         {"region": geo({
             "kind": "polygon",
             "outline": [[1, 1], [1, 6], [6, 1]],
-            "holes": [[2, 2], [2, 3], [3, 2]],
+            "holes": [[[2, 2], [2, 3], [3, 2]]],
         })},
         (H, W),
     )
@@ -140,6 +140,121 @@ def test_a_polygon_and_a_hole_survive_the_json_round_trip() -> None:
         (H, W),
     )
     assert np.array_equal(scoped.mask, direct)
+
+
+def test_a_whole_set_union_survives_the_inline_form(client) -> None:
+    """P1. A bare `set_id` reference rasterizes each Region INDEPENDENTLY and
+    unions the finished masks, so one region's `exclude` must not subtract
+    from another's pixels. Flattening every part into one ordered list makes
+    it: region A (full image) + region B (include then exclude) gives 60 px
+    flattened where the named union gives 64. `group` is what keeps the
+    boundary, so a caller substituting a whole-set reference can reproduce
+    it rather than silently changing the pixels."""
+    cube = a_cube()
+    store.restore("img1", a_cube_ds(cube), "si.dm4")
+    whole = Region(id="a", parts=(Part(rect(0, 0, H - 1, W - 1)),))
+    holed = Region(
+        id="b",
+        parts=(Part(rect(0, 0, 3, 3)), Part(rect(1, 1, 2, 2), mode="exclude")),
+    )
+    project.replace_regions(
+        (RegionSet(id="s1", regions=(whole, holed), image_id="img1"),), ()
+    )
+    named = client.get(
+        "/api/image/img1/spectrum", params={"region_ref": "s1"}
+    ).json()
+
+    grouped = run("sum_spectrum", a_cube_ds(cube), {"region": geo(
+        {"kind": "rect", "bounds": [[0, 0, H - 1, W - 1]], "group": 0},
+        {"kind": "rect", "bounds": [[0, 0, 3, 3]], "group": 1},
+        {"kind": "rect", "bounds": [[1, 1, 2, 2]], "mode": "exclude", "group": 1},
+    )})
+    counts = next(
+        o for o in grouped.value["outputs"] if o["name"] == "counts"
+    )["data"]["y"]
+    assert counts == named["counts"]
+    # and it is the whole image, which the flattened spelling is NOT
+    assert counts == sum_over(cube, rect_pixels(0, 0, H - 1, W - 1))
+
+    flattened = run("sum_spectrum", a_cube_ds(cube), {"region": geo(
+        {"kind": "rect", "bounds": [[0, 0, H - 1, W - 1]]},
+        {"kind": "rect", "bounds": [[0, 0, 3, 3]]},
+        {"kind": "rect", "bounds": [[1, 1, 2, 2]], "mode": "exclude"},
+    )})
+    flat_counts = next(
+        o for o in flattened.value["outputs"] if o["name"] == "counts"
+    )["data"]["y"]
+    assert flat_counts != counts, "one group really does subtract across"
+
+
+def test_parts_in_one_group_still_apply_in_order() -> None:
+    """The `group` field adds a union boundary WITHOUT weakening ordering
+    inside a region — both rules have to hold at once."""
+    ring = region_from_params({"region": geo(
+        {"kind": "rect", "bounds": [[1, 1, 6, 6]], "group": 2},
+        {"kind": "rect", "bounds": [[3, 3, 4, 4]], "mode": "exclude", "group": 2},
+    )}, (H, W))
+    assert ring is not None and int(ring.mask.sum()) == 6 * 6 - 2 * 2
+
+
+def test_a_region_with_two_holes_is_expressible() -> None:
+    """P2. `Shape.holes` is a SEQUENCE of rings. A single-ring param could
+    not write down a perfectly valid two-hole region at all, which made the
+    "canonical geometry" claim false."""
+    outline = [(0, 0), (0, 7), (7, 0)]
+    rings = [[(1, 1), (1, 2), (2, 1)], [(4, 1), (4, 2), (5, 1)]]
+    scoped = region_from_params({"region": geo({
+        "kind": "polygon",
+        "outline": [list(p) for p in outline],
+        "holes": [[list(p) for p in ring] for ring in rings],
+    })}, (H, W))
+    direct = rasterize(
+        Region(id="x", parts=(Part(polygon(outline, holes=rings)),)), (H, W)
+    )
+    assert scoped is not None
+    assert np.array_equal(scoped.mask, direct)
+
+
+def test_two_holes_on_a_bounds_shape_too() -> None:
+    """`holes` is supported for every kind, not just polygons."""
+    rings = [[(1, 1), (1, 2), (2, 1)], [(5, 5), (5, 6), (6, 5)]]
+    scoped = region_from_params({"region": geo({
+        "kind": "rect", "bounds": [[0, 0, 7, 7]],
+        "holes": [[list(p) for p in ring] for ring in rings],
+    })}, (H, W))
+    direct = rasterize(
+        Region(id="x", parts=(Part(rect(0, 0, 7, 7, holes=rings)),)), (H, W)
+    )
+    assert scoped is not None
+    assert np.array_equal(scoped.mask, direct)
+
+
+def test_a_completed_run_cannot_mutate_the_schema_default() -> None:
+    """P3, guarded at the level it was fixed: `_resolve_fields` used to hand
+    out `spec.default` itself, so `OpResult.params` — public and mutable —
+    aliased the schema. Appending to one run's params made the NEXT run with
+    that param omitted take the geometry path with someone else's region."""
+    ds = a_cube_ds(a_cube())
+    first = run("sum_spectrum", ds, {})
+    assert first.params["region"] is not REGION_PARAM.default
+    first.params["region"].append({"kind": "rect", "bounds": [[0, 0, 1, 1]]})
+    assert REGION_PARAM.default == [], "the schema must be untouched"
+
+    second = run("sum_spectrum", ds, {})
+    assert second.params["region"] == []
+    assert not [o for o in second.value["outputs"] if o["name"] == "region"], (
+        "a run with no region must stay unscoped"
+    )
+
+
+def test_nested_record_defaults_are_isolated_too() -> None:
+    """The copy has to be deep: a record's row-list fields are mutable
+    objects inside the default as well."""
+    coerced = geo({"kind": "rect", "bounds": [[0, 0, 3, 3]]})
+    assert coerced[0]["holes"] == [] and coerced[0]["outline"] == []
+    coerced[0]["holes"].append([[1, 1], [1, 2], [2, 1]])
+    fresh = geo({"kind": "rect", "bounds": [[0, 0, 3, 3]]})
+    assert fresh[0]["holes"] == [], "a record's own list defaults must not alias"
 
 
 # ── the op agrees with the route: cross-consumer parity ──────────────
@@ -335,6 +450,53 @@ def test_malformed_geometry_is_rejected_by_the_param_machinery(part, why) -> Non
     field — no bespoke schema for regions."""
     with pytest.raises(ParamError, match=why):
         REGION_PARAM.coerce("region", [part])
+
+
+@pytest.mark.parametrize(
+    "holes, why",
+    [
+        ([[[1, 1, 1], [1, 2, 2]]], r"holes\[0\]\[0\].*expected 2 values"),
+        ([[1, 1], [1, 2]], r"holes\[0\]\[0\].*expected a list, got int"),
+        ("nope", r"holes.*expected a list, got str"),
+        ([[[1, 1], [1, "x"]]], r"holes\[0\]\[1\]\.1.*cannot coerce 'x' to float"),
+    ],
+    ids=["3-wide-row", "bare-row-not-a-ring", "a-string", "non-numeric"],
+)
+def test_malformed_hole_rings_are_rejected(holes, why) -> None:
+    """The rings shape has to VALIDATE, not just pass nested lists through.
+    Without this, dropping the rings branch entirely still lets the data
+    reach `np.asarray` and appear to work — which is exactly what a mutant
+    revealed. The expected messages are asserted with their full index path
+    (`holes[0][1].1`), because naming which ring, which row and which
+    coordinate is the whole benefit of validating rather than passing
+    through."""
+    with pytest.raises(ParamError, match=why):
+        REGION_PARAM.coerce("region", [
+            {"kind": "rect", "bounds": [[0, 0, 3, 3]], "holes": holes}
+        ])
+
+
+def test_a_nested_default_is_deep_copied_not_shared() -> None:
+    """The central `_resolve_fields` fix has to copy DEEPLY. A shallow copy
+    duplicates the outer list while every caller keeps sharing the objects
+    inside it, so mutating one run's nested row still edits the schema. No
+    registered op has a non-empty nested default today, so this exercises
+    the contract directly rather than through one."""
+    from fermiviewer.ops.base import OpSpec
+
+    nested_default = [[1.0, 2.0]]
+    spec = OpSpec(
+        name="_probe_deepcopy",
+        category="analysis",
+        summary="test-only probe",
+        params={"pts": OpParam(ptype=list, default=nested_default,
+                               row=RowSpec(width=2))},
+        fn=lambda ds, params: None,
+    )
+    first = spec.resolve_params({})
+    first["pts"][0].append(99.0)          # mutate a row INSIDE the default
+    assert nested_default == [[1.0, 2.0]], "the schema's nested row must survive"
+    assert spec.resolve_params({})["pts"] == [[1.0, 2.0]]
 
 
 def test_a_region_on_a_1d_spectrum_is_refused() -> None:

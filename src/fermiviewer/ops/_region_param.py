@@ -43,7 +43,7 @@ from fermiviewer.calc.regions import (
     Shape,
 )
 from fermiviewer.calc.roi import RectRoi
-from fermiviewer.ops.base import OpParam, RecordSpec, RowSpec
+from fermiviewer.ops.base import OpParam, RecordSpec, RingsSpec, RowSpec
 
 __all__ = ["REGION_PARAM", "ScopedRegion", "region_from_params"]
 
@@ -78,8 +78,19 @@ REGION_PARAM = OpParam(
             "holes": OpParam(
                 ptype=list,
                 default=[],
-                row=RowSpec(width=2),
-                doc="[[row, col], ...] — ONE inner ring subtracted from this part",
+                rings=RingsSpec(width=2),
+                doc="[[[row, col], ...], ...] — inner RINGS subtracted from "
+                "this part; `Shape.holes` is a sequence, so a region with two "
+                "holes has to be writable here",
+            ),
+            "group": OpParam(
+                int,
+                0,
+                minimum=0,
+                doc="which region this part belongs to. Parts sharing a group "
+                "are ONE region evaluated in order; groups are then unioned, "
+                "exactly as a whole-set reference unions a RegionSet's "
+                "regions. Default 0 = one region, the common case",
             ),
         }
     ),
@@ -124,7 +135,7 @@ def _shape_of(part: dict[str, Any], where: str) -> Shape:
     """
     kind = part["kind"]
     bounds, outline, holes = part["bounds"], part["outline"], part["holes"]
-    rings = (np.asarray(holes, dtype=np.float64),) if holes else ()
+    rings = tuple(np.asarray(ring, dtype=np.float64) for ring in holes)
     if kind == "polygon":
         if not outline:
             raise ValueError(f"{where}: a polygon needs 'outline'")
@@ -158,12 +169,20 @@ def region_from_params(
     parts_json = params.get(name) or []
     if not parts_json:
         return None
-    parts = tuple(
-        Part(_shape_of(part, f"param '{name}[{i}]'"), mode=part["mode"])
-        for i, part in enumerate(parts_json)
-    )
+    grouped: dict[int, list[Part]] = {}
+    for i, part in enumerate(parts_json):
+        grouped.setdefault(int(part["group"]), []).append(
+            Part(_shape_of(part, f"param '{name}[{i}]'"), mode=part["mode"])
+        )
     grid = (int(shape[0]), int(shape[1]))
-    mask = rasterize(Region(id=name, parts=parts), grid)
+    # Each group is rasterized as its own Region and the results UNIONED —
+    # not flattened into one parts list. A RegionSet's regions are
+    # independent, so one region's `exclude` must not subtract from
+    # another's pixels; flattening makes it, which silently changes the
+    # answer for any whole-set reference whose regions overlap.
+    mask = np.zeros(grid, dtype=bool)
+    for group, parts in sorted(grouped.items()):
+        mask |= rasterize(Region(id=f"{name}[{group}]", parts=tuple(parts)), grid)
     try:
         rect, exact_mask, _ = mask_and_rect(mask)
     except ValueError:

@@ -23,6 +23,7 @@ __all__ = [
     "InputError",
     "ParamError",
     "RecordSpec",
+    "RingsSpec",
     "RowSpec",
 ]
 
@@ -106,6 +107,41 @@ class RecordSpec:
 
     def describe(self) -> str:
         return f"list[record({', '.join(self.fields)})]"
+
+
+@dataclass(frozen=True)
+class RingsSpec:
+    """A list-shaped param's ring schema: a list of RINGS, each a row list.
+
+    One level deeper than `RowSpec`, and the only shape that can carry
+    `calc.regions.Shape.holes` — a SEQUENCE of inner rings, not one ring.
+    A `RowSpec(width=2)` field accepts `[[r, c], ...]`, which is exactly
+    one ring, so a perfectly valid two-hole region could not be written
+    down at all; that is what this exists to fix.
+
+    Deliberately not spelled as a nested `RecordSpec`: records do not nest
+    (see above), and this is not a record — it is a homogeneous list of
+    coordinate lists, which `describe` can render and errors can index
+    without the unbounded depth that rule is protecting against.
+    """
+
+    width: int | None
+    item_type: type = float
+    columns: tuple[str, ...] = ()
+    min_rings: int = 0
+    max_rings: int | None = None
+
+    def as_row_spec(self) -> RowSpec:
+        """One ring's schema — so ring coercion reuses `RowSpec`'s rules
+        rather than restating them."""
+        return RowSpec(
+            width=self.width, item_type=self.item_type, columns=self.columns
+        )
+
+    def describe(self) -> str:
+        cols = "/".join(self.columns) if self.columns else self.item_type.__name__
+        width = "..." if self.width is None else self.width
+        return f"list[ring[{width} x {cols}]]"
 
 
 #: ``ptype`` for a param that accepts any JSON scalar — a number, a string,

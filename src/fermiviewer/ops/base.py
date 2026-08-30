@@ -13,6 +13,7 @@ guard). Pure-library: datastruct/numpy/stdlib only.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -22,6 +23,7 @@ from fermiviewer.ops.shapes import (
     InputError,
     ParamError,
     RecordSpec,
+    RingsSpec,
     RowSpec,
     _as_rows,
     _coerce_scalar,
@@ -74,15 +76,24 @@ class OpParam:
     # list shapes (ptype is list) — mutually exclusive
     row: RowSpec | None = None
     record: RecordSpec | None = None
+    rings: RingsSpec | None = None
 
     def __post_init__(self) -> None:
-        structured = self.row is not None or self.record is not None
-        if self.row is not None and self.record is not None:
-            raise ValueError("a list param is either 'row'- or 'record'-shaped")
+        shapes = [self.row, self.record, self.rings]
+        structured = any(s is not None for s in shapes)
+        if sum(s is not None for s in shapes) > 1:
+            raise ValueError(
+                "a list param is exactly one of 'row'-, 'record'- or "
+                "'rings'-shaped"
+            )
         if structured and self.ptype is not list:
-            raise ValueError("a 'row'/'record' param must have ptype=list")
+            raise ValueError(
+                "a 'row'/'record'/'rings' param must have ptype=list"
+            )
         if self.ptype is list and not structured:
-            raise ValueError("a list param must declare 'row' or 'record'")
+            raise ValueError(
+                "a list param must declare 'row', 'record' or 'rings'"
+            )
 
     @property
     def is_list(self) -> bool:
@@ -94,6 +105,8 @@ class OpParam:
             return self.row.describe()
         if self.record is not None:
             return self.record.describe()
+        if self.rings is not None:
+            return self.rings.describe()
         return "scalar" if self.ptype is ANY_SCALAR else self.ptype.__name__
 
     def coerce(self, name: str, value: Any) -> Any:
@@ -102,6 +115,8 @@ class OpParam:
             return self._coerce_rows(name, value)
         if self.record is not None:
             return self._coerce_records(name, value)
+        if self.rings is not None:
+            return self._coerce_rings(name, value)
         return self._coerce_item(name, value)
 
     # ── scalar item (also every item inside a list) ───────────────────
@@ -173,6 +188,19 @@ class OpParam:
         self._check_rows(name, len(out), spec.min_rows, spec.max_rows)
         return out
 
+    def _coerce_rings(self, name: str, value: Any) -> list[list[Any]]:
+        """A list of RINGS. Each ring is coerced by `RowSpec`'s own rules,
+        so a ring's width errors read exactly like a row list's."""
+        spec = self.rings
+        assert spec is not None
+        per_ring = OpParam(ptype=list, row=spec.as_row_spec())
+        out = [
+            per_ring.coerce(f"{name}[{i}]", ring)
+            for i, ring in enumerate(_as_rows(name, value))
+        ]
+        self._check_rows(name, len(out), spec.min_rings, spec.max_rings)
+        return out
+
     @staticmethod
     def _check_rows(name: str, n: int, lo: int, hi: int | None) -> None:
         if n < lo:
@@ -207,7 +235,18 @@ def _resolve_fields(
         elif spec.required:
             raise ParamError(f"{where}: missing required '{pname}'")
         else:
-            out[pname] = spec.default
+            # A COPY, never the schema's own object. `OpResult.params` is
+            # public and mutable, so handing out the shared default lets one
+            # completed run edit the schema every later run reads from: append
+            # to a returned list param and the next run with that param
+            # omitted silently receives the appended value. Scalars are
+            # immutable and unaffected; `deepcopy` is what reaches the row
+            # lists nested inside a record default too.
+            out[pname] = (
+                deepcopy(spec.default)
+                if isinstance(spec.default, (list, dict, set))
+                else spec.default
+            )
     return out
 
 

@@ -27,6 +27,7 @@ from fermiviewer.ops.base import (
     OpSpec,
     ParamError,
     RecordSpec,
+    RingsSpec,
     RowSpec,
 )
 
@@ -159,12 +160,35 @@ def test_records_do_not_nest() -> None:
 
 
 def test_list_param_shape_is_declared_exactly_once() -> None:
-    with pytest.raises(ValueError, match="must declare 'row' or 'record'"):
+    """`rings` joined `row` and `record` in 4C-5's prerequisite, so the
+    exactly-once rule has to cover all three pairings — otherwise a param
+    could declare two shapes and silently use whichever is checked first."""
+    with pytest.raises(ValueError, match="must declare 'row', 'record' or 'rings'"):
         OpParam(list)
-    with pytest.raises(ValueError, match="either 'row'- or 'record'-shaped"):
-        OpParam(list, row=RowSpec(2), record=RecordSpec(fields={}))
+    for a, b in (
+        ({"row": RowSpec(2)}, {"record": RecordSpec(fields={})}),
+        ({"row": RowSpec(2)}, {"rings": RingsSpec(2)}),
+        ({"record": RecordSpec(fields={})}, {"rings": RingsSpec(2)}),
+    ):
+        with pytest.raises(ValueError, match="exactly one of"):
+            OpParam(list, **a, **b)
     with pytest.raises(ValueError, match="must have ptype=list"):
         OpParam(float, row=RowSpec(2))
+    with pytest.raises(ValueError, match="must have ptype=list"):
+        OpParam(float, rings=RingsSpec(2))
+
+
+def test_a_rings_param_carries_a_list_of_rings() -> None:
+    """One level deeper than a row list, and the only shape that can carry
+    `calc.regions.Shape.holes` — a SEQUENCE of inner rings."""
+    p = OpParam(ptype=list, default=[], rings=RingsSpec(width=2))
+    assert p.coerce("holes", [[[1, 1], [1, 2], [2, 1]], [[4, 4], [4, 5], [5, 4]]]) == [
+        [[1.0, 1.0], [1.0, 2.0], [2.0, 1.0]],
+        [[4.0, 4.0], [4.0, 5.0], [5.0, 4.0]],
+    ]
+    assert p.describe_type() == "list[ring[2 x float]]"
+    with pytest.raises(ParamError, match=r"holes\[0\]\[0\].*expected 2 values"):
+        p.coerce("holes", [[[1, 1, 1]]])
 
 
 def test_any_scalar_accepts_json_scalars_but_not_containers() -> None:
