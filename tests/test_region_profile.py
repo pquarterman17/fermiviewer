@@ -244,18 +244,30 @@ def test_waviness_tracing_is_refused_over_an_irregular_region() -> None:
         )
 
 
-def test_layers_edit_takes_the_same_region() -> None:
+@pytest.mark.parametrize(
+    ("label", "region", "exact"),
+    [
+        ("irregular", [{"kind": "ellipse", "bounds": [[0, 0, 39, 39]]}], True),
+        ("rectangular", [{"kind": "rect", "bounds": [[0, 0, 39, 39]]}], False),
+    ],
+)
+def test_layers_edit_takes_the_same_region_and_reports_it(
+    label: str, region: list[dict[str, Any]], exact: bool
+) -> None:
+    """A scoped op that returns no provenance breaks the stack-wide
+    contract in the quiet direction: the result is correct and simply
+    cannot say which pixels produced it, so a saved one is unreadable."""
     ds = _image(_stack())
-    run = ops.run(
-        "layers_edit",
-        ds,
-        {
-            "positions": "13,26",
-            "axis": "y",
-            "region": [{"kind": "ellipse", "bounds": [[0, 0, 39, 39]]}],
-        },
-    )
+    params = {"positions": "13,26", "axis": "y"}
+    assert not _has(ops.run("layers_edit", ds, params), "region")
+
+    run = ops.run("layers_edit", ds, {**params, "region": region})
     assert len(_named(run, "layers")["rows"]) >= 1
+    reported = _named(run, "region")
+    assert reported["exact_mask"] is exact, label
+    assert reported["label_context"] == "exact-mask", label
+    assert reported["position_convention"] == "1-based, inclusive, clamped"
+    assert reported["rows"] == [[1, 1, 40, 40]], label
 
 
 # ── structural: efd_similarity shares the particle path ──────────────

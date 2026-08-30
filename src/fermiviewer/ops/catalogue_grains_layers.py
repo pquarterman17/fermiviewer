@@ -242,11 +242,15 @@ def _layers_edit(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         trace_window=params["trace_window"],
         destripe_fib=params["destripe"],
     )
+    outputs = _layer_outputs(res)
+    if scoped is not None:
+        # exact, like `layers`: the collapse averages only selected pixels
+        outputs.append(region_output(scoped, label_context=LABEL_CONTEXT_EXACT))
     return OpResult(
         op="layers_edit",
         params=params,
         label="layer re-measure from edited interfaces",
-        value={"outputs": _layer_outputs(res)},
+        value={"outputs": outputs},
     )
 
 
