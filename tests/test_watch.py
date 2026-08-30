@@ -509,3 +509,73 @@ def test_active_watch_defers_desktop_auto_shutdown(monkeypatch, tmp_path: Path) 
         assert requested.is_set(), "shutdown must resume once the watch stops"
     finally:
         client.post("/api/watch/stop")
+
+
+# ── named regions in a watch recipe (4C-5) ───────────────────────────
+
+
+def _gradient_png() -> bytes:
+    """A LEFT-HEAVY 8x8 image: the left half and the whole frame have
+    different means, so a region that is ignored is visible in the number
+    rather than only in the shape of the response."""
+    from PIL import Image
+
+    data = np.zeros((8, 8), dtype=np.uint8)
+    data[:, :4] = 200
+    data[:, 4:] = 10
+    buf = io.BytesIO()
+    Image.fromarray(data).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _left_half_set():
+    from fermiviewer.calc.regions import Part, Region, Shape
+    from fermiviewer.io.regions_model import RegionSet
+
+    return RegionSet(
+        id="s1",
+        regions=(
+            Region(
+                id="r1",
+                parts=(Part(Shape(kind="rect", bounds=(0.0, 0.0, 7.0, 3.0))),),
+            ),
+        ),
+    )
+
+
+@pytest.mark.api
+def test_a_watch_recipe_honours_a_named_region(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """`run_recipe` is pure and reads only `step["params"]`, so a
+    `region_ref` the watch runner forgot to substitute is not an error —
+    the new file is silently analyzed over the whole frame. Only a number
+    that differs from the whole-image one can catch that, which is why
+    the fixture is deliberately left-heavy.
+    """
+    from fermiviewer.project_session import project
+
+    project.current()
+    project.replace_regions((_left_half_set(),), ())
+
+    watch_dir = tmp_path / "incoming"
+    watch_dir.mkdir()
+    response = client.post("/api/watch/start", json={
+        "dir": str(watch_dir),
+        "steps": [{"op": "image_stats", "region_ref": "s1/r1"}],
+        "interval": 0.02,
+    })
+    assert response.status_code == 200, response.text
+    (watch_dir / "drop.png").write_bytes(_gradient_png())
+
+    final = _poll_job(client, _wait_for_job(client))
+    assert final["status"] == "done", final
+    stats = next(
+        v for v in final["result"]["values"] if v["op"] == "image_stats"
+    )
+    assert stats["value"]["n_finite"] == 8 * 4, "the left half only"
+    assert stats["value"]["mean"] == pytest.approx(200.0), "not the 105 mean"
+    assert stats["value"]["region"]["rows"] == [[1, 1, 8, 4]]
+    # ADR 0005: the recorded params carry the RESOLVED geometry
+    assert stats["params"]["region"]
+    assert "s1" not in repr(stats["params"])

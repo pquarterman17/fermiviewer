@@ -423,3 +423,151 @@ def test_a_watch_run_uses_the_pool_resolved_at_start(tmp_path) -> None:
         path, _subtract_recipe(), lambda *_: None, pool, {"dark": dark}
     )
     assert body["derived"] is not None
+
+
+# ── named regions over the HTTP boundary (4C-5) ──────────────────────
+
+
+def _region_set(image_id: str | None = None, half: bool = False):
+    """A set holding one rect region: the left half, or the whole image."""
+    from fermiviewer.calc.regions import Part, Region, Shape
+    from fermiviewer.io.regions_model import RegionSet
+
+    bounds = (0.0, 0.0, 63.0, 31.0) if half else (0.0, 0.0, 63.0, 63.0)
+    return RegionSet(
+        id="s1",
+        regions=(Region(id="r1", parts=(Part(Shape(kind="rect", bounds=bounds)),)),),
+        image_id=image_id,
+    )
+
+
+def _stats_value(output: dict) -> dict:
+    return next(v for v in output["values"] if v["op"] == "image_stats")
+
+
+def test_a_named_region_survives_the_http_boundary_and_changes_the_answer(
+    client,
+) -> None:
+    """The end-to-end test this feature was missing.
+
+    Every 4C-5 test called `substitute_region_refs` or `ops.run` directly,
+    so none of them touched the request model — where `region_ref` was
+    being silently dropped by pydantic, leaving the op to run over the
+    whole image. A number that differs from the whole-image one is the
+    only assertion that could have caught that, because the shape of the
+    response is identical either way.
+    """
+    from fermiviewer.project_session import project
+
+    image_id = _image("scoped.dm4")
+    project.current()  # ensure a live project
+    project.replace_regions((_region_set(half=True),), ())
+
+    def run(step: dict) -> dict:
+        response = client.post(
+            "/api/batch/run", json={"image_ids": [image_id], "steps": [step]}
+        )
+        assert response.status_code == 200, response.text
+        final = _poll(client, response.json()["job_id"])
+        assert final["status"] == "done", final
+        output = final["result"]["outputs"][0]
+        assert output["status"] == "done", output
+        return _stats_value(output)
+
+    named = run({"op": "image_stats", "region_ref": "s1/r1"})
+    whole = run({"op": "image_stats"})
+
+    assert named["value"]["mean"] != whole["value"]["mean"], (
+        "the named region must actually scope the op"
+    )
+    assert named["value"]["n_finite"] == 64 * 32
+    assert whole["value"]["n_finite"] == 64 * 64
+    # ADR 0005: the RECORDED params are the replay key, so they carry the
+    # resolved geometry and no longer mention the set by name
+    assert named["params"]["region"], "resolved geometry must be recorded"
+    assert "s1" not in repr(named["params"])
+    assert named["value"]["region"]["rows"] == [[1, 1, 64, 32]]
+
+
+def test_an_unknown_region_reference_is_refused_before_the_job_is_queued(
+    client,
+) -> None:
+    image_id = _image("typo.dm4")
+    response = client.post(
+        "/api/batch/run",
+        json={
+            "image_ids": [image_id],
+            "steps": [{"op": "image_stats", "region_ref": "nope/r1"}],
+        },
+    )
+    assert response.status_code == 422, response.text
+
+
+def test_a_region_bound_to_another_image_skips_that_input_with_a_reason(
+    client,
+) -> None:
+    """The per-image policy, asserted through the API: the batch does not
+    fail, the bound image is skipped, and the reason names the image."""
+    from fermiviewer.project_session import project
+
+    mine = _image("mine.dm4")
+    other = _image("other.dm4", 10)
+    project.current()
+    project.replace_regions((_region_set(image_id=mine, half=True),), ())
+
+    response = client.post(
+        "/api/batch/run",
+        json={
+            "image_ids": [mine, other],
+            "steps": [{"op": "image_stats", "region_ref": "s1/r1"}],
+        },
+    )
+    assert response.status_code == 200, response.text
+    final = _poll(client, response.json()["job_id"])
+    outputs = {o["image_id"]: o for o in final["result"]["outputs"]}
+    assert outputs[mine]["status"] == "done"
+    assert outputs[other]["status"] == "error"
+    assert other in outputs[other]["error"], outputs[other]["error"]
+    assert final["result"]["succeeded"] == 1
+    assert final["result"]["failed"] == 1
+
+
+def test_region_sets_are_snapshotted_when_the_job_is_accepted(
+    client, monkeypatch
+) -> None:
+    """A 200 from `/batch/run` is a promise about what will run.
+
+    `_run_batch` is the job BODY, so reading the region sets there would
+    let an edit made after the 200 — but before a worker picks the job up
+    — change which pixels the accepted recipe measures. The job function
+    is captured here instead of racing the queue, so the window between
+    accept and start is opened deliberately rather than hoped for.
+    """
+    from fermiviewer.project_session import project
+    from fermiviewer.routes import batch_ops
+
+    image_id = _image("snapshot.dm4")
+    project.current()
+    project.replace_regions((_region_set(half=True),), ())
+
+    captured: list = []
+    monkeypatch.setattr(
+        batch_ops.jobs, "submit", lambda fn: (captured.append(fn), "job-1")[1]
+    )
+    response = client.post(
+        "/api/batch/run",
+        json={
+            "image_ids": [image_id],
+            "steps": [{"op": "image_stats", "region_ref": "s1/r1"}],
+        },
+    )
+    assert response.status_code == 200, response.text
+
+    # the edit lands in the window between accept and start
+    project.replace_regions((_region_set(half=False),), ())
+
+    result = captured[0](lambda *_a, **_k: None)
+    stats = _stats_value(result["outputs"][0])
+    assert stats["value"]["n_finite"] == 64 * 32, (
+        "the accepted half-image region, not the edited whole-image one"
+    )

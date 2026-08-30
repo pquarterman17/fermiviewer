@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 import fermiviewer.ops as ops
 from fermiviewer.datastruct import DataStruct
+from fermiviewer.io.regions_model import RegionSet
 from fermiviewer.jobs import JobQueueFullError, ProgressFn, jobs
 from fermiviewer.models import ImageMeta
 from fermiviewer.ops.batch import run_recipe, validate_recipe
@@ -30,6 +31,11 @@ class BatchStepRequest(BaseModel):
     # The value names an entry in the run's `inputs` pool, never an image id:
     # a saved recipe must stay runnable over other images and other sessions.
     inputs: dict[str, str] = Field(default_factory=dict)
+    # A region named symbolically, resolved per image by the RUNNER (ADR
+    # 0007 §8/§11). It is not a param: `params["region"]` holds the
+    # RESOLVED geometry after substitution, which is what makes a recorded
+    # result replayable, while this keeps the name the user wrote.
+    region_ref: str = ""
 
 
 class BatchRunRequest(BaseModel):
@@ -282,6 +288,7 @@ def _run_batch(
     report: ProgressFn,
     pool: dict[str, Any] | None = None,
     recipe_inputs: dict[str, str | list[str]] | None = None,
+    region_sets: tuple[RegionSet, ...] = (),
 ) -> dict[str, Any]:
     total = len(image_ids) * len(steps)
     bindings = dict(recipe_inputs or {})
@@ -291,10 +298,6 @@ def _run_batch(
     # was removed while it waited. `bindings` is kept only to record which
     # ids that snapshot came from.
     pool = dict(pool or {})
-    # Read ONCE, like `pool`: a batch can run for minutes, and a recipe the
-    # caller was told is runnable must not change meaning because someone
-    # edited a region set while it waited.
-    region_sets = project.current().region_sets
     outputs: list[dict[str, Any]] = []
     for input_index, image_id in enumerate(image_ids):
         source_name = store.name(image_id)
@@ -385,10 +388,15 @@ def batch_run(req: BatchRunRequest) -> dict[str, str]:
     # validation above follows), AND the job closes over these datasets, so
     # what runs is the snapshot the 200 accepted.
     pool = resolve_recipe_inputs(req.inputs)
+    # Snapshot the region sets HERE, beside the pool and for the same
+    # reason: `_run_batch` is the job BODY, so reading them there would
+    # let an edit made after this 200 — but before a worker picks the job
+    # up — change which pixels the accepted recipe measures.
+    region_sets = project.current().region_sets
     try:
         job_id = jobs.submit(
             lambda report: _run_batch(
-                req.image_ids, steps, report, pool, req.inputs
+                req.image_ids, steps, report, pool, req.inputs, region_sets
             )
         )
     except JobQueueFullError as exc:

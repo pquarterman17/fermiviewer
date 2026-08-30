@@ -63,6 +63,11 @@ export interface BatchRecipeStep {
   op: string;
   params: Record<string, unknown>;
   inputs?: Record<string, string>;
+  // A region named symbolically ("set_id" or "set_id/region_id"), resolved
+  // per image by the runner. Not a param: params.region holds the RESOLVED
+  // geometry after substitution, which is what makes a recorded result
+  // replayable, while this keeps the name the user wrote.
+  region_ref?: string;
 }
 
 export type BatchInputBindings = Record<string, string | string[]>;
