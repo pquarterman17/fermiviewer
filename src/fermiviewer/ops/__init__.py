@@ -37,6 +37,7 @@ from fermiviewer.ops.base import (
     OpSpec,
     ParamError,
     RecordSpec,
+    RingsSpec,
     RowSpec,
     produces_value_result,
 )
@@ -57,6 +58,7 @@ __all__ = [
     "OpSpec",
     "ParamError",
     "RecordSpec",
+    "RingsSpec",
     "RowSpec",
     "UnknownOpError",
     "get_spec",

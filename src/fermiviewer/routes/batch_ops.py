@@ -110,6 +110,15 @@ def _param_schema(name: str, param: ops.OpParam) -> dict[str, Any]:
                 for fname, fparam in param.record.fields.items()
             ],
         }
+    elif param.rings is not None:
+        schema["shape"] = {
+            "kind": "rings",
+            "width": param.rings.width,
+            "item_type": param.rings.item_type.__name__,
+            "columns": list(param.rings.columns),
+            "min_rings": param.rings.min_rings,
+            "max_rings": param.rings.max_rings,
+        }
     return schema
 
 

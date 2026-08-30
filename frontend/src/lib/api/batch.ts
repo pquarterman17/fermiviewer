@@ -26,6 +26,17 @@ export interface BatchParamSchema {
         min_rows: number;
         max_rows: number | null;
         fields: BatchParamSchema[];
+      }
+    | {
+        // One level deeper than "rows": a list OF rings, each a row list.
+        // `calc.regions.Shape.holes` is a sequence of rings, so a region
+        // with two holes cannot be written as "rows" at all.
+        kind: "rings";
+        width: number | null;
+        item_type: string;
+        columns: string[];
+        min_rings: number;
+        max_rings: number | null;
       };
 }
 

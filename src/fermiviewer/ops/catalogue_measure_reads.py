@@ -22,12 +22,17 @@ from typing import Any
 
 import numpy as np
 
-from fermiviewer.calc.raster import raster_of, region_sum_spectrum
+from fermiviewer.calc.raster import (
+    masked_sum_spectrum,
+    raster_of,
+    region_sum_spectrum,
+)
 from fermiviewer.calc.render import histogram
 from fermiviewer.calc.scalebar_detect import detect_scale_bar
 from fermiviewer.datastruct import SPECTRAL_KINDS, DataKind, DataStruct
 from fermiviewer.ops._envelopes import output
 from fermiviewer.ops._parsing import int_group, sentinel_group
+from fermiviewer.ops._region_param import REGION_PARAM, region_from_params
 from fermiviewer.ops.base import OpParam, OpResult, OpSpec
 from fermiviewer.ops.registry import register
 
@@ -43,18 +48,34 @@ def _sum_spectrum(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     # the route's spectral-kind guard, verbatim message
     if ds.kind not in SPECTRAL_KINDS:
         raise ValueError("2D images have no spectral axis")
-    region = sentinel_group(params, _REGION_NAMES)
+    corners = sentinel_group(params, _REGION_NAMES)
+    geometry = params.get("region") or []
+    if corners is not None and geometry:
+        raise ValueError(
+            "give either region_row0/col0/row1/col1 or region, not both"
+        )
     rect: tuple[int, int, int, int] | None = None
-    if region is not None:
+    exact = False
+    if (corners is not None or geometry) and ds.kind is not DataKind.SPECTRUM_IMAGE:
         # STRICTER than the route, which silently ignores a region on a 1D
         # spectrum and returns the whole spectrum — the strict-ROI
         # discipline: never silently analyze more than the caller scoped
-        if ds.kind is not DataKind.SPECTRUM_IMAGE:
-            raise ValueError(
-                "region_row0/region_col0/region_row1/region_col1 need a "
-                "spectrum-image cube (a 1D spectrum has no spatial region)"
-            )
-        r0, c0, r1, c1 = int_group(region, "/".join(_REGION_NAMES))
+        raise ValueError(
+            "region_row0/region_col0/region_row1/region_col1 and region need "
+            "a spectrum-image cube (a 1D spectrum has no spatial region)"
+        )
+    if geometry:
+        # 4C-5: the region arrives as canonical GEOMETRY, never as a name.
+        # ops/registry.py's contract is that the pure layer never looks an
+        # id up; a caller that wants to name a region resolves it and
+        # substitutes the geometry here, which also keeps this op's params
+        # its complete reproduction key (ADR 0005).
+        scoped = region_from_params(params, ds.data.shape[:2])
+        assert scoped is not None
+        counts = masked_sum_spectrum(ds.data, scoped.rect, scoped.mask)
+        rect, exact = scoped.rect, scoped.mask is not None
+    elif corners is not None:
+        r0, c0, r1, c1 = int_group(corners, "/".join(_REGION_NAMES))
         counts, rect = region_sum_spectrum(ds.data, r0, c0, r1, c1)
     else:
         counts = ds.sum_spectrum()
@@ -83,6 +104,9 @@ def _sum_spectrum(ds: DataStruct, params: dict[str, Any]) -> OpResult:
                     "columns": ["row0", "col0", "row1", "col1"],
                     "units": ["px", "px", "px", "px"],
                     "position_convention": "1-based, inclusive, clamped",
+                    # False means the rect IS the selection; True means the
+                    # summed pixels are narrower than it (ADR 0007 §3)
+                    "exact_mask": exact,
                     "rows": [list(rect)],
                 },
             )
@@ -110,6 +134,7 @@ register(
             "region_col0": OpParam(float, float("nan"), doc="region corner col"),
             "region_row1": OpParam(float, float("nan"), doc="region opposite row"),
             "region_col1": OpParam(float, float("nan"), doc="region opposite col"),
+            "region": REGION_PARAM,
         },
         fn=_sum_spectrum,
     )
