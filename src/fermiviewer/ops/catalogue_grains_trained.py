@@ -190,9 +190,27 @@ def _train_preview(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     # probabilities, so renumbering survivors would relabel the specimen
     class_map = place_values(prev.class_map, raster.shape, rect, region_mask)
     confidence_map = place_values(prev.max_prob, raster.shape, rect, region_mask)
+    # The SUMMARIES have to be scoped too, not just the maps. Clipping the
+    # rasters while averaging over the whole bounding box would report a
+    # confidence and a class balance for pixels the region excluded —
+    # numbers a reader would take as describing the region they drew, from
+    # a map that visibly does not contain them.
+    window = None
+    if region_mask is not None:
+        rows, cols = roi_slices(raster.shape, rect)
+        window = region_mask[rows, cols]
+    selected_prob = prev.max_prob if window is None else prev.max_prob[window]
+    selected_class = prev.class_map if window is None else prev.class_map[window]
     mean_confidence, low_confidence_fraction = confidence_summary(
-        prev.max_prob, threshold=_CONFIDENCE_THRESHOLD
+        selected_prob, threshold=_CONFIDENCE_THRESHOLD
     )
+    fractions = prev.fractions
+    if window is not None:
+        total = float(selected_class.size)
+        fractions = {
+            int(c): float(np.count_nonzero(selected_class == c)) / total
+            for c in prev.classes
+        }
     outputs = [
         output(
             "table",
@@ -201,7 +219,7 @@ def _train_preview(ds: DataStruct, params: dict[str, Any]) -> OpResult:
                 "columns": ["class_id", "fraction", "is_boundary"],
                 "units": ["", "", ""],
                 "rows": [
-                    [int(c), prev.fractions[int(c)], int(c) in boundary]
+                    [int(c), fractions[int(c)], int(c) in boundary]
                     for c in prev.classes
                 ],
             },
@@ -229,6 +247,15 @@ def _train_preview(ds: DataStruct, params: dict[str, Any]) -> OpResult:
             },
         ),
     ]
+    if scoped is not None:
+        outputs.append(
+            region_output(
+                scoped,
+                label_context=(
+                    LABEL_CONTEXT_EXACT if scoped.mask is None else LABEL_CONTEXT_BBOX
+                ),
+            )
+        )
     return OpResult(
         op="train_preview",
         params=params,
