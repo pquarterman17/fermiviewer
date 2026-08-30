@@ -156,11 +156,20 @@ def _particles(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     feret_calibrated = (
         desc.feret_max_px * px if has_cal else np.full_like(desc.feret_max_px, np.nan)
     )
+    # `particle_analysis` measured the CROP, so its centroids are
+    # crop-local while the map above is full-image. Before 4C-3 this op had
+    # no ROI at all and the two frames were the same, which is exactly why
+    # cropping it silently split them. Everything else in the row —
+    # area, circularity, orientation, Feret — is translation-invariant, so
+    # the origin is the whole of the difference.
+    row_offset, col_offset = (
+        (scoped.rect[0] - 1, scoped.rect[1] - 1) if scoped is not None else (0, 0)
+    )
     rows = [
         [
             p.id,
-            p.centroid[0],
-            p.centroid[1],
+            p.centroid[0] + row_offset,
+            p.centroid[1] + col_offset,
             p.area,
             p.equiv_diameter,
             p.mean_intensity,
