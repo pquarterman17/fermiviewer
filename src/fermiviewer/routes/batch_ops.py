@@ -17,7 +17,11 @@ from fermiviewer.jobs import JobQueueFullError, ProgressFn, jobs
 from fermiviewer.models import ImageMeta
 from fermiviewer.ops.batch import run_recipe, validate_recipe
 from fermiviewer.project_session import project
-from fermiviewer.recipe_regions import recipe_region_refs, substitute_region_refs
+from fermiviewer.recipe_regions import (
+    REGION_REF_KEY,
+    recipe_region_refs,
+    substitute_region_refs,
+)
 from fermiviewer.region_resolve import _resolve_reference
 from fermiviewer.session import UnknownImageError, store
 
@@ -195,12 +199,48 @@ def validate_recipe_steps(
         region_sets = project.current().region_sets
         for ref in recipe_region_refs(steps):
             _resolve_reference(region_sets, ref)
+        _validate_region_steps(steps)
         for step in steps:
             spec = ops.get_spec(step["op"])
             spec.resolve_params(step.get("params"))
     except (ValueError, KeyError) as exc:
         raise HTTPException(422, str(exc)) from None
     return steps
+
+
+
+def _validate_region_steps(steps: list[dict[str, Any]]) -> None:
+    """A named region must be usable by the op it is attached to.
+
+    Substitution writes into `params["region"]`, so a step naming a region
+    on an op that has no such param, or already carrying a legacy `roi`,
+    is a recipe that CANNOT run — every input fails identically once the
+    job starts. That is exactly what the rest of this validator exists to
+    prevent: an unresolvable auxiliary input is a 422 before the job is
+    queued, and these two deserve the same treatment rather than a job id
+    and 200 identical per-image errors.
+
+    Checked once here, so the folder watch inherits it through the same
+    shared validator.
+    """
+    for i, step in enumerate(steps):
+        ref = step.get(REGION_REF_KEY)
+        if not ref:
+            continue
+        try:
+            spec = ops.get_spec(step["op"])
+        except ops.UnknownOpError:
+            continue  # the registry's own message covers an unknown op
+        if "region" not in spec.params:
+            raise ValueError(
+                f"recipe step {i}: op {step['op']!r} takes no region, so "
+                f"{REGION_REF_KEY!r} cannot apply to it"
+            )
+        if (step.get("params") or {}).get("roi"):
+            raise ValueError(
+                f"recipe step {i}: give either 'roi' or {REGION_REF_KEY!r}, "
+                "not both"
+            )
 
 
 def resolve_recipe_inputs(

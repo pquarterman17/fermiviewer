@@ -571,3 +571,78 @@ def test_region_sets_are_snapshotted_when_the_job_is_accepted(
     assert stats["value"]["n_finite"] == 64 * 32, (
         "the accepted half-image region, not the edited whole-image one"
     )
+
+
+def test_a_named_region_on_an_op_that_takes_none_is_refused_at_submit(
+    client,
+) -> None:
+    """Making `region_ref` reachable exposed two recipes that could only
+    ever fail per input. Substitution writes into `params["region"]`, so
+    an op with no such param cannot use one — and the validator's whole
+    job is to turn "fails on every input" into a 422 before a job id is
+    handed out, exactly as it already does for an unresolvable auxiliary
+    input.
+    """
+    from fermiviewer.project_session import project
+
+    image_id = _image("noregion.dm4")
+    project.current()
+    project.replace_regions((_region_set(half=True),), ())
+
+    response = client.post(
+        "/api/batch/run",
+        json={
+            "image_ids": [image_id],
+            "steps": [
+                {"op": "gaussian", "params": {"sigma": 1}, "region_ref": "s1/r1"}
+            ],
+        },
+    )
+    assert response.status_code == 422, response.text
+    assert "takes no region" in response.json()["detail"]
+
+
+def test_a_named_region_beside_a_legacy_roi_is_refused_at_submit(client) -> None:
+    """The two-scopes refusal (ADR 0007 §5), moved earlier: after
+    substitution this is the same error `scope_from_params` raises, but
+    per input rather than once."""
+    from fermiviewer.project_session import project
+
+    image_id = _image("twoscopes.dm4")
+    project.current()
+    project.replace_regions((_region_set(half=True),), ())
+
+    response = client.post(
+        "/api/batch/run",
+        json={
+            "image_ids": [image_id],
+            "steps": [
+                {
+                    "op": "grains",
+                    "params": {"roi": "1,1,32,32"},
+                    "region_ref": "s1/r1",
+                }
+            ],
+        },
+    )
+    assert response.status_code == 422, response.text
+    assert "not both" in response.json()["detail"]
+
+
+def test_the_legitimate_spellings_are_still_accepted(client) -> None:
+    """The guard must not over-reach: an op that DOES take a region, and
+    a legacy roi with no region_ref beside it, are both fine."""
+    from fermiviewer.project_session import project
+
+    image_id = _image("ok.dm4")
+    project.current()
+    project.replace_regions((_region_set(half=True),), ())
+
+    for step in (
+        {"op": "grains", "params": {}, "region_ref": "s1/r1"},
+        {"op": "grains", "params": {"roi": "1,1,32,32"}},
+    ):
+        response = client.post(
+            "/api/batch/run", json={"image_ids": [image_id], "steps": [step]}
+        )
+        assert response.status_code == 200, (step, response.text)
