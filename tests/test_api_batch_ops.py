@@ -602,6 +602,37 @@ def test_a_named_region_on_an_op_that_takes_none_is_refused_at_submit(
     assert "takes no region" in response.json()["detail"]
 
 
+def test_a_named_region_beside_inline_geometry_is_refused_at_submit(client) -> None:
+    """The third recipe substitution must reject, and the one my first
+    guard missed: it checked `roi` and not `region`, so an inline
+    geometry beside a name still got a job id and then failed every input
+    in `substitute_region_refs`. Both scope keys go through one rule now.
+    """
+    from fermiviewer.project_session import project
+
+    image_id = _image("inline.dm4")
+    project.current()
+    project.replace_regions((_region_set(half=True),), ())
+
+    response = client.post(
+        "/api/batch/run",
+        json={
+            "image_ids": [image_id],
+            "steps": [
+                {
+                    "op": "image_stats",
+                    "params": {
+                        "region": [{"kind": "rect", "bounds": [[0, 0, 10, 10]]}]
+                    },
+                    "region_ref": "s1/r1",
+                }
+            ],
+        },
+    )
+    assert response.status_code == 422, response.text
+    assert "not both" in response.json()["detail"]
+
+
 def test_a_named_region_beside_a_legacy_roi_is_refused_at_submit(client) -> None:
     """The two-scopes refusal (ADR 0007 §5), moved earlier: after
     substitution this is the same error `scope_from_params` raises, but
@@ -641,6 +672,10 @@ def test_the_legitimate_spellings_are_still_accepted(client) -> None:
     for step in (
         {"op": "grains", "params": {}, "region_ref": "s1/r1"},
         {"op": "grains", "params": {"roi": "1,1,32,32"}},
+        {
+            "op": "image_stats",
+            "params": {"region": [{"kind": "rect", "bounds": [[0, 0, 10, 10]]}]},
+        },
     ):
         response = client.post(
             "/api/batch/run", json={"image_ids": [image_id], "steps": [step]}

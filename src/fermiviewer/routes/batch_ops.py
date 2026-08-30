@@ -236,11 +236,18 @@ def _validate_region_steps(steps: list[dict[str, Any]]) -> None:
                 f"recipe step {i}: op {step['op']!r} takes no region, so "
                 f"{REGION_REF_KEY!r} cannot apply to it"
             )
-        if (step.get("params") or {}).get("roi"):
-            raise ValueError(
-                f"recipe step {i}: give either 'roi' or {REGION_REF_KEY!r}, "
-                "not both"
-            )
+        # BOTH scope keys, because substitution rejects both: `roi` is the
+        # legacy rectangle `scope_from_params` refuses beside geometry, and
+        # `region` is the inline geometry `substitute_region_refs` refuses
+        # beside a name. Checking one and not the other left a third
+        # recipe that could only fail per input.
+        params = step.get("params") or {}
+        for key in ("roi", "region"):
+            if params.get(key):
+                raise ValueError(
+                    f"recipe step {i}: give either {key!r} or "
+                    f"{REGION_REF_KEY!r}, not both"
+                )
 
 
 def resolve_recipe_inputs(
