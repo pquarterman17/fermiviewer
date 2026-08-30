@@ -417,6 +417,67 @@ def test_train_preview_keeps_class_ids_and_blanks_the_outside() -> None:
     assert set(np.unique(classes).tolist()) <= {0, 1, 2}
 
 
+def test_preview_summaries_are_computed_over_the_selected_pixels() -> None:
+    """A clipped map with an unclipped summary is the worst of both.
+
+    `confidence_summary` and the class fractions used to average the whole
+    bounding-box prediction while the maps beside them were masked, so a
+    reader saw a mean confidence and a class balance that included pixels
+    the map visibly does not contain. On this fixture that was 0.968546
+    reported against 0.961122 selected, and 0.4198/0.5802 against
+    0.3980/0.6020.
+
+    The maps are the oracle: every reported summary has to be
+    reproducible from the map the same result carries, which is the
+    property that was broken and is not checkable from either half alone.
+    """
+    ds, strokes = _scribbled()
+    bounds = (2.0, 2.0, 37.0, 37.0)
+    run = ops.run(
+        "train_preview",
+        ds,
+        {"strokes": strokes, "region": [{"kind": "ellipse", "bounds": [list(bounds)]}]},
+    )
+    selected = rasterize(
+        Region(id="e", parts=(Part(Shape(kind="ellipse", bounds=bounds)),)), (40, 40)
+    )
+    confidence = np.asarray(_named(run, "confidence_map")["values"])
+    classes = np.asarray(_named(run, "class_map")["values"])
+
+    assert _named(run, "mean_confidence")["value"] == pytest.approx(
+        float(confidence[selected].mean())
+    )
+    assert _named(run, "low_confidence_fraction")["value"] == pytest.approx(
+        float((confidence[selected] < _named(run, "confidence_threshold")["value"]).mean())
+    )
+    for class_id, fraction, _boundary in _named(run, "classes")["rows"]:
+        assert fraction == pytest.approx(
+            float((classes[selected] == class_id).mean())
+        ), class_id
+
+    # and the bounding box really does disagree, or the assertions above
+    # would hold for an unscoped implementation too
+    box = np.zeros((40, 40), dtype=bool)
+    box[2:38, 2:38] = True
+    assert float(confidence[box].mean()) != pytest.approx(
+        float(confidence[selected].mean())
+    )
+
+
+def test_preview_reports_its_region_like_every_other_scoped_consumer() -> None:
+    ds, strokes = _scribbled()
+    assert not _has(ops.run("train_preview", ds, {"strokes": strokes}), "region")
+    run = ops.run(
+        "train_preview",
+        ds,
+        {"strokes": strokes, "region": [{"kind": "ellipse", "bounds": [[2, 2, 37, 37]]}]},
+    )
+    reported = _named(run, "region")
+    assert reported["exact_mask"] is True
+    assert reported["label_context"] == "bounding-box"
+    assert reported["position_convention"] == "1-based, inclusive, clamped"
+
+
 def test_preview_class_ids_survive_clipping_unrenumbered() -> None:
     """Classes 2 and 3, with no class 1 anywhere — the shape that tells
     `place_values` apart from `place_labels`.
