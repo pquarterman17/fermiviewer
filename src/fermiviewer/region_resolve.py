@@ -53,7 +53,7 @@ from typing import Any
 
 import numpy as np
 
-from fermiviewer.calc.region_mask import rasterize
+from fermiviewer.calc.region_mask import mask_and_rect, rasterize
 from fermiviewer.calc.regions import Region
 from fermiviewer.calc.roi import RectRoi, roi_slices
 from fermiviewer.io.regions_model import RegionSet
@@ -142,18 +142,6 @@ def _clamped_rect(shape: tuple[int, int], roi: RectRoi | None) -> RectRoi:
     rule every existing ROI consumer already follows."""
     rows, cols = roi_slices(shape, roi)
     return rows.start + 1, cols.start + 1, rows.stop, cols.stop
-
-
-def _mask_bounds(mask: np.ndarray) -> RectRoi:
-    """Tight 1-based inclusive bbox of a non-empty boolean mask."""
-    rows = np.flatnonzero(mask.any(axis=1))
-    cols = np.flatnonzero(mask.any(axis=0))
-    return (
-        int(rows[0]) + 1,
-        int(cols[0]) + 1,
-        int(rows[-1]) + 1,
-        int(cols[-1]) + 1,
-    )
 
 
 def _listed(ids: list[str]) -> str:
@@ -333,20 +321,19 @@ def resolve_region(
     mask = np.zeros((int(shape[0]), int(shape[1])), dtype=bool)
     for item in regions:
         mask |= rasterize(item, (int(shape[0]), int(shape[1])))
-    count = int(mask.sum())
-    if count == 0:
+    try:
+        # The `mask is None` invariant lives in calc.region_mask, shared
+        # with the inline-geometry op param so the rule has one definition.
+        rect, exact_mask, count = mask_and_rect(mask)
+    except ValueError:
         raise RegionReferenceError(
-            f"region reference {region!r} selects no pixels of this {shape[0]}x{shape[1]} image"
-        )
-
-    rect = _mask_bounds(mask)
-    r1, c1, r2, c2 = rect
-    # `None` iff the selection fills its own bounding box — the invariant
-    # a rectangle-only consumer depends on (see the module docstring).
-    exact = count != (r2 - r1 + 1) * (c2 - c1 + 1)
+            f"region reference {region!r} selects no pixels of this "
+            f"{shape[0]}x{shape[1]} image"
+        ) from None
+    exact = exact_mask is not None
     return ResolvedRegion(
         rect=rect,
-        mask=mask if exact else None,
+        mask=exact_mask,
         pixel_count=count,
         provenance={
             "source": "region-set",

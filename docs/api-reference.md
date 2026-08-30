@@ -1176,6 +1176,12 @@ The registered operation catalogue: name, category, summary, params.
 | `region_col0` | `float` | nan | no |  |  | region corner col |
 | `region_row1` | `float` | nan | no |  |  | region opposite row |
 | `region_col1` | `float` | nan | no |  |  | region opposite col |
+| `region` | `list[record(kind, mode, bounds, outline, holes)]` | [] | no |  |  | region geometry in canonical 0-based inclusive (row, col) form; parts apply in order, empty = whole image. Mutually exclusive with roi |
+| &nbsp;&nbsp;`region[].kind` | `str` |  | no | 'rect', 'ellipse', 'circle', 'polygon' |  | rect\|ellipse\|circle\|polygon |
+| &nbsp;&nbsp;`region[].mode` | `str` | include | no | 'include', 'exclude' |  | include \| exclude |
+| &nbsp;&nbsp;`region[].bounds` | `list[4 x float]` | [] | no |  |  | one [r0, c0, r1, c1], 0-based INCLUSIVE — rect/ellipse/circle |
+| &nbsp;&nbsp;`region[].outline` | `list[2 x float]` | [] | no |  |  | [[row, col], ...] ring, closed implicitly — polygon only |
+| &nbsp;&nbsp;`region[].holes` | `list[2 x float]` | [] | no |  |  | [[row, col], ...] — ONE inner ring subtracted from this part |
 
 ### structure
 

@@ -147,6 +147,35 @@ Several regions drawn separately are one selection, which is what lets a
 two-piece specimen be analyzed at once — the same reasoning that makes
 disjoint `include` parts one region in 4A.
 
+### 8. An op takes GEOMETRY; only a caller may take a name
+
+`ops/registry.py` already draws this line for datasets: auxiliary inputs
+arrive already-resolved because "the caller owns the session store, so the
+pure layer never looks an id up". A region reference is an id, so the same
+line applies — and `tests/test_repo_integrity.py`'s pure-layer guard would
+NOT catch a breach, since `FORBIDDEN_IN_PURE` names the server stack, not
+session coupling.
+
+So `ops/_region_param.REGION_PARAM` carries the canonical geometry inline,
+as an ordinary list-shaped `OpParam` validated by the same machinery as
+every other parameter. `run()` does not change.
+
+That is the whole mechanism, not a stopgap. A recipe runner owns the
+session, so **naming is a caller concern**: the runner resolves a symbolic
+reference and substitutes the resolved geometry into this param before
+dispatch. The op still never sees an id, and the recorded params still
+carry the resolved values ADR 0005 requires — so a result replays
+identically on a machine with no project at all.
+
+A dataset cannot work this way, which is why `inputs` is a separate
+channel: an auxiliary image is large and not JSON. Geometry is small and
+JSON-native, so it belongs in params. The asymmetry is a consequence of
+what the payload is, not an inconsistency.
+
+`calc.region_mask.mask_and_rect` holds §3's `mask is None` invariant, now
+shared by the named path and the geometry param, so the rule has one
+definition rather than one per consumer.
+
 ## Consequences
 
 * Each 4C wave adopts a region by declaring a `region` param and calling

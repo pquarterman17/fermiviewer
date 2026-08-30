@@ -40,7 +40,7 @@ from skimage.draw import polygon2mask
 
 from fermiviewer.calc.regions import Region, Shape
 
-__all__ = ["bounding_box", "rasterize", "to_rect_roi"]
+__all__ = ["bounding_box", "mask_and_rect", "rasterize", "to_rect_roi"]
 
 
 def _outline_mask(ring: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
@@ -174,3 +174,35 @@ def to_rect_roi(region: Region, shape: tuple[int, int]) -> tuple[int, int, int, 
     """
     r0, c0, r1, c1 = bounding_box(region, shape)
     return r0 + 1, c0 + 1, r1 + 1, c1 + 1
+
+
+def mask_and_rect(
+    mask: np.ndarray,
+) -> tuple[tuple[int, int, int, int], np.ndarray | None, int]:
+    """A rasterized mask as ``(rect, mask_or_None, pixel_count)``.
+
+    ADR 0007 §3's invariant, in one place: the returned mask is ``None``
+    EXACTLY when the selection fills its own bounding box, so a consumer
+    that only knows how to slice a rectangle is correct precisely when it
+    sees ``None``, and the field it is ignoring is the signal that it must
+    not. `rect` is 1-based inclusive, tight around the selected pixels.
+
+    Lives here rather than in `region_resolve` because two callers now
+    need it — a region named in the workspace and a region given inline as
+    an op param — and a second copy of an invariant is how the rule starts
+    meaning two different things.
+
+    Raises `ValueError` for a mask selecting nothing, matching
+    `bounding_box`: there is no honest rectangle for an empty selection.
+    """
+    count = int(np.count_nonzero(mask))
+    if count == 0:
+        raise ValueError("region selects no pixels of this image")
+    rows = np.flatnonzero(mask.any(axis=1))
+    cols = np.flatnonzero(mask.any(axis=0))
+    rect = (
+        int(rows[0]) + 1, int(cols[0]) + 1, int(rows[-1]) + 1, int(cols[-1]) + 1,
+    )
+    r1, c1, r2, c2 = rect
+    exact = count != (r2 - r1 + 1) * (c2 - c1 + 1)
+    return rect, (mask if exact else None), count

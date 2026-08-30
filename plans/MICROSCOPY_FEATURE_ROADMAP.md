@@ -622,9 +622,30 @@ in EDS/EELS, imaging statistics, and structural analysis.
 > re-exported from `calc/regions.py` through PEP 562 — lazily, because
 > `region_mask` imports `regions` and a top-level import would cycle.
 >
-> Waves 3–5 remain: segmentation and particles and grains, layers and
-> structural, then batch recipes plus the cross-consumer consistency test
-> item 4's "Done when" asks for.
+> **4C-5's prerequisite landed 2026-08-30 — a region as an op PARAMETER.**
+> Registered ops could not be region-scoped at all, and the obvious fix
+> (let an op call the resolver) breaks `ops/registry.py`'s stated contract
+> that the pure layer never looks an id up — a breach the pure-layer guard
+> would not catch, since it names the server stack rather than session
+> coupling.
+>
+> `ops/_region_param.REGION_PARAM` carries the canonical geometry inline as
+> an ordinary list-shaped `OpParam`. **`run()` does not change** (ADR 0007
+> §8). Naming stays a caller concern: a recipe runner owns the session, so
+> it resolves a symbolic reference and substitutes the geometry into this
+> param before dispatch — the op never sees an id, and the recorded params
+> stay the complete reproduction key ADR 0005 requires.
+>
+> `sum_spectrum` is the first adopter; the seven catalogues that parse the
+> frozen `"r1,c1,r2,c2"` string are 4C-5's remaining surface. The
+> `mask is None` invariant moved into `calc.region_mask.mask_and_rect`, now
+> shared by the named path and the geometry param.
+>
+> Waves 3–4 remain: segmentation and particles and grains, layers and
+> structural. Then 4C-5: the recipe-runner substitution above, plus the
+> cross-consumer consistency test item 4's "Done when" asks for — for which
+> `test_the_op_and_the_route_agree_on_the_same_region` is the first
+> instance, an op and a route reaching one answer by different paths.
 
 ### 5. Calibration profiles and quantitative standards
 
