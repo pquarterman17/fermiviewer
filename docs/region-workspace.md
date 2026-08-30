@@ -59,6 +59,49 @@ Every project/workspace restore sanitizes this UI state against the canonical
 section. Deleting a selected set or region immediately clears stale selection
 and visibility keys after the server accepts the new section.
 
+## Drawing and editing workflow
+
+The workspace reuses the stage's mature annotation rails instead of adding a
+second, subtly different vertex editor. **Polygon**, **Lasso**, **Rectangle**
+and **Ellipse** in the Drawing source panel start those tools directly. The
+selected drawing remains an annotation until the user chooses one of these
+explicit conversions:
+
+- **New region** creates a region whose first part includes the drawing.
+- **Disconnected part** appends the drawing as another inclusion in the
+  selected region.
+- **Exclusion** appends it as a subtraction from the selected region.
+- **Replace** replaces one ordered part from the selected drawing.
+
+For a hole, draw an inner polygon or lasso and use its stage context menu's
+**Mark as hole** command. The existing measure editor attaches the inner ring
+to its host; conversion then copies the outer and every hole together.
+
+Parts are displayed in their authored order because order changes the mask:
+an inclusion after an exclusion can add pixels back. Rows can be reordered and
+every part after the first can switch between Include and Exclude. The first
+part is locked to Include, matching `calc.regions.Region`'s invariant.
+
+**Edit on stage** copies a representable part back to the annotation rails.
+After moving vertices, inserting/deleting vertices, simplifying a lasso or
+editing holes, **Replace** publishes the selected drawing back into that part.
+Polygon holes and plain rectangle/ellipse bounds round-trip exactly. A true
+canonical circle or a bounded shape that itself carries polygon holes is not
+offered for stage editing: the annotation model cannot represent either
+without changing its rasterized mask, so refusing a lossy conversion is the
+safe behavior.
+
+The conversion is deliberately stated and tested once:
+
+```text
+annotation (x, y), normalized 0–1
+    → canonical [row = y × height, col = x × width], 0-based float
+```
+
+The reverse divides column by width and row by height. No rounding, clamping
+or 1-based offset is introduced; exact server rasterization remains the
+authority for pixel membership.
+
 ## Stacked delivery
 
 - **4B-1:** typed transport, atomic server bridge, project/workspace restore.
