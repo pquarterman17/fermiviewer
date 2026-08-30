@@ -49,6 +49,9 @@ from fermiviewer.region_resolve import (
     _find_regions,
     _resolve_reference,
 )
+from fermiviewer.region_resolve import (
+    _check_image as _resolver_check_image,
+)
 
 __all__ = [
     "REGION_REF_KEY",
@@ -166,13 +169,19 @@ def substitute_region_refs(
 def _check_image(group: RegionSet, image_id: str | None, ref: str) -> None:
     """A set drawn on another image is refused (ADR 0007 §6).
 
-    `region_resolve._check_image` says the same thing, but its message
-    names a single analysis. In a batch the useful message names the
-    IMAGE that was skipped, since the caller is reading a list of
-    per-input results and needs to know which one this was.
+    The rule itself lives in `region_resolve._check_image` and is CALLED,
+    not restated. An earlier version of this function re-implemented it
+    with `if group.image_id and image_id`, which looks equivalent to the
+    resolver's `is None` test and is not: an empty-string image id made
+    the resolver refuse and this path allow. ADR 0007 §3 makes the point
+    about masks and it applies here too — a second copy of an invariant is
+    how a rule starts meaning two things.
+
+    All this adds is the REFERENCE the caller wrote, because a batch
+    returns a list of per-image errors and the reader needs to know which
+    reference was skipped.
     """
-    if group.image_id and image_id and group.image_id != image_id:
-        raise RegionReferenceError(
-            f"region set {ref!r} was drawn on image {group.image_id!r}, "
-            f"not {image_id!r}"
-        )
+    try:
+        _resolver_check_image(group, image_id)
+    except RegionReferenceError as exc:
+        raise RegionReferenceError(f"reference {ref!r}: {exc}") from None

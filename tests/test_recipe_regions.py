@@ -258,6 +258,41 @@ def test_a_non_string_reference_is_refused() -> None:
         substitute_region_refs([{"op": "image_stats", "region_ref": 7}], ())
 
 
+@pytest.mark.parametrize("set_image", ["img-A", None, ""])
+@pytest.mark.parametrize("caller_image", [None, "", "img-A", "img-B"])
+def test_the_two_image_binding_checks_cannot_disagree(
+    set_image: str | None, caller_image: str | None
+) -> None:
+    """One rule, called twice — asserted as agreement rather than trusted.
+
+    The recipe path used to RESTATE the resolver's check as
+    `if group.image_id and image_id`, which reads as equivalent to the
+    resolver's `is None` test and is not: an empty-string image id made
+    the resolver refuse and the recipe path allow. That is the drift ADR
+    0007 warns about for masks, arriving instead in the binding rule, and
+    a docstring claiming the copies differed only in wording is what let
+    it sit there.
+
+    Parametrized over every combination rather than the reachable ones,
+    because "not reachable today" is what stops anyone checking tomorrow.
+    """
+    from fermiviewer.recipe_regions import _check_image as recipe_check
+    from fermiviewer.region_resolve import _check_image as resolver_check
+
+    group = _set(_region(Part(_RECT)), image_id=set_image)
+
+    def refuses(fn: Any) -> bool:
+        try:
+            fn()
+        except RegionReferenceError:
+            return True
+        return False
+
+    assert refuses(lambda: recipe_check(group, caller_image, "s1/r1")) == refuses(
+        lambda: resolver_check(group, caller_image)
+    )
+
+
 # ── cross-consumer agreement (item 4's "Done when") ──────────────────
 
 
