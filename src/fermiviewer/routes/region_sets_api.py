@@ -62,7 +62,7 @@ class RegionClassWire(BaseModel):
 
 
 class RegionsWire(BaseModel):
-    schema_version: Literal[1] = Field(1, alias="schema")
+    schema_version: Literal[1] = Field(alias="schema")
     classes: list[RegionClassWire] = Field(default_factory=list)
     sets: list[RegionSetWire] = Field(default_factory=list)
 

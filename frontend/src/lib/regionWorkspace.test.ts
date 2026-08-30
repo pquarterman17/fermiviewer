@@ -6,6 +6,7 @@ import {
   nextRegionId,
   measureToRegionShape,
   regionShapeToMeasure,
+  regionShapeSummary,
   regionVisibilityKey,
   sanitizeRegionUi,
   regionSummary,
@@ -50,6 +51,11 @@ it("duplicates a set with independent geometry and unique region ids", () => {
 describe("regionSummary", () => {
   it("makes compound geometry legible at a glance", () => {
     expect(regionSummary(region)).toBe("1 part · 1 exclusion · 1 hole");
+  });
+
+  it("distinguishes a true circle by reporting its radius", () => {
+    expect(regionShapeSummary({ kind: "circle", bounds: [4, 4, 8, 8] }))
+      .toBe("circle · r 2 px");
   });
 });
 

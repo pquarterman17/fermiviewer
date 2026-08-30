@@ -32,6 +32,7 @@ import { FloatTools, ZoomChip } from "./FloatTools";
 import FourDProbeMarker from "./FourDProbeMarker";
 import LayersOverlay from "./LayersOverlay";
 import MeasureOverlay from "./MeasureOverlay";
+import RegionOverlay from "./RegionOverlay";
 import Minimap from "./Minimap";
 import ScaleBarOverlay from "./ScaleBarOverlay";
 import ScaleLockChip from "./ScaleLockChip";
@@ -507,6 +508,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
 
       {activeId && !rasterless && imgSize && view && (
         <>
+          <RegionOverlay imageId={activeId} view={view} img={imgSize} vp={vp} />
           <MeasureOverlay
             imageId={activeId}
             pixelSize={meta?.pixel_size ?? null}

@@ -5,6 +5,7 @@
 import type { StateCreator } from "zustand";
 
 import {
+  listRegionSets,
   replaceRegionSets as apiReplaceRegionSets,
   type ProjectRegions,
 } from "../lib/api";
@@ -12,18 +13,48 @@ import { regionVisibilityKey, sanitizeRegionUi } from "../lib/regionWorkspace";
 import type { ViewerState } from "./viewerState";
 
 type Set = Parameters<StateCreator<ViewerState>>[0];
+type Get = Parameters<StateCreator<ViewerState>>[1];
 
 export function createRegionActions(
   set: Set,
+  get: Get,
 ): Pick<
   ViewerState,
   | "replaceRegions"
+  | "hydrateRegions"
+  | "refreshRegions"
   | "selectRegion"
   | "toggleRegionSetVisibility"
   | "toggleRegionVisibility"
 > {
   return {
+    hydrateRegions: (regions) => {
+      set((state) => ({
+        regions,
+        regionsLoaded: true,
+        regionsLoadError: null,
+        regionUi: sanitizeRegionUi(state.regionUi, regions),
+      }));
+    },
+    refreshRegions: async () => {
+      set({ regionsLoaded: false, regionsLoadError: null });
+      try {
+        const regions = await listRegionSets();
+        get().hydrateRegions(regions);
+      } catch (error) {
+        const message = (error as Error).message || "request failed";
+        set({
+          regionsLoaded: false,
+          regionsLoadError: message,
+          status: `analysis regions unavailable: ${message}`,
+        });
+        throw error;
+      }
+    },
     replaceRegions: async (regions: ProjectRegions) => {
+      if (!get().regionsLoaded) {
+        throw new Error("analysis regions are not loaded; retry before editing");
+      }
       const accepted = await apiReplaceRegionSets(regions);
       set((state) => ({
         regions: accepted,

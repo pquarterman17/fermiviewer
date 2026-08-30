@@ -27,6 +27,9 @@ export default function RegionWorkspaceCard() {
     state.activeId ? state.images[state.activeId]?.shape : undefined,
   );
   const regions = useViewer((state) => state.regions);
+  const regionsLoaded = useViewer((state) => state.regionsLoaded);
+  const regionsLoadError = useViewer((state) => state.regionsLoadError);
+  const refreshRegions = useViewer((state) => state.refreshRegions);
   const regionUi = useViewer((state) => state.regionUi);
   const replaceRegions = useViewer((state) => state.replaceRegions);
   const selectRegion = useViewer((state) => state.selectRegion);
@@ -48,6 +51,30 @@ export default function RegionWorkspaceCard() {
   const otherSetCount = regions.sets.length - imageSets.length;
 
   if (!activeId) return null;
+
+  if (!regionsLoaded) {
+    return (
+      <Card title="Analysis Regions" count={0} defaultOpen>
+        <div className="fvd-region-empty" role={regionsLoadError ? "alert" : "status"}>
+          <span className="fvd-region-empty-icon" aria-hidden="true">⬡</span>
+          <strong>{regionsLoadError ? "Analysis regions unavailable" : "Loading analysis regions…"}</strong>
+          <span>
+            {regionsLoadError
+              ? "The existing workspace is protected. Retry before creating or editing regions."
+              : "Reading the complete server workspace before edits are enabled."}
+          </span>
+          {regionsLoadError && (
+            <button
+              className="fvd-btn fvd-region-primary"
+              onClick={() => void refreshRegions().catch(() => undefined)}
+            >
+              Retry loading regions
+            </button>
+          )}
+        </div>
+      </Card>
+    );
+  }
 
   const commit = async (next: ProjectRegions, message: string) => {
     setPending(true);
@@ -290,7 +317,20 @@ interface RegionRowProps {
 function RegionRow(props: RegionRowProps) {
   const classEntry = props.classes.find((entry) => entry.id === props.region.region_class);
   return (
-    <div className={`fvd-region-row${props.selected ? " selected" : ""}`} role="listitem" onClick={props.onSelect}>
+    <div
+      className={`fvd-region-row${props.selected ? " selected" : ""}`}
+      role="listitem"
+      tabIndex={0}
+      aria-current={props.selected ? "true" : undefined}
+      onClick={props.onSelect}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          props.onSelect();
+        }
+      }}
+    >
       <button className="fvd-region-eye" aria-label={props.visible ? "Hide region" : "Show region"} aria-pressed={props.visible} onClick={(event) => { event.stopPropagation(); props.onToggle(); }}>
         {props.visible ? "●" : "○"}
       </button>

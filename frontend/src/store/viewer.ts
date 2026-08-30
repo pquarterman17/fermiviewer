@@ -62,6 +62,8 @@ export const useViewer = create<ViewerState>((set, get) => ({
   unavailable: {},
   persistedResults: [],
   regions: { schema: 1, classes: [], sets: [] },
+  regionsLoaded: false,
+  regionsLoadError: null,
   regionUi: {
     selectedSetId: null,
     selectedRegionId: null,
@@ -217,7 +219,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
 
   // Save Project / Export Project Bundle / Open Project… / Locate folder…
   ...createProjectActions(set, get),
-  ...createRegionActions(set),
+  ...createRegionActions(set, get),
 
   saveWorkspaceNamed: async (name) => {
     const r = await apiSaveWorkspaceNamed(name, clientState(get()));

@@ -46,6 +46,10 @@ export default function App() {
 
   // restore any prior session (backend keeps images open across reloads)
   useEffect(() => {
+    // Region geometry is server-carried alongside a loose-image session.
+    // Restore it independently so a transient region request failure cannot
+    // prevent the images themselves from reopening.
+    useViewer.getState().refreshRegions().catch(() => undefined);
     listImages()
       .then((metas) => {
         if (metas.length > 0) {

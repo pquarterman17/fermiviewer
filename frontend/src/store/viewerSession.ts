@@ -466,6 +466,8 @@ export function sessionSlice(
     unavailable,
     persistedResults: r.results ?? [],
     regions: loadedRegions,
+    regionsLoaded: true,
+    regionsLoadError: null,
     regionUi,
     order,
     activeId,

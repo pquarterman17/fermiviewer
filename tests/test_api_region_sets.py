@@ -101,3 +101,12 @@ def test_shape_invariant_errors_are_422s(client: TestClient) -> None:
     response = client.post("/api/region-sets/replace", json=malformed)
     assert response.status_code == 422
     assert project.current().region_sets == ()
+
+
+@pytest.mark.api
+def test_replacement_must_declare_its_regions_schema(client: TestClient) -> None:
+    missing = {key: value for key, value in REGIONS.items() if key != "schema"}
+    response = client.post("/api/region-sets/replace", json=missing)
+    assert response.status_code == 422
+    assert "schema" in response.text
+    assert project.current().region_sets == ()

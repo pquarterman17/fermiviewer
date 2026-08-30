@@ -6,6 +6,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ProjectRegions } from "../../lib/api";
+
 // ── minimal store mock (stable references, no fresh []/{}  per render) ──
 
 const SAVED: import("../../store/viewer").SavedRoi[] = [];
@@ -30,6 +32,8 @@ const deleteRoiFn = vi.fn((imageId: string, roiId: string) => {
   state.savedRois[imageId] = arr.filter((r) => r.id !== roiId);
 });
 const setStatusFn = vi.fn();
+const replaceRegionsFn = vi.fn(async (_regions: ProjectRegions) => undefined);
+const selectRegionFn = vi.fn();
 
 const ROI_MEASURE = {
   id: "m1",
@@ -39,6 +43,7 @@ const ROI_MEASURE = {
 
 const state = {
   activeId: "img1",
+  images: { img1: { shape: [100, 200] } },
   measures: { img1: [ROI_MEASURE] } as Record<string, typeof ROI_MEASURE[]>,
   roiStats: {} as Record<string, { mean: number; std: number; min: number; max: number; area: number; unit: string }>,
   savedRois: {} as Record<string, import("../../store/viewer").SavedRoi[]>,
@@ -47,6 +52,11 @@ const state = {
   recallRoi: recallRoiFn,
   deleteRoi: deleteRoiFn,
   setStatus: setStatusFn,
+  regions: { schema: 1 as const, classes: [], sets: [] },
+  regionsLoaded: true,
+  regionUi: { selectedSetId: null, selectedRegionId: null, hiddenSetIds: [], hiddenRegionKeys: [] },
+  replaceRegions: replaceRegionsFn,
+  selectRegion: selectRegionFn,
 };
 
 vi.mock("../../store/viewer", () => ({
@@ -134,6 +144,28 @@ describe("RoiManagerCard", () => {
     fireEvent.click(screen.getByTitle('Delete "GrainA"'));
     expect(deleteRoiFn).toHaveBeenCalledWith("img1", "sr_0");
     expect(recallRoiFn).not.toHaveBeenCalled();
+  });
+
+  it("converts a saved ROI directly to canonical row/col geometry", async () => {
+    state.savedRois = {
+      img1: [{
+        id: "sr_0",
+        name: "GrainA",
+        kind: "roi",
+        pts: [{ x: 0.1, y: 0.2 }, { x: 0.5, y: 0.6 }],
+        createdAt: "2026-06-18T00:00:00.000Z",
+      }],
+    };
+    render(<RoiManagerCard />);
+    fireEvent.click(screen.getByRole("button", { name: "Convert GrainA to analysis region" }));
+    await vi.waitFor(() => expect(replaceRegionsFn).toHaveBeenCalledOnce());
+    const accepted = replaceRegionsFn.mock.calls[0][0];
+    expect(accepted.sets[0].regions[0].parts[0].shape).toEqual({
+      kind: "rect",
+      bounds: [20, 20, 60, 100],
+    });
+    expect(recallRoiFn).not.toHaveBeenCalled();
+    expect(selectRegionFn).toHaveBeenCalledWith("region-set", "graina");
   });
 
   it("shows the count badge matching the saved list length", () => {
