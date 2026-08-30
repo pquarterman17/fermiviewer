@@ -10,6 +10,8 @@ that the two call conventions cannot silently drift apart.
 from __future__ import annotations
 
 import inspect
+from collections.abc import Iterator
+from typing import Any
 
 import numpy as np
 import pytest
@@ -459,6 +461,19 @@ def test_batch_palette_publishes_input_and_shape_schemas() -> None:
     assert masks["shape"]["columns"] == ["row", "col", "radius"]
     assert masks["shape"]["min_rows"] == 1
 
+    holes = next(
+        f
+        for f in next(
+            p for p in palette["sum_spectrum"]["params"] if p["name"] == "region"
+        )["shape"]["fields"]
+        if f["name"] == "holes"
+    )
+    assert holes["shape"]["kind"] == "rings"
+    assert holes["shape"]["width"] == 2
+    assert holes["shape"]["item_type"] == "float"
+    assert holes["shape"]["min_rings"] == 0
+    assert holes["shape"]["max_rings"] is None
+
     assert palette["gaussian"]["inputs"] == []
     # `recipe_step` is gone: it existed only to say "not scriptable", which
     # is no longer true of any op now that recipe steps can name inputs
@@ -565,3 +580,57 @@ def test_session_adopt_brings_a_struct_in_without_reparsing() -> None:
     img = session.adopt(_image(), "dark.dm4")
     assert session.images[img.id] is img
     assert img.name == "dark.dm4"
+
+
+def _published_params(param: dict[str, Any], path: str) -> Iterator[tuple[str, dict]]:
+    """Every param the palette publishes, including nested record fields —
+    a shape one level down is still a shape a palette has to render."""
+    yield path, param
+    shape = param.get("shape")
+    if shape is not None and shape["kind"] == "records":
+        for f in shape["fields"]:
+            yield from _published_params(f, f"{path}.{f['name']}")
+
+
+def test_every_published_list_param_carries_a_machine_readable_shape() -> None:
+    """A palette cannot build an editor from the word "list".
+
+    `describe_type` renders a structure the serializer must also emit as an
+    object, so the two can drift: `holes` shipped as
+    `"list[ring[2 x float]]"` with no `shape` at all, because the serializer
+    branched on `row`/`record` only. The rendered type is the tell — anything
+    that describes itself as a list has a structure to publish — so this
+    asserts over the whole palette rather than over the params that happen
+    to exist today, and a fourth shape channel is caught the same way.
+    """
+    from fermiviewer.routes.batch_ops import batch_operations
+
+    shapeless = [
+        (path, p["type"])
+        for op in batch_operations()["operations"]
+        for top in op["params"]
+        for path, p in _published_params(top, f"{op['name']}:{top['name']}")
+        if p["type"].startswith("list[") and "shape" not in p
+    ]
+    assert shapeless == []
+
+
+def test_every_shape_spec_is_exported_from_both_op_facades() -> None:
+    """`OpParam`'s shape channels are part of the public vocabulary: a
+    catalogue outside this package declares one by importing it. `RingsSpec`
+    was reachable only as `fermiviewer.ops.shapes.RingsSpec` while its two
+    siblings were re-exported from both facades, so the newest shape was the
+    one hardest to use."""
+    import fermiviewer.ops as facade
+    from fermiviewer.ops import base, shapes
+
+    specs = sorted(
+        n
+        for n in vars(shapes)
+        if n.endswith("Spec") and isinstance(getattr(shapes, n), type)
+    )
+    assert specs == ["RecordSpec", "RingsSpec", "RowSpec"]
+    for name in specs:
+        assert getattr(facade, name, None) is getattr(shapes, name), name
+        assert getattr(base, name, None) is getattr(shapes, name), name
+        assert name in facade.__all__ and name in base.__all__, name

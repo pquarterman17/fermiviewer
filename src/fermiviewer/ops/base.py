@@ -42,6 +42,7 @@ __all__ = [
     "OpSpec",
     "ParamError",
     "RecordSpec",
+    "RingsSpec",
     "RowSpec",
     "produces_value_result",
 ]
