@@ -344,3 +344,28 @@ def polygon(outline: Any, *, holes: Any = ()) -> Shape:
 
 
 # ── rasterization ────────────────────────────────────────────────────
+
+
+# ── compatibility re-exports (#189) ──────────────────────────────────
+#
+# `rasterize`, `bounding_box` and `to_rect_roi` lived in this module
+# until #189 moved them next door into `calc/region_mask.py`. fermiviewer
+# is published, so a public symbol that simply vanishes is a breaking
+# change for code we cannot see; these keep the pre-#189 import path
+# working while the vocabulary and the rasterizer stay separate files.
+#
+# Resolved lazily through PEP 562 rather than imported at module scope,
+# because `region_mask` imports THIS module — a top-level import would be
+# a cycle. The cost is one attribute lookup on first use.
+
+_MOVED_TO_REGION_MASK = ("bounding_box", "rasterize", "to_rect_roi")
+
+__all__ += list(_MOVED_TO_REGION_MASK)
+
+
+def __getattr__(name: str) -> Any:
+    if name in _MOVED_TO_REGION_MASK:
+        from fermiviewer.calc import region_mask
+
+        return getattr(region_mask, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -95,7 +95,13 @@ def test_run_script_writes_tiff_table_and_provenance(tmp_path: Path) -> None:
     header = csv_text.splitlines()[0]
     assert {"mean", "std", "min", "max", "shape"} <= set(header.split(","))
     json_body = json.loads(json_path.read_text(encoding="utf-8"))
-    assert json_body["columns"] == ["mean", "std", "min", "max", "shape"]
+    # `n_finite` joined the value dict in 4C-2: image_stats has always
+    # dropped non-finite pixels from its aggregates and now says how many.
+    # Additive, and the list stays exact on purpose so a future addition
+    # is noticed here too.
+    assert json_body["columns"] == [
+        "mean", "std", "min", "max", "n_finite", "shape",
+    ]
     assert json_body["rows"][0]["mean"] == pytest.approx(expected_mean, abs=1e-3)
 
     provenance_path = out_dir / "sample.provenance.json"

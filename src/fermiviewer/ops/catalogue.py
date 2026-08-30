@@ -17,6 +17,7 @@ import numpy as np
 
 from fermiviewer.calc import filters
 from fermiviewer.calc.raster import raster_of
+from fermiviewer.calc.region_stats import STD_POPULATION, region_stats
 from fermiviewer.calc.roughness import surface_roughness
 from fermiviewer.calc.segment import morph_op, multi_otsu
 from fermiviewer.calc.texture import noise_estimate
@@ -196,12 +197,21 @@ register(OpSpec(
 
 def _image_stats(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     r = raster_of(ds)
-    finite = r[np.isfinite(r)]
+    # 4C-2: the aggregates come from calc.region_stats, shared with
+    # /measure/roi and profile_stats.roi_stats. ddof stays POPULATION --
+    # this op has always reported np.std()'s default, and roi_stats has
+    # always reported MATLAB's N-1; converging WHICH PIXELS are read is
+    # 4C's job, converging the estimator is a separate decision that would
+    # change published numbers either way (see STD_MATLAB/STD_POPULATION).
+    # `r[np.isfinite(r)]` also used to copy the whole raster; region_stats
+    # reduces in place.
+    stats = region_stats(r, ddof=STD_POPULATION)
     value = {
-        "mean": float(finite.mean()) if finite.size else float("nan"),
-        "std": float(finite.std()) if finite.size else float("nan"),
-        "min": float(finite.min()) if finite.size else float("nan"),
-        "max": float(finite.max()) if finite.size else float("nan"),
+        "mean": stats["mean"],
+        "std": stats["std"],
+        "min": stats["min"],
+        "max": stats["max"],
+        "n_finite": stats["n_finite"],
         "shape": list(r.shape),
     }
     return OpResult(op="image_stats", params=params, label="image statistics", value=value)
