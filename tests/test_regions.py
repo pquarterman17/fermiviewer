@@ -38,17 +38,15 @@ import pytest
 from fermiviewer.calc.diffraction import apply_roi
 from fermiviewer.calc.fourd.geometry import aperture_mask
 from fermiviewer.calc.profile_stats import roi_stats
+from fermiviewer.calc.region_mask import bounding_box, rasterize, to_rect_roi
 from fermiviewer.calc.regions import (
     Part,
     Region,
     Shape,
-    bounding_box,
     circle,
     ellipse,
     polygon,
-    rasterize,
     rect,
-    to_rect_roi,
 )
 
 SHAPE = (9, 9)
@@ -86,6 +84,9 @@ RECTS = [
     (0, 0, 1, 1),        # even extent, at the origin
     (2, 3, 6, 4),        # oblong
     (4, 4, 4, 4),        # a single pixel
+    (3, 1, 3, 7),        # ONE PIXEL TALL — a single row of pixels
+    (1, 5, 7, 5),        # ONE PIXEL WIDE — a single column
+    (0, 0, 0, 8),        # one pixel tall, against the top edge
     (-4, -4, 2, 2),      # over the top-left edge
     (6, 6, 20, 20),      # over the bottom-right edge
     (-3, -3, -1, -1),    # entirely off the image
@@ -106,16 +107,70 @@ def test_a_rect_covers_exactly_the_pixels_its_bounds_name(bounds) -> None:
 
 
 def test_a_rect_and_its_corner_polygon_are_the_same_pixels() -> None:
-    """Documentation of a guarantee, not a discriminating test: `rect` is
-    RASTERIZED as its corner polygon, so this equality holds by
-    construction and could only fail if the corners were built wrong. The
-    assertion that actually pins the inclusive convention is the one
-    above, against a ground truth computed outside this module.
+    """The equality the inclusive convention is FOR, and it is now a real
+    test rather than a tautology: `rect` no longer routes through its
+    corner polygon, so the two spellings agree because both are correct,
+    not because they share an implementation.
+
+    They were made to share one precisely so they could not drift — and
+    that is what broke a one-pixel-wide rectangle, since a rect can be
+    degenerate and a ring cannot. See the pair of tests below.
     """
     assert np.array_equal(
         rasterize(one(rect(1, 1, 3, 3)), SHAPE),
         rasterize(one(polygon([(1, 1), (1, 3), (3, 3), (3, 1)])), SHAPE),
     )
+
+
+def test_a_one_pixel_wide_rect_is_a_line_of_pixels_not_two_corners() -> None:
+    """The defect this pair exists to prevent, called out on its own.
+
+    Rasterizing a rect through its corner polygon made a rect with one
+    degenerate axis a ZERO-AREA ring, and a ring enclosing nothing gives
+    back only its vertices — so a single column of pixels came out as its
+    two endpoints. Silently, and with a bounding box that still looked
+    right, because those two corners span exactly the box the caller
+    asked for. A single-column spectrum ROI would have summed 2 pixels
+    instead of 23.
+    """
+    column = rasterize(one(rect(1, 5, 7, 5)), SHAPE)
+    assert column.sum() == 7
+    assert np.array_equal(column, inclusive_box(1, 5, 7, 5))
+
+    row = rasterize(one(rect(3, 1, 3, 7)), SHAPE)
+    assert row.sum() == 7
+    assert np.array_equal(row, inclusive_box(3, 1, 3, 7))
+
+    # the bounding box was never the tell: it is right either way
+    assert bounding_box(one(rect(1, 5, 7, 5)), SHAPE) == (1, 5, 7, 5)
+
+
+def test_a_degenerate_ring_returns_only_its_vertices() -> None:
+    """Why a rect must not BE a polygon, measured rather than asserted.
+
+    A zero-area ring comes back as exactly its vertex pixels — not the
+    line of pixels its edges pass through, and not nothing.
+    `grid_points_in_poly` labels a vertex (2) but finds no edge (3) when
+    the polygon encloses no area, so three collinear points give three
+    pixels and four give two.
+
+    That is an upstream artifact, not a designed answer: it is neither of
+    the two defensible ones. It is pinned here so the behaviour is known
+    rather than discovered later, and it is exactly why routing `rect`
+    through this path made a one-pixel-wide rectangle return its corners.
+    A rect is a pair of BOUNDS and can be degenerate; a ring cannot.
+
+    Left as-is deliberately — a collinear lasso is a strange input, and
+    redesigning polygon semantics does not belong in a fix for a rect.
+    """
+    four = rasterize(one(polygon([(3, 1), (3, 7), (3, 7), (3, 1)])), SHAPE)
+    assert [tuple(p) for p in np.argwhere(four)] == [(3, 1), (3, 7)]
+
+    three = rasterize(one(polygon([(3, 1), (3, 4), (3, 7)])), SHAPE)
+    assert [tuple(p) for p in np.argwhere(three)] == [(3, 1), (3, 4), (3, 7)]
+
+    # the rect spelling of that same line is the whole line
+    assert rasterize(one(rect(3, 1, 3, 7)), SHAPE).sum() == 7
 
 
 # ── the two round conventions, which are not the same set ────────────
