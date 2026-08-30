@@ -31,13 +31,13 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
+from fermiviewer.calc.region_mask import rasterize
 from fermiviewer.calc.regions import (
     Part,
     Region,
     circle,
     ellipse,
     polygon,
-    rasterize,
     rect,
 )
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct

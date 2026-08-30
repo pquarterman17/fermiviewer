@@ -537,10 +537,17 @@ in EDS/EELS, imaging statistics, and structural analysis.
 >
 > The three unchecked boxes are deliberately not started: nothing consumes
 > the contract yet. Drawing and editing regions in the workspace is 4B,
-> migrating analyses onto them is 4C, and previews/QA are 4D. Two
-> constraints for whoever picks those up: `calc/regions.py` stands at 491 of
-> its 500-line ceiling, and `Shape` cannot be compared with `==` (it holds
-> numpy rings) — both point at splitting that module first.
+> migrating analyses onto them is 4C, and previews/QA are 4D.
+>
+> **Amended 2026-08-29, starting 4C.** The predicted split happened, forced
+> by a real defect rather than by tidiness: `rect` was rasterized through
+> its corner polygon, so a rect with one degenerate axis was a zero-area
+> ring and a one-pixel-wide rectangle came back as its two corners. The fix
+> did not fit in the remaining 9 lines. `calc/regions.py` is now the
+> vocabulary (346) and `calc/region_mask.py` the rasterizer (176);
+> `rasterize`/`bounding_box`/`to_rect_roi` moved. Still outstanding:
+> `Shape` cannot be compared with `==` (it holds numpy rings), and
+> `io.regions_model.same_region_set` is the working substitute.
 
 ### 5. Calibration profiles and quantitative standards
 
