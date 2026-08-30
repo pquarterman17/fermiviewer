@@ -1246,6 +1246,13 @@ The registered operation catalogue: name, category, summary, params.
 | Param | Type | Default | Required | Choices | Bounds | Description |
 |---|---|---|---|---|---|---|
 | `roi` | `str` |  | no |  |  | 'r1,c1,r2,c2' 1-based inclusive analysis rectangle; empty = whole image |
+| `region` | `list[record(kind, mode, bounds, outline, holes, group)]` | [] | no |  |  | region geometry in canonical 0-based inclusive (row, col) form; parts apply in order, empty = whole image. Mutually exclusive with roi |
+| &nbsp;&nbsp;`region[].kind` | `str` |  | no | 'rect', 'ellipse', 'circle', 'polygon' |  | rect\|ellipse\|circle\|polygon |
+| &nbsp;&nbsp;`region[].mode` | `str` | include | no | 'include', 'exclude' |  | include \| exclude |
+| &nbsp;&nbsp;`region[].bounds` | `list[4 x float]` | [] | no |  |  | one [r0, c0, r1, c1], 0-based INCLUSIVE — rect/ellipse/circle |
+| &nbsp;&nbsp;`region[].outline` | `list[2 x float]` | [] | no |  |  | [[row, col], ...] ring, closed implicitly — polygon only |
+| &nbsp;&nbsp;`region[].holes` | `list[ring[2 x float]]` | [] | no |  |  | [[[row, col], ...], ...] — inner RINGS subtracted from this part; `Shape.holes` is a sequence, so a region with two holes has to be writable here |
+| &nbsp;&nbsp;`region[].group` | `int` | 0 | no |  | [0, ] | which region this part belongs to. Parts sharing a group are ONE region evaluated in order; groups are then unioned, exactly as a whole-set reference unions a RegionSet's regions. Default 0 = one region, the common case |
 | `method` | `str` | gradient | no | 'kmeans', 'gradient', 'rag', 'orientation' |  | kmeans is the ported MATLAB texture-clustering path; the others are per-image-type watershed/RAG methods |
 | `k` | `int` | 4 | no |  | [2, 10] | k-means cluster count |
 | `seed` | `int` | 0 | no |  |  | k-means RNG seed |
@@ -1317,6 +1324,13 @@ The registered operation catalogue: name, category, summary, params.
 | `threshold` | `float` | nan | no |  |  | intensity threshold; leave unset (NaN) for auto multi-Otsu |
 | `polarity` | `str` | bright | no | 'bright', 'dark' |  | particles brighter or darker than background |
 | `min_area` | `int` | 1 | no |  | [0, ] | drop regions smaller than this (px) |
+| `region` | `list[record(kind, mode, bounds, outline, holes, group)]` | [] | no |  |  | region geometry in canonical 0-based inclusive (row, col) form; parts apply in order, empty = whole image. Mutually exclusive with roi |
+| &nbsp;&nbsp;`region[].kind` | `str` |  | no | 'rect', 'ellipse', 'circle', 'polygon' |  | rect\|ellipse\|circle\|polygon |
+| &nbsp;&nbsp;`region[].mode` | `str` | include | no | 'include', 'exclude' |  | include \| exclude |
+| &nbsp;&nbsp;`region[].bounds` | `list[4 x float]` | [] | no |  |  | one [r0, c0, r1, c1], 0-based INCLUSIVE — rect/ellipse/circle |
+| &nbsp;&nbsp;`region[].outline` | `list[2 x float]` | [] | no |  |  | [[row, col], ...] ring, closed implicitly — polygon only |
+| &nbsp;&nbsp;`region[].holes` | `list[ring[2 x float]]` | [] | no |  |  | [[[row, col], ...], ...] — inner RINGS subtracted from this part; `Shape.holes` is a sequence, so a region with two holes has to be writable here |
+| &nbsp;&nbsp;`region[].group` | `int` | 0 | no |  | [0, ] | which region this part belongs to. Parts sharing a group are ONE region evaluated in order; groups are then unioned, exactly as a whole-set reference unions a RegionSet's regions. Default 0 = one region, the common case |
 | `use_watershed` | `bool` | False | no |  |  | split touching particles by watershed |
 | `min_marker_distance` | `float` | 3.0 | no |  |  | watershed marker separation (px) |
 | `aggregate_max_solidity` | `float` | nan | no |  |  | classify_shapes override; leave unset (NaN) for the calc-layer default |
@@ -1364,6 +1378,13 @@ The registered operation catalogue: name, category, summary, params.
 | &nbsp;&nbsp;`strokes[].radius` | `float` | 4.0 | no |  | [0.5, 200.0] | brush radius (px) |
 | &nbsp;&nbsp;`strokes[].points` | `list[2 x x/y]` |  | yes |  |  | the painted polyline, 0-based (x, y) image px — note (x, y), unlike diffraction_index's 1-based (row, col) |
 | `roi` | `str` |  | no |  |  | 'r1,c1,r2,c2' 1-based inclusive rectangle; empty = whole image |
+| `region` | `list[record(kind, mode, bounds, outline, holes, group)]` | [] | no |  |  | region geometry in canonical 0-based inclusive (row, col) form; parts apply in order, empty = whole image. Mutually exclusive with roi |
+| &nbsp;&nbsp;`region[].kind` | `str` |  | no | 'rect', 'ellipse', 'circle', 'polygon' |  | rect\|ellipse\|circle\|polygon |
+| &nbsp;&nbsp;`region[].mode` | `str` | include | no | 'include', 'exclude' |  | include \| exclude |
+| &nbsp;&nbsp;`region[].bounds` | `list[4 x float]` | [] | no |  |  | one [r0, c0, r1, c1], 0-based INCLUSIVE — rect/ellipse/circle |
+| &nbsp;&nbsp;`region[].outline` | `list[2 x float]` | [] | no |  |  | [[row, col], ...] ring, closed implicitly — polygon only |
+| &nbsp;&nbsp;`region[].holes` | `list[ring[2 x float]]` | [] | no |  |  | [[[row, col], ...], ...] — inner RINGS subtracted from this part; `Shape.holes` is a sequence, so a region with two holes has to be writable here |
+| &nbsp;&nbsp;`region[].group` | `int` | 0 | no |  | [0, ] | which region this part belongs to. Parts sharing a group are ONE region evaluated in order; groups are then unioned, exactly as a whole-set reference unions a RegionSet's regions. Default 0 = one region, the common case |
 | `scales` | `list[1 x scale]` | ((2.0,), (4.0,)) | no |  | [0.0, ] | feature-stack smoothing scales (px), one per row: [[2],[4]]; empty falls back to the (2, 4) default, as in the route |
 | `gradient_sigma` | `float` | 0.0 | no |  | [0.0, 10.0] | extra gradient-magnitude feature sigma (px); 0 disables it |
 | `boundary_class` | `list[1 x class_id]` | () | no |  |  | class id(s) painted on grain boundaries / background, one per row: [[1]] |
@@ -1380,6 +1401,13 @@ The registered operation catalogue: name, category, summary, params.
 | &nbsp;&nbsp;`strokes[].radius` | `float` | 4.0 | no |  | [0.5, 200.0] | brush radius (px) |
 | &nbsp;&nbsp;`strokes[].points` | `list[2 x x/y]` |  | yes |  |  | the painted polyline, 0-based (x, y) image px — note (x, y), unlike diffraction_index's 1-based (row, col) |
 | `roi` | `str` |  | no |  |  | 'r1,c1,r2,c2' 1-based inclusive rectangle; empty = whole image |
+| `region` | `list[record(kind, mode, bounds, outline, holes, group)]` | [] | no |  |  | region geometry in canonical 0-based inclusive (row, col) form; parts apply in order, empty = whole image. Mutually exclusive with roi |
+| &nbsp;&nbsp;`region[].kind` | `str` |  | no | 'rect', 'ellipse', 'circle', 'polygon' |  | rect\|ellipse\|circle\|polygon |
+| &nbsp;&nbsp;`region[].mode` | `str` | include | no | 'include', 'exclude' |  | include \| exclude |
+| &nbsp;&nbsp;`region[].bounds` | `list[4 x float]` | [] | no |  |  | one [r0, c0, r1, c1], 0-based INCLUSIVE — rect/ellipse/circle |
+| &nbsp;&nbsp;`region[].outline` | `list[2 x float]` | [] | no |  |  | [[row, col], ...] ring, closed implicitly — polygon only |
+| &nbsp;&nbsp;`region[].holes` | `list[ring[2 x float]]` | [] | no |  |  | [[[row, col], ...], ...] — inner RINGS subtracted from this part; `Shape.holes` is a sequence, so a region with two holes has to be writable here |
+| &nbsp;&nbsp;`region[].group` | `int` | 0 | no |  | [0, ] | which region this part belongs to. Parts sharing a group are ONE region evaluated in order; groups are then unioned, exactly as a whole-set reference unions a RegionSet's regions. Default 0 = one region, the common case |
 | `scales` | `list[1 x scale]` | ((2.0,), (4.0,)) | no |  | [0.0, ] | feature-stack smoothing scales (px), one per row: [[2],[4]]; empty falls back to the (2, 4) default, as in the route |
 | `gradient_sigma` | `float` | 0.0 | no |  | [0.0, 10.0] | extra gradient-magnitude feature sigma (px); 0 disables it |
 | `min_area` | `int` | 25 | no |  | [0, ] | drop connected components smaller than this (px) — train_segment only; the preview labels no grains |
