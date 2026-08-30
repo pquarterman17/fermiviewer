@@ -352,17 +352,92 @@ def test_a_region_entirely_off_the_image_is_refused() -> None:
 
 @pytest.mark.parametrize("reference", ["s1/", "/r1", "/"])
 def test_a_half_empty_reference_is_refused(reference) -> None:
-    """`"s1/"` is a typo'd region id, not "the whole set"."""
-    with pytest.raises(RegionReferenceError, match="non-empty"):
+    """An id cannot be empty, so no split of these names anything; they can
+    only be a set with that literal id, and none exists here."""
+    with pytest.raises(RegionReferenceError, match="unknown region set"):
         resolve_region(SHAPE, region=reference, sets=PLAIN)
 
 
-def test_a_set_id_containing_a_slash_still_resolves() -> None:
-    """The split takes the LAST separator, so a slash in the id is data."""
+def test_a_set_literally_named_with_a_trailing_slash_resolves() -> None:
+    """The flip side: `"s1/"` is refused above only because no such set
+    exists. The whole string is always a candidate on its own, so a set
+    that really is named that way is reachable rather than unaddressable."""
+    odd = sets_with(region_of(Part(rect(0, 0, 3, 3))), set_id="s1/")
+    assert resolve_region(SHAPE, region="s1/", sets=odd).provenance["set_id"] == "s1/"
+
+
+# ── slashes in ids ───────────────────────────────────────────────────
+#
+# The schema constrains set and region ids only to be non-empty strings
+# (`fvp-v2.schema.json`), so a slash is ordinary data on EITHER side of a
+# reference. Splitting on one particular separator privileges one side and
+# makes the other unreachable, which is what these pin down.
+
+
+def test_a_set_id_containing_a_slash_resolves() -> None:
     odd = sets_with(region_of(Part(rect(0, 0, 3, 3))), set_id="a/b")
     got = resolve_region(SHAPE, region="a/b/r1", sets=odd)
     assert got.provenance["set_id"] == "a/b"
     assert got.provenance["region_ids"] == ["r1"]
+
+
+def test_a_region_id_containing_a_slash_resolves() -> None:
+    """The case a last-separator split makes permanently unreachable: it
+    would look for a set called `"s1/r"` and report it as unknown."""
+    odd = sets_with(region_of(Part(rect(0, 0, 3, 3)), region_id="r/1"))
+    got = resolve_region(SHAPE, region="s1/r/1", sets=odd)
+    assert got.provenance["set_id"] == "s1"
+    assert got.provenance["region_ids"] == ["r/1"]
+
+
+def test_a_reference_resolves_when_only_the_region_side_reading_exists() -> None:
+    """`"a/b/r1"` with a set `"a"` holding a region `"b/r1"` has exactly one
+    valid reading, so it must resolve rather than fail on the other one."""
+    odd = (set_of(region_of(Part(rect(0, 0, 3, 3)), region_id="b/r1"), set_id="a"),)
+    got = resolve_region(SHAPE, region="a/b/r1", sets=odd)
+    assert got.provenance["set_id"] == "a"
+    assert got.provenance["region_ids"] == ["b/r1"]
+
+
+def test_a_reference_that_names_two_existing_targets_is_refused() -> None:
+    """The silent-wrong-answer case. With a set `"a/b"` AND a set `"a"`
+    holding `"b/r1"`, `"a/b/r1"` genuinely means two different selections;
+    answering with either would report a number for a region the caller may
+    not have asked for."""
+    both = (
+        set_of(region_of(Part(rect(0, 0, 3, 3))), set_id="a/b"),
+        set_of(region_of(Part(rect(5, 5, 7, 7)), region_id="b/r1"), set_id="a"),
+    )
+    with pytest.raises(RegionReferenceError, match="ambiguous") as err:
+        resolve_region(SHAPE, region="a/b/r1", sets=both)
+    message = str(err.value)
+    assert "'a/b'" in message and "'b/r1'" in message, "names both readings"
+
+
+def test_duplicate_set_ids_resolve_to_the_first_not_the_last() -> None:
+    """`load_regions` enforces id uniqueness, so duplicates reach here only
+    from a direct caller — but the resolver still has to pick one, and it
+    picks the first, matching the linear scan it replaced. Untested, that
+    is a claim in a comment rather than a behaviour."""
+    dupes = (
+        set_of(region_of(Part(rect(0, 0, 3, 3))), set_id="s1"),
+        set_of(region_of(Part(rect(5, 5, 7, 7))), set_id="s1"),
+    )
+    got = resolve_region(SHAPE, region="s1/r1", sets=dupes)
+    assert resolved_pixels(got) == selected_pixels(0, 0, 3, 3)
+
+
+def test_the_two_readings_would_have_selected_different_pixels() -> None:
+    """Why the refusal earns its keep: resolved separately, the two readings
+    of the same string disagree — so silently picking one is a wrong answer,
+    not merely an arbitrary one."""
+    left = (set_of(region_of(Part(rect(0, 0, 3, 3))), set_id="a/b"),)
+    right = (set_of(region_of(Part(rect(5, 5, 7, 7)), region_id="b/r1"), set_id="a"),)
+    a = resolve_region(SHAPE, region="a/b/r1", sets=left)
+    b = resolve_region(SHAPE, region="a/b/r1", sets=right)
+    assert resolved_pixels(a) == selected_pixels(0, 0, 3, 3)
+    assert resolved_pixels(b) == selected_pixels(5, 5, 7, 7)
+    assert resolved_pixels(a) != resolved_pixels(b)
 
 
 # ── the image binding ────────────────────────────────────────────────

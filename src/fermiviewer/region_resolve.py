@@ -32,6 +32,14 @@ dialect rather than one fewer, so `ResolvedRegion.provenance` names the
 frame in typed fields (`REFERENCE_FRAME`) and records what was resolved
 from what.
 
+**A reference with slashes is disambiguated, not guessed.** Ids are
+free-form non-empty strings, so a slash can appear on either side of
+``"set_id/region_id"``. Rather than picking a separator — which only
+decides which side is silently crippled — every split is tried and only
+the readings that name something existing are kept. Several resolving is
+refused as ambiguous, because two readings can cover different pixels and
+answering with either is a wrong answer, not an arbitrary one.
+
 App layer on purpose, for the same reason as `result_capture.py`: naming a
 region by id requires the server-carried session, so this cannot live in
 the pure `calc/`/`io/`/`ops/` layers. The geometry itself stays pure — the
@@ -158,30 +166,84 @@ def _listed(ids: list[str]) -> str:
     return f"{shown}, +{extra} more" if extra > 0 else shown
 
 
-def _split_reference(reference: str) -> tuple[str, str | None]:
-    """``"set/region"`` -> ``("set", "region")``; ``"set"`` -> ``("set", None)``.
+def _candidate_parses(reference: str) -> list[tuple[str, str | None]]:
+    """Every way `reference` could split into ``(set_id, region_id)``.
 
-    Splits on the LAST separator, so a set id containing a slash still
-    resolves. An empty half is an error rather than a silent whole-set
-    read: ``"set/"`` reads as a typo'd region id, not as "the whole set".
+    The schema constrains both ids only to be non-empty strings, so a
+    slash is ordinary data and can legitimately appear on EITHER side.
+    That makes the reference ambiguous in general, and picking a side is
+    not a fix: splitting on the last separator silently privileges the
+    set id and leaves a region id containing a slash permanently
+    unreachable, while splitting on the first does the reverse. So every
+    split is offered here and `_resolve_reference` keeps only the ones
+    that name something that actually exists.
+
+    The whole string is always a candidate on its own — a bare set id.
+    A split with an empty half never is: an id cannot be empty, so
+    ``"s1/"`` can only be a set literally named ``"s1/"``.
     """
-    head, sep, tail = reference.rpartition("/")
-    if not sep:
-        return reference, None
-    if not head or not tail:
-        raise RegionReferenceError(
-            f"region reference {reference!r} must be 'set_id' or "
-            "'set_id/region_id', with both halves non-empty"
+    parses: list[tuple[str, str | None]] = [(reference, None)]
+    for index, char in enumerate(reference):
+        if char == "/" and 0 < index < len(reference) - 1:
+            parses.append((reference[:index], reference[index + 1 :]))
+    return parses
+
+
+def _resolve_reference(
+    sets: tuple[RegionSet, ...], reference: str
+) -> tuple[RegionSet, str | None]:
+    """The one reading of `reference` that names something that exists.
+
+    Refuses rather than guesses when several readings resolve. Two sets
+    — one called ``"a/b"``, one called ``"a"`` holding a region ``"b/r1"``
+    — make ``"a/b/r1"`` genuinely mean two different selections, and
+    answering with either would report a number for a region the caller
+    may not have asked for. That silent wrong answer is the failure this
+    function exists to prevent; a refusal the user can fix by renaming is
+    the lesser cost.
+    """
+    # First occurrence wins, matching the linear scan this replaced;
+    # `load_regions` enforces id uniqueness, but a direct caller may not.
+    by_id: dict[str, RegionSet] = {}
+    for entry in sets:
+        by_id.setdefault(entry.id, entry)
+
+    viable: list[tuple[RegionSet, str | None]] = []
+    set_hits: list[tuple[RegionSet, str]] = []
+    for set_id, region_id in _candidate_parses(reference):
+        group = by_id.get(set_id)
+        if group is None:
+            continue
+        if region_id is None:
+            viable.append((group, None))
+        elif any(region.id == region_id for region in group.regions):
+            viable.append((group, region_id))
+        else:
+            set_hits.append((group, region_id))
+
+    if len(viable) > 1:
+        readings = "; ".join(
+            f"set {g.id!r}" + ("" if rid is None else f" region {rid!r}")
+            for g, rid in viable
         )
-    return head, tail
+        raise RegionReferenceError(
+            f"region reference {reference!r} is ambiguous — ids may contain "
+            f"'/', and this names more than one existing target ({readings}). "
+            "Rename one of them to reference either unambiguously"
+        )
+    if viable:
+        return viable[0]
 
-
-def _find_set(sets: tuple[RegionSet, ...], set_id: str) -> RegionSet:
-    for group in sets:
-        if group.id == set_id:
-            return group
+    if set_hits:
+        group, region_id = set_hits[0]
+        raise RegionReferenceError(
+            f"unknown region {region_id!r} in set {group.id!r}; available: "
+            f"{_listed([r.id for r in group.regions])}"
+        )
+    leading = reference.split("/", 1)[0] or reference
     raise RegionReferenceError(
-        f"unknown region set {set_id!r}; available: {_listed([g.id for g in sets])}"
+        f"unknown region set {leading!r}; available: "
+        f"{_listed([g.id for g in sets])}"
     )
 
 
@@ -264,8 +326,7 @@ def resolve_region(
             },
         )
 
-    set_id, region_id = _split_reference(region)
-    group = _find_set(sets, set_id)
+    group, region_id = _resolve_reference(sets, region)
     _check_image(group, image_id)
     regions = _find_regions(group, region_id)
 

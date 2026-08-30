@@ -102,12 +102,36 @@ the frame for every later call.
   `region_mask.bounding_box`. Widening to the whole image would turn a
   mis-drawn region into a silent full-image analysis.
 * An **empty set** raises rather than resolving to an empty union.
-* A **half-empty reference** (`"s1/"`) raises: that is a typo'd region id,
-  not "the whole set".
+* A **half-empty reference** (`"s1/"`) raises unless a set is literally
+  named that way: an id cannot be empty, so no split of it names anything.
 
 `RegionReferenceError` subclasses `ValueError` so the catalogues' existing
 `except (ValueError, TypeError)` handlers map it to their 422 without each
 one learning a new exception type.
+
+### 5a. A reference with slashes is disambiguated, never guessed
+
+`fvp-v2.schema.json` constrains set and region ids only to be non-empty
+strings, so a slash is ordinary data and can appear on **either** side of
+a `"set_id/region_id"` reference. The reference is therefore ambiguous in
+general, and choosing a separator is not a fix — it only decides which
+side is silently crippled. Splitting on the last separator (the first
+implementation) privileges the set id and leaves a region id containing a
+slash permanently unreachable, reported as an unknown set; splitting on
+the first does the reverse.
+
+So `_candidate_parses` offers every split, and `_resolve_reference` keeps
+only the readings that name something that exists:
+
+* exactly one resolves → use it, which makes a slash on either side work;
+* none resolve → the existing unknown-set / unknown-region errors;
+* **more than one resolves → refuse as ambiguous**, naming both readings.
+
+The refusal is the point. A set `"a/b"` alongside a set `"a"` holding a
+region `"b/r1"` makes `"a/b/r1"` genuinely mean two different selections
+covering different pixels, so answering with either is a wrong answer
+rather than an arbitrary one. A refusal the user fixes by renaming costs
+less than a number silently computed over the wrong region.
 
 ### 6. A region drawn on another image is refused
 
@@ -150,7 +174,12 @@ path" is asserted for the resolver itself in both directions: a rectangle
 must reproduce the legacy sum exactly, and a non-rectangular region must
 *not* — otherwise the exact mask would be decorative.
 
-The suite is mutation-checked. Fifteen deliberate mutants — inverting the
-`mask is None` invariant in both directions, off-by-ones in the bbox and
-the 1-based conversion, replacing the region union with last-wins,
-removing each refusal, and sharing the frame dict — each turn it red.
+The suite is mutation-checked. Twenty-two deliberate mutants each turn it
+red: inverting the `mask is None` invariant in both directions,
+off-by-ones in the bbox and the 1-based conversion, replacing the region
+union with last-wins, removing each refusal individually, and sharing the
+frame dict. The slash handling is covered in both directions — reverting
+to either a last-separator or a first-separator split fails, as does
+accepting the ambiguous reference instead of refusing it, dropping the
+whole-string candidate, admitting empty halves as splits, or letting a
+duplicate set id resolve to the last rather than the first.
