@@ -1231,6 +1231,13 @@ The registered operation catalogue: name, category, summary, params.
 
 | Param | Type | Default | Required | Choices | Bounds | Description |
 |---|---|---|---|---|---|---|
+| `region` | `list[record(kind, mode, bounds, outline, holes, group)]` | [] | no |  |  | region geometry in canonical 0-based inclusive (row, col) form; parts apply in order, empty = whole image. Mutually exclusive with roi |
+| &nbsp;&nbsp;`region[].kind` | `str` |  | no | 'rect', 'ellipse', 'circle', 'polygon' |  | rect\|ellipse\|circle\|polygon |
+| &nbsp;&nbsp;`region[].mode` | `str` | include | no | 'include', 'exclude' |  | include \| exclude |
+| &nbsp;&nbsp;`region[].bounds` | `list[4 x float]` | [] | no |  |  | one [r0, c0, r1, c1], 0-based INCLUSIVE — rect/ellipse/circle |
+| &nbsp;&nbsp;`region[].outline` | `list[2 x float]` | [] | no |  |  | [[row, col], ...] ring, closed implicitly — polygon only |
+| &nbsp;&nbsp;`region[].holes` | `list[ring[2 x float]]` | [] | no |  |  | [[[row, col], ...], ...] — inner RINGS subtracted from this part; `Shape.holes` is a sequence, so a region with two holes has to be writable here |
+| &nbsp;&nbsp;`region[].group` | `int` | 0 | no |  | [0, ] | which region this part belongs to. Parts sharing a group are ONE region evaluated in order; groups are then unioned, exactly as a whole-set reference unions a RegionSet's regions. Default 0 = one region, the common case |
 | `ref_id` | `int` |  | yes |  |  | particle id (from this run's segmentation) every other region is ranked against |
 | `threshold` | `float` | nan | no |  |  | intensity threshold; leave unset (NaN) for auto multi-Otsu |
 | `polarity` | `str` | bright | no | 'bright', 'dark' |  |  |
@@ -1294,6 +1301,13 @@ The registered operation catalogue: name, category, summary, params.
 | `n_layers` | `int` | 0 | no |  |  | expected layer count; 0 = auto |
 | `modality` | `str` | haadf | no | 'haadf', 'eels', 'bf', 'df' |  | imaging modality (sets detection heuristics) |
 | `roi` | `str` |  | no |  |  | 'r1,c1,r2,c2' 1-based inclusive analysis rectangle; empty = whole image |
+| `region` | `list[record(kind, mode, bounds, outline, holes, group)]` | [] | no |  |  | region geometry in canonical 0-based inclusive (row, col) form; parts apply in order, empty = whole image. Mutually exclusive with roi |
+| &nbsp;&nbsp;`region[].kind` | `str` |  | no | 'rect', 'ellipse', 'circle', 'polygon' |  | rect\|ellipse\|circle\|polygon |
+| &nbsp;&nbsp;`region[].mode` | `str` | include | no | 'include', 'exclude' |  | include \| exclude |
+| &nbsp;&nbsp;`region[].bounds` | `list[4 x float]` | [] | no |  |  | one [r0, c0, r1, c1], 0-based INCLUSIVE — rect/ellipse/circle |
+| &nbsp;&nbsp;`region[].outline` | `list[2 x float]` | [] | no |  |  | [[row, col], ...] ring, closed implicitly — polygon only |
+| &nbsp;&nbsp;`region[].holes` | `list[ring[2 x float]]` | [] | no |  |  | [[[row, col], ...], ...] — inner RINGS subtracted from this part; `Shape.holes` is a sequence, so a region with two holes has to be writable here |
+| &nbsp;&nbsp;`region[].group` | `int` | 0 | no |  | [0, ] | which region this part belongs to. Parts sharing a group are ONE region evaluated in order; groups are then unioned, exactly as a whole-set reference unions a RegionSet's regions. Default 0 = one region, the common case |
 | `reduce` | `str` | mean | no | 'mean', 'sum', 'median' |  | profile collapse (median is robust to streaks) |
 | `fit_window` | `int` | 15 | no |  |  | erf-refinement window (profile px) |
 | `waviness` | `bool` | False | no |  |  | trace each interface laterally (enables the roughness metrology and σ_w) |
@@ -1309,6 +1323,13 @@ The registered operation catalogue: name, category, summary, params.
 | `positions` | `str` |  | yes |  |  | comma-separated interface depths in profile pixels, e.g. '12.5,40,77.2' |
 | `axis` | `str` | y | no | 'y', 'x' |  | depth axis — editing assumes a known axis |
 | `roi` | `str` |  | no |  |  | 'r1,c1,r2,c2' 1-based inclusive analysis rectangle; empty = whole image |
+| `region` | `list[record(kind, mode, bounds, outline, holes, group)]` | [] | no |  |  | region geometry in canonical 0-based inclusive (row, col) form; parts apply in order, empty = whole image. Mutually exclusive with roi |
+| &nbsp;&nbsp;`region[].kind` | `str` |  | no | 'rect', 'ellipse', 'circle', 'polygon' |  | rect\|ellipse\|circle\|polygon |
+| &nbsp;&nbsp;`region[].mode` | `str` | include | no | 'include', 'exclude' |  | include \| exclude |
+| &nbsp;&nbsp;`region[].bounds` | `list[4 x float]` | [] | no |  |  | one [r0, c0, r1, c1], 0-based INCLUSIVE — rect/ellipse/circle |
+| &nbsp;&nbsp;`region[].outline` | `list[2 x float]` | [] | no |  |  | [[row, col], ...] ring, closed implicitly — polygon only |
+| &nbsp;&nbsp;`region[].holes` | `list[ring[2 x float]]` | [] | no |  |  | [[[row, col], ...], ...] — inner RINGS subtracted from this part; `Shape.holes` is a sequence, so a region with two holes has to be writable here |
+| &nbsp;&nbsp;`region[].group` | `int` | 0 | no |  | [0, ] | which region this part belongs to. Parts sharing a group are ONE region evaluated in order; groups are then unioned, exactly as a whole-set reference unions a RegionSet's regions. Default 0 = one region, the common case |
 | `reduce` | `str` | mean | no | 'mean', 'sum', 'median' |  | profile collapse (median is robust to streaks) |
 | `fit_window` | `int` | 15 | no |  |  | erf-refinement window (profile px) |
 | `waviness` | `bool` | False | no |  |  | trace each interface laterally (enables the roughness metrology and σ_w) |

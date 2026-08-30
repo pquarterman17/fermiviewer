@@ -39,8 +39,8 @@ from fermiviewer.calc.roi import extract_rect_roi
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.ops._envelopes import nan_none as _nn
 from fermiviewer.ops._envelopes import output, scalar
-from fermiviewer.ops._parsing import parse_roi_param, split_csv
 from fermiviewer.ops._parsing import pixel_cal as _px_cal
+from fermiviewer.ops._parsing import split_csv
 from fermiviewer.ops._region_param import (
     LABEL_CONTEXT_BBOX,
     LABEL_CONTEXT_EXACT,
@@ -142,9 +142,11 @@ def _layer_outputs(res: LayerResult) -> list[dict[str, Any]]:
 
 def _layers(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     px, unit = _image_cal(ds)
+    scoped = scope_from_params(params, ds.data.shape[:2])
     res = analyze_layers(
         ds.data,
-        roi=parse_roi_param(params["roi"]),
+        roi=scoped.rect if scoped is not None else None,
+        mask=scoped.mask if scoped is not None else None,
         axis=params["axis"],
         sensitivity=params["sensitivity"],
         n_layers=params["n_layers"],
@@ -157,11 +159,16 @@ def _layers(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         modality=params["modality"],
         destripe_fib=params["destripe"],
     )
+    outputs = _layer_outputs(res)
+    if scoped is not None:
+        # exact: the collapse averages only selected pixels, so the profile
+        # is the region's, not its box's
+        outputs.append(region_output(scoped, label_context=LABEL_CONTEXT_EXACT))
     return OpResult(
         op="layers",
         params=params,
         label="cross-section layer analysis",
-        value={"outputs": _layer_outputs(res)},
+        value={"outputs": outputs},
     )
 
 
@@ -171,6 +178,7 @@ _COMMON_LAYER_PARAMS = {
     "roi": OpParam(
         str, "", doc="'r1,c1,r2,c2' 1-based inclusive analysis rectangle; empty = whole image"
     ),
+    "region": REGION_PARAM,
     "reduce": OpParam(
         str,
         "mean",
@@ -219,11 +227,13 @@ register(
 def _layers_edit(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     px, unit = _image_cal(ds)
     positions = [float(v) for v in split_csv(params["positions"])]
+    scoped = scope_from_params(params, ds.data.shape[:2])
     res = recompute_layers(
         ds.data,
         positions,
         axis=params["axis"],
-        roi=parse_roi_param(params["roi"]),
+        roi=scoped.rect if scoped is not None else None,
+        mask=scoped.mask if scoped is not None else None,
         reduce=params["reduce"],
         pixel_size=px,
         unit=unit,
