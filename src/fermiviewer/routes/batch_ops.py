@@ -15,6 +15,9 @@ from fermiviewer.datastruct import DataStruct
 from fermiviewer.jobs import JobQueueFullError, ProgressFn, jobs
 from fermiviewer.models import ImageMeta
 from fermiviewer.ops.batch import run_recipe, validate_recipe
+from fermiviewer.project_session import project
+from fermiviewer.recipe_regions import recipe_region_refs, substitute_region_refs
+from fermiviewer.region_resolve import _resolve_reference
 from fermiviewer.session import UnknownImageError, store
 
 router = APIRouter(prefix="/api")
@@ -176,6 +179,16 @@ def validate_recipe_steps(
     names the run will bind, so an unresolvable reference is a 422 too."""
     try:
         validate_recipe(steps, input_names)
+        # Every named region must resolve against the CURRENT project
+        # before the job is queued, for the reason `validate_recipe`
+        # checks input names up front: a typo'd set name should be a 422
+        # the caller sees now, not 200 identical per-image errors later.
+        # Image binding is deliberately NOT checked here — that is per
+        # image, and a set bound to one input of many is a legitimate
+        # recipe whose other inputs simply skip.
+        region_sets = project.current().region_sets
+        for ref in recipe_region_refs(steps):
+            _resolve_reference(region_sets, ref)
         for step in steps:
             spec = ops.get_spec(step["op"])
             spec.resolve_params(step.get("params"))
@@ -278,6 +291,10 @@ def _run_batch(
     # was removed while it waited. `bindings` is kept only to record which
     # ids that snapshot came from.
     pool = dict(pool or {})
+    # Read ONCE, like `pool`: a batch can run for minutes, and a recipe the
+    # caller was told is runnable must not change meaning because someone
+    # edited a region set while it waited.
+    region_sets = project.current().region_sets
     outputs: list[dict[str, Any]] = []
     for input_index, image_id in enumerate(image_ids):
         source_name = store.name(image_id)
@@ -298,7 +315,15 @@ def _run_batch(
                     f"({step_index}/{len(steps)})",
                 )
 
-            recipe = run_recipe(source, steps, progress=step_progress, inputs=pool)
+            # ADR 0007 §8: the RUNNER resolves the name, per image, and
+            # `run_recipe` only ever sees geometry. A set bound to another
+            # image raises here and lands in this input's error entry
+            # below — the batch carries on with the next image, which is
+            # the "skip and say why" behaviour without a new mechanism.
+            scoped_steps = substitute_region_refs(steps, region_sets, image_id)
+            recipe = run_recipe(
+                source, scoped_steps, progress=step_progress, inputs=pool
+            )
             has_image = any(step.produces_image for step in recipe.steps)
             derived = (
                 register_final_image(

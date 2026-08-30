@@ -23,6 +23,11 @@ from fermiviewer.calc.segment import morph_op, multi_otsu
 from fermiviewer.calc.texture import noise_estimate
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.io.metadata import databar_content_rows, databar_stripped_metadata
+from fermiviewer.ops._region_param import (
+    REGION_PARAM,
+    region_output,
+    scope_from_params,
+)
 from fermiviewer.ops.base import OpParam, OpResult, OpSpec
 from fermiviewer.ops.registry import register
 
@@ -205,8 +210,18 @@ def _image_stats(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     # change published numbers either way (see STD_MATLAB/STD_POPULATION).
     # `r[np.isfinite(r)]` also used to copy the whole raster; region_stats
     # reduces in place.
-    stats = region_stats(r, ddof=STD_POPULATION)
-    value = {
+    # 4C-5: a recipe can scope this op, which is what makes statistics
+    # scriptable in a batch. 4C-2 migrated the ROUTE onto the resolver;
+    # the op had no params at all, so a recipe could only ever ask for the
+    # whole raster.
+    scoped = scope_from_params(params, r.shape)
+    stats = region_stats(
+        r,
+        rect=scoped.rect if scoped is not None else None,
+        mask=scoped.mask if scoped is not None else None,
+        ddof=STD_POPULATION,
+    )
+    value: dict[str, Any] = {
         "mean": stats["mean"],
         "std": stats["std"],
         "min": stats["min"],
@@ -214,11 +229,17 @@ def _image_stats(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         "n_finite": stats["n_finite"],
         "shape": list(r.shape),
     }
+    if scoped is not None:
+        # this op's value is a FLAT dict, not an outputs list, so the
+        # provenance goes in beside the aggregates rather than as an
+        # envelope — same keys, same meanings, one nesting level in
+        value["region"] = region_output(scoped)["data"]
     return OpResult(op="image_stats", params=params, label="image statistics", value=value)
 
 
 register(OpSpec(
     name="image_stats", category="analysis", summary="Raster mean/std/min/max",
+    params={"region": REGION_PARAM},
     fn=_image_stats,
 ))
 

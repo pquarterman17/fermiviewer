@@ -242,6 +242,33 @@ varying support and not to regions. That is the line: refuse the
 combinations that would answer confidently about the wrong thing, and
 leave the rest exactly as they were.
 
+### 11. The recipe runner substitutes; the per-image policy was already there
+
+§8 said a caller resolves a name and substitutes the geometry.
+`recipe_regions.substitute_region_refs` is that caller. A step declares
+`region_ref` and the app-layer runner replaces it with the equivalent
+`params["region"]`, per image, before `run_recipe` sees the step. The op
+never sees an id, `run()` is unchanged, and the RECORDED params carry
+resolved geometry — so a batch result replays where no project exists.
+
+A whole-set reference gives each region its own `group`, which is the
+field the geometry param gained for exactly this: flattening would let
+one region's `exclude` subtract from another's pixels (§7).
+
+**The open per-image question needed no new mechanism.** A set bound to
+another image raises, and `routes/batch_ops._run_batch` already wraps
+each input in its own try/except that records `status: "error"` with the
+reason and continues to the next image. That IS "skip this one and say
+why", and it predates the question. A caller wanting a batch-wide region
+leaves the set unbound, which ADR 0006 already allows; a caller who binds
+one is asking for one specimen, and gets told about the others rather
+than numbers from the wrong sample.
+
+Reference resolution is checked once at submit time (a typo is a 422 the
+caller sees immediately, not 200 identical per-image errors later), while
+image binding is deliberately checked per image, because a set bound to
+one input of many is a legitimate recipe whose other inputs skip.
+
 ## Consequences
 
 * Each 4C wave adopts a region by declaring a `region` param and calling
