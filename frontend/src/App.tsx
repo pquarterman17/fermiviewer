@@ -25,7 +25,7 @@ import SpectralModalityPrompt from "./components/overlays/SpectralModalityPrompt
 import { useAppActions } from "./hooks/useAppCommands";
 import { useAppHotkeys } from "./hooks/useAppHotkeys";
 import { useCubeAutoExplore } from "./hooks/useCubeAutoExplore";
-import { devSampleFiles, launchDir, listImages, listRegionSets } from "./lib/api";
+import { devSampleFiles, launchDir, listImages } from "./lib/api";
 import { installErrLog } from "./lib/errlog";
 import { droppedDirectoryEntries, importDroppedFolders } from "./lib/folderDrop";
 import { useViewer } from "./store/viewer";
@@ -49,9 +49,7 @@ export default function App() {
     // Region geometry is server-carried alongside a loose-image session.
     // Restore it independently so a transient region request failure cannot
     // prevent the images themselves from reopening.
-    listRegionSets()
-      .then((regions) => useViewer.getState().hydrateRegions(regions))
-      .catch(() => undefined);
+    useViewer.getState().refreshRegions().catch(() => undefined);
     listImages()
       .then((metas) => {
         if (metas.length > 0) {

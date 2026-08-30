@@ -53,6 +53,7 @@ const state = {
   deleteRoi: deleteRoiFn,
   setStatus: setStatusFn,
   regions: { schema: 1 as const, classes: [], sets: [] },
+  regionsLoaded: true,
   regionUi: { selectedSetId: null, selectedRegionId: null, hiddenSetIds: [], hiddenRegionKeys: [] },
   replaceRegions: replaceRegionsFn,
   selectRegion: selectRegionFn,

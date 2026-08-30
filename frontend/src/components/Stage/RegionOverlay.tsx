@@ -67,10 +67,12 @@ export function regionShapePath(
   }
 
   const [r0, c0, r1, c1] = shape.bounds;
-  // Inclusive bounds name pixel centres, so the displayed footprint extends
-  // half a pixel beyond each endpoint (the same convention as rasterize()).
-  const a = imageToScreen(c0 - 0.5, r0 - 0.5, view, img, vp);
-  const b = imageToScreen(c1 + 0.5, r1 + 0.5, view, img, vp);
+  // Rect/ellipse bounds name inclusive pixel centres, so their footprint
+  // extends half a pixel beyond each endpoint. Circle bounds are the true
+  // disc boundary and must not receive that expansion (calc.regions).
+  const halfPixel = shape.kind === "circle" ? 0 : 0.5;
+  const a = imageToScreen(c0 - halfPixel, r0 - halfPixel, view, img, vp);
+  const b = imageToScreen(c1 + halfPixel, r1 + halfPixel, view, img, vp);
   const x0 = Math.min(a.x, b.x);
   const x1 = Math.max(a.x, b.x);
   const y0 = Math.min(a.y, b.y);

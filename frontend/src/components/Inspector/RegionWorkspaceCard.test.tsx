@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  listRegionSets as apiListRegionSets,
   replaceRegionSets as apiReplaceRegionSets,
   type ImageMeta,
   type ProjectRegions,
@@ -12,6 +13,7 @@ import RegionWorkspaceCard from "./RegionWorkspaceCard";
 
 vi.mock("../../lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../lib/api")>()),
+  listRegionSets: vi.fn(),
   replaceRegionSets: vi.fn(),
 }));
 
@@ -65,6 +67,8 @@ beforeEach(() => {
     activeId: "image-1",
     images: { "image-1": meta },
     regions: { schema: 1, classes: [], sets: [] },
+    regionsLoaded: true,
+    regionsLoadError: null,
     regionUi: {
       selectedSetId: null,
       selectedRegionId: null,
@@ -73,10 +77,21 @@ beforeEach(() => {
     },
   });
   vi.mocked(apiReplaceRegionSets).mockImplementation(async (regions) => regions);
+  vi.mocked(apiListRegionSets).mockResolvedValue({ schema: 1, classes: [], sets: [] });
   vi.clearAllMocks();
 });
 
 describe("RegionWorkspaceCard", () => {
+  it("fails closed and offers retry when the server baseline is unavailable", async () => {
+    useViewer.setState({ regionsLoaded: false, regionsLoadError: "offline" });
+    render(<RegionWorkspaceCard />);
+    expect(screen.getByRole("alert")).toHaveTextContent("existing workspace is protected");
+    expect(screen.queryByRole("button", { name: "Create region set" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Retry loading regions" }));
+    await waitFor(() => expect(useViewer.getState().regionsLoaded).toBe(true));
+  });
+
   it("turns the empty state into an image-bound set", async () => {
     render(<RegionWorkspaceCard />);
     expect(screen.getByText("No analysis regions on this image")).toBeInTheDocument();

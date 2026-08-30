@@ -20,6 +20,11 @@ describe("RegionOverlay geometry", () => {
     expect(regionShapePath({ kind: "rect", bounds: [10, 20, 12, 23] }, view, size, size))
       .toBe("M19.50 9.50 H23.50 V12.50 H19.50 Z");
   });
+
+  it("uses a circle's true bounds without half-pixel expansion", () => {
+    expect(regionShapePath({ kind: "circle", bounds: [4, 4, 8, 8] }, view, size, size))
+      .toBe("M4.00 6.00 A2.00 2.00 0 1 0 8.00 6.00 A2.00 2.00 0 1 0 4.00 6.00 Z");
+  });
 });
 
 describe("RegionOverlay visibility", () => {

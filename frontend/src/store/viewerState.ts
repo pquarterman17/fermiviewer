@@ -55,6 +55,9 @@ export interface ViewerState {
   /** Live named analysis regions from ADR 0006. Unlike `measures`, these
    *  are 0-based [row, col] geometry and are server-carried project data. */
   regions: ProjectRegions;
+  /** False until the server baseline has loaded; region writes fail closed. */
+  regionsLoaded: boolean;
+  regionsLoadError: string | null;
   /** Selection/visibility for the region manager and future stage overlay. */
   regionUi: RegionWorkspaceUi;
   selected: string[];
@@ -179,6 +182,8 @@ export interface ViewerState {
   replaceRegions: (regions: ProjectRegions) => Promise<void>;
   /** Seed the server-carried workspace after a browser refresh. No write. */
   hydrateRegions: (regions: ProjectRegions) => void;
+  /** Retry the read-only server hydration used on browser startup. */
+  refreshRegions: () => Promise<void>;
   selectRegion: (setId: string | null, regionId?: string | null) => void;
   toggleRegionSetVisibility: (setId: string) => void;
   toggleRegionVisibility: (setId: string, regionId: string) => void;

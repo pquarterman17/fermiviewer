@@ -78,7 +78,10 @@ export function regionShapeSummary(shape: RegionShape): string {
     const holes = shape.holes?.length ?? 0;
     return `${shape.outline.length} vertices${holes ? ` · ${holes} hole${holes === 1 ? "" : "s"}` : ""}`;
   }
-  if (shape.kind === "circle") return "circle";
+  if (shape.kind === "circle") {
+    const radius = Math.abs(shape.bounds[2] - shape.bounds[0]) / 2;
+    return `circle · r ${Number(radius.toFixed(2))} px`;
+  }
   return shape.kind === "ellipse" ? "ellipse bounds" : "rectangle bounds";
 }
 

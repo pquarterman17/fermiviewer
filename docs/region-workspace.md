@@ -111,14 +111,17 @@ legible over both dark and light microscopy images. Set and region visibility
 buttons affect only this presentation layer and never rewrite geometry.
 
 The preview reads canonical row/column coordinates directly. Polygon holes
-use SVG's even-odd fill rule, and bounded shapes extend half a pixel around
-their inclusive endpoint centers to match the backend rasterizer's pixel
-footprint convention.
+use SVG's even-odd fill rule. Rectangle and ellipse bounds extend half a pixel
+around their inclusive endpoint centers to match the backend rasterizer's
+pixel-footprint convention; circle bounds are true disc boundaries and receive
+no expansion.
 
 Region sets are carried by the live backend session even when the user opened
 loose images rather than a project. Browser refresh reloads region sets in
-parallel with the image list. This hydration is read-only: it does not issue a
-replace request or accidentally rewrite the workspace during startup.
+parallel with the image list. This hydration is read-only. Until it succeeds,
+the manager fails closed and offers a retry; whole-workspace replacement is
+blocked so a transient GET failure cannot turn an empty client baseline into
+deletion of server-carried regions.
 
 Saved rectangle and ellipse bookmarks have a direct **Convert to analysis
 region** action. Conversion creates an image-bound set when needed, records

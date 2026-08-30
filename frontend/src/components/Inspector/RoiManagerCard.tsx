@@ -53,6 +53,7 @@ export default function RoiManagerCard() {
     s.activeId ? s.images[s.activeId]?.shape : undefined,
   );
   const regions = useViewer((s) => s.regions);
+  const regionsLoaded = useViewer((s) => s.regionsLoaded);
   const selectedSetId = useViewer((s) => s.regionUi.selectedSetId);
   const replaceRegions = useViewer((s) => s.replaceRegions);
   const selectRegion = useViewer((s) => s.selectRegion);
@@ -222,6 +223,7 @@ export default function RoiManagerCard() {
                   className="fvd-icon-btn"
                   aria-label={`Convert ${roi.name} to analysis region`}
                   title={`Convert “${roi.name}” to an exact analysis region`}
+                  disabled={!regionsLoaded}
                   onClick={(e) => {
                     e.stopPropagation();
                     void promoteToRegion(roi);
