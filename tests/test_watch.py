@@ -579,3 +579,41 @@ def test_a_watch_recipe_honours_a_named_region(
     # ADR 0005: the recorded params carry the RESOLVED geometry
     assert stats["params"]["region"]
     assert "s1" not in repr(stats["params"])
+
+
+@pytest.mark.api
+def test_a_watch_derived_image_records_a_self_contained_recipe(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """The lineage half of the same rule, on the watch path.
+
+    A recipe that produces an image gets one stored in the derived
+    image's metadata, and it must replay without the project. The batch
+    runner and this one both substitute, so both must persist the
+    SUBSTITUTED steps — testing only the batch left this side free to
+    keep storing a symbolic reference.
+    """
+    from fermiviewer.project_session import project
+    from fermiviewer.session import store as image_store
+
+    project.current()
+    project.replace_regions((_left_half_set(),), ())
+
+    watch_dir = tmp_path / "incoming"
+    watch_dir.mkdir()
+    client.post("/api/watch/start", json={
+        "dir": str(watch_dir),
+        "steps": [
+            {"op": "gaussian", "params": {"sigma": 1}},
+            {"op": "image_stats", "region_ref": "s1/r1"},
+        ],
+        "interval": 0.02,
+    })
+    (watch_dir / "drop.png").write_bytes(_gradient_png())
+
+    final = _poll_job(client, _wait_for_job(client))
+    assert final["status"] == "done", final
+    derived = image_store.get(final["result"]["derived"]["id"])
+    recipe = derived.metadata["recipe"]
+    assert not any("region_ref" in step for step in recipe), recipe
+    assert recipe[1]["params"]["region"], "resolved geometry must be recorded"

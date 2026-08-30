@@ -128,7 +128,9 @@ def _run_watch_job(
     )
     has_image = any(step.produces_image for step in recipe.steps)
     derived = (
-        register_final_image(image_id, path.name, recipe.final, steps, bindings)
+        register_final_image(
+            image_id, path.name, recipe.final, scoped_steps, bindings
+        )
         if has_image
         else None
     )

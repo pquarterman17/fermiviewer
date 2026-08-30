@@ -132,7 +132,17 @@ def substitute_region_refs(
     for i, step in enumerate(steps):
         ref = step.get(REGION_REF_KEY)
         if not ref:
-            out.append(step)
+            # Strip an EMPTY key as well as a used one. The request model
+            # gives every step a `region_ref` default, and these steps are
+            # what `register_final_image` persists as an image's recipe —
+            # so leaving it in would add a field to the stored recipe of
+            # every batch that never mentions a region, changing
+            # already-persisted shape for no reason.
+            out.append(
+                {k: v for k, v in step.items() if k != REGION_REF_KEY}
+                if REGION_REF_KEY in step
+                else step
+            )
             continue
         if not isinstance(ref, str):
             raise RegionReferenceError(

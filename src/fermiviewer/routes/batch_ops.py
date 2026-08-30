@@ -302,6 +302,14 @@ def register_final_image(
     lineage + the recipe in its metadata. Shared with the folder-watch
     route's single-file job (``routes/watch.py``).
 
+    ``steps`` must be the SUBSTITUTED steps, not the recipe as submitted:
+    an image's recorded recipe is provenance for what produced it, so it
+    has to be self-contained the way ADR 0005 requires of recorded params.
+    A `region_ref` left in would name a region set that need not exist on
+    the machine replaying it — and, worse, could name a DIFFERENT set with
+    the same id. Substituted steps are ordinary version-2 steps (the
+    geometry is just a param), so this needs no recipe-version bump.
+
     ``recipe_inputs`` is the id binding the steps' symbolic input names
     resolved to for THIS run. The steps alone no longer describe the
     computation once a step can name an auxiliary dataset, so the binding is
@@ -377,7 +385,7 @@ def _run_batch(
             has_image = any(step.produces_image for step in recipe.steps)
             derived = (
                 register_final_image(
-                    image_id, source_name, recipe.final, steps, bindings
+                    image_id, source_name, recipe.final, scoped_steps, bindings
                 )
                 if has_image
                 else None

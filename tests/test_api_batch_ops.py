@@ -681,3 +681,61 @@ def test_the_legitimate_spellings_are_still_accepted(client) -> None:
             "/api/batch/run", json={"image_ids": [image_id], "steps": [step]}
         )
         assert response.status_code == 200, (step, response.text)
+
+
+def test_an_images_recorded_recipe_is_self_contained(client) -> None:
+    """A derived image's `recipe` metadata is provenance for what produced
+    it, so it must replay without the project — the same property ADR
+    0005 requires of recorded params, which this run's `values[].params`
+    already had.
+
+    Storing the SUBMITTED steps left a symbolic `region_ref` there: it
+    names a set that need not exist on the machine replaying it and,
+    worse, could name a DIFFERENT set with the same id. Substituted steps
+    are ordinary version-2 steps (geometry is just a param), so this needs
+    no recipe-version bump.
+    """
+    from fermiviewer.project_session import project
+
+    image_id = _image("lineage.dm4")
+    project.current()
+    project.replace_regions((_region_set(half=True),), ())
+
+    response = client.post(
+        "/api/batch/run",
+        json={
+            "image_ids": [image_id],
+            "steps": [
+                {"op": "gaussian", "params": {"sigma": 1}},
+                {"op": "image_stats", "region_ref": "s1/r1"},
+            ],
+        },
+    )
+    assert response.status_code == 200, response.text
+    final = _poll(client, response.json()["job_id"])
+    derived = store.get(final["result"]["outputs"][0]["derived"]["id"])
+    recipe = derived.metadata["recipe"]
+
+    assert derived.metadata["recipe_version"] == 2
+    assert not any("region_ref" in step for step in recipe), recipe
+    assert recipe[1]["params"]["region"], "resolved geometry must be recorded"
+
+
+def test_a_recipe_without_regions_stores_exactly_what_it_did_before(client) -> None:
+    """`region_ref` has a default, so every step dumps one. Persisting
+    that would add a key to the stored recipe of every batch that never
+    mentions a region — changing already-written shape for no reason. The
+    key is stripped whether it was used or merely defaulted."""
+    image_id = _image("plain.dm4")
+    response = client.post(
+        "/api/batch/run",
+        json={
+            "image_ids": [image_id],
+            "steps": [{"op": "gaussian", "params": {"sigma": 1}}],
+        },
+    )
+    final = _poll(client, response.json()["job_id"])
+    derived = store.get(final["result"]["outputs"][0]["derived"]["id"])
+    assert derived.metadata["recipe"] == [
+        {"op": "gaussian", "params": {"sigma": 1}, "inputs": {}}
+    ]
