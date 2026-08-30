@@ -38,6 +38,7 @@ from fermiviewer.io.regions_model import (
     RegionClass,
     RegionSet,
     free_set_id,
+    regions_to_manifest,
     same_region_set,
 )
 
@@ -254,6 +255,32 @@ class ProjectSession:
             if removed:
                 self._state = replace(self._state, results=kept)
         return removed
+
+    def replace_regions(
+        self,
+        region_sets: tuple[RegionSet, ...],
+        region_classes: tuple[RegionClass, ...],
+    ) -> None:
+        """Atomically replace the live region workspace.
+
+        Region sets are server-carried project data, so the browser edits the
+        session rather than echoing them through every save request. Validate
+        the complete replacement before taking the lock: duplicate ids or
+        unserializable structure must leave the previous workspace intact.
+        """
+        regions_to_manifest(region_sets, region_classes)
+        with self._lock:
+            kept_ids = {group.id for group in region_sets}
+            self._state = replace(
+                self._state,
+                region_sets=region_sets,
+                region_classes=region_classes,
+                region_set_origins={
+                    key: value
+                    for key, value in self._state.region_set_origins.items()
+                    if value in kept_ids
+                },
+            )
 
     def note_save(self, path: str | Path, mode: str, name: str | None) -> None:
         """Record where the project now lives, after a save.

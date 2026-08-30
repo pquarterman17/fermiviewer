@@ -104,6 +104,7 @@ beforeEach(() => {
 const LOADED_PROJECT = {
   unavailable: [],
   results: [],
+  regions: { schema: 1 as const, classes: [], sets: [] },
   project: {
     path: "/cfg/workspaces/saved.fvp",
     name: "Saved",
@@ -113,10 +114,11 @@ const LOADED_PROJECT = {
     primary_param: null,
     n_unavailable: 0,
     n_results: 0,
+    n_region_sets: 0,
   },
 } satisfies Pick<
   Awaited<ReturnType<typeof apiLoadWorkspaceNamed>>,
-  "unavailable" | "results" | "project"
+  "unavailable" | "results" | "regions" | "project"
 >;
 
 // measureSeq/groupSeq are module-level counters, not part of the Zustand

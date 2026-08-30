@@ -10,6 +10,7 @@
 // Mirrors the route's Pydantic wire models — keep in sync.
 
 import type { ImageMeta } from "./core";
+import type { ProjectRegions } from "./regionSets";
 import { json, post } from "./transport";
 import type { SessionClientState } from "./workspace";
 
@@ -111,6 +112,7 @@ export interface ProjectInfo {
   primary_param: string | null;
   n_unavailable: number;
   n_results: number;
+  n_region_sets: number;
   /** The payload mode of the file just read, which on an append load is not
    *  necessarily the session's. */
   loaded_payload_mode: ProjectPayloadMode;
@@ -121,6 +123,7 @@ export interface ProjectLoadResponse {
   client_state: SessionClientState | null;
   unavailable: UnavailableImage[];
   results: PersistedResultRecord[];
+  regions: ProjectRegions;
   project: ProjectInfo;
 }
 
@@ -130,6 +133,7 @@ export interface ProjectSaveResponse {
   n_images: number;
   n_unavailable: number;
   n_results: number;
+  n_region_sets: number;
   dropped_samples: number;
   dropped_measures: number;
 }

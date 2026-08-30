@@ -63,6 +63,7 @@ const PROJECT: ProjectLoadResponse["project"] = {
   primary_param: "anneal_T",
   n_unavailable: 1,
   n_results: 1,
+  n_region_sets: 1,
 };
 
 /** One resolved image, one missing — a sample holding both. */
@@ -75,6 +76,11 @@ const PARTIAL_LOAD: ProjectLoadResponse = {
     status: "completed",
     source_ids: ["here"],
   }],
+  regions: {
+    schema: 1,
+    classes: [{ id: "grain", label: "Grain", color: "#8b5cf6", note: null }],
+    sets: [{ id: "set-1", name: "Grains", image_id: "here", regions: [], meta: {} }],
+  },
   unavailable: [
     { id: "gone", name: "b.tif", rel: "s2/b.tif", source: "/data/s2/b.tif", size_bytes: 512 },
   ],
@@ -119,6 +125,7 @@ describe("openProject", () => {
     expect(s.currentWorkspace).toBeNull();
     expect(s.status).toContain("1 unavailable");
     expect(s.persistedResults.map((result) => result.id)).toEqual(["result-1"]);
+    expect(s.regions.sets.map((set) => set.id)).toEqual(["set-1"]);
   });
 
   it("keeps pointing at the session's project, not the file just read", async () => {
@@ -159,6 +166,7 @@ describe("saveProject", () => {
       n_images: 3,
       n_unavailable: 2,
       n_results: 1,
+      n_region_sets: 1,
       dropped_samples: 0,
       dropped_measures: 0,
     });
@@ -176,6 +184,7 @@ describe("saveProject", () => {
       n_images: 1,
       n_unavailable: 0,
       n_results: 1,
+      n_region_sets: 1,
       dropped_samples: 0,
       dropped_measures: 0,
     });
@@ -195,6 +204,7 @@ describe("saveProject", () => {
       n_images: 2,
       n_unavailable: 1,
       n_results: 1,
+      n_region_sets: 1,
       dropped_samples: 0,
       dropped_measures: 0,
     });
@@ -296,6 +306,7 @@ describe("browse-scale lock persistence (item 11)", () => {
       n_images: 1,
       n_unavailable: 0,
       n_results: 1,
+      n_region_sets: 1,
       dropped_samples: 0,
       dropped_measures: 0,
     });

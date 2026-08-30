@@ -15,5 +15,6 @@ export * from "./api/watch";
 export * from "./api/fourd";
 export * from "./api/folders";
 export * from "./api/project";
+export * from "./api/regionSets";
 export * from "./api/distributions";
 export * from "./api/results";

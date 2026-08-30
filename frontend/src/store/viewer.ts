@@ -25,6 +25,7 @@ import { createCloseAction } from "./viewerCloseImage";
 import { createCompareActions } from "./viewerCompareActions";
 import { createMeasureActions } from "./viewerMeasureActions";
 import { createProjectActions } from "./viewerProjectActions";
+import { createRegionActions } from "./viewerRegionActions";
 import type { ViewerState } from "./viewerState";
 import {
   applyUndoEntry,
@@ -60,6 +61,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   images: {},
   unavailable: {},
   persistedResults: [],
+  regions: { schema: 1, classes: [], sets: [] },
   selected: [],
   listView: "thumbs",
   compareSet: null,
@@ -209,6 +211,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
 
   // Save Project / Export Project Bundle / Open Project… / Locate folder…
   ...createProjectActions(set, get),
+  ...createRegionActions(set),
 
   saveWorkspaceNamed: async (name) => {
     const r = await apiSaveWorkspaceNamed(name, clientState(get()));
