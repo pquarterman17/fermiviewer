@@ -588,9 +588,43 @@ in EDS/EELS, imaging statistics, and structural analysis.
 > scoping decision moved whole into `routes/_spectrum_scope.py` rather
 > than being trimmed in place.
 >
-> Waves 2–5 remain: imaging statistics, segmentation and particles and
-> grains, layers and structural, then batch recipes plus the
-> cross-consumer consistency test item 4's "Done when" asks for.
+> **4C-2 landed 2026-08-30 — imaging statistics over canonical regions.**
+> `calc/region_stats.region_stats` is the one place a region becomes
+> mean/std/min/max, and `/measure/roi` (via `region_ref`), the
+> `image_stats` op and `profile_stats.roi_stats` all read through it.
+> `roi_stats`' inscribed ellipse now routes through the 4A `ellipse`
+> primitive — the two are pixel-identical over square, oblong and
+> degenerate bounds, which is what 4A's footprint semi-axis was chosen
+> for, now asserted rather than asserted-in-a-docstring.
+>
+> **Two conventions were deliberately NOT unified.** `roi_stats` reports
+> MATLAB's sample std (ddof=1); `image_stats` reports the population std
+> (ddof=0). 4C converges which PIXELS an analysis reads, not which
+> estimator it publishes; switching either would change numbers users
+> already have. `STD_MATLAB`/`STD_POPULATION` name them so the divergence
+> is legible, and a test pins both.
+>
+> **Counting and averaging are now separate questions.** `n_pixels` is
+> what the region selects, `n_finite` how many carry a value; physical
+> `area` follows `n_pixels` because a dead pixel still occupies specimen
+> area, while the aggregates use the finite subset. That makes `roi_stats`
+> no longer return NaN for a whole ROI because one pixel was NaN — the
+> single behaviour change in this wave, and visible via `n_finite`.
+>
+> `np.std(..., where=...)` turned out to allocate a float64 copy of the
+> whole view (33.6 MB on a 2048² float32 raster), so the deviation pass is
+> chunked and two-pass — one-pass `E[x²]-E[x]²` loses most of the
+> precision on an EM image with mean 30000 and std 50. The bounded-memory
+> guard caught that; it is budgeted against the raster's own size, since
+> the `isfinite` mask is unavoidable.
+>
+> #189's moved names (`rasterize`, `bounding_box`, `to_rect_roi`) are
+> re-exported from `calc/regions.py` through PEP 562 — lazily, because
+> `region_mask` imports `regions` and a top-level import would cycle.
+>
+> Waves 3–5 remain: segmentation and particles and grains, layers and
+> structural, then batch recipes plus the cross-consumer consistency test
+> item 4's "Done when" asks for.
 
 ### 5. Calibration profiles and quantitative standards
 

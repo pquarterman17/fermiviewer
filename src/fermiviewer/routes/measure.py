@@ -11,9 +11,12 @@ from fermiviewer.calc.fourier import compute_fft, local_fft_region
 from fermiviewer.calc.profile_stats import box_integrate, measure_distance, roi_stats
 from fermiviewer.calc.profiles import line_profile_stats, polyline_profile
 from fermiviewer.calc.raster import NoRasterError, raster_of
+from fermiviewer.calc.region_stats import STD_MATLAB, region_stats
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.io.project_results import ResultOutput
 from fermiviewer.models import ImageMeta
+from fermiviewer.project_session import project
+from fermiviewer.region_resolve import resolve_region
 from fermiviewer.result_capture import capture_result
 from fermiviewer.session import UnknownImageError, store
 
@@ -218,16 +221,60 @@ def _capture_profile(
 
 class RoiRequest(BaseModel):
     image_id: str
-    rect: tuple[float, float, float, float]   # (row1, col1, row2, col2), 1-based
-    shape: str = "rect"                        # rect | ellipse
+    #: (row1, col1, row2, col2), 1-based. Optional ONLY because
+    #: `region_ref` is the other way to say which pixels; exactly one of
+    #: the two is required.
+    rect: tuple[float, float, float, float] | None = None
+    shape: str | None = None                   # rect | ellipse (rect default)
+    #: 4C-2: a named region from the saved workspace, "set_id" or
+    #: "set_id/region_id", measured over its EXACT mask.
+    region_ref: str = ""
 
 
 @router.post("/measure/roi")
 def measure_roi(req: RoiRequest) -> dict:
+    """Statistics over a rectangle, an inscribed ellipse, or a named region.
+
+    `rect`+`shape` is the legacy path and is unchanged. `region_ref`
+    measures the region's exact mask instead of its bounding box.
+
+    Neither scope param is ever silently discarded: giving both, giving
+    neither, or pairing `shape` with `region_ref` (which carries its own
+    geometry, so a shape would be dropped) is a 422.
+    """
+    if bool(req.rect is not None) == bool(req.region_ref):
+        raise HTTPException(422, "give either rect or region_ref, not both")
+    if req.region_ref and req.shape is not None:
+        raise HTTPException(
+            422, "shape applies to rect only; a region carries its own geometry"
+        )
     ds, raster = _raster(req.image_id)
+
+    if req.region_ref:
+        try:
+            resolved = resolve_region(
+                (int(raster.shape[0]), int(raster.shape[1])),
+                region=req.region_ref,
+                sets=project.current().region_sets,
+                image_id=req.image_id,
+            )
+            stats = region_stats(
+                raster, resolved.rect, resolved.mask,
+                pixel_size=ds.pixel_size, ddof=STD_MATLAB,
+            )
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from None
+        return {
+            **stats,
+            "unit": ds.pixel_unit or "px",
+            "region": list(resolved.rect),
+            "exact_mask": resolved.is_exact,
+        }
+
+    assert req.rect is not None
     try:
         stats = roi_stats(raster, *req.rect, pixel_size=ds.pixel_size,
-                          shape=req.shape)
+                          shape=req.shape or "rect")
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
     return {**stats, "unit": ds.pixel_unit or "px"}

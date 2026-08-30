@@ -14,6 +14,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from fermiviewer.calc.region_mask import rasterize
+from fermiviewer.calc.region_stats import STD_MATLAB, region_stats
+from fermiviewer.calc.regions import Part, Region, ellipse
+
 __all__ = [
     "DistanceResult",
     "InterfaceFit",
@@ -138,8 +142,15 @@ def roi_stats(
 ) -> dict[str, float]:
     """Rectangle or inscribed-ellipse statistics (1-based inclusive
     bounds, clamped). shape='ellipse' keeps only pixels inside the
-    ellipse inscribed in the bounding rect."""
-    arr = np.asarray(img, dtype=np.float64)
+    ellipse inscribed in the bounding rect.
+
+    4C-2: the geometry now comes from the canonical region contract and
+    the aggregates from `calc.region_stats`, so this and the `image_stats`
+    op read the same pixels the same way. The returned keys are unchanged
+    apart from an added `n_finite`."""
+    arr = np.asarray(img)
+    if arr.ndim != 2:
+        raise ValueError(f"ROI statistics need a 2-D raster, got {arr.shape}")
     h, w = arr.shape
     r1, r2 = sorted((int(round(row1)), int(round(row2))))
     c1, c2 = sorted((int(round(col1)), int(round(col2))))
@@ -147,31 +158,29 @@ def roi_stats(
     c1, c2 = max(c1, 1), min(c2, w)
     if r1 > r2 or c1 > c2:
         raise ValueError("ROI is empty after clamping to the image")
-    sel = arr[r1 - 1 : r2, c1 - 1 : c2]
-    if shape == "ellipse":
-        sh, sw = sel.shape
-        cy, cx = (sh - 1) / 2, (sw - 1) / 2
-        ry, rx = max(sh / 2, 0.5), max(sw / 2, 0.5)
-        yy = (np.arange(sh)[:, None] - cy) / ry
-        xx = (np.arange(sw)[None, :] - cx) / rx
-        sel = sel[yy**2 + xx**2 <= 1.0]
-        if sel.size == 0:
-            raise ValueError("elliptical ROI contains no pixels")
-    elif shape != "rect":
+    if shape not in ("rect", "ellipse"):
         raise ValueError("shape must be 'rect' or 'ellipse'")
-    area_px = float(sel.size)
-    area = area_px * pixel_size**2 if np.isfinite(pixel_size) else area_px
-    # MATLAB sample-std (N-1) parity: +fermiViewer/+interaction/rectROI.m:29
-    # calls std(vals), i.e. ddof=1; MATLAB's std() of a scalar is 0.
-    std_val = float(sel.std(ddof=1)) if sel.size > 1 else 0.0
-    return {
-        "mean": float(sel.mean()),
-        "std": std_val,
-        "min": float(sel.min()),
-        "max": float(sel.max()),
-        "n_pixels": area_px,
-        "area": area,
-    }
+
+    mask = None
+    if shape == "ellipse":
+        # The 4A `ellipse` primitive was defined to match the inline
+        # version this replaces — its semi-axis is the footprint
+        # `(extent + 1) / 2`, i.e. the `ry = sh / 2` used here — and
+        # tests/test_region_stats.py pins the two pixel-identical over
+        # square, oblong and degenerate bounds. Bounds go 1-based -> the
+        # contract's 0-based inclusive form.
+        outline = ellipse(r1 - 1, c1 - 1, r2 - 1, c2 - 1)
+        mask = rasterize(Region(id="roi", parts=(Part(outline),)), (h, w))
+        if not mask.any():
+            raise ValueError("elliptical ROI contains no pixels")
+
+    # ddof=1 is MATLAB parity and stays that way (STD_MATLAB records why).
+    # NOTE: mean/std/min/max are now taken over the FINITE pixels only,
+    # where this used to propagate a NaN through the whole ROI. `n_finite`
+    # reports how many were usable, so the difference is visible.
+    return region_stats(
+        arr, (r1, c1, r2, c2), mask, pixel_size=pixel_size, ddof=STD_MATLAB
+    )
 
 
 def box_integrate(
