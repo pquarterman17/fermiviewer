@@ -24,8 +24,8 @@ import numpy as np
 from fermiviewer.datastruct import DataKind, DataStruct
 
 __all__ = [
-    "NoRasterError", "raster_from", "raster_of", "region_sum_spectrum",
-    "rgb_luma",
+    "NoRasterError", "masked_sum_spectrum", "raster_from", "raster_of",
+    "region_sum_spectrum", "rgb_luma",
 ]
 
 #: BT.601 luma weights — the app's one RGB→scalar rule. io/metadata.py's
@@ -101,6 +101,41 @@ def region_sum_spectrum(
     r1, c1 = min(r1, h), min(c1, w)
     if r0 > r1 or c0 > c1:
         raise ValueError("region is empty after clamping")
-    region_data = cube[r0 - 1:r1, c0 - 1:c1, :]
-    counts = np.asarray(np.sum(region_data, axis=(0, 1), dtype=np.float64))
-    return counts, (r0, c0, r1, c1)
+    rect = (r0, c0, r1, c1)
+    return masked_sum_spectrum(cube, rect), rect
+
+
+def masked_sum_spectrum(
+    cube: np.ndarray,
+    rect: tuple[int, int, int, int],
+    mask: np.ndarray | None = None,
+) -> np.ndarray:
+    """Sum an SI cube over a rectangle, optionally narrowed by an exact mask.
+
+    The 4C-1 summation, shared by `GET /image/{id}/spectrum` and the
+    `sum_spectrum` op so the two cannot drift (ADR 0005 §1). `rect` is
+    1-based inclusive and ALREADY CLAMPED — the clamping lives with
+    whoever resolved the region (`region_resolve`, or the sort-and-clamp
+    in `region_sum_spectrum` above), not here.
+
+    `mask` is a FULL-IMAGE ``[H, W]`` boolean array or ``None``, matching
+    `region_resolve.ResolvedRegion.mask`, and ``None`` means every pixel
+    of `rect` is selected. That is not merely an optimization: the
+    no-mask branch is the pre-4C expression verbatim, so a rectangle
+    keeps summing bit for bit as it always did, and it avoids the
+    fancy-index copy of the whole block that a needless all-True mask
+    would force on a multi-gigabyte cube.
+
+    Slicing happens before accumulating so a one-pixel probe never
+    materializes a float64 copy of the entire spectrum image.
+    """
+    r0, c0, r1, c1 = rect
+    block = cube[r0 - 1:r1, c0 - 1:c1, :]
+    if mask is None:
+        return np.asarray(np.sum(block, axis=(0, 1), dtype=np.float64))
+    window = np.asarray(mask)[r0 - 1:r1, c0 - 1:c1]
+    if window.shape != block.shape[:2]:
+        raise ValueError(
+            f"mask window {window.shape} does not match rect {block.shape[:2]}"
+        )
+    return np.asarray(block[window].sum(axis=0, dtype=np.float64))

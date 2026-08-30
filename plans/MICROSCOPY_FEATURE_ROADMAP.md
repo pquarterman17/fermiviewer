@@ -565,9 +565,32 @@ in EDS/EELS, imaging statistics, and structural analysis.
 > dialect to the free-text `convention` string (16 sites, ten incompatible
 > kinds of claim: coordinate frames, label encodings, value semantics).
 >
-> Waves 1–5 remain: EDS/EELS integration, imaging statistics, segmentation
-> and particles and grains, layers and structural, then batch recipes plus
-> the cross-consumer consistency test item 4's "Done when" asks for.
+> **4C-1 landed 2026-08-30 — EDS/EELS spectrum integration on exact masks.**
+> `GET /image/{id}/spectrum` takes `region_ref` (`"set_id"` or
+> `"set_id/region_id"`) and sums the region's EXACT mask.
+> `calc/raster.masked_sum_spectrum` is the one summation, and
+> `region_sum_spectrum` now delegates to it so the legacy rect answer
+> cannot drift from the masked one. `region` in the response is still the
+> 1-based inclusive bounding rect, so existing clients are untouched; the
+> new `exact_mask` says whether that rect is the whole truth.
+>
+> **The resolution happens in the route, not the op.** `ops/registry.py`'s
+> contract is that auxiliary inputs arrive already resolved because "the
+> caller owns the session store, so the pure layer never looks an id up".
+> A region reference is an id, so `sum_spectrum` keeps its 1-based corner
+> params and stays reproducible from params alone. Teaching registered ops
+> to take a region needs `run()` to gain a resolved-region channel beside
+> `inputs` — an ops-contract change (ADR 0005), deliberately not smuggled
+> in here. That is what 4C-5 has to settle before batch recipes can carry
+> a region.
+>
+> Adding the named path pushed `routes/images.py` past 500 lines, so the
+> scoping decision moved whole into `routes/_spectrum_scope.py` rather
+> than being trimmed in place.
+>
+> Waves 2–5 remain: imaging statistics, segmentation and particles and
+> grains, layers and structural, then batch recipes plus the
+> cross-consumer consistency test item 4's "Done when" asks for.
 
 ### 5. Calibration profiles and quantitative standards
 

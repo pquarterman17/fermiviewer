@@ -11,13 +11,17 @@ from fastapi import APIRouter, HTTPException, Response, UploadFile
 from PIL import Image
 from pydantic import BaseModel
 
-from fermiviewer.calc.raster import NoRasterError, raster_of, region_sum_spectrum
+from fermiviewer.calc.raster import (
+    NoRasterError,
+    raster_of,
+)
 from fermiviewer.calc.render import histogram, to_display, to_uint16_norm
 from fermiviewer.datastruct import SPECTRAL_KINDS, DataKind, DataStruct
 from fermiviewer.io.registry import UnsupportedFormatError, load_auto, supported_extensions
 from fermiviewer.models import FourDMeta, ImageMeta, OpenRequest
 from fermiviewer.routes._open_paths import open_paths_as_metas
 from fermiviewer.routes._paths import checked_data_path, checked_data_paths
+from fermiviewer.routes._spectrum_scope import scoped_spectrum
 from fermiviewer.session import UnknownImageError, store
 
 router = APIRouter(prefix="/api")
@@ -452,34 +456,34 @@ def image_spectrum(
     col0: int | None = None,
     row1: int | None = None,
     col1: int | None = None,
+    region_ref: str = "",
 ) -> dict[str, object]:
     """Sum spectrum (SI cubes) or the spectrum itself (1D) for the
-    EELS/EDS workshop plots. Optional 1-based inclusive rect → the
-    region-summed spectrum (SI explorer: pixel/ROI spectra)."""
+    EELS/EDS workshop plots.
+
+    Two ways to scope it: the legacy 1-based inclusive rect
+    (`row0/col0/row1/col1`), or `region_ref` — a named region from the
+    saved workspace summed over its EXACT mask (4C-1, ADR 0007). Which
+    pixels get summed is `_spectrum_scope.scoped_spectrum`'s decision.
+
+    `region` stays the 1-based inclusive bounding rect it has always
+    been, so an existing client keeps working unchanged; `exact_mask`
+    says whether that rect is the whole truth or merely the box around a
+    narrower selection.
+    """
     ds = _get(img_id)
     if ds.kind not in SPECTRAL_KINDS:
         raise HTTPException(400, "2D images have no spectral axis")
-    energy = ds.energy_axis
-    region = None
-    if ds.kind is DataKind.SPECTRUM_IMAGE and None not in (
-        row0, col0, row1, col1
-    ):
-        assert row0 is not None and row1 is not None
-        assert col0 is not None and col1 is not None
-        # clamp → slice → sum lives in calc (wave D, ADR 0005 §1 — shared
-        # with the registered op)
-        try:
-            counts, rect = region_sum_spectrum(ds.data, row0, col0, row1, col1)
-        except ValueError as e:
-            raise HTTPException(422, str(e)) from None
-        region = list(rect)
-    else:
-        counts = ds.sum_spectrum()
+    counts, region, exact = scoped_spectrum(
+        ds, img_id,
+        row0=row0, col0=col0, row1=row1, col1=col1, region_ref=region_ref,
+    )
     return {
-        "energy": energy.tolist(),
+        "energy": ds.energy_axis.tolist(),
         "counts": np.asarray(counts, dtype=np.float64).tolist(),
         "units": ds.energy_cal.units,
         "region": region,
+        "exact_mask": exact,
     }
 
 
