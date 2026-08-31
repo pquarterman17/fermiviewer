@@ -323,6 +323,31 @@ def test_particles_reports_its_region_and_stays_silent_without_one() -> None:
     assert ellipse["label_context"] == "exact-mask", "the fill clips before thresholding"
 
 
+def test_grains_says_whether_the_region_cut_a_feature() -> None:
+    """`place_labels` computes this and the ops used to drop it, so no
+    consumer could tell a clean scope from one that sliced grains apart
+    and renumbered them."""
+    img = np.zeros((40, 40))
+    img[8:32, 8:32] = 100.0
+    ds = _image(img)
+    cut = ops.run(
+        "grains",
+        ds,
+        {
+            "method": "gradient",
+            "region": [
+                {"kind": "rect", "bounds": [[0, 0, 39, 39]]},
+                {"kind": "rect", "bounds": [[18, 0, 21, 39]], "mode": "exclude"},
+            ],
+        },
+    )
+    clean = ops.run(
+        "grains", ds, {"method": "gradient", "region": _rect(0, 0, 39, 39)}
+    )
+    assert _named(cut, "region")["region_clipped"] is True
+    assert _named(clean, "region")["region_clipped"] is False
+
+
 def test_particles_refuses_a_region_that_selects_nothing() -> None:
     with pytest.raises(ValueError, match="selects no pixels"):
         ops.run("particles", _image(_two_blobs()), {"region": _rect(60, 60, 70, 70)})
@@ -386,6 +411,83 @@ def test_a_legacy_roi_string_is_reported_clamped_to_the_image() -> None:
     assert np.array_equal(
         _labels(run), _labels(ops.run("grains", _image(_textured()), {}))
     ), "a clamped whole-image rectangle is still the whole image"
+
+
+def test_a_region_that_cuts_a_grain_reports_the_pieces_it_left() -> None:
+    """The table and the map must count the same features.
+
+    Masking happens AFTER connected-component labelling, so a region
+    boundary can slice one label into two disjoint patches. Renumbering by
+    label VALUE left them as one row: `area_px` was the sum of two
+    separate blobs and `equiv_diameter`/`eccentricity` described a shape
+    that does not exist, while the rendered map showed two. Before 4C the
+    crop was rectangular and this could not arise, so it is a regression
+    the wave introduced, not an inherent limit.
+
+    The oracle is the emitted map itself, counted with scipy — the table
+    cannot be checked against the code that wrote it.
+    """
+    from scipy import ndimage
+
+    img = np.zeros((40, 40))
+    img[8:32, 8:32] = 100.0
+    ds = _image(img)
+    # a bar excluded across the middle: every grain is cut in two
+    region = [
+        {"kind": "rect", "bounds": [[0, 0, 39, 39]]},
+        {"kind": "rect", "bounds": [[18, 0, 21, 39]], "mode": "exclude"},
+    ]
+    run = ops.run("grains", ds, {"method": "gradient", "region": region})
+    labels = _labels(run)
+    rows = _named(run, "grains")["rows"]
+
+    components = sum(
+        ndimage.label(labels == v)[1] for v in np.unique(labels) if v
+    )
+    assert len(rows) == components, "one row per feature the map shows"
+    assert _named(run, "n_grains")["value"] == components
+    for value in np.unique(labels):
+        if value:
+            assert ndimage.label(labels == value)[1] == 1, (
+                f"label {value} is disjoint"
+            )
+    # and the areas add up to the pixels actually kept
+    assert sum(row[0] for row in rows) == float((labels != 0).sum())
+
+
+def test_min_area_still_holds_after_a_region_clips() -> None:
+    """The segmenter applies `min_area` to the UNCLIPPED crop, so a grain
+    reduced to a sliver by the boundary used to survive a filter its own
+    parameter promised. The rule runs again on what the region left."""
+    rng = np.random.default_rng(4)
+    img = rng.normal(50.0, 10.0, (60, 60))
+    for i in range(0, 60, 12):
+        for j in range(0, 60, 12):
+            img[i : i + 10, j : j + 10] += 40.0
+    ds = _image(img)
+    comb: list[dict[str, Any]] = [{"kind": "rect", "bounds": [[0, 0, 59, 59]]}]
+    for c in range(5, 60, 12):
+        comb.append(
+            {"kind": "rect", "bounds": [[0, c, 59, c + 1]], "mode": "exclude"}
+        )
+
+    run = ops.run(
+        "grains", ds, {"method": "gradient", "min_area": 60, "region": comb}
+    )
+    areas = [row[0] for row in _named(run, "grains")["rows"]]
+    assert all(a >= 60 for a in areas), areas
+
+
+def test_components_are_found_within_a_label_never_across_two() -> None:
+    """Splitting must not MERGE: two grains that merely touch stay two,
+    or the fix for the cut case would quietly join neighbours."""
+    block = np.array([[1, 1, 2, 2], [1, 1, 2, 2]], dtype=int)
+    mask = np.ones((2, 4), dtype=bool)
+    mask[0, 0] = False  # clips label 1 without disconnecting it
+    got, clipped = place_labels(block, (2, 4), (1, 1, 2, 4), mask)
+    assert clipped is True
+    assert sorted(set(got.ravel().tolist())) == [0, 1, 2]
+    assert (got == 1).sum() == 3 and (got == 2).sum() == 4
 
 
 def test_grains_refuses_two_scopes_at_once() -> None:

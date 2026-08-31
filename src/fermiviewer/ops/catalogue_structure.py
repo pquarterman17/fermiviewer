@@ -52,6 +52,7 @@ from fermiviewer.ops._parsing import pixel_cal as _px_cal
 from fermiviewer.ops._parsing import sentinel_group as _pair
 from fermiviewer.ops._region_param import (
     LABEL_CONTEXT_EXACT,
+    LABEL_CONTEXT_MASKED_NEIGHBOURHOOD,
     REGION_PARAM,
     ScopedRegion,
     region_output,
@@ -93,6 +94,25 @@ _CLASS_THRESHOLD_KEYS = (
     "sphere_max_aspect",
     "sphere_min_circularity",
 )
+
+
+def _particle_context(scoped: ScopedRegion | None, use_watershed: bool) -> str:
+    """How much of the segmentation the region actually constrained.
+
+    Thresholding is POINTWISE, so with no watershed the answer depends
+    only on which pixels the region chose — genuinely `exact-mask`.
+    Watershed is not: marker placement runs a distance transform, and the
+    polarity fill has made the region's edge look like background, so
+    basins near it differ from the ones the same pixels give unscoped.
+    Claiming exactness there would tell a reader the region only
+    SELECTED when it also SHAPED the split.
+
+    A rectangle needs no fill, so its crop edge is an ordinary image edge
+    exactly as the legacy roi path always had — `exact-mask` still holds.
+    """
+    if scoped is None or scoped.mask is None or not use_watershed:
+        return LABEL_CONTEXT_EXACT
+    return LABEL_CONTEXT_MASKED_NEIGHBOURHOOD
 
 
 def _scoped_particle_input(
@@ -220,9 +240,12 @@ def _particles(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         ),
     ]
     if scoped is not None:
-        # exact for every scope: the polarity fill clips the labels before
-        # thresholding, so a hole in the region is a hole in the analysis
-        outputs.append(region_output(scoped, label_context=LABEL_CONTEXT_EXACT))
+        outputs.append(
+            region_output(
+                scoped,
+                label_context=_particle_context(scoped, params["use_watershed"]),
+            )
+        )
     return OpResult(
         op="particles", params=params, label="particle analysis", value={"outputs": outputs}
     )

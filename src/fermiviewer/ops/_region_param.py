@@ -241,10 +241,21 @@ def scope_from_params(
 #: (`calc/region_segment.py` carries the reasoning).
 LABEL_CONTEXT_EXACT = "exact-mask"
 LABEL_CONTEXT_BBOX = "bounding-box"
+#: The algorithm read the SELECTED pixels, but through a neighbourhood, so
+#: the region's own edge acted as an image edge. Weaker than `exact-mask`
+#: (the answer depends on the region's shape, not only on which pixels it
+#: chose) and stronger than `bounding-box` (nothing outside the mask was
+#: read at all). `particles`/`efd_similarity` with `use_watershed` are the
+#: case: the polarity fill makes the boundary background, so basins near
+#: it differ from the ones the same pixels would produce unscoped.
+LABEL_CONTEXT_MASKED_NEIGHBOURHOOD = "masked-neighbourhood"
 
 
 def region_output(
-    scoped: ScopedRegion, *, label_context: str | None = None
+    scoped: ScopedRegion,
+    *,
+    label_context: str | None = None,
+    clipped: bool | None = None,
 ) -> dict[str, Any]:
     """The `region` provenance envelope, one spelling for every consumer.
 
@@ -262,4 +273,9 @@ def region_output(
     }
     if label_context is not None:
         data["label_context"] = label_context
+    if clipped is not None:
+        # True when the mask actually removed a LABELLED pixel — the
+        # signal that features in this result were cut by the boundary
+        # and renumbered, rather than merely selected
+        data["region_clipped"] = clipped
     return output("table", "region", data)
