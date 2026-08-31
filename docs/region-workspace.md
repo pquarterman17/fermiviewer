@@ -47,6 +47,43 @@ Project saves still do not echo geometry in `client_state`. The server carries
 the accepted workspace into every later `.fvp` save, matching results and
 unavailable-image preservation.
 
+## Converting to and from label maps
+
+A segmentation produces a label map; correcting one by hand means it has to
+become regions, be edited, and become a label map again. Two routes do that,
+and `calc/region_convert.py` is the conversion itself.
+
+`POST /api/region-sets/from-labels` traces a session label map into one region
+per distinct non-zero value. A label keeps its identity when its pixels do
+not touch — a disconnected label is one region with several parts, not several
+regions — and holes attach to the outline that encloses them. The set comes
+back in manifest form and is **not** added to the workspace: `/replace` stays
+the single path that writes the live section, so the caller merges the set into
+the document it already holds and publishes that.
+
+`POST /api/region-sets/to-labels` is the return trip. It rasterizes a named set
+into a label map sized to the given image and registers it as a derived session
+image, tagged `region_source` so an edited map can be told from a segmenter's
+own output. `values` maps region id to label value; without it regions take
+1..n in set order, which silently renumbers grains a table already refers to,
+so a caller re-writing a corrected map should pass the original numbering.
+
+The conversion is lossless in both directions and refuses rather than guesses
+anywhere it cannot be:
+
+* an image whose values are not whole numbers is not a label map, and tracing
+  one would return a region per grey level;
+* two regions covering one pixel, sharing an id, or sharing a value are all
+  refused, because a label map cannot hold either claim and any rule for
+  picking a winner would be invisible in the array that came back;
+* a set bound to another image cannot be written into this one's labels
+  (ADR 0007 §6).
+
+The price of lossless is size: an outline keeps a vertex per boundary step,
+so 150 grains at 512×512 trace to roughly 32,000 vertices. `calc/contours.py`
+is the simplifying tracer for the UI's draw assist and is deliberately not
+what these routes use.
+
 ## Selection and visibility
 
 Selection and visibility are presentation, not scientific data. They persist
