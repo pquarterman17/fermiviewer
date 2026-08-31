@@ -64,9 +64,19 @@ the document it already holds and publishes that.
 `POST /api/region-sets/to-labels` is the return trip. It rasterizes a named set
 into a label map sized to the given image and registers it as a derived session
 image, tagged `region_source` so an edited map can be told from a segmenter's
-own output. `values` maps region id to label value; without it regions take
-1..n in set order, which silently renumbers grains a table already refers to,
-so a caller re-writing a corrected map should pass the original numbering.
+own output.
+
+By default each region keeps the label value it was traced from, so the loop
+preserves a sparse map rather than renumbering it. That value rides in region
+`meta` under `label_value` rather than being parsed back out of the id, because
+an id is a name and a caller may rename a region. A region a user *drew* has no
+source value and takes the smallest positive number no traced region claims.
+`values` overrides all of this per region id, and must be a real JSON integer —
+`true`, `"2"` and `2.0` are refused rather than coerced.
+
+Label values are bounded by the registration format: a session map is float64,
+which represents integers exactly only up to 2^53, so anything larger is
+refused rather than silently rounded into a neighbouring label.
 
 The conversion is lossless in both directions and refuses rather than guesses
 anywhere it cannot be:

@@ -22,7 +22,7 @@ from typing import Any, Literal
 
 import numpy as np
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field, FiniteFloat
+from pydantic import BaseModel, Field, FiniteFloat, StrictInt
 
 from fermiviewer.calc.raster import NoRasterError, raster_of
 from fermiviewer.calc.region_convert import labels_to_regions, regions_to_labels
@@ -44,6 +44,16 @@ from fermiviewer.routes.structure import _register
 from fermiviewer.session import UnknownImageError, store
 
 router = APIRouter(prefix="/api")
+
+#: 2**53 — the largest integer float64 holds exactly.
+#:
+#: `routes/structure._register` stores every derived map as float64, so a
+#: label above this is silently rounded on the way in: 9007199254740993
+#: comes back as 9007199254740992, merging two regions into one with
+#: nothing in the array to say it happened. Checked on the produced map
+#: rather than on the request, so it covers a value taken from region
+#: metadata as well as one the caller passed.
+MAX_EXACT_LABEL = 2**53
 
 Point = tuple[FiniteFloat, FiniteFloat]
 Bounds = tuple[FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat]
@@ -128,8 +138,16 @@ class ToLabelsRequest(BaseModel):
     #: The image whose raster gives the output SHAPE — and, when the set
     #: is bound, the image the set must belong to.
     image_id: str = Field(min_length=1)
-    #: region id → label value. Omitted, regions take 1..n in set order.
-    values: dict[str, int] | None = None
+    #: region id → label value. Omitted, each region keeps the value it
+    #: was traced from, so the edit loop preserves a sparse map.
+    #:
+    #: `StrictInt`, not `int`: Pydantic's lax mode turns `true` into 1,
+    #: `"2"` into 2 and `2.0` into 2, which walks past the bool, string
+    #: and float refusals `regions_to_labels` makes on purpose — the
+    #: calc layer would never see the value it rejects. Same shape as the
+    #: float64 label-map seam: a guard is only a guard where it is
+    #: reachable.
+    values: dict[str, StrictInt] | None = None
 
 
 def _label_array(ds: DataStruct, image_id: str) -> np.ndarray:
@@ -233,6 +251,14 @@ def region_set_to_labels(req: ToLabelsRequest) -> dict[str, Any]:
         _check_image(group, req.image_id)
         labels = regions_to_labels(
             group.regions, (raster.shape[0], raster.shape[1]), values=req.values
+        )
+
+    if int(labels.max()) > MAX_EXACT_LABEL:
+        raise HTTPException(
+            422,
+            f"label value {int(labels.max())} cannot be registered exactly: "
+            f"a session map is float64, which represents integers up to "
+            f"{MAX_EXACT_LABEL} and would round anything larger",
         )
 
     name = f"labels({group.id})"

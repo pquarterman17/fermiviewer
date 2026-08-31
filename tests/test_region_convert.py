@@ -22,6 +22,7 @@ from fermiviewer.calc.region_convert import (
     regions_to_labels,
 )
 from fermiviewer.calc.region_mask import rasterize
+from fermiviewer.calc.regions import Part, Region, Shape
 
 pytestmark = pytest.mark.parser
 
@@ -308,10 +309,74 @@ def test_a_region_with_no_value_is_refused() -> None:
         regions_to_labels((region,), (10, 10), values={"someone else": 1})
 
 
-def test_regions_take_1_to_n_when_no_values_are_given() -> None:
-    regions = labels_to_regions(_solid())
-    out = regions_to_labels(regions, (16, 16))
-    assert sorted(np.unique(out).tolist()) == [0, 1, 2]
+def test_a_sparse_label_map_keeps_its_values_with_no_mapping_given() -> None:
+    """The default return trip must not renumber.
+
+    A sparse map is the normal case, not a corner: `min_area` filtering
+    and hand deletion both leave gaps. Renumbering 1..n by position made
+    {2, 5} come back as {1, 2}, so every table and overlay keyed by label
+    value pointed at the wrong feature — and the round-trip tests above
+    hid it, because they pass `_values(labels)` computed from the
+    original array, which is exactly the mapping a real caller would have
+    to reconstruct.
+    """
+    labels = np.zeros((16, 16), dtype=int)
+    labels[2:6, 2:6] = 2
+    labels[9:13, 9:13] = 5
+    regions = labels_to_regions(labels)
+    assert np.array_equal(regions_to_labels(regions, (16, 16)), labels)
+
+
+def test_deleting_a_region_does_not_renumber_the_others() -> None:
+    """The edit the loop exists for. Dropping label 2 must leave label 5
+    as 5 — under positional numbering it became 1, silently moving every
+    measurement recorded against it."""
+    labels = np.zeros((16, 16), dtype=int)
+    labels[2:6, 2:6] = 2
+    labels[9:13, 9:13] = 5
+    kept = tuple(r for r in labels_to_regions(labels) if r.id != "label_2")
+    out = regions_to_labels(kept, (16, 16))
+    assert sorted(np.unique(out).tolist()) == [0, 5]
+
+
+def test_a_drawn_region_takes_the_smallest_number_no_label_claims() -> None:
+    """A region a user drew has no source value — that is not a failure,
+    it never had one. It must take a free number rather than collide with
+    a traced region's, which `regions_to_labels` would refuse outright."""
+    labels = np.zeros((16, 16), dtype=int)
+    labels[2:6, 2:6] = 1
+    labels[9:13, 9:13] = 3
+    traced = labels_to_regions(labels)
+    drawn = Region(
+        id="drawn", parts=(Part(Shape(kind="rect", bounds=(1.0, 9.0, 4.0, 12.0))),)
+    )
+    out = regions_to_labels((*traced, drawn), (16, 16))
+    assert sorted(np.unique(out).tolist()) == [0, 1, 2, 3]
+    assert out[2, 10] == 2, "the drawn region took 2, the one gap in {1, 3}"
+
+
+def test_unusable_metadata_is_treated_as_absent_rather_than_trusted() -> None:
+    """`meta` is free-form by design, so a hand-edited manifest can put
+    anything under the key. This is the one place its content decides an
+    answer, so a bool, a string or a negative falls back to a free number
+    instead of being written into the map."""
+    shape = Shape(kind="rect", bounds=(2.0, 2.0, 5.0, 5.0))
+    for junk in (True, "5", -3, 2.5, None):
+        region = Region(
+            id="r", parts=(Part(shape),), meta={"label_value": junk}
+        )
+        out = regions_to_labels((region,), (10, 10))
+        assert sorted(np.unique(out).tolist()) == [0, 1], junk
+
+
+def test_a_label_value_too_large_for_the_image_is_a_value_error() -> None:
+    """numpy raises `OverflowError` writing a Python int past int64 into
+    an int64 array — an ArithmeticError, not a ValueError, so it escaped
+    every `except ValueError` between here and the HTTP boundary and
+    turned a 422 into a 500."""
+    (region,) = labels_to_regions(_touching_border())
+    with pytest.raises(ValueError, match="does not fit"):
+        regions_to_labels((region,), (10, 10), values={region.id: 2**63})
 
 
 def test_converted_regions_survive_being_saved_and_reloaded() -> None:

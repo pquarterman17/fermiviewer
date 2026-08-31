@@ -391,3 +391,161 @@ def test_to_labels_still_accepts_any_raster_for_its_shape(client) -> None:
     )
     assert out.status_code == 200, out.text
     assert np.asarray(store.get(out.json()["id"]).data).shape == (24, 30)
+
+
+# ── the default edit loop preserves identity ─────────────────────────
+
+
+def _sparse() -> np.ndarray:
+    """Labels 2 and 5, no 1, no 3 — the shape `min_area` filtering and
+    hand deletion both produce, and the one positional renumbering
+    destroys."""
+    labels = np.zeros((24, 30), dtype=np.float64)
+    labels[2:8, 2:8] = 2
+    labels[14:20, 20:26] = 5
+    return labels
+
+
+def test_the_edit_loop_preserves_sparse_labels_with_no_mapping(client) -> None:
+    """The workflow as a client actually performs it: convert, edit,
+    convert back — WITHOUT reconstructing a values mapping. Requiring one
+    made the default lossy and pushed the loss onto every caller, and the
+    round-trip tests missed it because they supplied the original
+    numbering out of band.
+    """
+    labels = _sparse()
+    image_id = _add(labels)
+    made = client.post(
+        "/api/region-sets/from-labels",
+        json={"image_id": image_id, "set_id": "grains"},
+    ).json()
+    _install(client, made)
+
+    out = client.post(
+        "/api/region-sets/to-labels",
+        json={"set_id": "grains", "image_id": image_id},
+    )
+    assert out.status_code == 200, out.text
+    assert np.array_equal(np.asarray(store.get(out.json()["id"]).data), labels)
+
+
+def test_deleting_a_region_leaves_the_others_numbered_as_they_were(client) -> None:
+    """Label 5 must still be 5 after label 2 is deleted. Positionally it
+    became 1, which silently moves every measurement recorded against it."""
+    image_id = _add(_sparse())
+    made = client.post(
+        "/api/region-sets/from-labels",
+        json={"image_id": image_id, "set_id": "grains"},
+    ).json()
+    made["sets"][0]["regions"] = [
+        r for r in made["sets"][0]["regions"] if r["id"] != "label_2"
+    ]
+    _install(client, made)
+
+    out = client.post(
+        "/api/region-sets/to-labels",
+        json={"set_id": "grains", "image_id": image_id},
+    ).json()
+    array = np.asarray(store.get(out["id"]).data)
+    assert sorted(np.unique(array).tolist()) == [0, 5]
+
+
+def test_the_source_value_travels_in_metadata_not_only_in_the_id(client) -> None:
+    """An id is a NAME and a caller may rename a region. Parsing the
+    value back out of one would make the name load-bearing, so the value
+    rides in `meta` and survives the manifest round trip."""
+    image_id = _add(_sparse())
+    made = client.post(
+        "/api/region-sets/from-labels",
+        json={"image_id": image_id, "set_id": "grains"},
+    ).json()
+    assert [r["meta"]["label_value"] for r in made["sets"][0]["regions"]] == [2, 5]
+
+    # rename both, and the values must still come back
+    for region, name in zip(made["sets"][0]["regions"], ("alpha", "beta"), strict=True):
+        region["id"] = name
+    _install(client, made)
+    out = client.post(
+        "/api/region-sets/to-labels",
+        json={"set_id": "grains", "image_id": image_id},
+    ).json()
+    array = np.asarray(store.get(out["id"]).data)
+    assert sorted(np.unique(array).tolist()) == [0, 2, 5]
+
+
+# ── integer identity at the registration seam ────────────────────────
+
+
+def test_a_label_beyond_exact_float64_is_refused_not_rounded(client) -> None:
+    """A session map is float64, so 2**53 + 1 is stored as 2**53 — two
+    regions merged into one with nothing in the array to say so. Refused
+    rather than rounded, and the bound is checked on the produced MAP, so
+    a value arriving through region metadata is covered too.
+    """
+    image_id = _add(_labels())
+    made = client.post(
+        "/api/region-sets/from-labels",
+        json={"image_id": image_id, "set_id": "grains"},
+    ).json()
+    _install(client, made)
+    r = client.post(
+        "/api/region-sets/to-labels",
+        json={
+            "set_id": "grains",
+            "image_id": image_id,
+            "values": {"label_1": 1, "label_2": 2**53 + 1},
+        },
+    )
+    assert r.status_code == 422
+    assert "float64" in r.json()["detail"]
+
+
+def test_a_label_beyond_int64_is_a_422_not_a_500(client) -> None:
+    """numpy raises `OverflowError` — an ArithmeticError, not a
+    ValueError — writing this into the int64 map, so it escaped the
+    `value_error_as_422` guard and surfaced as a server error."""
+    image_id = _add(_labels())
+    made = client.post(
+        "/api/region-sets/from-labels",
+        json={"image_id": image_id, "set_id": "grains"},
+    ).json()
+    _install(client, made)
+    r = client.post(
+        "/api/region-sets/to-labels",
+        json={
+            "set_id": "grains",
+            "image_id": image_id,
+            "values": {"label_1": 1, "label_2": 2**63},
+        },
+    )
+    assert r.status_code == 422
+
+
+@pytest.mark.parametrize("bad", [True, "2", 2.0])
+def test_the_request_model_does_not_coerce_its_way_past_the_refusals(
+    client, bad: object
+) -> None:
+    """Pydantic's lax mode turns `true` into 1, `"2"` into 2 and `2.0`
+    into 2 — so `regions_to_labels`' bool, string and float refusals never
+    saw the value they exist to reject. `StrictInt` makes them reachable
+    by refusing at the boundary instead, in the boundary's own vocabulary.
+    """
+    image_id = _add(_labels())
+    made = client.post(
+        "/api/region-sets/from-labels",
+        json={"image_id": image_id, "set_id": "grains"},
+    ).json()
+    _install(client, made)
+    # BOTH regions get a value, and 9 collides with nothing. Without
+    # that, `label_2` has no value and the 422 comes from the missing-key
+    # check instead — the test passes under lax coercion and proves
+    # nothing. (It did; mutation testing is what said so.)
+    r = client.post(
+        "/api/region-sets/to-labels",
+        json={
+            "set_id": "grains",
+            "image_id": image_id,
+            "values": {"label_1": bad, "label_2": 9},
+        },
+    )
+    assert r.status_code == 422

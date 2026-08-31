@@ -75,10 +75,23 @@ from fermiviewer.calc.region_mask import rasterize
 from fermiviewer.calc.regions import Part, Region, Shape
 
 __all__ = [
+    "LABEL_VALUE_KEY",
     "LabelOverlapError",
     "labels_to_regions",
     "regions_to_labels",
 ]
+
+#: Where a traced region records the label value it came from.
+#:
+#: The id carries it too (`label_5`), but an id is a NAME — a caller may
+#: rename a region, and parsing a value back out of one would make the
+#: name load-bearing. This is the value itself, so the default return
+#: trip preserves it without the caller reconstructing a mapping.
+LABEL_VALUE_KEY = "label_value"
+
+#: The label image is int64, and numpy raises `OverflowError` — not a
+#: `ValueError` — when a Python int past this is written into one.
+_INT64_MAX = int(np.iinfo(np.int64).max)
 
 
 class LabelOverlapError(ValueError):
@@ -316,8 +329,53 @@ def labels_to_regions(
         crop = array[rows, cols] == value
         parts = _parts_of(crop, (rows.start, cols.start))
         if parts:
-            regions.append(Region(id=f"{prefix}_{int(value)}", parts=parts))
+            regions.append(
+                Region(
+                    id=f"{prefix}_{int(value)}",
+                    parts=parts,
+                    meta={LABEL_VALUE_KEY: int(value)},
+                )
+            )
     return tuple(regions)
+
+
+def _default_values(regions: tuple[Region, ...]) -> dict[str, int]:
+    """Each region's SOURCE label value, or the next free number.
+
+    Renumbering 1..n by position was the old default and it made the
+    ordinary edit loop lossy. A sparse map is the normal case — `min_area`
+    filtering and hand deletion both leave gaps — so labels {2, 5} came
+    back as {1, 2}, and deleting label 2 renumbered label 5 to 1. Every
+    table and overlay keyed by label value then pointed at the wrong
+    feature, and the round trip only looked lossless because the caller
+    supplied the original numbering out of band.
+
+    A region traced by `labels_to_regions` carries its value in `meta`, so
+    it is used. A region a user DREW has none, which is not a failure —
+    it never had a value — so it takes the smallest positive number no
+    stored value has claimed, leaving the traced ones untouched. Anything
+    unusable under that key (a hand-edited manifest, a string, a bool)
+    is treated the same way rather than trusted, since `meta` is free-form
+    by design and this is the one place its content decides an answer.
+    """
+    assigned: dict[str, int] = {}
+    taken: set[int] = set()
+    for region in regions:
+        raw = region.meta.get(LABEL_VALUE_KEY)
+        if isinstance(raw, bool) or not isinstance(raw, (int, np.integer)):
+            continue
+        if int(raw) > 0:
+            assigned[region.id] = int(raw)
+            taken.add(int(raw))
+    nxt = 1
+    for region in regions:
+        if region.id in assigned:
+            continue
+        while nxt in taken:
+            nxt += 1
+        assigned[region.id] = nxt
+        taken.add(nxt)
+    return assigned
 
 
 def regions_to_labels(
@@ -328,8 +386,10 @@ def regions_to_labels(
 ) -> np.ndarray:
     """Regions as a label image, one value per region.
 
-    `values` maps region id → label value; without it, regions take
-    1..n in the order given. Background stays 0.
+    `values` maps region id → label value; without it each region takes
+    the value it was traced from (`_default_values`), which is what makes
+    the convert-edit-convert loop preserve a sparse label map rather than
+    renumbering it. Background stays 0.
 
     Every way two regions can end up indistinguishable is refused, because
     each of them drops a claim as silently as an overlap does:
@@ -355,8 +415,8 @@ def regions_to_labels(
     # `values or {...}` would treat an EXPLICIT empty mapping as "none
     # given" and auto-number, which is the one case where every id is
     # missing and so the one that most needs the refusal below
-    assigned = (
-        values if values is not None else {r.id: i + 1 for i, r in enumerate(regions)}
+    assigned: dict[str, int] = (
+        values if values is not None else _default_values(regions)
     )
     out = np.zeros(grid, dtype=np.int64)
     claimed = np.zeros(grid, dtype=bool)
@@ -375,6 +435,15 @@ def regions_to_labels(
             raise ValueError(
                 f"region {region.id!r}: label value must be positive "
                 f"(0 is background), got {value}"
+            )
+        if value > _INT64_MAX:
+            # `out[mask] = value` raises OverflowError from numpy here,
+            # which is an ArithmeticError rather than a ValueError — so it
+            # escapes every `except ValueError` between this and the
+            # caller, and a 422 became a 500.
+            raise ValueError(
+                f"region {region.id!r}: label value {value} does not fit in "
+                f"the int64 label image (max {_INT64_MAX})"
             )
         if value in seen:
             raise ValueError(
