@@ -227,9 +227,18 @@ def _image_stats(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         "min": stats["min"],
         "max": stats["max"],
         "n_finite": stats["n_finite"],
+        # the RASTER's shape, unchanged and deliberately so: it is what
+        # this key has always meant.
         "shape": list(r.shape),
     }
     if scoped is not None:
+        # How many pixels the aggregates actually cover. Unscoped,
+        # `shape` already answers it, so this is absent rather than
+        # redundant (ADR 0004 §3's "absent, not zero" habit) — and an
+        # unscoped export keeps exactly the columns it always had. Scoped,
+        # nothing else reports it: for an irregular region the count is
+        # neither prod(shape) nor the bounding box.
+        value["n_pixels"] = stats["n_pixels"]
         # this op's value is a FLAT dict, not an outputs list, so the
         # provenance goes in beside the aggregates rather than as an
         # envelope — same keys, same meanings, one nesting level in

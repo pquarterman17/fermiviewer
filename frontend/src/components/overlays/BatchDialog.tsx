@@ -183,9 +183,13 @@ export default function BatchDialog() {
     try {
       const next = await runBatchRecipe(
         targets,
-        steps.map(({ op, params, inputs }) => ({
+        // region_ref is carried, not destructured away: a preset that
+        // names a region runs scoped under a folder watch and would run
+        // WHOLE-IMAGE here, with no error, if it were dropped.
+        steps.map(({ op, params, inputs, region_ref }) => ({
           op,
           params,
+          ...(region_ref ? { region_ref } : {}),
           ...(inputs
             ? { inputs: Object.fromEntries(Object.entries(inputs).filter(
                 ([, ref]) => {
@@ -284,13 +288,17 @@ export default function BatchDialog() {
       </p>
 
       <BatchPresetControls
-        steps={steps.map(({ op, params, inputs }) => ({ op, params, inputs }))}
+        steps={steps.map(({ op, params, inputs, region_ref }) => ({
+          op, params, inputs, ...(region_ref ? { region_ref } : {}),
+        }))}
         disabled={running || operations.length === 0}
         onLoad={loadPreset}
       />
 
       <MacroBridge
-        steps={steps.map(({ op, params, inputs }) => ({ op, params, inputs }))}
+        steps={steps.map(({ op, params, inputs, region_ref }) => ({
+          op, params, inputs, ...(region_ref ? { region_ref } : {}),
+        }))}
         inputBindings={inputBindings}
         disabled={running || operations.length === 0}
         onLoad={(macroSteps) =>

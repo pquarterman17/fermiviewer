@@ -201,12 +201,27 @@ def flatten_value_dict(value: dict[str, Cell]) -> tuple[list[str], list[list[Cel
     """Flatten a flat ``OpResult.value``-style dict (image_stats/noise/
     roughness/...: scalar fields, occasionally a short list like ``shape``)
     into a single-row table: ``columns`` = the dict's keys in insertion
-    order, ``rows`` = one row of its values. A list/tuple value (e.g.
-    ``shape: [12, 16]``) is JSON-encoded into a single atomic cell rather
-    than expanded into extra columns, since it isn't itself tabular."""
+    order, ``rows`` = one row of its values. A NON-SCALAR value — a
+    list/tuple like ``shape: [12, 16]``, or a dict like the ``region``
+    provenance ``image_stats`` now carries when scoped — is JSON-encoded
+    into a single atomic cell rather than expanded into extra columns,
+    since it isn't itself tabular.
+
+    Dicts encode for the same reason lists do, and the failure was
+    concrete rather than theoretical: falling through left `str(dict)`,
+    so the CSV held a Python repr — single-quoted keys, ``False`` — that
+    a consumer could not parse beside a ``shape`` cell it could. It also
+    broke this module's promise to mirror
+    ``frontend/src/lib/resultsExport.ts``, which JSON-stringifies any
+    non-scalar, so one result exported two ways disagreed on encoding.
+    """
     columns = list(value.keys())
     row: list[Cell] = [
-        json.dumps(list(v)) if isinstance(v, (list, tuple)) else v
+        json.dumps(list(v))
+        if isinstance(v, (list, tuple))
+        else json.dumps(v, sort_keys=False)
+        if isinstance(v, dict)
+        else v
         for v in value.values()
     ]
     return columns, [row]
