@@ -151,6 +151,35 @@ def test_an_island_inside_a_hole_is_its_own_part() -> None:
     )
 
 
+def test_holes_attach_to_their_own_outline_when_nesting_runs_deep() -> None:
+    """Five nested rings: material, hole, material, hole, material.
+
+    `_island_in_hole` only reaches depth 2, where every hole's parent is
+    the outermost ring and attaching holes to the WRONG outline still
+    rasterizes correctly through the union. At depth 4 it does not: the
+    inner hole belongs to the middle part, and hanging it on the outer
+    one puts a hole where there is material and material where there is a
+    hole. So the attachment is asserted directly, part by part, and the
+    round trip is asserted separately as the pixel-level backstop.
+    """
+    labels = np.zeros((40, 40), dtype=int)
+    labels[2:38, 2:38] = 1
+    labels[7:33, 7:33] = 0
+    labels[11:29, 11:29] = 1
+    labels[15:25, 15:25] = 0
+    labels[18:22, 18:22] = 1
+
+    (region,) = labels_to_regions(labels)
+    assert len(region.parts) == 3
+    outer, middle, core = sorted(region.parts, key=lambda p: -np.ptp(p.shape.outline[:, 0]))
+    assert [len(p.shape.holes) for p in (outer, middle, core)] == [1, 1, 0]
+
+    # each hole is the one cut from ITS OWN part, not from another
+    assert outer.shape.holes[0][:, 0].min() == pytest.approx(6.5)
+    assert middle.shape.holes[0][:, 0].min() == pytest.approx(14.5)
+    assert np.array_equal(_round_trip(labels), labels)
+
+
 def test_a_disconnected_label_stays_one_region_with_two_parts() -> None:
     """A label is one thing even when its pixels are not touching. Two
     regions would lose that identity, which is the other half of what the
@@ -323,3 +352,167 @@ def test_converted_regions_survive_being_saved_and_reloaded() -> None:
         for p in r.parts
         for v in p.shape.outline.ravel()
     ), "a traced ring lands on half-integers, which JSON carries exactly"
+
+
+def test_a_value_may_not_be_reused_by_two_regions() -> None:
+    """Two regions written under one value merge on the way in and cannot
+    be told apart on the way out — the same claim-dropping an overlap
+    causes, one step earlier."""
+    regions = labels_to_regions(_solid())
+    with pytest.raises(ValueError, match="would merge them"):
+        regions_to_labels(regions, (16, 16), values={r.id: 4 for r in regions})
+
+
+def test_two_regions_cannot_share_an_id() -> None:
+    """The default 1..n mapping is keyed by id, so a duplicate collapses
+    to one entry and silently renumbers everything after it."""
+    (region,) = labels_to_regions(_touching_border())
+    with pytest.raises(ValueError, match="share the id"):
+        regions_to_labels((region, region), (10, 10))
+
+
+def test_an_empty_values_mapping_is_not_the_same_as_no_mapping() -> None:
+    """`values or {...}` reads an explicit empty mapping as "none given"
+    and auto-numbers. That is the one input where every id is missing, so
+    it is exactly the case the missing-value refusal exists for."""
+    (region,) = labels_to_regions(_touching_border())
+    with pytest.raises(ValueError, match="no label value"):
+        regions_to_labels((region,), (10, 10), values={})
+
+
+@pytest.mark.parametrize("bad", [-1, 2.0, 2.7, True, "2"])
+def test_a_label_value_must_be_a_positive_integer(bad: object) -> None:
+    """`labels_to_regions` refuses a float array because rounding is the
+    caller's convention to pick; truncating here would make that same
+    choice one function later. A negative value writes into the array and
+    then cannot be read back at all, since the reader refuses negatives.
+    `True` is included because `isinstance(True, int)` is how a bool slips
+    through as label 1."""
+    (region,) = labels_to_regions(_touching_border())
+    with pytest.raises(ValueError, match="must be (positive|an integer)"):
+        regions_to_labels((region,), (10, 10), values={region.id: bad})  # type: ignore[dict-item]
+
+
+def test_an_empty_array_has_no_labels_rather_than_an_error() -> None:
+    """`min()` over an empty array raises from inside numpy, which says
+    nothing about label images. No pixels is an answer."""
+    assert labels_to_regions(np.zeros((0, 0), dtype=int)) == ()
+    assert labels_to_regions(np.zeros((0, 5), dtype=int)) == ()
+
+
+# ── bounded memory ───────────────────────────────────────────────────
+
+
+def _peak_mb(call) -> float:
+    """Peak bytes traced during `call`, in MB.
+
+    numpy registers its allocations with `tracemalloc`, so this measures
+    the arrays as well as the Python objects — which is the point, since
+    both regressions below were array allocations. Peak rather than RSS
+    because RSS is the allocator's business and would make this flaky.
+    """
+    import tracemalloc
+
+    tracemalloc.start()
+    try:
+        call()
+        return tracemalloc.get_traced_memory()[1] / 1e6
+    finally:
+        tracemalloc.stop()
+
+
+def test_cost_follows_the_number_of_labels_not_the_largest_value() -> None:
+    """`find_objects` returns a list of length max(labels), so handing it
+    the raw array costs memory proportional to the largest label VALUE.
+    An 8x8 array holding 10,000,000 took 433 MB, and a global instance id
+    near 2**31 would need ~80 GB to describe 64 pixels. Compacting the
+    values first makes the cost follow the distinct labels instead.
+
+    Bounded against the same image under a small value rather than an
+    absolute number, so the test says the shape of the claim: these two
+    are the same amount of work.
+    """
+    small = np.zeros((8, 8), dtype=np.int64)
+    small[2:5, 2:5] = 3
+    large = small.copy()
+    large[2:5, 2:5] = 10_000_000
+
+    baseline = _peak_mb(lambda: labels_to_regions(small))
+    assert _peak_mb(lambda: labels_to_regions(large)) < baseline + 1.0
+
+    (region,) = labels_to_regions(large)
+    assert region.id == "label_10000000"
+    assert np.array_equal(
+        regions_to_labels((region,), (8, 8), values={region.id: 10_000_000}), large
+    )
+
+
+def test_a_fragmented_label_screens_containment_in_bounded_blocks() -> None:
+    """The nesting screen is pairwise, so a fragmented label is where it
+    costs: a 128x128 checkerboard traces ~8,200 rings, and one n^2 boolean
+    temporary of that is 67 MB against five in the expression. Blocking
+    the rows makes the peak a property of `_SCREEN_BLOCK` rather than of
+    the input — measured at ~17 MB here, so the bound below fails on a
+    single unblocked temporary and leaves room for the rings themselves.
+
+    A checkerboard because it is what a noisy segmentation degenerates to,
+    which is the case a hand-correction feature meets in practice.
+    """
+    row, col = np.indices((128, 128))
+    board = ((row + col) % 2).astype(np.int64)
+    assert _peak_mb(lambda: labels_to_regions(board)) < 48.0
+
+    (region,) = labels_to_regions(board)
+    assert len(region.parts) > 8000
+    assert np.array_equal(rasterize(region, (128, 128)), board == 1)
+
+
+def test_the_bounding_box_screen_rejects_the_pairs_it_exists_to_reject() -> None:
+    """The screen can only ever be too GENEROUS — `_contains` re-tests
+    every survivor with a point-in-polygon check, so a weakened screen
+    stays correct and merely costs. That makes it invisible to every other
+    test here, and it is the whole reason a fragmented label is
+    affordable: dropping one of its four bounding-box conditions is a
+    silent return to quadratic work.
+
+    So its job is asserted as a COUNT. The blobs below are disjoint but
+    deliberately of DIFFERENT sizes: 4,374 of their pairs pass the area
+    test, so only the four bounding-box comparisons can reject them, and
+    every one must. A checkerboard would not do — its rings all have the
+    same area, so the area test settles every pair and the boxes are never
+    consulted. The nested stack is the other half: a screen that rejected
+    everything would also score zero, so real containments must still
+    reach the polygon test.
+    """
+    from fermiviewer.calc import region_convert
+
+    calls = 0
+    real = region_convert._contains
+
+    def counted(*args: object, **kwargs: object) -> bool:
+        nonlocal calls
+        calls += 1
+        return real(*args, **kwargs)  # type: ignore[arg-type]
+
+    region_convert._contains = counted  # type: ignore[assignment]
+    try:
+        blobs = np.zeros((120, 120), dtype=np.int64)
+        for i in range(10):
+            for j in range(10):
+                size = 1 + (i * 10 + j) % 8
+                blobs[i * 12 + 1 : i * 12 + 1 + size, j * 12 + 1 : j * 12 + 1 + size] = 1
+        (region,) = labels_to_regions(blobs)
+        assert len(region.parts) == 100
+        assert calls == 0, "100 disjoint blobs should not reach the polygon test"
+
+        calls = 0
+        nested = np.zeros((40, 40), dtype=int)
+        nested[2:38, 2:38] = 1
+        nested[7:33, 7:33] = 0
+        nested[11:29, 11:29] = 1
+        nested[15:25, 15:25] = 0
+        nested[18:22, 18:22] = 1
+        labels_to_regions(nested)
+        assert calls == 10, "5 fully nested rings are 10 real containments"
+    finally:
+        region_convert._contains = real  # type: ignore[assignment]

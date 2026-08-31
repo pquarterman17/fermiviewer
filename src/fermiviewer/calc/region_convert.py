@@ -69,8 +69,7 @@ from __future__ import annotations
 
 import numpy as np
 from scipy.ndimage import find_objects
-from skimage.draw import polygon2mask
-from skimage.measure import find_contours
+from skimage.measure import find_contours, points_in_poly
 
 from fermiviewer.calc.region_mask import rasterize
 from fermiviewer.calc.regions import Part, Region, Shape
@@ -106,39 +105,109 @@ def _rings(mask: np.ndarray) -> list[np.ndarray]:
     return [ring - 1.0 for ring in find_contours(padded, 0.5)]
 
 
-def _depths(filled: list[np.ndarray], counts: list[int]) -> list[int]:
-    """How many other rings each ring lies inside.
+def _boxes(rings: list[np.ndarray]) -> np.ndarray:
+    """Each ring's bounding box as `(r0, c0, r1, c1)` — the cheap reject."""
+    return np.array(
+        [
+            (r[:, 0].min(), r[:, 1].min(), r[:, 0].max(), r[:, 1].max())
+            for r in rings
+        ],
+        dtype=np.float64,
+    )
 
-    Even depth bounds material, odd bounds a hole — the standard
-    even-odd rule, read off containment rather than winding direction so
-    a scikit-image change to traversal order cannot silently invert it.
 
-    Takes the rasterized rings rather than the rings, because the caller
-    needs them too and rasterizing twice is the whole cost of this.
+def _areas(rings: list[np.ndarray]) -> np.ndarray:
+    """|shoelace area| per ring, for ordering containment."""
+    out = np.empty(len(rings), dtype=np.float64)
+    for i, r in enumerate(rings):
+        x, y = r[:, 0], r[:, 1]
+        out[i] = abs(np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y)) / 2.0
+    return out
+
+
+def _contains(i: int, j: int, rings: list[np.ndarray]) -> bool:
+    """Does ring `j` enclose ring `i`? The authority, and the slow part.
+
+    Nested marching-squares rings never cross, so ONE point of the inner
+    ring decides it: if any point of `i` lies inside `j` then all of it
+    does. A vertex of `i` cannot land ON `j`, because strict nesting
+    always leaves at least one pixel between them.
+
+    Called only on pairs `_containers` has screened, never directly —
+    which is why it takes no boxes and no areas. The screen's conditions
+    are NECESSARY for containment, which is what makes screening safe;
+    re-checking them here would be one rule written in two places.
     """
-    depths = []
-    for i, inner in enumerate(filled):
-        depth = 0
-        for j, outer in enumerate(filled):
-            # a ring never contains itself; ties on area cannot nest, and
-            # comparing them both ways would make each the other's parent
-            if i != j and counts[j] > counts[i] and (inner & ~outer).sum() == 0:
-                depth += 1
-        depths.append(depth)
-    return depths
+    return bool(points_in_poly(rings[i][:1], rings[j])[0])
+
+
+#: Boolean elements per bounding-box screening block. The screen is
+#: pairwise, so a whole-matrix pass costs n^2 — 16,384 rings (a 256x256
+#: checkerboard, which is what a noisy segmentation looks like) is 268
+#: million booleans per temporary, which measured at 592 MB peak. Row
+#: blocks make the peak a property of this constant instead of the
+#: input: ~4 million elements, so ~20 MB of temporaries whatever the
+#: ring count, at no measurable cost in time since each block is still
+#: one vectorized numpy pass.
+_SCREEN_BLOCK = 1 << 22
+
+
+def _containers(
+    rings: list[np.ndarray], boxes: np.ndarray, areas: np.ndarray
+) -> list[list[int]]:
+    """For each ring, the indices of the rings that enclose it.
+
+    Two stages, because the pairwise question is cheap to ask wrongly and
+    expensive to ask well.
+
+    Stage one is the screen below, and it is the only statement of the
+    two conditions containment requires: `j`'s box encloses `i`'s, and
+    `j`'s area is strictly the greater. Both are NECESSARY, so nothing
+    real is lost, and neither is sufficient, so survivors still face the
+    polygon test. It is vectorized because this is where a fragmented
+    label costs — 268 million Python-level comparisons take over a minute
+    where numpy takes a moment — and because it rejects almost everything
+    it meets: 100 disjoint blobs of differing sizes leave 4,374 pairs
+    after the area test and none at all after the boxes.
+
+    Containment is computed ONCE and returned, rather than recomputed
+    when a hole looks for its parent: depth is the length of this list and
+    the parent is an element of it, so both read the same answer and
+    cannot disagree.
+    """
+    n = len(rings)
+    r0, c0, r1, c1 = (boxes[:, k] for k in range(4))
+    out: list[list[int]] = []
+    step = max(1, _SCREEN_BLOCK // max(n, 1))
+    for start in range(0, n, step):
+        stop = min(start + step, n)
+        block = (
+            (r0[None, :] <= r0[start:stop, None])
+            & (c0[None, :] <= c0[start:stop, None])
+            & (r1[None, :] >= r1[start:stop, None])
+            & (c1[None, :] >= c1[start:stop, None])
+            & (areas[None, :] > areas[start:stop, None])
+        )
+        for offset in range(stop - start):
+            i = start + offset
+            out.append(
+                [
+                    int(j)
+                    for j in np.flatnonzero(block[offset])
+                    if _contains(i, int(j), rings)
+                ]
+            )
+    return out
 
 
 def _parts_of(mask: np.ndarray, origin: tuple[int, int] = (0, 0)) -> tuple[Part, ...]:
     """One mask as ordered `include` parts, holes attached to their own
     outline.
 
-    A hole belongs to the ring one level out that contains it. Under that
-    depth filter the parent is UNIQUE — two candidates would have to be
-    rings at equal depth that overlap, and rings at equal depth are
-    disjoint (nested ones differ in depth) — so the `min` below is a
-    tiebreak that cannot fire, kept because relying on the argument
-    rather than the code is how the argument stops being checked.
-    Verified to 4-deep nesting: every hole has exactly one candidate.
+    A hole belongs to the ring one level out that contains it, which is
+    the smallest of the rings containing it — see below. A hole at odd
+    depth always has at least one container, since the depth IS the
+    container count, so the selection cannot come up empty.
 
     `mask` may be a CROP of a larger image; `origin` is its top-left in
     the full image and every ring is shifted by it on the way out, so the
@@ -154,33 +223,30 @@ def _parts_of(mask: np.ndarray, origin: tuple[int, int] = (0, 0)) -> tuple[Part,
         return ()
     shift = np.asarray(origin, dtype=np.float64)
     if len(rings) == 1:
-        # The common case by far — a solid label with no holes. Nesting is
-        # what the rasterization below is for, and one ring has nowhere to
-        # nest, so computing it would cost a full crop rasterization to
-        # learn that a lone ring is at depth 0.
+        # The common case by far — a solid label with no holes. A lone
+        # ring has nowhere to nest, so the whole containment computation
+        # below would run to establish that it is at depth 0.
         return (Part(Shape(kind="polygon", outline=rings[0] + shift)),)
-    shape = (int(mask.shape[0]), int(mask.shape[1]))
-    filled = [polygon2mask(shape, ring) for ring in rings]
-    counts = [int(m.sum()) for m in filled]
-    depths = _depths(filled, counts)
+    boxes = _boxes(rings)
+    areas = _areas(rings)
+    containers = _containers(rings, boxes, areas)
+    # Even depth bounds material, odd bounds a hole — the standard
+    # even-odd rule, read off containment rather than winding direction so
+    # a scikit-image change to traversal order cannot silently invert it.
+    depths = [len(c) for c in containers]
 
     holes: dict[int, list[np.ndarray]] = {i: [] for i in range(len(rings))}
     for i, depth in enumerate(depths):
         if depth % 2 == 0:
             continue
-        parent = min(
-            (
-                j
-                for j in range(len(rings))
-                if depths[j] == depth - 1
-                and counts[j] > counts[i]
-                and (filled[i] & ~filled[j]).sum() == 0
-            ),
-            key=lambda j: counts[j],
-            default=None,
-        )
-        if parent is not None:
-            holes[parent].append(rings[i])
+        # The SMALLEST container is the immediate one. Containment
+        # orders rings by area — a container is strictly larger, so a
+        # container of the parent is larger than the parent — which makes
+        # this the ring exactly one level out with no appeal to the depth
+        # numbers. Filtering `containers[i]` for `depth - 1` instead picks
+        # the same ring by a second rule; one rule cannot drift from
+        # itself, so this is the only one.
+        holes[min(containers[i], key=lambda j: areas[j])].append(rings[i])
 
     return tuple(
         Part(
@@ -216,14 +282,25 @@ def labels_to_regions(
         # make silently: 1.9999 is either label 1 or label 2 depending on
         # a convention the caller knows and this does not
         raise ValueError(f"labels must be an integer array, got {array.dtype}")
+    if array.size == 0:
+        # `min()` on an empty array raises from inside numpy, which tells
+        # a caller nothing about label images. An empty image has no
+        # labels, which is an answer rather than an error.
+        return ()
     if array.min() < 0:
         raise ValueError("labels must be non-negative (0 = background)")
 
-    # one pass for every label's bounding box; `find_objects` indexes by
-    # `value - 1` and returns None for a value the array does not use
-    boxes = find_objects(array)
+    # One pass for every label's bounding box — but over COMPACTED values.
+    # `find_objects` returns a list of length max(labels), so handing it
+    # the raw array costs memory proportional to the largest label VALUE
+    # rather than to the image: an 8x8 array holding the single value
+    # 10,000,000 took 433 MB, and 2**31 (a plausible global instance id)
+    # would need ~80 GB to describe 64 pixels. `unique` gives dense
+    # indices, so the cost follows the number of distinct labels instead.
+    present, inverse = np.unique(array, return_inverse=True)
+    boxes = find_objects(inverse.reshape(array.shape).astype(np.intp) + 1)
     regions: list[Region] = []
-    for value in np.unique(array):
+    for index, value in enumerate(present):
         if value == 0:
             continue
         # Crop to the label's own bounding box before tracing. Every step
@@ -232,7 +309,7 @@ def labels_to_regions(
         # grain needs. The boxes come from ONE `find_objects` pass rather
         # than a full-image comparison per label, which is the difference
         # between one scan of the array and one per distinct value.
-        box = boxes[int(value) - 1]
+        box = boxes[index]
         if box is None:  # pragma: no cover - unique() said it is present
             continue
         rows, cols = box
@@ -254,23 +331,57 @@ def regions_to_labels(
     `values` maps region id → label value; without it, regions take
     1..n in the order given. Background stays 0.
 
-    Overlap RAISES (`LabelOverlapError`): a label image holds one value
-    per pixel, so two regions covering one pixel means a claim is being
-    dropped, and any rule for picking the winner would be invisible in
-    the array that comes back.
+    Every way two regions can end up indistinguishable is refused, because
+    each of them drops a claim as silently as an overlap does:
+
+    * two regions covering one PIXEL (`LabelOverlapError`) — a label image
+      holds one value per pixel, so any rule for picking the winner would
+      be invisible in the array that comes back;
+    * two regions sharing an ID, which would collapse in the default
+      mapping and quietly renumber the rest;
+    * two regions given the same VALUE, which merges their identities on
+      the way in and cannot be told apart on the way back out.
+
+    A value must be a positive integer, and that is enforced rather than
+    coerced: `labels_to_regions` refuses a float array because rounding is
+    the caller's convention to choose, and truncating 2.7 to 2 here would
+    make exactly that choice one function later.
     """
     grid = (int(shape[0]), int(shape[1]))
-    assigned = values or {r.id: i + 1 for i, r in enumerate(regions)}
+    ids = [r.id for r in regions]
+    if len(set(ids)) != len(ids):
+        duplicate = next(i for i in ids if ids.count(i) > 1)
+        raise ValueError(f"two regions share the id {duplicate!r}")
+    # `values or {...}` would treat an EXPLICIT empty mapping as "none
+    # given" and auto-number, which is the one case where every id is
+    # missing and so the one that most needs the refusal below
+    assigned = (
+        values if values is not None else {r.id: i + 1 for i, r in enumerate(regions)}
+    )
     out = np.zeros(grid, dtype=np.int64)
     claimed = np.zeros(grid, dtype=bool)
+    seen: dict[int, str] = {}
     for region in regions:
         if region.id not in assigned:
             raise ValueError(f"no label value given for region {region.id!r}")
-        value = int(assigned[region.id])
-        if value == 0:
+        raw = assigned[region.id]
+        if isinstance(raw, bool) or not isinstance(raw, (int, np.integer)):
             raise ValueError(
-                f"region {region.id!r} cannot take label 0, which is background"
+                f"region {region.id!r}: label value must be an integer, "
+                f"got {raw!r}"
             )
+        value = int(raw)
+        if value <= 0:
+            raise ValueError(
+                f"region {region.id!r}: label value must be positive "
+                f"(0 is background), got {value}"
+            )
+        if value in seen:
+            raise ValueError(
+                f"regions {seen[value]!r} and {region.id!r} were both given "
+                f"label {value}, which would merge them"
+            )
+        seen[value] = region.id
         mask = rasterize(region, grid)
         overlap = mask & claimed
         if overlap.any():
