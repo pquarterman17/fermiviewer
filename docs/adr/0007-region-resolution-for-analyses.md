@@ -214,6 +214,34 @@ Two consequences follow that are easy to get wrong:
   preview's 3 means class 3; renumbering it because class 2 fell outside
   the region would relabel the specimen.
 
+### 10. A reduction over varying support is refused, not approximated
+
+A profile-forming analysis collapses a region along an axis, and a
+rectangle makes every depth equally supported — which is what makes the
+profile a picture of the specimen rather than of the box. An irregular
+region breaks that, and the modes do not degrade equally:
+
+* `mean` and `median` are AVERAGES, so a depth backed by 40 pixels and one
+  backed by 12 stay comparable. The support changes; the quantity does
+  not. Both are supported.
+* `sum` is not. Its value tracks the region's WIDTH as faithfully as its
+  intensity, so a flat specimen read through a circle produces a domed
+  profile whose flanks `detect_interfaces` reports as interfaces — a
+  layer structure read off the outline the user drew. It raises, and
+  names `mean`.
+* `waviness` tracing is refused for the same reason: it walks whole
+  columns looking for one edge crossing, and over an irregular region a
+  column is whatever slice of it survived, so the roughness would
+  describe the outline.
+* A depth with **no** selected pixel raises rather than taking a filler,
+  since any filler becomes a feature in a profile whose entire purpose is
+  edge detection.
+
+A RECTANGULAR region keeps every mode, because the objection is to
+varying support and not to regions. That is the line: refuse the
+combinations that would answer confidently about the wrong thing, and
+leave the rest exactly as they were.
+
 ## Consequences
 
 * Each 4C wave adopts a region by declaring a `region` param and calling

@@ -39,12 +39,13 @@ from fermiviewer.calc.roi import extract_rect_roi
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.ops._envelopes import nan_none as _nn
 from fermiviewer.ops._envelopes import output, scalar
-from fermiviewer.ops._parsing import parse_roi_param, split_csv
 from fermiviewer.ops._parsing import pixel_cal as _px_cal
+from fermiviewer.ops._parsing import split_csv
 from fermiviewer.ops._region_param import (
     LABEL_CONTEXT_BBOX,
     LABEL_CONTEXT_EXACT,
     REGION_PARAM,
+    ScopedRegion,
     region_output,
     scope_from_params,
 )
@@ -140,11 +141,36 @@ def _layer_outputs(res: LayerResult) -> list[dict[str, Any]]:
     return outputs
 
 
+#: Outputs of a layer analysis that a region does NOT constrain. The growth
+#: orientation is read from the whole raster by `detect_growth_orientation`,
+#: which also decides `axis="auto"`, so a region can be profiled along an
+#: axis its own pixels would not have chosen. That predates 4C — the legacy
+#: roi path behaves identically — but the region envelope is new, and
+#: stamping `exact-mask` beside these three would assert something false.
+_LAYER_WHOLE_IMAGE_OUTPUTS = ("axis", "tilt_deg", "coherence")
+
+
+def _layer_region_output(scoped: ScopedRegion) -> dict[str, Any]:
+    """The region envelope for a layer analysis, naming what it excludes.
+
+    `depth_profile`, the interfaces and the layer table ARE region-scoped
+    and exact — the collapse averages only selected pixels. The
+    orientation scalars are not, and a reader given one envelope for the
+    whole result would take the exactness claim to cover all of it.
+    """
+    envelope = region_output(scoped, label_context=LABEL_CONTEXT_EXACT)
+    envelope["data"]["whole_image_outputs"] = list(_LAYER_WHOLE_IMAGE_OUTPUTS)
+    return envelope
+
+
+
 def _layers(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     px, unit = _image_cal(ds)
+    scoped = scope_from_params(params, ds.data.shape[:2])
     res = analyze_layers(
         ds.data,
-        roi=parse_roi_param(params["roi"]),
+        roi=scoped.rect if scoped is not None else None,
+        mask=scoped.mask if scoped is not None else None,
         axis=params["axis"],
         sensitivity=params["sensitivity"],
         n_layers=params["n_layers"],
@@ -157,11 +183,16 @@ def _layers(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         modality=params["modality"],
         destripe_fib=params["destripe"],
     )
+    outputs = _layer_outputs(res)
+    if scoped is not None:
+        # exact: the collapse averages only selected pixels, so the profile
+        # is the region's, not its box's
+        outputs.append(_layer_region_output(scoped))
     return OpResult(
         op="layers",
         params=params,
         label="cross-section layer analysis",
-        value={"outputs": _layer_outputs(res)},
+        value={"outputs": outputs},
     )
 
 
@@ -171,6 +202,7 @@ _COMMON_LAYER_PARAMS = {
     "roi": OpParam(
         str, "", doc="'r1,c1,r2,c2' 1-based inclusive analysis rectangle; empty = whole image"
     ),
+    "region": REGION_PARAM,
     "reduce": OpParam(
         str,
         "mean",
@@ -219,11 +251,13 @@ register(
 def _layers_edit(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     px, unit = _image_cal(ds)
     positions = [float(v) for v in split_csv(params["positions"])]
+    scoped = scope_from_params(params, ds.data.shape[:2])
     res = recompute_layers(
         ds.data,
         positions,
         axis=params["axis"],
-        roi=parse_roi_param(params["roi"]),
+        roi=scoped.rect if scoped is not None else None,
+        mask=scoped.mask if scoped is not None else None,
         reduce=params["reduce"],
         pixel_size=px,
         unit=unit,
@@ -232,11 +266,15 @@ def _layers_edit(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         trace_window=params["trace_window"],
         destripe_fib=params["destripe"],
     )
+    outputs = _layer_outputs(res)
+    if scoped is not None:
+        # exact, like `layers`: the collapse averages only selected pixels
+        outputs.append(_layer_region_output(scoped))
     return OpResult(
         op="layers_edit",
         params=params,
         label="layer re-measure from edited interfaces",
-        value={"outputs": _layer_outputs(res)},
+        value={"outputs": outputs},
     )
 
 
