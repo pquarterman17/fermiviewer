@@ -283,3 +283,43 @@ def test_regions_take_1_to_n_when_no_values_are_given() -> None:
     regions = labels_to_regions(_solid())
     out = regions_to_labels(regions, (16, 16))
     assert sorted(np.unique(out).tolist()) == [0, 1, 2]
+
+
+def test_converted_regions_survive_being_saved_and_reloaded() -> None:
+    """The seam between this module and ADR 0006's `regions` section.
+
+    A conversion nobody can persist is not editable in any useful sense,
+    and float coordinates are exactly where a round trip quietly loses a
+    pixel. Traced rings land on half-integers, which JSON carries
+    exactly — but that is a property to assert, not to assume, since it
+    is the difference between reopening a project and reopening a
+    slightly different project.
+    """
+    import json
+
+    from fermiviewer.io.regions_model import (
+        RegionSet,
+        load_regions,
+        regions_to_manifest,
+    )
+
+    labels = np.zeros((30, 30), dtype=int)
+    labels[3:20, 3:20] = 1
+    labels[8:14, 8:14] = 0
+    labels[10:12, 10:12] = 1
+    labels[24:28, 24:28] = 2
+
+    regions = labels_to_regions(labels)
+    manifest = regions_to_manifest((RegionSet(id="s", regions=regions),), ())
+    reloaded = load_regions(json.loads(json.dumps(manifest))).sets[0].regions
+
+    assert np.array_equal(
+        regions_to_labels(reloaded, labels.shape, values=_values(labels)), labels
+    )
+    assert [len(p.shape.holes) for r in reloaded for p in r.parts] == [1, 0, 0]
+    assert all(
+        float(v * 2).is_integer()
+        for r in reloaded
+        for p in r.parts
+        for v in p.shape.outline.ravel()
+    ), "a traced ring lands on half-integers, which JSON carries exactly"

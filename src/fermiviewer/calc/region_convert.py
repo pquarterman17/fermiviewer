@@ -52,7 +52,17 @@ coordinates shift back by one. Measured over 300 random masks plus the
 structural cases (border contact, whole-image, single pixel, one-pixel
 line, a hole, an island inside a hole), the round trip is EXACT.
 
-Pure layer: numpy + scikit-image + stdlib.
+## What lossless costs
+
+Refusing to simplify has a price worth stating rather than discovering:
+an outline keeps a vertex per boundary step. 150 grains at 512x512 trace
+to ~32,000 vertices and a 0.5 MB `regions` section. That is the trade
+this module exists to make — a simplified outline is smaller and is not
+the segmentation — but a caller converting a large map should expect a
+large region set, and one that wants small should be reaching for
+`calc/contours.py` and accepting the loss knowingly.
+
+Pure layer: numpy + scikit-image + scipy + stdlib.
 """
 
 from __future__ import annotations
