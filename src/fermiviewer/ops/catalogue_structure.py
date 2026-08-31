@@ -115,7 +115,6 @@ def _particle_context(scoped: ScopedRegion | None, use_watershed: bool) -> str:
     return LABEL_CONTEXT_MASKED_NEIGHBOURHOOD
 
 
-
 def _scoped_particle_input(
     raster: np.ndarray,
     scoped: ScopedRegion | None,
@@ -301,16 +300,10 @@ register(
 def _efd_similarity(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     raster = raster_of(ds)
     threshold = params["threshold"] if math.isfinite(params["threshold"]) else None
-    # Same segmentation as `particles`, so the same scoping: one helper
-    # rather than a second interpretation of what a region means here.
-    scoped = scope_from_params(params, raster.shape)
-    analysis_raster, threshold = _scoped_particle_input(
-        raster, scoped, threshold, params["polarity"]
-    )
     # No pixel_size: similarity ranks by SHAPE, calibration never enters —
     # mirrors the route, which also omits it here.
     res = particle_analysis(
-        analysis_raster,
+        raster,
         threshold=threshold,
         polarity=params["polarity"],
         min_area=params["min_area"],
@@ -344,13 +337,6 @@ def _efd_similarity(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         ),
         scalar("n_harmonics", params["n_harmonics"]),
     ]
-    if scoped is not None:
-        outputs.append(
-            region_output(
-                scoped,
-                label_context=_particle_context(scoped, params["use_watershed"]),
-            )
-        )
     return OpResult(
         op="efd_similarity",
         params=params,
@@ -369,7 +355,6 @@ register(
         "Note: the route's dead `class_thresholds` field is deliberately "
         "not mirrored — classification never enters similarity",
         params={
-            "region": REGION_PARAM,
             "ref_id": OpParam(
                 int,
                 required=True,
