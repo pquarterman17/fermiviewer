@@ -76,7 +76,11 @@ source value and takes the smallest positive number no traced region claims.
 
 Label values are bounded by the registration format: a session map is float64,
 which represents integers exactly only up to 2^53, so anything larger is
-refused rather than silently rounded into a neighbouring label.
+refused rather than silently rounded into a neighbouring label. **Both**
+directions enforce that one range — `from-labels` on the values it reads and
+`to-labels` on the map it produces — so every region the first hands out is one
+the second will take back. An integer-typed label map is bounded on the same
+values despite needing no conversion.
 
 The conversion is lossless in both directions and refuses rather than guesses
 anywhere it cannot be:

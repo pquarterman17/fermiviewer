@@ -45,14 +45,20 @@ from fermiviewer.session import UnknownImageError, store
 
 router = APIRouter(prefix="/api")
 
-#: 2**53 — the largest integer float64 holds exactly.
+#: 2**53 — the largest integer float64 holds exactly, and the supported
+#: label range for BOTH conversion directions.
 #:
 #: `routes/structure._register` stores every derived map as float64, so a
 #: label above this is silently rounded on the way in: 9007199254740993
 #: comes back as 9007199254740992, merging two regions into one with
-#: nothing in the array to say it happened. Checked on the produced map
-#: rather than on the request, so it covers a value taken from region
-#: metadata as well as one the caller passed.
+#: nothing in the array to say it happened.
+#:
+#: Both ends check it, against this one constant, because a bound on one
+#: side is not a range — it is a disagreement. `to-labels` checks the
+#: produced MAP, so a value reaching it through region metadata is covered
+#: as well as one the caller passed; `from-labels` checks the input VALUES
+#: before any cast, so what it hands out is always something `to-labels`
+#: will take back.
 MAX_EXACT_LABEL = 2**53
 
 Point = tuple[FiniteFloat, FiniteFloat]
@@ -178,15 +184,55 @@ def _label_array(ds: DataStruct, image_id: str) -> np.ndarray:
     # 2-D needs no check of its own: `DataStruct` refuses to hold an
     # IMAGE that is not, so the kind above has already settled it.
     array = np.asarray(ds.data)
-    if np.issubdtype(array.dtype, np.integer):
-        return array
-    if not np.all(np.isfinite(array)) or not np.array_equal(array, np.rint(array)):
+    if not np.issubdtype(array.dtype, np.integer) and (
+        not np.all(np.isfinite(array)) or not np.array_equal(array, np.rint(array))
+    ):
         raise HTTPException(
             422,
             f"image {image_id!r} is not a label map: its values are not whole "
             "numbers, so which label a pixel carries is undefined",
         )
-    return array.astype(np.int64)
+    _check_label_range(array, image_id)
+    # Safe to cast only after the range check: `astype` on a value past
+    # int64 does not raise, it warns and yields INT_MIN — silently, in
+    # production, where warnings are not errors.
+    return array if np.issubdtype(array.dtype, np.integer) else array.astype(np.int64)
+
+
+def _check_label_range(array: np.ndarray, image_id: str) -> None:
+    """The supported label range, applied to the INPUT side.
+
+    `to-labels` already refuses a value float64 cannot hold exactly. Doing
+    it there only made the domain asymmetric: `from-labels` accepted
+    2**53 + 2 — which IS exactly representable — recorded it as a region's
+    `label_value`, and then `to-labels` refused that same untouched
+    region. The advertised default round trip was not lossless for any
+    input the two ends disagreed about.
+
+    An integer image skips the float cast, so it skipped every check with
+    it: a uint64 map holding 2**63 + 7 produced a region carrying a label
+    no int64 map can hold. The bound is checked on the VALUES, before the
+    cast and whatever the dtype, so both dtypes and both directions share
+    one range.
+
+    Ordinary negatives are deliberately left alone — `labels_to_regions`
+    refuses them with a message about background that says more than this
+    one would. Only magnitudes past the range are stopped here, which is
+    what the cast cannot survive, and that is why the bound is two-sided
+    despite labels being non-negative: -2**64 warns and yields INT_MIN in
+    exactly the same way 2**63 does, and it has to be stopped before the
+    cast, not after.
+
+    No empty-array guard: `DataStruct` refuses to hold an empty data
+    array at all, so `max()` here always has something to look at.
+    """
+    if array.max() > MAX_EXACT_LABEL or array.min() < -MAX_EXACT_LABEL:
+        raise HTTPException(
+            422,
+            f"image {image_id!r} holds a label outside the supported range "
+            f"(magnitude at most {MAX_EXACT_LABEL}): a session map is float64, "
+            "so a larger value cannot survive the return trip",
+        )
 
 
 @router.post("/region-sets/from-labels")

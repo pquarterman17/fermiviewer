@@ -22,6 +22,7 @@ from fastapi.testclient import TestClient
 
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.project_session import project
+from fermiviewer.routes.region_sets_api import MAX_EXACT_LABEL
 from fermiviewer.server import create_app
 from fermiviewer.session import store
 
@@ -549,3 +550,118 @@ def test_the_request_model_does_not_coerce_its_way_past_the_refusals(
         },
     )
     assert r.status_code == 422
+
+
+# ── one supported range, both directions ─────────────────────────────
+
+
+def _at(value: int, dtype: object = np.float64) -> np.ndarray:
+    labels = np.zeros((12, 12), dtype=dtype)  # type: ignore[arg-type]
+    labels[2:6, 2:6] = value
+    return labels
+
+
+def test_the_two_directions_agree_on_the_largest_label(client) -> None:
+    """The property that was broken, stated directly: anything
+    `from-labels` hands out, `to-labels` takes back.
+
+    `to-labels` alone enforced the float64 bound, which made the domain
+    ASYMMETRIC rather than bounded — `from-labels` accepted 2**53 + 2
+    (exactly representable, so it passed every check), recorded it as a
+    region's `label_value`, and `to-labels` then refused that same
+    untouched region. The default round trip was not lossless for any
+    input the two ends disagreed about.
+
+    2**53 is the boundary value, so it exercises the bound rather than
+    sitting safely inside it.
+    """
+    labels = _at(MAX_EXACT_LABEL)
+    image_id = _add(labels)
+    made = client.post(
+        "/api/region-sets/from-labels",
+        json={"image_id": image_id, "set_id": "grains"},
+    )
+    assert made.status_code == 200, made.text
+    body = made.json()
+    assert body["sets"][0]["regions"][0]["meta"]["label_value"] == MAX_EXACT_LABEL
+    _install(client, body)
+
+    back = client.post(
+        "/api/region-sets/to-labels",
+        json={"set_id": "grains", "image_id": image_id},
+    )
+    assert back.status_code == 200, back.text
+    assert np.array_equal(np.asarray(store.get(back.json()["id"]).data), labels)
+
+
+def test_a_label_past_the_range_is_refused_on_the_way_in(client) -> None:
+    """2**53 + 2 is exactly representable in float64, so no rounding check
+    catches it — only the range does. Refused at input rather than
+    accepted and rejected later, which is the asymmetry itself."""
+    image_id = _add(_at(MAX_EXACT_LABEL + 2))
+    r = client.post(
+        "/api/region-sets/from-labels",
+        json={"image_id": image_id, "set_id": "grains"},
+    )
+    assert r.status_code == 422
+    assert "supported range" in r.json()["detail"]
+
+
+def test_a_label_past_int64_does_not_reach_the_cast(client) -> None:
+    """`astype(np.int64)` on 2**63 does not raise — it warns
+    (`invalid value encountered in cast`) and yields INT_MIN. This repo
+    runs `filterwarnings = ["error"]`, so under test it became an
+    exception and a 500; in production it would have silently traced a
+    region for -9223372036854775808."""
+    image_id = _add(_at(2**63))
+    r = client.post(
+        "/api/region-sets/from-labels",
+        json={"image_id": image_id, "set_id": "grains"},
+    )
+    assert r.status_code == 422
+    assert "supported range" in r.json()["detail"]
+
+
+@pytest.mark.parametrize("dtype", [np.int64, np.uint64])
+def test_an_integer_map_is_bounded_too_though_it_skips_the_cast(
+    client, dtype: object
+) -> None:
+    """An integer image needs no float cast, so it used to skip every
+    check that rode along with one — a uint64 map holding 2**63 + 7
+    produced a region carrying a label no int64 map can hold. The bound is
+    checked on the VALUES, before and independent of any cast."""
+    value = 2**63 + 7 if dtype is np.uint64 else 2**62
+    image_id = _add(_at(value, dtype))
+    r = client.post(
+        "/api/region-sets/from-labels",
+        json={"image_id": image_id, "set_id": "grains"},
+    )
+    assert r.status_code == 422
+    assert "supported range" in r.json()["detail"]
+
+
+def test_an_ordinary_negative_still_gets_the_message_about_background(client) -> None:
+    """The range check bounds MAGNITUDE, deliberately leaving a plain
+    negative to `labels_to_regions` — whose message names background and
+    tells the caller more than a range would."""
+    image_id = _add(_at(-1))
+    r = client.post(
+        "/api/region-sets/from-labels",
+        json={"image_id": image_id, "set_id": "grains"},
+    )
+    assert r.status_code == 422
+    assert "non-negative" in r.json()["detail"]
+
+
+def test_a_hugely_negative_value_is_stopped_before_the_cast(client) -> None:
+    """The bound is two-sided even though labels are non-negative.
+    -2**64 warns and yields INT_MIN from `astype` exactly as 2**63 does,
+    so it has to be caught before the cast — `labels_to_regions`' own
+    non-negative refusal comes one step too late to prevent it."""
+    image_id = _add(_at(-(2**64)))
+    r = client.post(
+        "/api/region-sets/from-labels",
+        json={"image_id": image_id, "set_id": "grains"},
+    )
+    assert r.status_code == 422
+    assert "supported range" in r.json()["detail"]
