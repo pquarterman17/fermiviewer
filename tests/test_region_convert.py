@@ -452,8 +452,13 @@ def test_a_fragmented_label_screens_containment_in_bounded_blocks() -> None:
     costs: a 128x128 checkerboard traces ~8,200 rings, and one n^2 boolean
     temporary of that is 67 MB against five in the expression. Blocking
     the rows makes the peak a property of `_SCREEN_BLOCK` rather than of
-    the input — measured at ~17 MB here, so the bound below fails on a
-    single unblocked temporary and leaves room for the rings themselves.
+    the input.
+
+    The bound is placed between two measurements rather than picked:
+    16.7 MB blocked, 136.8 MB with `_SCREEN_BLOCK` raised past the ring
+    count. 48 MB is ~2.9x the real peak, so a platform whose allocator or
+    numpy build differs has room, and ~0.35x the regression, so the
+    regression cannot hide under it.
 
     A checkerboard because it is what a noisy segmentation degenerates to,
     which is the case a hand-correction feature meets in practice.
