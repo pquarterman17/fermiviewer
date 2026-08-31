@@ -519,8 +519,9 @@ consume a mask.
 - [x] Persist named ROI sets and region classes in `.fvp`.
 - [x] Supply both exact masks and bounding boxes so older calculations can be
       migrated safely.
-- [ ] Make spectrum integration, statistics, segmentation, particles, grains,
+- [x] Make spectrum integration, statistics, segmentation, particles, grains,
       layers, and batch recipes consume the same contract.
+      **Shipped 2026-08-31** (4C-1..5, PRs #191, #192, #194, #195, #196).
 - [ ] Convert segmentation labels to editable regions and regions to label
       images without losing holes or disconnected components.
 - [ ] Add clear mask previews and pixel-count/physical-area summaries before
@@ -648,6 +649,38 @@ in EDS/EELS, imaging statistics, and structural analysis.
 > instance, an op and a route reaching one answer by different paths.
 
 ### 5. Calibration profiles and quantitative standards
+
+> **4C completed 2026-08-31 — the consumer migration, and its "Done when".**
+> Nine ops take the region contract: `sum_spectrum`, `image_stats`,
+> `particles`, `efd_similarity`, `grains`, `train_segment`, `train_preview`,
+> `layers`, `layers_edit`. A recipe step may NAME one, and the runner
+> substitutes resolved geometry per image so the op never sees an id and the
+> recorded params stay a replay key (ADR 0007 §11).
+>
+> Item 4's "Done when" is pinned as a test rather than asserted: five
+> consumers read one reference and are each compared against a mask
+> rasterized independently by `calc.region_mask`, so agreeing with each
+> other is not enough to pass.
+>
+> Three decisions the waves forced, all recorded in ADR 0007 §9-§11:
+> **labels are exact, context is the bounding box** — a threshold is a
+> function of the selected values, a texture feature is a function of a
+> neighbourhood, and `label_context` says which an op got;
+> **a reduction over varying support is refused, not approximated** —
+> `reduce="sum"` over an irregular region tracks the region's width, so a
+> flat specimen grows flanks a detector reads as interfaces;
+> **naming is a caller concern** — geometry is the op contract.
+>
+> Sixteen defects were found in review (eight by ChatGPT, eight in a
+> self-review) and every one sat at a SEAM rather than in the logic: a
+> request model that dropped a new field, a sibling op that never got the
+> same fix, a second call site, a summary left unscoped beside a masked
+> map, a rule restated instead of called. Three were false claims in
+> comments or provenance labels, which are worse than silent bugs because
+> they tell the next reader not to check. Worth carrying into 4B/4D as a
+> review checklist: for each change, name every OTHER place that must
+> change with it, and re-read every claim the diff makes about itself.
+
 
 Create a shared Calibration Center, with EDS as the first complete workflow and
 EELS/dose/spatial/reciprocal calibration using the same persistence rules.
