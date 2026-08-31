@@ -45,6 +45,7 @@ from fermiviewer.ops._region_param import (
     LABEL_CONTEXT_BBOX,
     LABEL_CONTEXT_EXACT,
     REGION_PARAM,
+    ScopedRegion,
     region_output,
     scope_from_params,
 )
@@ -140,6 +141,29 @@ def _layer_outputs(res: LayerResult) -> list[dict[str, Any]]:
     return outputs
 
 
+#: Outputs of a layer analysis that a region does NOT constrain. The growth
+#: orientation is read from the whole raster by `detect_growth_orientation`,
+#: which also decides `axis="auto"`, so a region can be profiled along an
+#: axis its own pixels would not have chosen. That predates 4C — the legacy
+#: roi path behaves identically — but the region envelope is new, and
+#: stamping `exact-mask` beside these three would assert something false.
+_LAYER_WHOLE_IMAGE_OUTPUTS = ("axis", "tilt_deg", "coherence")
+
+
+def _layer_region_output(scoped: ScopedRegion) -> dict[str, Any]:
+    """The region envelope for a layer analysis, naming what it excludes.
+
+    `depth_profile`, the interfaces and the layer table ARE region-scoped
+    and exact — the collapse averages only selected pixels. The
+    orientation scalars are not, and a reader given one envelope for the
+    whole result would take the exactness claim to cover all of it.
+    """
+    envelope = region_output(scoped, label_context=LABEL_CONTEXT_EXACT)
+    envelope["data"]["whole_image_outputs"] = list(_LAYER_WHOLE_IMAGE_OUTPUTS)
+    return envelope
+
+
+
 def _layers(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     px, unit = _image_cal(ds)
     scoped = scope_from_params(params, ds.data.shape[:2])
@@ -163,7 +187,7 @@ def _layers(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     if scoped is not None:
         # exact: the collapse averages only selected pixels, so the profile
         # is the region's, not its box's
-        outputs.append(region_output(scoped, label_context=LABEL_CONTEXT_EXACT))
+        outputs.append(_layer_region_output(scoped))
     return OpResult(
         op="layers",
         params=params,
@@ -245,7 +269,7 @@ def _layers_edit(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     outputs = _layer_outputs(res)
     if scoped is not None:
         # exact, like `layers`: the collapse averages only selected pixels
-        outputs.append(region_output(scoped, label_context=LABEL_CONTEXT_EXACT))
+        outputs.append(_layer_region_output(scoped))
     return OpResult(
         op="layers_edit",
         params=params,

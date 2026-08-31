@@ -344,7 +344,12 @@ def _efd_similarity(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         scalar("n_harmonics", params["n_harmonics"]),
     ]
     if scoped is not None:
-        outputs.append(region_output(scoped, label_context=LABEL_CONTEXT_EXACT))
+        outputs.append(
+            region_output(
+                scoped,
+                label_context=_particle_context(scoped, params["use_watershed"]),
+            )
+        )
     return OpResult(
         op="efd_similarity",
         params=params,
