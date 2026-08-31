@@ -30,6 +30,10 @@ export type MacroStep =
       params: Record<string, unknown>;
       inputs?: Record<string, string>;
       bindings?: BatchInputBindings;
+      // a symbolically named region (ADR 0007 §11), resolved per image by
+      // the runner. Carried so a scoped recipe saved as a macro replays
+      // scoped rather than silently over the whole image.
+      region_ref?: string;
     }
   | { kind: "legacy"; path: string; body: Record<string, unknown> };
 
@@ -139,7 +143,12 @@ export function loadMacro(): MacroStep[] {
 export function macroOpSteps(macro: MacroStep[] = loadMacro()): BatchRecipeStep[] {
   return macro
     .filter((s): s is Extract<MacroStep, { kind: "op" }> => s.kind === "op")
-    .map(({ op, params, inputs }) => ({ op, params, ...(inputs ? { inputs } : {}) }));
+    .map(({ op, params, inputs, region_ref }) => ({
+      op,
+      params,
+      ...(inputs ? { inputs } : {}),
+      ...(region_ref ? { region_ref } : {}),
+    }));
 }
 
 /** How many of the macro's steps have no op equivalent (dropped by
@@ -155,9 +164,10 @@ export function setMacroFromRecipe(
   recipeSteps: BatchRecipeStep[],
   inputBindings: BatchInputBindings = {},
 ): { n: number; persisted: boolean } {
-  const next: MacroStep[] = recipeSteps.map(({ op, params, inputs }) => ({
+  const next: MacroStep[] = recipeSteps.map(({ op, params, inputs, region_ref }) => ({
     kind: "op", op, params,
     ...(inputs ? { inputs } : {}),
+    ...(region_ref ? { region_ref } : {}),
     ...(inputs
       ? { bindings: Object.fromEntries(
           Object.values(inputs)

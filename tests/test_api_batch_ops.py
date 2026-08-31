@@ -423,3 +423,319 @@ def test_a_watch_run_uses_the_pool_resolved_at_start(tmp_path) -> None:
         path, _subtract_recipe(), lambda *_: None, pool, {"dark": dark}
     )
     assert body["derived"] is not None
+
+
+# ── named regions over the HTTP boundary (4C-5) ──────────────────────
+
+
+def _region_set(image_id: str | None = None, half: bool = False):
+    """A set holding one rect region: the left half, or the whole image."""
+    from fermiviewer.calc.regions import Part, Region, Shape
+    from fermiviewer.io.regions_model import RegionSet
+
+    bounds = (0.0, 0.0, 63.0, 31.0) if half else (0.0, 0.0, 63.0, 63.0)
+    return RegionSet(
+        id="s1",
+        regions=(Region(id="r1", parts=(Part(Shape(kind="rect", bounds=bounds)),)),),
+        image_id=image_id,
+    )
+
+
+def _stats_value(output: dict) -> dict:
+    return next(v for v in output["values"] if v["op"] == "image_stats")
+
+
+def test_a_named_region_survives_the_http_boundary_and_changes_the_answer(
+    client,
+) -> None:
+    """The end-to-end test this feature was missing.
+
+    Every 4C-5 test called `substitute_region_refs` or `ops.run` directly,
+    so none of them touched the request model — where `region_ref` was
+    being silently dropped by pydantic, leaving the op to run over the
+    whole image. A number that differs from the whole-image one is the
+    only assertion that could have caught that, because the shape of the
+    response is identical either way.
+    """
+    from fermiviewer.project_session import project
+
+    image_id = _image("scoped.dm4")
+    project.current()  # ensure a live project
+    project.replace_regions((_region_set(half=True),), ())
+
+    def run(step: dict) -> dict:
+        response = client.post(
+            "/api/batch/run", json={"image_ids": [image_id], "steps": [step]}
+        )
+        assert response.status_code == 200, response.text
+        final = _poll(client, response.json()["job_id"])
+        assert final["status"] == "done", final
+        output = final["result"]["outputs"][0]
+        assert output["status"] == "done", output
+        return _stats_value(output)
+
+    named = run({"op": "image_stats", "region_ref": "s1/r1"})
+    whole = run({"op": "image_stats"})
+
+    assert named["value"]["mean"] != whole["value"]["mean"], (
+        "the named region must actually scope the op"
+    )
+    assert named["value"]["n_finite"] == 64 * 32
+    assert whole["value"]["n_finite"] == 64 * 64
+    # ADR 0005: the RECORDED params are the replay key, so they carry the
+    # resolved geometry and no longer mention the set by name
+    assert named["params"]["region"], "resolved geometry must be recorded"
+    assert "s1" not in repr(named["params"])
+    assert named["value"]["region"]["rows"] == [[1, 1, 64, 32]]
+
+
+def test_an_unknown_region_reference_is_refused_before_the_job_is_queued(
+    client,
+) -> None:
+    image_id = _image("typo.dm4")
+    response = client.post(
+        "/api/batch/run",
+        json={
+            "image_ids": [image_id],
+            "steps": [{"op": "image_stats", "region_ref": "nope/r1"}],
+        },
+    )
+    assert response.status_code == 422, response.text
+
+
+def test_a_region_bound_to_another_image_skips_that_input_with_a_reason(
+    client,
+) -> None:
+    """The per-image policy, asserted through the API: the batch does not
+    fail, the bound image is skipped, and the reason names the image."""
+    from fermiviewer.project_session import project
+
+    mine = _image("mine.dm4")
+    other = _image("other.dm4", 10)
+    project.current()
+    project.replace_regions((_region_set(image_id=mine, half=True),), ())
+
+    response = client.post(
+        "/api/batch/run",
+        json={
+            "image_ids": [mine, other],
+            "steps": [{"op": "image_stats", "region_ref": "s1/r1"}],
+        },
+    )
+    assert response.status_code == 200, response.text
+    final = _poll(client, response.json()["job_id"])
+    outputs = {o["image_id"]: o for o in final["result"]["outputs"]}
+    assert outputs[mine]["status"] == "done"
+    assert outputs[other]["status"] == "error"
+    assert other in outputs[other]["error"], outputs[other]["error"]
+    assert final["result"]["succeeded"] == 1
+    assert final["result"]["failed"] == 1
+
+
+def test_region_sets_are_snapshotted_when_the_job_is_accepted(
+    client, monkeypatch
+) -> None:
+    """A 200 from `/batch/run` is a promise about what will run.
+
+    `_run_batch` is the job BODY, so reading the region sets there would
+    let an edit made after the 200 — but before a worker picks the job up
+    — change which pixels the accepted recipe measures. The job function
+    is captured here instead of racing the queue, so the window between
+    accept and start is opened deliberately rather than hoped for.
+    """
+    from fermiviewer.project_session import project
+    from fermiviewer.routes import batch_ops
+
+    image_id = _image("snapshot.dm4")
+    project.current()
+    project.replace_regions((_region_set(half=True),), ())
+
+    captured: list = []
+    monkeypatch.setattr(
+        batch_ops.jobs, "submit", lambda fn: (captured.append(fn), "job-1")[1]
+    )
+    response = client.post(
+        "/api/batch/run",
+        json={
+            "image_ids": [image_id],
+            "steps": [{"op": "image_stats", "region_ref": "s1/r1"}],
+        },
+    )
+    assert response.status_code == 200, response.text
+
+    # the edit lands in the window between accept and start
+    project.replace_regions((_region_set(half=False),), ())
+
+    result = captured[0](lambda *_a, **_k: None)
+    stats = _stats_value(result["outputs"][0])
+    assert stats["value"]["n_finite"] == 64 * 32, (
+        "the accepted half-image region, not the edited whole-image one"
+    )
+
+
+def test_a_named_region_on_an_op_that_takes_none_is_refused_at_submit(
+    client,
+) -> None:
+    """Making `region_ref` reachable exposed two recipes that could only
+    ever fail per input. Substitution writes into `params["region"]`, so
+    an op with no such param cannot use one — and the validator's whole
+    job is to turn "fails on every input" into a 422 before a job id is
+    handed out, exactly as it already does for an unresolvable auxiliary
+    input.
+    """
+    from fermiviewer.project_session import project
+
+    image_id = _image("noregion.dm4")
+    project.current()
+    project.replace_regions((_region_set(half=True),), ())
+
+    response = client.post(
+        "/api/batch/run",
+        json={
+            "image_ids": [image_id],
+            "steps": [
+                {"op": "gaussian", "params": {"sigma": 1}, "region_ref": "s1/r1"}
+            ],
+        },
+    )
+    assert response.status_code == 422, response.text
+    assert "takes no region" in response.json()["detail"]
+
+
+def test_a_named_region_beside_inline_geometry_is_refused_at_submit(client) -> None:
+    """The third recipe substitution must reject, and the one my first
+    guard missed: it checked `roi` and not `region`, so an inline
+    geometry beside a name still got a job id and then failed every input
+    in `substitute_region_refs`. Both scope keys go through one rule now.
+    """
+    from fermiviewer.project_session import project
+
+    image_id = _image("inline.dm4")
+    project.current()
+    project.replace_regions((_region_set(half=True),), ())
+
+    response = client.post(
+        "/api/batch/run",
+        json={
+            "image_ids": [image_id],
+            "steps": [
+                {
+                    "op": "image_stats",
+                    "params": {
+                        "region": [{"kind": "rect", "bounds": [[0, 0, 10, 10]]}]
+                    },
+                    "region_ref": "s1/r1",
+                }
+            ],
+        },
+    )
+    assert response.status_code == 422, response.text
+    assert "not both" in response.json()["detail"]
+
+
+def test_a_named_region_beside_a_legacy_roi_is_refused_at_submit(client) -> None:
+    """The two-scopes refusal (ADR 0007 §5), moved earlier: after
+    substitution this is the same error `scope_from_params` raises, but
+    per input rather than once."""
+    from fermiviewer.project_session import project
+
+    image_id = _image("twoscopes.dm4")
+    project.current()
+    project.replace_regions((_region_set(half=True),), ())
+
+    response = client.post(
+        "/api/batch/run",
+        json={
+            "image_ids": [image_id],
+            "steps": [
+                {
+                    "op": "grains",
+                    "params": {"roi": "1,1,32,32"},
+                    "region_ref": "s1/r1",
+                }
+            ],
+        },
+    )
+    assert response.status_code == 422, response.text
+    assert "not both" in response.json()["detail"]
+
+
+def test_the_legitimate_spellings_are_still_accepted(client) -> None:
+    """The guard must not over-reach: an op that DOES take a region, and
+    a legacy roi with no region_ref beside it, are both fine."""
+    from fermiviewer.project_session import project
+
+    image_id = _image("ok.dm4")
+    project.current()
+    project.replace_regions((_region_set(half=True),), ())
+
+    for step in (
+        {"op": "grains", "params": {}, "region_ref": "s1/r1"},
+        {"op": "grains", "params": {"roi": "1,1,32,32"}},
+        {
+            "op": "image_stats",
+            "params": {"region": [{"kind": "rect", "bounds": [[0, 0, 10, 10]]}]},
+        },
+    ):
+        response = client.post(
+            "/api/batch/run", json={"image_ids": [image_id], "steps": [step]}
+        )
+        assert response.status_code == 200, (step, response.text)
+
+
+def test_an_images_recorded_recipe_is_self_contained(client) -> None:
+    """A derived image's `recipe` metadata is provenance for what produced
+    it, so it must replay without the project — the same property ADR
+    0005 requires of recorded params, which this run's `values[].params`
+    already had.
+
+    Storing the SUBMITTED steps left a symbolic `region_ref` there: it
+    names a set that need not exist on the machine replaying it and,
+    worse, could name a DIFFERENT set with the same id. Substituted steps
+    are ordinary version-2 steps (geometry is just a param), so this needs
+    no recipe-version bump.
+    """
+    from fermiviewer.project_session import project
+
+    image_id = _image("lineage.dm4")
+    project.current()
+    project.replace_regions((_region_set(half=True),), ())
+
+    response = client.post(
+        "/api/batch/run",
+        json={
+            "image_ids": [image_id],
+            "steps": [
+                {"op": "gaussian", "params": {"sigma": 1}},
+                {"op": "image_stats", "region_ref": "s1/r1"},
+            ],
+        },
+    )
+    assert response.status_code == 200, response.text
+    final = _poll(client, response.json()["job_id"])
+    derived = store.get(final["result"]["outputs"][0]["derived"]["id"])
+    recipe = derived.metadata["recipe"]
+
+    assert derived.metadata["recipe_version"] == 2
+    assert not any("region_ref" in step for step in recipe), recipe
+    assert recipe[1]["params"]["region"], "resolved geometry must be recorded"
+
+
+def test_a_recipe_without_regions_stores_exactly_what_it_did_before(client) -> None:
+    """`region_ref` has a default, so every step dumps one. Persisting
+    that would add a key to the stored recipe of every batch that never
+    mentions a region — changing already-written shape for no reason. The
+    key is stripped whether it was used or merely defaulted."""
+    image_id = _image("plain.dm4")
+    response = client.post(
+        "/api/batch/run",
+        json={
+            "image_ids": [image_id],
+            "steps": [{"op": "gaussian", "params": {"sigma": 1}}],
+        },
+    )
+    final = _poll(client, response.json()["job_id"])
+    derived = store.get(final["result"]["outputs"][0]["derived"]["id"])
+    assert derived.metadata["recipe"] == [
+        {"op": "gaussian", "params": {"sigma": 1}, "inputs": {}}
+    ]

@@ -12,9 +12,17 @@ from pydantic import BaseModel, Field
 
 import fermiviewer.ops as ops
 from fermiviewer.datastruct import DataStruct
+from fermiviewer.io.regions_model import RegionSet
 from fermiviewer.jobs import JobQueueFullError, ProgressFn, jobs
 from fermiviewer.models import ImageMeta
 from fermiviewer.ops.batch import run_recipe, validate_recipe
+from fermiviewer.project_session import project
+from fermiviewer.recipe_regions import (
+    REGION_REF_KEY,
+    recipe_region_refs,
+    substitute_region_refs,
+)
+from fermiviewer.region_resolve import _resolve_reference
 from fermiviewer.session import UnknownImageError, store
 
 router = APIRouter(prefix="/api")
@@ -27,6 +35,11 @@ class BatchStepRequest(BaseModel):
     # The value names an entry in the run's `inputs` pool, never an image id:
     # a saved recipe must stay runnable over other images and other sessions.
     inputs: dict[str, str] = Field(default_factory=dict)
+    # A region named symbolically, resolved per image by the RUNNER (ADR
+    # 0007 §8/§11). It is not a param: `params["region"]` holds the
+    # RESOLVED geometry after substitution, which is what makes a recorded
+    # result replayable, while this keeps the name the user wrote.
+    region_ref: str = ""
 
 
 class BatchRunRequest(BaseModel):
@@ -176,12 +189,65 @@ def validate_recipe_steps(
     names the run will bind, so an unresolvable reference is a 422 too."""
     try:
         validate_recipe(steps, input_names)
+        # Every named region must resolve against the CURRENT project
+        # before the job is queued, for the reason `validate_recipe`
+        # checks input names up front: a typo'd set name should be a 422
+        # the caller sees now, not 200 identical per-image errors later.
+        # Image binding is deliberately NOT checked here — that is per
+        # image, and a set bound to one input of many is a legitimate
+        # recipe whose other inputs simply skip.
+        region_sets = project.current().region_sets
+        for ref in recipe_region_refs(steps):
+            _resolve_reference(region_sets, ref)
+        _validate_region_steps(steps)
         for step in steps:
             spec = ops.get_spec(step["op"])
             spec.resolve_params(step.get("params"))
     except (ValueError, KeyError) as exc:
         raise HTTPException(422, str(exc)) from None
     return steps
+
+
+
+def _validate_region_steps(steps: list[dict[str, Any]]) -> None:
+    """A named region must be usable by the op it is attached to.
+
+    Substitution writes into `params["region"]`, so a step naming a region
+    on an op that has no such param, or already carrying a legacy `roi`,
+    is a recipe that CANNOT run — every input fails identically once the
+    job starts. That is exactly what the rest of this validator exists to
+    prevent: an unresolvable auxiliary input is a 422 before the job is
+    queued, and these two deserve the same treatment rather than a job id
+    and 200 identical per-image errors.
+
+    Checked once here, so the folder watch inherits it through the same
+    shared validator.
+    """
+    for i, step in enumerate(steps):
+        ref = step.get(REGION_REF_KEY)
+        if not ref:
+            continue
+        try:
+            spec = ops.get_spec(step["op"])
+        except ops.UnknownOpError:
+            continue  # the registry's own message covers an unknown op
+        if "region" not in spec.params:
+            raise ValueError(
+                f"recipe step {i}: op {step['op']!r} takes no region, so "
+                f"{REGION_REF_KEY!r} cannot apply to it"
+            )
+        # BOTH scope keys, because substitution rejects both: `roi` is the
+        # legacy rectangle `scope_from_params` refuses beside geometry, and
+        # `region` is the inline geometry `substitute_region_refs` refuses
+        # beside a name. Checking one and not the other left a third
+        # recipe that could only fail per input.
+        params = step.get("params") or {}
+        for key in ("roi", "region"):
+            if params.get(key):
+                raise ValueError(
+                    f"recipe step {i}: give either {key!r} or "
+                    f"{REGION_REF_KEY!r}, not both"
+                )
 
 
 def resolve_recipe_inputs(
@@ -236,6 +302,14 @@ def register_final_image(
     lineage + the recipe in its metadata. Shared with the folder-watch
     route's single-file job (``routes/watch.py``).
 
+    ``steps`` must be the SUBSTITUTED steps, not the recipe as submitted:
+    an image's recorded recipe is provenance for what produced it, so it
+    has to be self-contained the way ADR 0005 requires of recorded params.
+    A `region_ref` left in would name a region set that need not exist on
+    the machine replaying it — and, worse, could name a DIFFERENT set with
+    the same id. Substituted steps are ordinary version-2 steps (the
+    geometry is just a param), so this needs no recipe-version bump.
+
     ``recipe_inputs`` is the id binding the steps' symbolic input names
     resolved to for THIS run. The steps alone no longer describe the
     computation once a step can name an auxiliary dataset, so the binding is
@@ -269,6 +343,7 @@ def _run_batch(
     report: ProgressFn,
     pool: dict[str, Any] | None = None,
     recipe_inputs: dict[str, str | list[str]] | None = None,
+    region_sets: tuple[RegionSet, ...] = (),
 ) -> dict[str, Any]:
     total = len(image_ids) * len(steps)
     bindings = dict(recipe_inputs or {})
@@ -298,11 +373,19 @@ def _run_batch(
                     f"({step_index}/{len(steps)})",
                 )
 
-            recipe = run_recipe(source, steps, progress=step_progress, inputs=pool)
+            # ADR 0007 §8: the RUNNER resolves the name, per image, and
+            # `run_recipe` only ever sees geometry. A set bound to another
+            # image raises here and lands in this input's error entry
+            # below — the batch carries on with the next image, which is
+            # the "skip and say why" behaviour without a new mechanism.
+            scoped_steps = substitute_region_refs(steps, region_sets, image_id)
+            recipe = run_recipe(
+                source, scoped_steps, progress=step_progress, inputs=pool
+            )
             has_image = any(step.produces_image for step in recipe.steps)
             derived = (
                 register_final_image(
-                    image_id, source_name, recipe.final, steps, bindings
+                    image_id, source_name, recipe.final, scoped_steps, bindings
                 )
                 if has_image
                 else None
@@ -360,10 +443,15 @@ def batch_run(req: BatchRunRequest) -> dict[str, str]:
     # validation above follows), AND the job closes over these datasets, so
     # what runs is the snapshot the 200 accepted.
     pool = resolve_recipe_inputs(req.inputs)
+    # Snapshot the region sets HERE, beside the pool and for the same
+    # reason: `_run_batch` is the job BODY, so reading them there would
+    # let an edit made after this 200 — but before a worker picks the job
+    # up — change which pixels the accepted recipe measures.
+    region_sets = project.current().region_sets
     try:
         job_id = jobs.submit(
             lambda report: _run_batch(
-                req.image_ids, steps, report, pool, req.inputs
+                req.image_ids, steps, report, pool, req.inputs, region_sets
             )
         )
     except JobQueueFullError as exc:

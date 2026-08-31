@@ -38,10 +38,17 @@ function recipeSteps(value: unknown): BatchRecipeStep[] | null {
             (entry): entry is [string, string] => typeof entry[1] === "string",
           ),
         );
+    // region_ref survives the round trip like inputs: a preset that
+    // silently dropped it would replay over the whole image instead of
+    // the named region, which is the quiet wrong answer rather than an
+    // error the user would notice.
+    const regionRef =
+      typeof item.region_ref === "string" ? item.region_ref : undefined;
     steps.push({
       op: item.op,
       params: { ...item.params },
       ...(inputs && Object.keys(inputs).length ? { inputs } : {}),
+      ...(regionRef ? { region_ref: regionRef } : {}),
     });
   }
   return steps;

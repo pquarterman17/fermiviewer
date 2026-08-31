@@ -37,9 +37,12 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from fermiviewer.io.regions_model import RegionSet
 from fermiviewer.io.registry import load_auto
 from fermiviewer.jobs import ProgressFn, jobs
 from fermiviewer.ops.batch import run_recipe
+from fermiviewer.project_session import project
+from fermiviewer.recipe_regions import substitute_region_refs
 from fermiviewer.routes._paths import checked_data_path
 from fermiviewer.routes.batch_ops import (
     BatchStepRequest,
@@ -99,6 +102,7 @@ def _run_watch_job(
     report: ProgressFn,
     pool: dict[str, Any] | None = None,
     recipe_inputs: dict[str, str | list[str]] | None = None,
+    region_sets: tuple[RegionSet, ...] = (),
 ) -> dict[str, Any]:
     """The job body queued per new file: load it fresh, register it, run
     the recipe, and register the final chained image — the single-input
@@ -113,10 +117,20 @@ def _run_watch_job(
     # the datasets resolved when the watch STARTED, closed over — a watch
     # runs for hours over many files, and every one of them must see the
     # same reference data the caller bound at /watch/start
-    recipe = run_recipe(ds, steps, progress=step_progress, inputs=dict(pool or {}))
+    # A named region is resolved HERE, against the file just loaded, for
+    # the same reason as in `_run_batch`: `run_recipe` is pure and only
+    # ever reads `step["params"]`, so a `region_ref` left unsubstituted
+    # would be silently ignored and the new file analyzed whole-image —
+    # the quiet wrong answer, not an error.
+    scoped_steps = substitute_region_refs(steps, region_sets, image_id)
+    recipe = run_recipe(
+        ds, scoped_steps, progress=step_progress, inputs=dict(pool or {})
+    )
     has_image = any(step.produces_image for step in recipe.steps)
     derived = (
-        register_final_image(image_id, path.name, recipe.final, steps, bindings)
+        register_final_image(
+            image_id, path.name, recipe.final, scoped_steps, bindings
+        )
         if has_image
         else None
     )
@@ -141,13 +155,16 @@ def _on_new_file(
     steps: list[dict[str, Any]],
     pool: dict[str, Any] | None = None,
     recipe_inputs: dict[str, str | list[str]] | None = None,
+    region_sets: tuple[RegionSet, ...] = (),
 ) -> None:
     """``FolderWatcher``'s ``on_file`` callback: submit and return right
     away so a slow recipe never blocks the poll loop from noticing the next
     file (a JobQueueFullError here is caught by FolderWatcher and surfaced
     through ``last_error`` — the file stays marked processed, not retried)."""
     job_id = jobs.submit(
-        lambda report: _run_watch_job(path, steps, report, pool, recipe_inputs)
+        lambda report: _run_watch_job(
+            path, steps, report, pool, recipe_inputs, region_sets
+        )
     )
     with _lock:
         _job_ids.append(job_id)
@@ -168,6 +185,10 @@ def watch_start(req: WatchStartRequest) -> dict[str, str]:
     # running for hours is not re-reading ids that may since have been
     # removed (which is what the "bound once at start" promise means)
     pool = resolve_recipe_inputs(req.inputs)
+    # Snapshotted at START, exactly like `pool` and for the same promise:
+    # every file this watch picks up is measured over the region the
+    # caller bound here, not over whatever the project holds hours later.
+    region_sets = project.current().region_sets
 
     global _watcher, _job_ids
     with _lock:
@@ -178,7 +199,9 @@ def watch_start(req: WatchStartRequest) -> dict[str, str]:
         _job_ids = []
         watcher = FolderWatcher(
             directory=directory,
-            on_file=lambda path: _on_new_file(path, steps, pool, req.inputs),
+            on_file=lambda path: _on_new_file(
+                path, steps, pool, req.inputs, region_sets
+            ),
             is_openable=default_is_openable,
             interval=req.interval,
         )

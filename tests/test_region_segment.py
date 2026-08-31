@@ -741,3 +741,52 @@ def test_region_values_does_not_copy_the_raster() -> None:
         f"allocated {overhead / 1e6:.1f} MB to read {got.size} pixels out of a "
         f"{big.nbytes / 1e6:.1f} MB raster"
     )
+
+
+def test_image_stats_says_how_many_pixels_it_measured() -> None:
+    """`shape` is the raster's and always was. Before region support it
+    doubled as the selection size; now, for an irregular region, the
+    count is neither `prod(shape)` nor the bounding box, and without
+    `n_pixels` no field reports it."""
+    values = np.arange(100 * 100, dtype=np.float64).reshape(100, 100)
+    run = ops.run(
+        "image_stats",
+        _image(values),
+        {"region": [{"kind": "ellipse", "bounds": [[40, 40, 59, 59]]}]},
+    )
+    value = run.value
+    rect = value["region"]["rows"][0]
+    bbox = (rect[2] - rect[0] + 1) * (rect[3] - rect[1] + 1)
+    assert value["shape"] == [100, 100]
+    assert "n_pixels" not in ops.run("image_stats", _image(values), {}).value, (
+        "unscoped keeps exactly the columns it always had"
+    )
+    assert value["n_pixels"] not in (100 * 100, bbox), (
+        "an ellipse fills neither the raster nor its own box"
+    )
+    assert value["n_pixels"] == value["n_finite"]
+
+
+def test_a_scoped_image_stats_exports_as_parseable_json() -> None:
+    """`flatten_value_dict` JSON-encoded lists and let dicts fall through
+    to `str()`, so a scoped run wrote a Python repr into the CSV —
+    single-quoted keys and `False` — that a consumer could not parse
+    beside a `shape` cell it could. The module also promises to mirror
+    the frontend export, which stringifies any non-scalar, so one result
+    exported two ways disagreed on encoding.
+    """
+    import json
+
+    from fermiviewer.calc.table_export import flatten_value_dict
+
+    run = ops.run(
+        "image_stats",
+        _image(np.arange(64, dtype=np.float64).reshape(8, 8)),
+        {"region": _rect(1, 1, 4, 4)},
+    )
+    columns, rows = flatten_value_dict(run.value)
+    cell = dict(zip(columns, rows[0], strict=True))
+    for name in ("region", "shape"):
+        assert isinstance(cell[name], str), name
+        json.loads(cell[name])  # raises if it is a repr rather than JSON
+    assert json.loads(cell["region"])["exact_mask"] is False
