@@ -297,11 +297,18 @@ def _grains(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     # The report is derived from these labels, so clipping BEFORE it runs
     # is what keeps the table, the boundary network and the map describing
     # one segmentation rather than three.
-    labels = (
-        place_labels(seg.labels, raster.shape, scoped.rect, scoped.mask)[0]
-        if scoped is not None
-        else seg.labels
-    )
+    if scoped is not None:
+        labels, clipped = place_labels(
+            seg.labels,
+            raster.shape,
+            scoped.rect,
+            scoped.mask,
+            # the segmenter applied min_area to the UNCLIPPED crop, so the
+            # same rule has to run again on what the region left behind
+            min_area=params["min_area"],
+        )
+    else:
+        labels, clipped = seg.labels, False
     px, unit = _px_cal(ds)
     report = grain_report(labels, raster, pixel_size=px, unit=unit)
     outputs = [
@@ -369,6 +376,7 @@ def _grains(ds: DataStruct, params: dict[str, Any]) -> OpResult:
                 label_context=(
                     LABEL_CONTEXT_EXACT if scoped.mask is None else LABEL_CONTEXT_BBOX
                 ),
+                clipped=clipped,
             )
         )
     return OpResult(

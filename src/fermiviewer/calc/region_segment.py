@@ -43,6 +43,7 @@ from __future__ import annotations
 import numpy as np
 
 from fermiviewer.calc.roi import RectRoi, roi_slices
+from fermiviewer.calc.segment import label_components
 
 __all__ = ["place_labels", "place_values", "region_values"]
 
@@ -83,6 +84,9 @@ def place_labels(
     shape: tuple[int, int],
     rect: RectRoi | None = None,
     mask: np.ndarray | None = None,
+    *,
+    min_area: int = 1,
+    connectivity: int = 8,
 ) -> tuple[np.ndarray, bool]:
     """Crop-local `labels` as a full-image label map, region-clipped.
 
@@ -118,11 +122,49 @@ def place_labels(
             block = np.where(window, block, 0)
 
     if clipped:
-        block = _renumber(block)
+        block = _relabel_components(block, min_area, connectivity)
 
     out = np.zeros(tuple(shape), dtype=block.dtype)
     out[rows, cols] = block
     return out, clipped
+
+
+def _relabel_components(
+    block: np.ndarray, min_area: int, connectivity: int
+) -> np.ndarray:
+    """Survivors renumbered 1..n by CONNECTED COMPONENT, ascending.
+
+    Renumbering by label VALUE is not enough once a mask has cut into the
+    label map. A region boundary can slice one label into two disjoint
+    patches, and everything downstream measures per value: `grain_report`
+    would report them as one grain whose `area_px` is the sum of two
+    separate blobs and whose `equiv_diameter` and `eccentricity` describe
+    a shape that does not exist. The map a viewer renders would show two
+    features where the table says one.
+
+    Re-labelling per component also restores `min_area`, which the
+    segmenter applied to the UNCLIPPED crop: a grain reduced to a few
+    pixels by the boundary must be dropped on the same rule that dropped
+    small grains before clipping, or the op silently returns what its own
+    parameter says it will not.
+
+    Components are found WITHIN each original label, never across labels,
+    so two grains that merely touch stay two. Ordering is ascending
+    original label then raster order, which leaves an uncut map numbered
+    exactly as renumbering by value did.
+    """
+    kept = np.unique(block)
+    out = np.zeros_like(block)
+    next_id = 1
+    for value in kept[kept != 0]:
+        components, count = label_components(block == value, connectivity)
+        for index in range(1, count + 1):
+            patch = components == index
+            if int(patch.sum()) < min_area:
+                continue
+            out[patch] = next_id
+            next_id += 1
+    return out
 
 
 def _renumber(block: np.ndarray) -> np.ndarray:

@@ -112,11 +112,12 @@ def _train_segment(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         # the route's 422, kept because it IS part of the composition: an
         # all-background label map is not a segmentation a caller can use
         raise ValueError("no grains found — paint more strokes or lower min area")
-    labels, _ = place_labels(
+    labels, clipped = place_labels(
         seg.labels,
         raster.shape,
         rect,
         scoped.mask if scoped is not None else None,
+        min_area=params["min_area"],
     )
     px, unit = _px_cal(ds)
     report = grain_report(
@@ -135,6 +136,7 @@ def _train_segment(ds: DataStruct, params: dict[str, Any]) -> OpResult:
                 label_context=(
                     LABEL_CONTEXT_EXACT if scoped.mask is None else LABEL_CONTEXT_BBOX
                 ),
+                clipped=clipped,
             )
         )
     return OpResult(
