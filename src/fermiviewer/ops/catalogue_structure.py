@@ -37,6 +37,9 @@ from fermiviewer.calc.efd_rank import rank_by_efd
 from fermiviewer.calc.particles import particle_analysis
 from fermiviewer.calc.raster import raster_of
 from fermiviewer.calc.region_propose import propose_region
+from fermiviewer.calc.region_segment import place_labels, region_values
+from fermiviewer.calc.roi import roi_slices
+from fermiviewer.calc.segment import multi_otsu
 from fermiviewer.calc.shape_metrics import (
     ClassThresholds,
     classify_shapes,
@@ -47,6 +50,14 @@ from fermiviewer.ops._envelopes import nan_none as _nn
 from fermiviewer.ops._envelopes import output, scalar
 from fermiviewer.ops._parsing import pixel_cal as _px_cal
 from fermiviewer.ops._parsing import sentinel_group as _pair
+from fermiviewer.ops._region_param import (
+    LABEL_CONTEXT_EXACT,
+    LABEL_CONTEXT_MASKED_NEIGHBOURHOOD,
+    REGION_PARAM,
+    ScopedRegion,
+    region_output,
+    scope_from_params,
+)
 from fermiviewer.ops.base import OpParam, OpResult, OpSpec
 from fermiviewer.ops.registry import register
 
@@ -85,13 +96,72 @@ _CLASS_THRESHOLD_KEYS = (
 )
 
 
+def _particle_context(scoped: ScopedRegion | None, use_watershed: bool) -> str:
+    """How much of the segmentation the region actually constrained.
+
+    Thresholding is POINTWISE, so with no watershed the answer depends
+    only on which pixels the region chose — genuinely `exact-mask`.
+    Watershed is not: marker placement runs a distance transform, and the
+    polarity fill has made the region's edge look like background, so
+    basins near it differ from the ones the same pixels give unscoped.
+    Claiming exactness there would tell a reader the region only
+    SELECTED when it also SHAPED the split.
+
+    A rectangle needs no fill, so its crop edge is an ordinary image edge
+    exactly as the legacy roi path always had — `exact-mask` still holds.
+    """
+    if scoped is None or scoped.mask is None or not use_watershed:
+        return LABEL_CONTEXT_EXACT
+    return LABEL_CONTEXT_MASKED_NEIGHBOURHOOD
+
+
+def _scoped_particle_input(
+    raster: np.ndarray,
+    scoped: ScopedRegion | None,
+    threshold: float | None,
+    polarity: str,
+) -> tuple[np.ndarray, float | None]:
+    """The crop `particle_analysis` should see, and the threshold to use.
+
+    Out-of-region pixels are filled with the infinity that CANNOT pass the
+    polarity test (`-inf` for bright, `+inf` for dark), so thresholding
+    excludes them and every later stage — watershed, `min_area` filtering,
+    the per-particle table, the label numbering — is consistent with the
+    label map by construction. Clipping labels afterwards instead would
+    leave `res.particles` describing the unclipped shapes.
+
+    An auto threshold is then computed from the SELECTED values, not from
+    the crop: a bright feature the user drew around must not set the level
+    for the pixels they kept. With a rectangular region the two are the
+    same pixels, which is why that path is left exactly as it was.
+    """
+    if scoped is None:
+        return raster, threshold
+    rows, cols = roi_slices(raster.shape, scoped.rect)
+    block = raster[rows, cols]
+    if scoped.mask is None:
+        return block, threshold
+    if threshold is None:
+        threshold = float(
+            multi_otsu(region_values(raster, scoped.rect, scoped.mask), n_classes=2)
+            .thresholds[0]
+        )
+    outside = -np.inf if polarity == "bright" else np.inf
+    filled = np.where(scoped.mask[rows, cols], block, outside)
+    return np.asarray(filled, dtype=np.float64), threshold
+
+
 def _particles(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     raster = raster_of(ds)
     px, unit = _px_cal(ds)
     has_cal = np.isfinite(px) and px > 0
     threshold = params["threshold"] if math.isfinite(params["threshold"]) else None
+    scoped = scope_from_params(params, raster.shape)
+    analysis_raster, threshold = _scoped_particle_input(
+        raster, scoped, threshold, params["polarity"]
+    )
     res = particle_analysis(
-        raster,
+        analysis_raster,
         threshold=threshold,
         polarity=params["polarity"],
         min_area=params["min_area"],
@@ -106,11 +176,20 @@ def _particles(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     feret_calibrated = (
         desc.feret_max_px * px if has_cal else np.full_like(desc.feret_max_px, np.nan)
     )
+    # `particle_analysis` measured the CROP, so its centroids are
+    # crop-local while the map above is full-image. Before 4C-3 this op had
+    # no ROI at all and the two frames were the same, which is exactly why
+    # cropping it silently split them. Everything else in the row —
+    # area, circularity, orientation, Feret — is translation-invariant, so
+    # the origin is the whole of the difference.
+    row_offset, col_offset = (
+        (scoped.rect[0] - 1, scoped.rect[1] - 1) if scoped is not None else (0, 0)
+    )
     rows = [
         [
             p.id,
-            p.centroid[0],
-            p.centroid[1],
+            p.centroid[0] + row_offset,
+            p.centroid[1] + col_offset,
             p.area,
             p.equiv_diameter,
             p.mean_intensity,
@@ -126,6 +205,11 @@ def _particles(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         ]
         for i, p in enumerate(res.particles)
     ]
+    labels = (
+        place_labels(res.labels, raster.shape, scoped.rect)[0]
+        if scoped is not None
+        else res.labels
+    )
     columns = [name for name, _ in _PARTICLE_COLUMNS]
     units = [
         (u if u is not None else (f"{unit}^2" if name.startswith("area") else unit))
@@ -150,11 +234,18 @@ def _particles(ds: DataStruct, params: dict[str, Any]) -> OpResult:
             "map",
             "labels",
             {
-                "values": res.labels.tolist(),
+                "values": labels.tolist(),
                 "convention": "0 = background; values are particle ids (table rows)",
             },
         ),
     ]
+    if scoped is not None:
+        outputs.append(
+            region_output(
+                scoped,
+                label_context=_particle_context(scoped, params["use_watershed"]),
+            )
+        )
     return OpResult(
         op="particles", params=params, label="particle analysis", value={"outputs": outputs}
     )
@@ -180,6 +271,7 @@ register(
                 doc="particles brighter or darker than background",
             ),
             "min_area": OpParam(int, 1, minimum=0, doc="drop regions smaller than this (px)"),
+            "region": REGION_PARAM,
             "use_watershed": OpParam(bool, False, doc="split touching particles by watershed"),
             "min_marker_distance": OpParam(float, 3.0, doc="watershed marker separation (px)"),
             "aggregate_max_solidity": OpParam(

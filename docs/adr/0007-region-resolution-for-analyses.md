@@ -176,6 +176,44 @@ what the payload is, not an inconsistency.
 shared by the named path and the geometry param, so the rule has one
 definition rather than one per consumer.
 
+### 9. A label-producing analysis clips exactly; its context is the box
+
+Spectra and statistics REDUCE over the selection, so a mask is a `where=`
+argument and nothing else has to be decided. Segmentation produces a label
+image, which raises two separate questions.
+
+**Which pixels may carry a label:** only selected ones.
+`calc.region_segment.place_labels` clears everything outside the mask, so
+no particle or grain leaks across a region boundary and a hole is a real
+hole.
+
+**Which pixels inform the analysis:** not the same set. A threshold is a
+function of the selected VALUES, so `region_values` hands them over
+exactly — an out-of-mask blob inside the bounding box cannot move an Otsu
+level. But a texture feature, a gradient or a watershed basin is a
+function of a NEIGHBOURHOOD, and a neighbourhood does not stop at a region
+edge. Filling the outside with a neutral value would invent an edge
+exactly where the boundary is, and every gradient method would then find a
+boundary there.
+
+So the contract is **labels are exact, context is the bounding box**, and
+the ops say which they got: `label_context` is `"exact-mask"` where the
+two coincide (a rectangle, or `particles`, whose polarity fill clips
+before thresholding) and `"bounding-box"` otherwise. Emitting the weaker
+claim explicitly is the alternative to a reader assuming the stronger one.
+
+Two consequences follow that are easy to get wrong:
+
+* **Renumbering is conditional.** Survivors must be renumbered 1..n once
+  masking has punched holes in the label set, or a table indexed by label
+  carries empty rows. Doing it unconditionally would renumber a plain
+  rectangular run whose labels already had `min_area` gaps, changing an
+  answer this wave must preserve. So it happens only when a LABELLED
+  pixel was actually cleared.
+* **A class map is not a label map.** `place_values` exists because a
+  preview's 3 means class 3; renumbering it because class 2 fell outside
+  the region would relabel the specimen.
+
 ## Consequences
 
 * Each 4C wave adopts a region by declaring a `region` param and calling

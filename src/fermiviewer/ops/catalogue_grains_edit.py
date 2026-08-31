@@ -43,15 +43,8 @@ import numpy as np
 
 from fermiviewer.calc.grain_edit import edit_grains
 from fermiviewer.calc.grain_report import GrainReport, grain_report
-from fermiviewer.calc.grains_trained import (
-    confidence_summary,
-    preview_trained,
-    rasterize_strokes,
-    segment_trained,
-    train_from_scribbles,
-)
 from fermiviewer.calc.raster import raster_of
-from fermiviewer.calc.roi import RectRoi, embed_rect_roi, extract_rect_roi, roi_slices
+from fermiviewer.calc.roi import RectRoi
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.ops._envelopes import nan_none as _nn
 from fermiviewer.ops._envelopes import output, scalar
@@ -255,14 +248,13 @@ def _grains_edit(
     # (`_grains_payload(..., source_ds, ...)`); a label map registered by
     # /analyze/grains inherits exactly these axes, so the two agree.
     px, unit = _px_cal(source_ds)
-    roi = parse_roi_param(params["roi"])
     report = grain_report(edit.labels, raster, pixel_size=px, unit=unit)
     outputs = _grain_outputs(
         report,
         "0 = background; values are grain labels (table rows, ascending)",
         {
             "method": edit.op,
-            "roi": _roi_text(roi),
+            "roi": _roi_text(parse_roi_param(params["roi"])),
         },
     )
     return OpResult(
@@ -324,177 +316,5 @@ register(
             ),
         },
         fn=_grains_edit,
-    )
-)
-
-
-# ── the trained pair's shared front half ──────────────────────────────
-
-
-def _train(ds: DataStruct, params: dict[str, Any]) -> tuple[np.ndarray, Any, Any]:
-    """(full-image raster, ROI, fitted model) — the block both trained
-    routes run verbatim before they diverge: rasterize the strokes over the
-    WHOLE image, then slice both raster and mask to the ROI so the stroke
-    coordinates stay in full-image space."""
-    raster = raster_of(ds)
-    h, w = raster.shape
-    label_mask = rasterize_strokes((h, w), list(params["strokes"]))
-    roi = parse_roi_param(params["roi"])
-    rows, cols = roi_slices(raster.shape, roi)
-    analysis_raster = extract_rect_roi(raster, roi)
-    analysis_mask = label_mask[rows, cols]
-    scales = tuple(float(s) for s in _flat(params["scales"])) or (2.0, 4.0)
-    model = train_from_scribbles(
-        analysis_raster,
-        analysis_mask,
-        scales=scales,
-        gradient_sigma=params["gradient_sigma"],
-        classifier=params["classifier"],
-    )
-    return raster, roi, model
-
-
-# ── train_segment ─────────────────────────────────────────────────────
-
-
-def _train_segment(ds: DataStruct, params: dict[str, Any]) -> OpResult:
-    raster, roi, model = _train(ds, params)
-    seg = segment_trained(
-        extract_rect_roi(raster, roi),
-        model,
-        boundary_class=tuple(_flat(params["boundary_class"])),
-        min_area=params["min_area"],
-    )
-    if seg.n_grains == 0:
-        # the route's 422, kept because it IS part of the composition: an
-        # all-background label map is not a segmentation a caller can use
-        raise ValueError("no grains found — paint more strokes or lower min area")
-    labels = embed_rect_roi(seg.labels, raster.shape, roi)
-    px, unit = _px_cal(ds)
-    report = grain_report(
-        labels, np.asarray(raster, dtype=np.float64), pixel_size=px, unit=unit
-    )
-    outputs = _grain_outputs(
-        report,
-        "0 = background/boundary class; values are grain labels "
-        "(table rows, ascending)",
-        {"method": "trained", "roi": _roi_text(roi)},
-    )
-    return OpResult(
-        op="train_segment",
-        params=params,
-        label=f"scribble-trained grains ({report.n_grains} grains)",
-        value={"outputs": outputs},
-    )
-
-
-register(
-    OpSpec(
-        name="train_segment",
-        category="structure",
-        produces_value=True,
-        summary="Scribble-trained grain segmentation: fit a pixel classifier "
-        "on painted strokes, label connected components per class, and "
-        "report the same morphometrics as `grains` "
-        "(calc/grains_trained + calc/grain_report)",
-        params={
-            "strokes": _STROKES_PARAM,
-            "roi": _ROI_PARAM,
-            "scales": _SCALES_PARAM,
-            "gradient_sigma": _GRADIENT_SIGMA_PARAM,
-            "min_area": OpParam(
-                int, 25, minimum=0,
-                doc="drop connected components smaller than this (px) — "
-                "train_segment only; the preview labels no grains",
-            ),
-            "boundary_class": _BOUNDARY_CLASS_PARAM,
-            "classifier": _CLASSIFIER_PARAM,
-        },
-        fn=_train_segment,
-    )
-)
-
-
-# ── train_preview ─────────────────────────────────────────────────────
-
-
-def _train_preview(ds: DataStruct, params: dict[str, Any]) -> OpResult:
-    """The non-committing half: classify every pixel and report where the
-    paint generalizes, WITHOUT labelling grains. Two rasters come back, one
-    more than `OpResult.derived` holds, so both inline as `map` envelopes
-    (the wave-B standing rule) while the route registers session images."""
-    raster, roi, model = _train(ds, params)
-    prev = preview_trained(extract_rect_roi(raster, roi), model)
-    boundary = {int(b) for b in _flat(params["boundary_class"])}
-    class_map = embed_rect_roi(prev.class_map, raster.shape, roi)
-    confidence_map = embed_rect_roi(prev.max_prob, raster.shape, roi)
-    mean_confidence, low_confidence_fraction = confidence_summary(
-        prev.max_prob, threshold=_CONFIDENCE_THRESHOLD
-    )
-    outputs = [
-        output(
-            "table",
-            "classes",
-            {
-                "columns": ["class_id", "fraction", "is_boundary"],
-                "units": ["", "", ""],
-                "rows": [
-                    [int(c), prev.fractions[int(c)], int(c) in boundary]
-                    for c in prev.classes
-                ],
-            },
-        ),
-        scalar("mean_confidence", mean_confidence),
-        scalar("low_confidence_fraction", low_confidence_fraction),
-        scalar("confidence_threshold", _CONFIDENCE_THRESHOLD),
-        output(
-            "map",
-            "class_map",
-            {
-                "values": class_map.tolist(),
-                "convention": "predicted class id per pixel; 0 outside the ROI",
-                "roi": _roi_text(roi),
-            },
-        ),
-        output(
-            "map",
-            "confidence_map",
-            {
-                "values": confidence_map.tolist(),
-                "convention": "winning-class probability per pixel (0..1); "
-                "0 outside the ROI",
-                "roi": _roi_text(roi),
-            },
-        ),
-    ]
-    return OpResult(
-        op="train_preview",
-        params=params,
-        label=f"trained-classifier preview ({len(prev.classes)} classes)",
-        value={"outputs": outputs},
-    )
-
-
-register(
-    OpSpec(
-        name="train_preview",
-        category="structure",
-        produces_value=True,
-        summary="Non-committing preview of the scribble-trained classifier: "
-        "per-pixel class + confidence rasters and the class composition, "
-        "with no grain labelling — shows where the paint generalizes "
-        "before train_segment commits (calc/grains_trained."
-        "preview_trained + confidence_summary)",
-        params={
-            "strokes": _STROKES_PARAM,
-            "roi": _ROI_PARAM,
-            "scales": _SCALES_PARAM,
-            "gradient_sigma": _GRADIENT_SIGMA_PARAM,
-            # NOTE: no min_area — the preview labels no connected
-            # components, so its route model deliberately omits the field
-            "boundary_class": _BOUNDARY_CLASS_PARAM,
-            "classifier": _CLASSIFIER_PARAM,
-        },
-        fn=_train_preview,
     )
 )

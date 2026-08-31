@@ -42,10 +42,18 @@ from fermiviewer.calc.regions import (
     Region,
     Shape,
 )
-from fermiviewer.calc.roi import RectRoi
+from fermiviewer.calc.roi import RectRoi, roi_slices
+from fermiviewer.ops._envelopes import output
+from fermiviewer.ops._parsing import parse_roi_param
 from fermiviewer.ops.base import OpParam, RecordSpec, RingsSpec, RowSpec
 
-__all__ = ["REGION_PARAM", "ScopedRegion", "region_from_params"]
+__all__ = [
+    "REGION_PARAM",
+    "ScopedRegion",
+    "region_from_params",
+    "region_output",
+    "scope_from_params",
+]
 
 #: One region, as an ordered list of parts in canonical coordinates —
 #: 0-based `(row, col)`, float, INCLUSIVE bounds (`calc/regions.py`).
@@ -191,3 +199,83 @@ def region_from_params(
             f"{grid[0]}x{grid[1]} image"
         ) from None
     return ScopedRegion(rect, exact_mask)
+
+
+def scope_from_params(
+    params: dict[str, Any],
+    shape: tuple[int, int],
+    *,
+    roi: str = "roi",
+    region: str = "region",
+) -> ScopedRegion | None:
+    """The op's scope from EITHER the frozen `roi` string or `region`
+    geometry, as the same ``(rect, mask)`` pair — or ``None`` for the whole
+    image.
+
+    An op that already had a rectangle keeps it: the legacy string still
+    parses and still clamps through `calc.roi.roi_slices`, so its rect is
+    the one `extract_rect_roi` would have used and the answer does not
+    move. Only the mask is new, and for a rectangle it is ``None``.
+
+    Passing BOTH raises, per ADR 0007 §5: two scopes is a caller bug, and
+    a precedence rule would hide it behind a plausible number.
+    """
+    rect = parse_roi_param(params[roi]) if roi in params else None
+    geometry = params.get(region) or []
+    if rect is not None and geometry:
+        raise ValueError(f"give either '{roi}' or '{region}', not both")
+    if geometry:
+        return region_from_params(params, shape, name=region)
+    if rect is None:
+        return None
+    # Clamp through the shared helper so the REPORTED rect is the one the
+    # crop actually used — an out-of-bounds corner would otherwise be
+    # recorded as asked for rather than as applied.
+    rows, cols = roi_slices(shape, rect)
+    return ScopedRegion((rows.start + 1, cols.start + 1, rows.stop, cols.stop), None)
+
+
+#: How much of the analysis a region actually constrained. Labels are always
+#: exact; a neighbourhood-based method still reads the bounding box, and
+#: saying so is cheaper than a reader assuming the stronger claim
+#: (`calc/region_segment.py` carries the reasoning).
+LABEL_CONTEXT_EXACT = "exact-mask"
+LABEL_CONTEXT_BBOX = "bounding-box"
+#: The algorithm read the SELECTED pixels, but through a neighbourhood, so
+#: the region's own edge acted as an image edge. Weaker than `exact-mask`
+#: (the answer depends on the region's shape, not only on which pixels it
+#: chose) and stronger than `bounding-box` (nothing outside the mask was
+#: read at all). `particles`/`efd_similarity` with `use_watershed` are the
+#: case: the polarity fill makes the boundary background, so basins near
+#: it differ from the ones the same pixels would produce unscoped.
+LABEL_CONTEXT_MASKED_NEIGHBOURHOOD = "masked-neighbourhood"
+
+
+def region_output(
+    scoped: ScopedRegion,
+    *,
+    label_context: str | None = None,
+    clipped: bool | None = None,
+) -> dict[str, Any]:
+    """The `region` provenance envelope, one spelling for every consumer.
+
+    Mirrors `sum_spectrum`'s table from 4C-1 — same columns, same
+    `position_convention`, same `exact_mask` meaning (False = the rect IS
+    the selection, ADR 0007 §3) — so a reader who has learned one
+    region-scoped result can read them all.
+    """
+    data: dict[str, Any] = {
+        "columns": ["row0", "col0", "row1", "col1"],
+        "units": ["px", "px", "px", "px"],
+        "position_convention": "1-based, inclusive, clamped",
+        "exact_mask": scoped.mask is not None,
+        "rows": [list(scoped.rect)],
+    }
+    if label_context is not None:
+        data["label_context"] = label_context
+    if clipped is not None:
+        # True when the mask actually removed a LABELLED pixel — the
+        # signal that features in this result were cut by the boundary
+        # and renumbered, rather than merely selected
+        data["region_clipped"] = clipped
+    return output("table", "region", data)

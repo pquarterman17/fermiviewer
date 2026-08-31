@@ -34,12 +34,20 @@ from fermiviewer.calc.grains import (
 from fermiviewer.calc.layers import LayerResult, analyze_layers, recompute_layers
 from fermiviewer.calc.layers_report import layer_result_to_dict
 from fermiviewer.calc.raster import raster_of
-from fermiviewer.calc.roi import embed_rect_roi, extract_rect_roi
+from fermiviewer.calc.region_segment import place_labels
+from fermiviewer.calc.roi import extract_rect_roi
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.ops._envelopes import nan_none as _nn
 from fermiviewer.ops._envelopes import output, scalar
 from fermiviewer.ops._parsing import parse_roi_param, split_csv
 from fermiviewer.ops._parsing import pixel_cal as _px_cal
+from fermiviewer.ops._region_param import (
+    LABEL_CONTEXT_BBOX,
+    LABEL_CONTEXT_EXACT,
+    REGION_PARAM,
+    region_output,
+    scope_from_params,
+)
 from fermiviewer.ops.base import OpParam, OpResult, OpSpec
 from fermiviewer.ops.registry import register
 
@@ -260,8 +268,10 @@ register(
 
 def _grains(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     raster = raster_of(ds)
-    roi = parse_roi_param(params["roi"])
-    analysis_raster = extract_rect_roi(raster, roi)
+    scoped = scope_from_params(params, raster.shape)
+    analysis_raster = (
+        extract_rect_roi(raster, scoped.rect) if scoped is not None else raster
+    )
     seg: GrainSegmentation | WatershedSegmentation
     if params["method"] == "kmeans":
         seg = segment_auto(
@@ -284,7 +294,21 @@ def _grains(ds: DataStruct, params: dict[str, Any]) -> OpResult:
             denoise_sigma=params["denoise_sigma"],
             robust=params["robust"],
         )
-    labels = embed_rect_roi(seg.labels, raster.shape, roi)
+    # The report is derived from these labels, so clipping BEFORE it runs
+    # is what keeps the table, the boundary network and the map describing
+    # one segmentation rather than three.
+    if scoped is not None:
+        labels, clipped = place_labels(
+            seg.labels,
+            raster.shape,
+            scoped.rect,
+            scoped.mask,
+            # the segmenter applied min_area to the UNCLIPPED crop, so the
+            # same rule has to run again on what the region left behind
+            min_area=params["min_area"],
+        )
+    else:
+        labels, clipped = seg.labels, False
     px, unit = _px_cal(ds)
     report = grain_report(labels, raster, pixel_size=px, unit=unit)
     outputs = [
@@ -343,6 +367,18 @@ def _grains(ds: DataStruct, params: dict[str, Any]) -> OpResult:
             },
         )
     )
+    if scoped is not None:
+        outputs.append(
+            region_output(
+                scoped,
+                # texture features and watershed basins read a
+                # NEIGHBOURHOOD, which does not stop at a region edge
+                label_context=(
+                    LABEL_CONTEXT_EXACT if scoped.mask is None else LABEL_CONTEXT_BBOX
+                ),
+                clipped=clipped,
+            )
+        )
     return OpResult(
         op="grains",
         params=params,
@@ -367,6 +403,7 @@ register(
                 "",
                 doc="'r1,c1,r2,c2' 1-based inclusive analysis rectangle; empty = whole image",
             ),
+            "region": REGION_PARAM,
             "method": OpParam(
                 str,
                 "gradient",
