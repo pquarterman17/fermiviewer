@@ -755,6 +755,55 @@ in EDS/EELS, imaging statistics, and structural analysis.
 > is showing two different regions. Whether that gap matters at display
 > resolution is a UI judgement, but it is a real one.
 
+> **Math audit, 2026-09-01.** Prompted by the pixel-area bug: if one
+> physical quantity was built from the wrong ingredient, others might be.
+> Checked by PROPERTY and against published references rather than by
+> reading, because 87 calc modules and 19,000 lines do not survive
+> inspection.
+>
+> **One real error, in `astm_grain_size_number`.** The ASTM E112 grain
+> size number used `log2` with the coefficient 6.6439 — which is exactly
+> `2/log10(2)`, a constant CONSTRUCTED for `log10`. The slope was
+> therefore 3.3219x too steep: 10 µm grains reported G = 40.8 where E112
+> gives 10.7, and the scale itself only runs from about 00 to 14, so
+> every value the function ever returned for an ordinary micrograph was
+> off the scale it claimed to be on. Now derived from E112's planimetric
+> relation in the docstring so the constants can be checked, and tested
+> against published G/density pairs from the standard's own table.
+>
+> Its old test could not have caught it: it recomputed the
+> implementation's own expression and asserted the two matched, which is
+> true of any formula whatsoever. That is the third tautological or
+> false-passing test found in this branch.
+>
+> **Two claims corrected where the code was right and the comment was
+> not.** `trace_psd`'s Parseval note said `sum(power)` gives the variance
+> of the WINDOWED trace; it is window-compensated and recovers the
+> ORIGINAL variance (a sinusoid of amplitude A sums to exactly A²/2),
+> which understated it by 8/3 and would send anyone verifying the
+> normalization hunting a bug that is not there. And `orientation_rad`
+> documented no reference axis, though it is measured from the ROW axis —
+> 90° from what most readers assume, so a consumer plotting it as "from
+> horizontal" draws every particle across its own short axis.
+>
+> **Verified correct, by measurement rather than assumption:** dimensional
+> scaling (area exponent 2.000, length 1.000) across grain, particle and
+> region statistics; FFT/lattice d-spacing to 0.1% with γ = 90.000° and
+> the right cell area; roughness Ra/Rq exactly `2A/π` and `A/√2`
+> unleveled — the leveled default differs because a sinusoid genuinely
+> has a non-zero best-fit tilt, not because of an error; the EELS
+> cross-section's θ_E, Lorentzian angular integral and 4πa₀²(R/E)(R/T)
+> prefactor against Egerton; `2√(2 ln 2)` for FWHM/σ; BT.601 luma
+> coefficients; and natural logs in power-law fits, which are
+> base-independent for a slope.
+>
+> Circularity deserves its own line because it LOOKS wrong: a square
+> reports 0.876 against the textbook π/4 = 0.785. That is the Crofton
+> perimeter estimator's known bias on axis-aligned edges, the estimator
+> is named in the field's own comment, and it is the better choice for
+> the grain shapes this tool actually measures (a disc reports 0.9967).
+> Not a defect.
+
 ### 5. Calibration profiles and quantitative standards
 
 > **4C completed 2026-08-31 — the consumer migration, and its "Done when".**

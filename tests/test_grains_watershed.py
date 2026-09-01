@@ -210,12 +210,57 @@ def test_segment_watershed_rejects_tiny_image() -> None:
         segment_watershed(np.array([[0.5, 0.6, 0.7]]), method="orientation")
 
 
-def test_astm_grain_size_number() -> None:
-    # 50 µm mean diameter → 0.05 mm → G = -6.6439·log2(0.05) - 3.298
-    expected = -6.6439 * math.log2(0.05) - 3.298
-    assert astm_grain_size_number(50.0, "um") == pytest.approx(expected, rel=1e-9)
-    assert astm_grain_size_number(50.0, "µm") == pytest.approx(expected, rel=1e-9)
-    # unknown unit / non-positive diameter → NaN
+#: ASTM E112-13, grains per square millimetre against the grain-size
+#: number, read from the standard's own table. An INDEPENDENT anchor:
+#: these are published pairs, not this implementation restated.
+E112_TABLE = [
+    # (G, grains per mm^2)
+    (1.0, 15.5),
+    (3.0, 62.0),
+    (5.0, 248.0),
+    (8.0, 1980.0),
+    (10.0, 7936.0),
+]
+
+
+@pytest.mark.parametrize(("g", "grains_per_mm2"), E112_TABLE)
+def test_astm_grain_size_matches_the_published_table(g, grains_per_mm2) -> None:
+    """Checked against ASTM E112's own G/density pairs.
+
+    The previous test recomputed the implementation's expression and
+    asserted the two agreed, which is true of ANY formula and was true
+    while this one used `log2` with a coefficient built for `log10` — a
+    slope 3.32x too steep that reported G = 40.8 for 10 um grains, when
+    the scale itself only runs to about 14.
+
+    The table gives grains per mm^2; the function takes an equivalent
+    circular diameter, so the conversion here is the one algebraic step
+    (`D = 2*sqrt(A/pi)` for `A = 1/N_A`) and nothing else is shared with
+    the implementation.
+    """
+    area_mm2 = 1.0 / grains_per_mm2
+    diameter_mm = 2.0 * math.sqrt(area_mm2 / math.pi)
+    got = astm_grain_size_number(diameter_mm * 1000.0, "um")
+    assert got == pytest.approx(g, abs=0.02)
+
+
+def test_astm_grain_size_stays_on_its_own_scale() -> None:
+    """A guard against the failure that actually happened rather than
+    against a formula: ASTM numbers run roughly 00 to 14 over the grain
+    sizes microscopy sees, so anything far outside that means the slope
+    or the log base is wrong, whatever the expression looks like."""
+    for diameter_um in (0.5, 1.0, 10.0, 100.0, 500.0):
+        g = astm_grain_size_number(diameter_um, "um")
+        assert -4.0 < g < 20.0, f"{diameter_um} um gave G={g}"
+    # and it must DECREASE as grains get bigger
+    coarse = [astm_grain_size_number(d, "um") for d in (1.0, 10.0, 100.0)]
+    assert coarse == sorted(coarse, reverse=True)
+
+
+def test_astm_grain_size_refuses_what_it_cannot_convert() -> None:
+    assert astm_grain_size_number(50.0, "um") == pytest.approx(
+        astm_grain_size_number(50.0, "µm")
+    ), "both micron spellings"
     assert math.isnan(astm_grain_size_number(50.0, "furlong"))
     assert math.isnan(astm_grain_size_number(0.0, "nm"))
 
@@ -294,3 +339,30 @@ def test_merge_needs_two_distinct_grains() -> None:
     labels[1:5, 1:5] = 1
     with pytest.raises(ValueError, match="≥2 distinct grains"):
         edit_grains(labels, np.zeros((8, 8)), "merge", [(1.0, 1.0), (2.0, 2.0)])
+
+
+def test_orientation_is_measured_from_the_row_axis() -> None:
+    """The convention, pinned because it is 90 degrees from the one most
+    readers assume and nothing else in the tree would catch a flip.
+
+    skimage measures the major axis from the ROW axis; a horizontal
+    feature therefore reports pi/2, not 0. A consumer that assumed "from
+    horizontal" would draw every elongated particle across its own short
+    axis, and every value would still look plausible.
+    """
+    import numpy as np
+
+    from fermiviewer.calc.shape_metrics import shape_descriptors
+
+    def ellipse(angle_from_col_deg: float, n: int = 401) -> np.ndarray:
+        t = np.radians(angle_from_col_deg)
+        y, x = np.mgrid[-(n // 2) : n // 2 + 1, -(n // 2) : n // 2 + 1]
+        xr = x * np.cos(t) + y * np.sin(t)
+        yr = -x * np.sin(t) + y * np.cos(t)
+        return (((xr / 80.0) ** 2 + (yr / 20.0) ** 2) <= 1).astype(np.int64)
+
+    for from_col in (0.0, 30.0, 60.0, 90.0):
+        got = float(
+            np.degrees(np.asarray(shape_descriptors(ellipse(from_col)).orientation_rad)[0])
+        )
+        assert got == pytest.approx(90.0 - from_col, abs=0.1), from_col

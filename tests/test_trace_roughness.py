@@ -265,3 +265,30 @@ class TestAdaptiveTraceWindow:
         # raw std of the trace sees the 12 px drift; sigma_w must not
         assert float(np.std(ifc.trace)) > 2.0
         assert ifc.sigma_w < 1.0
+
+
+def test_the_psd_normalization_recovers_the_unwindowed_variance() -> None:
+    """Parseval, window-compensated — asserted because the normalization
+    is the one thing in a PSD that is easy to get wrong by a constant and
+    impossible to notice afterwards.
+
+    A sinusoid of amplitude A has variance A^2/2 exactly, so that is the
+    oracle: no window, no bin count, nothing shared with the
+    implementation. Dividing by `sum(w**2)` rather than by `n` is what
+    makes this hold; using `n` would be low by 1/mean(w**2) = 8/3 for a
+    Hann window, and the result would still look like a plausible
+    spectrum.
+    """
+    import numpy as np
+
+    from fermiviewer.calc.trace_roughness import trace_psd
+
+    amplitude = 3.0
+    y = amplitude * np.sin(2 * np.pi * np.arange(4096) / 128.0)
+    _, power = trace_psd(y, pixel_size=1.0)
+    assert power.sum() == pytest.approx(amplitude**2 / 2.0, rel=1e-3)
+
+    rng = np.random.default_rng(0)
+    noise = rng.normal(0.0, 2.0, 8192)
+    _, p_noise = trace_psd(noise, pixel_size=1.0)
+    assert p_noise.sum() == pytest.approx(noise.var(), rel=0.05)

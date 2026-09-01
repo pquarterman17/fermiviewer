@@ -225,7 +225,13 @@ def trace_psd(
     y -= y.mean()
     w = np.hanning(n)
     spec = np.fft.rfft(y * w)
-    # one-sided Parseval: sum(power) ~ variance of the windowed trace
+    # One-sided Parseval, window-COMPENSATED: dividing by sum(w**2)
+    # rather than by n means sum(power) recovers the variance of the
+    # ORIGINAL trace, not of the windowed one — a sinusoid of amplitude A
+    # sums to exactly A**2/2 whatever the window. (The comment here used
+    # to say "windowed trace", which understates it by 1/mean(w**2) = 8/3
+    # for a Hann window and would send anyone checking the normalization
+    # looking for a bug that is not there.)
     power = (np.abs(spec) ** 2) * 2.0 / (n * np.sum(w**2) + np.finfo(np.float64).eps)
     if n % 2 == 0:
         power[-1] /= 2.0  # Nyquist bin is not doubled

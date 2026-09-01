@@ -69,6 +69,16 @@ class ShapeDescriptors:
 
     perimeter_crofton_px: np.ndarray
     eccentricity: np.ndarray
+    #: Angle of the major axis, measured from the ROW axis (downward, the
+    #: first index) toward the column axis, in [-pi/2, pi/2] — skimage's
+    #: convention, kept rather than converted so the number a reader looks
+    #: up matches the number this reports.
+    #:
+    #: Stated because it is 90 degrees from the one most people assume. A
+    #: horizontal feature (constant row, varying column) reports pi/2, not
+    #: 0; a consumer plotting it as "from horizontal" draws every particle
+    #: across its own short axis. Verified against synthetic ellipses at
+    #: known angles: reported == 90 deg - (angle from the column axis).
     orientation_rad: np.ndarray
     solidity: np.ndarray
     axis_major_length_px: np.ndarray
