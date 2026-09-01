@@ -57,7 +57,7 @@ def region_stats(
     rect: tuple[int, int, int, int] | None = None,
     mask: np.ndarray | None = None,
     *,
-    pixel_size: float = float("nan"),
+    pixel_area: float = float("nan"),
     ddof: int = STD_MATLAB,
 ) -> dict[str, float]:
     """Statistics of `values` over a region.
@@ -67,6 +67,11 @@ def region_stats(
     pixel of `rect` — the same pairing `region_resolve.ResolvedRegion`
     hands out and `raster.masked_sum_spectrum` consumes, so a caller
     holding a resolved region can feed both without reshaping anything.
+
+    `pixel_area` is the area of ONE pixel, not a length — it is
+    `DataStruct.pixel_area`, which multiplies the two spatial scales
+    rather than squaring one. Passing `pixel_size ** 2` is the bug this
+    parameter is named to prevent.
 
     Returns `mean`, `std`, `min`, `max`, `n_pixels`, `n_finite` and
     `area`. With no finite pixel the four aggregates are NaN rather than
@@ -105,7 +110,10 @@ def region_stats(
     if selected is not None:
         usable &= selected
     n_finite = int(np.count_nonzero(usable))
-    area = float(n_pixels) * pixel_size**2 if np.isfinite(pixel_size) else float(n_pixels)
+    # `pixel_area`, NOT `pixel_size ** 2`: the two spatial axes can carry
+    # different scales, and squaring one of them is four times wrong on a
+    # 0.5 x 2.0 nm scan. See `DataStruct.pixel_area`.
+    area = float(n_pixels) * pixel_area if np.isfinite(pixel_area) else float(n_pixels)
 
     if n_finite == 0:
         nan = float("nan")

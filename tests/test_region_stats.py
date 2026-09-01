@@ -54,7 +54,7 @@ def an_image(seed: int = 3) -> np.ndarray:
     return rng.normal(100.0, 20.0, size=(H, W))
 
 
-def stats_over(img, pixels, *, pixel_size=float("nan"), ddof=1) -> dict:
+def stats_over(img, pixels, *, pixel_area=float("nan"), ddof=1) -> dict:
     """The oracle: pure-Python statistics over an explicit pixel list.
 
     Deliberately NOT numpy — `statistics.fmean`/`stdev` are a separate
@@ -63,8 +63,11 @@ def stats_over(img, pixels, *, pixel_size=float("nan"), ddof=1) -> dict:
     """
     vals = [float(img[r, c]) for r, c in sorted(pixels)]
     finite = [v for v in vals if np.isfinite(v)]
+    # count x AREA-PER-PIXEL, derived from first principles. It used to
+    # square a LENGTH, which is only right when the two spatial scales
+    # agree — see `DataStruct.pixel_area`.
     area = (
-        len(vals) * pixel_size**2 if np.isfinite(pixel_size) else float(len(vals))
+        len(vals) * pixel_area if np.isfinite(pixel_area) else float(len(vals))
     )
     out = {"n_pixels": float(len(vals)), "n_finite": float(len(finite)), "area": area}
     if not finite:
@@ -149,7 +152,7 @@ def test_roi_stats_reports_exactly_what_it_reported_before(r, shape) -> None:
     and new NaN policies cannot differ."""
     img = an_image()
     old = legacy_roi_stats(img, *r, pixel_size=0.5, shape=shape)
-    new = roi_stats(img, *r, pixel_size=0.5, shape=shape)
+    new = roi_stats(img, *r, pixel_area=0.25, shape=shape)  # == 0.5**2
     assert same(new, old), f"{shape}{r}: {new} != {old}"
 
 
@@ -158,8 +161,8 @@ def test_a_rect_agrees_with_the_independent_oracle(r) -> None:
     """Parity with the old code is not enough — both could be wrong the
     same way. This checks against pure-Python statistics."""
     img = an_image()
-    got = region_stats(img, _clamp(r), pixel_size=0.25, ddof=STD_MATLAB)
-    want = stats_over(img, rect_pixels(*_clamp(r)), pixel_size=0.25, ddof=1)
+    got = region_stats(img, _clamp(r), pixel_area=0.25, ddof=STD_MATLAB)
+    want = stats_over(img, rect_pixels(*_clamp(r)), pixel_area=0.25, ddof=1)
     assert same(got, want)
 
 
@@ -264,11 +267,11 @@ def test_non_finite_pixels_are_counted_but_not_averaged() -> None:
     img = an_image()
     img[4, 5] = np.nan
     img[6, 7] = np.inf
-    got = region_stats(img, (1, 1, H, W), pixel_size=2.0, ddof=STD_MATLAB)
+    got = region_stats(img, (1, 1, H, W), pixel_area=4.0, ddof=STD_MATLAB)
     assert got["n_pixels"] == H * W
     assert got["n_finite"] == H * W - 2
     assert got["area"] == H * W * 4.0, "area follows n_pixels, not n_finite"
-    assert same(got, stats_over(img, rect_pixels(1, 1, H, W), pixel_size=2.0, ddof=1))
+    assert same(got, stats_over(img, rect_pixels(1, 1, H, W), pixel_area=4.0, ddof=1))
     assert np.isfinite(got["mean"]) and np.isfinite(got["max"])
 
 
@@ -276,7 +279,7 @@ def test_an_all_nan_region_reports_nan_rather_than_raising() -> None:
     """An all-dead region is a real thing to measure; saying so keeps the
     `n_pixels` the caller asked for, which raising would throw away."""
     img = np.full((H, W), np.nan)
-    got = region_stats(img, (2, 2, 4, 4), pixel_size=1.0, ddof=STD_MATLAB)
+    got = region_stats(img, (2, 2, 4, 4), pixel_area=1.0, ddof=STD_MATLAB)
     assert got["n_pixels"] == 9.0 and got["n_finite"] == 0.0
     assert all(np.isnan(got[k]) for k in ("mean", "std", "min", "max"))
     assert got["area"] == 9.0
@@ -289,7 +292,7 @@ def test_roi_stats_no_longer_lets_one_nan_poison_the_roi() -> None:
     img = an_image()
     img[5, 5] = np.nan
     old = legacy_roi_stats(img, 1, 1, H, W, pixel_size=float("nan"), shape="rect")
-    new = roi_stats(img, 1, 1, H, W, pixel_size=float("nan"))
+    new = roi_stats(img, 1, 1, H, W, pixel_area=float("nan"))
     assert np.isnan(old["mean"]), "the old behaviour really did propagate"
     assert np.isfinite(new["mean"])
     assert new["n_finite"] == H * W - 1
@@ -321,15 +324,18 @@ def test_a_single_pixel_has_zero_std_not_a_ddof_blow_up() -> None:
 # ── calibration ──────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("px, expect", [(0.5, 0.25), (2.0, 4.0), (1.0, 1.0)])
-def test_physical_area_scales_with_the_square_of_the_pixel_size(px, expect) -> None:
-    got = region_stats(an_image(), (2, 2, 4, 4), pixel_size=px)
+@pytest.mark.parametrize("pixel_area", [0.25, 4.0, 1.0, 1.0])
+def test_physical_area_is_the_count_times_one_pixel_s_area(pixel_area) -> None:
+    """The parameter is an AREA, not a length to square. It used to be
+    `pixel_size` and this test squared it, which hid that an
+    anisotropic image has no single length to square."""
+    got = region_stats(an_image(), (2, 2, 4, 4), pixel_area=pixel_area)
     assert got["n_pixels"] == 9.0
-    assert np.isclose(got["area"], 9.0 * expect)
+    assert np.isclose(got["area"], 9.0 * pixel_area)
 
 
 def test_an_uncalibrated_image_reports_area_in_pixels() -> None:
-    got = region_stats(an_image(), (2, 2, 4, 4), pixel_size=float("nan"))
+    got = region_stats(an_image(), (2, 2, 4, 4), pixel_area=float("nan"))
     assert got["area"] == got["n_pixels"] == 9.0
 
 
@@ -461,7 +467,7 @@ def test_the_route_measures_a_named_region_exactly(client) -> None:
     put_region(region)
     got = measure(client, image_id="img1", region_ref="s1/e")
     pixels = mask_pixels(rasterize(region, (H, W)))
-    assert same(got, stats_over(img, pixels, pixel_size=0.5, ddof=1))
+    assert same(got, stats_over(img, pixels, pixel_area=0.25, ddof=1))  # 0.5 x 0.5
     assert got["exact_mask"] is True
     assert got["region"] == [3, 4, 10, 11]
 

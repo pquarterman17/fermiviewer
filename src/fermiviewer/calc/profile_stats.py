@@ -137,7 +137,7 @@ def measure_distance(
 def roi_stats(
     img: np.ndarray,
     row1: float, col1: float, row2: float, col2: float,
-    pixel_size: float = float("nan"),
+    pixel_area: float = float("nan"),
     shape: str = "rect",
 ) -> dict[str, float]:
     """Rectangle or inscribed-ellipse statistics (1-based inclusive
@@ -147,7 +147,10 @@ def roi_stats(
     4C-2: the geometry now comes from the canonical region contract and
     the aggregates from `calc.region_stats`, so this and the `image_stats`
     op read the same pixels the same way. The returned keys are unchanged
-    apart from an added `n_finite`."""
+    apart from an added `n_finite`.
+
+    `pixel_area` is the area of one pixel (`DataStruct.pixel_area`), not a
+    length squared: the two spatial scales can differ."""
     arr = np.asarray(img)
     if arr.ndim != 2:
         raise ValueError(f"ROI statistics need a 2-D raster, got {arr.shape}")
@@ -179,7 +182,7 @@ def roi_stats(
     # where this used to propagate a NaN through the whole ROI. `n_finite`
     # reports how many were usable, so the difference is visible.
     return region_stats(
-        arr, (r1, c1, r2, c2), mask, pixel_size=pixel_size, ddof=STD_MATLAB
+        arr, (r1, c1, r2, c2), mask, pixel_area=pixel_area, ddof=STD_MATLAB
     )
 
 

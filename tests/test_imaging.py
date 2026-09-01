@@ -197,7 +197,9 @@ def test_watershed(synth) -> None:
 def test_region_stats(synth) -> None:
     labels, _ = label_components(synth["bw"], connectivity=8)
     parts, renum, n = region_stats(
-        labels, synth["base"], min_area=50, pixel_size=0.4
+        labels, synth["base"], min_area=50,
+        # an isotropic 0.4 nm pixel: 0.4 for LENGTHS, 0.16 for AREA
+        pixel_size=0.4, pixel_area=0.16,
     )
     g = GOLDEN["regions"]
     assert n == g["nKept"]

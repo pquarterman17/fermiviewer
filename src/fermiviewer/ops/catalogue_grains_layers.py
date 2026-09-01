@@ -348,7 +348,8 @@ def _grains(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     else:
         labels, clipped = seg.labels, False
     px, unit = _px_cal(ds)
-    report = grain_report(labels, raster, pixel_size=px, unit=unit)
+    report = grain_report(labels, raster, pixel_size=px,
+        pixel_area=ds.pixel_area, unit=unit)
     outputs = [
         scalar("n_grains", report.n_grains),
         scalar("boundary_network_px", report.boundary_network_px, unit="px"),

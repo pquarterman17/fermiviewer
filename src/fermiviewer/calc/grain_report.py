@@ -16,9 +16,32 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from fermiviewer.calc.grains import astm_grain_size_number, grain_stats
+from fermiviewer.calc.grain_size import (
+    astm_grain_size_from_density,
+    mm2_per_pixel,
+)
+from fermiviewer.calc.grains import grain_stats
 
 __all__ = ["GrainReport", "grain_report"]
+
+
+def _astm(stats, pixel_area: float, unit: str) -> float:
+    """E112's grain-size number, COUNTED rather than inferred.
+
+    The standard's planimetric method is grains per unit area, and both
+    numbers are in hand: `n_grains` and the area those grains cover. Going
+    through the mean equivalent DIAMETER instead — which this used to do —
+    assumes every grain is the same size, and biases G upward by +0.22 at
+    a coefficient of variation of 0.4, on a scale quoted to a tenth.
+
+    NaN without calibration, since a density per pixel is not a density
+    per mm² and E112's constants are defined for mm².
+    """
+    px_mm2 = mm2_per_pixel(pixel_area, unit)
+    total_px = float(np.sum(stats.area_px)) if stats.area_px.size else 0.0
+    if not np.isfinite(px_mm2) or total_px <= 0 or stats.n_grains <= 0:
+        return float("nan")
+    return astm_grain_size_from_density(stats.n_grains / (total_px * px_mm2))
 
 
 @dataclass(frozen=True)
@@ -49,12 +72,13 @@ def grain_report(
     raster: np.ndarray,
     *,
     pixel_size: float = float("nan"),
+    pixel_area: float = float("nan"),
     unit: str = "px",
 ) -> GrainReport:
     """Stats + derived aggregates for a grain-label image over its raster."""
-    stats = grain_stats(labels, raster, pixel_size=pixel_size)
-    diam_cal = stats.diameter_calibrated
-    mean_diam_cal = float(np.nanmean(diam_cal)) if diam_cal.size else float("nan")
+    stats = grain_stats(
+        labels, raster, pixel_size=pixel_size, pixel_area=pixel_area
+    )
     return GrainReport(
         n_grains=stats.n_grains,
         labels=stats.labels,
@@ -65,7 +89,7 @@ def grain_report(
         mean_diameter_px=(
             float(stats.equiv_diameter_px.mean()) if stats.equiv_diameter_px.size else 0.0
         ),
-        astm_grain_size=astm_grain_size_number(mean_diam_cal, unit),
+        astm_grain_size=_astm(stats, pixel_area, unit),
         area_px=stats.area_px,
         perimeter_crofton_px=stats.perimeter_crofton_px,
         eccentricity=stats.eccentricity,

@@ -925,6 +925,23 @@ INFRASTRUCTURE: tuple[tuple[str, str], ...] = (
     ("POST", "/api/project/save"),
     ("GET", "/api/region-sets"),
     ("POST", "/api/region-sets/replace"),
+    # Lossless representation changes over pixels that are ALREADY
+    # assigned — a label map and a region set are two spellings of the
+    # same segmentation, and the round trip is exact by construction. No
+    # threshold is chosen and no quantity is measured, so there is no
+    # result to register and nothing for a recipe to reproduce; the edit
+    # these exist for is a human dragging vertices, which is not a step.
+    # Were either to start DERIVING a segmentation, it would become an
+    # operation and belong in a domain instead.
+    ("POST", "/api/region-sets/from-labels"),
+    ("POST", "/api/region-sets/to-labels"),
+    # Scope, not science: it resolves a reference and counts the pixels an
+    # analysis WOULD read, without reading one of their values. That is
+    # the checkable line — no pixel value enters the answer, so there is
+    # no measurement of the specimen to register and nothing for a recipe
+    # to reproduce. The physical area it reports measures the region the
+    # user drew, not the data underneath it.
+    ("POST", "/api/regions/preview"),
     ("GET", "/api/results"),
     # Query and composition over ALREADY-persisted records — they run no
     # analysis and produce no new science, so they are infrastructure like

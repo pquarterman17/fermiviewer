@@ -4,23 +4,69 @@ The `.fvp` section is server-carried, so project saves deliberately do not
 accept region geometry. This thin adapter gives the browser one atomic way to
 replace the live section after an edit. The wire form is exactly ADR 0006's
 manifest form; `io.regions_model` remains the single parser and serializer.
+
+The two conversion routes are the same workspace seen from the other
+side. A segmentation produces a LABEL MAP, and correcting one by hand
+means it has to become regions, be edited, and become a label map again
+without the trip changing which pixels belong to what — `calc/
+region_convert.py` is that conversion and this is where it is reachable
+from. `from-labels` only READS the store and returns a set for the caller
+to merge, so `/replace` stays the single path that writes the live
+section; `to-labels` registers a derived image, which is what every
+analysis route already does with a map it produces.
 """
 
 from __future__ import annotations
 
 from typing import Any, Literal
 
+import numpy as np
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field, FiniteFloat
+from pydantic import BaseModel, Field, FiniteFloat, StrictInt
 
+from fermiviewer.calc.raster import NoRasterError, raster_of
+from fermiviewer.calc.region_convert import labels_to_regions, regions_to_labels
+from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.io.project_manifest import ProjectFormatError
 from fermiviewer.io.regions_model import (
+    RegionSet,
     load_regions,
     regions_to_manifest,
 )
 from fermiviewer.project_session import project
+from fermiviewer.region_resolve import (
+    RegionReferenceError,
+    _check_image,
+    _resolve_reference,
+)
+from fermiviewer.routes._arrays import value_error_as_422 as _as_422
+from fermiviewer.routes.structure import _register
+from fermiviewer.session import UnknownImageError, store
 
 router = APIRouter(prefix="/api")
+
+#: 2**53 — the largest integer float64 holds exactly, and the supported
+#: label range for BOTH conversion directions.
+#:
+#: `routes/structure._register` stores every derived map as float64, so a
+#: label above this is silently rounded on the way in: 9007199254740993
+#: comes back as 9007199254740992, merging two regions into one with
+#: nothing in the array to say it happened.
+#:
+#: Both ends check it, against this one constant, because a bound on one
+#: side is not a range — it is a disagreement. `to-labels` checks the
+#: produced MAP, so a value reaching it through region metadata is covered
+#: as well as one the caller passed; `from-labels` checks the input VALUES
+#: before any cast, so what it hands out is always something `to-labels`
+#: will take back.
+MAX_EXACT_LABEL = 2**53
+
+#: numpy dtype kinds a label map may have: bool, signed, unsigned, float.
+#: Everything else — complex above all, but object and the datetime kinds
+#: too — is refused by KIND rather than by value, because the value checks
+#: below cannot speak about them: they compare and round without
+#: complaint and only the final cast notices, too late and too quietly.
+_REAL_NUMERIC_KINDS = frozenset("biuf")
 
 Point = tuple[FiniteFloat, FiniteFloat]
 Bounds = tuple[FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat]
@@ -82,3 +128,228 @@ def replace_region_sets(req: RegionsWire) -> dict[str, Any]:
         return regions_to_manifest(parsed.sets, parsed.classes)
     except (ProjectFormatError, ValueError, TypeError) as exc:
         raise HTTPException(422, str(exc)) from None
+
+
+class FromLabelsRequest(BaseModel):
+    """Turn a session label map into an editable region set."""
+
+    image_id: str = Field(min_length=1)
+    set_id: str = Field(min_length=1)
+    name: str | None = None
+    prefix: str = Field(default="label", min_length=1)
+    #: Record the source image on the set (ADR 0006 `image_id`). A region
+    #: traced from THIS map means nothing on another specimen, so binding
+    #: is the honest default; a caller who wants the shapes to apply
+    #: everywhere unbinds deliberately.
+    bind_image: bool = True
+
+
+class ToLabelsRequest(BaseModel):
+    """Rasterize a named region set back into a label map."""
+
+    set_id: str = Field(min_length=1)
+    #: The image whose raster gives the output SHAPE — and, when the set
+    #: is bound, the image the set must belong to.
+    image_id: str = Field(min_length=1)
+    #: region id → label value. Omitted, each region keeps the value it
+    #: was traced from, so the edit loop preserves a sparse map.
+    #:
+    #: `StrictInt`, not `int`: Pydantic's lax mode turns `true` into 1,
+    #: `"2"` into 2 and `2.0` into 2, which walks past the bool, string
+    #: and float refusals `regions_to_labels` makes on purpose — the
+    #: calc layer would never see the value it rejects. Same shape as the
+    #: float64 label-map seam: a guard is only a guard where it is
+    #: reachable.
+    values: dict[str, StrictInt] | None = None
+
+
+def _label_array(ds: DataStruct, image_id: str) -> np.ndarray:
+    """A session image as an integer label map, or a 422.
+
+    The seam this exists for: `_register` stores every derived map as
+    float64, so the label map a segmentation route hands back is
+    `array([1., 2., ...])`. `labels_to_regions` refuses a float array
+    because 1.9999 is label 1 or label 2 depending on a convention it
+    cannot know — and casting here without checking would step straight
+    past that refusal at the one boundary it was written to guard.
+
+    So the values are checked to BE integers before being typed as them.
+
+    What that does NOT do is tell a label map from an intensity image,
+    and an earlier version of this docstring claimed it did. Ordinary
+    micrographs are uint8 or uint16 — whole-valued, real, in range — so a
+    48x48 uint16 frame with 120 distinct intensities converts happily
+    into 120 regions. No test on the VALUES can separate the two: a label
+    map and a count image are the same array with different meanings.
+
+    Calling this route is therefore the caller's ASSERTION that the image
+    is a label map. The checks here reject what cannot be one — fractional
+    values, complex or other non-real dtypes, values past the supported
+    range, a spectrum or RGB kind — and nothing more. The UI that offers
+    the conversion owns the assertion, and this cannot make it on the
+    UI's behalf.
+
+    (A stronger rule is available and is a product decision, not a code
+    one: the app's own maps carry `grain_labels` / `grain_source` /
+    `region_source` in metadata, so the route could require a marker and
+    take an explicit override. That would refuse an imported label TIFF,
+    which is a legitimate input, so it is not taken unilaterally here.)
+    """
+    if ds.kind is not DataKind.IMAGE:
+        # `raster_of` would answer for a spectrum image (a SUM over the
+        # energy axis) and for RGB (a luminance), and both can come out
+        # whole-numbered — so the check below would pass and this would
+        # trace a region per count. Neither is a label map, and the kind
+        # says so before any values are looked at.
+        raise HTTPException(
+            422,
+            f"image {image_id!r} is a {ds.kind.value}, not a label map",
+        )
+    # 2-D needs no check of its own: `DataStruct` refuses to hold an
+    # IMAGE that is not, so the kind above has already settled it.
+    array = np.asarray(ds.data)
+    if array.dtype.kind not in _REAL_NUMERIC_KINDS:
+        # Complex is the case with teeth: `DataStruct` permits a complex
+        # IMAGE, and 1+1j passes BOTH checks below — `isfinite` is true of
+        # a complex whose parts are finite, and `rint` rounds each part,
+        # so the value equals its own rounding. It then reaches the cast,
+        # which discards the imaginary component and calls it label 1.
+        # Under this repo's warnings-as-errors that is a `ComplexWarning`
+        # and a 500; in production it is silent, and a complex micrograph
+        # comes back as a segmentation of its real part.
+        raise HTTPException(
+            422,
+            f"image {image_id!r} has dtype {array.dtype}, which is not a "
+            "label map: a label is a real whole number",
+        )
+    if not np.issubdtype(array.dtype, np.integer) and (
+        not np.all(np.isfinite(array)) or not np.array_equal(array, np.rint(array))
+    ):
+        raise HTTPException(
+            422,
+            f"image {image_id!r} is not a label map: its values are not whole "
+            "numbers, so which label a pixel carries is undefined",
+        )
+    _check_label_range(array, image_id)
+    # Safe to cast only after the range check: `astype` on a value past
+    # int64 does not raise, it warns and yields INT_MIN — silently, in
+    # production, where warnings are not errors.
+    return array if np.issubdtype(array.dtype, np.integer) else array.astype(np.int64)
+
+
+def _check_label_range(array: np.ndarray, image_id: str) -> None:
+    """The supported label range, applied to the INPUT side.
+
+    `to-labels` already refuses a value float64 cannot hold exactly. Doing
+    it there only made the domain asymmetric: `from-labels` accepted
+    2**53 + 2 — which IS exactly representable — recorded it as a region's
+    `label_value`, and then `to-labels` refused that same untouched
+    region. The advertised default round trip was not lossless for any
+    input the two ends disagreed about.
+
+    An integer image skips the float cast, so it skipped every check with
+    it: a uint64 map holding 2**63 + 7 produced a region carrying a label
+    no int64 map can hold. The bound is checked on the VALUES, before the
+    cast and whatever the dtype, so both dtypes and both directions share
+    one range.
+
+    Ordinary negatives are deliberately left alone — `labels_to_regions`
+    refuses them with a message about background that says more than this
+    one would. Only magnitudes past the range are stopped here, which is
+    what the cast cannot survive, and that is why the bound is two-sided
+    despite labels being non-negative: -2**64 warns and yields INT_MIN in
+    exactly the same way 2**63 does, and it has to be stopped before the
+    cast, not after.
+
+    No empty-array guard: `DataStruct` refuses to hold an empty data
+    array at all, so `max()` here always has something to look at.
+    """
+    if array.max() > MAX_EXACT_LABEL or array.min() < -MAX_EXACT_LABEL:
+        raise HTTPException(
+            422,
+            f"image {image_id!r} holds a label outside the supported range "
+            f"(magnitude at most {MAX_EXACT_LABEL}): a session map is float64, "
+            "so a larger value cannot survive the return trip",
+        )
+
+
+@router.post("/region-sets/from-labels")
+def region_set_from_labels(req: FromLabelsRequest) -> dict[str, Any]:
+    """A label map as one region per label, holes and components kept.
+
+    Returns the set; it is NOT added to the workspace. `/replace` is the
+    one path that writes the live section, and a second one would be a
+    second set of rules about what a write means — the caller merges this
+    into the manifest it already holds and posts that. The conversion
+    itself is then a pure function of the session store, which is also
+    what makes it safe to call from a preview.
+    """
+    try:
+        ds = store.get(req.image_id)
+    except UnknownImageError:
+        raise HTTPException(404, f"unknown image id: {req.image_id}") from None
+    array = _label_array(ds, req.image_id)
+    with _as_422():
+        regions = labels_to_regions(array, prefix=req.prefix)
+    group = RegionSet(
+        id=req.set_id,
+        name=req.name,
+        image_id=req.image_id if req.bind_image else None,
+        regions=regions,
+        meta={"derived_from": req.image_id, "converter": "labels"},
+    )
+    # Through the manifest serializer rather than a hand-built dict, so
+    # the wire form cannot drift from the one `/replace` parses back.
+    return regions_to_manifest((group,), ())
+
+
+@router.post("/region-sets/to-labels")
+def region_set_to_labels(req: ToLabelsRequest) -> dict[str, Any]:
+    """A named region set as a label map, registered as a session image.
+
+    The other half of the edit loop: convert, correct by hand, convert
+    back, and re-run the analysis on the corrected map. Overlapping
+    regions are refused rather than resolved — see `LabelOverlapError`.
+    """
+    try:
+        ds = store.get(req.image_id)
+    except UnknownImageError:
+        raise HTTPException(404, f"unknown image id: {req.image_id}") from None
+    try:
+        raster = raster_of(ds)
+    except NoRasterError:
+        raise HTTPException(400, "1D spectra have no raster") from None
+
+    state = project.current()
+    with _as_422():
+        # `_resolve_reference` and `_check_image` are CALLED, not restated:
+        # the ambiguous-reference rule and ADR 0007 §6's image binding are
+        # the resolver's, and a second copy is how a rule starts meaning
+        # two things (the `recipe_regions._check_image` lesson).
+        group, region_id = _resolve_reference(state.region_sets, req.set_id)
+        if region_id is not None:
+            raise RegionReferenceError(
+                f"{req.set_id!r} names a single region; a label map is made "
+                "from a whole set"
+            )
+        _check_image(group, req.image_id)
+        labels = regions_to_labels(
+            group.regions, (raster.shape[0], raster.shape[1]), values=req.values
+        )
+
+    if int(labels.max()) > MAX_EXACT_LABEL:
+        raise HTTPException(
+            422,
+            f"label value {int(labels.max())} cannot be registered exactly: "
+            f"a session map is float64, which represents integers up to "
+            f"{MAX_EXACT_LABEL} and would round anything larger",
+        )
+
+    name = f"labels({group.id})"
+    return _register(
+        labels.astype(np.float64),
+        name,
+        ds,
+        req.image_id,
+        extra_meta={"region_source": group.id, "converter": "regions"},
+    )

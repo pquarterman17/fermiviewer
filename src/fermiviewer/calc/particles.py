@@ -211,6 +211,7 @@ def region_stats(
     img: np.ndarray,
     min_area: int = 1,
     pixel_size: float = float("nan"),
+    pixel_area: float = float("nan"),
 ) -> tuple[list[RegionStats], np.ndarray, int]:
     """Per-region measurements with MinArea filter + compact renumber.
 
@@ -243,7 +244,13 @@ def region_stats(
                 ),
                 equiv_diameter=eq_d,
                 mean_intensity=float(d[sel].mean()),
-                area_calibrated=area * pixel_size**2 if has_cal else np.nan,
+                # AREA uses the true pixel area and LENGTH the single
+                # scale, because they are different questions: an area is
+                # well defined when the axes differ, an equivalent
+                # diameter is not (see `DataStruct.pixel_area`).
+                area_calibrated=(
+                    area * pixel_area if np.isfinite(pixel_area) else np.nan
+                ),
                 diameter_calibrated=eq_d * pixel_size if has_cal else np.nan,
             )
         )
@@ -279,6 +286,7 @@ def particle_analysis(
     connectivity: int = 8,
     min_area: int = 1,
     pixel_size: float = float("nan"),
+    pixel_area: float = float("nan"),
     use_watershed: bool = False,
     min_marker_distance: float = 3.0,
 ) -> ParticleAnalysis:
@@ -304,7 +312,8 @@ def particle_analysis(
         lab, _ = label_components(mask, connectivity)
 
     parts, lab, kept = region_stats(
-        lab, d, min_area=min_area, pixel_size=pixel_size
+        lab, d, min_area=min_area, pixel_size=pixel_size,
+        pixel_area=pixel_area
     )
     return ParticleAnalysis(
         mask=mask,
