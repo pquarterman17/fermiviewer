@@ -519,12 +519,17 @@ consume a mask.
 - [x] Persist named ROI sets and region classes in `.fvp`.
 - [x] Supply both exact masks and bounding boxes so older calculations can be
       migrated safely.
-- [ ] Make spectrum integration, statistics, segmentation, particles, grains,
+- [x] Make spectrum integration, statistics, segmentation, particles, grains,
       layers, and batch recipes consume the same contract.
-- [ ] Convert segmentation labels to editable regions and regions to label
+      **Shipped 2026-08-31** (4C-1..5, PRs #191, #192, #194, #195, #196).
+- [x] Convert segmentation labels to editable regions and regions to label
       images without losing holes or disconnected components.
+      **Shipped 2026-08-31** (`calc/region_convert.py`, the two
+      `/api/region-sets` conversion routes).
 - [ ] Add clear mask previews and pixel-count/physical-area summaries before
       expensive execution.
+      **Summaries shipped 2026-09-01** (`POST /api/regions/preview`); the
+      previews themselves are 4D's UI half and remain Codex/sol's.
 
 **Done when:** the same irregular specimen region produces consistent results
 in EDS/EELS, imaging statistics, and structural analysis.
@@ -647,7 +652,203 @@ in EDS/EELS, imaging statistics, and structural analysis.
 > `test_the_op_and_the_route_agree_on_the_same_region` is the first
 > instance, an op and a route reaching one answer by different paths.
 
+> **Label conversion completed 2026-08-31.** `calc/region_convert.py`
+> converts both ways and `/api/region-sets/from-labels` and `/to-labels`
+> are where it is reachable. The stack's other half — the region manager
+> and precise drawing/editing (4B, Codex/sol) — is untouched, as are 4D's
+> previews.
+>
+> The load-bearing choice was that ring NESTING defines the parts, not
+> connected components. Grouping by components first is a trap: with
+> 8-connectivity two diagonally-touching pixels are ONE component but
+> marching squares traces TWO rings, so "largest ring is the outline, the
+> rest are holes" turns the second pixel into a hole — a region that
+> rasterizes, looks like a shape, and is not the label. With
+> 4-connectivity the rings match but a diagonal pair becomes two regions
+> and the label's identity is lost instead. Depth comes from containment
+> rather than winding direction, for the reason `calc/contours.py`
+> already distrusts skimage's start vertex. The mask is padded before
+> tracing: `find_contours` leaves a path open at an array edge and
+> closing it afterwards cuts the corner, which made a 4x4 block in a
+> corner round-trip as 6 pixels of 16.
+>
+> Lossless has a price worth stating: an outline keeps a vertex per
+> boundary step, so 150 grains at 512x512 trace to ~32,000 vertices.
+> `calc/contours.py` remains the SIMPLIFYING tracer for the UI's draw
+> assist and is deliberately not what this uses.
+>
+> The self-review dispatched an adversarial agent, whose findings were
+> two wrong cost models and four permissive writes — `find_objects`
+> allocating per label VALUE (433 MB for an 8x8 array holding
+> 10,000,000), a containment test that rasterized every ring (~30 GB on a
+> 512x512 salt-and-pepper label, which is what a noisy segmentation
+> looks like), and conversions that merged two regions through a
+> duplicate id, a duplicate value, a truncated float or an empty `values`
+> mapping read as "none given". Mutation testing then found three
+> REDUNDANCIES rather than three gaps: a hole's parent selected by two
+> rules that always agree, a bounding-box test restated inside the
+> predicate the screen guards, and a self-containment guard the area test
+> already made unreachable. Each is now stated once — the same "a second
+> copy is how a rule starts meaning two things" that 4C-5 hit with
+> `_check_image`.
+>
+> The seam, as in every previous wave, was between new code and old: the
+> app stores every derived map as float64, and `labels_to_regions`
+> refuses a float array on purpose, so a route casting blindly would have
+> stepped past that refusal at the one boundary it exists to guard. The
+> route checks the values ARE integers before typing them as integers,
+> and refuses a spectrum image by KIND — its raster is a sum over energy,
+> which can be whole-numbered and would have traced a region per count.
+
+> **4D backend half completed 2026-09-01.** `POST /api/regions/preview`
+> reports what an analysis WOULD read — pixel count, fraction of the
+> image, clamped bounding box, whether the selection is narrower than
+> that box, and physical area — without reading a pixel value. The box
+> stays unchecked because the previews themselves, the conversion-flow
+> UI, the consistency audit and the accessibility/interaction QA are
+> 4D's Codex/sol half and are untouched.
+>
+> The design is one line: a preview RESOLVES, it does not re-derive. It
+> calls the same `resolve_region` the analyses call, so it inherits their
+> clamping, image binding and refusals, and its test asserts its
+> `pixel_count` equals the `n_pixels` `/measure/roi` reports over the same
+> reference rather than a constant of its own. A preview computed by a
+> second code path is a preview of something else, and a scope summary
+> that disagrees with the run spends the user's trust to tell them the
+> wrong number (ADR 0007 §12).
+>
+> Two decisions worth naming. An uncalibrated area is reported ABSENT,
+> not as the pixel count: `region_stats` returns the count in its `area`
+> field, which is defensible inside a bundle whose caller knows the unit
+> and is not defensible in a user-facing summary, where the same number
+> would silently mean px² or nm². And the request field is `region_ref`,
+> not `region`, because that is already the wire name for a symbolic
+> reference at `/measure/roi`, in batch steps and in recipe steps, while
+> `region` on the wire means an op's inline geometry — a third spelling
+> of one idea is how a caller learns to guess.
+>
+> **Amended 2026-09-01: areas no longer assume square pixels.** The
+> review of this endpoint found that its physical area was
+> `n * pixel_size ** 2`, four times wrong on a 0.5 nm x 2.0 nm scan — and
+> those are real, since `io/nanoscope` derives the two spatial scales
+> independently. Correcting it only in the preview would have broken the
+> agreement that endpoint exists to have, so it was corrected at the
+> source: `DataStruct.pixel_area` multiplies the two scales, and every
+> consumer that reports an area now takes an AREA rather than deriving
+> one from a length — `region_stats`, `roi_stats`, `region_propose`,
+> particles, grains, grain layers, and the preview.
+>
+> Square pixels are numerically unchanged, which the MATLAB golden tests
+> confirm. The area is absent unless both axes are calibrated in the same
+> unit, since nm x um is a number in neither.
+>
+> This does NOT close item 5's "do not assume square" box. Lengths —
+> equivalent diameter, Feret width, perimeter, boundary network — still
+> come from a single scale, and they are not made well defined by having
+> two: an anisotropic equivalent diameter needs a convention, which is
+> item 5's work rather than a side effect of fixing areas.
+>
+> **For the UI half:** the preview reports the RASTERIZED pixel count,
+> under `calc/region_mask`'s centre-sampling convention. A polygon drawn
+> in SVG and the mask an analysis uses differ at the boundary, so a
+> preview that outlines the polygon while the summary counts the raster
+> is showing two different regions. Whether that gap matters at display
+> resolution is a UI judgement, but it is a real one.
+
+> **Math audit, 2026-09-01.** Prompted by the pixel-area bug: if one
+> physical quantity was built from the wrong ingredient, others might be.
+> Checked by PROPERTY and against published references rather than by
+> reading, because 87 calc modules and 19,000 lines do not survive
+> inspection.
+>
+> **One real error, in `astm_grain_size_number`.** The ASTM E112 grain
+> size number used `log2` with the coefficient 6.6439 — which is exactly
+> `2/log10(2)`, a constant CONSTRUCTED for `log10`. The slope was
+> therefore 3.3219x too steep: 10 µm grains reported G = 40.8 where E112
+> gives 10.7, and the scale itself only runs from about 00 to 14, so
+> every value the function ever returned for an ordinary micrograph was
+> off the scale it claimed to be on. Now derived from E112's planimetric
+> relation in the docstring so the constants can be checked, and tested
+> against published G/density pairs from the standard's own table.
+>
+> Its old test could not have caught it: it recomputed the
+> implementation's own expression and asserted the two matched, which is
+> true of any formula whatsoever. That is the third tautological or
+> false-passing test found in this branch.
+>
+> **A second, smaller bias in the same function, found while reviewing the
+> first fix.** `grain_report` reached G through the mean equivalent
+> DIAMETER, which assumes every grain is the same size: `4/(π·D̄²)`
+> exceeds the true `1/mean(area)` by Jensen's inequality whenever they
+> vary, so G came out high and the microstructure read finer than it was —
+> +0.06 at a coefficient of variation of 0.2, +0.22 at 0.4, +0.44 at 0.6,
+> on a scale quoted to a tenth. E112's planimetric method is grains per
+> unit AREA and both numbers were already in hand, so it counts now
+> instead of inferring. `astm_grain_size_from_density` is the primitive;
+> the diameter form stays for direct callers and documents what it
+> assumes.
+>
+> **Two claims corrected where the code was right and the comment was
+> not.** `trace_psd`'s Parseval note said `sum(power)` gives the variance
+> of the WINDOWED trace; it is window-compensated and recovers the
+> ORIGINAL variance (a sinusoid of amplitude A sums to exactly A²/2),
+> which understated it by 8/3 and would send anyone verifying the
+> normalization hunting a bug that is not there. And `orientation_rad`
+> documented no reference axis, though it is measured from the ROW axis —
+> 90° from what most readers assume, so a consumer plotting it as "from
+> horizontal" draws every particle across its own short axis.
+>
+> **Verified correct, by measurement rather than assumption:** dimensional
+> scaling (area exponent 2.000, length 1.000) across grain, particle and
+> region statistics; FFT/lattice d-spacing to 0.1% with γ = 90.000° and
+> the right cell area; roughness Ra/Rq exactly `2A/π` and `A/√2`
+> unleveled — the leveled default differs because a sinusoid genuinely
+> has a non-zero best-fit tilt, not because of an error; the EELS
+> cross-section's θ_E, Lorentzian angular integral and 4πa₀²(R/E)(R/T)
+> prefactor against Egerton; `2√(2 ln 2)` for FWHM/σ; BT.601 luma
+> coefficients; and natural logs in power-law fits, which are
+> base-independent for a slope.
+>
+> Circularity deserves its own line because it LOOKS wrong: a square
+> reports 0.876 against the textbook π/4 = 0.785. That is the Crofton
+> perimeter estimator's known bias on axis-aligned edges, the estimator
+> is named in the field's own comment, and it is the better choice for
+> the grain shapes this tool actually measures (a disc reports 0.9967).
+> Not a defect.
+
 ### 5. Calibration profiles and quantitative standards
+
+> **4C completed 2026-08-31 — the consumer migration, and its "Done when".**
+> Nine ops take the region contract: `sum_spectrum`, `image_stats`,
+> `particles`, `efd_similarity`, `grains`, `train_segment`, `train_preview`,
+> `layers`, `layers_edit`. A recipe step may NAME one, and the runner
+> substitutes resolved geometry per image so the op never sees an id and the
+> recorded params stay a replay key (ADR 0007 §11).
+>
+> Item 4's "Done when" is pinned as a test rather than asserted: five
+> consumers read one reference and are each compared against a mask
+> rasterized independently by `calc.region_mask`, so agreeing with each
+> other is not enough to pass.
+>
+> Three decisions the waves forced, all recorded in ADR 0007 §9-§11:
+> **labels are exact, context is the bounding box** — a threshold is a
+> function of the selected values, a texture feature is a function of a
+> neighbourhood, and `label_context` says which an op got;
+> **a reduction over varying support is refused, not approximated** —
+> `reduce="sum"` over an irregular region tracks the region's width, so a
+> flat specimen grows flanks a detector reads as interfaces;
+> **naming is a caller concern** — geometry is the op contract.
+>
+> Sixteen defects were found in review (eight by ChatGPT, eight in a
+> self-review) and every one sat at a SEAM rather than in the logic: a
+> request model that dropped a new field, a sibling op that never got the
+> same fix, a second call site, a summary left unscoped beside a masked
+> map, a rule restated instead of called. Three were false claims in
+> comments or provenance labels, which are worse than silent bugs because
+> they tell the next reader not to check. Worth carrying into 4B/4D as a
+> review checklist: for each change, name every OTHER place that must
+> change with it, and re-read every claim the diff makes about itself.
+
 
 Create a shared Calibration Center, with EDS as the first complete workflow and
 EELS/dose/spatial/reciprocal calibration using the same persistence rules.

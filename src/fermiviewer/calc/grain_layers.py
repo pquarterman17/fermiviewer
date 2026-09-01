@@ -101,6 +101,7 @@ def measure_grains_by_layer(
     roi: RectRoi | None = None,
     interface_traces: Sequence[np.ndarray | None] = (),
     pixel_size: float = 1.0,
+    pixel_area: float = float("nan"),
     unit: str = "px",
 ) -> GrainLayerResult:
     """Measure labelled grain slices inside selected reviewed layer bands.
@@ -122,6 +123,12 @@ def measure_grains_by_layer(
         raise ValueError("axis must be 'x' or 'y'")
     if not np.isfinite(pixel_size) or pixel_size <= 0:
         raise ValueError("pixel_size must be finite and positive")
+    # An AREA is not a length squared once the two spatial scales differ
+    # (`DataStruct.pixel_area`). Defaulting to the squared form keeps a
+    # caller that has only a length working, and is exactly right when
+    # the pixels are square.
+    if not np.isfinite(pixel_area):
+        pixel_area = pixel_size * pixel_size
 
     selected = set(int(i) for i in selected_indices)
     bands = [band for band in layers if band.index in selected]
@@ -176,10 +183,12 @@ def measure_grains_by_layer(
             index=band.index, top_px=band.top, bottom_px=band.bottom,
             thickness_px=band.bottom - band.top,
             thickness=(band.bottom - band.top) * pixel_size,
-            area_px=area_px, area=area_px * pixel_size ** 2,
+            area_px=area_px, area=area_px * pixel_area,
             n_grains=n_grains,
             density_per_mpx=n_grains * 1_000_000.0 / area_px if area_px else 0.0,
-            density_per_unit2=n_grains / (area_px * pixel_size ** 2) if area_px else 0.0,
+            density_per_unit2=(
+                n_grains / (area_px * pixel_area) if area_px else 0.0
+            ),
             occupied_fraction=occupied / area_px if area_px else 0.0,
             mean_lateral_width=float(np.mean(widths)) if n_grains else 0.0,
             median_lateral_width=float(np.median(widths)) if n_grains else 0.0,

@@ -206,7 +206,7 @@ def test_roi_stats_matches_direct_calc_and_is_1_based_inclusive() -> None:
     ds = _ds(data)
     params = {"row1": 1.0, "col1": 1.0, "row2": 2.0, "col2": 3.0}
     outs = _outputs(ops.run("roi_stats", ds, params))
-    direct = roi_stats(data, 1.0, 1.0, 2.0, 3.0, pixel_size=0.5, shape="rect")
+    direct = roi_stats(data, 1.0, 1.0, 2.0, 3.0, pixel_area=0.25, shape="rect")
     for name in ("mean", "std", "min", "max", "n_pixels", "area"):
         assert outs[name]["data"]["value"] == pytest.approx(direct[name]), name
     # 1-based INCLUSIVE: rows 1..2 and cols 1..3 are the top-left 2x3 block
@@ -217,7 +217,7 @@ def test_roi_stats_matches_direct_calc_and_is_1_based_inclusive() -> None:
     ell = _outputs(
         ops.run("roi_stats", ds, {"row1": 2, "col1": 2, "row2": 10, "col2": 12, "shape": "ellipse"})
     )
-    direct_ell = roi_stats(data, 2, 2, 10, 12, pixel_size=0.5, shape="ellipse")
+    direct_ell = roi_stats(data, 2, 2, 10, 12, pixel_area=0.25, shape="ellipse")
     assert ell["mean"]["data"]["value"] == pytest.approx(direct_ell["mean"])
     assert ell["n_pixels"]["data"]["value"] == direct_ell["n_pixels"]
 

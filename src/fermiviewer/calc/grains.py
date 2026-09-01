@@ -29,7 +29,6 @@ __all__ = [
     "GrainSegmentation",
     "GrainStats",
     "WatershedSegmentation",
-    "astm_grain_size_number",
     "enforce_connected_grains",
     "extract_grain_features",
     "grain_stats",
@@ -37,12 +36,6 @@ __all__ = [
     "segment_watershed",
     "split_grain",
 ]
-
-# physical-length → millimetres (for the ASTM E112 grain-size number)
-_MM_PER_UNIT: dict[str, float] = {
-    "m": 1e3, "cm": 10.0, "mm": 1.0, "um": 1e-3, "µm": 1e-3,
-    "nm": 1e-6, "a": 1e-7, "å": 1e-7, "angstrom": 1e-7, "pm": 1e-9,
-}
 
 
 def extract_grain_features(
@@ -329,17 +322,6 @@ def enforce_connected_grains(
     return out
 
 
-def astm_grain_size_number(mean_diameter: float, unit: str) -> float:
-    """ASTM E112-13 grain-size number G from the mean equivalent grain
-    diameter (in the image's calibrated `unit`). G = -6.6439·log2(D_mm)
-    − 3.298. Returns NaN if the unit is unknown or the diameter ≤ 0."""
-    factor = _MM_PER_UNIT.get((unit or "").strip().lower())
-    if factor is None or not np.isfinite(mean_diameter) or mean_diameter <= 0:
-        return float("nan")
-    d_mm = mean_diameter * factor
-    return float(-6.6439 * np.log2(d_mm) - 3.298)
-
-
 def _count_triple_junctions(labels: np.ndarray) -> int:
     """Number of triple (or higher) junctions — points where ≥3 grains
     meet. Found as 2×2 windows spanning ≥3 distinct grain labels."""
@@ -386,12 +368,14 @@ def grain_stats(
     labels: np.ndarray,
     img: np.ndarray,
     pixel_size: float = float("nan"),
+    pixel_area: float = float("nan"),
     min_area: int = 1,
     connectivity: int = 8,
 ) -> GrainStats:
     """Per-grain measurements + grain-boundary network — ported."""
     grains, lab, n = region_stats(
-        labels, img, min_area=min_area, pixel_size=pixel_size
+        labels, img, min_area=min_area, pixel_size=pixel_size,
+        pixel_area=pixel_area
     )
 
     boundary = np.zeros(lab.shape, dtype=bool)

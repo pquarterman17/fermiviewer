@@ -93,6 +93,7 @@ def propose_region(
     morph_radius: int = 1,
     tolerance: float = 2.0,
     pixel_size: float = float("nan"),
+    pixel_area: float = float("nan"),
     unit: str = "px",
 ) -> ProposedRegion:
     """Propose one region's polygon from a click/box seed on a 2D raster."""
@@ -121,8 +122,10 @@ def propose_region(
     region_mask = labels == chosen
 
     contour = trace_outer_contour(region_mask, tolerance=tolerance)
+    # the true pixel AREA, not a length squared — the two spatial scales
+    # can differ (`DataStruct.pixel_area`)
     calibrated = (
-        float(contour.area_px * pixel_size * pixel_size) if np.isfinite(pixel_size) else None
+        float(contour.area_px * pixel_area) if np.isfinite(pixel_area) else None
     )
     points = tuple(((col + c0) / w, (row + r0) / h) for row, col in contour.points)
     return ProposedRegion(

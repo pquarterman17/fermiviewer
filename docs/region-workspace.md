@@ -47,6 +47,109 @@ Project saves still do not echo geometry in `client_state`. The server carries
 the accepted workspace into every later `.fvp` save, matching results and
 unavailable-image preservation.
 
+## Converting to and from label maps
+
+A segmentation produces a label map; correcting one by hand means it has to
+become regions, be edited, and become a label map again. Two routes do that,
+and `calc/region_convert.py` is the conversion itself.
+
+`POST /api/region-sets/from-labels` traces a session label map into one region
+per distinct non-zero value. A label keeps its identity when its pixels do
+not touch — a disconnected label is one region with several parts, not several
+regions — and holes attach to the outline that encloses them. The set comes
+back in manifest form and is **not** added to the workspace: `/replace` stays
+the single path that writes the live section, so the caller merges the set into
+the document it already holds and publishes that.
+
+`POST /api/region-sets/to-labels` is the return trip. It rasterizes a named set
+into a label map sized to the given image and registers it as a derived session
+image, tagged `region_source` so an edited map can be told from a segmenter's
+own output.
+
+By default each region keeps the label value it was traced from, so the loop
+preserves a sparse map rather than renumbering it. That value rides in region
+`meta` under `label_value` rather than being parsed back out of the id, because
+an id is a name and a caller may rename a region. A region a user *drew* has no
+source value and takes the smallest positive number no traced region claims.
+`values` overrides all of this per region id, and must be a real JSON integer —
+`true`, `"2"` and `2.0` are refused rather than coerced.
+
+Label values are bounded by the registration format: a session map is float64,
+which represents integers exactly only up to 2^53, so anything larger is
+refused rather than silently rounded into a neighbouring label. **Both**
+directions enforce that one range — `from-labels` on the values it reads and
+`to-labels` on the map it produces — so every region the first hands out is one
+the second will take back. An integer-typed label map is bounded on the same
+values despite needing no conversion.
+
+Calling `from-labels` is an assertion that the image *is* a label map. Nothing
+in the values can confirm that: an ordinary uint8/uint16 micrograph is
+whole-valued and real, so it converts into one region per distinct intensity.
+The checks below reject what cannot be a label map, not what merely is not one,
+and the UI offering the conversion owns the assertion.
+
+Within that, the conversion is lossless in both directions and refuses rather
+than guesses anywhere it cannot be:
+
+* an image whose values are not whole numbers is not a label map, and tracing
+  one would return a region per grey level;
+* a label map must be real numeric or boolean. Complex is refused by dtype
+  rather than by value, because `1+1j` is finite and equals its own rounding —
+  only the cast to integers would notice, by discarding the imaginary part and
+  calling the pixel label 1;
+* two regions covering one pixel, sharing an id, or sharing a value are all
+  refused, because a label map cannot hold either claim and any rule for
+  picking a winner would be invisible in the array that came back;
+* a set bound to another image cannot be written into this one's labels
+  (ADR 0007 §6).
+
+The price of lossless is size: an outline keeps a vertex per boundary step,
+so 150 grains at 512×512 trace to roughly 32,000 vertices. `calc/contours.py`
+is the simplifying tracer for the UI's draw assist and is deliberately not
+what these routes use.
+
+## Previewing scope before running anything
+
+`POST /api/regions/preview` answers "how much will this analyse?" without
+analysing it. Give it an `image_id` and either a `region_ref`
+(`"set_id"` or `"set_id/region_id"`) or a frozen `roi` string; neither
+previews the whole image, which is what an unscoped run reads and is the
+thing worth comparing a region against.
+
+It reports `pixel_count` — the pixels the region *selects*, which is also the
+area in px² — alongside `image_pixels` and their `fraction`, the clamped
+1-based `rect` with its `bbox_pixels`, and `exact_mask`, which says whether
+the selection is narrower than that box.
+
+Those are two different answers on purpose. ADR 0007 §9 splits them: a
+reducing analysis (spectra, statistics) reads exactly the selected pixels,
+while a neighbourhood-based one — a watershed basin, a texture feature, a
+gradient — reads the bounding-box crop for context and only clips its
+*labels* to the selection. So `pixel_count` is what may carry a result and
+`bbox_pixels` is what informs it; neither alone is "what will be read". An irregular region is where
+those differ: a 10×20 rect with a 4×4 bite is 184 pixels inside a 200-pixel
+box, and a preview showing only the box would overstate the work by the size
+of the hole.
+
+`area_calibrated` is the physical area, or **null** when the image has no
+pixel size — never the pixel count wearing an area's name, since the same
+number would silently mean px² or nm². `unit` is the *length* unit, matching
+`/regions/propose`, so the area is in `unit²`.
+
+The area is `n × DataStruct.pixel_area`, which multiplies the two spatial
+scales rather than squaring one, so it is correct on an anisotropic scan —
+0.5 nm rows against 2.0 nm columns give 1 nm² per pixel, where the squared
+form said 4. It is absent unless **both** axes are calibrated in the **same**
+unit, since nm × µm is a number in neither. Every area in the tree comes from
+the same property, so the preview and the analyses it previews cannot
+disagree.
+
+The preview resolves through the same `resolve_region` the analyses use, so
+it inherits their refusals exactly: an empty selection, two scopes at once,
+and a set drawn on another image are all rejected here as they would be at
+run time. That is deliberate — a preview that disagreed with the run would
+be worse than no preview.
+
 ## Selection and visibility
 
 Selection and visibility are presentation, not scientific data. They persist
