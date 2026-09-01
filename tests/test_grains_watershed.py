@@ -12,11 +12,11 @@ import numpy as np
 import pytest
 from skimage.filters import gaussian
 
+from fermiviewer.calc.grain_size import astm_grain_size_number
 from fermiviewer.calc.grains import (
     _normalize01,
     _robust_normalize01,
     _sanitize,
-    astm_grain_size_number,
     enforce_connected_grains,
     grain_stats,
     segment_watershed,
@@ -366,3 +366,50 @@ def test_orientation_is_measured_from_the_row_axis() -> None:
             np.degrees(np.asarray(shape_descriptors(ellipse(from_col)).orientation_rad)[0])
         )
         assert got == pytest.approx(90.0 - from_col, abs=0.1), from_col
+
+
+def test_astm_is_counted_from_density_not_inferred_from_a_mean_diameter() -> None:
+    """E112's planimetric method is grains per unit AREA, and both numbers
+    are in hand — so `grain_report` counts instead of going through a mean
+    equivalent diameter.
+
+    The two agree only when every grain is the same size. Once they vary,
+    `4/(pi*mean(d)**2)` exceeds the true `1/mean(area)` by Jensen's
+    inequality, biasing G upward — reporting the microstructure as finer
+    than it is. This builds grains of two deliberately different sizes so
+    the two routes MUST disagree, and asserts the report follows the
+    counted one.
+    """
+    import numpy as np
+
+    from fermiviewer.calc.grain_report import grain_report
+    from fermiviewer.calc.grain_size import astm_grain_size_from_density
+
+    # four 20x20 grains and four 60x60 grains, tiled with no gaps
+    labels = np.zeros((120, 240), dtype=np.int64)
+    nxt = 1
+    for r in range(0, 80, 20):
+        for c in range(0, 40, 20):
+            labels[r : r + 20, c : c + 20] = nxt
+            nxt += 1
+    for r in range(0, 120, 60):
+        for c in range(60, 180, 60):
+            labels[r : r + 60, c : c + 60] = nxt
+            nxt += 1
+
+    px_um, px_area_um2 = 1.0, 1.0
+    report = grain_report(
+        labels, labels.astype(np.float64), pixel_size=px_um,
+        pixel_area=px_area_um2, unit="um",
+    )
+
+    total_um2 = float(report.area_px.sum()) * px_area_um2
+    counted = astm_grain_size_from_density(
+        report.n_grains / (total_um2 * 1e-6)          # um^2 -> mm^2
+    )
+    assumed = astm_grain_size_number(float(report.diameter_calibrated.mean()), "um")
+
+    assert report.astm_grain_size == pytest.approx(counted, abs=1e-9)
+    assert assumed > counted + 0.1, (
+        "with grains of two sizes the mean-diameter route must read finer"
+    )

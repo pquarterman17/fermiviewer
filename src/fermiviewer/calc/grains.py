@@ -29,7 +29,6 @@ __all__ = [
     "GrainSegmentation",
     "GrainStats",
     "WatershedSegmentation",
-    "astm_grain_size_number",
     "enforce_connected_grains",
     "extract_grain_features",
     "grain_stats",
@@ -37,13 +36,6 @@ __all__ = [
     "segment_watershed",
     "split_grain",
 ]
-
-# physical-length → millimetres (for the ASTM E112 grain-size number)
-_MM_PER_UNIT: dict[str, float] = {
-    "m": 1e3, "cm": 10.0, "mm": 1.0, "um": 1e-3, "µm": 1e-3,
-    "nm": 1e-6, "a": 1e-7, "å": 1e-7, "angstrom": 1e-7, "pm": 1e-9,
-}
-
 
 def extract_grain_features(
     img: np.ndarray,
@@ -327,50 +319,6 @@ def enforce_connected_grains(
     leave one label spanning disconnected pieces (→ phantom stats)."""
     out, _ = _relabel_connected(labels, min_area)
     return out
-
-
-#: ASTM E112-13's planimetric constant: G = 3.321928·log10(N_A) − 2.954,
-#: with N_A the number of grains per SQUARE MILLIMETRE. Everything below
-#: is derived from this one published relation rather than transcribed,
-#: so the constants can be checked instead of trusted.
-_E112_SLOPE = 3.321928
-_E112_OFFSET = -2.954
-
-
-def astm_grain_size_number(mean_diameter: float, unit: str) -> float:
-    """ASTM E112-13 grain-size number G from the mean equivalent grain
-    diameter, in the image's calibrated `unit`. NaN for an unknown unit
-    or a diameter ≤ 0.
-
-    Derived, not transcribed. E112's planimetric relation is
-    ``G = 3.321928·log10(N_A) − 2.954`` for N_A grains per mm². An
-    equivalent circular diameter D covers ``π·D²/4``, so
-    ``N_A = 4/(π·D²)`` and
-
-        G = 3.321928·log10(4/(π·D²)) − 2.954
-          = −6.643856·log10(D_mm) + 3.321928·log10(4/π) − 2.954
-          = −6.643856·log10(D_mm) − 2.6056
-
-    **This was wrong until 2026-09-01** and the error is worth naming,
-    because the shape of it recurs: the slope ``6.643856`` is exactly
-    ``2/log10(2)``, a coefficient CONSTRUCTED for log10, and it was being
-    applied to ``log2``. That makes the slope steeper by 1/log10(2) =
-    3.3219, so 10 µm grains reported G = 40.8 where E112 gives 10.7 —
-    and real grain-size numbers only run from about 00 to 14, so every
-    value the function returned for an ordinary micrograph was outside
-    the scale it claims to be on.
-
-    Its test could not catch it: the test recomputed the implementation's
-    own expression and asserted the two matched, which is true of any
-    formula whatsoever. The replacement checks published G/diameter pairs
-    from E112's own table.
-    """
-    factor = _MM_PER_UNIT.get((unit or "").strip().lower())
-    if factor is None or not np.isfinite(mean_diameter) or mean_diameter <= 0:
-        return float("nan")
-    d_mm = mean_diameter * factor
-    grains_per_mm2 = 4.0 / (np.pi * d_mm * d_mm)
-    return float(_E112_SLOPE * np.log10(grains_per_mm2) + _E112_OFFSET)
 
 
 def _count_triple_junctions(labels: np.ndarray) -> int:

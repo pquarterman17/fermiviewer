@@ -776,6 +776,18 @@ in EDS/EELS, imaging statistics, and structural analysis.
 > true of any formula whatsoever. That is the third tautological or
 > false-passing test found in this branch.
 >
+> **A second, smaller bias in the same function, found while reviewing the
+> first fix.** `grain_report` reached G through the mean equivalent
+> DIAMETER, which assumes every grain is the same size: `4/(π·D̄²)`
+> exceeds the true `1/mean(area)` by Jensen's inequality whenever they
+> vary, so G came out high and the microstructure read finer than it was —
+> +0.06 at a coefficient of variation of 0.2, +0.22 at 0.4, +0.44 at 0.6,
+> on a scale quoted to a tenth. E112's planimetric method is grains per
+> unit AREA and both numbers were already in hand, so it counts now
+> instead of inferring. `astm_grain_size_from_density` is the primitive;
+> the diameter form stays for direct callers and documents what it
+> assumes.
+>
 > **Two claims corrected where the code was right and the comment was
 > not.** `trace_psd`'s Parseval note said `sum(power)` gives the variance
 > of the WINDOWED trace; it is window-compensated and recovers the
