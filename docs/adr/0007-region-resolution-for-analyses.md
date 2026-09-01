@@ -299,6 +299,17 @@ preview returns `area_calibrated: null` and reports the count separately,
 per ADR 0004's rule that an absent quantity is absent (see also §10 — the
 same refusal to emit a number whose meaning has quietly changed).
 
+**The area it does report assumes square pixels**, `n * pixel_size**2`
+from the second spatial axis, which is 4x wrong on a 0.5 nm x 2.0 nm
+scan. That is the whole tree's assumption — `region_propose` and
+`region_stats` compute it the same way — so the preview agrees with the
+analyses it previews, which is the property §12 exists to protect.
+Correcting it here alone would break that agreement in the name of
+accuracy and leave the user with two different areas for one region.
+Per-axis calibration is roadmap item 5's explicit "do not assume square"
+box; until then the assumption is documented at every place a user sees
+the number rather than left for them to discover.
+
 ## Consequences
 
 * Each 4C wave adopts a region by declaring a `region` param and calling

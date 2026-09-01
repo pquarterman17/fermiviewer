@@ -112,7 +112,7 @@ def test_an_irregular_region_reports_a_scope_narrower_than_its_box(client) -> No
     preview = _preview(client, image_id, region_ref="picked")
     assert preview["pixel_count"] == 184
     assert preview["bbox_pixels"] == 200
-    assert preview["is_exact"] is True
+    assert preview["exact_mask"] is True
     # The region's own bounds are 0-based inclusive (`calc/regions.py`);
     # `rect` is `calc.roi.RectRoi`, 1-based inclusive. So [5,5,14,24]
     # becomes (6,6,15,25) — asserted rather than copied from the input,
@@ -126,7 +126,7 @@ def test_a_plain_rectangle_is_not_exact_and_fills_its_box(client) -> None:
     reporting True here would tell a reader a hole exists where none
     does."""
     preview = _preview(client, _image(), roi="3,4,12,20")
-    assert preview["is_exact"] is False
+    assert preview["exact_mask"] is False
     assert preview["pixel_count"] == preview["bbox_pixels"] == 10 * 17
 
 
@@ -214,6 +214,11 @@ def test_two_scopes_at_once_is_refused(client) -> None:
         json={"image_id": image_id, "region_ref": "picked", "roi": "1,1,5,5"},
     )
     assert r.status_code == 422
+    # The REASON is asserted, not just the status. A malformed roi, an
+    # unresolvable reference and this all return 422, so a bare status
+    # check passes for the wrong reason — which is how a test stops
+    # testing what its name says.
+    assert "not both" in r.json()["detail"]
 
 
 def test_a_set_drawn_on_another_image_is_refused(client) -> None:
@@ -242,9 +247,11 @@ def test_unknown_image_and_unknown_reference(client) -> None:
     assert client.post(
         "/api/regions/preview", json={"image_id": "nope", "region_ref": "picked"}
     ).status_code == 404
-    assert client.post(
+    unknown = client.post(
         "/api/regions/preview", json={"image_id": _image(), "region_ref": "ghost"}
-    ).status_code == 422
+    )
+    assert unknown.status_code == 422
+    assert "unknown region set 'ghost'" in unknown.json()["detail"]
 
 
 def test_the_preview_carries_the_resolver_s_own_provenance(client) -> None:
@@ -279,3 +286,110 @@ def test_every_scope_says_which_kind_it_is(client, kw: dict, source: str) -> Non
     prov = _preview(client, _image(), **kw)["provenance"]
     assert prov["source"] == source
     assert prov["exact_mask"] is False
+
+
+# ── a set is a union, and that is the number reported ────────────────
+
+
+def _two_regions(a: list[int], b: list[int]) -> dict:
+    return {
+        "schema": 1,
+        "classes": [],
+        "sets": [
+            {
+                "id": "picked", "name": None, "image_id": None, "meta": {},
+                "regions": [
+                    {
+                        "id": f"r{i}", "name": None, "region_class": None, "meta": {},
+                        "parts": [
+                            {"mode": "include", "shape": {"kind": "rect", "bounds": bounds}}
+                        ],
+                    }
+                    for i, bounds in enumerate((a, b))
+                ],
+            }
+        ],
+    }
+
+
+def test_overlapping_regions_are_counted_once(client) -> None:
+    """ADR 0007 §7 makes a whole-set reference a UNION, and the preview
+    reports the union — 175 pixels for two overlapping 10x10s, not the
+    200 a sum would give. Getting this wrong would overstate the work by
+    the overlap, and the summary exists to be trusted on exactly this."""
+    assert client.post(
+        "/api/region-sets/replace", json=_two_regions([0, 0, 9, 9], [5, 5, 14, 14])
+    ).status_code == 200
+    preview = _preview(client, _image(), region_ref="picked")
+    assert preview["pixel_count"] == 175
+
+
+def test_disjoint_regions_show_a_box_far_larger_than_the_scope(client) -> None:
+    """The clearest case for reporting both numbers: two 4x4 squares at
+    opposite corners are 32 pixels inside a 196-pixel bounding box. A
+    preview showing only the box would overstate the work six-fold."""
+    assert client.post(
+        "/api/region-sets/replace", json=_two_regions([0, 0, 3, 3], [10, 10, 13, 13])
+    ).status_code == 200
+    preview = _preview(client, _image(), region_ref="picked")
+    assert preview["pixel_count"] == 32
+    assert preview["bbox_pixels"] == 196
+    assert preview["exact_mask"] is True
+    assert preview["provenance"]["region_ids"] == ["r0", "r1"]
+
+
+def test_a_single_region_inside_a_set_scopes_to_that_region(client) -> None:
+    """`set/region` selects one region, not the set's union — the other
+    half of §7, and the reference form a UI uses when a user clicks one
+    row of the region table."""
+    assert client.post(
+        "/api/region-sets/replace", json=_two_regions([0, 0, 9, 9], [20, 20, 29, 29])
+    ).status_code == 200
+    whole = _preview(client, _image(), region_ref="picked")
+    one = _preview(client, _image(), region_ref="picked/r0")
+    assert whole["pixel_count"] == 200
+    assert one["pixel_count"] == 100
+    assert one["provenance"]["region_ids"] == ["r0"]
+
+
+def test_a_malformed_roi_string_is_refused(client) -> None:
+    """The roi is a frozen `"r1,c1,r2,c2"` string, parsed by the resolver.
+    A caller sending a rect tuple or a short string gets a 422 rather
+    than a 500 from inside the parser."""
+    image_id = _image()
+    for bad in ("not,a,rect", "1,2,3", "1,2,3,4,5", " "):
+        r = client.post(
+            "/api/regions/preview", json={"image_id": image_id, "roi": bad}
+        )
+        assert r.status_code == 422, bad
+
+    # Only the EMPTY string means "no roi given". A whitespace one does
+    # not: the resolver tests truthiness, not `.strip()`, so " " is a
+    # malformed rect rather than an absent one — asserted because the two
+    # look alike to a caller building the string by concatenation.
+    assert client.post(
+        "/api/regions/preview", json={"image_id": image_id, "roi": ""}
+    ).json()["pixel_count"] == 40 * 60
+
+
+def test_a_spectrum_is_refused_with_a_message_about_previewing(client) -> None:
+    """The shared `_raster` helper hard-coded "to segment", so previewing
+    a 1-D spectrum reported the failure of an operation the caller never
+    invoked. Both callers are asserted here, because the fix was to give
+    the helper the caller's purpose and a helper that ignored it would
+    look identical from either side alone.
+    """
+    ds = DataStruct(
+        data=np.arange(50.0), kind=DataKind.SPECTRUM, axes=(AxisCal(),), metadata={}
+    )
+    spec_id = store.add_parsed(ds, "spec.msa")
+
+    preview = client.post("/api/regions/preview", json={"image_id": spec_id})
+    assert preview.status_code == 400
+    assert preview.json()["detail"] == "1D spectra have no raster to preview a region over"
+
+    propose = client.post(
+        "/api/regions/propose", json={"image_id": spec_id, "seed": [0.5, 0.5]}
+    )
+    assert propose.status_code == 400
+    assert propose.json()["detail"] == "1D spectra have no raster to segment"

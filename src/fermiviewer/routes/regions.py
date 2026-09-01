@@ -56,11 +56,17 @@ class ProposeRegionResponse(BaseModel):
     unit: str
 
 
-def _raster(ds: DataStruct) -> np.ndarray:
+def _raster(ds: DataStruct, purpose: str) -> np.ndarray:
+    """The 2-D raster, or a 400 naming what the CALLER was doing.
+
+    `purpose` exists because the message used to say "to segment" for
+    every caller, so previewing a 1-D spectrum reported a failure of an
+    operation the user had not invoked.
+    """
     try:
         return raster_of(ds)
     except NoRasterError:
-        raise HTTPException(400, "1D spectra have no raster to segment") from None
+        raise HTTPException(400, f"1D spectra have no raster {purpose}") from None
 
 
 @router.post("/regions/propose")
@@ -69,7 +75,7 @@ def propose_region_route(req: ProposeRegionRequest) -> ProposeRegionResponse:
         ds = store.get(req.image_id)
     except UnknownImageError:
         raise HTTPException(404, f"unknown image id: {req.image_id}") from None
-    raster = _raster(ds)
+    raster = _raster(ds, "to segment")
 
     # Segmentation params (n_classes, morph_radius, tolerance) are all
     # client-supplied; every stage validates its own args (multi_otsu on
@@ -132,10 +138,27 @@ class RegionPreviewResponse(BaseModel):
     #: Whether the selection is narrower than its bounding box. False for
     #: a plain rectangle, and the signal that `bbox_pixels` overstates the
     #: scope — the honest version of "this region has holes".
-    is_exact: bool
+    #:
+    #: Named `exact_mask` because `provenance` already carries that key
+    #: with this exact value. Repeating it at the top level is deliberate
+    #: — a headline number should not have to be dug out of a provenance
+    #: blob — but repeating it under a SECOND name would be one concept
+    #: with two spellings in a single response, which is how the two
+    #: start to disagree.
+    exact_mask: bool
     #: Physical area, or ABSENT when the image has no pixel size. Null
     #: rather than the pixel count, because an area that silently changes
     #: units is worse than one that admits it is unknown (ADR 0004).
+    #:
+    #: It ASSUMES SQUARE PIXELS — `n * pixel_size**2`, where `pixel_size`
+    #: is `DataStruct.pixel_cal`, the second spatial axis. On a scan with
+    #: 0.5 nm rows and 2.0 nm columns that is 4x wrong. This matches every
+    #: other consumer in the tree (`region_propose`, `region_stats`), so
+    #: it is the app's assumption rather than this route's — but a
+    #: user-facing area is where an unstated assumption does the most
+    #: damage, so it is stated. Per-axis calibration is roadmap item 5's
+    #: explicit "do not assume square" box, and fixing it here alone would
+    #: make this endpoint disagree with the analyses it previews.
     area_calibrated: float | None
     #: The LENGTH unit, matching `/regions/propose` — area is in `unit^2`.
     unit: str
@@ -161,7 +184,7 @@ def preview_region_route(req: RegionPreviewRequest) -> RegionPreviewResponse:
         ds = store.get(req.image_id)
     except UnknownImageError:
         raise HTTPException(404, f"unknown image id: {req.image_id}") from None
-    raster = _raster(ds)
+    raster = _raster(ds, "to preview a region over")
     height, width = int(raster.shape[0]), int(raster.shape[1])
 
     with value_error_as_422():
@@ -182,7 +205,7 @@ def preview_region_route(req: RegionPreviewRequest) -> RegionPreviewResponse:
         fraction=resolved.pixel_count / image_pixels,
         rect=(r1, c1, r2, c2),
         bbox_pixels=(r2 - r1 + 1) * (c2 - c1 + 1),
-        is_exact=resolved.is_exact,
+        exact_mask=resolved.is_exact,
         area_calibrated=(
             float(resolved.pixel_count) * px * px if np.isfinite(px) else None
         ),

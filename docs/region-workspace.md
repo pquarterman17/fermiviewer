@@ -129,6 +129,13 @@ pixel size — never the pixel count wearing an area's name, since the same
 number would silently mean px² or nm². `unit` is the *length* unit, matching
 `/regions/propose`, so the area is in `unit²`.
 
+That area **assumes square pixels** (`n × pixel_size²`, from the second
+spatial axis). On an anisotropic scan — 0.5 nm rows against 2.0 nm columns —
+it is four times too large. Every consumer in the tree makes the same
+assumption, so the preview agrees with the analyses it previews; correcting
+it is roadmap item 5's per-axis calibration work, not something this endpoint
+should do alone.
+
 The preview resolves through the same `resolve_region` the analyses use, so
 it inherits their refusals exactly: an empty selection, two scopes at once,
 and a set drawn on another image are all rejected here as they would be at
