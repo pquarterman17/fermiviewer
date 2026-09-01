@@ -108,6 +108,33 @@ so 150 grains at 512×512 trace to roughly 32,000 vertices. `calc/contours.py`
 is the simplifying tracer for the UI's draw assist and is deliberately not
 what these routes use.
 
+## Previewing scope before running anything
+
+`POST /api/regions/preview` answers "how much will this analyse?" without
+analysing it. Give it an `image_id` and either a `region_ref`
+(`"set_id"` or `"set_id/region_id"`) or a frozen `roi` string; neither
+previews the whole image, which is what an unscoped run reads and is the
+thing worth comparing a region against.
+
+It reports `pixel_count` — the pixels an analysis will actually read, which
+is also the area in px² — alongside `image_pixels` and their `fraction`, the
+clamped 1-based `rect` with its `bbox_pixels`, and `is_exact`, which says
+whether the selection is narrower than that box. An irregular region is where
+those differ: a 10×20 rect with a 4×4 bite is 184 pixels inside a 200-pixel
+box, and a preview showing only the box would overstate the work by the size
+of the hole.
+
+`area_calibrated` is the physical area, or **null** when the image has no
+pixel size — never the pixel count wearing an area's name, since the same
+number would silently mean px² or nm². `unit` is the *length* unit, matching
+`/regions/propose`, so the area is in `unit²`.
+
+The preview resolves through the same `resolve_region` the analyses use, so
+it inherits their refusals exactly: an empty selection, two scopes at once,
+and a set drawn on another image are all rejected here as they would be at
+run time. That is deliberate — a preview that disagreed with the run would
+be worse than no preview.
+
 ## Selection and visibility
 
 Selection and visibility are presentation, not scientific data. They persist

@@ -528,6 +528,8 @@ consume a mask.
       `/api/region-sets` conversion routes).
 - [ ] Add clear mask previews and pixel-count/physical-area summaries before
       expensive execution.
+      **Summaries shipped 2026-09-01** (`POST /api/regions/preview`); the
+      previews themselves are 4D's UI half and remain Codex/sol's.
 
 **Done when:** the same irregular specimen region produces consistent results
 in EDS/EELS, imaging statistics, and structural analysis.
@@ -697,6 +699,40 @@ in EDS/EELS, imaging statistics, and structural analysis.
 > route checks the values ARE integers before typing them as integers,
 > and refuses a spectrum image by KIND — its raster is a sum over energy,
 > which can be whole-numbered and would have traced a region per count.
+
+> **4D backend half completed 2026-09-01.** `POST /api/regions/preview`
+> reports what an analysis WOULD read — pixel count, fraction of the
+> image, clamped bounding box, whether the selection is narrower than
+> that box, and physical area — without reading a pixel value. The box
+> stays unchecked because the previews themselves, the conversion-flow
+> UI, the consistency audit and the accessibility/interaction QA are
+> 4D's Codex/sol half and are untouched.
+>
+> The design is one line: a preview RESOLVES, it does not re-derive. It
+> calls the same `resolve_region` the analyses call, so it inherits their
+> clamping, image binding and refusals, and its test asserts its
+> `pixel_count` equals the `n_pixels` `/measure/roi` reports over the same
+> reference rather than a constant of its own. A preview computed by a
+> second code path is a preview of something else, and a scope summary
+> that disagrees with the run spends the user's trust to tell them the
+> wrong number (ADR 0007 §12).
+>
+> Two decisions worth naming. An uncalibrated area is reported ABSENT,
+> not as the pixel count: `region_stats` returns the count in its `area`
+> field, which is defensible inside a bundle whose caller knows the unit
+> and is not defensible in a user-facing summary, where the same number
+> would silently mean px² or nm². And the request field is `region_ref`,
+> not `region`, because that is already the wire name for a symbolic
+> reference at `/measure/roi`, in batch steps and in recipe steps, while
+> `region` on the wire means an op's inline geometry — a third spelling
+> of one idea is how a caller learns to guess.
+>
+> **For the UI half:** the preview reports the RASTERIZED pixel count,
+> under `calc/region_mask`'s centre-sampling convention. A polygon drawn
+> in SVG and the mask an analysis uses differ at the boundary, so a
+> preview that outlines the polygon while the summary counts the raster
+> is showing two different regions. Whether that gap matters at display
+> resolution is a UI judgement, but it is a real one.
 
 ### 5. Calibration profiles and quantitative standards
 

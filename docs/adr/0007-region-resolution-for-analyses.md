@@ -269,6 +269,36 @@ caller sees immediately, not 200 identical per-image errors later), while
 image binding is deliberately checked per image, because a set bound to
 one input of many is a legitimate recipe whose other inputs skip.
 
+### 12. A preview resolves; it does not re-derive
+
+Item 4D asks for the selected pixel count and physical area *before*
+expensive execution. `POST /api/regions/preview` answers by calling
+`resolve_region` — the same function, the same clamping, the same image
+binding, the same refusals — and then reporting the scope instead of
+reducing over it.
+
+That is the whole design. A preview computed by a second code path is a
+preview of something else, and a scope summary that disagrees with the
+run is worse than none: it spends the user's trust to tell them the wrong
+number. So the preview owns no geometry logic at all, and its test
+asserts its `pixel_count` equals the `n_pixels` that `/measure/roi`
+reports over the same reference, rather than a constant of its own.
+
+It reports no measurement of the specimen and reads no pixel VALUE — only
+the mask. That is the checkable line that keeps it infrastructure rather
+than an operation: there is no science to register and nothing for a
+recipe to reproduce. The physical area it reports measures the region the
+user drew, not the data underneath it.
+
+**An uncalibrated area is absent, not a pixel count.** `region_stats`
+returns `n_pixels` in its `area` field when the image has no pixel size,
+which is defensible inside a statistics bundle whose caller knows the
+unit. Repeating it in a user-facing summary would not be: the same number
+would mean px² or nm² depending on state the reader cannot see. The
+preview returns `area_calibrated: null` and reports the count separately,
+per ADR 0004's rule that an absent quantity is absent (see also §10 — the
+same refusal to emit a number whose meaning has quietly changed).
+
 ## Consequences
 
 * Each 4C wave adopts a region by declaring a `region` param and calling
