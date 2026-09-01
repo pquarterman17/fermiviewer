@@ -284,11 +284,29 @@ number. So the preview owns no geometry logic at all, and its test
 asserts its `pixel_count` equals the `n_pixels` that `/measure/roi`
 reports over the same reference, rather than a constant of its own.
 
-It reports no measurement of the specimen and reads no pixel VALUE — only
-the mask. That is the checkable line that keeps it infrastructure rather
-than an operation: there is no science to register and nothing for a
-recipe to reproduce. The physical area it reports measures the region the
-user drew, not the data underneath it.
+It reports no measurement of the specimen: no pixel VALUE enters the
+answer, only the mask and the grid. That is the checkable line that keeps
+it infrastructure rather than an operation — no science to register and
+nothing for a recipe to reproduce — and the area it reports measures the
+region the user drew, not the data underneath it.
+
+The first version of this said it "reads no pixel value", which was
+false: it took the grid from `raster_of`, which copies a plain image to
+float64, reduces RGB to luminance, and sums a spectrum image over its
+whole cube. A 4 MB image cost an 8 MB copy per call and a 4 GB spectrum
+image a full pass — in the endpoint whose justification is being cheap
+BEFORE that work. It reads `.shape` now, and a `tracemalloc` test pins
+the difference (8.468 MB against 0.083 MB) so the claim cannot quietly
+become false again.
+
+**It reports two numbers because §9 gives two answers.** `pixel_count` is
+the selection — exactly what a reducing analysis reads, and what any
+analysis may produce a result for — while `bbox_pixels` is the
+bounding-box crop a neighbourhood-based analysis reads for context before
+clipping its labels. An earlier draft called the first "the pixels the
+analysis will actually read", which is true of a spectrum sum and false
+of a watershed. There is no single honest number, so the preview does not
+invent one.
 
 **An uncalibrated area is absent, not a pixel count.** `region_stats`
 returns `n_pixels` in its `area` field when the image has no pixel size,

@@ -136,6 +136,11 @@ def test_no_scope_at_all_previews_the_whole_image(client) -> None:
     preview = _preview(client, _image())
     assert preview["pixel_count"] == preview["image_pixels"] == 40 * 60
     assert preview["fraction"] == 1.0
+    # The RECT, not just the count: 40*60 and 60*40 are the same product,
+    # so a transposed grid is invisible to every other assertion here —
+    # and to any region small enough to fit both orientations. This is
+    # the one place the row/col order is pinned.
+    assert preview["rect"] == [1, 1, 40, 60]
 
 
 def test_the_fraction_is_of_the_whole_image(client) -> None:
@@ -393,3 +398,103 @@ def test_a_spectrum_is_refused_with_a_message_about_previewing(client) -> None:
     )
     assert propose.status_code == 400
     assert propose.json()["detail"] == "1D spectra have no raster to segment"
+
+
+# ── cheap, as the name promises ──────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("kind", "shape"),
+    [
+        (DataKind.IMAGE, (17, 23)),
+        (DataKind.RGB_IMAGE, (17, 23, 3)),
+        (DataKind.SPECTRUM_IMAGE, (17, 23, 8)),
+    ],
+)
+def test_the_grid_matches_what_the_raster_would_have_said(
+    client, kind: DataKind, shape: tuple[int, ...]
+) -> None:
+    """`_spatial_shape` replaces `raster_of` for the grid, so the two must
+    agree for every raster-bearing kind — otherwise the preview would
+    scope against a different grid than the analysis it previews. Odd,
+    unequal dimensions so a transposition cannot pass."""
+    axes = tuple(AxisCal() for _ in range(2 if kind is DataKind.RGB_IMAGE else len(shape)))
+    data = np.zeros(shape, dtype=np.uint8 if kind is DataKind.RGB_IMAGE else np.float64)
+    ds = DataStruct(data=data, kind=kind, axes=axes, metadata={})
+    image_id = store.add_parsed(ds, f"{kind.value}.dm4")
+
+    from fermiviewer.calc.raster import raster_of
+
+    assert raster_of(ds).shape == (17, 23), "the grid the analyses use"
+    assert _preview(client, image_id)["image_pixels"] == 17 * 23
+
+
+def test_previewing_does_not_copy_the_image(client) -> None:
+    """The claim the endpoint's name makes: cheap BEFORE expensive work.
+
+    `raster_of` was called only for `.shape`, and it does real work for
+    every kind first — a plain IMAGE is copied to float64, RGB is reduced
+    to luminance, a SPECTRUM_IMAGE is summed over its whole cube. So a
+    preview cost a full pass over the data it was supposed to precede,
+    and "this route reads no pixel value" was false when I wrote it.
+
+    A plain IMAGE is the case measured, deliberately. My first version of
+    this test used a spectrum image and would have measured nothing: that
+    path READS the cube but allocates only the small summed output, so
+    its cost is time rather than memory. The float64 copy is where the
+    cost is visible to `tracemalloc`.
+
+    The bound sits between two measurements on this 4.2 MB float32 image:
+    8.468 MB through `raster_of` (the copy, plus the original) against
+    0.083 MB through `.shape`. 1 MB is ~12x the real peak, so a slower
+    machine or a different numpy has room, and ~1/8 of the regression, so
+    the regression cannot hide under it. The first call is made and
+    discarded because one-time framework setup would otherwise be counted
+    as the request's cost.
+    """
+    import tracemalloc
+
+    data = np.zeros((1024, 1024), dtype=np.float32)
+    ds = DataStruct(
+        data=data, kind=DataKind.IMAGE, axes=(AxisCal(), AxisCal()), metadata={}
+    )
+    image_id = store.add_parsed(ds, "big.tif")
+    assert data.nbytes == 4194304
+
+    _preview(client, image_id, roi="1,1,10,10")  # warm the request path
+    tracemalloc.start()
+    try:
+        assert _preview(client, image_id, roi="1,1,10,10")["pixel_count"] == 100
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    assert peak < 1_000_000, f"peak {peak} suggests the image was copied"
+
+
+def test_both_of_section_nine_s_answers_are_reported(client) -> None:
+    """ADR 0007 §9 gives two different answers for an irregular region,
+    and the preview must carry both rather than pick one.
+
+    A reducing analysis reads the SELECTION; a neighbourhood-based one
+    reads the bounding-box CROP and clips its labels to the selection. So
+    `pixel_count` is what may carry a result, `bbox_pixels` is what
+    informs it, and `exact_mask` says whether they differ at all.
+
+    Pinned as a relationship, not as constants: whenever the mask is
+    exact the two must diverge, and whenever it is not they must agree.
+    A response reporting one number for "what will be read" would fail
+    the first half.
+    """
+    image_id = _image()
+    _install(client)
+    irregular = _preview(client, image_id, region_ref="picked")
+    assert irregular["exact_mask"] is True
+    assert irregular["pixel_count"] < irregular["bbox_pixels"], (
+        "a hole means the analysis reads wider than it labels"
+    )
+
+    plain = _preview(client, image_id, roi="3,4,12,20")
+    assert plain["exact_mask"] is False
+    assert plain["pixel_count"] == plain["bbox_pixels"], (
+        "a rectangle is its own context, so §9's two answers coincide"
+    )

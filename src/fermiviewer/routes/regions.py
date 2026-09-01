@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 
 from fermiviewer.calc.raster import NoRasterError, raster_of
 from fermiviewer.calc.region_propose import propose_region
-from fermiviewer.datastruct import DataStruct
+from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.project_session import project
 from fermiviewer.region_resolve import resolve_region
 from fermiviewer.routes._arrays import value_error_as_422
@@ -123,9 +123,18 @@ class RegionPreviewRequest(BaseModel):
 
 
 class RegionPreviewResponse(BaseModel):
-    #: Pixels the analysis will actually read. This IS the area in px^2 —
-    #: a pixel is one square pixel — so no separate `area_px` is reported;
-    #: two names for one number is how they start to disagree.
+    #: Pixels the region SELECTS — not, in general, the pixels an
+    #: analysis reads. ADR 0007 §9 splits those: a reducing analysis
+    #: (spectra, statistics) reads exactly this set, but a
+    #: neighbourhood-based one (a watershed basin, a texture feature, a
+    #: gradient) reads the bounding-box crop for context and only CLIPS
+    #: its labels to this set. So `pixel_count` is what may carry a
+    #: result and `bbox_pixels` is what informs it, and between them the
+    #: two answers §9 gives are both here rather than conflated.
+    #:
+    #: This IS the area in px^2 — a pixel is one square pixel — so no
+    #: separate `area_px` is reported; two names for one number is how
+    #: they start to disagree.
     pixel_count: int
     image_pixels: int
     #: `pixel_count / image_pixels`, precomputed because "is this the
@@ -136,8 +145,9 @@ class RegionPreviewResponse(BaseModel):
     rect: tuple[int, int, int, int]
     bbox_pixels: int
     #: Whether the selection is narrower than its bounding box. False for
-    #: a plain rectangle, and the signal that `bbox_pixels` overstates the
-    #: scope — the honest version of "this region has holes".
+    #: a plain rectangle. When true, the two numbers above genuinely
+    #: differ, which is both "this region has holes" and — per §9 — "a
+    #: neighbourhood-based analysis will read wider than it labels".
     #:
     #: Named `exact_mask` because `provenance` already carries that key
     #: with this exact value. Repeating it at the top level is deliberate
@@ -165,6 +175,33 @@ class RegionPreviewResponse(BaseModel):
     provenance: dict[str, Any]
 
 
+def _spatial_shape(ds: DataStruct, purpose: str) -> tuple[int, int]:
+    """`(rows, cols)` of the image grid, WITHOUT reducing anything.
+
+    `_raster` would answer, and for every kind it answers by doing real
+    work first: a SPECTRUM_IMAGE is summed over its whole cube, an RGB
+    image is reduced to luminance, and a plain IMAGE is copied to float64.
+    A 4 GB spectrum image costs a full pass, and a 4096x4096 float32
+    image allocates 128 MB — all to learn two integers `.shape` already
+    holds.
+
+    In an endpoint whose entire justification is being cheap BEFORE
+    expensive work, that is the wrong way round, and it is also what made
+    "this route reads no pixel value" false when I wrote it: it read all
+    of them.
+
+    Every raster-bearing kind puts the spatial axes first — IMAGE
+    ``[H, W]``, RGB_IMAGE ``[H, W, 3]``, SPECTRUM_IMAGE ``[Ny, Nx, C]`` —
+    so the first two dimensions ARE the grid. A 1-D SPECTRUM has no grid
+    and gets the same 400 `_raster` would have raised, which is the
+    behaviour this preserves rather than the code path.
+    """
+    if ds.kind is DataKind.SPECTRUM:
+        raise HTTPException(400, f"1D spectra have no raster {purpose}")
+    rows, cols = ds.data.shape[:2]
+    return int(rows), int(cols)
+
+
 @router.post("/regions/preview")
 def preview_region_route(req: RegionPreviewRequest) -> RegionPreviewResponse:
     """How much a region selects, without running anything over it.
@@ -176,6 +213,13 @@ def preview_region_route(req: RegionPreviewRequest) -> RegionPreviewResponse:
     preview computed by a second code path would be a preview of
     something else, which is worse than no preview at all.
 
+    What it does NOT claim is a single number for "what will be read".
+    ADR 0007 §9 is explicit that there isn't one: labels are exact, but
+    context is the bounding box. Both numbers are reported for that
+    reason, and an earlier version of this docstring called `pixel_count`
+    "the pixels the analysis will actually read", which is true of a
+    spectrum sum and false of a watershed.
+
     A region selecting no pixels raises out of the resolver rather than
     returning zeros, matching every other consumer: nothing to analyse is
     an answer the caller must handle, not a measurement of zero.
@@ -184,8 +228,7 @@ def preview_region_route(req: RegionPreviewRequest) -> RegionPreviewResponse:
         ds = store.get(req.image_id)
     except UnknownImageError:
         raise HTTPException(404, f"unknown image id: {req.image_id}") from None
-    raster = _raster(ds, "to preview a region over")
-    height, width = int(raster.shape[0]), int(raster.shape[1])
+    height, width = _spatial_shape(ds, "to preview a region over")
 
     with value_error_as_422():
         resolved = resolve_region(

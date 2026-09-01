@@ -116,10 +116,17 @@ analysing it. Give it an `image_id` and either a `region_ref`
 previews the whole image, which is what an unscoped run reads and is the
 thing worth comparing a region against.
 
-It reports `pixel_count` — the pixels an analysis will actually read, which
-is also the area in px² — alongside `image_pixels` and their `fraction`, the
-clamped 1-based `rect` with its `bbox_pixels`, and `is_exact`, which says
-whether the selection is narrower than that box. An irregular region is where
+It reports `pixel_count` — the pixels the region *selects*, which is also the
+area in px² — alongside `image_pixels` and their `fraction`, the clamped
+1-based `rect` with its `bbox_pixels`, and `exact_mask`, which says whether
+the selection is narrower than that box.
+
+Those are two different answers on purpose. ADR 0007 §9 splits them: a
+reducing analysis (spectra, statistics) reads exactly the selected pixels,
+while a neighbourhood-based one — a watershed basin, a texture feature, a
+gradient — reads the bounding-box crop for context and only clips its
+*labels* to the selection. So `pixel_count` is what may carry a result and
+`bbox_pixels` is what informs it; neither alone is "what will be read". An irregular region is where
 those differ: a 10×20 rect with a 4×4 bite is 184 pixels inside a 200-pixel
 box, and a preview showing only the box would overstate the work by the size
 of the hole.
