@@ -61,6 +61,13 @@ router = APIRouter(prefix="/api")
 #: will take back.
 MAX_EXACT_LABEL = 2**53
 
+#: numpy dtype kinds a label map may have: bool, signed, unsigned, float.
+#: Everything else — complex above all, but object and the datetime kinds
+#: too — is refused by KIND rather than by value, because the value checks
+#: below cannot speak about them: they compare and round without
+#: complaint and only the final cast notices, too late and too quietly.
+_REAL_NUMERIC_KINDS = frozenset("biuf")
+
 Point = tuple[FiniteFloat, FiniteFloat]
 Bounds = tuple[FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat]
 
@@ -184,6 +191,20 @@ def _label_array(ds: DataStruct, image_id: str) -> np.ndarray:
     # 2-D needs no check of its own: `DataStruct` refuses to hold an
     # IMAGE that is not, so the kind above has already settled it.
     array = np.asarray(ds.data)
+    if array.dtype.kind not in _REAL_NUMERIC_KINDS:
+        # Complex is the case with teeth: `DataStruct` permits a complex
+        # IMAGE, and 1+1j passes BOTH checks below — `isfinite` is true of
+        # a complex whose parts are finite, and `rint` rounds each part,
+        # so the value equals its own rounding. It then reaches the cast,
+        # which discards the imaginary component and calls it label 1.
+        # Under this repo's warnings-as-errors that is a `ComplexWarning`
+        # and a 500; in production it is silent, and a complex micrograph
+        # comes back as a segmentation of its real part.
+        raise HTTPException(
+            422,
+            f"image {image_id!r} has dtype {array.dtype}, which is not a "
+            "label map: a label is a real whole number",
+        )
     if not np.issubdtype(array.dtype, np.integer) and (
         not np.all(np.isfinite(array)) or not np.array_equal(array, np.rint(array))
     ):

@@ -665,3 +665,61 @@ def test_a_hugely_negative_value_is_stopped_before_the_cast(client) -> None:
     )
     assert r.status_code == 422
     assert "supported range" in r.json()["detail"]
+
+
+def test_a_complex_image_is_refused_by_dtype_and_warns_about_nothing(client) -> None:
+    """`DataStruct` permits a complex IMAGE, and 1+1j passes both value
+    checks: `isfinite` is true of a complex whose parts are finite, and
+    `rint` rounds each part so the value equals its own rounding. Only
+    the cast notices — by discarding the imaginary component and calling
+    it label 1. A complex micrograph is not a segmentation of its real
+    part.
+
+    The refusal is asserted to be SILENT as well as correct: warnings are
+    errors in this suite, but stating it locally says the 422 is
+    deliberate rather than a `ComplexWarning` that happened to surface.
+    """
+    import warnings
+
+    data = np.zeros((10, 10), dtype=np.complex128)
+    data[2:5, 2:5] = 1 + 1j
+    image_id = _add(data, "exit-wave.dm4")
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        r = client.post(
+            "/api/region-sets/from-labels",
+            json={"image_id": image_id, "set_id": "grains"},
+        )
+    assert r.status_code == 422
+    assert "complex128" in r.json()["detail"]
+
+
+def test_a_real_valued_complex_array_is_refused_too(client) -> None:
+    """1+0j has nothing to lose in the cast, which is exactly why it must
+    still be refused: accepting it would make the rule "complex is fine
+    when it happens to be real", and the next caller's array is 1+1j."""
+    data = np.zeros((10, 10), dtype=np.complex64)
+    data[2:5, 2:5] = 1 + 0j
+    r = client.post(
+        "/api/region-sets/from-labels",
+        json={"image_id": _add(data, "fft.dm4"), "set_id": "grains"},
+    )
+    assert r.status_code == 422
+    assert "complex64" in r.json()["detail"]
+
+
+def test_a_boolean_mask_is_still_a_label_map(client) -> None:
+    """The restriction is to REAL numeric and bool, not to int and float.
+    A boolean mask is the natural one-region label map and must keep
+    working — `np.issubdtype(np.bool_, np.integer)` is False, so it
+    travels the float path and would be easy to exclude by accident."""
+    mask = np.zeros((12, 12), dtype=bool)
+    mask[3:8, 3:8] = True
+    made = client.post(
+        "/api/region-sets/from-labels",
+        json={"image_id": _add(mask, "mask.tif"), "set_id": "grains"},
+    )
+    assert made.status_code == 200, made.text
+    regions = made.json()["sets"][0]["regions"]
+    assert [r["meta"]["label_value"] for r in regions] == [1]

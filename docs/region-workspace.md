@@ -87,6 +87,10 @@ anywhere it cannot be:
 
 * an image whose values are not whole numbers is not a label map, and tracing
   one would return a region per grey level;
+* a label map must be real numeric or boolean. Complex is refused by dtype
+  rather than by value, because `1+1j` is finite and equals its own rounding —
+  only the cast to integers would notice, by discarding the imaginary part and
+  calling the pixel label 1;
 * two regions covering one pixel, sharing an id, or sharing a value are all
   refused, because a label map cannot hold either claim and any rule for
   picking a winner would be invisible in the array that came back;
