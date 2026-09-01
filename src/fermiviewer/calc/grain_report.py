@@ -61,6 +61,7 @@ class GrainReport:
     astm_grain_size: float
     area_px: np.ndarray
     perimeter_crofton_px: np.ndarray
+    perimeter_calibrated: np.ndarray
     eccentricity: np.ndarray
     equiv_diameter_px: np.ndarray
     diameter_calibrated: np.ndarray
@@ -74,10 +75,17 @@ def grain_report(
     pixel_size: float = float("nan"),
     pixel_area: float = float("nan"),
     unit: str = "px",
+    spacing: tuple[float, float] | None = None,
 ) -> GrainReport:
-    """Stats + derived aggregates for a grain-label image over its raster."""
+    """Stats + derived aggregates for a grain-label image over its raster.
+
+    `spacing` is the per-axis pixel extent (`DataStruct.pixel_spacing`);
+    passing it makes the shape descriptors and the boundary-network
+    length physical rather than pixel-space.
+    """
     stats = grain_stats(
-        labels, raster, pixel_size=pixel_size, pixel_area=pixel_area
+        labels, raster, pixel_size=pixel_size, pixel_area=pixel_area,
+        spacing=spacing,
     )
     return GrainReport(
         n_grains=stats.n_grains,
@@ -92,6 +100,7 @@ def grain_report(
         astm_grain_size=_astm(stats, pixel_area, unit),
         area_px=stats.area_px,
         perimeter_crofton_px=stats.perimeter_crofton_px,
+        perimeter_calibrated=stats.perimeter_calibrated,
         eccentricity=stats.eccentricity,
         equiv_diameter_px=stats.equiv_diameter_px,
         diameter_calibrated=stats.diameter_calibrated,

@@ -70,7 +70,7 @@ def _grains_payload(
     px = ds.pixel_size if np.isfinite(ds.pixel_size) else float("nan")
     report = grain_report(
         labels, raster, pixel_size=px, pixel_area=ds.pixel_area,
-        unit=ds.pixel_unit or "px",
+        unit=ds.pixel_unit or "px", spacing=ds.pixel_spacing,
     )
     name = store.name(source_id)
     return {
@@ -93,6 +93,9 @@ def _grains_payload(
         "astm_grain_size": _nan_none(report.astm_grain_size),
         "areas_px": report.area_px.tolist(),
         "perimeters_px": report.perimeter_crofton_px.tolist(),
+        "perimeters_calibrated": [
+            _nan_none(v) for v in report.perimeter_calibrated
+        ],
         "eccentricity": report.eccentricity.tolist(),
         # per-grain diameter feeds a size-distribution histogram (#6/R6)
         "equiv_diameter_px": report.equiv_diameter_px.tolist(),

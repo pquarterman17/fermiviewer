@@ -249,7 +249,7 @@ def _grains_edit(
     # /analyze/grains inherits exactly these axes, so the two agree.
     px, unit = _px_cal(source_ds)
     report = grain_report(edit.labels, raster, pixel_size=px,
-        pixel_area=ds.pixel_area, unit=unit)
+        pixel_area=ds.pixel_area, unit=unit, spacing=ds.pixel_spacing)
     outputs = _grain_outputs(
         report,
         "0 = background; values are grain labels (table rows, ascending)",

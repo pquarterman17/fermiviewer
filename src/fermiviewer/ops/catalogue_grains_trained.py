@@ -122,7 +122,7 @@ def _train_segment(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     px, unit = _px_cal(ds)
     report = grain_report(
         labels, np.asarray(raster, dtype=np.float64), pixel_size=px,
-        pixel_area=ds.pixel_area, unit=unit
+        pixel_area=ds.pixel_area, unit=unit, spacing=ds.pixel_spacing,
     )
     outputs = _grain_outputs(
         report,

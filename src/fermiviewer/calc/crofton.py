@@ -82,7 +82,7 @@ import math
 import numpy as np
 from scipy import ndimage as ndi
 
-__all__ = ["crofton_perimeter", "crofton_perimeters_by_label"]
+__all__ = ["crofton_perimeter", "crofton_perimeters_by_label", "usable_spacing"]
 
 #: Never search offsets past this. Reaching a 45-degree physical direction
 #: needs a component about equal to the pixel aspect ratio, so this caps
@@ -101,6 +101,23 @@ def _physical_angle(p: int, q: int, s_r: float, s_c: float) -> float:
     cannot drift apart.
     """
     return math.atan2(p * s_r, q * s_c) % math.pi
+
+
+def usable_spacing(
+    spacing: tuple[float, float] | None,
+) -> tuple[float, float] | None:
+    """The spacing if it can carry a physical length, else None.
+
+    One definition of "calibrated enough to measure with", shared by
+    every caller, so a length and the area beside it can never disagree
+    about whether the image had a usable scale.
+    """
+    if spacing is None:
+        return None
+    s_r, s_c = float(spacing[0]), float(spacing[1])
+    if not (math.isfinite(s_r) and math.isfinite(s_c)) or s_r <= 0 or s_c <= 0:
+        return None
+    return (s_r, s_c)
 
 
 def _direction_offsets(

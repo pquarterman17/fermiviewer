@@ -49,6 +49,54 @@ def _image(rows: float, cols: float, unit: str = "nm") -> DataStruct:
 # ── the property ─────────────────────────────────────────────────────
 
 
+def test_pixel_spacing_is_the_per_axis_companion_of_pixel_area() -> None:
+    """`pixel_area` is the product of `pixel_spacing`, by construction.
+
+    Pinned as an invariant rather than two independent computations,
+    because the moment they can disagree, an area and the lengths derived
+    alongside it start describing different pixels.
+    """
+    ds = _image(0.5, 2.0)
+    assert ds.pixel_spacing == (0.5, 2.0)
+    assert ds.pixel_area == pytest.approx(ds.pixel_spacing[0] * ds.pixel_spacing[1])
+
+
+def test_pixel_spacing_is_row_then_column() -> None:
+    """Order is (row, column), matching numpy axis order and
+    `regionprops(spacing=...)`. A square fixture cannot tell these apart,
+    so the scales here are deliberately unequal and so is the array."""
+    ds = _image(0.5, 2.0)
+    assert ds.data.shape == (40, 60)
+    assert ds.pixel_spacing[0] == 0.5, "first entry is the ROW scale"
+    assert ds.pixel_spacing[1] == 2.0, "second entry is the COLUMN scale"
+
+
+def test_pixel_spacing_refuses_exactly_what_pixel_area_refuses() -> None:
+    """Same refusals, so a caller can never get a usable spacing and an
+    absent area for the same image, or the reverse."""
+    uncal = DataStruct(data=np.zeros((4, 6)), kind=DataKind.IMAGE,
+                       axes=(AxisCal(), AxisCal()), metadata={})
+    assert np.isnan(uncal.pixel_spacing).all() and np.isnan(uncal.pixel_area)
+
+    mixed = DataStruct(
+        data=np.zeros((4, 6)), kind=DataKind.IMAGE,
+        axes=(AxisCal(scale=2.0, units="nm"), AxisCal(scale=0.5, units="um")),
+        metadata={},
+    )
+    assert np.isnan(mixed.pixel_spacing).all(), "nm x um is a number in neither unit"
+    assert np.isnan(mixed.pixel_area)
+
+
+def test_pixel_spacing_reports_magnitudes() -> None:
+    """A negative scale is a direction convention (DM writes them); an
+    EXTENT has no direction, so the magnitude is the physical answer --
+    the same reading `pixel_area` already takes."""
+    ds = _image(-0.5, 2.0)
+    assert ds.pixel_spacing == (0.5, 2.0)
+    assert ds.pixel_area == 1.0
+
+
+
 def test_an_anisotropic_pixel_is_not_its_length_squared() -> None:
     """The defect, stated as the number it produced. 0.5 x 2.0 is 1.0 nm^2
     per pixel; squaring `pixel_size` (the second axis) gave 4.0."""

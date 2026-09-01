@@ -351,7 +351,8 @@ def test_grains_op_matches_direct_calc_composition() -> None:
         robust=True,
     )
     report = grain_report(
-        seg.labels, raster, pixel_size=0.5, pixel_area=0.25, unit="nm"
+        seg.labels, raster, pixel_size=0.5, pixel_area=0.25, unit="nm",
+        spacing=(0.5, 0.5),
     )
     assert outs["n_grains"]["data"]["value"] == report.n_grains
     assert outs["boundary_network_px"]["data"]["value"] == pytest.approx(report.boundary_network_px)
@@ -362,12 +363,17 @@ def test_grains_op_matches_direct_calc_composition() -> None:
     assert table["columns"] == [
         "area_px",
         "perimeter_crofton_px",
+        "perimeter_calibrated",
         "eccentricity",
         "equiv_diameter_px",
         "diameter_calibrated",
     ]
     assert len(table["rows"]) == report.n_grains
     np.testing.assert_allclose([row[0] for row in table["rows"]], report.area_px)
+    # the calibrated perimeter is the op's, not a re-scaling of the pixel one
+    np.testing.assert_allclose(
+        [row[2] for row in table["rows"]], report.perimeter_calibrated
+    )
     np.testing.assert_array_equal(np.asarray(outs["labels"]["data"]["values"]), report.labels)
 
 

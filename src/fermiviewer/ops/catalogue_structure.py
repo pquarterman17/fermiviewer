@@ -154,7 +154,6 @@ def _scoped_particle_input(
 def _particles(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     raster = raster_of(ds)
     px, unit = _px_cal(ds)
-    has_cal = np.isfinite(px) and px > 0
     threshold = params["threshold"] if math.isfinite(params["threshold"]) else None
     scoped = scope_from_params(params, raster.shape)
     analysis_raster, threshold = _scoped_particle_input(
@@ -170,13 +169,11 @@ def _particles(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         use_watershed=params["use_watershed"],
         min_marker_distance=params["min_marker_distance"],
     )
-    desc = shape_descriptors(res.labels)
+    desc = shape_descriptors(res.labels, ds.pixel_spacing)
     overrides = {k: params[k] for k in _CLASS_THRESHOLD_KEYS if math.isfinite(params[k])}
     thresholds = dataclasses.replace(ClassThresholds(), **overrides) if overrides else None
     shape_classes = classify_shapes(desc.aspect_ratio, desc.circularity, desc.solidity, thresholds)
-    feret_calibrated = (
-        desc.feret_max_px * px if has_cal else np.full_like(desc.feret_max_px, np.nan)
-    )
+    feret_calibrated = desc.feret_max_calibrated
     # `particle_analysis` measured the CROP, so its centroids are
     # crop-local while the map above is full-image. Before 4C-3 this op had
     # no ROI at all and the two frames were the same, which is exactly why

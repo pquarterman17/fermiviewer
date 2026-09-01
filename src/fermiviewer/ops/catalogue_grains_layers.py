@@ -349,7 +349,7 @@ def _grains(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         labels, clipped = seg.labels, False
     px, unit = _px_cal(ds)
     report = grain_report(labels, raster, pixel_size=px,
-        pixel_area=ds.pixel_area, unit=unit)
+        pixel_area=ds.pixel_area, unit=unit, spacing=ds.pixel_spacing)
     outputs = [
         scalar("n_grains", report.n_grains),
         scalar("boundary_network_px", report.boundary_network_px, unit="px"),
@@ -377,16 +377,18 @@ def _grains(ds: DataStruct, params: dict[str, Any]) -> OpResult:
                 "columns": [
                     "area_px",
                     "perimeter_crofton_px",
+                    "perimeter_calibrated",
                     "eccentricity",
                     "equiv_diameter_px",
                     "diameter_calibrated",
                 ],
-                "units": ["px^2", "px", "", "px", unit],
+                "units": ["px^2", "px", unit, "", "px", unit],
                 "rows": [
-                    [float(a), float(p), float(e), float(d), _nn(float(dc))]
-                    for a, p, e, d, dc in zip(
+                    [float(a), float(p), _nn(float(pc)), float(e), float(d), _nn(float(dc))]
+                    for a, p, pc, e, d, dc in zip(
                         report.area_px,
                         report.perimeter_crofton_px,
+                        report.perimeter_calibrated,
                         report.eccentricity,
                         report.equiv_diameter_px,
                         report.diameter_calibrated,

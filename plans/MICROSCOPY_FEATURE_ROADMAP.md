@@ -742,11 +742,51 @@ in EDS/EELS, imaging statistics, and structural analysis.
 > confirm. The area is absent unless both axes are calibrated in the same
 > unit, since nm x um is a number in neither.
 >
-> This does NOT close item 5's "do not assume square" box. Lengths —
-> equivalent diameter, Feret width, perimeter, boundary network — still
-> come from a single scale, and they are not made well defined by having
-> two: an anisotropic equivalent diameter needs a convention, which is
-> item 5's work rather than a side effect of fixing areas.
+> This did NOT close item 5's "do not assume square" box; see the
+> lengths amendment below, which closes the analysis half of it.
+>
+> **Amended 2026-09-01: lengths no longer assume square pixels either.**
+> The convention chosen is measurement in PHYSICAL coordinates: every
+> length is computed on the calibrated grid rather than derived from a
+> pixel measurement times one scale. Verified property-first — the same
+> physical disc sampled at 1:1, 2:1, 1:2 and 4:1 returns the same
+> diameter and the same circumference.
+>
+> Three things had to be true for that to work.
+>
+> First, most of `regionprops` already honours anisotropic `spacing`
+> correctly — area, equivalent diameter, Feret, the moment-ellipse axes,
+> eccentricity and orientation were all checked against closed forms.
+> But `perimeter_crofton` REFUSES anisotropic spacing outright, so
+> `calc/crofton.py` supplies it: Crofton's formula discretised over
+> lattice line families, with the directions CHOSEN by physical angle
+> rather than fixed, because the four fixed pixel offsets collapse into a
+> 19-degree band at 6:1 anisotropy and take the error from -5.5% to
+> -15.7%. On square pixels the search provably picks skimage's own four
+> offsets, so it reproduces `perimeter_crofton` bit for bit and existing
+> circularity values do not move.
+>
+> Second, dimensionless is NOT scale-invariant when only one axis is
+> scaled. Circularity, eccentricity, aspect ratio, solidity and
+> orientation are all invariant under scaling both axes together — which
+> is why a single `pixel_size` never mattered to them — and none survives
+> scaling one axis alone. A round particle on 3:1 pixels read as aspect
+> ratio 3.0 and eccentricity 0.94, i.e. a rod. These are now measured in
+> physical space whenever calibration allows.
+>
+> Third, `boundary_network_calibrated` had the same bug in a different
+> shape: two horizontally-adjacent pixels share a VERTICAL edge whose
+> length is the ROW extent, and vice versa, so summing the edge COUNT and
+> multiplying by one scale assumes the two are equal.
+>
+> `DataStruct.pixel_spacing` is the per-axis companion to `pixel_area`,
+> with the same refusals, and `pixel_area` is its product by
+> construction. Square pixels are bit-for-bit unchanged, asserted rather
+> than assumed.
+>
+> Still open in item 5: this is the ANALYSIS half. Per-axis energy and
+> reciprocal calibration, and the project/UI calibration model, are
+> untouched, so the box stays unchecked.
 >
 > **For the UI half:** the preview reports the RASTERIZED pixel count,
 > under `calc/region_mask`'s centre-sampling convention. A polygon drawn
