@@ -37,6 +37,7 @@ __all__ = [
     "split_grain",
 ]
 
+
 def extract_grain_features(
     img: np.ndarray,
     scales: tuple[float, ...] = (2.0, 4.0),

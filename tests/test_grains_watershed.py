@@ -244,6 +244,23 @@ def test_astm_grain_size_matches_the_published_table(g, grains_per_mm2) -> None:
     assert got == pytest.approx(g, abs=0.02)
 
 
+def test_astm_grain_size_matches_the_closed_form_its_docstring_states() -> None:
+    """`astm_grain_size_number`'s docstring carries the collapsed form
+    ``G = -6.643856*log10(D_mm) - 2.6055``, which the code never
+    evaluates — it composes the density relation instead. A stated
+    constant nothing executes is a constant nothing checks, and the
+    module's whole claim is that its constants can be checked rather
+    than trusted, so check this one: the tolerance is tight enough that
+    a wrong digit in the last place of the offset fails.
+    """
+    for diameter_um in (0.5, 5.0, 50.0, 500.0):
+        d_mm = diameter_um * 1e-3
+        stated = -6.643856 * math.log10(d_mm) - 2.6055
+        assert astm_grain_size_number(diameter_um, "um") == pytest.approx(
+            stated, abs=2e-5
+        ), f"docstring's closed form disagrees at {diameter_um} um"
+
+
 def test_astm_grain_size_stays_on_its_own_scale() -> None:
     """A guard against the failure that actually happened rather than
     against a formula: ASTM numbers run roughly 00 to 14 over the grain

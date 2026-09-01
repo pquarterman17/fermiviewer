@@ -69,7 +69,7 @@ def astm_grain_size_number(mean_diameter: float, unit: str) -> float:
 
         G = 3.321928·log10(4/(π·D²)) − 2.954
           = −6.643856·log10(D_mm) + 3.321928·log10(4/π) − 2.954
-          = −6.643856·log10(D_mm) − 2.6056
+          = −6.643856·log10(D_mm) − 2.6055
 
     **This was wrong until 2026-09-01** and the error is worth naming,
     because the shape of it recurs: the slope ``6.643856`` is exactly
