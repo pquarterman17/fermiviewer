@@ -723,3 +723,31 @@ def test_a_boolean_mask_is_still_a_label_map(client) -> None:
     assert made.status_code == 200, made.text
     regions = made.json()["sets"][0]["regions"]
     assert [r["meta"]["label_value"] for r in regions] == [1]
+
+
+def test_a_whole_valued_intensity_image_converts_and_that_is_the_contract(
+    client,
+) -> None:
+    """The honest limit of this route, pinned so it cannot be misread.
+
+    Ordinary micrographs are uint8/uint16 — whole-valued, real, in range —
+    so they pass every check and convert into one region per distinct
+    intensity. No test on the VALUES can do better: a label map and a
+    count image are the same array with different meanings. Calling
+    `from-labels` is the caller's assertion that this one is a label map.
+
+    Asserted rather than left implicit because the docstring used to
+    claim the opposite, and a false claim in a comment is worse than a
+    silent gap — it tells the next reader not to check. If a semantic
+    guard is ever added (a metadata marker plus an override), this test
+    should FAIL and be rewritten deliberately, which is exactly what it
+    is for.
+    """
+    rng = np.random.default_rng(0)
+    micrograph = rng.integers(1000, 1120, (48, 48), dtype=np.uint16)
+    made = client.post(
+        "/api/region-sets/from-labels",
+        json={"image_id": _add(micrograph, "micrograph.dm4"), "set_id": "grains"},
+    )
+    assert made.status_code == 200
+    assert len(made.json()["sets"][0]["regions"]) == len(np.unique(micrograph))

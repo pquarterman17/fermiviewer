@@ -82,8 +82,14 @@ directions enforce that one range — `from-labels` on the values it reads and
 the second will take back. An integer-typed label map is bounded on the same
 values despite needing no conversion.
 
-The conversion is lossless in both directions and refuses rather than guesses
-anywhere it cannot be:
+Calling `from-labels` is an assertion that the image *is* a label map. Nothing
+in the values can confirm that: an ordinary uint8/uint16 micrograph is
+whole-valued and real, so it converts into one region per distinct intensity.
+The checks below reject what cannot be a label map, not what merely is not one,
+and the UI offering the conversion owns the assertion.
+
+Within that, the conversion is lossless in both directions and refuses rather
+than guesses anywhere it cannot be:
 
 * an image whose values are not whole numbers is not a label map, and tracing
   one would return a region per grey level;

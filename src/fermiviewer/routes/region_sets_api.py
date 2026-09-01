@@ -174,9 +174,26 @@ def _label_array(ds: DataStruct, image_id: str) -> np.ndarray:
     past that refusal at the one boundary it was written to guard.
 
     So the values are checked to BE integers before being typed as them.
-    A genuine intensity image reaching this route is the likely mistake,
-    and it gets told what it is rather than coming back as a region per
-    grey level.
+
+    What that does NOT do is tell a label map from an intensity image,
+    and an earlier version of this docstring claimed it did. Ordinary
+    micrographs are uint8 or uint16 — whole-valued, real, in range — so a
+    48x48 uint16 frame with 120 distinct intensities converts happily
+    into 120 regions. No test on the VALUES can separate the two: a label
+    map and a count image are the same array with different meanings.
+
+    Calling this route is therefore the caller's ASSERTION that the image
+    is a label map. The checks here reject what cannot be one — fractional
+    values, complex or other non-real dtypes, values past the supported
+    range, a spectrum or RGB kind — and nothing more. The UI that offers
+    the conversion owns the assertion, and this cannot make it on the
+    UI's behalf.
+
+    (A stronger rule is available and is a product decision, not a code
+    one: the app's own maps carry `grain_labels` / `grain_source` /
+    `region_source` in metadata, so the route could require a marker and
+    take an explicit override. That would refuse an imported label TIFF,
+    which is a legitimate input, so it is not taken unilaterally here.)
     """
     if ds.kind is not DataKind.IMAGE:
         # `raster_of` would answer for a spectrum image (a SUM over the
