@@ -29,7 +29,6 @@ __all__ = [
     "GrainSegmentation",
     "GrainStats",
     "WatershedSegmentation",
-    "astm_grain_size_number",
     "enforce_connected_grains",
     "extract_grain_features",
     "grain_stats",
@@ -37,12 +36,6 @@ __all__ = [
     "segment_watershed",
     "split_grain",
 ]
-
-# physical-length → millimetres (for the ASTM E112 grain-size number)
-_MM_PER_UNIT: dict[str, float] = {
-    "m": 1e3, "cm": 10.0, "mm": 1.0, "um": 1e-3, "µm": 1e-3,
-    "nm": 1e-6, "a": 1e-7, "å": 1e-7, "angstrom": 1e-7, "pm": 1e-9,
-}
 
 
 def extract_grain_features(
@@ -327,17 +320,6 @@ def enforce_connected_grains(
     leave one label spanning disconnected pieces (→ phantom stats)."""
     out, _ = _relabel_connected(labels, min_area)
     return out
-
-
-def astm_grain_size_number(mean_diameter: float, unit: str) -> float:
-    """ASTM E112-13 grain-size number G from the mean equivalent grain
-    diameter (in the image's calibrated `unit`). G = -6.6439·log2(D_mm)
-    − 3.298. Returns NaN if the unit is unknown or the diameter ≤ 0."""
-    factor = _MM_PER_UNIT.get((unit or "").strip().lower())
-    if factor is None or not np.isfinite(mean_diameter) or mean_diameter <= 0:
-        return float("nan")
-    d_mm = mean_diameter * factor
-    return float(-6.6439 * np.log2(d_mm) - 3.298)
 
 
 def _count_triple_junctions(labels: np.ndarray) -> int:
