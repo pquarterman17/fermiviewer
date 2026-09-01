@@ -784,9 +784,35 @@ in EDS/EELS, imaging statistics, and structural analysis.
 > construction. Square pixels are bit-for-bit unchanged, asserted rather
 > than assumed.
 >
-> Still open in item 5: this is the ANALYSIS half. Per-axis energy and
-> reciprocal calibration, and the project/UI calibration model, are
-> untouched, so the box stays unchecked.
+> **Scope, stated precisely, because the first draft of this note
+> overclaimed.** What is fixed is the PARTICLE AND GRAIN SHAPE path.
+> A self-review found four other places carrying the identical
+> single-scale assumption, none of them touched:
+>
+> * `calc/gpa.py` — `ux` is a COLUMN displacement and `uy` a ROW
+>   displacement, and both are multiplied by `pixel_size`. They then feed
+>   `np.gradient` for the strain components, so the error compounds.
+>   The most serious of the four.
+> * `calc/export.py` — the `distance`, `profile` and `polyline`
+>   measurement LABELS. A user-drawn segment's physical length is
+>   `sqrt((dr*s_r)^2 + (dc*s_c)^2)`, not its pixel length times one
+>   scale. These are numbers a user reads straight off an exported
+>   figure.
+> * `calc/defects.py` — Ham line-intercept dislocation density. The
+>   horizontal test lines span COLUMNS and the vertical ones span ROWS,
+>   and `total_len` multiplies both by `pixel_size`. Exactly the
+>   boundary-network bug, in a different subsystem.
+> * `calc/eds_maps.py` — line-profile distance along an arbitrary line,
+>   same diagonal-length error as the export labels.
+>
+> `calc/grain_layers.py`'s `pixel_area = pixel_size ** 2` is NOT one of
+> these: it is a documented fallback used only when a caller supplies no
+> area, and the routes pass `ds.pixel_area`.
+>
+> Also still open: per-axis energy and reciprocal calibration (`ctf.py`
+> and `diffraction.py` scale the FFT by one `pixel_size`, so anisotropic
+> pixels give anisotropic reciprocal space), and the project/UI
+> calibration model. The box stays unchecked.
 >
 > **For the UI half:** the preview reports the RASTERIZED pixel count,
 > under `calc/region_mask`'s centre-sampling convention. A polygon drawn

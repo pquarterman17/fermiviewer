@@ -128,9 +128,9 @@ def test_square_pixels_are_untouched(client) -> None:
     pixel-space value, because on square pixels those ARE the physical
     values — and `feret_max_calibrated` must still be the plain product,
     since with one scale there is nothing else it could be."""
-    ds = _disc_image(1.0, 1.0)
-    p = _particle(client, ds)
-    assert p["feret_max_calibrated"] == pytest.approx(p["feret_max"] * 1.0, rel=1e-9)
+    scale = 2.5  # deliberately NOT 1.0: the identity would pass this test
+    p = _particle(client, _disc_image(scale, scale))
+    assert p["feret_max_calibrated"] == pytest.approx(p["feret_max"] * scale, rel=1e-9)
     assert p["aspect_ratio"] == pytest.approx(1.0, abs=0.1)
 
 
@@ -146,6 +146,73 @@ def test_uncalibrated_image_still_reports_null_calibrated_lengths(client) -> Non
     assert p["feret_max_calibrated"] is None
     assert isinstance(p["feret_max"], float)
     assert isinstance(p["circularity"], float)
+
+
+def test_isotropic_shortcut_equals_the_full_second_pass() -> None:
+    """`shape_descriptors` skips its second measurement pass when the two
+    scales are equal, scaling the pixel-space result instead.
+
+    That shortcut is only sound because isotropic scaling leaves every
+    dimensionless descriptor alone and multiplies every length by the one
+    factor. Pinned against the real second pass — computed here through
+    the anisotropic branch by nudging one scale by a part in 10^9, which
+    is far below any measurable difference but takes the other code path.
+    """
+    from fermiviewer.calc.shape_metrics import _measure, shape_descriptors
+
+    labels = np.zeros((200, 200), np.int64)
+    rr, cc = draw.ellipse(60, 60, 40, 18, rotation=0.6)
+    labels[rr, cc] = 1
+    rr, cc = draw.disk((140, 140), 30)
+    labels[rr, cc] = 2
+    labels[20:50, 140:190] = 3
+
+    for scale in (0.25, 2.0, 7.0):
+        short = shape_descriptors(labels, (scale, scale))
+        full = _measure(labels, (scale, scale))
+        np.testing.assert_allclose(
+            short.perimeter_calibrated, full["perimeter_crofton"], rtol=1e-12
+        )
+        np.testing.assert_allclose(
+            short.feret_max_calibrated, full["feret_diameter_max"], rtol=1e-12
+        )
+        np.testing.assert_allclose(
+            short.axis_major_length_calibrated, full["axis_major_length"], rtol=1e-12
+        )
+        np.testing.assert_allclose(short.eccentricity, full["eccentricity"], rtol=1e-12)
+        np.testing.assert_allclose(short.solidity, full["solidity"], rtol=1e-12)
+        # Circularity is the only consumer of the scaled AREA, so without
+        # it the area's exponent is unguarded: dropping one factor of the
+        # scale leaves every other field above correct and silently
+        # rescales circularity by 1/scale, which moves shape classes.
+        derived = 4.0 * np.pi * full["area"] / full["perimeter_crofton"] ** 2
+        np.testing.assert_allclose(short.circularity, derived, rtol=1e-12)
+        np.testing.assert_allclose(
+            short.aspect_ratio,
+            full["axis_major_length"] / full["axis_minor_length"],
+            rtol=1e-12,
+        )
+
+
+def test_grain_isotropic_perimeter_shortcut_matches_a_real_pass() -> None:
+    """Same shortcut in `grain_stats`, pinned the same way."""
+    from fermiviewer.calc.crofton import crofton_perimeters_by_label
+    from fermiviewer.calc.grains import grain_stats
+
+    labels = np.zeros((80, 80), np.int64)
+    labels[10:40, 10:40] = 1
+    labels[45:70, 20:60] = 2
+    raster = np.zeros((80, 80), dtype=np.float64)
+    for scale in (0.5, 3.0):
+        stats = grain_stats(
+            labels, raster, pixel_size=scale, pixel_area=scale * scale,
+            spacing=(scale, scale),
+        )
+        np.testing.assert_allclose(
+            stats.perimeter_calibrated,
+            crofton_perimeters_by_label(labels, (scale, scale)),
+            rtol=1e-12,
+        )
 
 
 # ── equivalent diameter: defined by area, not by scaling a pixel length ──

@@ -124,6 +124,26 @@ def _measure(lab: np.ndarray, spacing: tuple[float, float]) -> dict[str, np.ndar
     return out
 
 
+def _scaled(px: dict[str, np.ndarray], scale: float) -> dict[str, np.ndarray]:
+    """Pixel-space measurements re-expressed on an ISOTROPIC physical grid.
+
+    Valid only when both scales are equal: lengths carry one factor, the
+    area two, and the dimensionless descriptors are unchanged. None of
+    that holds when the axes differ, which is the whole reason the
+    anisotropic branch measures again instead.
+    """
+    out = dict(px)
+    out["area"] = px["area"] * scale * scale
+    for key in (
+        "perimeter_crofton",
+        "axis_major_length",
+        "axis_minor_length",
+        "feret_diameter_max",
+    ):
+        out[key] = px[key] * scale
+    return out
+
+
 def shape_descriptors(
     labels: np.ndarray,
     spacing: tuple[float, float] | None = None,
@@ -157,7 +177,18 @@ def shape_descriptors(
 
     px = _measure(lab, (1.0, 1.0))
     usable = usable_spacing(spacing)
-    phys = _measure(lab, usable) if usable is not None else None
+    if usable is None:
+        phys = None
+    elif usable[0] == usable[1]:
+        # Isotropic: a second pass would recompute the same numbers. Scaling
+        # both axes together leaves every dimensionless descriptor untouched
+        # and multiplies every length by the one scale, so the physical
+        # answers are already in hand. Skipping it halves the cost of the
+        # overwhelmingly common case; `_scaled` is asserted against the real
+        # second pass in the tests so the shortcut cannot drift from it.
+        phys = _scaled(px, usable[0])
+    else:
+        phys = _measure(lab, usable)
     # Dimensionless descriptors describe the PHYSICAL particle when we can
     # reach it; none of them survives scaling one axis alone.
     shape = phys if phys is not None else px

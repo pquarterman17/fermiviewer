@@ -433,11 +433,14 @@ def grain_stats(
             spacing=space or (1.0, 1.0),
         )
         perim = crofton_perimeters_by_label(lab)
-        perim_cal = (
-            crofton_perimeters_by_label(lab, space)
-            if space is not None
-            else np.full(n, np.nan)
-        )
+        if space is None:
+            perim_cal = np.full(n, np.nan)
+        elif space[0] == space[1]:
+            # Isotropic: a perimeter is a length, so one factor is exact
+            # and a second Crofton pass would recompute the same numbers.
+            perim_cal = perim * space[0]
+        else:
+            perim_cal = crofton_perimeters_by_label(lab, space)
         ecc = np.asarray(rpt["eccentricity"], dtype=np.float64)
         orient = np.asarray(rpt["orientation"], dtype=np.float64)
         solidity = np.asarray(rpt["solidity"], dtype=np.float64)
