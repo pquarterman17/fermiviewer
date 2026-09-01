@@ -519,10 +519,13 @@ consume a mask.
 - [x] Persist named ROI sets and region classes in `.fvp`.
 - [x] Supply both exact masks and bounding boxes so older calculations can be
       migrated safely.
-- [ ] Make spectrum integration, statistics, segmentation, particles, grains,
+- [x] Make spectrum integration, statistics, segmentation, particles, grains,
       layers, and batch recipes consume the same contract.
-- [ ] Convert segmentation labels to editable regions and regions to label
+      **Shipped 2026-08-31** (4C-1..5, PRs #191, #192, #194, #195, #196).
+- [x] Convert segmentation labels to editable regions and regions to label
       images without losing holes or disconnected components.
+      **Shipped 2026-08-31** (`calc/region_convert.py`, the two
+      `/api/region-sets` conversion routes).
 - [ ] Add clear mask previews and pixel-count/physical-area summaries before
       expensive execution.
 
@@ -647,7 +650,87 @@ in EDS/EELS, imaging statistics, and structural analysis.
 > `test_the_op_and_the_route_agree_on_the_same_region` is the first
 > instance, an op and a route reaching one answer by different paths.
 
+> **Label conversion completed 2026-08-31.** `calc/region_convert.py`
+> converts both ways and `/api/region-sets/from-labels` and `/to-labels`
+> are where it is reachable. The stack's other half — the region manager
+> and precise drawing/editing (4B, Codex/sol) — is untouched, as are 4D's
+> previews.
+>
+> The load-bearing choice was that ring NESTING defines the parts, not
+> connected components. Grouping by components first is a trap: with
+> 8-connectivity two diagonally-touching pixels are ONE component but
+> marching squares traces TWO rings, so "largest ring is the outline, the
+> rest are holes" turns the second pixel into a hole — a region that
+> rasterizes, looks like a shape, and is not the label. With
+> 4-connectivity the rings match but a diagonal pair becomes two regions
+> and the label's identity is lost instead. Depth comes from containment
+> rather than winding direction, for the reason `calc/contours.py`
+> already distrusts skimage's start vertex. The mask is padded before
+> tracing: `find_contours` leaves a path open at an array edge and
+> closing it afterwards cuts the corner, which made a 4x4 block in a
+> corner round-trip as 6 pixels of 16.
+>
+> Lossless has a price worth stating: an outline keeps a vertex per
+> boundary step, so 150 grains at 512x512 trace to ~32,000 vertices.
+> `calc/contours.py` remains the SIMPLIFYING tracer for the UI's draw
+> assist and is deliberately not what this uses.
+>
+> The self-review dispatched an adversarial agent, whose findings were
+> two wrong cost models and four permissive writes — `find_objects`
+> allocating per label VALUE (433 MB for an 8x8 array holding
+> 10,000,000), a containment test that rasterized every ring (~30 GB on a
+> 512x512 salt-and-pepper label, which is what a noisy segmentation
+> looks like), and conversions that merged two regions through a
+> duplicate id, a duplicate value, a truncated float or an empty `values`
+> mapping read as "none given". Mutation testing then found three
+> REDUNDANCIES rather than three gaps: a hole's parent selected by two
+> rules that always agree, a bounding-box test restated inside the
+> predicate the screen guards, and a self-containment guard the area test
+> already made unreachable. Each is now stated once — the same "a second
+> copy is how a rule starts meaning two things" that 4C-5 hit with
+> `_check_image`.
+>
+> The seam, as in every previous wave, was between new code and old: the
+> app stores every derived map as float64, and `labels_to_regions`
+> refuses a float array on purpose, so a route casting blindly would have
+> stepped past that refusal at the one boundary it exists to guard. The
+> route checks the values ARE integers before typing them as integers,
+> and refuses a spectrum image by KIND — its raster is a sum over energy,
+> which can be whole-numbered and would have traced a region per count.
+
 ### 5. Calibration profiles and quantitative standards
+
+> **4C completed 2026-08-31 — the consumer migration, and its "Done when".**
+> Nine ops take the region contract: `sum_spectrum`, `image_stats`,
+> `particles`, `efd_similarity`, `grains`, `train_segment`, `train_preview`,
+> `layers`, `layers_edit`. A recipe step may NAME one, and the runner
+> substitutes resolved geometry per image so the op never sees an id and the
+> recorded params stay a replay key (ADR 0007 §11).
+>
+> Item 4's "Done when" is pinned as a test rather than asserted: five
+> consumers read one reference and are each compared against a mask
+> rasterized independently by `calc.region_mask`, so agreeing with each
+> other is not enough to pass.
+>
+> Three decisions the waves forced, all recorded in ADR 0007 §9-§11:
+> **labels are exact, context is the bounding box** — a threshold is a
+> function of the selected values, a texture feature is a function of a
+> neighbourhood, and `label_context` says which an op got;
+> **a reduction over varying support is refused, not approximated** —
+> `reduce="sum"` over an irregular region tracks the region's width, so a
+> flat specimen grows flanks a detector reads as interfaces;
+> **naming is a caller concern** — geometry is the op contract.
+>
+> Sixteen defects were found in review (eight by ChatGPT, eight in a
+> self-review) and every one sat at a SEAM rather than in the logic: a
+> request model that dropped a new field, a sibling op that never got the
+> same fix, a second call site, a summary left unscoped beside a masked
+> map, a rule restated instead of called. Three were false claims in
+> comments or provenance labels, which are worse than silent bugs because
+> they tell the next reader not to check. Worth carrying into 4B/4D as a
+> review checklist: for each change, name every OTHER place that must
+> change with it, and re-read every claim the diff makes about itself.
+
 
 Create a shared Calibration Center, with EDS as the first complete workflow and
 EELS/dose/spatial/reciprocal calibration using the same persistence rules.
