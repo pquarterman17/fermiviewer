@@ -155,7 +155,10 @@ def test_particles_op_matches_direct_calc_composition() -> None:
     result = ops.run("particles", ds)
     outs = _outputs(result)
 
-    res = particle_analysis(_blobs(), threshold=None, polarity="bright", min_area=1, pixel_size=0.5)
+    res = particle_analysis(
+        _blobs(), threshold=None, polarity="bright", min_area=1,
+        pixel_size=0.5, pixel_area=0.25,  # the op reads ds.pixel_area
+    )
     desc = shape_descriptors(res.labels)
     classes = classify_shapes(desc.aspect_ratio, desc.circularity, desc.solidity, None)
     assert outs["n_particles"]["data"]["value"] == res.n_particles
@@ -181,7 +184,10 @@ def test_particles_op_class_threshold_sentinels_resolve_to_calc_defaults() -> No
     """A partial override must merge into calc's ClassThresholds — never
     into literal defaults copied here (the documented drift bug)."""
     ds = _blobs_ds()
-    res = particle_analysis(_blobs(), threshold=None, polarity="bright", min_area=1, pixel_size=0.5)
+    res = particle_analysis(
+        _blobs(), threshold=None, polarity="bright", min_area=1,
+        pixel_size=0.5, pixel_area=0.25,  # the op reads ds.pixel_area
+    )
     desc = shape_descriptors(res.labels)
 
     # sentinel default (all NaN) == thresholds=None == pure calc defaults
@@ -268,7 +274,9 @@ def test_propose_region_op_matches_direct_calc_call() -> None:
     result = ops.run("propose_region", ds, {"seed_x": 0.22, "seed_y": 0.22})
     outs = _outputs(result)
 
-    direct = propose_region(_blobs(), seed=(0.22, 0.22), pixel_size=0.5, unit="nm")
+    direct = propose_region(
+        _blobs(), seed=(0.22, 0.22), pixel_size=0.5, pixel_area=0.25, unit="nm"
+    )
     assert outs["proposal"]["data"]["points"] == [list(p) for p in direct.points]
     assert outs["proposal"]["data"]["closed"] is False
     assert outs["area_px"]["data"]["value"] == pytest.approx(direct.area_px)
@@ -314,7 +322,10 @@ def test_propose_region_op_sentinel_validation() -> None:
             "rect_y1": 0.38,
         },
     )
-    direct = propose_region(_blobs(), rect=(0.1, 0.08, 0.36, 0.38), pixel_size=0.5, unit="nm")
+    direct = propose_region(
+        _blobs(), rect=(0.1, 0.08, 0.36, 0.38), pixel_size=0.5,
+        pixel_area=0.25, unit="nm",
+    )
     assert _outputs(result)["area_px"]["data"]["value"] == pytest.approx(direct.area_px)
 
 
@@ -339,7 +350,9 @@ def test_grains_op_matches_direct_calc_composition() -> None:
         denoise_sigma=0.0,
         robust=True,
     )
-    report = grain_report(seg.labels, raster, pixel_size=0.5, unit="nm")
+    report = grain_report(
+        seg.labels, raster, pixel_size=0.5, pixel_area=0.25, unit="nm"
+    )
     assert outs["n_grains"]["data"]["value"] == report.n_grains
     assert outs["boundary_network_px"]["data"]["value"] == pytest.approx(report.boundary_network_px)
     assert outs["mean_diameter_px"]["data"]["value"] == pytest.approx(report.mean_diameter_px)
@@ -377,7 +390,9 @@ def test_grains_op_roi_matches_direct_roi_composition() -> None:
         robust=True,
     )
     labels = embed_rect_roi(seg.labels, raster.shape, roi)
-    report = grain_report(labels, raster, pixel_size=0.5, unit="nm")
+    report = grain_report(
+        labels, raster, pixel_size=0.5, pixel_area=0.25, unit="nm"
+    )
     outs = _outputs(result)
     assert outs["n_grains"]["data"]["value"] == report.n_grains
     np.testing.assert_array_equal(np.asarray(outs["labels"]["data"]["values"]), report.labels)

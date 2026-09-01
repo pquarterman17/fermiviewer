@@ -120,6 +120,7 @@ def _analyze_particles(req: ParticleRequest, ds, raster) -> dict:
             polarity=req.polarity,
             min_area=req.min_area,
             pixel_size=px,
+            pixel_area=ds.pixel_area,
             use_watershed=req.use_watershed,
             min_marker_distance=req.min_marker_distance,
         )

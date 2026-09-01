@@ -166,6 +166,7 @@ def _particles(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         polarity=params["polarity"],
         min_area=params["min_area"],
         pixel_size=px,
+        pixel_area=ds.pixel_area,
         use_watershed=params["use_watershed"],
         min_marker_distance=params["min_marker_distance"],
     )
@@ -410,6 +411,7 @@ def _propose_region(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         morph_radius=params["morph_radius"],
         tolerance=params["tolerance"],
         pixel_size=px,
+        pixel_area=ds.pixel_area,
         unit=unit,
     )
     outputs = [

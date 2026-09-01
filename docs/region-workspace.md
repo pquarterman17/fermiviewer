@@ -108,6 +108,48 @@ so 150 grains at 512×512 trace to roughly 32,000 vertices. `calc/contours.py`
 is the simplifying tracer for the UI's draw assist and is deliberately not
 what these routes use.
 
+## Previewing scope before running anything
+
+`POST /api/regions/preview` answers "how much will this analyse?" without
+analysing it. Give it an `image_id` and either a `region_ref`
+(`"set_id"` or `"set_id/region_id"`) or a frozen `roi` string; neither
+previews the whole image, which is what an unscoped run reads and is the
+thing worth comparing a region against.
+
+It reports `pixel_count` — the pixels the region *selects*, which is also the
+area in px² — alongside `image_pixels` and their `fraction`, the clamped
+1-based `rect` with its `bbox_pixels`, and `exact_mask`, which says whether
+the selection is narrower than that box.
+
+Those are two different answers on purpose. ADR 0007 §9 splits them: a
+reducing analysis (spectra, statistics) reads exactly the selected pixels,
+while a neighbourhood-based one — a watershed basin, a texture feature, a
+gradient — reads the bounding-box crop for context and only clips its
+*labels* to the selection. So `pixel_count` is what may carry a result and
+`bbox_pixels` is what informs it; neither alone is "what will be read". An irregular region is where
+those differ: a 10×20 rect with a 4×4 bite is 184 pixels inside a 200-pixel
+box, and a preview showing only the box would overstate the work by the size
+of the hole.
+
+`area_calibrated` is the physical area, or **null** when the image has no
+pixel size — never the pixel count wearing an area's name, since the same
+number would silently mean px² or nm². `unit` is the *length* unit, matching
+`/regions/propose`, so the area is in `unit²`.
+
+The area is `n × DataStruct.pixel_area`, which multiplies the two spatial
+scales rather than squaring one, so it is correct on an anisotropic scan —
+0.5 nm rows against 2.0 nm columns give 1 nm² per pixel, where the squared
+form said 4. It is absent unless **both** axes are calibrated in the **same**
+unit, since nm × µm is a number in neither. Every area in the tree comes from
+the same property, so the preview and the analyses it previews cannot
+disagree.
+
+The preview resolves through the same `resolve_region` the analyses use, so
+it inherits their refusals exactly: an empty selection, two scopes at once,
+and a set drawn on another image are all rejected here as they would be at
+run time. That is deliberate — a preview that disagreed with the run would
+be worse than no preview.
+
 ## Selection and visibility
 
 Selection and visibility are presentation, not scientific data. They persist

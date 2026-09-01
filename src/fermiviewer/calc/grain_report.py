@@ -49,10 +49,13 @@ def grain_report(
     raster: np.ndarray,
     *,
     pixel_size: float = float("nan"),
+    pixel_area: float = float("nan"),
     unit: str = "px",
 ) -> GrainReport:
     """Stats + derived aggregates for a grain-label image over its raster."""
-    stats = grain_stats(labels, raster, pixel_size=pixel_size)
+    stats = grain_stats(
+        labels, raster, pixel_size=pixel_size, pixel_area=pixel_area
+    )
     diam_cal = stats.diameter_calibrated
     mean_diam_cal = float(np.nanmean(diam_cal)) if diam_cal.size else float("nan")
     return GrainReport(

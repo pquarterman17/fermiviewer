@@ -68,7 +68,10 @@ def _grains_payload(
     wrapper registers the renumbered label map tagged so the stage can
     recognize and further edit it, and shapes the JSON."""
     px = ds.pixel_size if np.isfinite(ds.pixel_size) else float("nan")
-    report = grain_report(labels, raster, pixel_size=px, unit=ds.pixel_unit or "px")
+    report = grain_report(
+        labels, raster, pixel_size=px, pixel_area=ds.pixel_area,
+        unit=ds.pixel_unit or "px",
+    )
     name = store.name(source_id)
     return {
         "n_grains": report.n_grains,

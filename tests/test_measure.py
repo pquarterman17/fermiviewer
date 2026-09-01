@@ -51,7 +51,7 @@ def test_roi_stats_against_numpy() -> None:
     assert s["mean"] == sel.mean() and s["std"] == sel.std(ddof=1)
     assert s["min"] == sel.min() and s["max"] == sel.max()
     assert s["n_pixels"] == sel.size
-    s2 = roi_stats(rng_free, 5, 7, 2, 3, pixel_size=2.0)   # swapped + calibrated
+    s2 = roi_stats(rng_free, 5, 7, 2, 3, pixel_area=4.0)   # swapped + calibrated
     assert s2["area"] == sel.size * 4.0
     with pytest.raises(ValueError, match="empty"):
         roi_stats(rng_free, 99, 99, 120, 120)

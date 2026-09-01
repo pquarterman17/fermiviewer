@@ -269,6 +269,72 @@ caller sees immediately, not 200 identical per-image errors later), while
 image binding is deliberately checked per image, because a set bound to
 one input of many is a legitimate recipe whose other inputs skip.
 
+### 12. A preview resolves; it does not re-derive
+
+Item 4D asks for the selected pixel count and physical area *before*
+expensive execution. `POST /api/regions/preview` answers by calling
+`resolve_region` — the same function, the same clamping, the same image
+binding, the same refusals — and then reporting the scope instead of
+reducing over it.
+
+That is the whole design. A preview computed by a second code path is a
+preview of something else, and a scope summary that disagrees with the
+run is worse than none: it spends the user's trust to tell them the wrong
+number. So the preview owns no geometry logic at all, and its test
+asserts its `pixel_count` equals the `n_pixels` that `/measure/roi`
+reports over the same reference, rather than a constant of its own.
+
+It reports no measurement of the specimen: no pixel VALUE enters the
+answer, only the mask and the grid. That is the checkable line that keeps
+it infrastructure rather than an operation — no science to register and
+nothing for a recipe to reproduce — and the area it reports measures the
+region the user drew, not the data underneath it.
+
+The first version of this said it "reads no pixel value", which was
+false: it took the grid from `raster_of`, which copies a plain image to
+float64, reduces RGB to luminance, and sums a spectrum image over its
+whole cube. A 4 MB image cost an 8 MB copy per call and a 4 GB spectrum
+image a full pass — in the endpoint whose justification is being cheap
+BEFORE that work. It reads `.shape` now, and a `tracemalloc` test pins
+the difference (8.468 MB against 0.083 MB) so the claim cannot quietly
+become false again.
+
+**It reports two numbers because §9 gives two answers.** `pixel_count` is
+the selection — exactly what a reducing analysis reads, and what any
+analysis may produce a result for — while `bbox_pixels` is the
+bounding-box crop a neighbourhood-based analysis reads for context before
+clipping its labels. An earlier draft called the first "the pixels the
+analysis will actually read", which is true of a spectrum sum and false
+of a watershed. There is no single honest number, so the preview does not
+invent one.
+
+**An uncalibrated area is absent, not a pixel count.** `region_stats`
+returns `n_pixels` in its `area` field when the image has no pixel size,
+which is defensible inside a statistics bundle whose caller knows the
+unit. Repeating it in a user-facing summary would not be: the same number
+would mean px² or nm² depending on state the reader cannot see. The
+preview returns `area_calibrated: null` and reports the count separately,
+per ADR 0004's rule that an absent quantity is absent (see also §10 — the
+same refusal to emit a number whose meaning has quietly changed).
+
+**The area is `n * DataStruct.pixel_area`**, the two spatial scales
+multiplied rather than one squared. It used to be `pixel_size ** 2`
+everywhere, which is 4x wrong on a 0.5 nm x 2.0 nm scan — and those are
+real: `io/nanoscope` derives the two scales independently.
+
+Correcting it only here would have broken the agreement §12 exists to
+protect, leaving one region with two different areas. So it was corrected
+at the SOURCE instead, and every consumer — `region_stats`, `roi_stats`,
+`region_propose`, particles, grains, grain layers, and this preview —
+takes a pixel AREA rather than deriving one from a length. The parameter
+is named `pixel_area` so that passing a length is a type of mistake a
+reader can see.
+
+Lengths are deliberately NOT changed. An equivalent diameter, a Feret
+width or a perimeter is not made well defined by having two scales
+instead of one, and inventing a convention for them is roadmap item 5's
+work, not a side effect of fixing areas.
+
 ## Consequences
 
 * Each 4C wave adopts a region by declaring a `region` param and calling

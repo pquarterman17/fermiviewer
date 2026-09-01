@@ -260,7 +260,7 @@ def measure_roi(req: RoiRequest) -> dict:
             )
             stats = region_stats(
                 raster, resolved.rect, resolved.mask,
-                pixel_size=ds.pixel_size, ddof=STD_MATLAB,
+                pixel_area=ds.pixel_area, ddof=STD_MATLAB,
             )
         except ValueError as e:
             raise HTTPException(422, str(e)) from None
@@ -273,7 +273,7 @@ def measure_roi(req: RoiRequest) -> dict:
 
     assert req.rect is not None
     try:
-        stats = roi_stats(raster, *req.rect, pixel_size=ds.pixel_size,
+        stats = roi_stats(raster, *req.rect, pixel_area=ds.pixel_area,
                           shape=req.shape or "rect")
     except ValueError as e:
         raise HTTPException(422, str(e)) from None

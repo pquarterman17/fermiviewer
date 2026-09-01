@@ -161,7 +161,7 @@ def _roi_stats(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         params["col1"],
         params["row2"],
         params["col2"],
-        pixel_size=px,
+        pixel_area=ds.pixel_area,
         shape=params["shape"],
     )
     outputs: list[dict[str, Any]] = []
