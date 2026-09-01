@@ -181,3 +181,33 @@ class DataStruct:
     @property
     def pixel_unit(self) -> str:
         return self.pixel_cal.units if self.pixel_cal.calibrated else ""
+
+    @property
+    def pixel_area(self) -> float:
+        """Area of ONE pixel in `pixel_unit` squared, or NaN.
+
+        Deliberately not `pixel_size ** 2`. The two spatial axes carry
+        independent scales and routinely differ: `io/nanoscope` sets them
+        from `y_nm / ny` and `x_nm / nx`, and an AFM scan with 0.5 nm rows
+        against 2.0 nm columns makes the squared form four times too
+        large. Every area in the tree used to be computed that way.
+
+        NaN unless BOTH spatial axes are calibrated and agree on their
+        unit — multiplying nm by um would give a number in neither, and
+        an area whose unit is a guess is worse than one that is absent
+        (ADR 0004). `pixel_cal` keeps returning the second axis, because a
+        LENGTH along one direction is a different question and does not
+        become well defined by having two scales.
+
+        Magnitude, not signed: a negative scale is a direction convention
+        (DM writes them), and an area has no direction. The squared form
+        used to absorb that by accident; this does it on purpose.
+        """
+        if self.kind is DataKind.SPECTRUM:
+            raise ValueError("1D spectra have no spatial axes")
+        rows, cols = self.axes[0], self.axes[1]
+        if not (rows.calibrated and cols.calibrated):
+            return float("nan")
+        if rows.units != cols.units:
+            return float("nan")
+        return float(abs(rows.scale * cols.scale))

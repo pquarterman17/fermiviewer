@@ -146,8 +146,12 @@ def analyze_grains_by_layer_route(req: GrainLayersRequest) -> dict:
         raise HTTPException(422, "grain-label map is missing its source image")
     source_ds = _get(source_id)
     px, unit = source_ds.pixel_size, source_ds.pixel_unit
+    area = source_ds.pixel_area
     if not np.isfinite(px) or px <= 0:
-        px, unit = 1.0, "px"
+        # the area falls back in LOCKSTEP with the length: 1 px is 1 px^2,
+        # and leaving `area` NaN here would send the calc down its
+        # squared-length default with a length that is itself a stand-in
+        px, unit, area = 1.0, "px", 1.0
     try:
         result = measure_grains_by_layer(
             np.asarray(labels_ds.data),
@@ -157,7 +161,7 @@ def analyze_grains_by_layer_route(req: GrainLayersRequest) -> dict:
                 None if trace is None else np.asarray(trace, dtype=np.float64)
                 for trace in req.interface_traces
             ],
-            pixel_size=px, unit=unit,
+            pixel_size=px, pixel_area=area, unit=unit,
         )
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from None

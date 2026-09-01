@@ -90,6 +90,7 @@ def propose_region_route(req: ProposeRegionRequest) -> ProposeRegionResponse:
             morph_radius=req.morph_radius,
             tolerance=req.tolerance,
             pixel_size=ds.pixel_size,
+            pixel_area=ds.pixel_area,
             unit=ds.pixel_unit or "px",
         )
     except (ValueError, TypeError) as e:  # NoContourError subclasses ValueError
@@ -160,15 +161,10 @@ class RegionPreviewResponse(BaseModel):
     #: rather than the pixel count, because an area that silently changes
     #: units is worse than one that admits it is unknown (ADR 0004).
     #:
-    #: It ASSUMES SQUARE PIXELS — `n * pixel_size**2`, where `pixel_size`
-    #: is `DataStruct.pixel_cal`, the second spatial axis. On a scan with
-    #: 0.5 nm rows and 2.0 nm columns that is 4x wrong. This matches every
-    #: other consumer in the tree (`region_propose`, `region_stats`), so
-    #: it is the app's assumption rather than this route's — but a
-    #: user-facing area is where an unstated assumption does the most
-    #: damage, so it is stated. Per-axis calibration is roadmap item 5's
-    #: explicit "do not assume square" box, and fixing it here alone would
-    #: make this endpoint disagree with the analyses it previews.
+    #: `n * DataStruct.pixel_area`, which multiplies the two spatial
+    #: scales rather than squaring one — so it is right on an anisotropic
+    #: scan, where the squared form was four times too large. Absent
+    #: unless BOTH axes are calibrated in the SAME unit.
     area_calibrated: float | None
     #: The LENGTH unit, matching `/regions/propose` — area is in `unit^2`.
     unit: str
@@ -241,7 +237,6 @@ def preview_region_route(req: RegionPreviewRequest) -> RegionPreviewResponse:
 
     r1, c1, r2, c2 = resolved.rect
     image_pixels = height * width
-    px = ds.pixel_size
     return RegionPreviewResponse(
         pixel_count=resolved.pixel_count,
         image_pixels=image_pixels,
@@ -250,7 +245,9 @@ def preview_region_route(req: RegionPreviewRequest) -> RegionPreviewResponse:
         bbox_pixels=(r2 - r1 + 1) * (c2 - c1 + 1),
         exact_mask=resolved.is_exact,
         area_calibrated=(
-            float(resolved.pixel_count) * px * px if np.isfinite(px) else None
+            float(resolved.pixel_count) * area
+            if np.isfinite(area := ds.pixel_area)
+            else None
         ),
         unit=ds.pixel_unit or "px",
         provenance=resolved.provenance,

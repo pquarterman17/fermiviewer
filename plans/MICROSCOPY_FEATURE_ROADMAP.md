@@ -727,6 +727,27 @@ in EDS/EELS, imaging statistics, and structural analysis.
 > `region` on the wire means an op's inline geometry — a third spelling
 > of one idea is how a caller learns to guess.
 >
+> **Amended 2026-09-01: areas no longer assume square pixels.** The
+> review of this endpoint found that its physical area was
+> `n * pixel_size ** 2`, four times wrong on a 0.5 nm x 2.0 nm scan — and
+> those are real, since `io/nanoscope` derives the two spatial scales
+> independently. Correcting it only in the preview would have broken the
+> agreement that endpoint exists to have, so it was corrected at the
+> source: `DataStruct.pixel_area` multiplies the two scales, and every
+> consumer that reports an area now takes an AREA rather than deriving
+> one from a length — `region_stats`, `roi_stats`, `region_propose`,
+> particles, grains, grain layers, and the preview.
+>
+> Square pixels are numerically unchanged, which the MATLAB golden tests
+> confirm. The area is absent unless both axes are calibrated in the same
+> unit, since nm x um is a number in neither.
+>
+> This does NOT close item 5's "do not assume square" box. Lengths —
+> equivalent diameter, Feret width, perimeter, boundary network — still
+> come from a single scale, and they are not made well defined by having
+> two: an anisotropic equivalent diameter needs a convention, which is
+> item 5's work rather than a side effect of fixing areas.
+>
 > **For the UI half:** the preview reports the RASTERIZED pixel count,
 > under `calc/region_mask`'s centre-sampling convention. A polygon drawn
 > in SVG and the mask an analysis uses differ at the boundary, so a

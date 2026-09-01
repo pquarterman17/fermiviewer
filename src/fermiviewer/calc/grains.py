@@ -386,12 +386,14 @@ def grain_stats(
     labels: np.ndarray,
     img: np.ndarray,
     pixel_size: float = float("nan"),
+    pixel_area: float = float("nan"),
     min_area: int = 1,
     connectivity: int = 8,
 ) -> GrainStats:
     """Per-grain measurements + grain-boundary network — ported."""
     grains, lab, n = region_stats(
-        labels, img, min_area=min_area, pixel_size=pixel_size
+        labels, img, min_area=min_area, pixel_size=pixel_size,
+        pixel_area=pixel_area
     )
 
     boundary = np.zeros(lab.shape, dtype=bool)

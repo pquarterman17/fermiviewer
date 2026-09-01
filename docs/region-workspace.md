@@ -136,12 +136,13 @@ pixel size — never the pixel count wearing an area's name, since the same
 number would silently mean px² or nm². `unit` is the *length* unit, matching
 `/regions/propose`, so the area is in `unit²`.
 
-That area **assumes square pixels** (`n × pixel_size²`, from the second
-spatial axis). On an anisotropic scan — 0.5 nm rows against 2.0 nm columns —
-it is four times too large. Every consumer in the tree makes the same
-assumption, so the preview agrees with the analyses it previews; correcting
-it is roadmap item 5's per-axis calibration work, not something this endpoint
-should do alone.
+The area is `n × DataStruct.pixel_area`, which multiplies the two spatial
+scales rather than squaring one, so it is correct on an anisotropic scan —
+0.5 nm rows against 2.0 nm columns give 1 nm² per pixel, where the squared
+form said 4. It is absent unless **both** axes are calibrated in the **same**
+unit, since nm × µm is a number in neither. Every area in the tree comes from
+the same property, so the preview and the analyses it previews cannot
+disagree.
 
 The preview resolves through the same `resolve_region` the analyses use, so
 it inherits their refusals exactly: an empty selection, two scopes at once,

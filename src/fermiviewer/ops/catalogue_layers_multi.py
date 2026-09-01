@@ -213,6 +213,7 @@ def _layers_grains(
         roi=roi,  # RectRoi IS the (r1, c1, r2, c2) tuple, 1-based inclusive
         interface_traces=traces,
         pixel_size=px,
+        pixel_area=ds.pixel_area,
         unit=unit,
     )
     layer_rows = [asdict(layer) for layer in result.layers]

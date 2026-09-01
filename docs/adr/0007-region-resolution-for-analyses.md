@@ -317,16 +317,23 @@ preview returns `area_calibrated: null` and reports the count separately,
 per ADR 0004's rule that an absent quantity is absent (see also §10 — the
 same refusal to emit a number whose meaning has quietly changed).
 
-**The area it does report assumes square pixels**, `n * pixel_size**2`
-from the second spatial axis, which is 4x wrong on a 0.5 nm x 2.0 nm
-scan. That is the whole tree's assumption — `region_propose` and
-`region_stats` compute it the same way — so the preview agrees with the
-analyses it previews, which is the property §12 exists to protect.
-Correcting it here alone would break that agreement in the name of
-accuracy and leave the user with two different areas for one region.
-Per-axis calibration is roadmap item 5's explicit "do not assume square"
-box; until then the assumption is documented at every place a user sees
-the number rather than left for them to discover.
+**The area is `n * DataStruct.pixel_area`**, the two spatial scales
+multiplied rather than one squared. It used to be `pixel_size ** 2`
+everywhere, which is 4x wrong on a 0.5 nm x 2.0 nm scan — and those are
+real: `io/nanoscope` derives the two scales independently.
+
+Correcting it only here would have broken the agreement §12 exists to
+protect, leaving one region with two different areas. So it was corrected
+at the SOURCE instead, and every consumer — `region_stats`, `roi_stats`,
+`region_propose`, particles, grains, grain layers, and this preview —
+takes a pixel AREA rather than deriving one from a length. The parameter
+is named `pixel_area` so that passing a length is a type of mistake a
+reader can see.
+
+Lengths are deliberately NOT changed. An equivalent diameter, a Feret
+width or a perimeter is not made well defined by having two scales
+instead of one, and inventing a convention for them is roadmap item 5's
+work, not a side effect of fixing areas.
 
 ## Consequences
 

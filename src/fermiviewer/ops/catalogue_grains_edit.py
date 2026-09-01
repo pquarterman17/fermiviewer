@@ -248,7 +248,8 @@ def _grains_edit(
     # (`_grains_payload(..., source_ds, ...)`); a label map registered by
     # /analyze/grains inherits exactly these axes, so the two agree.
     px, unit = _px_cal(source_ds)
-    report = grain_report(edit.labels, raster, pixel_size=px, unit=unit)
+    report = grain_report(edit.labels, raster, pixel_size=px,
+        pixel_area=ds.pixel_area, unit=unit)
     outputs = _grain_outputs(
         report,
         "0 = background; values are grain labels (table rows, ascending)",
