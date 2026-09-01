@@ -391,8 +391,7 @@ def grain_stats(
     are pixel-space, exactly as before spacing existed.
     """
     grains, lab, n = region_stats(
-        labels, img, min_area=min_area, pixel_size=pixel_size,
-        pixel_area=pixel_area
+        labels, img, min_area=min_area, pixel_area=pixel_area
     )
 
     boundary = np.zeros(lab.shape, dtype=bool)

@@ -199,7 +199,7 @@ def test_region_stats(synth) -> None:
     parts, renum, n = region_stats(
         labels, synth["base"], min_area=50,
         # an isotropic 0.4 nm pixel: 0.4 for LENGTHS, 0.16 for AREA
-        pixel_size=0.4, pixel_area=0.16,
+        pixel_area=0.16,
     )
     g = GOLDEN["regions"]
     assert n == g["nKept"]
@@ -219,7 +219,7 @@ def test_region_stats(synth) -> None:
 
 
 def test_particle_analysis_composes(synth) -> None:
-    res = particle_analysis(synth["base"], min_area=50, pixel_size=0.4)
+    res = particle_analysis(synth["base"], min_area=50, pixel_area=0.16)
     # auto-threshold = 2-class otsu; same regions as the golden set
     assert res.n_particles == GOLDEN["regions"]["nKept"] or res.n_particles > 0
     assert res.labels.max() == res.n_particles

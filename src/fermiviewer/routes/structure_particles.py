@@ -111,14 +111,12 @@ def analyze_particles(req: ParticleRequest) -> dict:
 
 
 def _analyze_particles(req: ParticleRequest, ds, raster) -> dict:
-    px = ds.pixel_size if np.isfinite(ds.pixel_size) else float("nan")
     with value_error_as_422():
         res = particle_analysis(
             raster,
             threshold=req.threshold,
             polarity=req.polarity,
             min_area=req.min_area,
-            pixel_size=px,
             pixel_area=ds.pixel_area,
             use_watershed=req.use_watershed,
             min_marker_distance=req.min_marker_distance,

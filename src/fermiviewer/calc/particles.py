@@ -210,7 +210,6 @@ def region_stats(
     labels: np.ndarray,
     img: np.ndarray,
     min_area: int = 1,
-    pixel_size: float = float("nan"),
     pixel_area: float = float("nan"),
 ) -> tuple[list[RegionStats], np.ndarray, int]:
     """Per-region measurements with MinArea filter + compact renumber.
@@ -220,7 +219,6 @@ def region_stats(
     """
     lab = np.asarray(labels, dtype=np.int64)
     d = np.asarray(img, dtype=np.float64)
-    has_cal = np.isfinite(pixel_size) and pixel_size > 0
 
     out: list[RegionStats] = []
     n = int(lab.max())
@@ -244,14 +242,21 @@ def region_stats(
                 ),
                 equiv_diameter=eq_d,
                 mean_intensity=float(d[sel].mean()),
-                # AREA uses the true pixel area and LENGTH the single
-                # scale, because they are different questions: an area is
-                # well defined when the axes differ, an equivalent
-                # diameter is not (see `DataStruct.pixel_area`).
+                # Both from the true pixel AREA. An equivalent diameter
+                # is the diameter of a circle of the same area, so it is
+                # well defined whatever the pixel shape -- 2*sqrt(A/pi),
+                # not the pixel diameter times one scale. (An earlier
+                # comment here claimed the opposite and justified the
+                # single-scale form; it was wrong. On square pixels the
+                # two agree exactly, which is why it went unnoticed.)
                 area_calibrated=(
                     area * pixel_area if np.isfinite(pixel_area) else np.nan
                 ),
-                diameter_calibrated=eq_d * pixel_size if has_cal else np.nan,
+                diameter_calibrated=(
+                    float(np.sqrt(4.0 * area * pixel_area / np.pi))
+                    if np.isfinite(pixel_area) and pixel_area > 0
+                    else np.nan
+                ),
             )
         )
 
@@ -285,7 +290,6 @@ def particle_analysis(
     polarity: str = "bright",
     connectivity: int = 8,
     min_area: int = 1,
-    pixel_size: float = float("nan"),
     pixel_area: float = float("nan"),
     use_watershed: bool = False,
     min_marker_distance: float = 3.0,
@@ -312,8 +316,7 @@ def particle_analysis(
         lab, _ = label_components(mask, connectivity)
 
     parts, lab, kept = region_stats(
-        lab, d, min_area=min_area, pixel_size=pixel_size,
-        pixel_area=pixel_area
+        lab, d, min_area=min_area, pixel_area=pixel_area
     )
     return ParticleAnalysis(
         mask=mask,

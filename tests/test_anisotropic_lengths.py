@@ -148,6 +148,50 @@ def test_uncalibrated_image_still_reports_null_calibrated_lengths(client) -> Non
     assert isinstance(p["circularity"], float)
 
 
+# ── equivalent diameter: defined by area, not by scaling a pixel length ──
+
+
+def test_equivalent_diameter_comes_from_the_physical_area() -> None:
+    """The equivalent circular diameter of a region is the diameter of a
+    circle with the SAME AREA — ``2*sqrt(A/pi)``. That is well defined
+    whatever shape the pixels are, because the area is.
+
+    It used to be `equiv_diameter_px * pixel_size`, and a comment beside
+    it claimed an anisotropic equivalent diameter had no definition. The
+    comment was wrong and the code followed it: on 3:1 pixels a 40x40
+    region reported 45.1 where the definition gives 78.2, a 73% error.
+    The oracle here is the definition, not the implementation.
+    """
+    from fermiviewer.calc.particles import region_stats
+
+    labels = np.zeros((60, 60), np.int64)
+    labels[10:50, 10:50] = 1  # 40 x 40 px
+    img = np.zeros((60, 60), dtype=np.float64)
+
+    stats, _, _ = region_stats(labels, img, pixel_area=ROW_NM * COL_NM)
+    r = stats[0]
+    assert r.area_calibrated == pytest.approx(1600 * ROW_NM * COL_NM)
+    assert r.diameter_calibrated == pytest.approx(
+        2 * np.sqrt(r.area_calibrated / np.pi)
+    )
+    # and it is emphatically not the old single-scale product
+    assert r.diameter_calibrated != pytest.approx(r.equiv_diameter * COL_NM, rel=1e-3)
+
+
+@pytest.mark.parametrize("scale", [0.25, 1.0, 3.0])
+def test_equivalent_diameter_unchanged_on_square_pixels(scale: float) -> None:
+    """With one scale the definition collapses to exactly the product it
+    replaced, so no existing isotropic result moves."""
+    from fermiviewer.calc.particles import region_stats
+
+    labels = np.zeros((60, 60), np.int64)
+    labels[10:50, 10:50] = 1
+    img = np.zeros((60, 60), dtype=np.float64)
+    stats, _, _ = region_stats(labels, img, pixel_area=scale * scale)
+    r = stats[0]
+    assert r.diameter_calibrated == pytest.approx(r.equiv_diameter * scale, rel=1e-12)
+
+
 # ── grain-boundary network: two directions, two lengths ──────────────────
 
 

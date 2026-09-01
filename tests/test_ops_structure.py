@@ -157,7 +157,7 @@ def test_particles_op_matches_direct_calc_composition() -> None:
 
     res = particle_analysis(
         _blobs(), threshold=None, polarity="bright", min_area=1,
-        pixel_size=0.5, pixel_area=0.25,  # the op reads ds.pixel_area
+        pixel_area=0.25,  # the op reads ds.pixel_area
     )
     desc = shape_descriptors(res.labels)
     classes = classify_shapes(desc.aspect_ratio, desc.circularity, desc.solidity, None)
@@ -186,7 +186,7 @@ def test_particles_op_class_threshold_sentinels_resolve_to_calc_defaults() -> No
     ds = _blobs_ds()
     res = particle_analysis(
         _blobs(), threshold=None, polarity="bright", min_area=1,
-        pixel_size=0.5, pixel_area=0.25,  # the op reads ds.pixel_area
+        pixel_area=0.25,  # the op reads ds.pixel_area
     )
     desc = shape_descriptors(res.labels)
 
