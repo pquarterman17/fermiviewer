@@ -16,12 +16,13 @@ import numpy as np
 from skimage import graph, measure, morphology, segmentation
 from skimage.filters import scharr
 
+from fermiviewer.calc.crofton import crofton_perimeters_by_label, usable_spacing
 from fermiviewer.calc.filters import apply_gaussian
 from fermiviewer.calc.ml import kmeans_lite, standardize_features
 from fermiviewer.calc.normalize import normalize01 as _normalize01
 from fermiviewer.calc.normalize import robust_normalize01 as _robust_normalize01
 from fermiviewer.calc.normalize import sanitize as _sanitize
-from fermiviewer.calc.particles import RegionStats, region_stats
+from fermiviewer.calc.particles import RegionStats, region_stats, resolve_pixel_area
 from fermiviewer.calc.segment import label_components
 from fermiviewer.calc.texture import structure_tensor
 
@@ -358,6 +359,15 @@ class GrainStats:
     boundary_network_px: float
     boundary_network_calibrated: float
     perimeter_crofton_px: np.ndarray
+    #: Crofton perimeter in the calibrated unit, or NaN. Not
+    #: `perimeter_crofton_px * pixel_size`: on anisotropic pixels the two
+    #: are not proportional, because the boundary's two directions scale
+    #: by different amounts.
+    perimeter_calibrated: np.ndarray
+    #: Measured in PHYSICAL space when `spacing` is given. Dimensionless
+    #: is not scale-invariant when only ONE axis is scaled: a round grain
+    #: on 2:1 pixels is an ellipse in the array, so pixel-space
+    #: eccentricity describes the sampling rather than the grain.
     eccentricity: np.ndarray
     orientation_rad: np.ndarray
     solidity: np.ndarray
@@ -371,11 +381,26 @@ def grain_stats(
     pixel_area: float = float("nan"),
     min_area: int = 1,
     connectivity: int = 8,
+    *,
+    spacing: tuple[float, float] | None = None,
 ) -> GrainStats:
-    """Per-grain measurements + grain-boundary network — ported."""
+    """Per-grain measurements + grain-boundary network — ported.
+
+    `spacing` is the physical extent of one pixel as ``(row, column)``
+    (`DataStruct.pixel_spacing`). Given it, the shape descriptors and the
+    boundary-network length are measured in physical space; omitted, they
+    are pixel-space, exactly as before spacing existed.
+    """
+    # A caller with only a length still gets calibrated numbers: an
+    # explicit area or spacing wins, and `pixel_size` is squared for the
+    # area and read as isotropic spacing when neither is given. Without
+    # this, `grain_stats(pixel_size=...)` -- the signature this had before
+    # per-axis calibration existed -- returns NaN diameters silently.
+    pixel_area = resolve_pixel_area(pixel_area, pixel_size)
+    if spacing is None and np.isfinite(pixel_size) and pixel_size > 0:
+        spacing = (float(pixel_size), float(pixel_size))
     grains, lab, n = region_stats(
-        labels, img, min_area=min_area, pixel_size=pixel_size,
-        pixel_area=pixel_area
+        labels, img, min_area=min_area, pixel_area=pixel_area
     )
 
     boundary = np.zeros(lab.shape, dtype=bool)
@@ -390,24 +415,46 @@ def grain_stats(
     # grain-boundary NETWORK length: one unit per inter-grain edge (each
     # boundary counted once, image border excluded) — the correct length,
     # unlike summing per-grain perimeters which double-counts + adds borders
-    network_px = float(int(dh.sum()) + int(dv.sum()))
+    n_dh, n_dv = int(dh.sum()), int(dv.sum())
+    network_px = float(n_dh + n_dv)
     has_cal = np.isfinite(pixel_size) and pixel_size > 0
+    space = usable_spacing(spacing)
+    # Two horizontally-adjacent pixels share a VERTICAL edge, whose length
+    # is the pixel's ROW extent -- and vice versa. Multiplying the summed
+    # edge COUNT by a single scale silently assumes those two lengths are
+    # equal; this reduces to that product exactly when they are.
+    if space is not None:
+        network_cal = n_dh * space[0] + n_dv * space[1]
+    elif has_cal:
+        network_cal = network_px * pixel_size
+    else:
+        network_cal = float("nan")
 
     # ── additional per-grain shape metrics ──
     if n > 0:
+        # Descriptors come from the physical grid when there is one. The
+        # perimeter comes from `calc.crofton` because skimage refuses
+        # `perimeter_crofton` under anisotropic spacing; on square pixels
+        # the two agree bit for bit.
         rpt = measure.regionprops_table(
             lab,
-            properties=[
-                "label", "perimeter_crofton", "eccentricity",
-                "orientation", "solidity",
-            ],
+            properties=["label", "eccentricity", "orientation", "solidity"],
+            spacing=space or (1.0, 1.0),
         )
-        perim = np.asarray(rpt["perimeter_crofton"], dtype=np.float64)
+        perim = crofton_perimeters_by_label(lab)
+        if space is None:
+            perim_cal = np.full(n, np.nan)
+        elif space[0] == space[1]:
+            # Isotropic: a perimeter is a length, so one factor is exact
+            # and a second Crofton pass would recompute the same numbers.
+            perim_cal = perim * space[0]
+        else:
+            perim_cal = crofton_perimeters_by_label(lab, space)
         ecc = np.asarray(rpt["eccentricity"], dtype=np.float64)
         orient = np.asarray(rpt["orientation"], dtype=np.float64)
         solidity = np.asarray(rpt["solidity"], dtype=np.float64)
     else:
-        perim = ecc = orient = solidity = np.array([], dtype=np.float64)
+        perim = perim_cal = ecc = orient = solidity = np.array([], dtype=np.float64)
 
     return GrainStats(
         n_grains=n,
@@ -427,9 +474,10 @@ def grain_stats(
         ),
         boundary_network_px=network_px,
         boundary_network_calibrated=(
-            network_px * pixel_size if has_cal else float("nan")
+            network_cal
         ),
         perimeter_crofton_px=perim,
+        perimeter_calibrated=perim_cal,
         eccentricity=ecc,
         orientation_rad=orient,
         solidity=solidity,

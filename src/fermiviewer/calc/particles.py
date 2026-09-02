@@ -206,6 +206,26 @@ class RegionStats:
     diameter_calibrated: float
 
 
+def resolve_pixel_area(pixel_area: float, pixel_size: float) -> float:
+    """The pixel AREA to measure with, given whichever calibration a
+    caller supplied.
+
+    An explicit `pixel_area` always wins: it is the only one of the two
+    that stays right when the axes differ. `pixel_size` is the
+    compatibility path for a caller who has a single length -- squaring
+    it is exactly correct for square pixels and is what this tree did
+    everywhere before `pixel_area` existed, so a library caller written
+    against the old signature keeps its answer instead of silently
+    receiving NaN. Matches `calc/grain_layers.py`, which already made
+    this choice for the same reason.
+    """
+    if np.isfinite(pixel_area):
+        return float(pixel_area)
+    if np.isfinite(pixel_size) and pixel_size > 0:
+        return float(pixel_size * pixel_size)
+    return float("nan")
+
+
 def region_stats(
     labels: np.ndarray,
     img: np.ndarray,
@@ -220,8 +240,8 @@ def region_stats(
     """
     lab = np.asarray(labels, dtype=np.int64)
     d = np.asarray(img, dtype=np.float64)
-    has_cal = np.isfinite(pixel_size) and pixel_size > 0
 
+    pixel_area = resolve_pixel_area(pixel_area, pixel_size)
     out: list[RegionStats] = []
     n = int(lab.max())
     for k in range(1, n + 1):
@@ -244,14 +264,21 @@ def region_stats(
                 ),
                 equiv_diameter=eq_d,
                 mean_intensity=float(d[sel].mean()),
-                # AREA uses the true pixel area and LENGTH the single
-                # scale, because they are different questions: an area is
-                # well defined when the axes differ, an equivalent
-                # diameter is not (see `DataStruct.pixel_area`).
+                # Both from the true pixel AREA. An equivalent diameter
+                # is the diameter of a circle of the same area, so it is
+                # well defined whatever the pixel shape -- 2*sqrt(A/pi),
+                # not the pixel diameter times one scale. (An earlier
+                # comment here claimed the opposite and justified the
+                # single-scale form; it was wrong. On square pixels the
+                # two agree exactly, which is why it went unnoticed.)
                 area_calibrated=(
                     area * pixel_area if np.isfinite(pixel_area) else np.nan
                 ),
-                diameter_calibrated=eq_d * pixel_size if has_cal else np.nan,
+                diameter_calibrated=(
+                    float(np.sqrt(4.0 * area * pixel_area / np.pi))
+                    if np.isfinite(pixel_area) and pixel_area > 0
+                    else np.nan
+                ),
             )
         )
 
@@ -312,8 +339,7 @@ def particle_analysis(
         lab, _ = label_components(mask, connectivity)
 
     parts, lab, kept = region_stats(
-        lab, d, min_area=min_area, pixel_size=pixel_size,
-        pixel_area=pixel_area
+        lab, d, min_area=min_area, pixel_area=pixel_area, pixel_size=pixel_size
     )
     return ParticleAnalysis(
         mask=mask,

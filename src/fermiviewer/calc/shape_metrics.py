@@ -41,6 +41,8 @@ from dataclasses import dataclass
 import numpy as np
 from skimage import measure
 
+from fermiviewer.calc.crofton import crofton_perimeters_by_label, usable_spacing
+
 __all__ = [
     "ClassThresholds",
     "ShapeDescriptors",
@@ -51,7 +53,6 @@ __all__ = [
 _PROPERTIES = (
     "label",
     "area",
-    "perimeter_crofton",
     "eccentricity",
     "orientation",
     "solidity",
@@ -84,11 +85,69 @@ class ShapeDescriptors:
     axis_major_length_px: np.ndarray
     axis_minor_length_px: np.ndarray
     feret_max_px: np.ndarray
+    #: Physical lengths, in the unit of the `spacing` passed to
+    #: `shape_descriptors`; all-NaN when it was not given. Separate fields
+    #: rather than a scaled view of the `_px` ones because under
+    #: anisotropic pixels they are NOT proportional: stretching one axis
+    #: reshapes the moment ellipse, so the physical major axis is not the
+    #: pixel major axis times any single number.
+    perimeter_calibrated: np.ndarray
+    axis_major_length_calibrated: np.ndarray
+    axis_minor_length_calibrated: np.ndarray
+    feret_max_calibrated: np.ndarray
+    #: The dimensionless descriptors below are measured in PHYSICAL space
+    #: when `spacing` is given, and in pixel space otherwise.
+    #:
+    #: Dimensionless is not the same as scale-invariant. These are all
+    #: invariant under scaling both axes together, which is why a single
+    #: `pixel_size` never mattered to them -- but none of them survives
+    #: scaling one axis alone. A circular particle on 2:1 pixels is an
+    #: ellipse in the array, and pixel-space eccentricity, circularity,
+    #: aspect ratio and orientation all describe that distortion rather
+    #: than the particle. On anisotropic data the calibrated values are
+    #: the physical answer and the pixel-space ones are an artefact of
+    #: the sampling.
     circularity: np.ndarray  # 4*pi*A/P_crofton**2; may slightly exceed 1
     aspect_ratio: np.ndarray  # major/minor; NaN where minor axis is degenerate
 
 
-def shape_descriptors(labels: np.ndarray) -> ShapeDescriptors:
+def _measure(lab: np.ndarray, spacing: tuple[float, float]) -> dict[str, np.ndarray]:
+    """One regionprops pass at `spacing`, plus the Crofton perimeter.
+
+    The perimeter comes from `calc.crofton` rather than regionprops
+    because skimage refuses `perimeter_crofton` outright on anisotropic
+    spacing; on square pixels the two agree bit for bit.
+    """
+    rpt = measure.regionprops_table(lab, properties=_PROPERTIES, spacing=spacing)
+    out = {k: np.asarray(rpt[k], dtype=np.float64) for k in rpt}
+    out["perimeter_crofton"] = crofton_perimeters_by_label(lab, spacing)
+    return out
+
+
+def _scaled(px: dict[str, np.ndarray], scale: float) -> dict[str, np.ndarray]:
+    """Pixel-space measurements re-expressed on an ISOTROPIC physical grid.
+
+    Valid only when both scales are equal: lengths carry one factor, the
+    area two, and the dimensionless descriptors are unchanged. None of
+    that holds when the axes differ, which is the whole reason the
+    anisotropic branch measures again instead.
+    """
+    out = dict(px)
+    out["area"] = px["area"] * scale * scale
+    for key in (
+        "perimeter_crofton",
+        "axis_major_length",
+        "axis_minor_length",
+        "feret_diameter_max",
+    ):
+        out[key] = px[key] * scale
+    return out
+
+
+def shape_descriptors(
+    labels: np.ndarray,
+    spacing: tuple[float, float] | None = None,
+) -> ShapeDescriptors:
     """Per-region shape descriptors for a compact 1..n label image.
 
     `labels` must already be filtered/renumbered (as returned by
@@ -96,36 +155,64 @@ def shape_descriptors(labels: np.ndarray) -> ShapeDescriptors:
     precondition `grains.grain_stats` relies on. Rows come back ordered
     by ascending label, i.e. positionally aligned with the paired
     `RegionStats` list.
+
+    `spacing` is the physical extent of one pixel as ``(row, column)`` —
+    `DataStruct.pixel_spacing`. Given it, the `_calibrated` lengths are
+    filled in and the dimensionless descriptors are measured in physical
+    space; omitted (or unusable: non-finite, zero, negative), the
+    `_calibrated` fields are NaN and everything else is pixel-space, which
+    is exactly what this returned before spacing existed.
+
+    Two passes rather than one scaled pass, because anisotropic pixels
+    make the two genuinely different measurements and neither is
+    recoverable from the other: the pixel-space moment ellipse of a
+    circle on 2:1 pixels is an ellipse, and no single factor turns its
+    axes into the circle's.
     """
     lab = np.asarray(labels, dtype=np.int64)
-    n = int(lab.max())
+    n = int(lab.max()) if lab.size else 0
     if n == 0:
         z = np.array([], dtype=np.float64)
-        return ShapeDescriptors(z, z, z, z, z, z, z, z, z)
+        return ShapeDescriptors(z, z, z, z, z, z, z, z, z, z, z, z, z)
 
-    rpt = measure.regionprops_table(lab, properties=_PROPERTIES)
-    area = np.asarray(rpt["area"], dtype=np.float64)
-    perim = np.asarray(rpt["perimeter_crofton"], dtype=np.float64)
-    ecc = np.asarray(rpt["eccentricity"], dtype=np.float64)
-    orient = np.asarray(rpt["orientation"], dtype=np.float64)
-    solidity = np.asarray(rpt["solidity"], dtype=np.float64)
-    major = np.asarray(rpt["axis_major_length"], dtype=np.float64)
-    minor = np.asarray(rpt["axis_minor_length"], dtype=np.float64)
-    feret = np.asarray(rpt["feret_diameter_max"], dtype=np.float64)
+    px = _measure(lab, (1.0, 1.0))
+    usable = usable_spacing(spacing)
+    if usable is None:
+        phys = None
+    elif usable[0] == usable[1]:
+        # Isotropic: a second pass would recompute the same numbers. Scaling
+        # both axes together leaves every dimensionless descriptor untouched
+        # and multiplies every length by the one scale, so the physical
+        # answers are already in hand. Skipping it halves the cost of the
+        # overwhelmingly common case; `_scaled` is asserted against the real
+        # second pass in the tests so the shortcut cannot drift from it.
+        phys = _scaled(px, usable[0])
+    else:
+        phys = _measure(lab, usable)
+    # Dimensionless descriptors describe the PHYSICAL particle when we can
+    # reach it; none of them survives scaling one axis alone.
+    shape = phys if phys is not None else px
 
     with np.errstate(divide="ignore", invalid="ignore"):
-        circularity = 4.0 * np.pi * area / perim**2
-        minor_safe = np.where(minor > 0, minor, np.nan)
-        aspect_ratio = major / minor_safe
+        circularity = 4.0 * np.pi * shape["area"] / shape["perimeter_crofton"] ** 2
+        minor = shape["axis_minor_length"]
+        aspect_ratio = shape["axis_major_length"] / np.where(minor > 0, minor, np.nan)
+
+    def _cal(key: str) -> np.ndarray:
+        return phys[key] if phys is not None else np.full(n, np.nan)
 
     return ShapeDescriptors(
-        perimeter_crofton_px=perim,
-        eccentricity=ecc,
-        orientation_rad=orient,
-        solidity=solidity,
-        axis_major_length_px=major,
-        axis_minor_length_px=minor,
-        feret_max_px=feret,
+        perimeter_crofton_px=px["perimeter_crofton"],
+        eccentricity=shape["eccentricity"],
+        orientation_rad=shape["orientation"],
+        solidity=shape["solidity"],
+        axis_major_length_px=px["axis_major_length"],
+        axis_minor_length_px=px["axis_minor_length"],
+        feret_max_px=px["feret_diameter_max"],
+        perimeter_calibrated=_cal("perimeter_crofton"),
+        axis_major_length_calibrated=_cal("axis_major_length"),
+        axis_minor_length_calibrated=_cal("axis_minor_length"),
+        feret_max_calibrated=_cal("feret_diameter_max"),
         circularity=circularity,
         aspect_ratio=aspect_ratio,
     )

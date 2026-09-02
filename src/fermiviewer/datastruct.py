@@ -211,3 +211,35 @@ class DataStruct:
         if rows.units != cols.units:
             return float("nan")
         return float(abs(rows.scale * cols.scale))
+
+    @property
+    def pixel_spacing(self) -> tuple[float, float]:
+        """Physical extent of one pixel along (ROWS, COLUMNS) in
+        `pixel_unit`, or ``(nan, nan)``.
+
+        The per-axis companion to `pixel_area`, and the form
+        `skimage.measure.regionprops(spacing=...)` wants. `pixel_area` is
+        the product of these two; it stays a separate property because an
+        area is well defined whenever both axes are, whereas a single
+        LENGTH is not -- which is exactly why `pixel_size` cannot answer
+        for both and why lengths derived from it alone (equivalent
+        diameter, Feret, perimeter) were wrong on anisotropic data.
+
+        Same refusals as `pixel_area`, for the same reasons: NaN unless
+        both spatial axes are calibrated and agree on their unit, and
+        magnitudes rather than signed scales, since a negative scale is a
+        direction convention (DM writes them) and an extent has no
+        direction.
+
+        Returned as a plain tuple in (row, column) order to match numpy
+        axis order and `regionprops`'s `spacing`, so callers never have to
+        decide which way round it goes.
+        """
+        if self.kind is DataKind.SPECTRUM:
+            raise ValueError("1D spectra have no spatial axes")
+        rows, cols = self.axes[0], self.axes[1]
+        if not (rows.calibrated and cols.calibrated):
+            return (float("nan"), float("nan"))
+        if rows.units != cols.units:
+            return (float("nan"), float("nan"))
+        return (float(abs(rows.scale)), float(abs(cols.scale)))

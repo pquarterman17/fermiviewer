@@ -244,12 +244,26 @@ def _grains_edit(
         [(float(x), float(y)) for x, y in params["points"]],
         granularity=params["granularity"],
     )
-    # calibration comes from the SOURCE image, as in the route
-    # (`_grains_payload(..., source_ds, ...)`); a label map registered by
-    # /analyze/grains inherits exactly these axes, so the two agree.
+    # ALL calibration comes from the SOURCE image, as in the route
+    # (`_grains_payload(..., source_ds, ...)`). `source_ds` is defined
+    # above as the intensity image the labels describe, and it is the
+    # image the raster is taken from, so it is the only self-consistent
+    # authority here.
+    #
+    # This used to take `pixel_size`/`unit` from the source but the AREA
+    # and SPACING from `ds`, the editable label map -- while the comment
+    # said the source. A label map registered by /analyze/grains does
+    # inherit the parent axes, which is why in-repo flows agreed and
+    # nothing failed; one supplied or imported with default or stale axes
+    # got a number in the label map's calibration under a unit read off
+    # the source's, and disagreed with the same edit through the route
+    # (45.14 vs 55.28 nm on a 3:1 source). Mixed provenance in one report
+    # is worse than either source alone, because the unit no longer says
+    # which one produced the number.
     px, unit = _px_cal(source_ds)
     report = grain_report(edit.labels, raster, pixel_size=px,
-        pixel_area=ds.pixel_area, unit=unit)
+        pixel_area=source_ds.pixel_area, unit=unit,
+        spacing=source_ds.pixel_spacing)
     outputs = _grain_outputs(
         report,
         "0 = background; values are grain labels (table rows, ascending)",

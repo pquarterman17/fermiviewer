@@ -111,15 +111,12 @@ def analyze_particles(req: ParticleRequest) -> dict:
 
 
 def _analyze_particles(req: ParticleRequest, ds, raster) -> dict:
-    px = ds.pixel_size if np.isfinite(ds.pixel_size) else float("nan")
-    has_cal = np.isfinite(px) and px > 0
     with value_error_as_422():
         res = particle_analysis(
             raster,
             threshold=req.threshold,
             polarity=req.polarity,
             min_area=req.min_area,
-            pixel_size=px,
             pixel_area=ds.pixel_area,
             use_watershed=req.use_watershed,
             min_marker_distance=req.min_marker_distance,
@@ -130,16 +127,14 @@ def _analyze_particles(req: ParticleRequest, ds, raster) -> dict:
     # `region_stats` already produced, so `desc`'s rows line up 1:1 with
     # `res.particles` by position (ascending label), same guarantee
     # `grains.grain_stats` relies on for its own regionprops_table call.
-    desc = shape_descriptors(res.labels)
+    desc = shape_descriptors(res.labels, ds.pixel_spacing)
     thresholds = (
         dataclasses.replace(ClassThresholds(), **req.class_thresholds.model_dump(exclude_none=True))
         if req.class_thresholds is not None
         else None
     )
     shape_classes = classify_shapes(desc.aspect_ratio, desc.circularity, desc.solidity, thresholds)
-    feret_calibrated = (
-        desc.feret_max_px * px if has_cal else np.full_like(desc.feret_max_px, np.nan)
-    )
+    feret_calibrated = desc.feret_max_calibrated
     labels_meta = _register(
         res.labels.astype(np.float64),
         f"particles({name})",
