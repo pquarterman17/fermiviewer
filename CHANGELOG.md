@@ -13,6 +13,126 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-09-02
+
+A region of interest becomes a first-class object. Until now each analysis
+accepted whatever shape it happened to grow up with — nine different
+conventions across the codebase, most of them reducing anything you drew to
+its bounding rectangle. This release gives regions one definition, a place in
+the project file, a manager and drawing tools in the UI, and puts every major
+analysis and batch recipe behind that one definition. It also finishes the
+Results & Methods stack with side-by-side comparison, a report composer and a
+self-contained export, and corrects three long-standing measurement errors
+found in an audit of every formula against its published source.
+
+### Added
+- **Named analysis regions.** Draw a rectangle, ellipse, circle, polygon or
+  lasso with the existing Stage tools and keep it as a named region in an
+  image-scoped set. A region can have holes, several disconnected parts and
+  ordered exclusions, and carries a class with a project-wide colour and
+  label. Sets save in the project file under a validated schema, come back
+  after a browser refresh, and can be converted from existing Saved ROI
+  bookmarks. Older projects load unchanged.
+- **An Analysis Regions manager.** Name, select, show or hide, duplicate and
+  delete sets; classify individual regions; read compound geometry (parts,
+  exclusions, holes) in compact rows; load a region back onto the Stage for
+  precise vertex editing. Regions render over the image in their class
+  colour with even-odd holes and hatched exclusions, and hiding one changes
+  the overlay immediately without touching the geometry.
+- **Analyses read exact regions, not bounding boxes.** EDS/EELS spectrum
+  summation, image and ROI statistics, particle analysis, grain finding,
+  trained segmentation, layer profiles and shape similarity all accept a
+  region. Sums and statistics use the exact pixel mask; a rectangle
+  reproduces its previous numbers bit for bit; and every response says
+  whether it used the exact mask or only the box around it. Segmentation
+  labels only pixels inside the region and computes its threshold from those
+  values alone, while neighbourhood-based methods such as watershed read the
+  bounding-box crop so the region edge does not become an invented boundary
+  — each op reports which it did.
+- **Layer profiles over irregular regions.** Mean and median collapse a
+  region depth by depth, dividing by the pixels actually present at each
+  depth. Sum is refused for a non-rectangular region because its value would
+  follow the width of the outline as faithfully as the intensity: a
+  perfectly flat specimen summed through a circle swings more than fourfold.
+  Waviness tracing is refused for the same reason. Rectangular regions keep
+  every mode.
+- **Recipes can name a region.** A batch step may reference a saved set or a
+  single region. The reference is resolved to inline geometry per image
+  before the step runs, so the recorded parameters replay identically on a
+  machine with no project. A misspelt set name fails at submit time, and a
+  set bound to a different image skips that image with the reason recorded
+  rather than failing the batch.
+- **Label images convert to editable regions and back, losslessly.** A
+  segmentation label map becomes one region per label, with holes and
+  diagonally touching components preserved and the label value kept, so
+  deleting label 2 does not renumber label 5. The reverse conversion rebuilds
+  the map exactly. Floating-point or out-of-range label values are refused
+  rather than rounded.
+- **Preview a region's scope before running.** A preview endpoint reports
+  the pixel count, the bounding-box pixel count, the physical area and
+  whether the two counts differ, using the same resolver the analyses use,
+  so what it predicts is what they read.
+- **Compare saved results side by side.** A Compare view in Results &
+  Methods shows which results can sit together, their calibration confidence
+  and shared outputs, and names exactly why any cannot: different analysis,
+  different units, a failed run. Scalars compare with uncertainty and units;
+  non-scalar outputs are identified as such rather than flattened.
+- **Compose a report.** Pick results in order, choose which outputs to
+  include, and get methods, calibration and review-note sections assembled
+  from the deterministic manifest, with scalar metrics, inline tables and
+  vector curves in a print-oriented preview. Export the exact preview as
+  standalone HTML or print it to PDF.
+- **Export a result bundle that stands alone.** A single archive carries the
+  manifest, the methods prose, a README and every cited array, using the
+  project's own member layout so a citation that pointed into the project
+  resolves inside the archive. Arrays stream rather than buffer, and the
+  archive is byte-reproducible apart from its timestamp, so it can be hashed
+  and cited.
+- Image and ROI statistics report how many pixels were finite as well as how
+  many were selected. Physical area follows the selected count — a dead
+  detector pixel still occupies specimen area — while mean, standard
+  deviation, minimum and maximum use only the finite values.
+
+### Changed
+- ROI statistics no longer return NaN for an entire ROI because one pixel is
+  NaN; they report the finite pixels and say how many were usable.
+- `rasterize`, `bounding_box` and `to_rect_roi` now live in
+  `calc.region_mask` and remain importable from `calc.regions`. The ASTM
+  E112 grain-size machinery moved from `calc.grains` to `calc.grain_size`.
+
+### Fixed
+- **The ASTM E112 grain size number was off its own scale.** The formula
+  applied a coefficient constructed for log₁₀ to log₂, so 10 µm grains
+  reported G = 40.8 where E112 gives 10.7 — every value for an ordinary
+  micrograph fell outside the 00–14 range the scale spans. The grain report
+  also inferred the grain count from the mean equivalent diameter, which
+  biases G upward whenever grains vary in size (by +0.44 at a 60 % size
+  spread); it now counts grains per unit area as E112's planimetric method
+  specifies. Grain-size values from the grains analysis change; they were
+  wrong before.
+- **Areas on non-square pixels were wrong by the ratio of the two scales.**
+  Physical area was the pixel count times one axis scale squared. An AFM
+  scan with 0.5 nm rows and 2.0 nm columns reported four times its true
+  area. Area is now the product of the two spatial scales everywhere it is
+  reported — region and ROI statistics, particles, grains, grain layers and
+  the region preview — and is left undefined rather than guessed when the
+  two axes disagree on their unit or one is uncalibrated. Square pixels are
+  numerically unchanged.
+- **Particle and grain shapes on non-square pixels were measured in
+  distorted pixel space.** A physically circular particle on 3:1 pixels
+  reported an aspect ratio of 3.04, an eccentricity of 0.94 and a 73 % error
+  in equivalent diameter, and was classified rod-like. Lengths and shape
+  descriptors are now computed on the calibrated grid, with a perimeter
+  estimator that adapts its sampling directions to the pixel aspect ratio.
+  Square pixels are bit-for-bit unchanged, so existing circularity values
+  and class thresholds do not move. Other length readouts — GPA
+  displacements, exported distance labels, dislocation line intercepts and
+  EDS line profiles — still assume square pixels and are tracked separately.
+- Particle orientation is measured from the row axis, following
+  scikit-image, so a horizontal feature reports π/2 rather than 0. This was
+  always the behaviour and is now documented, since plotting it as "from
+  horizontal" would draw every particle across its own short axis.
+
 ## [0.2.0] - 2026-08-28
 
 Results stop being transient. Until now every analysis lived only as long as
