@@ -154,9 +154,17 @@ def test_isotropic_shortcut_equals_the_full_second_pass() -> None:
 
     That shortcut is only sound because isotropic scaling leaves every
     dimensionless descriptor alone and multiplies every length by the one
-    factor. Pinned against the real second pass — computed here through
-    the anisotropic branch by nudging one scale by a part in 10^9, which
-    is far below any measurable difference but takes the other code path.
+    factor. So compare the two BRANCHES of `shape_descriptors` itself:
+    equal scales take the shortcut, and scales differing by a part in
+    10^9 -- far below anything measurable, and not enough to change which
+    direction offsets the estimator picks -- take the real second pass.
+
+    Comparing against `_measure` directly would be weaker and was what an
+    earlier version of this test actually did while its docstring claimed
+    otherwise: it would leave the anisotropic branch's own field wiring
+    (`perimeter_calibrated`, the two axis lengths) unexercised, since
+    those are not exposed through the particles API that the other tests
+    here go through.
     """
     from fermiviewer.calc.shape_metrics import _measure, shape_descriptors
 
@@ -169,28 +177,54 @@ def test_isotropic_shortcut_equals_the_full_second_pass() -> None:
 
     for scale in (0.25, 2.0, 7.0):
         short = shape_descriptors(labels, (scale, scale))
-        full = _measure(labels, (scale, scale))
+        full = shape_descriptors(labels, (scale, scale * (1 + 1e-9)))
+        # Both branches share the `_cal` wiring that names which measured
+        # quantity lands in which field, so comparing them to each other
+        # cannot catch a mis-naming -- it moves both sides together. The
+        # raw measurement dict is the independent oracle for that, and is
+        # checked alongside rather than instead: dropping it here silently
+        # lost the mutant "axis_major_length_calibrated <- minor".
+        raw = _measure(labels, (scale, scale))
+        for field, key in (
+            ("perimeter_calibrated", "perimeter_crofton"),
+            ("feret_max_calibrated", "feret_diameter_max"),
+            ("axis_major_length_calibrated", "axis_major_length"),
+            ("axis_minor_length_calibrated", "axis_minor_length"),
+        ):
+            np.testing.assert_allclose(
+                getattr(short, field), raw[key], rtol=1e-12,
+                err_msg=f"{field} is not {key}",
+            )
+        for field in (
+            "perimeter_calibrated",
+            "feret_max_calibrated",
+            "axis_major_length_calibrated",
+            "axis_minor_length_calibrated",
+            "solidity",
+            # circularity is the only consumer of the SCALED AREA, so
+            # without it the area's exponent is unguarded: dropping one
+            # factor of the scale leaves every other field correct and
+            # silently rescales circularity by 1/scale, moving shape
+            # classes on every isotropic calibrated image.
+            "circularity",
+            "aspect_ratio",
+        ):
+            np.testing.assert_allclose(
+                getattr(short, field), getattr(full, field), rtol=1e-7,
+                err_msg=f"{field} differs between branches at scale {scale}",
+            )
+        # Eccentricity gets an ABSOLUTE tolerance, and the reason is a real
+        # property of the quantity rather than a fudge. It is not Lipschitz
+        # at 0: for semi-axes differing by a relative delta,
+        # e = sqrt(2*delta - delta**2), so the 1e-9 nudge turns a perfect
+        # disc's exact 0.0 into 4.47e-5 -- an amplification of ~45000x, and
+        # a RELATIVE difference of 1.0 against a true zero. The circle in
+        # this fixture makes that visible; a fixture of only elongated
+        # shapes would have hidden it and left a tolerance nobody
+        # understood.
         np.testing.assert_allclose(
-            short.perimeter_calibrated, full["perimeter_crofton"], rtol=1e-12
-        )
-        np.testing.assert_allclose(
-            short.feret_max_calibrated, full["feret_diameter_max"], rtol=1e-12
-        )
-        np.testing.assert_allclose(
-            short.axis_major_length_calibrated, full["axis_major_length"], rtol=1e-12
-        )
-        np.testing.assert_allclose(short.eccentricity, full["eccentricity"], rtol=1e-12)
-        np.testing.assert_allclose(short.solidity, full["solidity"], rtol=1e-12)
-        # Circularity is the only consumer of the scaled AREA, so without
-        # it the area's exponent is unguarded: dropping one factor of the
-        # scale leaves every other field above correct and silently
-        # rescales circularity by 1/scale, which moves shape classes.
-        derived = 4.0 * np.pi * full["area"] / full["perimeter_crofton"] ** 2
-        np.testing.assert_allclose(short.circularity, derived, rtol=1e-12)
-        np.testing.assert_allclose(
-            short.aspect_ratio,
-            full["axis_major_length"] / full["axis_minor_length"],
-            rtol=1e-12,
+            short.eccentricity, full.eccentricity, rtol=1e-7, atol=1e-4,
+            err_msg=f"eccentricity differs between branches at scale {scale}",
         )
 
 
