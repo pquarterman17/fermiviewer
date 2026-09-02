@@ -381,6 +381,7 @@ def grain_stats(
     pixel_area: float = float("nan"),
     min_area: int = 1,
     connectivity: int = 8,
+    *,
     spacing: tuple[float, float] | None = None,
 ) -> GrainStats:
     """Per-grain measurements + grain-boundary network — ported.

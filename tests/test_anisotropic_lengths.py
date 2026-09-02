@@ -313,6 +313,63 @@ def _square_label() -> tuple[np.ndarray, np.ndarray]:
     return labels, np.zeros((20, 20), dtype=np.float64)
 
 
+def test_legacy_positional_calls_still_mean_what_they_meant() -> None:
+    """Argument ORDER is part of the signature, not just the names.
+
+    Restoring `pixel_size` after `pixel_area` would keep every keyword
+    caller working while silently re-pointing positional ones: before
+    #202 the order was ``(..., min_area, pixel_size, pixel_area)``, so
+    ``region_stats(labels, img, 1, 0.4)`` meant pixel_size=0.4 and gave a
+    diameter of 4.5135. Under the swapped order it means pixel_area=0.4
+    and gives 7.1365 -- a plausible number, silently wrong, which is
+    strictly worse than the TypeError it replaced.
+
+    The oracle is the pre-#202 behaviour, and these calls are positional
+    on purpose: the keyword tests below pass either way round.
+    """
+    from fermiviewer.calc.particles import particle_analysis, region_stats
+
+    labels, img = _square_label()
+    stats, _, _ = region_stats(labels, img, 1, 0.4)  # (min_area, pixel_size)
+    assert stats[0].diameter_calibrated == pytest.approx(
+        stats[0].equiv_diameter * 0.4
+    ), "4th positional argument must still be pixel_size"
+
+    bright = np.zeros((20, 20), dtype=np.float64)
+    bright[5:15, 5:15] = 100.0
+    # (img, threshold, polarity, connectivity, min_area, pixel_size)
+    res = particle_analysis(bright, 50, "bright", 8, 1, 0.4)
+    assert res.n_particles == 1
+    p = res.particles[0]
+    assert p.diameter_calibrated == pytest.approx(p.equiv_diameter * 0.4)
+
+
+def test_positional_pixel_size_and_keyword_pixel_size_agree() -> None:
+    """The same value in the legacy positional slot and by keyword must
+    describe the same calibration -- the cheapest way to state that the
+    slot has not moved."""
+    from fermiviewer.calc.particles import region_stats
+
+    labels, img = _square_label()
+    positional, _, _ = region_stats(labels, img, 1, 0.4)
+    keyword, _, _ = region_stats(labels, img, pixel_size=0.4)
+    assert positional[0].diameter_calibrated == pytest.approx(
+        keyword[0].diameter_calibrated
+    )
+    assert positional[0].area_calibrated == pytest.approx(keyword[0].area_calibrated)
+
+
+def test_grain_stats_spacing_is_keyword_only() -> None:
+    """`spacing` is new in #202, so it is pinned keyword-only: it sits
+    after four floats where a positional slip would be silent, and
+    nothing legacy can be passing it."""
+    from fermiviewer.calc.grains import grain_stats
+
+    labels, img = _square_label()
+    with pytest.raises(TypeError):
+        grain_stats(labels, img, 0.4, 0.16, 1, 8, (3.0, 1.0))  # type: ignore[misc]
+
+
 def test_region_stats_still_accepts_pixel_size_alone() -> None:
     """A single length is enough to calibrate square pixels, and must
     give exactly what it gave before per-axis calibration existed."""

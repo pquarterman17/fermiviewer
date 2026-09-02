@@ -230,8 +230,8 @@ def region_stats(
     labels: np.ndarray,
     img: np.ndarray,
     min_area: int = 1,
-    pixel_area: float = float("nan"),
     pixel_size: float = float("nan"),
+    pixel_area: float = float("nan"),
 ) -> tuple[list[RegionStats], np.ndarray, int]:
     """Per-region measurements with MinArea filter + compact renumber.
 
@@ -312,8 +312,8 @@ def particle_analysis(
     polarity: str = "bright",
     connectivity: int = 8,
     min_area: int = 1,
-    pixel_area: float = float("nan"),
     pixel_size: float = float("nan"),
+    pixel_area: float = float("nan"),
     use_watershed: bool = False,
     min_marker_distance: float = 3.0,
 ) -> ParticleAnalysis:
