@@ -12,6 +12,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from fermiviewer.calc.crofton import usable_spacing
+
 __all__ = ["GpaResult", "geometric_phase_analysis", "gpa_mean_strain"]
 
 
@@ -55,12 +57,32 @@ def geometric_phase_analysis(
     mask_radius: float = 0.0,
     mask_order: float = 2.0,
     pixel_size: float = 1.0,
+    *,
+    spacing: tuple[float, float] | None = None,
 ) -> GpaResult:
     """GPA strain mapping from two non-collinear g-vectors.
 
     g-vectors are in FFT-pixel offsets from the (fftshifted) centre,
     (gx, gy) = (column, row) frequency index. mask_radius 0 resolves to
     min(|g1|, |g2|)/3, floored at 1.
+
+    `spacing` is the physical extent of one pixel as ``(row, column)``
+    (`DataStruct.pixel_spacing`); `pixel_size` is the isotropic fallback
+    for a caller with a single length, and an explicit `spacing` wins.
+
+    STRAIN IS DIMENSIONLESS and does not depend on either. `exx` is
+    ``d(u_x)/dx``, so the scale appears in the numerator and the
+    denominator and cancels. Until 2026-09-02 it did not: the
+    displacements were converted to physical units but the gradients were
+    still taken against PIXEL indices, so every strain component came out
+    multiplied by `pixel_size` -- exx was 10x too large at
+    `pixel_size=10`, and only correct at the default of 1. The gradients
+    now carry the physical spacing, which is what makes the cancellation
+    happen.
+
+    The two DISPLACEMENTS are lengths and do scale, but not by the same
+    number when the pixels are not square: `displacement_x` is along
+    COLUMNS and `displacement_y` along ROWS.
     """
     d = np.asarray(img, dtype=np.float64)
     h, w = d.shape
@@ -93,14 +115,21 @@ def geometric_phase_analysis(
         / det
     )
 
+    s_row, s_col = usable_spacing(spacing) or (pixel_size, pixel_size)
+
     rhs1 = -phase1 / (2 * np.pi)
     rhs2 = -phase2 / (2 * np.pi)
-    ux = (g_inv[0, 0] * rhs1 + g_inv[0, 1] * rhs2) * pixel_size
-    uy = (g_inv[1, 0] * rhs1 + g_inv[1, 1] * rhs2) * pixel_size
+    # ux displaces along COLUMNS and uy along ROWS, so they take the
+    # column and row extents respectively -- the same number only when
+    # the pixels are square.
+    ux = (g_inv[0, 0] * rhs1 + g_inv[0, 1] * rhs2) * s_col
+    uy = (g_inv[1, 0] * rhs1 + g_inv[1, 1] * rhs2) * s_row
 
-    # MATLAB [dudx, dudy] = gradient(ux): first output is d/dcol
-    dudy, dudx = np.gradient(ux)
-    dvdy, dvdx = np.gradient(uy)
+    # MATLAB [dudx, dudy] = gradient(ux): first output is d/dcol. The
+    # spacings make each derivative a rate per PHYSICAL length rather
+    # than per pixel, which is what leaves the strains dimensionless.
+    dudy, dudx = np.gradient(ux, s_row, s_col)
+    dvdy, dvdx = np.gradient(uy, s_row, s_col)
 
     return GpaResult(
         exx=dudx,
