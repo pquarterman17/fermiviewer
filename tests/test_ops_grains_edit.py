@@ -428,3 +428,101 @@ def test_empty_scales_falls_back_to_the_route_default() -> None:
         _outputs(empty)["class_map"]["data"]["values"]
         == _outputs(default)["class_map"]["data"]["values"]
     )
+
+
+# ── calibration provenance (review finding on #202) ──────────────────
+
+
+def _ds_with_axes(
+    data: np.ndarray, row: float, col: float, unit: str = "nm"
+) -> DataStruct:
+    return DataStruct(
+        data=data,
+        kind=DataKind.IMAGE,
+        axes=(AxisCal(row, 0.0, unit), AxisCal(col, 0.0, unit)),
+        metadata={"source": "synthetic"},
+    )
+
+
+def test_grains_edit_calibrates_from_the_source_not_the_label_map() -> None:
+    """`source_ds` is the single calibration authority, and the guard has
+    to use a label map whose axes DIFFER from the source.
+
+    Every in-repo flow registers the label map with the parent's axes, so
+    a fixture that shares them agrees no matter which side the op reads —
+    it cannot tell the two apart, which is why this drifted unnoticed.
+    Here the source is anisotropic 3:1 and the label map carries stale
+    1:1 axes, so reading the wrong one is visible: the op answered 45.14
+    where the route answers 78.18, and labelled it with the source's unit
+    either way.
+
+    The oracle is the ROUTE's composition (ADR 0005 §1: the op and the
+    route compute the same report), not a number copied from the op.
+    """
+    source = _ds_with_axes(_textured(), 3.0, 1.0)
+    # differs in SCALE, ASPECT and UNIT: each of the three calibration
+    # arguments reads a different value from the two images, so no single
+    # one of them can be misdirected without a visible effect.
+    stale_labels = _ds_with_axes(
+        _two_grain_labels().astype(np.float64), 1.0, 1.0, unit="um"
+    )
+    assert source.pixel_spacing != stale_labels.pixel_spacing
+    assert source.pixel_unit != stale_labels.pixel_unit
+
+    points = [[10.0, 10.0], [30.0, 10.0]]
+    result = ops.run(
+        "grains_edit",
+        stale_labels,
+        {"op": "merge", "points": points, "granularity": 0.05, "roi": ""},
+        inputs={"source": source},
+    )
+    table = _outputs(result)["grains"]["data"]
+    col = table["columns"].index("diameter_calibrated")
+    got = [row[col] for row in table["rows"]]
+
+    raster = np.asarray(source.data, dtype=np.float64)
+    edit = edit_grains(
+        _two_grain_labels(), raster, "merge",
+        [(float(x), float(y)) for x, y in points], granularity=0.05,
+    )
+    expected = grain_report(
+        edit.labels, raster,
+        pixel_size=source.pixel_size, pixel_area=source.pixel_area,
+        unit=source.pixel_unit, spacing=source.pixel_spacing,
+    )
+    np.testing.assert_allclose(got, expected.diameter_calibrated, rtol=1e-12)
+    # `diameter_calibrated` rides on pixel_area alone, so it cannot see a
+    # misdirected SPACING. Eccentricity can: it is measured on the
+    # physical grid, and 3:1 against 1:1 moves it 0.986 -> 0.866 here.
+    ecc = table["columns"].index("eccentricity")
+    np.testing.assert_allclose(
+        [row[ecc] for row in table["rows"]], expected.eccentricity, rtol=1e-12
+    )
+    # and the declared unit must come from the same image as the numbers,
+    # which only bites because the two fixtures disagree about it
+    assert table["units"][col] == source.pixel_unit == "nm"
+
+
+def test_grains_edit_does_not_mix_two_images_calibrations() -> None:
+    """A report that takes its unit from one image and its magnitude from
+    another is worse than either alone, because the unit stops saying
+    which calibration produced the number. Reading the label map's 1:1
+    axes here would give exactly the source-independent answer."""
+    source = _ds_with_axes(_textured(), 3.0, 1.0)
+    stale_labels = _ds_with_axes(
+        _two_grain_labels().astype(np.float64), 1.0, 1.0, unit="um"
+    )
+    result = ops.run(
+        "grains_edit",
+        stale_labels,
+        {"op": "merge", "points": [[10.0, 10.0], [30.0, 10.0]], "granularity": 0.05,
+         "roi": ""},
+        inputs={"source": source},
+    )
+    table = _outputs(result)["grains"]["data"]
+    col = table["columns"].index("diameter_calibrated")
+    px_col = table["columns"].index("equiv_diameter_px")
+    for row in table["rows"]:
+        # uncalibrated pixels x the label map's 1:1 scale would leave the
+        # calibrated column equal to the pixel one
+        assert row[col] != pytest.approx(row[px_col]), "read the label map's axes"
