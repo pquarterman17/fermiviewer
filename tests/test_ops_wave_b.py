@@ -191,6 +191,26 @@ def test_gpa_op_matches_direct_calc_composition() -> None:
     assert outs["rotation_mean"]["data"]["unit"] == "rad"
 
 
+def test_gpa_op_still_reports_its_means_when_pixel_size_is_zero() -> None:
+    """`pixel_size` carries no `minimum` on the op and no constraint on
+    the route model, so zero reaches the calc straight from a user.
+
+    Strain is dimensionless -- it needs no calibration at all -- so the
+    four field means must still be there, and must be the same numbers as
+    at `pixel_size=1`. They briefly were not: dividing the gradients by
+    zero made every map NaN, and the op drops a mean that is not finite
+    (ADR 0004), so the scalars vanished from the payload silently while
+    four all-NaN maps shipped beside them.
+    """
+    ds = _lattice_ds()
+    g = {"g1x": 8.0, "g1y": 0.0, "g2x": 0.0, "g2y": 8.0}
+    zero = _outputs(ops.run("gpa", ds, {**g, "pixel_size": 0.0}))
+    one = _outputs(ops.run("gpa", ds, {**g, "pixel_size": 1.0}))
+    for key in ("exx_mean", "eyy_mean", "exy_mean", "rotation_mean"):
+        assert key in zero, f"{key} vanished from the payload"
+        assert zero[key]["data"]["value"] == pytest.approx(one[key]["data"]["value"])
+
+
 def test_gpa_op_rejects_collinear_g_vectors() -> None:
     with pytest.raises(ValueError, match="linearly dependent"):
         ops.run(
