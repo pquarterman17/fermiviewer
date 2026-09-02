@@ -159,12 +159,14 @@ def test_isotropic_shortcut_equals_the_full_second_pass() -> None:
     10^9 -- far below anything measurable, and not enough to change which
     direction offsets the estimator picks -- take the real second pass.
 
-    Comparing against `_measure` directly would be weaker and was what an
-    earlier version of this test actually did while its docstring claimed
-    otherwise: it would leave the anisotropic branch's own field wiring
-    (`perimeter_calibrated`, the two axis lengths) unexercised, since
-    those are not exposed through the particles API that the other tests
-    here go through.
+    The raw `_measure` dict is checked too, and the two checks answer
+    different questions. Branch-against-branch says the shortcut computes
+    the same NUMBERS as a real second pass; `_measure` says each number
+    landed in the field it is NAMED for. Neither substitutes for the
+    other: the branches share the `_cal` wiring, so a mis-naming moves
+    both sides together, while `_measure` alone never reaches the
+    anisotropic branch. An earlier version of this test had only the
+    second, and a docstring claiming the first.
     """
     from fermiviewer.calc.shape_metrics import _measure, shape_descriptors
 
