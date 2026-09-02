@@ -19,6 +19,8 @@ the implementation.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -174,13 +176,46 @@ def test_unusable_spacing_falls_back_rather_than_poisoning_the_result(
     assert np.isfinite(got.displacement_x).all()
 
 
+@pytest.mark.parametrize("bad", [0.0, -1.0, float("nan"), float("inf")])
+def test_unusable_pixel_size_falls_back_rather_than_poisoning_the_result(
+    bad: float,
+) -> None:
+    """The same guarantee for the parameter the callers actually pass.
+
+    `spacing` reaches no caller yet; `pixel_size` reaches both, and
+    neither the route model nor the op's `OpParam` excludes zero. Zero
+    used to be harmless -- the displacements came out identically zero
+    and so did the strains. Dividing the gradients by it instead makes
+    every map NaN and fires sixteen numpy RuntimeWarnings, which this
+    repo's ``filterwarnings = ["error"]`` turns into a hard failure.
+
+    The assertion is the ANALYTIC strain rather than mere finiteness: a
+    fallback that returned zeros everywhere would be just as wrong and
+    would sail through an `isfinite` check. Strain is dimensionless, so
+    the correct answer at a nonsense calibration is the same answer as at
+    a good one -- not NaN.
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        got = geometric_phase_analysis(_chirped_lattice(), G1, G2, pixel_size=bad)
+    assert got.exx[WINDOW].mean() == pytest.approx(_analytic_exx_mean(), rel=0.05)
+
+
 # ── the guarantee that protects existing results ─────────────────────────
 
 
-def test_the_default_is_bit_for_bit_what_it_always_was() -> None:
-    """`pixel_size=1` is the default and the only value the MATLAB golden
-    test pins, so it must not move by a single bit -- otherwise this is a
-    renumbering of every recorded GPA result rather than a fix."""
+def test_the_two_entry_paths_agree_bit_for_bit_at_unit_scale() -> None:
+    """`pixel_size=1` and `spacing=(1, 1)` are the same physical statement
+    and must produce identical arrays, not merely close ones.
+
+    This does NOT on its own establish that the default is unchanged --
+    both sides of the comparison are the new code, so they would agree
+    just as happily on a wrong number. What pins the old values is
+    `tests/test_imaging.py::test_gpa`, which checks all eight fields at
+    the default against the MATLAB capture: an oracle outside this repo
+    entirely. This test guards the narrower thing its name says, that the
+    default path and the explicit-spacing path cannot drift apart.
+    """
     latt = _chirped_lattice()
     default = geometric_phase_analysis(latt, G1, G2)
     explicit = geometric_phase_analysis(latt, G1, G2, spacing=(1.0, 1.0))

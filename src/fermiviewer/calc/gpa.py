@@ -115,7 +115,20 @@ def geometric_phase_analysis(
         / det
     )
 
-    s_row, s_col = usable_spacing(spacing) or (pixel_size, pixel_size)
+    # A zero, negative or non-finite `pixel_size` is not a calibration,
+    # and neither the route model nor the op's `OpParam` excludes one --
+    # the sibling `lattice` op in the same catalogue already falls back
+    # rather than trusting it. Falling back to 1 is not a guess here:
+    # strain is dimensionless, so the four maps this function is asked
+    # for are CORRECT at any spacing, and dividing the gradients by zero
+    # instead would turn a computable result into NaN. The displacements
+    # are then in pixels, which is the honest reading of "no usable
+    # scale" -- and no caller exposes them.
+    s_row, s_col = (
+        usable_spacing(spacing)
+        or usable_spacing((pixel_size, pixel_size))
+        or (1.0, 1.0)
+    )
 
     rhs1 = -phase1 / (2 * np.pi)
     rhs2 = -phase2 / (2 * np.pi)
