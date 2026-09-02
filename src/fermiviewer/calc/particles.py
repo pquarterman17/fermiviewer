@@ -206,11 +206,32 @@ class RegionStats:
     diameter_calibrated: float
 
 
+def resolve_pixel_area(pixel_area: float, pixel_size: float) -> float:
+    """The pixel AREA to measure with, given whichever calibration a
+    caller supplied.
+
+    An explicit `pixel_area` always wins: it is the only one of the two
+    that stays right when the axes differ. `pixel_size` is the
+    compatibility path for a caller who has a single length -- squaring
+    it is exactly correct for square pixels and is what this tree did
+    everywhere before `pixel_area` existed, so a library caller written
+    against the old signature keeps its answer instead of silently
+    receiving NaN. Matches `calc/grain_layers.py`, which already made
+    this choice for the same reason.
+    """
+    if np.isfinite(pixel_area):
+        return float(pixel_area)
+    if np.isfinite(pixel_size) and pixel_size > 0:
+        return float(pixel_size * pixel_size)
+    return float("nan")
+
+
 def region_stats(
     labels: np.ndarray,
     img: np.ndarray,
     min_area: int = 1,
     pixel_area: float = float("nan"),
+    pixel_size: float = float("nan"),
 ) -> tuple[list[RegionStats], np.ndarray, int]:
     """Per-region measurements with MinArea filter + compact renumber.
 
@@ -220,6 +241,7 @@ def region_stats(
     lab = np.asarray(labels, dtype=np.int64)
     d = np.asarray(img, dtype=np.float64)
 
+    pixel_area = resolve_pixel_area(pixel_area, pixel_size)
     out: list[RegionStats] = []
     n = int(lab.max())
     for k in range(1, n + 1):
@@ -291,6 +313,7 @@ def particle_analysis(
     connectivity: int = 8,
     min_area: int = 1,
     pixel_area: float = float("nan"),
+    pixel_size: float = float("nan"),
     use_watershed: bool = False,
     min_marker_distance: float = 3.0,
 ) -> ParticleAnalysis:
@@ -316,7 +339,7 @@ def particle_analysis(
         lab, _ = label_components(mask, connectivity)
 
     parts, lab, kept = region_stats(
-        lab, d, min_area=min_area, pixel_area=pixel_area
+        lab, d, min_area=min_area, pixel_area=pixel_area, pixel_size=pixel_size
     )
     return ParticleAnalysis(
         mask=mask,

@@ -22,7 +22,7 @@ from fermiviewer.calc.ml import kmeans_lite, standardize_features
 from fermiviewer.calc.normalize import normalize01 as _normalize01
 from fermiviewer.calc.normalize import robust_normalize01 as _robust_normalize01
 from fermiviewer.calc.normalize import sanitize as _sanitize
-from fermiviewer.calc.particles import RegionStats, region_stats
+from fermiviewer.calc.particles import RegionStats, region_stats, resolve_pixel_area
 from fermiviewer.calc.segment import label_components
 from fermiviewer.calc.texture import structure_tensor
 
@@ -390,6 +390,14 @@ def grain_stats(
     boundary-network length are measured in physical space; omitted, they
     are pixel-space, exactly as before spacing existed.
     """
+    # A caller with only a length still gets calibrated numbers: an
+    # explicit area or spacing wins, and `pixel_size` is squared for the
+    # area and read as isotropic spacing when neither is given. Without
+    # this, `grain_stats(pixel_size=...)` -- the signature this had before
+    # per-axis calibration existed -- returns NaN diameters silently.
+    pixel_area = resolve_pixel_area(pixel_area, pixel_size)
+    if spacing is None and np.isfinite(pixel_size) and pixel_size > 0:
+        spacing = (float(pixel_size), float(pixel_size))
     grains, lab, n = region_stats(
         labels, img, min_area=min_area, pixel_area=pixel_area
     )

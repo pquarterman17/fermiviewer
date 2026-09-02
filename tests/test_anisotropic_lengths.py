@@ -295,6 +295,119 @@ def test_equivalent_diameter_unchanged_on_square_pixels(scale: float) -> None:
     assert r.diameter_calibrated == pytest.approx(r.equiv_diameter * scale, rel=1e-12)
 
 
+# ── the legacy square-pixel calc API (review finding on #202) ────────────
+#
+# Threading per-axis calibration through removed `pixel_size` from
+# `region_stats`/`particle_analysis` and stopped `grain_stats` deriving an
+# area from it. In-repo routes were all migrated in the same change, so
+# nothing here failed -- but a pure-library caller outside this tree got a
+# TypeError from the first two and, worse, a SILENT NaN diameter from
+# `grain_stats`, which still accepted the argument. These test the old
+# signatures directly, because testing only the migrated call sites is
+# what let it through.
+
+
+def _square_label() -> tuple[np.ndarray, np.ndarray]:
+    labels = np.zeros((20, 20), np.int64)
+    labels[5:15, 5:15] = 1  # 10 x 10 px
+    return labels, np.zeros((20, 20), dtype=np.float64)
+
+
+def test_region_stats_still_accepts_pixel_size_alone() -> None:
+    """A single length is enough to calibrate square pixels, and must
+    give exactly what it gave before per-axis calibration existed."""
+    from fermiviewer.calc.particles import region_stats
+
+    labels, img = _square_label()
+    stats, _, _ = region_stats(labels, img, pixel_size=0.4)
+    r = stats[0]
+    # oracle: the definition, with the area a 0.4 nm square pixel implies
+    assert r.area_calibrated == pytest.approx(100 * 0.4 * 0.4)
+    assert r.diameter_calibrated == pytest.approx(
+        2 * np.sqrt(r.area_calibrated / np.pi)
+    )
+    # and that equals the pre-PR single-scale product, square pixels being
+    # the case where the two forms agree
+    assert r.diameter_calibrated == pytest.approx(r.equiv_diameter * 0.4)
+
+
+def test_particle_analysis_still_accepts_pixel_size_alone() -> None:
+    from fermiviewer.calc.particles import particle_analysis
+
+    _, img = _square_label()
+    img[5:15, 5:15] = 100.0
+    res = particle_analysis(img, threshold=50, pixel_size=0.4)
+    assert res.n_particles == 1
+    p = res.particles[0]
+    assert p.area_calibrated == pytest.approx(100 * 0.4 * 0.4)
+    assert p.diameter_calibrated == pytest.approx(p.equiv_diameter * 0.4)
+
+
+def test_grain_stats_pixel_size_alone_is_not_silently_nan() -> None:
+    """The regression that motivated this section: `grain_stats` kept
+    accepting `pixel_size` while no longer deriving an area from it, so
+    it answered NaN instead of raising. A wrong answer that still has the
+    right type is worse than a TypeError."""
+    from fermiviewer.calc.grains import grain_stats
+
+    labels, img = _square_label()
+    stats = grain_stats(labels, img, pixel_size=0.4)
+    assert np.isfinite(stats.diameter_calibrated).all()
+    assert stats.diameter_calibrated[0] == pytest.approx(
+        stats.equiv_diameter_px[0] * 0.4
+    )
+    # `pixel_size` also stands in as ISOTROPIC spacing, so the shape
+    # descriptors calibrate rather than staying absent
+    assert np.isfinite(stats.perimeter_calibrated).all()
+    assert stats.perimeter_calibrated[0] == pytest.approx(
+        stats.perimeter_crofton_px[0] * 0.4
+    )
+
+
+def test_explicit_calibration_beats_the_pixel_size_fallback() -> None:
+    """`pixel_size` is a fallback, never an override: it is the only one
+    of the three that cannot describe non-square pixels, so anything more
+    specific must win."""
+    from fermiviewer.calc.grains import grain_stats
+    from fermiviewer.calc.particles import region_stats
+
+    labels, img = _square_label()
+    stats, _, _ = region_stats(labels, img, pixel_area=9.0, pixel_size=0.4)
+    assert stats[0].area_calibrated == pytest.approx(100 * 9.0), "pixel_area wins"
+
+    with_spacing = grain_stats(labels, img, pixel_size=0.4, spacing=(3.0, 1.0))
+    isotropic = grain_stats(labels, img, pixel_size=0.4)
+    assert with_spacing.perimeter_calibrated[0] != pytest.approx(
+        isotropic.perimeter_calibrated[0]
+    ), "spacing wins over pixel_size"
+
+
+def test_no_calibration_at_all_still_reports_absence() -> None:
+    """Restoring the fallback must not invent a calibration where there
+    is none (ADR 0004)."""
+    from fermiviewer.calc.grains import grain_stats
+    from fermiviewer.calc.particles import region_stats
+
+    labels, img = _square_label()
+    stats, _, _ = region_stats(labels, img)
+    assert np.isnan(stats[0].area_calibrated)
+    assert np.isnan(stats[0].diameter_calibrated)
+    assert np.isnan(grain_stats(labels, img).diameter_calibrated).all()
+
+
+@pytest.mark.parametrize("bad", [0.0, -1.0, float("nan")])
+def test_unusable_pixel_size_is_not_squared_into_a_number(bad: float) -> None:
+    """A zero, negative or absent length must not become a positive area
+    via the square -- that would turn missing calibration into a
+    confident wrong one."""
+    from fermiviewer.calc.particles import region_stats
+
+    labels, img = _square_label()
+    stats, _, _ = region_stats(labels, img, pixel_size=bad)
+    assert np.isnan(stats[0].area_calibrated)
+    assert np.isnan(stats[0].diameter_calibrated)
+
+
 # ── grain-boundary network: two directions, two lengths ──────────────────
 
 
