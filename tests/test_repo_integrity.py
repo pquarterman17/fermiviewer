@@ -253,7 +253,7 @@ def test_project_version_declarations_agree() -> None:
         assert len(pkgs) == 1, f"{name!r} appears {len(pkgs)}× in lockfile"
         return str(pkgs[0]["version"])
 
-    changelog = (ROOT / "CHANGELOG.md").read_text()
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     top = re.search(r"^## \[(\d+\.\d+\.\d+)\]", changelog, re.M)
     assert top, "CHANGELOG.md has no '## [X.Y.Z]' section"
 
