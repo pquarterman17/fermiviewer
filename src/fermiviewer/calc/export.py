@@ -12,6 +12,11 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from fermiviewer.calc.calibration import (
+    physical_angle_rad,
+    physical_length,
+    resolve_spacing,
+)
 from fermiviewer.calc.colormaps import build_label_lut, build_lut
 from fermiviewer.calc.render import window_level
 
@@ -148,10 +153,22 @@ def _tilt_seg_len(
     tilt_angle_deg: float,
     tilt_axis: str,
     tilt_geometry: str,
+    *,
+    spacing: tuple[float, float] = (1.0, 1.0),
 ) -> float:
     """Segment length with the measure_distance tilt correction:
     in-tilt-axis component × 1/sin θ (cross-section) or 1/cos θ
-    (surface). No-op at θ=0. Mirrors calc/profiles.measure_distance."""
+    (surface). No-op at θ=0. Mirrors calc/profiles.measure_distance.
+
+    Returned in PHYSICAL units when `spacing` carries them, because a
+    diagonal cannot be converted after the fact: the caller used to
+    hypot the pixel components and multiply by one scale, which is the
+    length of the wrong triangle on non-square pixels.
+
+    The tilt factor commutes with the pixel extent -- both are scalars on
+    the same component -- so applying it here, before the sum, matches
+    what it always did.
+    """
     dx = p1[0] - p0[0]
     dy = p1[1] - p0[1]
     if tilt_angle_deg:
@@ -162,7 +179,7 @@ def _tilt_seg_len(
             dx *= f
         else:
             dy *= f
-    return float(np.hypot(dx, dy))
+    return physical_length(dx, dy, spacing)
 
 
 def _box_outline(
@@ -200,13 +217,21 @@ def measure_annotations(
     tilt_angle_deg: float = 0.0,
     tilt_axis: str = "Y",
     tilt_geometry: str = "cross-section",
+    *,
+    spacing: tuple[float, float] | None = None,
 ) -> list[Annotation]:
     """Measures (normalized 0–1 pts, the client's store format) →
     output-pixel annotations. `raster` (source resolution) enables the
     on-screen μ/σ label for ROIs; without it ROIs get W×H dims.
     Non-zero `tilt_angle_deg` applies the measure_distance correction
     to distance/profile/polyline LABELS (geometry is drawn as-is),
-    matching the on-screen corrected labels."""
+    matching the on-screen corrected labels.
+
+    `spacing` is ``(row, column)`` (`DataStruct.pixel_spacing`) and takes
+    precedence over `pixel_size`, which is the COLUMN scale alone. Only
+    the LABELS change: every drawn coordinate stays in output pixels,
+    since the exported image is still a raster of the original grid."""
+    space = resolve_spacing(spacing, pixel_size if pixel_size else 1.0)
     out: list[Annotation] = []
     for m in measures:
         kind = str(m.get("kind", ""))
@@ -237,8 +262,9 @@ def measure_annotations(
 
         if kind in ("distance", "profile"):
             d = _tilt_seg_len(ipts[0], ipts[1], tilt_angle_deg,
-                              tilt_axis, tilt_geometry)
-            label = (f"{_fmt(d * pixel_size)} {pixel_unit}"
+                              tilt_axis, tilt_geometry,
+                              spacing=space if pixel_size else (1.0, 1.0))
+            label = (f"{_fmt(d)} {pixel_unit}"
                      if pixel_size else f"{_fmt(d)} px")
             mid = ((opts[0][0] + opts[1][0]) / 2 + 8,
                    (opts[0][1] + opts[1][1]) / 2 - 8)
@@ -249,10 +275,11 @@ def measure_annotations(
         elif kind == "polyline" and len(ipts) >= 2:
             total = float(sum(
                 _tilt_seg_len(ipts[i], ipts[i + 1], tilt_angle_deg,
-                              tilt_axis, tilt_geometry)
+                              tilt_axis, tilt_geometry,
+                              spacing=space if pixel_size else (1.0, 1.0))
                 for i in range(len(ipts) - 1)
             ))
-            label = (f"{_fmt(total * pixel_size)} {pixel_unit}"
+            label = (f"{_fmt(total)} {pixel_unit}"
                      if pixel_size else f"{_fmt(total)} px")
             last = opts[-1]
             out.append(Annotation(kind, opts, label,
@@ -260,9 +287,12 @@ def measure_annotations(
                                   end_symbol=end_symbol))
         elif kind == "angle" and len(ipts) >= 3:
             v, a, b = ipts[1], ipts[0], ipts[2]
-            a1 = np.arctan2(a[1] - v[1], a[0] - v[0])
-            a2 = np.arctan2(b[1] - v[1], b[0] - v[0])
-            deg = abs(float(a1 - a2)) * 180.0 / np.pi
+            # An angle is not spared by being dimensionless: the arms have
+            # to be measured in physical space, or this reports the angle
+            # of the sampling grid rather than of the feature.
+            a1 = physical_angle_rad(a[0] - v[0], a[1] - v[1], space)
+            a2 = physical_angle_rad(b[0] - v[0], b[1] - v[1], space)
+            deg = abs(a1 - a2) * 180.0 / np.pi
             if deg > 180.0:
                 deg = 360.0 - deg
             out.append(Annotation(kind, opts[:3], f"{deg:.1f}°",

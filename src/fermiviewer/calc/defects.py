@@ -13,6 +13,8 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import signal
 
+from fermiviewer.calc.calibration import resolve_spacing
+
 __all__ = ["DefectCount", "count_defect_lines"]
 
 
@@ -84,11 +86,20 @@ def count_defect_lines(
     foil_thickness: float = float("nan"),
     pixel_size: float = 1.0,
     pixel_unit: str = "px",
+    *,
+    spacing: tuple[float, float] | None = None,
 ) -> DefectCount:
     """Count line defects via oriented filtering + line intercepts.
 
     roi is 1-based (r1, c1, r2, c2) inclusive (MATLAB convention);
     direction None sweeps [0, 45, 90, 135]°.
+
+    `spacing` is the physical extent of one pixel as ``(row, column)``
+    (`DataStruct.pixel_spacing`); `pixel_size` is the isotropic fallback,
+    and an explicit `spacing` wins. Ham's density is ``2N / L``, so the
+    total test-line length `L` is the only place calibration enters --
+    and it is a sum of lengths along BOTH axes, which one number cannot
+    describe.
     """
     d = np.asarray(img, dtype=np.float64)
     h, w = d.shape
@@ -133,9 +144,14 @@ def count_defect_lines(
     for c in v_cols:
         n_hits += int((np.diff(mask[:, c - 1].astype(np.int8)) == 1).sum())
 
-    total_len = (
-        h_rows.size * roi_w * pixel_size + v_cols.size * roi_h * pixel_size
-    )
+    # A test line's length is its extent along the axis it TRAVERSES: the
+    # horizontal lines cross `roi_w` columns, so they measure in column
+    # extents, and the vertical ones cross `roi_h` rows. `pixel_size` is
+    # the COLUMN scale (`pixel_cal` is `axes[1]`), so the horizontal half
+    # was always right and the vertical half was wrong by the aspect
+    # ratio -- which biases the density, since only the total enters 2N/L.
+    s_row, s_col = resolve_spacing(spacing, pixel_size)
+    total_len = h_rows.size * roi_w * s_col + v_cols.size * roi_h * s_row
     rho_2d = 2 * n_hits / total_len if total_len > 0 else 0.0
     # Dimensional analysis (see the module docstring's own ρ formulas): N is
     # a dimensionless count, total_len is a LENGTH (pixel_unit), so 2N/L is

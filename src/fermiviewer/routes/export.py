@@ -226,6 +226,7 @@ def export_image(req: ExportRequest) -> Response:
             raster.shape[0], raster.shape[1],
             ds.pixel_cal.scale if ds.pixel_cal.calibrated else None,
             ds.pixel_cal.units, eff_scale, raster,
+            spacing=ds.pixel_spacing,
             tilt_angle_deg=req.tilt_angle_deg,
             tilt_axis=req.tilt_axis,
             tilt_geometry=req.tilt_geometry,
