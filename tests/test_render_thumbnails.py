@@ -17,6 +17,7 @@ downsampled histogram.
 from __future__ import annotations
 
 import io
+import tracemalloc
 
 import numpy as np
 import pytest
@@ -24,6 +25,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from fermiviewer.calc.render import auto_window, to_display
+from fermiviewer.calc.thumbnail import display_png
 from fermiviewer.server import create_app
 
 HOST = {"host": "127.0.0.1"}
@@ -153,6 +155,74 @@ def test_a_subsample_window_would_have_been_visibly_different() -> None:
     full = auto_window(arr)
     sub = auto_window(arr[::8, ::8])
     assert full != sub, "fixture no longer distinguishes the two windows"
+
+
+# ── aliasing: periodic structure is the subject, not a corner case ───────
+
+
+def _checkerboard(n: int, roll_rows: int = 0, roll_cols: int = 0) -> np.ndarray:
+    """Alternating full-scale pixels — the worst case for subsampling,
+    and the phase shift is what makes the failure unmistakable."""
+    x = (np.indices((n, n)).sum(axis=0) % 2 * 65535).astype(np.uint16)
+    return np.roll(np.roll(x, roll_rows, axis=0), roll_cols, axis=1)
+
+
+@pytest.mark.parametrize(("roll_rows", "roll_cols"), [(0, 0), (1, 0), (0, 1), (1, 1)])
+def test_a_checkerboard_reduces_to_mid_grey_at_every_phase(
+    roll_rows: int, roll_cols: int
+) -> None:
+    """The regression this section exists for.
+
+    Point subsampling with an even stride lands on ONE phase of a
+    checkerboard, so the tile came out entirely black — and entirely
+    white for the same image shifted a single row, where the honest
+    answer is a uniform mid-grey. No later resampling pass can undo that:
+    the intensities are already gone by the time it runs.
+
+    Asserting the phases agree is not enough on its own (all-black and
+    all-black would agree), so the mid-grey VALUE is pinned too.
+    """
+    png = display_png(_checkerboard(512, roll_rows, roll_cols), max_edge=64)
+    tile = np.asarray(Image.open(io.BytesIO(png)), dtype=np.float64)
+    assert tile.mean() == pytest.approx(128.0, abs=2.0)
+    # np.ptp, not ndarray.ptp -- the method was removed in numpy 2
+    assert np.ptp(tile) <= 2, "a uniform pattern must not develop false structure"
+
+
+@pytest.mark.parametrize("phase", [0, 1, 2, 3])
+def test_stripes_keep_their_contrast_whatever_the_phase(phase: int) -> None:
+    """Lattice fringes are the realistic form of this: a period-8 stripe
+    field must average to grey rather than resolving to whichever phase
+    the sampling lattice happened to land on."""
+    cols = np.indices((1024, 1024))[1]
+    stripes = (((cols + phase) // 4 % 2) * 65535).astype(np.uint16)
+    png = display_png(stripes, max_edge=64)
+    tile = np.asarray(Image.open(io.BytesIO(png)), dtype=np.float64)
+    assert tile.mean() == pytest.approx(128.0, abs=2.0)
+
+
+def test_the_library_target_size_is_covered_too() -> None:
+    """The unit tests above use a small `max_edge`; the size the UI
+    actually asks for is 512 from a 4096 px survey image, where the
+    reduction factor is different. Guard the real path, not only a
+    convenient one."""
+    for roll in (0, 1):
+        png = display_png(_checkerboard(2048, roll_rows=roll), max_edge=512)
+        tile = np.asarray(Image.open(io.BytesIO(png)), dtype=np.float64)
+        assert tile.mean() == pytest.approx(128.0, abs=2.0)
+
+
+def test_the_reduction_stays_within_its_memory_budget() -> None:
+    """The reduction exists to avoid `window_level`'s full-size float64
+    temporaries, so it must not allocate one itself. A 4096x4096 uint16
+    raster is 33.6 MB and its float64 cast would be 134 MB."""
+    rng = np.random.default_rng(0)
+    big = rng.integers(0, 4000, (4096, 4096), dtype=np.uint16)
+    tracemalloc.start()
+    display_png(big, max_edge=512)
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    assert peak < 60e6, f"peak allocation {peak / 1e6:.0f} MB is not bounded"
 
 
 # ── boundaries ───────────────────────────────────────────────────────────

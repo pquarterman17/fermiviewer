@@ -40,28 +40,60 @@ __all__ = [
 THUMBNAIL_MAX_EDGE = 256
 
 
+#: Working-buffer ceiling while box-reducing, in bytes. Bounds the
+#: float64 chunk `_box_reduce` materialises, so reducing a 4096x4096
+#: image costs this much rather than the 134 MB the whole array would.
+_REDUCE_CHUNK_BYTES = 8 << 20
+
+
+def _box_reduce(raster: np.ndarray, k: int) -> np.ndarray:
+    """Mean of every non-overlapping k x k block, in bounded memory.
+
+    Rows are accumulated a chunk at a time so the float64 working buffer
+    stays near `_REDUCE_CHUNK_BYTES` instead of the full array. Trailing
+    rows and columns past the last whole block are dropped -- at most
+    ``k - 1`` of each, which `shrink`'s final resize absorbs.
+    """
+    h, w = raster.shape
+    hb, wb = h // k, w // k
+    out = np.empty((hb, wb), dtype=np.float64)
+    per_row = k * k * wb * 8  # float64 bytes one output row needs
+    rows = max(1, _REDUCE_CHUNK_BYTES // max(per_row, 1))
+    for i in range(0, hb, rows):
+        j = min(i + rows, hb)
+        block = raster[i * k : j * k, : wb * k].astype(np.float64)
+        out[i:j] = block.reshape(j - i, k, wb, k).mean(axis=(1, 3))
+    return out
+
+
 def decimate(raster: np.ndarray, max_edge: int | None) -> np.ndarray:
-    """Stride-subsample `raster` to roughly twice `max_edge`.
+    """Area-average `raster` down toward `max_edge`, antialiased.
 
     Windowing is the expensive half of making a thumbnail --
     `calc.render.window_level` casts to float64 and masks, so a 4096x4096
     uint16 image costs several 134 MB temporaries and about a second.
-    Striding first is a view plus one small copy.
+    Reducing first avoids that.
 
-    Deliberately lands ABOVE `max_edge` (integer stride, only down to
-    ~2x) so `shrink` still does a resampling pass: pure decimation
-    aliases, and a survey image of a lattice is exactly the thing that
-    aliases visibly.
+    It must be a box AVERAGE, not point subsampling. Striding was tried
+    and is wrong: it commits aliasing that no later resampling pass can
+    undo. On a 512x512 checkerboard a stride of 4 samples one phase only,
+    so `display_png(x, max_edge=64)` came out entirely black -- and
+    entirely white for the same image rolled by a single row, where the
+    true answer is a uniform mid-grey. Periodic structure is not a corner
+    case here: lattice fringes and stripe contrast are the subject.
 
     The auto window must still be taken from the FULL raster
-    (`calc.render.auto_window`) -- bounds read off a subsample would
-    stretch the thumbnail to a different black point than the full render
-    whenever the stride skipped an extreme pixel.
+    (`calc.render.auto_window`) -- bounds read off a reduced copy would
+    stretch the thumbnail to a different black point than the full render.
     """
     if max_edge is None:
         return raster
-    step = max(raster.shape[0], raster.shape[1]) // (2 * max_edge)
-    return raster[::step, ::step] if step > 1 else raster
+    h, w = raster.shape
+    # Capped by the SHORTEST side as well as the target: a 1 x 300 strip
+    # asked down to 8 gives k = 37 from the long side alone, and 1 // 37
+    # is zero rows -- an empty array PIL cannot encode.
+    k = min(max(h, w) // max_edge, h, w)
+    return _box_reduce(raster, k) if k >= 2 else raster
 
 
 def shrink(img: Image.Image, max_edge: int | None) -> Image.Image:
