@@ -25,7 +25,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from fermiviewer.calc.render import auto_window, to_display
-from fermiviewer.calc.thumbnail import _box_reduce, display_png
+from fermiviewer.calc.thumbnail import _box_reduce, decimate, display_png
 from fermiviewer.server import create_app
 
 HOST = {"host": "127.0.0.1"}
@@ -317,6 +317,100 @@ def test_the_tile_mean_tracks_the_full_render() -> None:
             Image.open(io.BytesIO(display_png(arr))), dtype=np.float64
         )
         assert tile.mean() == pytest.approx(full.mean(), abs=0.5)
+
+
+# ── output size comes from the SOURCE, not the intermediate ──────────────
+
+
+def _source_derived_size(h: int, w: int, edge: int) -> tuple[int, int]:
+    """PIL ``(width, height)`` a full-image resize would produce.
+
+    Deliberately written from the original extent alone, with no reference
+    to the reduction — that independence is the whole point.
+    """
+    longest = max(h, w)
+    if longest <= edge:
+        return (w, h)
+    s = edge / longest
+    return (max(1, round(w * s)), max(1, round(h * s)))
+
+
+@pytest.mark.parametrize(
+    ("h", "w", "edge"),
+    [
+        (9, 4096, 512),     # ceil gives 2 rows; the source implies 1.1 -> 1
+        (4096, 9, 512),     # transposed, wrong in the same way
+        (7, 4096, 512),
+        (3, 1024, 512),
+        (1024, 3, 512),
+        (513, 513, 64),
+        (600, 400, 128),
+        (100, 400, 100),
+        (1, 300, 8),
+        (64, 48, 512),      # already smaller than the cap
+    ],
+)
+def test_the_tile_has_the_size_a_full_image_resize_would_give(
+    h: int, w: int, edge: int
+) -> None:
+    """`_box_reduce` rounds each axis UP, so a very oblong source lands
+    thicker than its aspect ratio allows.
+
+    Sizing from that intermediate left a 9x4096 raster at `max_edge=512`
+    as a 512x2 tile, doubling the image's thickness, because its longest
+    edge was already 512 and nothing asked what the SOURCE implied
+    (9/4096 * 512 = 1.1 rows).
+    """
+    got = Image.open(
+        io.BytesIO(display_png(np.zeros((h, w), dtype=np.uint16), max_edge=edge))
+    ).size
+    assert got == _source_derived_size(h, w, edge)
+
+
+def test_the_size_fixtures_actually_discriminate() -> None:
+    """Guards the test above from passing for the wrong reason.
+
+    A ceil-sized reduction and the source-derived rounding agree on many
+    shapes — 3x1024 gives 2 rows either way, which is why the earlier thin
+    -image test could not catch this. At least one fixture must disagree,
+    or the assertion above is satisfied by the very code it rejects.
+    """
+    disagreeing = [
+        (h, w, e)
+        for h, w, e in ((9, 4096, 512), (4096, 9, 512), (3, 1024, 512))
+        if _ceil_reduced_size(h, w, e) != _source_derived_size(h, w, e)
+    ]
+    assert disagreeing, "no fixture distinguishes ceil sizing from source sizing"
+    assert (3, 1024, 512) not in disagreeing, (
+        "3x1024 is expected to agree — it is the case that used to hide this"
+    )
+
+
+def _ceil_reduced_size(h: int, w: int, edge: int) -> tuple[int, int]:
+    """What sizing from the reduced intermediate alone would have given."""
+    k = min(max(h, w) // edge, h, w)
+    if k < 2:
+        return (w, h)
+    rh, rw = -(-h // k), -(-w // k)
+    longest = max(rh, rw)
+    if longest <= edge:
+        return (rw, rh)
+    s = edge / longest
+    return (max(1, round(rw * s)), max(1, round(rh * s)))
+
+
+def test_the_final_resize_never_enlarges() -> None:
+    """Sizing from the source is only safe because the reduction always
+    lands at or above that target: `_box_reduce` divides by an integer
+    ``k <= longest / max_edge``. If it could land BELOW, resizing up would
+    invent resolution."""
+    for h, w, edge in ((9, 4096, 512), (4096, 9, 512), (513, 513, 64), (37, 91, 8)):
+        tw, th = _source_derived_size(h, w, edge)
+        reduced = decimate(np.zeros((h, w), dtype=np.uint16), edge)
+        assert reduced.shape[0] >= th and reduced.shape[1] >= tw, (
+            f"{h}x{w}@{edge}: reduced {reduced.shape} is smaller than target "
+            f"{(th, tw)} — the resize would be an upscale"
+        )
 
 
 # ── boundaries ───────────────────────────────────────────────────────────

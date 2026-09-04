@@ -31,9 +31,10 @@ __all__ = [
     "THUMBNAIL_MAX_EDGE",
     "decimate",
     "display_png",
+    "fit",
     "raster_for_thumbnail",
     "render_thumbnail_png",
-    "shrink",
+    "target_size",
 ]
 
 #: ADR 0002 §2: "<= 256 px on the longest edge".
@@ -114,20 +115,37 @@ def decimate(raster: np.ndarray, max_edge: int | None) -> np.ndarray:
     return _box_reduce(raster, k) if k >= 2 else raster
 
 
-def shrink(img: Image.Image, max_edge: int | None) -> Image.Image:
-    """Resample so the longest edge is at most `max_edge`.
+def target_size(h: int, w: int, max_edge: int | None) -> tuple[int, int]:
+    """PNG ``(width, height)`` a thumbnail of an ``h x w`` source should be.
 
-    Never enlarges: asking for a 512 px thumbnail of a 256 px image
-    returns the 256 px image, so a caller can name one size without first
-    finding out which is smaller.
+    Derived from the ORIGINAL extent, never from the reduced intermediate.
+    `_box_reduce` rounds each axis UP, so a very oblong source lands
+    thicker than its aspect ratio allows: a 9 x 4096 raster at
+    ``max_edge=512`` reduces to 2 x 512, and asking only "is the longest
+    edge over 512?" leaves it there — twice the thickness the source
+    implies, which is 9/4096 * 512 = 1.1 rows.
+
+    Never enlarges: a source already within `max_edge` keeps its own size,
+    so a caller can name one size without first checking which is smaller.
     """
     if max_edge is None:
-        return img
-    scale = max_edge / max(img.width, img.height)
-    if scale >= 1.0:
-        return img
-    size = (max(1, round(img.width * scale)), max(1, round(img.height * scale)))
-    return img.resize(size, Image.Resampling.LANCZOS)
+        return (w, h)
+    longest = max(h, w)
+    if longest <= max_edge:
+        return (w, h)
+    scale = max_edge / longest
+    return (max(1, round(w * scale)), max(1, round(h * scale)))
+
+
+def fit(img: Image.Image, size: tuple[int, int]) -> Image.Image:
+    """Resample `img` to exactly `size`, or pass it through unchanged.
+
+    Always a downsize in this module: `_box_reduce` divides by an integer
+    ``k <= longest / max_edge``, so every axis of the reduced image is at
+    least its `target_size` value and resampling only ever removes
+    resolution here.
+    """
+    return img if img.size == size else img.resize(size, Image.Resampling.LANCZOS)
 
 
 def raster_for_thumbnail(data: np.ndarray, kind: DataKind) -> np.ndarray | None:
@@ -158,6 +176,8 @@ def display_png(
     `/image/{id}/render` and the `.fvp` writer cannot drift apart on what
     a rendered image looks like. `max_edge=None` returns full resolution.
     """
+    # from the SOURCE shape, before any reduction touches it
+    size = target_size(data.shape[0], data.shape[1], max_edge)
     if rgb:
         img = Image.fromarray(np.asarray(data), mode="RGB")
     else:
@@ -170,7 +190,7 @@ def display_png(
             to_display(decimate(data, max_edge), lo, hi, gamma), mode="L"
         )
     png = io.BytesIO()
-    shrink(img, max_edge).save(png, format="PNG")
+    fit(img, size).save(png, format="PNG")
     return png.getvalue()
 
 
