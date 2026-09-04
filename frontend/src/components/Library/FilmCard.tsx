@@ -3,7 +3,7 @@
 // nested sample sections render exactly the same card — the no-groups
 // filmstrip must stay byte-identical to what it was before sections existed.
 
-import { renderUrl, type ImageMeta } from "../../lib/api";
+import { renderUrl, THUMB_MAX_DIM, type ImageMeta } from "../../lib/api";
 import { entryKey } from "../../lib/sampleTree";
 import type { ListView } from "../../store/viewerTypes";
 
@@ -98,8 +98,9 @@ export default function FilmCard({
         ) : (
           <img
             className="fvd-film-thumb"
-            src={renderUrl(id)}
+            src={renderUrl(id, { maxDim: THUMB_MAX_DIM })}
             alt={meta.name}
+            loading="lazy"
             draggable={false}
           />
         ))}

@@ -1,7 +1,7 @@
 // Full-window thumbnail gallery (checklist K): grid of every open
 // image; click activates and closes. Toggled from View menu / G key.
 
-import { renderUrl } from "../../lib/api";
+import { renderUrl, THUMB_MAX_DIM } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
 import ModalDialog from "./ModalDialog";
 
@@ -39,7 +39,11 @@ export default function GalleryGrid() {
                 {m.kind === "spectrum" ? (
                   <span className="fvd-gallery-spec">∿</span>
                 ) : (
-                  <img src={renderUrl(id)} alt={m.name} loading="lazy" />
+                  <img
+                    src={renderUrl(id, { maxDim: THUMB_MAX_DIM })}
+                    alt={m.name}
+                    loading="lazy"
+                  />
                 )}
                 <span className="name">{m.name}</span>
               </button>

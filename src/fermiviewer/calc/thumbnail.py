@@ -24,13 +24,60 @@ import numpy as np
 from PIL import Image
 
 from fermiviewer.calc.raster import NoRasterError, raster_from
-from fermiviewer.calc.render import to_display
+from fermiviewer.calc.render import auto_window, to_display
 from fermiviewer.datastruct import DataKind
 
-__all__ = ["THUMBNAIL_MAX_EDGE", "raster_for_thumbnail", "render_thumbnail_png"]
+__all__ = [
+    "THUMBNAIL_MAX_EDGE",
+    "decimate",
+    "display_png",
+    "raster_for_thumbnail",
+    "render_thumbnail_png",
+    "shrink",
+]
 
 #: ADR 0002 §2: "<= 256 px on the longest edge".
 THUMBNAIL_MAX_EDGE = 256
+
+
+def decimate(raster: np.ndarray, max_edge: int | None) -> np.ndarray:
+    """Stride-subsample `raster` to roughly twice `max_edge`.
+
+    Windowing is the expensive half of making a thumbnail --
+    `calc.render.window_level` casts to float64 and masks, so a 4096x4096
+    uint16 image costs several 134 MB temporaries and about a second.
+    Striding first is a view plus one small copy.
+
+    Deliberately lands ABOVE `max_edge` (integer stride, only down to
+    ~2x) so `shrink` still does a resampling pass: pure decimation
+    aliases, and a survey image of a lattice is exactly the thing that
+    aliases visibly.
+
+    The auto window must still be taken from the FULL raster
+    (`calc.render.auto_window`) -- bounds read off a subsample would
+    stretch the thumbnail to a different black point than the full render
+    whenever the stride skipped an extreme pixel.
+    """
+    if max_edge is None:
+        return raster
+    step = max(raster.shape[0], raster.shape[1]) // (2 * max_edge)
+    return raster[::step, ::step] if step > 1 else raster
+
+
+def shrink(img: Image.Image, max_edge: int | None) -> Image.Image:
+    """Resample so the longest edge is at most `max_edge`.
+
+    Never enlarges: asking for a 512 px thumbnail of a 256 px image
+    returns the 256 px image, so a caller can name one size without first
+    finding out which is smaller.
+    """
+    if max_edge is None:
+        return img
+    scale = max_edge / max(img.width, img.height)
+    if scale >= 1.0:
+        return img
+    size = (max(1, round(img.width * scale)), max(1, round(img.height * scale)))
+    return img.resize(size, Image.Resampling.LANCZOS)
 
 
 def raster_for_thumbnail(data: np.ndarray, kind: DataKind) -> np.ndarray | None:
@@ -44,6 +91,37 @@ def raster_for_thumbnail(data: np.ndarray, kind: DataKind) -> np.ndarray | None:
         return raster_from(data, kind, native=True)
     except NoRasterError:
         return None
+
+
+def display_png(
+    data: np.ndarray,
+    *,
+    rgb: bool = False,
+    max_edge: int | None = None,
+    lo: float | None = None,
+    hi: float | None = None,
+    gamma: float = 1.0,
+) -> bytes:
+    """8-bit PNG of a 2D raster (or an RGB composite), capped at `max_edge`.
+
+    The one place windowing, decimation and resampling are composed, so
+    `/image/{id}/render` and the `.fvp` writer cannot drift apart on what
+    a rendered image looks like. `max_edge=None` returns full resolution.
+    """
+    if rgb:
+        img = Image.fromarray(np.asarray(data), mode="RGB")
+    else:
+        if lo is None or hi is None:
+            auto = auto_window(data)
+            if auto is not None:
+                lo = auto[0] if lo is None else lo
+                hi = auto[1] if hi is None else hi
+        img = Image.fromarray(
+            to_display(decimate(data, max_edge), lo, hi, gamma), mode="L"
+        )
+    png = io.BytesIO()
+    shrink(img, max_edge).save(png, format="PNG")
+    return png.getvalue()
 
 
 def render_thumbnail_png(
@@ -60,17 +138,8 @@ def render_thumbnail_png(
         # uint8 pixels ARE the display values (ADR 0003 §2)
         if data.size == 0:
             return None
-        img = Image.fromarray(np.asarray(data), mode="RGB")
-    else:
-        raster = raster_for_thumbnail(data, kind)
-        if raster is None or raster.ndim != 2 or raster.size == 0:
-            return None
-        buf8 = to_display(raster)  # same auto full-range window as /render
-        img = Image.fromarray(buf8, mode="L")
-    scale = max_edge / max(img.width, img.height)
-    if scale < 1.0:
-        size = (max(1, round(img.width * scale)), max(1, round(img.height * scale)))
-        img = img.resize(size, Image.Resampling.LANCZOS)
-    png = io.BytesIO()
-    img.save(png, format="PNG")
-    return png.getvalue()
+        return display_png(data, rgb=True, max_edge=max_edge)
+    raster = raster_for_thumbnail(data, kind)
+    if raster is None or raster.ndim != 2 or raster.size == 0:
+        return None
+    return display_png(raster, max_edge=max_edge)
