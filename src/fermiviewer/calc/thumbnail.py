@@ -47,22 +47,40 @@ _REDUCE_CHUNK_BYTES = 8 << 20
 
 
 def _box_reduce(raster: np.ndarray, k: int) -> np.ndarray:
-    """Mean of every non-overlapping k x k block, in bounded memory.
+    """Mean of every k x k block over the COMPLETE source, bounded memory.
 
-    Rows are accumulated a chunk at a time so the float64 working buffer
-    stays near `_REDUCE_CHUNK_BYTES` instead of the full array. Trailing
-    rows and columns past the last whole block are dropped -- at most
-    ``k - 1`` of each, which `shrink`'s final resize absorbs.
+    Blocks at the right and bottom edges are usually short. They are kept
+    and divided by the samples they actually contain, never cropped to the
+    last whole block: cropping deletes source rows outright, and no later
+    resize can put them back. A 513x513 image reduced with k = 8 dropped
+    row 512, so a bright final row vanished entirely; a 3 x 1024 image
+    with k = 2 threw away a third of the picture and returned one row
+    where two are owed.
+
+    `np.add.reduceat` sums each block including the short final one, so
+    the result is ceil(h / k) x ceil(w / k) and every input pixel
+    contributes exactly once. Rows are processed a chunk at a time to keep
+    the float64 working buffer near `_REDUCE_CHUNK_BYTES`.
     """
     h, w = raster.shape
-    hb, wb = h // k, w // k
+    row_starts = np.arange(0, h, k)
+    col_starts = np.arange(0, w, k)
+    # samples per block along each axis; the final entry is the short one
+    row_counts = np.diff(np.append(row_starts, h)).astype(np.float64)
+    col_counts = np.diff(np.append(col_starts, w)).astype(np.float64)
+    hb, wb = row_starts.size, col_starts.size
+
     out = np.empty((hb, wb), dtype=np.float64)
-    per_row = k * k * wb * 8  # float64 bytes one output row needs
-    rows = max(1, _REDUCE_CHUNK_BYTES // max(per_row, 1))
-    for i in range(0, hb, rows):
-        j = min(i + rows, hb)
-        block = raster[i * k : j * k, : wb * k].astype(np.float64)
-        out[i:j] = block.reshape(j - i, k, wb, k).mean(axis=(1, 3))
+    per_row = k * w * 8  # float64 bytes one row-of-blocks needs
+    chunk = max(1, _REDUCE_CHUNK_BYTES // max(per_row, 1))
+    for i in range(0, hb, chunk):
+        j = min(i + chunk, hb)
+        lo = int(row_starts[i])
+        hi = int(row_starts[j]) if j < hb else h
+        block = raster[lo:hi].astype(np.float64)
+        sums = np.add.reduceat(block, row_starts[i:j] - lo, axis=0)
+        sums = np.add.reduceat(sums, col_starts, axis=1)
+        out[i:j] = sums / (row_counts[i:j, None] * col_counts[None, :])
     return out
 
 
@@ -89,9 +107,9 @@ def decimate(raster: np.ndarray, max_edge: int | None) -> np.ndarray:
     if max_edge is None:
         return raster
     h, w = raster.shape
-    # Capped by the SHORTEST side as well as the target: a 1 x 300 strip
-    # asked down to 8 gives k = 37 from the long side alone, and 1 // 37
-    # is zero rows -- an empty array PIL cannot encode.
+    # Capped by the SHORTEST side too, so a very oblong image reduces by a
+    # factor its short axis can actually carry. `_box_reduce` keeps partial
+    # blocks, so neither dimension can round away to nothing.
     k = min(max(h, w) // max_edge, h, w)
     return _box_reduce(raster, k) if k >= 2 else raster
 

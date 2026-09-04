@@ -25,7 +25,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from fermiviewer.calc.render import auto_window, to_display
-from fermiviewer.calc.thumbnail import display_png
+from fermiviewer.calc.thumbnail import _box_reduce, display_png
 from fermiviewer.server import create_app
 
 HOST = {"host": "127.0.0.1"}
@@ -223,6 +223,100 @@ def test_the_reduction_stays_within_its_memory_budget() -> None:
     _, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
     assert peak < 60e6, f"peak allocation {peak / 1e6:.0f} MB is not bounded"
+
+
+# ── the complete source extent, including partial edge blocks ────────────
+
+
+@pytest.mark.parametrize("n", [513, 1000, 999])
+def test_a_bright_final_row_survives_an_odd_sized_image(n: int) -> None:
+    """Flooring the output dimensions and slicing to the last whole block
+    deletes up to k-1 source rows and columns.
+
+    On a 513x513 image with k = 8 that dropped row 512 outright, so an
+    image whose ONLY content is a bright final row rendered entirely
+    black. The final resize cannot recover it — the samples were never
+    read.
+    """
+    arr = np.zeros((n, n), dtype=np.uint16)
+    arr[-1, :] = 65535
+    tile = np.asarray(
+        Image.open(io.BytesIO(display_png(arr, max_edge=64))), dtype=np.float64
+    )
+    assert tile.max() > 0, "the bright final row was cropped away"
+
+
+def test_a_bright_final_column_survives_too() -> None:
+    """The same for the other axis — flooring `wb` crops columns exactly
+    as flooring `hb` crops rows, and a fixture that only moves rows would
+    not notice."""
+    arr = np.zeros((513, 513), dtype=np.uint16)
+    arr[:, -1] = 65535
+    tile = np.asarray(
+        Image.open(io.BytesIO(display_png(arr, max_edge=64))), dtype=np.float64
+    )
+    assert tile.max() > 0, "the bright final column was cropped away"
+
+
+def test_a_thin_image_keeps_all_of_its_rows() -> None:
+    """A 3 x 1024 strip at the real `max_edge` of 512 gives k = 2. Cropping
+    to whole blocks returned a single row and discarded a THIRD of the
+    source; ceil keeps both."""
+    arr = np.zeros((3, 1024), dtype=np.uint16)
+    arr[-1, :] = 65535
+    img = Image.open(io.BytesIO(display_png(arr, max_edge=512)))
+    assert img.size == (512, 2), f"{img.size} — a third of the source is missing"
+    assert np.asarray(img).max() > 0
+
+
+@pytest.mark.parametrize(
+    ("h", "w", "k"), [(513, 513, 8), (1000, 999, 7), (37, 91, 11), (3, 1024, 2)]
+)
+def test_the_reduction_conserves_the_total_exactly(h: int, w: int, k: int) -> None:
+    """The precise form of 'nothing was thrown away'.
+
+    Each output value is the mean of its block, so multiplying it back by
+    that block's true sample count and summing must reproduce the input
+    sum EXACTLY. Cropping partial blocks loses their contribution and this
+    fails by the size of the discarded strip.
+
+    Asserted on `_box_reduce` rather than through the PNG, because
+    windowing to 8 bits and the final resample both move values for
+    legitimate reasons and would blunt the check.
+    """
+    rng = np.random.default_rng(3)
+    arr = rng.integers(0, 65535, (h, w), dtype=np.uint16)
+    out = _box_reduce(arr, k)
+
+    row_counts = np.diff(np.append(np.arange(0, h, k), h))
+    col_counts = np.diff(np.append(np.arange(0, w, k), w))
+    assert out.shape == (row_counts.size, col_counts.size)
+    weights = row_counts[:, None] * col_counts[None, :]
+    assert (out * weights).sum() == pytest.approx(
+        float(arr.sum()), rel=1e-12
+    ), "the reduction dropped or double-counted source pixels"
+
+
+def test_the_tile_mean_tracks_the_full_render() -> None:
+    """The same claim end to end, at sizes where it is meaningful.
+
+    Only approximate, and not from sloppiness: a short edge block is the
+    honest mean of the few samples it covers, but it still occupies a
+    whole output pixel, so it carries more weight in the tile than its
+    area does in the source. That gap grows as the output shrinks and the
+    remainder grows — on a 4x9 tile it reaches ~1.5 grey levels. The exact
+    conservation law is the test above; this one guards the wiring.
+    """
+    rng = np.random.default_rng(3)
+    for h, w, edge in ((513, 513, 64), (1000, 999, 128), (4096, 4096, 512)):
+        arr = rng.integers(0, 65535, (h, w), dtype=np.uint16)
+        tile = np.asarray(
+            Image.open(io.BytesIO(display_png(arr, max_edge=edge))), dtype=np.float64
+        )
+        full = np.asarray(
+            Image.open(io.BytesIO(display_png(arr))), dtype=np.float64
+        )
+        assert tile.mean() == pytest.approx(full.mean(), abs=0.5)
 
 
 # ── boundaries ───────────────────────────────────────────────────────────
