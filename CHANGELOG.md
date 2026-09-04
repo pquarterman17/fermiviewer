@@ -13,6 +13,94 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-09-04
+
+A correctness release. Four measurements that multiplied by a single pixel
+extent now use both, so they stop being silently wrong on anisotropically-
+sampled data; and opening a folder of large images no longer stalls the
+library. The same class of error survives elsewhere in the tree — see
+*Known limitations* below before trusting a calibrated number this release
+does not name.
+
+### Fixed
+- **Strain is dimensionless again.** `calc/gpa.py` converted its
+  displacements to physical units and then differentiated them against pixel
+  indices, so every strain component came out multiplied by `pixel_size` —
+  ten times too large at `pixel_size=10`, and right only at the default of 1,
+  which is the one value the MATLAB golden test exercises. Both callers pass
+  the value straight from a user parameter, so anyone who entered a real
+  calibration got strains scaled by it. Displacements still scale, because
+  they are lengths.
+- **Four lengths and angles now use both pixel extents.**
+  `DataStruct.pixel_size` is the column scale alone, and these multiplied by
+  it regardless: the total test-line length behind Ham dislocation density
+  (its vertical lines span rows), the distance/profile/polyline labels
+  printed onto exported figures, the angle label on exported figures, and
+  the distance axis of an EDS line profile. A diagonal of 30 columns and 40
+  rows on (3, 4) pixels is 169.7 units, not the 200 that hypot-then-scale
+  reported; a 45° line on 1:3 pixels really rises at 71.6°. Square pixels
+  are unaffected: with equal extents the two expressions agree to within
+  floating-point rounding.
+- **An EDS composition profile no longer labels every calibrated map "nm".**
+  The route hardcoded the unit, so a µm-calibrated map reported µm-sized
+  numbers under an nm label. It now reads `pixel_unit`, matching the
+  registered operation.
+- **A nonsense calibration no longer voids a GPA result.** Neither the route
+  model nor the operation parameter excluded `pixel_size=0`, and it divided
+  the gradients: four all-NaN maps, and the four field means silently absent
+  from the payload. Strain needs no calibration at all, so an unusable one
+  now falls back rather than destroying the answer.
+
+### Changed
+- **Library thumbnails are thumbnails.** `/image/{id}/render` had no size
+  parameter and every tile requested the full-resolution PNG — about a
+  second and 16.8 MB apiece for a 4096² survey image, so opening a dozen
+  asked for ~200 MB and ~15 s of encoding to paint tiles a couple of hundred
+  pixels wide. That is why small batches loaded and large ones appeared to
+  hang. A new `max_dim` caps the longest edge: the same twelve tiles now
+  cost 1.3 s and 2.3 MB. Callers that pass no `max_dim` — the Stage texture
+  and the export path — are byte-for-byte unchanged.
+- Reducing an image for a thumbnail area-averages over the complete source.
+  Periodic structure is the subject matter here, and point subsampling made
+  a lattice or stripe field resolve to whichever phase the sampling lattice
+  landed on. Saved project thumbnails improve for the same reason.
+
+### Added
+- `calc/calibration.py`, one definition of how a pixel-space displacement
+  becomes a physical length or angle, so the pairing of axis to extent
+  cannot drift between call sites.
+- A keyword-only `spacing` on the affected calculations, carrying both pixel
+  extents. `pixel_size` keeps its position and meaning as the isotropic
+  fallback, and an explicit `spacing` wins.
+
+### Known limitations
+- **The single-scale error is not gone tree-wide.** This release fixed the
+  four sites above; an audit for the tag found the same shape still live
+  elsewhere, and these numbers remain wrong on anisotropic pixels (square
+  pixels are unaffected everywhere):
+  - `calc/profiles.py::line_profile` — the general intensity line profile,
+    behind the `measure` operation and `/measure`, still computes
+    `hypot(dx, dy) * pixel_size`. Measured: a 30-column, 40-row line on
+    pixels 3 wide and 4 tall reports 150.0 where the true length is 183.6.
+    This is the same expression the EDS profile fix replaced; only the EDS
+    one was changed.
+  - `calc/layers.py` and `calc/trace_roughness.py` — layer thickness,
+    `thickness_std`, `sigma_erf` and the roughness family (`sigma_w`, its
+    CI, `sigma_raw`, `noise_floor`, `xi`, `psd_wavelength`) all scale by
+    `pixel_size` whatever the growth axis, which `analyze_layers` detects
+    at runtime. Measured: a 25-row layer on 4 nm rows and 1 nm columns
+    reports 24.5 nm where the truth is 100 nm.
+  - `calc/grain_layers.py` — `lateral_width` and `depth_height` are
+    perpendicular to each other and take the same scale; its `pixel_area`
+    is `pixel_size ** 2` rather than `DataStruct.pixel_area`.
+  - `calc/grains.py` (boundary-network length), `calc/radial.py` (radial
+    distance), `calc/profile_stats.py`, and `calc/particles.py`
+    (`pixel_size ** 2` as an area).
+
+  Reciprocal- and energy-axis calibration (`calc/ctf.py`,
+  `calc/diffraction*.py`, `calc/lattice.py`) is a separate, still-open
+  roadmap item and is not counted here.
+
 ## [0.3.0] - 2026-09-02
 
 A region of interest becomes a first-class object. Until now each analysis
