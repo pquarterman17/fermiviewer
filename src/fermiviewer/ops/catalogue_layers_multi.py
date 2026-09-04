@@ -93,6 +93,7 @@ def _layers_multi(
         n_layers=params["n_layers"],
         modality=params["modality"],
         waviness=params["waviness"],
+        spacings=[f.pixel_spacing for f in frames],
     )
 
     outputs: list[dict[str, Any]] = [
@@ -215,6 +216,7 @@ def _layers_grains(
         pixel_size=px,
         pixel_area=ds.pixel_area,
         unit=unit,
+        spacing=source.pixel_spacing,
     )
     layer_rows = [asdict(layer) for layer in result.layers]
     for row in layer_rows:

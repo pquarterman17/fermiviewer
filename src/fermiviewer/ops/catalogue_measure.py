@@ -91,6 +91,7 @@ def _line_profile(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         geometry=params["geometry"],
         width=params["width"],
         reduce=params["reduce"],
+        spacing=ds.pixel_spacing,
     )
     curve: dict[str, Any] = {
         "x_name": "dist",
@@ -281,6 +282,7 @@ def _tilted_distance(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         tilt_angle_deg=params["tilt_angle_deg"],
         tilt_axis=params["tilt_axis"],
         geometry=params["geometry"],
+        spacing=ds.pixel_spacing,
     )
     outputs = [
         scalar("raw_px", result.raw_px, unit="px"),

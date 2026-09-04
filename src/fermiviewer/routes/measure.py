@@ -63,7 +63,9 @@ def measure_profile(req: ProfileRequest) -> dict:
     a mean), and for polyline (points) requests.
     """
     ds, raster = _raster(req.image_id)
-    px = ds.pixel_size if ds.kind is not DataKind.SPECTRUM else float("nan")
+    spectrum = ds.kind is DataKind.SPECTRUM
+    px = ds.pixel_size if not spectrum else float("nan")
+    spacing = ds.pixel_spacing if not spectrum else None
     sem: np.ndarray | None = None
     # Input resolution is done; from here a ValueError out of the calc layer
     # is a COMPUTATION failure, which a requested capture must record rather
@@ -77,6 +79,7 @@ def measure_profile(req: ProfileRequest) -> dict:
             dist, inten = polyline_profile(
                 raster, xs=pts[:, 1], ys=pts[:, 0],
                 pixel_size=px, width=req.width, reduce=req.reduce,
+                spacing=spacing,
             )
         elif req.a is not None and req.b is not None:
             dist, inten, sem = line_profile_stats(
@@ -88,6 +91,7 @@ def measure_profile(req: ProfileRequest) -> dict:
                 geometry=req.geometry,
                 width=req.width,
                 reduce=req.reduce,
+                spacing=spacing,
             )
         else:
             raise HTTPException(422, "need either a+b or points (≥2)")
@@ -354,6 +358,7 @@ def measure_distance_tilted(req: TiltedDistanceRequest) -> dict:
             tilt_angle_deg=req.tilt_angle_deg,
             tilt_axis=req.tilt_axis,
             geometry=req.geometry,
+            spacing=ds.pixel_spacing,
         )
     except ValueError as e:
         raise HTTPException(422, str(e)) from None

@@ -182,6 +182,7 @@ def _layers(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         trace_window=params["trace_window"],
         modality=params["modality"],
         destripe_fib=params["destripe"],
+        spacing=ds.pixel_spacing,
     )
     outputs = _layer_outputs(res)
     if scoped is not None:
@@ -265,6 +266,7 @@ def _layers_edit(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         waviness=params["waviness"],
         trace_window=params["trace_window"],
         destripe_fib=params["destripe"],
+        spacing=ds.pixel_spacing,
     )
     outputs = _layer_outputs(res)
     if scoped is not None:

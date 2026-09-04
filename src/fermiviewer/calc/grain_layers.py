@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from fermiviewer.calc.calibration import growth_axis_scales
 from fermiviewer.calc.roi import RectRoi, embed_rect_roi, extract_rect_roi
 
 
@@ -64,10 +65,15 @@ class LayerGrainSummary:
 @dataclass(frozen=True)
 class GrainLayerResult:
     axis: str
+    #: extent along the DEPTH axis (thickness, depth_height); with square
+    #: pixels the pixel size, otherwise the extent the growth axis runs along
     pixel_size: float
     unit: str
     layers: tuple[LayerGrainSummary, ...]
     assignment: np.ndarray
+    #: extent along the stack (lateral_width); equals `pixel_size` for
+    #: square pixels
+    lateral_size: float = float("nan")
 
 
 def _boundary(
@@ -82,6 +88,12 @@ def _boundary(
 
 
 def _shape_angle(lateral: np.ndarray, depth: np.ndarray) -> float:
+    """Major-axis angle from the lateral direction, in [0, 90] degrees.
+
+    Takes coordinates in whatever space the caller measures in; pass
+    physical ones on anisotropic pixels, or the angle describes the
+    sampling grid rather than the grain.
+    """
     if lateral.size < 2:
         return 0.0
     points = np.column_stack((lateral, depth)).astype(np.float64)
@@ -103,6 +115,7 @@ def measure_grains_by_layer(
     pixel_size: float = 1.0,
     pixel_area: float = float("nan"),
     unit: str = "px",
+    spacing: tuple[float, float] | None = None,
 ) -> GrainLayerResult:
     """Measure labelled grain slices inside selected reviewed layer bands.
 
@@ -111,6 +124,12 @@ def measure_grains_by_layer(
     A grain crossing a material interface contributes one clipped slice to each
     intersected selected layer; ``fraction_of_source_grain`` makes that split
     explicit. Width is lateral to the stack and height is through-film depth.
+
+    Those two are perpendicular, so on anisotropic pixels they take
+    different scales: ``spacing`` (`DataStruct.pixel_spacing`, ``(row,
+    column)``) supplies both, and the aspect ratio and shape angle are then
+    measured on the physical grid too. Without it ``pixel_size`` serves
+    both axes, as it always did.
     """
     arr = np.asarray(labels)
     if arr.ndim != 2:
@@ -123,12 +142,14 @@ def measure_grains_by_layer(
         raise ValueError("axis must be 'x' or 'y'")
     if not np.isfinite(pixel_size) or pixel_size <= 0:
         raise ValueError("pixel_size must be finite and positive")
+    depth_scale, lateral_scale = growth_axis_scales(axis, pixel_size, spacing)
+    anisotropic = depth_scale != lateral_scale
     # An AREA is not a length squared once the two spatial scales differ
-    # (`DataStruct.pixel_area`). Defaulting to the squared form keeps a
-    # caller that has only a length working, and is exactly right when
-    # the pixels are square.
+    # (`DataStruct.pixel_area`). Defaulting to the product of the two
+    # extents keeps a caller that has only a length working, and reduces
+    # to the square exactly when the pixels are.
     if not np.isfinite(pixel_area):
-        pixel_area = pixel_size * pixel_size
+        pixel_area = depth_scale * lateral_scale
 
     selected = set(int(i) for i in selected_indices)
     bands = [band for band in layers if band.index in selected]
@@ -160,14 +181,25 @@ def measure_grains_by_layer(
             area_px = int(rr.size)
             lateral_width_px = float(np.ptp(cc) + 1)
             depth_height_px = float(np.ptp(rr) + 1)
+            lateral_width = lateral_width_px * lateral_scale
+            depth_height = depth_height_px * depth_scale
             fraction = area_px / int(totals[int(grain_id)])
+            # dimensionless is not scale-invariant when only one axis is
+            # scaled: the pixel-space ratio and angle describe the sampling
+            # grid, so both are taken on the physical grid when it differs
+            if anisotropic:
+                aspect = lateral_width / depth_height
+                angle = _shape_angle(cc * lateral_scale, rr * depth_scale)
+            else:
+                aspect = lateral_width_px / depth_height_px
+                angle = _shape_angle(cc, rr)
             slices.append(GrainSlice(
                 source_grain_id=int(grain_id), area_px=area_px,
                 lateral_width_px=lateral_width_px, depth_height_px=depth_height_px,
-                lateral_width=lateral_width_px * pixel_size,
-                depth_height=depth_height_px * pixel_size,
-                aspect_ratio=lateral_width_px / depth_height_px,
-                shape_angle_deg=_shape_angle(cc, rr),
+                lateral_width=lateral_width,
+                depth_height=depth_height,
+                aspect_ratio=aspect,
+                shape_angle_deg=angle,
                 centroid_lateral_px=float(np.mean(cc)),
                 centroid_depth_px=float(np.mean(rr)),
                 fraction_of_source_grain=float(fraction),
@@ -182,7 +214,7 @@ def measure_grains_by_layer(
         summaries.append(LayerGrainSummary(
             index=band.index, top_px=band.top, bottom_px=band.bottom,
             thickness_px=band.bottom - band.top,
-            thickness=(band.bottom - band.top) * pixel_size,
+            thickness=(band.bottom - band.top) * depth_scale,
             area_px=area_px, area=area_px * pixel_area,
             n_grains=n_grains,
             density_per_mpx=n_grains * 1_000_000.0 / area_px if area_px else 0.0,
@@ -201,4 +233,6 @@ def measure_grains_by_layer(
 
     assignment_roi = assignment_depth if axis == "y" else assignment_depth.T
     assignment = embed_rect_roi(assignment_roi, arr.shape, roi)
-    return GrainLayerResult(axis, pixel_size, unit, tuple(summaries), assignment)
+    return GrainLayerResult(
+        axis, depth_scale, unit, tuple(summaries), assignment, lateral_size=lateral_scale
+    )

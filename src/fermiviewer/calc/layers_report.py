@@ -44,7 +44,12 @@ def roughness_blocks(
             reports.append(None)
             resids.append(None)
             continue
-        r = analyze_trace(i.trace, res.pixel_size)
+        # heights scale by the depth extent, lateral positions by the other
+        r = analyze_trace(
+            i.trace,
+            res.pixel_size,
+            lateral_size=res.lateral_size if math.isfinite(res.lateral_size) else None,
+        )
         resids.append(r.detrended)
         lo, hi = r.sigma_ci
         reports.append(

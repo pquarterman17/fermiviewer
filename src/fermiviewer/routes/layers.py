@@ -78,7 +78,7 @@ def analyze_layers_route(req: LayersRequest) -> dict:
             n_layers=req.n_layers, reduce=req.reduce, pixel_size=px, unit=unit,
             fit_window=req.fit_window, waviness=req.waviness,
             trace_window=req.trace_window, modality=req.modality,
-            destripe_fib=req.destripe,
+            destripe_fib=req.destripe, spacing=ds.pixel_spacing,
         )
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
@@ -113,7 +113,7 @@ def edit_layers_route(req: LayersEditRequest) -> dict:
             ds.data, list(req.positions), axis=req.axis, roi=req.roi,
             reduce=req.reduce, pixel_size=px, unit=unit, fit_window=req.fit_window,
             waviness=req.waviness, trace_window=req.trace_window,
-            destripe_fib=req.destripe,
+            destripe_fib=req.destripe, spacing=ds.pixel_spacing,
         )
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
@@ -162,6 +162,7 @@ def analyze_grains_by_layer_route(req: GrainLayersRequest) -> dict:
                 for trace in req.interface_traces
             ],
             pixel_size=px, pixel_area=area, unit=unit,
+            spacing=source_ds.pixel_spacing,
         )
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from None
@@ -236,6 +237,7 @@ def multi_layers_route(req: LayersMultiRequest) -> dict:
             reference=req.reference, roi=req.roi, axis=req.axis,
             sensitivity=req.sensitivity, n_layers=req.n_layers,
             modality=req.modality, waviness=req.waviness,
+            spacings=[ds.pixel_spacing for ds in structs],
         )
     except MapMeasureError as e:
         raise HTTPException(422, f"{store.name(req.image_ids[e.index])}: {e}") from None

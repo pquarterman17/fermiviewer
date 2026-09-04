@@ -25,6 +25,7 @@ from typing import Any
 
 import numpy as np
 
+from fermiviewer.calc.calibration import usable_spacing
 from fermiviewer.calc.eds import ClResult, ZafResult, cliff_lorimer, zaf_correction
 from fermiviewer.calc.eds_maps import element_map, extract_element_maps
 from fermiviewer.calc.eels import extract_map
@@ -222,11 +223,17 @@ def _diffraction_radial_profile(ds: DataStruct, params: dict[str, Any]) -> OpRes
     center = None
     if np.isfinite(params["center_x"]) and np.isfinite(params["center_y"]):
         center = (params["center_x"], params["center_y"])
-    radii_px, avg, mx = radial_profile(
+    # both extents when the image has them (the rings are then physical and
+    # the radii already calibrated); else pixel bins times the column scale
+    spacing = usable_spacing(ds.pixel_spacing)
+    radii, avg, mx = radial_profile(
         raster, center=center, n_bins=params["n_bins"], normalize=params["normalize"],
+        spacing=spacing,
     )
+    if spacing is None:
+        radii = radii * px
     value = {
-        "radii": (radii_px * px).tolist(),
+        "radii": radii.tolist(),
         "avg_profile": _clean(avg),
         "max_profile": _clean(mx),
         "unit": ds.pixel_unit or "px",
