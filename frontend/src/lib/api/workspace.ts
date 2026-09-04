@@ -87,15 +87,27 @@ export async function deleteWorkspace(
   return json(await fetch(`/api/workspaces/${slug}`, { method: "DELETE" }));
 }
 
-/** URL for the windowed 8-bit PNG render (Stage texture + thumbnails). */
+/** Longest side to request for a thumbnail tile. The filmstrip and
+ *  gallery tiles are at most ~256 CSS px, so this stays crisp at 2x DPR
+ *  while costing about 300x fewer bytes than the full render — a 4096px
+ *  survey image is a 16.8 MB PNG, and a library of a dozen of them made
+ *  opening a batch look like a hang. */
+export const THUMB_MAX_DIM = 512;
+
+/** URL for the windowed 8-bit PNG render.
+ *
+ *  Pass `maxDim` for anything that displays a TILE. Without it the server
+ *  returns the image at full resolution, which is what the Stage texture
+ *  needs and what a thumbnail must not ask for. */
 export function renderUrl(
   id: string,
-  opts: { lo?: number; hi?: number; gamma?: number } = {},
+  opts: { lo?: number; hi?: number; gamma?: number; maxDim?: number } = {},
 ): string {
   const q = new URLSearchParams();
   if (opts.lo !== undefined) q.set("lo", String(opts.lo));
   if (opts.hi !== undefined) q.set("hi", String(opts.hi));
   if (opts.gamma !== undefined) q.set("gamma", String(opts.gamma));
+  if (opts.maxDim !== undefined) q.set("max_dim", String(opts.maxDim));
   const qs = q.toString();
   return `/api/image/${id}/render${qs ? `?${qs}` : ""}`;
 }

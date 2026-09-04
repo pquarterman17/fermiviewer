@@ -11,6 +11,28 @@ import numpy as np
 __all__ = ["histogram", "to_display", "to_uint16_norm", "window_level"]
 
 
+def auto_window(data: np.ndarray) -> tuple[float, float] | None:
+    """The (lo, hi) `window_level` would pick for `data`, or None when
+    nothing in it is finite.
+
+    Split out so a caller that must window a DOWNSAMPLED copy can take
+    the bounds from the full-resolution original and get identical
+    contrast -- there is one definition of the auto stretch, not one here
+    and a lookalike at the call site.
+    """
+    d = np.asarray(data)
+    if d.size == 0:
+        return None
+    if d.dtype.kind != "f":
+        # integer data has no NaN; min/max directly rather than masking,
+        # which would copy the whole array to find that out
+        return (float(d.min()), float(d.max()))
+    finite = d[np.isfinite(d)]
+    if finite.size == 0:
+        return None
+    return (float(finite.min()), float(finite.max()))
+
+
 def window_level(
     data: np.ndarray, lo: float | None = None, hi: float | None = None, gamma: float = 1.0
 ) -> np.ndarray:
@@ -19,11 +41,13 @@ def window_level(
     Defaults: lo/hi = data min/max (auto full-range stretch).
     """
     d = np.asarray(data, dtype=np.float64)
-    finite = d[np.isfinite(d)]
-    if finite.size == 0:
-        return np.zeros_like(d)
-    lo = float(finite.min()) if lo is None else float(lo)
-    hi = float(finite.max()) if hi is None else float(hi)
+    if lo is None or hi is None:
+        auto = auto_window(d)
+        if auto is None:
+            return np.zeros_like(d)
+        lo = auto[0] if lo is None else float(lo)
+        hi = auto[1] if hi is None else float(hi)
+    lo, hi = float(lo), float(hi)
     if hi <= lo:
         hi = lo + 1.0
     out = np.clip((d - lo) / (hi - lo), 0.0, 1.0)

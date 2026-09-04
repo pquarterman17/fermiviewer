@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
-from fastapi import APIRouter, HTTPException, Response, UploadFile
+from fastapi import APIRouter, HTTPException, Query, Response, UploadFile
 from PIL import Image
 from pydantic import BaseModel
 
@@ -16,6 +16,7 @@ from fermiviewer.calc.raster import (
     raster_of,
 )
 from fermiviewer.calc.render import histogram, to_display, to_uint16_norm
+from fermiviewer.calc.thumbnail import display_png
 from fermiviewer.datastruct import SPECTRAL_KINDS, DataKind, DataStruct
 from fermiviewer.io.registry import UnsupportedFormatError, load_auto, supported_extensions
 from fermiviewer.models import FourDMeta, ImageMeta, OpenRequest
@@ -276,23 +277,26 @@ def image_render(
     lo: float | None = None,
     hi: float | None = None,
     gamma: float = 1.0,
+    max_dim: int | None = Query(None, ge=1, le=16384),
 ) -> Response:
     """Windowed 8-bit grayscale PNG. (Client-side WebGL LUT supersedes
     this for interactive contrast; this is the simple/export path.)
 
     An rgb_image renders as colour: its uint8 pixels ARE the display
     values (ADR 0003 §2), so window/gamma params are ignored — the
-    filmstrip, gallery and minimap get colour with no client changes."""
+    filmstrip, gallery and minimap get colour with no client changes.
+
+    `max_dim` caps the longest side; without it this returns FULL
+    resolution, which the Stage needs and a thumbnail must not ask for
+    (`calc.thumbnail.decimate` for what that costs).
+    """
     ds = _get(img_id)
-    if ds.kind is DataKind.RGB_IMAGE:
-        png = io.BytesIO()
-        Image.fromarray(np.asarray(ds.data), mode="RGB").save(png, format="PNG")
-        return Response(content=png.getvalue(), media_type="image/png")
-    raster = _raster(ds)
-    buf8 = to_display(raster, lo, hi, gamma)
-    png = io.BytesIO()
-    Image.fromarray(buf8, mode="L").save(png, format="PNG")
-    return Response(content=png.getvalue(), media_type="image/png")
+    rgb = ds.kind is DataKind.RGB_IMAGE
+    png = display_png(
+        ds.data if rgb else _raster(ds),
+        rgb=rgb, max_edge=max_dim, lo=lo, hi=hi, gamma=gamma,
+    )
+    return Response(content=png, media_type="image/png")
 
 
 def encode_raster_u16(
