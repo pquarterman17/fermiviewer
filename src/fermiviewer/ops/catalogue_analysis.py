@@ -253,6 +253,7 @@ def _composition_profile_op(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         res.atomic_pct_maps, syms,
         params["x1"], params["y1"], params["x2"], params["y2"],
         n_points=params["n_points"], pixel_size=px, width=params["width"],
+        spacing=ds.pixel_spacing,
     )
     value: dict[str, Any] = {
         "distance": dist.tolist(),

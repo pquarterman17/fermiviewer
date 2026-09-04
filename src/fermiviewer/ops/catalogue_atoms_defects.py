@@ -230,6 +230,7 @@ def _defects(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         foil_thickness=ft,
         pixel_size=px,
         pixel_unit=unit,
+        spacing=ds.pixel_spacing,
     )
     enhanced = embed_rect_roi(res.enhanced, raster.shape, roi)
     binary_mask = embed_rect_roi(res.binary_mask.astype(np.uint8), raster.shape, roi)

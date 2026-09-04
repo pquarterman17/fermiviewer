@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from fermiviewer.calc.calibration import physical_length, resolve_spacing
 from fermiviewer.calc.eds import line_energy
 from fermiviewer.calc.uncertainty import cliff_lorimer_uncertainty
 
@@ -395,18 +396,35 @@ def composition_profile(
     n_points: int = 200,
     pixel_size: float = 1.0,
     width: float = 1.0,
+    *,
+    spacing: tuple[float, float] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Width-averaged line profile through element at% maps — ported.
 
     Coordinates are 1-based (x=col, y=row) like the MATLAB interp2 call.
     Returns (distance, atomic_pct[M, n_elements]).
+
+    `spacing` is ``(row, column)`` (`DataStruct.pixel_spacing`) and beats
+    `pixel_size`, which is the COLUMN scale alone. Only the DISTANCE axis
+    is physical: the line and its width-averaging offsets stay in pixel
+    coordinates, because that is what `map_coordinates` indexes.
     """
     if len(atomic_pct_maps) != len(elements):
         raise ValueError("maps and elements must have the same length")
     maps = [np.asarray(m, dtype=np.float64) for m in atomic_pct_maps]
     m_pts = int(n_points)
-    line_len, out = _sample_maps_along_line(maps, x1, y1, x2, y2, m_pts, width)
-    distance = np.linspace(0, line_len, m_pts) * pixel_size
+    _line_len_px, out = _sample_maps_along_line(
+        maps, x1, y1, x2, y2, m_pts, width
+    )
+    # The sampler's `line_len` is in PIXELS and must stay that way -- it
+    # normalises the perpendicular offsets that index the maps. The
+    # physical length is a separate quantity, and on non-square pixels it
+    # is not the pixel length times one scale: the row and column
+    # components take different extents before the Pythagorean sum.
+    length = physical_length(
+        x2 - x1, y2 - y1, resolve_spacing(spacing, pixel_size)
+    )
+    distance = np.linspace(0.0, length, m_pts)
     return distance, out
 
 

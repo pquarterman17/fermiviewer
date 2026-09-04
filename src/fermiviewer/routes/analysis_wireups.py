@@ -98,6 +98,8 @@ def analyze_composition_profile(req: CompositionProfileRequest) -> dict:
         raise HTTPException(422, "map_ids and elements must have equal length")
     maps = []
     ps = float("nan")
+    ps_unit = ""
+    spacing: tuple[float, float] | None = None
     ref_shape: tuple[int, int] | None = None
     for mid in req.map_ids:
         ds = _get(mid)
@@ -105,8 +107,10 @@ def analyze_composition_profile(req: CompositionProfileRequest) -> dict:
             raise HTTPException(422, f"image {mid} is not a 2D map")
         if ref_shape is None:
             ref_shape = (int(ds.data.shape[0]), int(ds.data.shape[1]))
+            spacing = ds.pixel_spacing
             if ds.pixel_cal.calibrated:
                 ps = ds.pixel_cal.scale
+                ps_unit = ds.pixel_unit
         maps.append(ds.data.astype(np.float64))
     if not maps:
         raise HTTPException(422, "at least one map_id is required")
@@ -117,10 +121,15 @@ def analyze_composition_profile(req: CompositionProfileRequest) -> dict:
             n_points=req.n_points,
             pixel_size=ps if np.isfinite(ps) else 1.0,
             width=req.width,
+            spacing=spacing,
         )
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
-    unit = "nm" if np.isfinite(ps) else "px"
+    # The unit is whatever the map is calibrated in, not always nm: this
+    # read "nm" unconditionally, so a µm-calibrated map reported µm-sized
+    # numbers under an nm label. The registered op already used
+    # `ds.pixel_unit`; the two now agree.
+    unit = ps_unit if np.isfinite(ps) and ps_unit else ("px" if not np.isfinite(ps) else "nm")
     out: dict = {
         "distance": dist.tolist(),
         "atomic_pct": pct.T.tolist(),   # [n_elements, n_points]

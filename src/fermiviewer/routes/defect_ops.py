@@ -41,6 +41,7 @@ def analyze_defects(req: DefectsRequest) -> dict:
             ),
             pixel_size=px,
             pixel_unit=ds.pixel_unit or "px",
+            spacing=ds.pixel_spacing,
         )
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from None
