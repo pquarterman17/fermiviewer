@@ -357,5 +357,6 @@ def test_layers_route_reports_depth_extent(client) -> None:
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["pixel_size"] == 4.0
+    assert body["lateral_size"] == 1.0
     for lyr in body["layers"]:
         assert lyr["thickness"] == pytest.approx(200.0, abs=4.0)

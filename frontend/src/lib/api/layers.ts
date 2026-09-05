@@ -39,7 +39,10 @@ export interface LayersResult {
   layers_horizontal: boolean;
   tilt_deg: number | null;
   coherence: number | null;
+  /** extent along the DEPTH axis: the scale every thickness/sigma is in */
   pixel_size: number;
+  /** extent along the interface (the other axis); null when unknown */
+  lateral_size?: number | null;
   unit: string;
   depth_pos: number[];
   depth_profile: number[];
