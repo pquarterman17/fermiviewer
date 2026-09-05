@@ -31,8 +31,11 @@ import math
 __all__ = [
     "calibrated_spacing",
     "growth_axis_scales",
+    "is_reciprocal_unit",
     "physical_angle_rad",
     "physical_length",
+    "real_spacing_from_reciprocal",
+    "reciprocal_spacing",
     "resolve_spacing",
     "spacing_at_column_scale",
     "usable_spacing",
@@ -169,3 +172,36 @@ def physical_angle_rad(
     """
     s_row, s_col = spacing
     return math.atan2(d_row * s_row, d_col * s_col)
+
+
+def is_reciprocal_unit(unit: str) -> bool:
+    """Whether a unit names reciprocal space (``"1/nm"``, ``"1/Å"``): the
+    convention `io/dm` reads from diffraction patterns and `calc/fourier`
+    writes onto generated FFTs. A length unit is anything else."""
+    return unit.strip().startswith("1/")
+
+
+def reciprocal_spacing(
+    shape: tuple[int, ...], spacing: tuple[float, float]
+) -> tuple[float, float]:
+    """Frequency step per FFT pixel along (rows, columns): ``1 / (N * s)``.
+
+    The centred FFT of an ``(H, W)`` image sampled at ``(s_row, s_col)``
+    has a row step of ``1 / (H * s_row)`` and a column step of
+    ``1 / (W * s_col)``, in ``1 / unit``. Anisotropic pixels give an
+    anisotropic reciprocal grid, which is the whole reason to keep both.
+    """
+    h, w = int(shape[0]), int(shape[1])
+    s_row, s_col = spacing
+    return (1.0 / (h * s_row), 1.0 / (w * s_col))
+
+
+def real_spacing_from_reciprocal(
+    shape: tuple[int, ...], spacing: tuple[float, float]
+) -> tuple[float, float]:
+    """The real-space pixel extents an ``(H, W)`` FFT with these frequency
+    steps was computed from -- the inverse of `reciprocal_spacing`, which
+    is its own inverse (``s = 1 / (N r)`` exactly as ``r = 1 / (N s)``).
+    What lets FFT-mode spot indexing read the SOURCE's pixel aspect off
+    the pattern itself."""
+    return reciprocal_spacing(shape, spacing)

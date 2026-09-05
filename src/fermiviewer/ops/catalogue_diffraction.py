@@ -37,10 +37,9 @@ from typing import Any
 
 import numpy as np
 
-from fermiviewer.calc.calibration import spacing_at_column_scale
 from fermiviewer.calc.diffraction import find_spots_roi, roi_selects_pixels, simulate
 from fermiviewer.calc.diffraction_calib import calibrate_rings, camera_constant
-from fermiviewer.calc.diffraction_index import index_spots_roi
+from fermiviewer.calc.diffraction_index import index_spots_roi, pattern_spacing
 from fermiviewer.calc.phase_registry import registry, standard_d_spacing
 from fermiviewer.calc.raster import raster_of
 from fermiviewer.datastruct import DataKind, DataStruct
@@ -400,8 +399,15 @@ def _index(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         acc_voltage=params["acc_voltage_kv"],
         tolerance=params["tolerance"],
         top_n=params["top_n"],
-        # route parity: the column scale typed, rows from the pattern's ratio
-        spacing=spacing_at_column_scale(params["pixel_size_mm"], ds.pixel_spacing),
+        # route parity: the column scale typed, rows from the pattern's own
+        # calibration (a generated FFT's reciprocal axes included)
+        spacing=pattern_spacing(
+            ds.data.shape,
+            ds.pixel_spacing,
+            ds.pixel_unit,
+            params["pixel_size_mm"],
+            params["camera_length_mm"],
+        ),
         # the CIF-import registry is module-level mutable state; the route
         # passes it too, and an op that skipped it would index against a
         # smaller phase set than the GUI for the same picture

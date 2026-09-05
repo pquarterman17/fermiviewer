@@ -2,9 +2,24 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 
-__all__ = ["compute_fft", "fft_mask_inverse", "local_fft_region"]
+from fermiviewer.calc.calibration import (
+    is_reciprocal_unit,
+    reciprocal_spacing,
+    usable_spacing,
+)
+from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
+
+__all__ = [
+    "compute_fft",
+    "fft_axes",
+    "fft_datastruct",
+    "fft_mask_inverse",
+    "local_fft_region",
+]
 
 
 def compute_fft(img: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -82,3 +97,48 @@ def local_fft_region(
     if r1 - r0 < 4 or c1 - c0 < 4:
         raise ValueError("FFT region too small (≥5 px)")
     return d[r0 - 1 : r1, c0 - 1 : c1]
+
+
+def fft_axes(source: DataStruct, shape: tuple[int, ...]) -> tuple[AxisCal, AxisCal]:
+    """Calibration of the centred FFT of `source` computed over an
+    ``(H, W)`` raster: ``1 / (N * s)`` per pixel in ``1 / unit`` along each
+    axis, with the origin at DC (index ``N // 2``, where `compute_fft`'s
+    fftshift puts it), so `AxisCal.axis` reads as spatial frequency.
+
+    FFT space is not real space, so the parent's nm never carry over; but
+    the parent's per-axis pixel size is exactly what fixes the frequency
+    grid, and dropping it is how a 2:1 source came back with a square
+    reciprocal grid. Uncalibrated when the source has no usable per-axis
+    spacing, or is itself reciprocal (an FFT of an FFT has no calibration
+    this function can state).
+    """
+    if source.kind is DataKind.SPECTRUM:
+        return AxisCal(), AxisCal()
+    sp = usable_spacing(source.pixel_spacing)
+    unit = source.pixel_unit
+    if sp is None or not unit or is_reciprocal_unit(unit):
+        return AxisCal(), AxisCal()
+    r_row, r_col = reciprocal_spacing(shape, sp)
+    recip = f"1/{unit}"
+    return (
+        AxisCal(scale=r_row, origin=float(int(shape[0]) // 2), units=recip),
+        AxisCal(scale=r_col, origin=float(int(shape[1]) // 2), units=recip),
+    )
+
+
+def fft_datastruct(
+    mag: np.ndarray, source: DataStruct, metadata: dict[str, Any]
+) -> DataStruct:
+    """The derived image a log-magnitude FFT registers as, built ONCE for
+    the route and the `fft` op (ADR 0005 §1) so the two cannot disagree on
+    its calibration. `metadata` is the caller's provenance; the source's
+    real-space per-axis pixel size and unit are recorded beside it so the
+    reciprocal axes can be traced back to what they were derived from."""
+    data = np.ascontiguousarray(mag)
+    axes = fft_axes(source, data.shape)
+    meta = dict(metadata)
+    if axes[0].calibrated:
+        s_row, s_col = source.pixel_spacing
+        meta["source_pixel_spacing"] = [float(s_row), float(s_col)]
+        meta["source_pixel_unit"] = source.pixel_unit
+    return DataStruct(data=data, kind=DataKind.IMAGE, axes=axes, metadata=meta)

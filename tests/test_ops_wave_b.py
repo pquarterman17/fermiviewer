@@ -110,15 +110,19 @@ def test_wave_b_ops_are_registered_with_expected_categories() -> None:
 # ── fft ───────────────────────────────────────────────────────────────
 
 
-def test_fft_op_matches_direct_calc_and_drops_calibration() -> None:
+def test_fft_op_matches_direct_calc_and_calibrates_reciprocally() -> None:
     ds = _lattice_ds()
     result = ops.run("fft", ds)
     mag, _ = compute_fft(_lattice_image())
     assert result.produces_image
     np.testing.assert_allclose(result.derived.data, mag)
-    # FFT space is not real space: parent calibration must NOT carry over
-    assert not result.derived.axes[0].calibrated
-    assert not result.derived.axes[1].calibrated
+    # FFT space is not real space: the parent's nm do not carry over, but
+    # its 0.5 nm pixels fix the frequency grid -- 1/(64 * 0.5) per pixel
+    # in 1/nm on both axes, origin at DC (calc/fourier.fft_axes)
+    for axis in result.derived.axes:
+        assert axis.units == "1/nm"
+        assert axis.scale == pytest.approx(1 / 32)
+        assert axis.origin == 32
 
 
 def test_fft_op_local_region_matches_direct_composition() -> None:

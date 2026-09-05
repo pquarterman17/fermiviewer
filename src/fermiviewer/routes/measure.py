@@ -7,12 +7,12 @@ import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from fermiviewer.calc.fourier import compute_fft, local_fft_region
+from fermiviewer.calc.fourier import compute_fft, fft_datastruct, local_fft_region
 from fermiviewer.calc.profile_stats import box_integrate, measure_distance, roi_stats
 from fermiviewer.calc.profiles import line_profile_stats, polyline_profile
 from fermiviewer.calc.raster import NoRasterError, raster_of
 from fermiviewer.calc.region_stats import STD_MATLAB, region_stats
-from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
+from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.io.project_results import ResultOutput
 from fermiviewer.models import ImageMeta
 from fermiviewer.project_session import project
@@ -392,10 +392,10 @@ def image_fft(img_id: str, req: FftRequest | None = None) -> ImageMeta:
         except ValueError as e:
             raise HTTPException(422, str(e)) from None
     mag, _ = compute_fft(raster)
-    derived = DataStruct(
-        data=np.ascontiguousarray(mag), kind=DataKind.IMAGE,
-        axes=(AxisCal(), AxisCal()),
-        metadata={"source": f"FFT of {store.name(img_id)}", "parser": "derived"},
+    # reciprocal axes from the source's per-axis pixel size, built by the
+    # same function the `fft` op uses (calc/fourier.fft_datastruct)
+    derived = fft_datastruct(
+        mag, ds, {"source": f"FFT of {store.name(img_id)}", "parser": "derived"}
     )
     new_id = store.add_derived(derived, f"FFT({store.name(img_id)})", img_id)
     return ImageMeta.from_datastruct(new_id, store.name(new_id), derived)

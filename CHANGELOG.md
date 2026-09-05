@@ -25,6 +25,18 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   see rather than the drawn outline. The preview endpoint gains
   `include_mask`, returning that raster as an 8-bit PNG over the region's
   bounding box.
+- **Generated FFTs carry their reciprocal calibration.** `/image/{id}/fft`
+  and the `fft` op used to register the log-magnitude FFT with no axes at
+  all, so nothing downstream could know the source's pixels were not
+  square. They now carry `1/(N·s)` per axis in `1/<unit>` with the origin
+  at DC, derived from the source's per-axis pixel size
+  (`calc/fourier.fft_axes`; the scale bar on an FFT reads in `1/nm`), and
+  FFT-mode spot indexing inverts that over the pattern's shape to recover
+  the source pixel aspect (`calc/diffraction_index.pattern_spacing`). End
+  to end, a Silicon [001] lattice on 3:2 pixels now detects eight spots and
+  indexes at score 1.0 where the uncalibrated FFT scored 0.75
+  (`tests/test_fft_index_end_to_end.py`). An FFT of an FFT stays
+  uncalibrated.
 
 ### Fixed
 - **The single-scale error named in 0.4.0's *Known limitations* is closed.**
