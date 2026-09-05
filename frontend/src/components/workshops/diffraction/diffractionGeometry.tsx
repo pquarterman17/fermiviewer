@@ -108,6 +108,7 @@ export function matchedRingSvg(
   spots: [number, number][],
   showRings: boolean,
   showLabels: boolean,
+  ellipseForD?: (d: number) => EllipseRadii | null,
 ): React.ReactNode[] {
   const cx = (center[1] - 0.5) * scale;  // 1-based col → display px
   const cy = (center[0] - 0.5) * scale;
@@ -121,17 +122,19 @@ export function matchedRingSvg(
     const i = idx[k];
     if (i < 0 || i >= measuredR.length) continue;
     const R = measuredR[i] * scale;
+    const ellipse = ellipseForD?.(matched_d[k]) ?? { rx: R, ry: R };
     const hkl = matched_hkl[k] ?? [0, 0, 0];
 
     if (showRings) {
       nodes.push(
-        <circle key={`mring-${k}`} cx={cx} cy={cy} r={R} fill="none"
+        <ellipse key={`mring-${k}`} cx={cx} cy={cy}
+          rx={ellipse.rx} ry={ellipse.ry} fill="none"
           stroke="#22c55e" strokeWidth={1} />,
       );
       // on-ring hkl tag only when per-spot labels aren't carrying it
       if (!showLabels) {
         nodes.push(
-          <text key={`mrt-${k}`} x={cx + R * 1.05} y={cy} fill="#22c55e"
+          <text key={`mrt-${k}`} x={cx + ellipse.rx * 1.05} y={cy} fill="#22c55e"
             fontSize={9} dominantBaseline="middle">
             ({hkl.join("")})
           </text>,
@@ -167,35 +170,66 @@ export function matchedRingSvg(
  *    R_px = W * pixelSize / d
  *  where W = image width in px, pixelSize in Å/px.
  *
- *  Camera-mode formula (when cameraLengthMm is provided):
- *    sin θ = λ / (2 d);  R_px = L_mm * tan(2θ) / pixelSize_mm_per_px
- *  λ (Å) = 12.264 / sqrt(kV * (1 + 0.9788e-3 * kV)) [non-relativistic approx
- *  used here only for display preview; the backend uses the exact CODATA formula].
+ *  Camera mode mirrors the indexing calculation: physical detector radius
+ *  is λL/d, divided by each detector-pixel extent independently.
  */
-export function dSpacingToRadiusPx(
+export interface EllipseRadii {
+  rx: number;
+  ry: number;
+}
+
+/** Display radii of the constant-d locus. A reciprocal grid with unequal
+ * row/column steps is elliptical in pixel coordinates even though it is
+ * circular in physical reciprocal space. */
+export function dSpacingToEllipsePx(
   dAng: number,
+  imgH: number,
   imgW: number,
   pixelSizeMm: number,
   cameraLengthMm: number | null,
   accKv: number,
   displayScale: number,
-): number | null {
-  if (dAng <= 0) return null;
-  if (!cameraLengthMm) {
-    // FFT mode: pixel_size treated as Å/px (the workshop stores mm, but for
-    // FFT-mode the user typically enters the real-space calibration in nm or
-    // similar; the backend always uses consistent units — here we mirror the
-    // FFT formula for the preview ring without unit-conversion since the scale
-    // only matters relatively): R_img = W * pixelSize / d
-    const rImg = (imgW * pixelSizeMm) / dAng;
-    return rImg * displayScale;
+  pixelSpacing?: [number, number] | null,
+  pixelUnit = "",
+): EllipseRadii | null {
+  if (dAng <= 0 || imgH <= 0 || imgW <= 0 || pixelSizeMm <= 0) return null;
+  const validPair =
+    pixelSpacing && pixelSpacing.every((value) => Number.isFinite(value) && value > 0)
+      ? pixelSpacing
+      : null;
+  let rowExtent = pixelSizeMm;
+  const colExtent = pixelSizeMm;
+  if (validPair) {
+    if (!cameraLengthMm && pixelUnit.trim().startsWith("1/")) {
+      // The displayed pattern is already reciprocal: invert q steps over
+      // its shape to recover the source real-pixel aspect (backend parity).
+      rowExtent = pixelSizeMm * ((imgW * validPair[1]) / (imgH * validPair[0]));
+    } else {
+      rowExtent = pixelSizeMm * (validPair[0] / validPair[1]);
+    }
   }
-  // TEM camera mode
-  const kv = accKv;
-  const lam = 12.264 / Math.sqrt(kv * (1 + 0.9788e-3 * kv)); // Å approx
-  const sinTheta = lam / (2 * dAng);
-  if (sinTheta > 1) return null;
-  const rMm = cameraLengthMm * Math.tan(2 * Math.asin(sinTheta));
-  const rImg = rMm / pixelSizeMm;
-  return rImg * displayScale;
+  if (!cameraLengthMm) {
+    return {
+      rx: ((imgW * colExtent) / dAng) * displayScale,
+      ry: ((imgH * rowExtent) / dAng) * displayScale,
+    };
+  }
+  // Match calc.diffraction._measured_d exactly: d = lambda*L/R.
+  const volts = accKv * 1e3;
+  const lam = 12.2643 / Math.sqrt(volts + 0.97845e-6 * volts ** 2);
+  const radial = (lam * cameraLengthMm) / dAng;
+  return {
+    rx: (radial / colExtent) * displayScale,
+    ry: (radial / rowExtent) * displayScale,
+  };
+}
+
+/** Legacy scalar helper retained for external callers. */
+export function dSpacingToRadiusPx(
+  dAng: number, imgW: number, pixelSizeMm: number,
+  cameraLengthMm: number | null, accKv: number, displayScale: number,
+): number | null {
+  return dSpacingToEllipsePx(
+    dAng, imgW, imgW, pixelSizeMm, cameraLengthMm, accKv, displayScale,
+  )?.rx ?? null;
 }

@@ -5,6 +5,10 @@ import { describe, expect, it } from "vitest";
 
 import type { PhaseCandidate } from "../../lib/api";
 import { matchedSpotIndices } from "./DiffractionWorkshop";
+import {
+  dSpacingToEllipsePx,
+  matchedRingSvg,
+} from "./diffraction/diffractionGeometry";
 
 function candidate(extra: Partial<PhaseCandidate>): PhaseCandidate {
   return {
@@ -54,5 +58,46 @@ describe("matchedSpotIndices", () => {
     const c = candidate({ matched_d: [0.2, 0.2], matched_idx: [] });
     const out = matchedSpotIndices(c, [128, 130], 512, 0.05);
     expect(new Set(out).size).toBe(2); // two distinct spots, no double-use
+  });
+});
+
+describe("anisotropic constant-d geometry", () => {
+  it("is circular for a square real-space field", () => {
+    expect(dSpacingToEllipsePx(2, 128, 128, 1, null, 200, 1, [1, 1], "nm"))
+      .toEqual({ rx: 64, ry: 64 });
+  });
+
+  it("uses both real-space extents in FFT mode", () => {
+    expect(dSpacingToEllipsePx(2, 128, 128, 1, null, 200, 1, [2, 1], "nm"))
+      .toEqual({ rx: 64, ry: 128 });
+  });
+
+  it("inverts a generated FFT's reciprocal axes back to the source aspect", () => {
+    // q steps from a 128² source with (row, col) extents (2, 1).
+    const q: [number, number] = [1 / 256, 1 / 128];
+    expect(dSpacingToEllipsePx(2, 128, 128, 1, null, 200, 1, q, "1/nm"))
+      .toEqual({ rx: 64, ry: 128 });
+  });
+
+  it("keeps a rectangular uncalibrated FFT physically circular", () => {
+    expect(dSpacingToEllipsePx(2, 64, 128, 1, null, 200, 1))
+      .toEqual({ rx: 64, ry: 32 });
+  });
+
+  it("renders matched rings with both ellipse radii", () => {
+    const c = candidate({ matched_d: [2], matched_idx: [0], matched_hkl: [[2, 0, 0]] });
+    const nodes = matchedRingSvg(
+      c, [10], [65, 65], 1, 128, 1, [[65, 75]], true, false,
+      () => ({ rx: 32, ry: 64 }),
+    );
+    const ring = nodes[0] as { type: string; props: { rx: number; ry: number } };
+    expect(ring.type).toBe("ellipse");
+    expect(ring.props).toMatchObject({ rx: 32, ry: 64 });
+  });
+
+  it("uses per-axis detector extents in camera mode", () => {
+    const ring = dSpacingToEllipsePx(2, 128, 128, 0.01, 200, 200, 1, [0.02, 0.01], "mm");
+    expect(ring).not.toBeNull();
+    expect(ring!.rx / ring!.ry).toBeCloseTo(2);
   });
 });

@@ -7,6 +7,7 @@ import type {
   PhaseInfo,
   SimulateResult,
 } from "../../lib/api";
+import type { EllipseRadii } from "./diffraction/diffractionGeometry";
 
 type RoiMode = "none" | "rect" | "circle";
 
@@ -36,7 +37,7 @@ interface IndexPanelProps {
   spotsLength: number;
   typedD: string;
   setTypedD: Dispatch<SetStateAction<string>>;
-  typedRingR: number | null;
+  typedRing: EllipseRadii | null;
   index: () => void;
   candidates: PhaseCandidate[];
   selectedCandIdx: number;
@@ -55,7 +56,7 @@ export function DiffractionIndexPanel(props: IndexPanelProps) {
     minRadius, setMinRadius, threshold, setThreshold, pixelSize, setPixelSize,
     cameraLen, setCameraLen, accKv, setAccKv, busy, detect, rings, setRings,
     labels, setLabels, clickMode, setClickMode, spotsLength, typedD, setTypedD,
-    typedRingR, index, candidates, selectedCandIdx, setSelectedCandIdx,
+    typedRing, index, candidates, selectedCandIdx, setSelectedCandIdx,
     downloadReport, roiMode, setRoiMode, committedRoi, clearRoi,
     saveResult, setSaveResult, tolerance, setTolerance, topN, setTopN,
   } = props;
@@ -75,7 +76,7 @@ export function DiffractionIndexPanel(props: IndexPanelProps) {
     </div>
     <div className="fvd-ws-row">
       <span className="k">d (Å)</span><input value={typedD} style={{ width: 64 }} placeholder="e.g. 2.338" title="Type a d-spacing (Å) to preview the matching ring on the pattern" onChange={(e) => setTypedD(e.target.value)} />
-      {typedRingR !== null ? <span className="fvd-ws-hint">{typedRingR.toFixed(1)} px</span> : typedD ? <span className="fvd-ws-hint" style={{ color: "var(--error, #f87171)" }}>out of range</span> : null}
+      {typedRing !== null ? <span className="fvd-ws-hint">{typedRing.rx.toFixed(1)} × {typedRing.ry.toFixed(1)} px</span> : typedD ? <span className="fvd-ws-hint" style={{ color: "var(--error, #f87171)" }}>out of range</span> : null}
     </div>
     <div className="fvd-ws-row">
       <span className="k">px (mm)</span><input value={pixelSize} style={{ width: 52 }} onChange={(e) => setPixelSize(e.target.value)} />

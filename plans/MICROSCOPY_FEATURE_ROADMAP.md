@@ -994,6 +994,12 @@ EELS/dose/spatial/reciprocal calibration using the same persistence rules.
 > `tests/test_fft_index_end_to_end.py` runs source → FFT → detect →
 > index on 3:2 pixels: Silicon scores 1.0, the uncalibrated FFT 0.75.
 
+> **2026-09-05 — diffraction visual QC follows the same geometry.**
+> `ImageMeta.pixel_spacing` exposes the safe per-axis pair to the client;
+> matched-phase and typed-d overlays are ellipses when reciprocal or detector
+> pixel steps differ, remain circles for square grids, and show both radii.
+> This closes the frontend seam found while reviewing PR #209/#212.
+
 #### 5b. Standards and quantification QC
 
 - [ ] Import a known-composition standard and define its reference regions.
