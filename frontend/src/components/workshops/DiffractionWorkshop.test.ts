@@ -88,11 +88,22 @@ describe("anisotropic constant-d geometry", () => {
     const c = candidate({ matched_d: [2], matched_idx: [0], matched_hkl: [[2, 0, 0]] });
     const nodes = matchedRingSvg(
       c, [10], [65, 65], 1, 128, 1, [[65, 75]], true, false,
-      () => ({ rx: 32, ry: 64 }),
+      2,
     );
     const ring = nodes[0] as { type: string; props: { rx: number; ry: number } };
     expect(ring.type).toBe("ellipse");
-    expect(ring.props).toMatchObject({ rx: 32, ry: 64 });
+    expect(ring.props).toMatchObject({ rx: 10, ry: 20 });
+  });
+
+  it("anchors an ROI-indexed ring through its full-frame matched spot", () => {
+    // matched_d=3.2 was calculated in a 128px ROI and would produce an
+    // incorrect 80px radius if rebuilt with the 256px full-image width.
+    const c = candidate({ matched_d: [3.2], matched_idx: [0], matched_hkl: [[2, 0, 0]] });
+    const nodes = matchedRingSvg(
+      c, [40], [129, 129], 1, 256, 1, [[129, 169]], true, false, 1,
+    );
+    const ring = nodes[0] as { props: { rx: number; ry: number } };
+    expect(ring.props).toMatchObject({ rx: 40, ry: 40 });
   });
 
   it("uses per-axis detector extents in camera mode", () => {

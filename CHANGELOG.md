@@ -45,7 +45,7 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   spots on an anisotropic grid. `ImageMeta` now exposes a safe `(row, column)`
   spacing pair and the workshop draws the corresponding ellipse in FFT and
   camera modes; square grids remain circular. The preview also reports both
-  radii instead of implying one pixel radius describes the locus.
+  radii in pattern pixels instead of implying one radius describes the locus.
 - **The single-scale error named in 0.4.0's *Known limitations* is closed.**
   Every site that list called out now measures with both pixel extents
   (`DataStruct.pixel_spacing`), and square pixels are bit-for-bit unchanged

@@ -76,7 +76,7 @@ export function DiffractionIndexPanel(props: IndexPanelProps) {
     </div>
     <div className="fvd-ws-row">
       <span className="k">d (Å)</span><input value={typedD} style={{ width: 64 }} placeholder="e.g. 2.338" title="Type a d-spacing (Å) to preview the matching ring on the pattern" onChange={(e) => setTypedD(e.target.value)} />
-      {typedRing !== null ? <span className="fvd-ws-hint">{typedRing.rx.toFixed(1)} × {typedRing.ry.toFixed(1)} px</span> : typedD ? <span className="fvd-ws-hint" style={{ color: "var(--error, #f87171)" }}>out of range</span> : null}
+      {typedRing !== null ? <span className="fvd-ws-hint">{typedRing.rx.toFixed(1)} × {typedRing.ry.toFixed(1)} pattern px</span> : typedD ? <span className="fvd-ws-hint" style={{ color: "var(--error, #f87171)" }}>invalid d or calibration</span> : null}
     </div>
     <div className="fvd-ws-row">
       <span className="k">px (mm)</span><input value={pixelSize} style={{ width: 52 }} onChange={(e) => setPixelSize(e.target.value)} />

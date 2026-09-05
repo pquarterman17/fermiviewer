@@ -108,7 +108,7 @@ export function matchedRingSvg(
   spots: [number, number][],
   showRings: boolean,
   showLabels: boolean,
-  ellipseForD?: (d: number) => EllipseRadii | null,
+  ellipseAspect = 1,
 ): React.ReactNode[] {
   const cx = (center[1] - 0.5) * scale;  // 1-based col → display px
   const cy = (center[0] - 0.5) * scale;
@@ -121,8 +121,13 @@ export function matchedRingSvg(
   for (let k = 0; k < matched_d.length; k++) {
     const i = idx[k];
     if (i < 0 || i >= measuredR.length) continue;
-    const R = measuredR[i] * scale;
-    const ellipse = ellipseForD?.(matched_d[k]) ?? { rx: R, ry: R };
+    const [row, col] = spots[i] ?? [center[0], center[1]];
+    const dr = row - center[0];
+    const dc = col - center[1];
+    // Anchor the ellipse through the matched spot. matched_d may have been
+    // computed in an ROI frame, while this overlay is in the full frame.
+    const rx = Math.hypot(dc, dr / ellipseAspect) * scale;
+    const ellipse = { rx, ry: ellipseAspect * rx };
     const hkl = matched_hkl[k] ?? [0, 0, 0];
 
     if (showRings) {
@@ -144,7 +149,6 @@ export function matchedRingSvg(
 
     // #4: hkl + measured-d label pinned at the matched spot's own position
     if (showLabels && spots[i]) {
-      const [row, col] = spots[i];
       const sx = (col - 0.5) * scale;
       const sy = (row - 0.5) * scale;
       nodes.push(

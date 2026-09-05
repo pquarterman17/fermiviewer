@@ -254,11 +254,11 @@ export default function DiffractionWorkshop() {
 
   // ── typed-d ring radius in display pixels ─────────────────────────
   const typedDVal = parseFloat(typedD);
-  const ellipseForD = (d: number) =>
+  const ellipseForD = (d: number, outputScale = scale) =>
     natural
       ? dSpacingToEllipsePx(
           d, natural.h, natural.w, Number(pixelSize) || 1.0,
-          cameraLen ? Number(cameraLen) : null, Number(accKv) || 200, scale,
+          cameraLen ? Number(cameraLen) : null, Number(accKv) || 200, outputScale,
           meta?.pixel_spacing, meta?.pixel_unit,
         )
       : null;
@@ -266,6 +266,9 @@ export default function DiffractionWorkshop() {
     typedDVal > 0 && natural && scale > 0
       ? ellipseForD(typedDVal)
       : null;
+  const typedRingPattern = typedDVal > 0 && natural ? ellipseForD(typedDVal, 1) : null;
+  const unitEllipse = natural ? ellipseForD(1, 1) : null;
+  const ellipseAspect = unitEllipse ? unitEllipse.ry / unitEllipse.rx : 1;
 
   // ── matched-ring SVG nodes for the selected candidate ────────────
   const matchedRingNodes =
@@ -280,7 +283,7 @@ export default function DiffractionWorkshop() {
           spots,
           rings,
           labels,
-          ellipseForD,
+          ellipseAspect,
         )
       : [];
 
@@ -448,7 +451,7 @@ export default function DiffractionWorkshop() {
           tolerance={tolerance} setTolerance={setTolerance} topN={topN} setTopN={setTopN}
           rings={rings} setRings={setRings} labels={labels} setLabels={setLabels}
           clickMode={clickMode} setClickMode={setClickMode} spotsLength={spots.length}
-          typedD={typedD} setTypedD={setTypedD} typedRing={typedRing}
+          typedD={typedD} setTypedD={setTypedD} typedRing={typedRingPattern}
           index={index} candidates={candidates} selectedCandIdx={selectedCandIdx}
           setSelectedCandIdx={setSelectedCandIdx} downloadReport={downloadReport}
           roiMode={roiMode} setRoiMode={setRoiMode} committedRoi={committedRoi}
