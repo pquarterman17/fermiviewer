@@ -985,6 +985,15 @@ EELS/dose/spatial/reciprocal calibration using the same persistence rules.
 > frontend, 5a-C review) are in the ADR; the box stays unchecked until
 > 5a-A and 5a-B land.
 
+> **2026-09-05 — generated FFTs are reciprocally calibrated.**
+> `calc/fourier.fft_axes` gives `/image/{id}/fft` and the `fft` op
+> `1/(N·s)` per axis in `1/<unit>` with the origin at DC, derived from
+> the source's per-axis pixel size (they used to register no axes at
+> all), and FFT-mode indexing inverts that over the pattern's shape to
+> recover the source aspect (`calc/diffraction_index.pattern_spacing`).
+> `tests/test_fft_index_end_to_end.py` runs source → FFT → detect →
+> index on 3:2 pixels: Silicon scores 1.0, the uncalibrated FFT 0.75.
+
 #### 5b. Standards and quantification QC
 
 - [ ] Import a known-composition standard and define its reference regions.

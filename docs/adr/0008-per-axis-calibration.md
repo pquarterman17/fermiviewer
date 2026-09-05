@@ -108,10 +108,12 @@ data was anisotropic in the first place.
 * Named microscope/detector/acquisition profiles, validity ranges,
   operator notes and version history (5a boxes 1, 3, 4, 5). They wrap
   the per-axis record; this ADR makes sure there is one to wrap.
-* Reciprocal-space calibration as a stored quantity. Reciprocal spacing
+* Reciprocal-space calibration as an EDITED quantity. Reciprocal spacing
   is DERIVED from the real-space per-axis record (PR #209/#210); a
   diffraction pattern loaded as an image carries its own `1/nm` axes
-  through the same `AxisCal`.
+  through the same `AxisCal`, and a generated FFT now carries the
+  reciprocal axes derived from its source the same way
+  (`calc/fourier.fft_axes`, `1/(N·s)` per axis with the origin at DC).
 * Any change to what a calc computes. PRs #202–#210 finished that; this
   ADR is about not undoing it at the edit surface.
 

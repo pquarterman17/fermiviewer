@@ -33,11 +33,16 @@ import numpy as np
 from fermiviewer.calc.calibration import spacing_at_column_scale
 from fermiviewer.calc.ctf import estimate_ctf
 from fermiviewer.calc.eds_maps import virtual_dark_field
-from fermiviewer.calc.fourier import compute_fft, fft_mask_inverse, local_fft_region
+from fermiviewer.calc.fourier import (
+    compute_fft,
+    fft_datastruct,
+    fft_mask_inverse,
+    local_fft_region,
+)
 from fermiviewer.calc.gpa import geometric_phase_analysis, gpa_mean_strain
 from fermiviewer.calc.lattice import lattice_measure
 from fermiviewer.calc.raster import raster_of
-from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
+from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.ops._envelopes import output, scalar
 from fermiviewer.ops._parsing import sentinel_group
 from fermiviewer.ops.base import OpParam, OpResult, OpSpec, RowSpec
@@ -55,13 +60,11 @@ def _fft(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     if rect is not None:
         raster = local_fft_region(raster, rect)  # type: ignore[arg-type]
     mag, _ = compute_fft(raster)
-    # FFT space is not real space: drop the parent axes (the route does
-    # the same), unlike the filter ops which carry calibration through.
-    derived = DataStruct(
-        data=np.ascontiguousarray(mag),
-        kind=DataKind.IMAGE,
-        axes=(AxisCal(), AxisCal()),
-        metadata={"parser": "derived", "filter_kind": "fft", "source": "fft"},
+    # FFT space is not real space: the parent's nm do not carry over, but
+    # its per-axis pixel size fixes the reciprocal grid -- one builder with
+    # the route (calc/fourier.fft_datastruct), so op and route agree
+    derived = fft_datastruct(
+        mag, ds, {"parser": "derived", "filter_kind": "fft", "source": "fft"}
     )
     return OpResult(op="fft", params=params, label="log-magnitude FFT", derived=derived)
 

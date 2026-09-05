@@ -14,6 +14,12 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from fermiviewer.calc.calibration import (
+    is_reciprocal_unit,
+    real_spacing_from_reciprocal,
+    spacing_at_column_scale,
+    usable_spacing,
+)
 from fermiviewer.calc.crystal import Phase
 from fermiviewer.calc.diffraction import (
     IndexCandidate,
@@ -22,7 +28,35 @@ from fermiviewer.calc.diffraction import (
     roi_selects_pixels,
 )
 
-__all__ = ["IndexedPattern", "index_spots_roi"]
+__all__ = ["IndexedPattern", "index_spots_roi", "pattern_spacing"]
+
+
+def pattern_spacing(
+    shape: tuple[int, ...],
+    pixel_spacing: tuple[float, float],
+    pixel_unit: str,
+    pixel_size: float,
+    camera_length: float,
+) -> tuple[float, float] | None:
+    """Per-axis extents for `index_spots`, read off the pattern's own
+    calibration while keeping the caller's `pixel_size` as the column
+    scale (`calc/calibration.spacing_at_column_scale`).
+
+    Camera mode: the pattern's pixels ARE the detector's, so their ratio
+    applies directly. FFT mode on a reciprocally calibrated pattern -- a
+    generated FFT (`calc/fourier.fft_axes`) or a loaded one in ``1/nm`` --
+    inverts the frequency steps over the pattern's ``(H, W)`` to recover
+    the SOURCE's real-space extents, whose ratio is the one `index_spots`
+    needs; a reciprocal ratio used directly would be upside down. None
+    when the pattern has no usable calibration: one scale, as before.
+    """
+    fft_mode = bool(np.isnan(camera_length))
+    if fft_mode and is_reciprocal_unit(pixel_unit):
+        sp = usable_spacing(pixel_spacing)
+        if sp is None:
+            return None
+        return spacing_at_column_scale(pixel_size, real_spacing_from_reciprocal(shape, sp))
+    return spacing_at_column_scale(pixel_size, pixel_spacing)
 
 
 @dataclass(frozen=True)
