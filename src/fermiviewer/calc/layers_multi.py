@@ -154,8 +154,14 @@ def compare_layers_across_maps(
     n_layers: int = 0,
     modality: str = "haadf",
     waviness: bool = True,
+    spacings: Sequence[tuple[float, float] | None] | None = None,
 ) -> MultiLayerComparison:
     """Per-map interface sharpness at ONE shared set of interfaces.
+
+    ``spacings`` carries each map's per-axis pixel extent
+    (`DataStruct.pixel_spacing`), one entry per image, so the imposed
+    thicknesses and widths scale by the extent along the reference's
+    growth axis rather than by the column scale regardless of it.
 
     Detects interfaces on ``images[reference]`` (:func:`analyze_layers`), then
     re-measures those depths on every map (:func:`recompute_layers`) with the
@@ -177,6 +183,10 @@ def compare_layers_across_maps(
         raise ValueError("images, pixel_sizes and pixel_units must have the same length")
     if not images:
         raise ValueError("give at least one map")
+    if spacings is None:
+        spacings = [None] * len(images)
+    elif len(spacings) != len(images):
+        raise ValueError("spacings must have one entry per image")
 
     ref_idx = _clamp_reference(reference, len(images))
     px, unit, _calibrated = uniform_pixel_cal(
@@ -187,6 +197,7 @@ def compare_layers_across_maps(
         ref_res = analyze_layers(
             images[ref_idx], axis=axis, sensitivity=sensitivity, n_layers=n_layers,
             modality=modality, waviness=waviness, pixel_size=px, unit=unit, roi=roi,
+            spacing=spacings[ref_idx],
         )
     except ValueError as e:
         raise MapMeasureError(str(e), ref_idx) from None
@@ -198,8 +209,8 @@ def compare_layers_across_maps(
     use_axis = ref_res.axis
 
     maps: list[dict] = []
-    for k, (img, size, map_unit) in enumerate(
-        zip(images, pixel_sizes, pixel_units, strict=True)
+    for k, (img, size, map_unit, spacing) in enumerate(
+        zip(images, pixel_sizes, pixel_units, spacings, strict=True)
     ):
         # Dead but load-bearing after the uniform_pixel_cal check above (every
         # map now matches the reference): kept so this stays correct if the
@@ -209,7 +220,7 @@ def compare_layers_across_maps(
         try:
             res = recompute_layers(
                 img, positions, axis=use_axis, roi=roi,
-                pixel_size=m_px, unit=m_unit, waviness=waviness,
+                pixel_size=m_px, unit=m_unit, waviness=waviness, spacing=spacing,
             )
         except ValueError as e:      # e.g. non-finite pixels in a comparison map
             raise MapMeasureError(str(e), k) from None

@@ -12,6 +12,8 @@ from __future__ import annotations
 import numpy as np
 from scipy.ndimage import map_coordinates
 
+from fermiviewer.calc.calibration import calibrated_spacing, physical_length
+
 __all__ = [
     "line_profile",
     "line_profile_stats",
@@ -39,6 +41,27 @@ def _perp_stack(
     ])
 
 
+def _distance_axis(
+    dx: float, dy: float, n: int, scale: tuple[float, float] | None
+) -> np.ndarray:
+    """``n`` evenly spaced distances along a (dx columns, dy rows) segment.
+
+    In pixels when `scale` is None. Otherwise each component is scaled by
+    its own extent BEFORE the Pythagorean sum (`calc.calibration`): on
+    3-wide, 4-tall pixels a 30-column, 40-row line is 183.6 units long,
+    not the 150 that ``hypot(30, 40) * 3`` gives. Equal extents keep the
+    old single-scale product bit for bit, so square-pixel profiles do not
+    move.
+    """
+    dist = np.linspace(0, float(np.hypot(dx, dy)), n)
+    if scale is None:
+        return dist
+    s_row, s_col = scale
+    if s_row == s_col:
+        return dist * s_col
+    return np.linspace(0, physical_length(dx, dy, scale), n)
+
+
 def line_profile(
     img: np.ndarray,
     x1: float, y1: float, x2: float, y2: float,
@@ -48,12 +71,19 @@ def line_profile(
     geometry: str = "cross-section",
     width: float = 1.0,
     reduce: str = "mean",
+    *,
+    spacing: tuple[float, float] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Sub-pixel bilinear profile along a segment (port of lineProfile.m).
 
     Returns (dist, intensity); dist in pixels unless pixel_size given.
     Tilt correction stretches the in-tilt-axis component by 1/sin (cross
     sections) or 1/cos (surfaces).
+
+    `spacing` is the physical extent of one pixel as ``(row, column)``
+    (`DataStruct.pixel_spacing`) and wins over `pixel_size`, which is the
+    COLUMN scale read as isotropic. Only the distance axis is calibrated;
+    sampling (and the `width` averaging) stays in pixels.
 
     width > 1 (NEW, not in the MATLAB original) averages round(width)
     parallel lines spaced 1 px apart perpendicular to the segment,
@@ -108,9 +138,7 @@ def line_profile(
         else:
             dx *= scale
 
-    dist = np.linspace(0, float(np.hypot(dx, dy)), n)
-    if np.isfinite(pixel_size):
-        dist = dist * pixel_size
+    dist = _distance_axis(dx, dy, n, calibrated_spacing(spacing, pixel_size))
     return dist, intensity
 
 
@@ -123,6 +151,8 @@ def line_profile_stats(
     geometry: str = "cross-section",
     width: float = 1.0,
     reduce: str = "mean",
+    *,
+    spacing: tuple[float, float] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
     """line_profile, plus the per-point sem across the averaging width —
     additive sibling for the ±σ line-profile band (item 3). dist/intensity
@@ -136,6 +166,7 @@ def line_profile_stats(
         img, x1, y1, x2, y2,
         pixel_size=pixel_size, tilt_angle_deg=tilt_angle_deg,
         tilt_axis=tilt_axis, geometry=geometry, width=width, reduce=reduce,
+        spacing=spacing,
     )
     n_lines = max(1, int(round(width)))
     if n_lines <= 1 or reduce != "mean":
@@ -168,10 +199,13 @@ def polyline_profile(
     pixel_size: float = float("nan"),
     width: float = 1.0,
     reduce: str = "mean",
+    *,
+    spacing: tuple[float, float] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Concatenated sub-pixel profile along polyline vertices (1-based
     pixel-centre coords, NEW — no MATLAB counterpart). Distance
     accumulates across segments; duplicated joint samples are dropped.
+    `spacing` as in :func:`line_profile`.
     """
     xv = np.asarray(xs, dtype=np.float64).ravel()
     yv = np.asarray(ys, dtype=np.float64).ravel()
@@ -186,7 +220,7 @@ def polyline_profile(
     for i in range(xv.size - 1):
         d, v = line_profile(
             img, xv[i], yv[i], xv[i + 1], yv[i + 1],
-            pixel_size=pixel_size, width=width, reduce=reduce,
+            pixel_size=pixel_size, width=width, reduce=reduce, spacing=spacing,
         )
         if i == 0:
             ds_list.append(d + total)

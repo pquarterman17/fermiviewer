@@ -814,6 +814,27 @@ in EDS/EELS, imaging statistics, and structural analysis.
 > pixels give anisotropic reciprocal space), and the project/UI
 > calibration model. The box stays unchecked.
 >
+> **Amended 2026-09-04: the v0.4.0 *Known limitations* list is closed.**
+> The four sites above shipped in v0.4.0 (#203, #204). The release's
+> pre-tag audit named the same shape still live in `calc/profiles.py`,
+> `calc/profile_stats.py`, `calc/radial.py`, `calc/layers.py` with
+> `calc/trace_roughness.py`, and `calc/grain_layers.py`; each now takes
+> a keyword-only `spacing` and every route and op passes
+> `DataStruct.pixel_spacing`. Two of them are not simple lengths: a
+> RADIAL profile bins by physical distance, because on 2:1 pixels a
+> physically round ring spans pixel radii 15 to 30 and no rescaling of
+> pixel bins can put it back into one; and a LAYER stack has two axes
+> with different meanings, so thickness, σ_erf and σ_w scale by the
+> extent along the growth axis the analysis actually chose, while the
+> trace's correlation length and PSD wavelengths scale by the other one
+> (`LayerResult.lateral_size`, `analyze_trace(lateral_size=)`). The
+> `pixel_size ** 2` fallbacks in `calc/grains.py` and `calc/particles.py`
+> were verified to be exactly that -- every in-tree caller passes
+> `pixel_area` and `spacing` -- and were left as the documented
+> single-length compatibility path. Square pixels are bit-for-bit
+> unchanged at each site, asserted in `tests/test_anisotropic_followup.py`.
+> Reciprocal/energy calibration and the project/UI model remain open.
+>
 > **For the UI half:** the preview reports the RASTERIZED pixel count,
 > under `calc/region_mask`'s centre-sampling convention. A polygon drawn
 > in SVG and the mask an analysis uses differ at the boundary, so a

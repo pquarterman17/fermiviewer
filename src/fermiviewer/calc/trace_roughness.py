@@ -26,7 +26,12 @@ on height images, ported verbatim) — this module is net-new 1-D metrology:
    correlation length, since laterally correlated samples make the naive
    bootstrap under-cover) gives a 95% CI on sigma_w.
 
-All lengths are in *pixels* unless a ``pixel_size`` converts them. A TEM
+All lengths are in *pixels* unless a ``pixel_size`` converts them. A trace
+has TWO axes with independent pixel extents: heights (sigma_w, its CI,
+sigma_raw, noise_floor, PSD power) run along the growth axis and scale by
+``pixel_size``; lateral positions (xi, psd_wavelength) run along the
+interface and scale by ``lateral_size``, which defaults to ``pixel_size``
+for square pixels. A TEM
 cross-section projects through the foil, so sigma_w is a **lower bound** —
 roughness at lateral wavelengths shorter than the foil thickness is averaged
 away along the beam. Pure library: numpy/scipy only, no fastapi imports.
@@ -375,17 +380,27 @@ def analyze_trace(
     trace: np.ndarray,
     pixel_size: float = 1.0,
     *,
+    lateral_size: float | None = None,
     order: int = 2,
     kappa: float = 4.0,
     n_boot: int = 200,
 ) -> TraceRoughness:
-    """Full roughness report for one interface trace (see module docstring)."""
+    """Full roughness report for one interface trace (see module docstring).
+
+    `pixel_size` converts trace HEIGHTS (the growth-axis extent);
+    `lateral_size` converts positions ALONG the interface (the other
+    axis) and defaults to `pixel_size`. On 4 nm rows and 1 nm columns a
+    horizontal interface's sigma_w is in 4 nm steps while its correlation
+    length and PSD wavelengths are in 1 nm steps; one number cannot serve
+    both.
+    """
+    lateral = float(pixel_size) if lateral_size is None else float(lateral_size)
     y = np.asarray(trace, dtype=np.float64)
     resid, keep = clean_trace(y, order=order, kappa=kappa)
     s_w, s_raw, s_loc = _noise_corrected(resid)
     lo, hi = _block_bootstrap_ci(resid, n_boot=n_boot)
-    wavelength, power = trace_psd(resid, pixel_size)
-    xi, hurst = hhcf_fit(resid, pixel_size)
+    wavelength, power = trace_psd(resid, lateral)
+    xi, hurst = hhcf_fit(resid, lateral)
     n_finite = int(np.isfinite(y).sum())
     quality = float(keep.sum() / n_finite) if n_finite else 0.0
     px = float(pixel_size)

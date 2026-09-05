@@ -28,7 +28,14 @@ from __future__ import annotations
 
 import math
 
-__all__ = ["physical_angle_rad", "physical_length", "usable_spacing"]
+__all__ = [
+    "calibrated_spacing",
+    "growth_axis_scales",
+    "physical_angle_rad",
+    "physical_length",
+    "resolve_spacing",
+    "usable_spacing",
+]
 
 
 def usable_spacing(
@@ -64,6 +71,47 @@ def resolve_spacing(
         or usable_spacing((pixel_size, pixel_size))
         or (1.0, 1.0)
     )
+
+
+def calibrated_spacing(
+    spacing: tuple[float, float] | None, pixel_size: float
+) -> tuple[float, float] | None:
+    """Per-axis extents when the image is calibrated, else None.
+
+    The uncalibrated sibling of `resolve_spacing`: where that falls
+    through to 1 for calcs that must return a number, this returns None
+    so a caller can report pixels (or null) instead. A finite
+    `pixel_size` is read as isotropic -- zero and negative included,
+    because that is what the measurement paths multiplied by before
+    `spacing` existed, and a correction that changes their answer on
+    square pixels is not one.
+    """
+    sp = usable_spacing(spacing)
+    if sp is not None:
+        return sp
+    if math.isfinite(pixel_size):
+        return (float(pixel_size), float(pixel_size))
+    return None
+
+
+def growth_axis_scales(
+    axis: str, pixel_size: float, spacing: tuple[float, float] | None
+) -> tuple[float, float]:
+    """``(depth, lateral)`` pixel extents for a stack grown along `axis`.
+
+    ``axis="y"`` means horizontal layers: depth runs down ROWS, so a
+    layer's thickness is rows times the ROW extent, and the lateral
+    coordinate an interface trace is sampled along is columns times the
+    COLUMN extent. ``axis="x"`` is the transpose. Without a usable
+    `spacing` both are `pixel_size`, the column scale read as isotropic --
+    exactly what every thickness used to be multiplied by whatever the
+    growth axis turned out to be.
+    """
+    sp = usable_spacing(spacing)
+    if sp is None:
+        return float(pixel_size), float(pixel_size)
+    s_row, s_col = sp
+    return (s_row, s_col) if axis == "y" else (s_col, s_row)
 
 
 def physical_length(

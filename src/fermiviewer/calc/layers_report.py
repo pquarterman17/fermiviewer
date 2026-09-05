@@ -44,7 +44,12 @@ def roughness_blocks(
             reports.append(None)
             resids.append(None)
             continue
-        r = analyze_trace(i.trace, res.pixel_size)
+        # heights scale by the depth extent, lateral positions by the other
+        r = analyze_trace(
+            i.trace,
+            res.pixel_size,
+            lateral_size=res.lateral_size if math.isfinite(res.lateral_size) else None,
+        )
         resids.append(r.detrended)
         lo, hi = r.sigma_ci
         reports.append(
@@ -109,6 +114,9 @@ def layer_result_to_dict(res: LayerResult) -> dict:
         "tilt_deg": _nan_none(res.tilt_deg),
         "coherence": _nan_none(res.coherence),
         "pixel_size": res.pixel_size,
+        # the other axis: what a consumer converts lateral (trace) positions
+        # with; null when the image had no usable per-axis spacing
+        "lateral_size": _nan_none(res.lateral_size),
         "unit": res.unit,
         "depth_pos": res.depth_pos.tolist(),
         "depth_profile": res.depth_profile.tolist(),

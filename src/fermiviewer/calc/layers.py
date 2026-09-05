@@ -22,6 +22,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from fermiviewer.calc.calibration import growth_axis_scales
 from fermiviewer.calc.layers_detect import (
     detect_interfaces,
     detect_interfaces_scale_space,
@@ -95,8 +96,15 @@ class LayerResult:
     depth_profile: np.ndarray
     interfaces: list[Interface]
     layers: list[Layer]
+    #: extent of one pixel along the DEPTH (growth) axis -- the scale every
+    #: thickness, sigma_erf and sigma_w above is in. With square pixels it
+    #: is the pixel size; with anisotropic ones it is whichever of the two
+    #: extents the growth axis runs along.
     pixel_size: float
     unit: str
+    #: extent along the interface (the other axis); NaN when unknown, in
+    #: which case consumers fall back to `pixel_size`.
+    lateral_size: float = float("nan")
 
 
 def _refine_interface(
@@ -138,7 +146,9 @@ def _interfaces_and_layers(
     """Refine interfaces at ``idxs`` and build the layers between them.
 
     Shared by :func:`analyze_layers` (auto-detected ``idxs``) and
-    :func:`recompute_layers` (user-edited ``idxs``).
+    :func:`recompute_layers` (user-edited ``idxs``). ``pixel_size`` is
+    the extent along the DEPTH axis: every length here (thickness, its
+    std, sigma_erf, sigma_w) is a distance along the growth direction.
     """
     # adaptive per-interface trace window: never wider than half the gap to
     # the nearest neighbour, or a thin layer's trace locks onto the stronger
@@ -233,6 +243,7 @@ def analyze_layers(
     destripe_fib: bool = False,
     destripe_strength: float = 1.0,
     destripe_cutoff: float = 4.0,
+    spacing: tuple[float, float] | None = None,
 ) -> LayerResult:
     """Full cross-section layer analysis (thickness + σ_erf; optional σ_w).
 
@@ -244,6 +255,13 @@ def analyze_layers(
     per-layer thickness std across the FOV. ``sigma_erf``/``sigma_w`` are in
     calibrated units; positions stay in profile pixels.
 
+    ``spacing`` is the physical extent of one pixel as ``(row, column)``
+    (`DataStruct.pixel_spacing`). Given it, thicknesses are measured with
+    the extent along the growth axis the analysis actually chose, rather
+    than with ``pixel_size`` (the column scale) whichever way the layers
+    run: a 25-row layer on 4 nm rows is 100 nm, not 25. The result's
+    ``pixel_size`` reports the depth extent used.
+
     ``destripe_fib`` removes FIB curtaining (:func:`destripe`) from the working
     image before profiling/tracing — pair with ``reduce="median"`` on heavily
     streaked specimens. Orientation/tilt are still read from the raw image.
@@ -253,6 +271,7 @@ def analyze_layers(
     use_axis = orient.axis if axis == "auto" else axis
     if use_axis not in ("x", "y"):
         raise ValueError("axis must be 'auto', 'x', or 'y'")
+    depth_size, lateral_size = growth_axis_scales(use_axis, pixel_size, spacing)
 
     work = (
         destripe(arr, use_axis, cutoff=destripe_cutoff, strength=destripe_strength)
@@ -273,7 +292,7 @@ def analyze_layers(
     # the ROI sub-image (clamped like box_integrate) for column-by-column tracing
     sub = _roi_subimage(work, roi) if waviness else None
     interfaces, layers = _interfaces_and_layers(
-        depth_pos, profile, peaks, sub, use_axis, pixel_size, fit_window, trace_window
+        depth_pos, profile, peaks, sub, use_axis, depth_size, fit_window, trace_window
     )
 
     return LayerResult(
@@ -285,8 +304,9 @@ def analyze_layers(
         depth_profile=profile,
         interfaces=interfaces,
         layers=layers,
-        pixel_size=pixel_size,
+        pixel_size=depth_size,
         unit=unit,
+        lateral_size=lateral_size,
     )
 
 
@@ -306,6 +326,7 @@ def recompute_layers(
     destripe_fib: bool = False,
     destripe_strength: float = 1.0,
     destripe_cutoff: float = 4.0,
+    spacing: tuple[float, float] | None = None,
 ) -> LayerResult:
     """Re-measure layers from a user-edited interface list (Tier 3 #6).
 
@@ -313,14 +334,16 @@ def recompute_layers(
     is erf-refined and the layers between consecutive interfaces are
     recomputed. ``axis`` is explicit (editing assumes a known orientation).
     Out-of-range positions are dropped; duplicates within a pixel collapse.
-    ``destripe_fib``/``reduce="median"`` mirror :func:`analyze_layers` so an
-    edited result stays consistent with how it was first measured.
+    ``destripe_fib``/``reduce="median"`` and ``spacing`` mirror
+    :func:`analyze_layers` so an edited result stays consistent with how
+    it was first measured.
     """
     arr = np.asarray(img, dtype=np.float64)
     if arr.ndim != 2:
         raise ValueError("layer analysis needs a 2-D image")
     if axis not in ("x", "y"):
         raise ValueError("axis must be 'x' or 'y'")
+    depth_size, lateral_size = growth_axis_scales(axis, pixel_size, spacing)
 
     work = (
         destripe(arr, axis, cutoff=destripe_cutoff, strength=destripe_strength)
@@ -335,7 +358,7 @@ def recompute_layers(
     )
     sub = _roi_subimage(work, roi) if waviness else None
     interfaces, layers = _interfaces_and_layers(
-        depth_pos, profile, idxs, sub, axis, pixel_size, fit_window, trace_window
+        depth_pos, profile, idxs, sub, axis, depth_size, fit_window, trace_window
     )
     orient = detect_growth_orientation(arr)
     return LayerResult(
@@ -347,6 +370,7 @@ def recompute_layers(
         depth_profile=profile,
         interfaces=interfaces,
         layers=layers,
-        pixel_size=pixel_size,
+        pixel_size=depth_size,
         unit=unit,
+        lateral_size=lateral_size,
     )

@@ -13,6 +13,46 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- **The single-scale error named in 0.4.0's *Known limitations* is closed.**
+  Every site that list called out now measures with both pixel extents
+  (`DataStruct.pixel_spacing`), and square pixels are bit-for-bit unchanged
+  at each one:
+  - `calc/profiles.py` — the general intensity line profile behind
+    `/measure/profile` and the `line_profile` op, including polylines. The
+    30-column, 40-row line on 3-wide, 4-tall pixels now reports 183.6, not
+    150.0. Sampling stays in pixels; only the distance axis is calibrated.
+  - `calc/profile_stats.py::measure_distance` — the tilt-corrected distance's
+    calibrated lengths (`/measure/distance-tilted`, `tilted_distance` op).
+    The pixel distances are the MATLAB port, untouched.
+  - `calc/radial.py` — radial and azimuthal profiles bin by PHYSICAL radius
+    when both extents are known, and report calibrated radii. On 2:1 pixels
+    a physically round ring spans pixel radii 15 to 30, so scaling pixel
+    bins afterwards smeared it over half the profile; the sector angles and
+    the inscribed rMax of an azimuthal integration are physical too.
+  - `calc/layers.py` and `calc/trace_roughness.py` — thickness,
+    `thickness_std`, `sigma_erf` and `sigma_w` scale by the extent along the
+    growth axis the analysis chose (a 25-row layer on 4 nm rows is 100 nm,
+    not 25), while the trace metrology's correlation length and PSD
+    wavelengths scale by the extent along the interface. `LayerResult` and
+    the `/analyze/layers` payload report the depth extent as `pixel_size`
+    and carry the other as `lateral_size`; `analyze_trace` takes
+    `lateral_size=`. The multi-map comparison takes per-map `spacings`.
+  - `calc/grain_layers.py` — `lateral_width` and `depth_height` take their
+    own extents, the aspect ratio and shape angle are measured on the
+    physical grid, and the default pixel area is the product of the two
+    extents rather than a length squared.
+  - `calc/grains.py` and `calc/particles.py` were audited rather than
+    changed: their `pixel_size ** 2` is a documented fallback for a caller
+    with only a length, and every route and op passes `pixel_area` and
+    `spacing`.
+
+  Reciprocal- and energy-axis calibration (`calc/ctf.py`,
+  `calc/diffraction*.py`, `calc/lattice.py`) remains a separate, still-open
+  roadmap item.
+
 ## [0.4.0] - 2026-09-04
 
 A correctness release. Four measurements that multiplied by a single pixel

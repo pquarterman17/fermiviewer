@@ -9,6 +9,7 @@ import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from fermiviewer.calc.calibration import usable_spacing
 from fermiviewer.calc.ctf import estimate_ctf
 from fermiviewer.calc.eds_maps import virtual_dark_field
 from fermiviewer.calc.fourier import fft_mask_inverse
@@ -171,21 +172,26 @@ def analyze_radial(req: RadialRequest) -> dict:
     """
     ds, raster = _raster(req.image_id)
     px = ds.pixel_size if np.isfinite(ds.pixel_size) else 1.0
+    # both extents when the image has them: the rings are then drawn in
+    # physical space and the radii come back calibrated; otherwise the
+    # calc bins in pixels and the column scale converts, as before
+    spacing = usable_spacing(ds.pixel_spacing)
     sem: np.ndarray | None = None
     with value_error_as_422():
         if req.azimuthal:
             radii, intensity = azimuthal_integrate(
                 raster, center=req.center, n_bins=req.n_bins,
                 sector_min=req.sector_min, sector_max=req.sector_max,
-                pixel_size=px,
+                pixel_size=px, spacing=spacing,
             )
             avg = intensity
             mx = intensity
         else:
-            radii_px, avg, mx, std, n = radial_profile_stats(
-                raster, center=req.center, n_bins=req.n_bins
+            radii, avg, mx, std, n = radial_profile_stats(
+                raster, center=req.center, n_bins=req.n_bins, spacing=spacing,
             )
-            radii = radii_px * px
+            if spacing is None:
+                radii = radii * px
             with np.errstate(invalid="ignore", divide="ignore"):
                 sem = std / np.sqrt(n)
     unit = ds.pixel_unit or "px"

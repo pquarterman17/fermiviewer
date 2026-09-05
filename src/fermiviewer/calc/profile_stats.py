@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from fermiviewer.calc.calibration import calibrated_spacing, physical_length
 from fermiviewer.calc.region_mask import rasterize
 from fermiviewer.calc.region_stats import STD_MATLAB, region_stats
 from fermiviewer.calc.regions import Part, Region, ellipse
@@ -40,6 +41,22 @@ class DistanceResult:
     geometry: str
 
 
+def _calibrated(
+    dx: float, dy: float, length_px: float, extents: tuple[float, float] | None
+) -> float | None:
+    """A (dx columns, dy rows) displacement in physical units, or None.
+
+    Equal extents keep the single-scale product bit for bit; otherwise the
+    components are scaled before the sum (`calc.calibration`).
+    """
+    if extents is None:
+        return None
+    s_row, s_col = extents
+    if s_row == s_col:
+        return length_px * s_col
+    return physical_length(dx, dy, extents)
+
+
 def measure_distance(
     x1: float, y1: float,
     x2: float, y2: float,
@@ -48,11 +65,18 @@ def measure_distance(
     tilt_angle_deg: float = 0.0,
     tilt_axis: str = "Y",
     geometry: str = "cross-section",
+    *,
+    spacing: tuple[float, float] | None = None,
 ) -> DistanceResult:
     """Euclidean distance between two points with optional tilt correction.
 
     Port of imaging.measureDistance.m (verbatim geometry, validator, and
-    correction logic).
+    correction logic). The pixel distances are exactly the port; the
+    calibrated ones scale each component by its own axis extent when
+    `spacing` (`DataStruct.pixel_spacing`, ``(row, column)``) is given,
+    because ``hypot(dx, dy) * pixel_size`` is the length of the wrong
+    triangle whenever the two extents differ. Square pixels are
+    unchanged.
 
     Formula
     -------
@@ -102,8 +126,8 @@ def measure_distance(
         raise ValueError("tilt_axis must be 'X' or 'Y'")
     geom = geometry.lower().replace("-", "").replace("_", "")
 
-    dx = float(x2 - x1)
-    dy = float(y2 - y1)
+    dx0 = dx = float(x2 - x1)
+    dy0 = dy = float(y2 - y1)
     raw_px = float(np.hypot(dx, dy))
 
     if tilt_angle_deg != 0.0:
@@ -117,9 +141,10 @@ def measure_distance(
             dx *= scale
     corrected_px = float(np.hypot(dx, dy))
 
-    calibrated = np.isfinite(pixel_size)
-    raw_cal = raw_px * pixel_size if calibrated else None
-    corr_cal = corrected_px * pixel_size if calibrated else None
+    extents = calibrated_spacing(spacing, pixel_size)
+    calibrated = extents is not None
+    raw_cal = _calibrated(dx0, dy0, raw_px, extents)
+    corr_cal = _calibrated(dx, dy, corrected_px, extents)
     unit = pixel_unit if calibrated else "px"
 
     return DistanceResult(
