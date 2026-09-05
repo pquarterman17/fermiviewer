@@ -94,6 +94,8 @@ export default function RoughnessWorkshop() {
     <div className="fvd-ws">
       <AnalysisRegionSelect
         choice={region.choice}
+        imageId={activeId}
+        roi={region.roi}
         options={region.options}
         disabled={busy}
         onChange={region.setChoice}

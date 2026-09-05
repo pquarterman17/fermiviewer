@@ -15,6 +15,7 @@ import {
 import { useViewer } from "../../store/viewer";
 import Card from "./Card";
 import RegionGeometryEditor from "./RegionGeometryEditor";
+import RegionMaskPreview from "./RegionMaskPreview";
 
 const DEFAULT_CLASS_COLOR = "#8b5cf6";
 
@@ -219,6 +220,15 @@ export default function RegionWorkspaceCard() {
             disabled={pending}
             onChange={(updated, message) => replaceSet(updated, message)}
           />
+
+          {selectedRegion && activeId && (
+            <RegionMaskPreview
+              key={`${selectedSet!.id}/${selectedRegion.id}`}
+              imageId={activeId}
+              setId={selectedSet!.id}
+              region={selectedRegion}
+            />
+          )}
 
           {selectedSet!.regions.length === 0 ? (
             <div className="fvd-region-list-empty">This set is ready for its first precise region.</div>

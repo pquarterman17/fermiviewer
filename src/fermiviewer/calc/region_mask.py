@@ -35,12 +35,15 @@ stdlib. No pydantic, no routes.
 
 from __future__ import annotations
 
+import io
+
 import numpy as np
+from PIL import Image
 from skimage.draw import polygon2mask
 
 from fermiviewer.calc.regions import Region, Shape
 
-__all__ = ["bounding_box", "mask_and_rect", "rasterize", "to_rect_roi"]
+__all__ = ["bounding_box", "mask_and_rect", "mask_png", "rasterize", "to_rect_roi"]
 
 
 def _outline_mask(ring: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
@@ -206,3 +209,19 @@ def mask_and_rect(
     r1, c1, r2, c2 = rect
     exact = count != (r2 - r1 + 1) * (c2 - c1 + 1)
     return rect, (mask if exact else None), count
+
+
+def mask_png(mask: np.ndarray) -> bytes:
+    """An 8-bit grey PNG of a boolean mask: 255 where selected, 0 elsewhere.
+
+    The exact raster an analysis reads, in the one form a browser can draw
+    over the image 1:1 (an ``<image>`` at the mask's bounding box with
+    ``image-rendering: pixelated``). Grey rather than a coloured RGBA so
+    the tint stays a UI decision; the mask is the only content.
+    """
+    arr = np.asarray(mask, dtype=bool)
+    if arr.ndim != 2:
+        raise ValueError("mask_png needs a 2-D mask")
+    buf = io.BytesIO()
+    Image.fromarray(arr.astype(np.uint8) * 255, mode="L").save(buf, format="PNG")
+    return buf.getvalue()

@@ -526,10 +526,13 @@ consume a mask.
       images without losing holes or disconnected components.
       **Shipped 2026-08-31** (`calc/region_convert.py`, the two
       `/api/region-sets` conversion routes).
-- [ ] Add clear mask previews and pixel-count/physical-area summaries before
+- [x] Add clear mask previews and pixel-count/physical-area summaries before
       expensive execution.
-      **Summaries shipped 2026-09-01** (`POST /api/regions/preview`); the
-      previews themselves are 4D's UI half and remain Codex/sol's.
+      **Summaries shipped 2026-09-01** (`POST /api/regions/preview`);
+      **previews shipped 2026-09-05**: every workshop Region select reports
+      the resolved scope, and the Analysis Regions card paints a selected
+      region's exact raster on the stage (`include_mask` → 8-bit PNG,
+      `MaskPreviewOverlay`). Item 4 is complete.
 
 **Done when:** the same irregular specimen region produces consistent results
 in EDS/EELS, imaging statistics, and structural analysis.

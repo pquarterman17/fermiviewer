@@ -216,6 +216,8 @@ export default function LayersWorkshop() {
         <LayersMode value={mode} onChange={setMode} />
         <AnalysisRegionSelect
           choice={analysisRoi.choice}
+          imageId={activeId}
+          roi={analysisRoi.roi}
           options={analysisRoi.options}
           disabled={false}
           onChange={analysisRoi.setChoice}
@@ -236,6 +238,8 @@ export default function LayersWorkshop() {
       <LayersMode value={mode} onChange={setMode} />
       <AnalysisRegionSelect
         choice={analysisRoi.choice}
+        imageId={activeId}
+        roi={analysisRoi.roi}
         options={analysisRoi.options}
         disabled={busy}
         onChange={analysisRoi.setChoice}

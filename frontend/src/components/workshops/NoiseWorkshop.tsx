@@ -123,6 +123,8 @@ export default function NoiseWorkshop() {
     <div className="fvd-ws">
       <AnalysisRegionSelect
         choice={region.choice}
+        imageId={activeId}
+        roi={region.roi}
         options={region.options}
         disabled={busy}
         onChange={(choice) => {

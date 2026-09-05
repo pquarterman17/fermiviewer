@@ -321,6 +321,8 @@ export function GrainsMode({ id }: { id: string }) {
       </div>
       <AnalysisRegionSelect
         choice={analysisRoi.choice}
+        imageId={sourceId}
+        roi={analysisRoi.roi}
         options={analysisRoi.options}
         disabled={busy || previewBusy}
         onChange={analysisRoi.setChoice}

@@ -468,3 +468,19 @@
 .fvd-swatch.active {
   border-color: var(--accent);
 }
+
+/* Analysis Regions card: what a selected region selects, and the toggle
+   that paints its exact raster on the stage (Stage/MaskPreviewOverlay). */
+.fvd-region-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 4px;
+  font-size: 11px;
+  opacity: 0.85;
+}
+.fvd-region-preview-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
