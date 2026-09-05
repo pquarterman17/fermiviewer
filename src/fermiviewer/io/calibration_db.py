@@ -3,11 +3,20 @@
 Per-user JSON store keyed by an (instrument, magnification) string
 extracted from parser metadata; uncalibrated imports auto-apply a
 matching entry. Pure file I/O — routes adapt.
+
+An entry is ``{pixel_size, unit, note, saved}`` and, for an instrument
+state whose pixels are not square, ``pixel_spacing: [row, column]`` as
+well (ADR 0008 §4). ``pixel_size`` stays the COLUMN scale -- the only
+field for square pixels and what every older file holds -- so a reader
+that does not know about ``pixel_spacing`` keeps working, and
+:func:`entry_spacing` is how a reader that does gets both extents out of
+either shape of entry.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import os
 import time
 import warnings
@@ -17,6 +26,7 @@ from typing import Any
 __all__ = [
     "db_path",
     "delete_calibration",
+    "entry_spacing",
     "extract_calibration_key",
     "list_calibrations",
     "lookup",
@@ -118,19 +128,72 @@ def lookup(key: str) -> dict[str, Any] | None:
     return _load().get(key)
 
 
+def _positive_pair(spacing: tuple[float, float]) -> tuple[float, float]:
+    row, col = float(spacing[0]), float(spacing[1])
+    if not (math.isfinite(row) and math.isfinite(col)) or row <= 0 or col <= 0:
+        raise ValueError("pixel_spacing extents must be positive")
+    return row, col
+
+
 def save_calibration(
-    key: str, pixel_size: float, unit: str, note: str = ""
+    key: str,
+    pixel_size: float | None,
+    unit: str,
+    note: str = "",
+    pixel_spacing: tuple[float, float] | None = None,
 ) -> None:
-    if pixel_size <= 0:
-        raise ValueError("pixel_size must be positive")
+    """Store a calibration under `key`.
+
+    Give ``pixel_size`` for square pixels, or ``pixel_spacing`` as
+    ``(row, column)`` for an instrument state whose pixels are not; the
+    stored ``pixel_size`` is then the column extent, so the two names can
+    never disagree in the file. Equal extents are stored as a plain
+    ``pixel_size`` entry: that entry means square pixels already, and a
+    redundant pair is one more place for the two to drift apart.
+    """
+    entry: dict[str, Any]
+    if pixel_spacing is not None:
+        row, col = _positive_pair(pixel_spacing)
+        if pixel_size is not None and float(pixel_size) != col:
+            raise ValueError("pixel_size must be the column extent of pixel_spacing")
+        entry = {"pixel_size": col}
+        if row != col:
+            entry["pixel_spacing"] = [row, col]
+    else:
+        if pixel_size is None or pixel_size <= 0:
+            raise ValueError("pixel_size must be positive")
+        entry = {"pixel_size": float(pixel_size)}
     data = _load()
     data[key] = {
-        "pixel_size": pixel_size,
+        **entry,
         "unit": unit,
         "note": note,
         "saved": time.strftime("%Y-%m-%d %H:%M"),
     }
     _save(data)
+
+
+def entry_spacing(entry: dict[str, Any]) -> tuple[float, float]:
+    """``(row, column)`` extents of a stored entry.
+
+    An entry written before per-axis calibration existed has only
+    ``pixel_size`` and is read as square pixels; one with
+    ``pixel_spacing`` returns that pair. Either way the column extent is
+    ``pixel_size``, which is what a caller that only knows about that
+    field sees -- the two readers agree on the axis they share.
+    """
+    px = float(entry["pixel_size"])
+    spacing = entry.get("pixel_spacing")
+    if spacing is None:
+        return px, px
+    if not isinstance(spacing, (list, tuple)) or len(spacing) != 2:
+        raise ValueError("pixel_spacing must be a [row, column] pair")
+    row, col = _positive_pair((float(spacing[0]), float(spacing[1])))
+    if col != px:
+        # a hand-edited file where the two names disagree: refuse rather
+        # than apply a column extent the entry's own pixel_size denies
+        raise ValueError("pixel_size must be the column extent of pixel_spacing")
+    return row, col
 
 
 def delete_calibration(key: str) -> bool:
