@@ -1000,6 +1000,20 @@ EELS/dose/spatial/reciprocal calibration using the same persistence rules.
 > pixel steps differ, remain circles for square grids, and show both radii.
 > This closes the frontend seam found while reviewing PR #209/#212.
 
+> **2026-09-05 — 5a-A backend shipped (ADR 0008 §2–§4, §6).**
+> `routes/calibration.recalibrate_axes` is the single writer of a spatial
+> calibration; `recalibrate` is its square-pixel form. `/calibration/apply`
+> and `POST /calibration` take `pixel_spacing: [row, column]` beside
+> `pixel_size`; one typed length keeps an anisotropic image's ratio
+> (`single_length_spacing`, gate G1 taken as recommended). DB entries carry
+> `pixel_spacing` only when the extents differ, `entry_spacing` reads old
+> and new shapes alike, and `auto_apply_calibration` applies per axis.
+> `tests/test_api_calibration_axes.py`: the 0.5 × 2.0 nm AFM round trip,
+> a legacy-format entry, the `pixel_size == pixel_spacing[1]` identity, and
+> every square-pixel path unchanged. 5a-B (calibration card per-axis mode,
+> Codex) and 5a-C (frontend `pixel_size` read audit) remain; the box stays
+> unchecked until 5a-B lands.
+
 #### 5b. Standards and quantification QC
 
 - [ ] Import a known-composition standard and define its reference regions.

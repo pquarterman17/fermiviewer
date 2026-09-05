@@ -16,6 +16,21 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Calibration edits are per axis (ADR 0008, 5a-A).** Every path that
+  wrote a spatial calibration — `/calibration/apply` with a typed value or
+  a stored key, auto-apply on import — built one `AxisCal` and wrote it to
+  both axes, so correcting the magnitude of a 0.5 × 2.0 nm AFM scan
+  silently squared its pixels. `recalibrate_axes(ds, (row, column), unit)`
+  is now the one place a spatial calibration is written; `/calibration/apply`
+  and `POST /calibration` accept `pixel_spacing: [row, column]` as an
+  alternative to `pixel_size`; and a single typed length is the column
+  scale with the row extent following the image's existing ratio
+  (`calc/calibration.spacing_at_column_scale`, gate G1), so it stays square
+  only when the image already was. Stored entries gain an optional
+  `pixel_spacing` (written only when the extents differ; `pixel_size` stays
+  the column scale), older per-user files read as square pixels unchanged,
+  and auto-apply honours a per-axis entry. `ImageMeta.pixel_size` is pinned
+  to equal `pixel_spacing[1]` whenever the pair exists.
 - **See exactly what a region selects before running an analysis.** Every
   workshop's Region select now reports what its choice resolves to — pixel
   count, share of the image, physical area — computed by the same resolver

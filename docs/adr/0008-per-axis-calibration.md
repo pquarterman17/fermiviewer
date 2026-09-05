@@ -154,7 +154,13 @@ data was anisotropic in the first place.
   `pixel_spacing`; `auto_apply_calibration` honours it. Tests: an AFM
   fixture (0.5 × 2.0 nm) round-trips an edit without losing anisotropy;
   an old-format DB entry still applies; every existing calibration test
-  unchanged.
+  unchanged. **Shipped 2026-09-05** (`ImageMeta.pixel_spacing` landed
+  first in PR #213; the rest in `tests/test_api_calibration_axes.py`).
+  G1 taken as recommended: one typed length keeps the ratio. A stored
+  entry applies AS STORED — a legacy single-length entry describes an
+  instrument state with square pixels, so it does not inherit the target
+  image's ratio; the offer-save after a manual apply stores the applied
+  pair, so a ratio that came from the image is preserved by the key.
 * **5a-B frontend (Codex PR, per the roadmap ownership model).**
   `ImageMeta.pixel_spacing` in the client type; CalibrationCard per-axis
   mode and the always-on two-extent display; CalibrationManager shows
