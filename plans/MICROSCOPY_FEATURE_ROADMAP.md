@@ -971,6 +971,17 @@ EELS/dose/spatial/reciprocal calibration using the same persistence rules.
 > detector pixel size by design. The box stays unchecked for its other
 > half: energy-axis profiles and the project/UI calibration model.
 
+> **2026-09-05 — ADR 0008 (Proposed) designs the other half.**
+> `docs/adr/0008-per-axis-calibration.md`: the record stays `AxisCal` per
+> axis (no new type); `ImageMeta` gains `pixel_spacing`;
+> `/calibration/apply` takes one length or two and keeps an anisotropic
+> image's ratio when given one; stored calibrations gain optional per-axis
+> extents, backward compatibly; the calibration card gets a per-axis mode
+> and always shows both extents. Two owner gates (G1 the one-length rule,
+> G2 the headline display) and a three-PR stack (5a-A backend, 5a-B
+> frontend, 5a-C review) are in the ADR; the box stays unchecked until
+> 5a-A and 5a-B land.
+
 #### 5b. Standards and quantification QC
 
 - [ ] Import a known-composition standard and define its reference regions.

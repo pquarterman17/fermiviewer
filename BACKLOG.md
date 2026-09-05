@@ -70,7 +70,9 @@ valuable and feasible.*
    profiles: 5 sub-tasks; 5b standards/QC: 6). The reciprocal half of
    5a's per-axis box shipped 2026-09-04 (`calc/ctf.py`, `calc/lattice.py`,
    `calc/diffraction.py::index_spots` take per-axis `spacing`); next is
-   the project/UI calibration model and energy-axis profiles
+   the project/UI calibration model and energy-axis profiles — designed
+   in ADR 0008 (2026-09-05, Proposed, two owner gates); the 5a-A backend
+   PR is the next build
 
 **Tier 2 — Correlative work and large datasets**
 6. **Cross-modal registration** — 6 sub-tasks, none started
