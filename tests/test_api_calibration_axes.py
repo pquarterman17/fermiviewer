@@ -227,6 +227,44 @@ def test_save_calibration_entry_shapes() -> None:
         save_calibration("Bad|3", None, "nm")
     with pytest.raises(ValueError, match="positive"):
         entry_spacing({"pixel_size": 1.0, "pixel_spacing": [1.0, -1.0]})
+    # a hand-edited file where the two names disagree is refused, not
+    # silently resolved in favour of either
+    with pytest.raises(ValueError, match="column extent"):
+        entry_spacing({"pixel_size": 1.0, "pixel_spacing": [0.5, 2.0]})
+    with pytest.raises(ValueError, match="pair"):
+        entry_spacing({"pixel_size": 1.0, "pixel_spacing": [1.0]})
+
+
+def test_malformed_stored_entry_is_a_422_not_a_crash(client) -> None:
+    p = calibration_db.db_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(
+        json.dumps({"Bad|1": {"pixel_size": 1.0, "pixel_spacing": [0.5, 2.0], "unit": "nm"}}),
+        encoding="utf-8",
+    )
+    image_id = store.add_parsed(_uncal(), "u.dm4")
+    r = client.post("/api/calibration/apply", json={"image_id": image_id, "key": "Bad|1"})
+    assert r.status_code == 422
+    assert "malformed" in r.json()["detail"]
+    assert not store.get(image_id).pixel_cal.calibrated
+    # the import path opens the file uncalibrated instead of failing the open
+    fresh = store.add_parsed(_uncal({"Microscope": "Bad", "Magnification": 1}), "b.dm4")
+    assert auto_apply_calibration(fresh, store.get(fresh)) is False
+    assert not store.get(fresh).pixel_cal.calibrated
+
+
+def test_provenance_follows_the_edit(client) -> None:
+    """ADR 0008 §6: manual edits write `manual`, a key writes `db:<key>`,
+    and clearing removes a source that no longer describes any scale."""
+    image_id = store.add_parsed(_afm({"calibration_source": "nanoscope"}), "afm.spm")
+    _apply(client, image_id, pixel_size=4.0, unit="nm")
+    assert store.get(image_id).metadata["calibration_source"] == "manual"
+    _apply(client, image_id, pixel_spacing=[ROW_NM, COL_NM], unit="nm", save_as_key="AFM|1")
+    assert store.get(image_id).metadata["calibration_source"] == "manual"
+    _apply(client, image_id, key="AFM|1")
+    assert store.get(image_id).metadata["calibration_source"] == "db:AFM|1"
+    client.post("/api/calibration/clear", json={"image_id": image_id})
+    assert "calibration_source" not in store.get(image_id).metadata
 
 
 def test_save_route_accepts_a_pair_and_refuses_ambiguity(client) -> None:

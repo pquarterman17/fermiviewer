@@ -182,11 +182,18 @@ def entry_spacing(entry: dict[str, Any]) -> tuple[float, float]:
     ``pixel_size``, which is what a caller that only knows about that
     field sees -- the two readers agree on the axis they share.
     """
-    spacing = entry.get("pixel_spacing")
-    if isinstance(spacing, (list, tuple)) and len(spacing) == 2:
-        return _positive_pair((float(spacing[0]), float(spacing[1])))
     px = float(entry["pixel_size"])
-    return px, px
+    spacing = entry.get("pixel_spacing")
+    if spacing is None:
+        return px, px
+    if not isinstance(spacing, (list, tuple)) or len(spacing) != 2:
+        raise ValueError("pixel_spacing must be a [row, column] pair")
+    row, col = _positive_pair((float(spacing[0]), float(spacing[1])))
+    if col != px:
+        # a hand-edited file where the two names disagree: refuse rather
+        # than apply a column extent the entry's own pixel_size denies
+        raise ValueError("pixel_size must be the column extent of pixel_spacing")
+    return row, col
 
 
 def delete_calibration(key: str) -> bool:

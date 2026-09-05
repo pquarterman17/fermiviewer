@@ -30,7 +30,11 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   `pixel_spacing` (written only when the extents differ; `pixel_size` stays
   the column scale), older per-user files read as square pixels unchanged,
   and auto-apply honours a per-axis entry. `ImageMeta.pixel_size` is pinned
-  to equal `pixel_spacing[1]` whenever the pair exists.
+  to equal `pixel_spacing[1]` whenever the pair exists. Provenance follows
+  the edit (ADR §6): a manual apply writes `calibration_source: manual`, a
+  key writes `db:<key>` (as auto-apply already did), and clearing removes a
+  source that no longer describes any scale. A malformed stored entry is a
+  422 on apply and is skipped on import rather than failing the open.
 - **See exactly what a region selects before running an analysis.** Every
   workshop's Region select now reports what its choice resolves to — pixel
   count, share of the image, physical area — computed by the same resolver

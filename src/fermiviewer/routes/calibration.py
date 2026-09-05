@@ -103,7 +103,13 @@ def auto_apply_calibration(img_id: str, ds: DataStruct) -> bool:
     entry = lookup(key)
     if entry is None:
         return False
-    new_ds = recalibrate_axes(ds, entry_spacing(entry), str(entry["unit"]))
+    try:
+        spacing, unit = entry_spacing(entry), str(entry["unit"])
+    except (KeyError, TypeError, ValueError):
+        # a malformed entry in a hand-edited file must not turn an import
+        # into a crash; the file opens uncalibrated, as if no entry matched
+        return False
+    new_ds = recalibrate_axes(ds, spacing, unit)
     new_ds.metadata["calibration_source"] = f"db:{key}"
     store.replace(img_id, new_ds)
     return True
@@ -219,6 +225,8 @@ def calibration_clear(req: ClearRequest) -> dict[str, Any]:
     # scale 0 + empty units → AxisCal.calibrated is False (datastruct.py),
     # on BOTH axes
     new_ds = recalibrate(ds, 0.0, "")
+    # the provenance named where the SCALE came from; there is no scale now
+    new_ds.metadata.pop("calibration_source", None)
     store.replace(req.image_id, new_ds)
     return {
         "image": ImageMeta.from_datastruct(
@@ -238,23 +246,31 @@ def calibration_apply(req: CalibrationApplyRequest) -> dict[str, Any]:
         entry = lookup(req.key)
         if entry is None:
             raise HTTPException(404, f"no calibration for key: {req.key}")
-        spacing, unit = entry_spacing(entry), str(entry["unit"])
+        try:
+            spacing, unit = entry_spacing(entry), str(entry["unit"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise HTTPException(
+                422, f"stored calibration {req.key!r} is malformed: {exc}"
+            ) from None
+        source = f"db:{req.key}"
     elif req.pixel_spacing is not None:
-        spacing, unit = req.pixel_spacing, req.unit
+        spacing, unit, source = req.pixel_spacing, req.unit, "manual"
     elif req.pixel_size is not None:
         if ds.kind is DataKind.SPECTRUM:
             raise HTTPException(400, "1D spectra have no spatial calibration")
-        spacing, unit = single_length_spacing(ds, req.pixel_size), req.unit
+        spacing, unit, source = single_length_spacing(ds, req.pixel_size), req.unit, "manual"
     else:
         raise HTTPException(422, "give either key, pixel_size or pixel_spacing")
 
     new_ds = recalibrate_axes(ds, spacing, unit)
+    # provenance names where the scale came from (ADR 0008 §6); a vendor
+    # source no longer describes an image the user has recalibrated
+    new_ds.metadata["calibration_source"] = source
     store.replace(req.image_id, new_ds)
     if req.save_as_key:
         # what was APPLIED, so a pair that came from the image's ratio is
         # stored per axis and a later apply of the key reproduces it
         save_calibration(req.save_as_key, None, unit, pixel_spacing=spacing)
-    assert all(np.isfinite(v) for v in spacing)
     return {
         "image": ImageMeta.from_datastruct(
             req.image_id, store.name(req.image_id), new_ds
