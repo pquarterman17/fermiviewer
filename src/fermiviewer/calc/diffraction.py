@@ -105,6 +105,10 @@ def d_spacing_to_radius(
         Each pixel step in the centred FFT = 1 / (W * pixel_size) in
         reciprocal space, so d = W * pixel_size / R  →  R = W * pixel_size / d.
         Units: pixel_size in the same real-space unit as d (Å here).
+        A step DOWN the FFT is 1 / (H * pixel_size), so on a non-square
+        image the ring of one d is an ellipse (H * pixel_size / d tall);
+        this returns the across-radius. `index_spots` measures d with the
+        full vector form, so the two agree only on square images.
 
     **TEM camera mode** (``camera_length`` in mm, ``pixel_size`` in mm/px):
         Bragg's law in the small-angle limit:
@@ -262,18 +266,18 @@ def _measured_d(
     """``(r_px, d_meas)`` for 1-based spot `positions`: the pixel radius
     from `center`, and the d-spacing (Å) each spot measures.
 
-    Equal extents are the port bit for bit: FFT mode reads
-    ``d = W * pixel_size / r`` and camera mode ``d = λL / (r * pixel_size)``,
-    with `pixel_size` the column scale (or `spacing`'s, which wins).
-    Unequal extents cannot go through a pixel radius at all -- the two
-    components of a reciprocal vector carry different scales -- so FFT
-    mode takes ``d = 1 / |(dc / (W s_col), dr / (H s_row))|`` and camera
-    mode the spot's physical distance ``hypot(dr s_row, dc s_col)``.
-
-    Note the isotropic FFT form uses the image WIDTH for both axes
-    (verbatim indexDiffraction.m): on a non-square image it is off by
-    H/W for a row-direction spot even with square pixels. Left pinned as
-    golden-parity behaviour; the anisotropic branch does not share it.
+    FFT mode is the reciprocal vector, each component on its own axis:
+    ``d = 1 / |(dc / (W s_col), dr / (H s_row))|``. On a square image with
+    square pixels that is ``W * pixel_size / r`` to rounding; on a
+    non-square one it is the length that indexDiffraction.m's
+    ``W * px / r`` (and the MATLAB workshop's ``sqrt(H W) * px / r``, which
+    disagrees with it) only approximated -- a row-direction spot came out
+    wrong by H/W. Owner decision 2026-09-05: one correct form, since the
+    reference has no single behaviour here and the golden pattern is
+    square. Camera mode with equal extents is the port bit for bit,
+    ``d = λL / (r * pixel_size)``; unequal extents take the spot's
+    physical distance ``hypot(dr s_row, dc s_col)`` instead of a pixel
+    radius. `spacing` wins over `pixel_size`, the column scale.
     """
     dr = positions[:, 0] - center[0]
     dc = positions[:, 1] - center[1]
@@ -283,13 +287,10 @@ def _measured_d(
     fft_mode = bool(np.isnan(camera_length))
     lam = float("nan") if fft_mode else float(electron_wavelength(acc_voltage))
     with np.errstate(divide="ignore"):
-        if s_row == s_col:
-            if fft_mode:
-                d = (img_size[1] * s_col) / r
-            else:
-                d = (lam * camera_length * 1e7) / (r * s_col * 1e7)
-        elif fft_mode:
+        if fft_mode:
             d = 1.0 / np.hypot(dc / (img_size[1] * s_col), dr / (img_size[0] * s_row))
+        elif s_row == s_col:
+            d = (lam * camera_length * 1e7) / (r * s_col * 1e7)
         else:
             d = (lam * camera_length) / np.hypot(dr * s_row, dc * s_col)
     return r, d

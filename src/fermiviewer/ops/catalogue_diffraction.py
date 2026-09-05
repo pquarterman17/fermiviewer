@@ -462,8 +462,8 @@ register(
             "camera_length_mm": OpParam(
                 float,
                 float("nan"),
-                doc="camera length (mm); absent selects the uncalibrated "
-                "branch, where d scales with the effective image WIDTH",
+                doc="camera length (mm); absent selects the FFT branch, where "
+                "d comes from the reciprocal vector over the effective (H, W) frame",
             ),
             "acc_voltage_kv": OpParam(float, 200.0, doc="beam voltage (kV)"),
             "tolerance": OpParam(float, 0.05, doc="relative d-spacing tolerance"),

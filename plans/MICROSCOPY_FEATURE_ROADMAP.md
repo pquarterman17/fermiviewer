@@ -961,14 +961,15 @@ EELS/dose/spatial/reciprocal calibration using the same persistence rules.
 > column scale and the row extent follows the image's own ratio. On 2:1
 > pixels a round Thon ring was an ellipse, a square 4 Å lattice was 4 by
 > 2, and a (200) spot along rows indexed as (400). Square pixels are
-> bit-for-bit unchanged (`tests/test_reciprocal_spacing.py`). Left as
-> found, on purpose: the isotropic FFT-mode `d = W·px/r` in `index_spots`
-> is verbatim `indexDiffraction.m` and off by H/W for a row-direction spot
-> on a NON-SQUARE image even with square pixels — a golden-parity decision
-> for the owner, not a calibration one; and `diffraction_simulate.py`
-> simulates a camera with one detector pixel size by design. The box
-> stays unchecked for its other half: energy-axis profiles and the
-> project/UI calibration model.
+> bit-for-bit unchanged (`tests/test_reciprocal_spacing.py`). **Owner
+> decision, same day:** the FFT-mode `d = W·px/r` in `index_spots`
+> (verbatim `indexDiffraction.m`, off by H/W for a row-direction spot on a
+> NON-SQUARE image) is replaced by the reciprocal-vector form on every
+> image shape — the MATLAB workshop model uses `sqrt(H·W)` and disagrees
+> with its own calc, so parity had nothing to hold, and the golden pattern
+> is square. `diffraction_simulate.py` simulates a camera with one
+> detector pixel size by design. The box stays unchecked for its other
+> half: energy-axis profiles and the project/UI calibration model.
 
 #### 5b. Standards and quantification QC
 

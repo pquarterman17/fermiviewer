@@ -439,7 +439,7 @@ def diffraction_index(req: IndexRequest) -> dict:
     # spot re-centring and the full-image overlay geometry all live in
     # calc/diffraction_index.py (ADR 0005 §1). A degenerate or out-of-image
     # ROI is now a 422 — it used to leave the spots unshifted while shrinking
-    # the effective width, which silently rescaled every measured d.
+    # the effective frame, which silently rescaled every measured d.
     # The 422 that conversion raises is a COMPUTATION failure (the inputs
     # already resolved), so a requested capture must record it, not lose it.
     try:
