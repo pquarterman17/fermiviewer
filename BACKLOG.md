@@ -1,7 +1,8 @@
 # BACKLOG
 
 **Derived from the plans in `plans/` — never edit this file in isolation.**
-Regenerate it from `plans/MAIN_PLAN.md`, `plans/PLAN_4DSTEM.md` and
+Regenerate it from `plans/MAIN_PLAN.md`,
+`plans/MICROSCOPY_FEATURE_ROADMAP.md`, `plans/PLAN_4DSTEM.md` and
 `plans/ANALYSIS_PRESENTATION_PLAN.md` whenever an
 item opens, closes, or moves (see the
 plan-hygiene rules). When this file and a plan disagree, the plan is
@@ -48,6 +49,43 @@ re-verified against the code before folding).*
 
 ---
 
+## MICROSCOPY_FEATURE_ROADMAP.md
+
+*Parent: MAIN_PLAN.md. Status: Active — implementation in progress; the
+current feature-priority spine (adopted 2026-08-22 from a feature audit
+against v0.1.32). Tier 1 items 1–3 (persistent results, results browser /
+report, universal operation parity) shipped in full 2026-08-22 → 08-27
+(every sub-task checked). Item 4's backend halves shipped 2026-08-29 →
+09-01 (region contract, `.fvp` persistence, consumer migration 4C-1..5,
+label↔region conversion, preview summaries), and the anisotropic-pixel
+prerequisite for item 5 landed in v0.4.0 + PR #208. Items 8–9 are parked
+by owner decision: do not advance them while a Tier 1–2 item remains
+valuable and feasible.*
+
+**Tier 1 — Scientific trust and daily workflow**
+4. **First-class region and mask model** — one sub-task left: mask
+   previews before expensive execution (the summaries endpoint shipped
+   2026-09-01; the previews themselves are the frontend lane's)
+5. **Calibration profiles and quantitative standards** — entirely open
+   (5a profiles: 5 sub-tasks; 5b standards/QC: 6). First concrete step:
+   per-axis reciprocal/energy calibration in `calc/ctf.py`,
+   `calc/lattice.py`, `calc/diffraction*.py`, then the project/UI
+   calibration model
+
+**Tier 2 — Correlative work and large datasets**
+6. **Cross-modal registration** — 6 sub-tasks, none started
+7. **Large-data execution and interoperable storage** — 7 sub-tasks, none
+   started
+
+**Specialty tracks — parked by default (owner decision)**
+8. **Optional 4D-STEM extensions** — 5 sub-tasks; overlaps PLAN_4DSTEM
+   Tier 3 (items 10–13 there)
+9. **Optional tomography workflow** — 6 sub-tasks
+
+**Open items: 6** *(4 active, 2 parked)*
+
+---
+
 ## PLAN_4DSTEM.md
 
 *Parent: MAIN_PLAN.md. Status: Active. Tier 1 / Phase 1 (items 1–6) shipped
@@ -90,18 +128,20 @@ only Tier 3 (build-on-demand by rule) remains.*
 | Plan | Status | Open items |
 |---|---|---|
 | MAIN_PLAN.md | Active (root) | 9 |
+| MICROSCOPY_FEATURE_ROADMAP.md | Active (priority spine; items 4–7 live, 8–9 parked) | 6 |
 | PLAN_4DSTEM.md | Active (Tier 3 residue only) | 4 |
 | ANALYSIS_PRESENTATION_PLAN.md | Active (Tier 3 residue only) | 4 |
 
-**Total open items:** 17
+**Total open items:** 23
 
 **Counting method:** top-level numbered items (the plan-format.md unit of a
 tracked work item) — not nested `- [ ]` sub-task checkboxes. Nested-checkbox
-counts by plan, for reference: MAIN_PLAN 5, PLAN_4DSTEM 0,
-ANALYSIS_PRESENTATION_PLAN 0 (5 total). A checkbox-based
+counts by plan, for reference: MAIN_PLAN 5, MICROSCOPY_FEATURE_ROADMAP 36,
+PLAN_4DSTEM 0, ANALYSIS_PRESENTATION_PLAN 0 (41 total). A checkbox-based
 count would disagree with the open-items count above — pick one convention
 when reading this table and don't mix the two.
 
-**Last regenerated:** 2026-08-14 (PLAN_4DSTEM items 7–9 closed −3 — Tier 2
-shipped via phone-session PR #153 and released as v0.1.28; the plan file
-was updated in that PR but this dashboard was not, reconciled here)
+**Last regenerated:** 2026-09-04 (MICROSCOPY_FEATURE_ROADMAP added +6 — the
+plan was adopted 2026-08-22 and had shipped its Tier 1 items 1–3 and most
+of item 4 without ever appearing here; the other three plans re-verified
+against their files, unchanged at 9 / 4 / 4)

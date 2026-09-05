@@ -6,7 +6,10 @@ plan in `plans/` declares this file as its parent.
 
 **Status:** Active
 **Created:** 2026-08-09
-**Updated:** 2026-08-22 — MICROSCOPY_FEATURE_ROADMAP adopted from a fresh
+**Updated:** 2026-09-04 — MICROSCOPY_FEATURE_ROADMAP's plan-tree row
+refreshed (it still said "planning only" after two weeks of shipping) and
+BACKLOG.md regenerated to include it. Previous update 2026-08-22 —
+MICROSCOPY_FEATURE_ROADMAP adopted from a fresh
 feature audit against v0.1.32. It prioritises persistent results/methods,
 automation parity, exact masks, calibration/standards, registration, and
 large-data execution. 4D-STEM extensions and tomography are explicitly the
@@ -54,7 +57,7 @@ residue of five archived legacy plans (items 6–14).
 
 | Sub-plan | Scope | Status | Why its own file |
 |---|---|---|---|
-| MICROSCOPY_FEATURE_ROADMAP.md | Persistent scientific results, reproducible execution, exact regions, quantitative calibration/standards, cross-modal registration, and large-data operation; 4D-STEM/tomography last | Active (planning only; 7 general workstreams followed by 2 parked specialty options) | This is the current feature-priority spine. It connects previously separate workshops into one traceable microscopy workflow and records the owner's low priority for 4D-STEM/tomography |
+| MICROSCOPY_FEATURE_ROADMAP.md | Persistent scientific results, reproducible execution, exact regions, quantitative calibration/standards, cross-modal registration, and large-data operation; 4D-STEM/tomography last | Active — implementation in progress (items 1–3 shipped 2026-08-22→27; item 4 one sub-task left; 5 next; 6–7 open; 8–9 parked) | This is the current feature-priority spine. It connects previously separate workshops into one traceable microscopy workflow and records the owner's low priority for 4D-STEM/tomography |
 | ~~SPECTRAL_WORKSPACE_PLAN.md~~ | EDS+EELS shared spectrum core, species lists, batch maps, composites, synthetic-SI verification | **Complete 2026-08-13** → `plans/archive/` | All 23 items shipped across four workstreams. Closed by #11: Explore tabs species-connected (window edits write the store, live net ± σ rows, shared bg/E₀), single-element flow's duplicate controls deleted. Kept for ADR 0003's rationale and the overlap-advisory measurement record |
 | PLAN_4DSTEM.md | Lazy 4D-STEM dataset model (`FourDDataset`), MIB/HyperSpy-4D ingest, virtual-detector imaging (Phase 1 shipped 2026-08-02); COM/DPC/iDPC (Tier 2 shipped 2026-08-14, v0.1.28); parked strain/ptychography/ACOM | Active (4 open items, all parked Tier 3) | Independent lifecycle and its own architectural decision (Option B: 4D data is a source, not a `DataStruct`) with memory-streaming constraints the other two plans don't share |
 | ANALYSIS_PRESENTATION_PLAN.md | Presenting/quantifying the app's own results: peak shapes (Voigt), fit residuals + R², σ bands on charts, vector chart export, Savitzky–Golay, population histograms, fit reports, batch/scripting reach | Active, Tier 3 residue only (ALL eight engineering items shipped 2026-08-12 in four same-day waves; 4 build-on-demand items remain) | Coherent campaign with its own scope rule (image-derived results only; general graphing/statistics DECLINED per the audit) and its own sequencing |
