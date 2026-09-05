@@ -11,6 +11,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from fermiviewer.calc.calibration import usable_spacing
+
 __all__ = ["LatticeResult", "lattice_measure"]
 
 
@@ -34,10 +36,19 @@ def lattice_measure(
     spot2: tuple[float, float],
     img_size: tuple[int, int],
     pixel_size: float = 1.0,
+    *,
+    spacing: tuple[float, float] | None = None,
 ) -> LatticeResult:
     """Spots are (row, col), 1-based, on the fftshifted FFT of an
     img_size = (rows, cols) image; pixel_size is the REAL-space
-    calibration (unit/px)."""
+    calibration (unit/px).
+
+    `spacing` is that calibration per axis as ``(row, column)`` and wins
+    over `pixel_size`, the column scale read as isotropic. A reciprocal
+    vector's row component is ``dr / (n_rows * s_row)``: on 2:1 pixels a
+    physically square 4-unit lattice came back 4 by 2. Equal extents are
+    the single-scale form bit for bit.
+    """
     n_rows, n_cols = int(img_size[0]), int(img_size[1])
     # MATLAB fftshift places DC at floor(N/2)+1 (do-not-"fix")
     center_row = n_rows // 2 + 1
@@ -48,12 +59,10 @@ def lattice_measure(
     dr2 = spot2[0] - center_row
     dc2 = spot2[1] - center_col
 
-    g1 = np.array(
-        [dc1 / (n_cols * pixel_size), dr1 / (n_rows * pixel_size)]
-    )
-    g2 = np.array(
-        [dc2 / (n_cols * pixel_size), dr2 / (n_rows * pixel_size)]
-    )
+    sp = usable_spacing(spacing)
+    s_row, s_col = sp if sp is not None else (pixel_size, pixel_size)
+    g1 = np.array([dc1 / (n_cols * s_col), dr1 / (n_rows * s_row)])
+    g2 = np.array([dc2 / (n_cols * s_col), dr2 / (n_rows * s_row)])
 
     n1 = float(np.hypot(*g1))
     n2 = float(np.hypot(*g2))

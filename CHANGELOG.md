@@ -49,9 +49,25 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
     with only a length, and every route and op passes `pixel_area` and
     `spacing`.
 
-  Reciprocal- and energy-axis calibration (`calc/ctf.py`,
-  `calc/diffraction*.py`, `calc/lattice.py`) remains a separate, still-open
-  roadmap item.
+- **Reciprocal space is built from both pixel extents.** `calc/ctf.py`,
+  `calc/lattice.py` and `calc/diffraction.py::index_spots` (with
+  `index_spots_roi`) derived the frequency step along rows from the COLUMN
+  pixel size, so on anisotropic pixels a physically round Thon ring was
+  read as an ellipse and smeared out of the radial average, a physically
+  square 4 Å lattice measured 4 by 2 Å, and a (200) spot along rows
+  indexed as (400). Each now takes a keyword-only `spacing`; the lattice,
+  CTF and index routes and ops pass one derived from the image's own
+  row-to-column ratio (`calc/calibration.spacing_at_column_scale`), so a
+  user-typed pixel size keeps meaning the column scale, as it always has.
+  Square pixels are bit-for-bit unchanged.
+
+  Still open under roadmap item 5a: energy-axis profiles and the
+  project/UI calibration model. Noted, not changed: the isotropic FFT-mode
+  formula in `index_spots` uses the image WIDTH for both axes (verbatim
+  `indexDiffraction.m`), so on a non-square image a row-direction spot's d
+  is off by H/W even with square pixels; that is a golden-parity decision.
+  `calc/diffraction_simulate.py` simulates a CAMERA and keeps its single
+  detector pixel size by design.
 
 ## [0.4.0] - 2026-09-04
 

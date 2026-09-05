@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.signal import fftconvolve
 
+from fermiviewer.calc.calibration import usable_spacing
 from fermiviewer.calc.crystal import PHASES, Phase, electron_wavelength, plane_spacings
 from fermiviewer.calc.diffraction_simulate import (
     SimResult,
@@ -249,6 +250,51 @@ def _zone_axis(hkl: np.ndarray) -> tuple[float, float, float]:
     return best
 
 
+def _measured_d(
+    positions: np.ndarray,
+    center: tuple[int, int],
+    img_size: tuple[int, int],
+    pixel_size: float,
+    camera_length: float,
+    acc_voltage: float,
+    spacing: tuple[float, float] | None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """``(r_px, d_meas)`` for 1-based spot `positions`: the pixel radius
+    from `center`, and the d-spacing (Å) each spot measures.
+
+    Equal extents are the port bit for bit: FFT mode reads
+    ``d = W * pixel_size / r`` and camera mode ``d = λL / (r * pixel_size)``,
+    with `pixel_size` the column scale (or `spacing`'s, which wins).
+    Unequal extents cannot go through a pixel radius at all -- the two
+    components of a reciprocal vector carry different scales -- so FFT
+    mode takes ``d = 1 / |(dc / (W s_col), dr / (H s_row))|`` and camera
+    mode the spot's physical distance ``hypot(dr s_row, dc s_col)``.
+
+    Note the isotropic FFT form uses the image WIDTH for both axes
+    (verbatim indexDiffraction.m): on a non-square image it is off by
+    H/W for a row-direction spot even with square pixels. Left pinned as
+    golden-parity behaviour; the anisotropic branch does not share it.
+    """
+    dr = positions[:, 0] - center[0]
+    dc = positions[:, 1] - center[1]
+    r = np.hypot(dr, dc)
+    sp = usable_spacing(spacing)
+    s_row, s_col = sp if sp is not None else (pixel_size, pixel_size)
+    fft_mode = bool(np.isnan(camera_length))
+    lam = float("nan") if fft_mode else float(electron_wavelength(acc_voltage))
+    with np.errstate(divide="ignore"):
+        if s_row == s_col:
+            if fft_mode:
+                d = (img_size[1] * s_col) / r
+            else:
+                d = (lam * camera_length * 1e7) / (r * s_col * 1e7)
+        elif fft_mode:
+            d = 1.0 / np.hypot(dc / (img_size[1] * s_col), dr / (img_size[0] * s_row))
+        else:
+            d = (lam * camera_length) / np.hypot(dr * s_row, dc * s_col)
+    return r, d
+
+
 def index_spots(
     positions: np.ndarray,
     img_size: tuple[int, int],
@@ -260,25 +306,26 @@ def index_spots(
     phases: list[str] | None = None,
     top_n: int = 5,
     extra_phases: list[Phase] | None = None,
+    *,
+    spacing: tuple[float, float] | None = None,
 ) -> list[IndexCandidate]:
     """Match measured spots to database phases (port of indexDiffraction.m).
 
     positions are 1-based (row, col). With camera_length (mm) +
     pixel_size (mm/px), d in Å via d = λL/r; candidates score by matched
     fraction, ties broken by mean relative d-error.
+
+    `spacing` is the pixel extent as ``(row, column)`` in `pixel_size`'s
+    unit and wins over it; see `_measured_d` for what unequal extents
+    change. On 2:1 pixels a (200) spot along rows, read on the column
+    scale, has half its d and indexes as (400).
     """
     positions = np.asarray(positions, dtype=np.float64)
     n_spots = positions.shape[0]
     center = (img_size[0] // 2 + 1, img_size[1] // 2 + 1)
-    r = np.hypot(positions[:, 0] - center[0], positions[:, 1] - center[1])
-
-    if np.isnan(camera_length):
-        with np.errstate(divide="ignore"):
-            d_meas = (img_size[1] * pixel_size) / r
-    else:
-        lam = float(electron_wavelength(acc_voltage))
-        with np.errstate(divide="ignore"):
-            d_meas = (lam * camera_length * 1e7) / (r * pixel_size * 1e7)
+    r, d_meas = _measured_d(
+        positions, center, img_size, pixel_size, camera_length, acc_voltage, spacing
+    )
     valid = np.isfinite(d_meas) & (r > 0)
 
     db = list(PHASES) + list(extra_phases or [])  # custom/CIF phases participate

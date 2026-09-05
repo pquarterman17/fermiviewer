@@ -30,6 +30,7 @@ from typing import Any
 
 import numpy as np
 
+from fermiviewer.calc.calibration import spacing_at_column_scale
 from fermiviewer.calc.ctf import estimate_ctf
 from fermiviewer.calc.eds_maps import virtual_dark_field
 from fermiviewer.calc.fourier import compute_fft, fft_mask_inverse, local_fft_region
@@ -219,6 +220,8 @@ def _lattice(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         (params["spot2_row"], params["spot2_col"]),
         (raster.shape[0], raster.shape[1]),
         pixel_size=px,
+        # route parity: `px` is the column scale, rows follow the image's ratio
+        spacing=spacing_at_column_scale(px, ds.pixel_spacing),
     )
     unit = ds.pixel_unit or "px"
     outputs = [
@@ -277,6 +280,7 @@ def _ctf(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         voltage_kv=params["voltage_kv"],
         cs_mm=params["cs_mm"],
         pixel_size=params["pixel_size_a"],
+        spacing=spacing_at_column_scale(params["pixel_size_a"], ds.pixel_spacing),
     )
     outputs = [
         output(

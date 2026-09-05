@@ -51,6 +51,7 @@ def index_spots_roi(
     tolerance: float = 0.05,
     top_n: int = 5,
     extra_phases: list[Phase] | None = None,
+    spacing: tuple[float, float] | None = None,
 ) -> IndexedPattern:
     """Index 1-based full-image `spots` against the phase database, scoping
     the pattern geometry to `roi` when one is given.
@@ -63,6 +64,9 @@ def index_spots_roi(
     whole-image index — the wave-C `find_spots_roi` discipline; the route's
     zero-defaults would otherwise index the full pattern while the caller
     believed a region was in force.
+
+    `spacing` (per-axis pixel extent, ``(row, column)``) passes straight
+    through to `index_spots`: an ROI moves the frame, not the scale.
     """
     if roi is not None and not roi_selects_pixels(img_shape, roi):
         raise ValueError("roi selects no pixels of the image")
@@ -83,6 +87,7 @@ def index_spots_roi(
         tolerance=tolerance,
         top_n=top_n,
         extra_phases=extra_phases,
+        spacing=spacing,
     )
 
     full_center = (int(img_shape[0]) // 2 + 1, int(img_shape[1]) // 2 + 1)
