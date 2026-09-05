@@ -61,13 +61,18 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   user-typed pixel size keeps meaning the column scale, as it always has.
   Square pixels are bit-for-bit unchanged.
 
+- **FFT-mode spot indexing measures d from the reciprocal vector on every
+  image shape.** `index_spots` read `d = W·px/r`, verbatim from
+  `indexDiffraction.m`, which uses the image WIDTH for both axes: on a
+  64 × 128 FFT at 0.5 Å/px a Silicon (200) spot along rows came back as
+  5.43 Å, the lattice constant itself. The MATLAB workshop model uses
+  `sqrt(H·W)` instead and disagrees with its own calc, so there was no
+  single reference behaviour to keep; the frozen golden pattern is square
+  and unaffected. Square images change only at rounding level.
+
   Still open under roadmap item 5a: energy-axis profiles and the
-  project/UI calibration model. Noted, not changed: the isotropic FFT-mode
-  formula in `index_spots` uses the image WIDTH for both axes (verbatim
-  `indexDiffraction.m`), so on a non-square image a row-direction spot's d
-  is off by H/W even with square pixels; that is a golden-parity decision.
-  `calc/diffraction_simulate.py` simulates a CAMERA and keeps its single
-  detector pixel size by design.
+  project/UI calibration model. `calc/diffraction_simulate.py` simulates
+  a CAMERA and keeps its single detector pixel size by design.
 
 ## [0.4.0] - 2026-09-04
 

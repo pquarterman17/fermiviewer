@@ -186,6 +186,26 @@ def test_index_spots_roi_passes_spacing_through() -> None:
     assert np.array_equal(direct.matched_d, via_roi.matched_d)
 
 
+def test_index_spots_fft_mode_uses_both_image_dimensions() -> None:
+    """Square pixels, NON-square image: the Silicon (200) row spot on a
+    64-row, 128-column FFT at 0.5 Å/px sits 0.368 * 64 * 0.5 = 11.8 rows
+    out. indexDiffraction.m's d = W * px / r read that as 5.43 Å, the
+    lattice constant itself; the reciprocal vector reads 2.715 Å."""
+    h, w, s = 64, 128, 0.5
+    cr, cc = h // 2 + 1, w // 2 + 1
+    g = 2.0 / A_SI
+    pos = np.array([[cr + g * h * s, cc], [cr, cc + g * w * s]])
+    r, d = _measured_d(pos, (cr, cc), (h, w), s, float("nan"), 200.0, None)
+    assert d == pytest.approx([A_SI / 2, A_SI / 2])
+    assert w * s / r[0] == pytest.approx(A_SI)  # the old reading of the row spot
+    # on a square image the vector form is W * px / r to rounding
+    h = w = 128
+    cr = cc = h // 2 + 1
+    pos = np.array([[cr + 20.0, cc + 7.0], [cr - 3.0, cc + 40.0]])
+    r, d = _measured_d(pos, (cr, cc), (h, w), s, float("nan"), 200.0, None)
+    np.testing.assert_allclose(d, w * s / r, rtol=1e-12)
+
+
 def test_camera_mode_spot_distance_uses_both_extents() -> None:
     # a column spot and a row spot, both 20 px from the centre
     pos = np.array([[65.0, 85.0], [85.0, 65.0]])

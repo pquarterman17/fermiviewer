@@ -544,7 +544,7 @@ The registered operation catalogue: name, category, summary, params.
 |---|---|---|---|---|---|---|
 | `spots` | `list[2 x row/col]` |  | yes |  |  | picked spots, 1-based (row, col) in the FULL image — note (row, col), unlike atoms_strain's (x, y) |
 | `pixel_size_mm` | `float` | 1.0 | no |  |  | detector pixel size (mm) |
-| `camera_length_mm` | `float` | nan | no |  |  | camera length (mm); absent selects the uncalibrated branch, where d scales with the effective image WIDTH |
+| `camera_length_mm` | `float` | nan | no |  |  | camera length (mm); absent selects the FFT branch, where d comes from the reciprocal vector over the effective (H, W) frame |
 | `acc_voltage_kv` | `float` | 200.0 | no |  |  | beam voltage (kV) |
 | `tolerance` | `float` | 0.05 | no |  |  | relative d-spacing tolerance |
 | `top_n` | `int` | 5 | no |  |  | how many candidate phases to return |
