@@ -66,11 +66,11 @@ valuable and feasible.*
 4. **First-class region and mask model** — one sub-task left: mask
    previews before expensive execution (the summaries endpoint shipped
    2026-09-01; the previews themselves are the frontend lane's)
-5. **Calibration profiles and quantitative standards** — entirely open
-   (5a profiles: 5 sub-tasks; 5b standards/QC: 6). First concrete step:
-   per-axis reciprocal/energy calibration in `calc/ctf.py`,
-   `calc/lattice.py`, `calc/diffraction*.py`, then the project/UI
-   calibration model
+5. **Calibration profiles and quantitative standards** — open (5a
+   profiles: 5 sub-tasks; 5b standards/QC: 6). The reciprocal half of
+   5a's per-axis box shipped 2026-09-04 (`calc/ctf.py`, `calc/lattice.py`,
+   `calc/diffraction.py::index_spots` take per-axis `spacing`); next is
+   the project/UI calibration model and energy-axis profiles
 
 **Tier 2 — Correlative work and large datasets**
 6. **Cross-modal registration** — 6 sub-tasks, none started

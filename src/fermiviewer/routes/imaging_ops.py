@@ -9,7 +9,7 @@ import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from fermiviewer.calc.calibration import usable_spacing
+from fermiviewer.calc.calibration import spacing_at_column_scale, usable_spacing
 from fermiviewer.calc.ctf import estimate_ctf
 from fermiviewer.calc.eds_maps import virtual_dark_field
 from fermiviewer.calc.fourier import fft_mask_inverse
@@ -302,6 +302,9 @@ def analyze_lattice(req: LatticeRequest) -> dict:
             req.spot1, req.spot2,
             (raster.shape[0], raster.shape[1]),
             pixel_size=px,
+            # `px` is the column scale (a user override included); the row
+            # extent follows the image's own ratio, or is `px` when it has none
+            spacing=spacing_at_column_scale(px, ds.pixel_spacing),
         )
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
@@ -325,11 +328,13 @@ class CtfRequest(BaseModel):
 
 @router.post("/analyze/ctf")
 def analyze_ctf(req: CtfRequest) -> dict:
-    _, raster = _raster(req.image_id)
+    ds, raster = _raster(req.image_id)
     with value_error_as_422():
         res = estimate_ctf(
             raster, voltage_kv=req.voltage_kv, cs_mm=req.cs_mm,
             pixel_size=req.pixel_size_a,
+            # the typed Å/px is the column scale; rows follow the image's ratio
+            spacing=spacing_at_column_scale(req.pixel_size_a, ds.pixel_spacing),
         )
     return {
         "defocus_a": res.defocus,

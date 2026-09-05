@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from fermiviewer.calc import diffraction as diff
+from fermiviewer.calc.calibration import spacing_at_column_scale
 from fermiviewer.calc.diffraction_index import index_spots_roi
 from fermiviewer.calc.eels import background, extract_map, thickness_map
 from fermiviewer.calc.eels_advanced import (
@@ -453,6 +454,8 @@ def diffraction_index(req: IndexRequest) -> dict:
                 tolerance=req.tolerance,
                 top_n=req.top_n,
                 extra_phases=list(_phase_registry.custom),  # imported/CIF phases
+                # the typed pixel size is the column scale; rows follow the ratio
+                spacing=spacing_at_column_scale(req.pixel_size_mm, ds.pixel_spacing),
             )
     except HTTPException as exc:
         if req.record:

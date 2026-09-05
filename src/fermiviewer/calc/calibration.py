@@ -34,6 +34,7 @@ __all__ = [
     "physical_angle_rad",
     "physical_length",
     "resolve_spacing",
+    "spacing_at_column_scale",
     "usable_spacing",
 ]
 
@@ -92,6 +93,32 @@ def calibrated_spacing(
     if math.isfinite(pixel_size):
         return (float(pixel_size), float(pixel_size))
     return None
+
+
+def spacing_at_column_scale(
+    pixel_size: float, spacing: tuple[float, float] | None
+) -> tuple[float, float] | None:
+    """``(row, column)`` extents that keep `pixel_size` as the COLUMN scale.
+
+    A caller that lets the user type one pixel size -- Å/px for a CTF
+    fit, unit/px for a lattice measurement, mm/px for spot indexing -- is
+    being given the column scale, because that is what `pixel_size` has
+    meant everywhere (`pixel_cal` returns ``axes[1]``). The image's own
+    `spacing` may be in another unit, or be exactly what the user is
+    overriding, but its row-to-column RATIO is unit-free and is the only
+    thing that knows the pixels are not square. Returns `spacing` itself
+    when `pixel_size` is its column extent (bit for bit), the ratio
+    applied to `pixel_size` otherwise, and None when either input cannot
+    carry a length -- the caller then has one scale and reads it as
+    isotropic, exactly as before.
+    """
+    sp = usable_spacing(spacing)
+    if sp is None or not (math.isfinite(pixel_size) and pixel_size > 0):
+        return None
+    s_row, s_col = sp
+    if pixel_size == s_col:
+        return sp
+    return (float(pixel_size) * (s_row / s_col), float(pixel_size))
 
 
 def growth_axis_scales(

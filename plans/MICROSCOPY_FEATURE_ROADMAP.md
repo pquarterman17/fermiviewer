@@ -952,6 +952,24 @@ EELS/dose/spatial/reciprocal calibration using the same persistence rules.
 - [ ] Snapshot the applied profile into each result so later profile edits do
       not rewrite history.
 
+> **2026-09-04 — the reciprocal half of the second box shipped.**
+> `calc/ctf.py`, `calc/lattice.py` and `calc/diffraction.py::index_spots`
+> (with `index_spots_roi`) take a keyword-only `spacing`; the lattice, CTF
+> and index routes and ops pass
+> `spacing_at_column_scale(<the pixel size the caller typed>, ds.pixel_spacing)`
+> (`calc/calibration.py`), so a user-typed pixel size keeps meaning the
+> column scale and the row extent follows the image's own ratio. On 2:1
+> pixels a round Thon ring was an ellipse, a square 4 Å lattice was 4 by
+> 2, and a (200) spot along rows indexed as (400). Square pixels are
+> bit-for-bit unchanged (`tests/test_reciprocal_spacing.py`). Left as
+> found, on purpose: the isotropic FFT-mode `d = W·px/r` in `index_spots`
+> is verbatim `indexDiffraction.m` and off by H/W for a row-direction spot
+> on a NON-SQUARE image even with square pixels — a golden-parity decision
+> for the owner, not a calibration one; and `diffraction_simulate.py`
+> simulates a camera with one detector pixel size by design. The box
+> stays unchecked for its other half: energy-axis profiles and the
+> project/UI calibration model.
+
 #### 5b. Standards and quantification QC
 
 - [ ] Import a known-composition standard and define its reference regions.

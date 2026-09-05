@@ -12,6 +12,8 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.optimize import minimize
 
+from fermiviewer.calc.calibration import usable_spacing
+
 __all__ = ["CtfResult", "estimate_ctf"]
 
 
@@ -39,8 +41,18 @@ def estimate_ctf(
     cs_mm: float = 1.2,
     pixel_size: float = 1.0,
     n_rings: int = 10,
+    *,
+    spacing: tuple[float, float] | None = None,
 ) -> CtfResult:
-    """Estimate defocus from Thon rings (pixel_size in Å/px)."""
+    """Estimate defocus from Thon rings (pixel_size in Å/px).
+
+    `spacing` is the extent of one pixel as ``(row, column)`` in Å and
+    wins over `pixel_size`, the column scale read as isotropic. The
+    frequency step along rows is ``1 / (H * s_row)``: with one scale for
+    both axes a physically round Thon ring is read as an ellipse, and the
+    radial average smears it. Equal extents reproduce the single-scale
+    axes bit for bit.
+    """
     d = np.asarray(img, dtype=np.float64)
     h, w = d.shape
     lam = _wavelength_a(voltage_kv)
@@ -48,8 +60,10 @@ def estimate_ctf(
 
     ps = np.abs(np.fft.fftshift(np.fft.fft2(d))) ** 2
 
-    du = 1 / (w * pixel_size)
-    dv = 1 / (h * pixel_size)
+    sp = usable_spacing(spacing)
+    s_row, s_col = sp if sp is not None else (pixel_size, pixel_size)
+    du = 1 / (w * s_col)
+    dv = 1 / (h * s_row)
     u_axis = np.arange(-(w // 2), -(w // 2) + w) * du
     v_axis = np.arange(-(h // 2), -(h // 2) + h) * dv
     ku, kv = np.meshgrid(u_axis, v_axis)
