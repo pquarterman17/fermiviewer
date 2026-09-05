@@ -13,6 +13,9 @@ export interface ImageMeta {
   shape: number[];
   dtype: string;
   pixel_size: number | null;
+  /** Physical extent per pixel as [row, column], in pixel_unit. Null when
+   * either spatial axis is uncalibrated or their units do not agree. */
+  pixel_spacing?: [number, number] | null;
   pixel_unit: string;
   value_unit: string;
   n_channels: number | null;

@@ -26,7 +26,7 @@ import {
   liveRoiDrawOverlay,
 } from "./diffraction/DiffractionOverlays";
 import {
-  dSpacingToRadiusPx,
+  dSpacingToEllipsePx,
   matchedRingSvg,
   matchedSpotIndices,
   roiFromPoints,
@@ -254,17 +254,21 @@ export default function DiffractionWorkshop() {
 
   // ── typed-d ring radius in display pixels ─────────────────────────
   const typedDVal = parseFloat(typedD);
-  const typedRingR =
-    typedDVal > 0 && natural && scale > 0
-      ? dSpacingToRadiusPx(
-          typedDVal,
-          natural.w,
-          Number(pixelSize) || 1.0,
-          cameraLen ? Number(cameraLen) : null,
-          Number(accKv) || 200,
-          scale,
+  const ellipseForD = (d: number, outputScale = scale) =>
+    natural
+      ? dSpacingToEllipsePx(
+          d, natural.h, natural.w, Number(pixelSize) || 1.0,
+          cameraLen ? Number(cameraLen) : null, Number(accKv) || 200, outputScale,
+          meta?.pixel_spacing, meta?.pixel_unit,
         )
       : null;
+  const typedRing =
+    typedDVal > 0 && natural && scale > 0
+      ? ellipseForD(typedDVal)
+      : null;
+  const typedRingPattern = typedDVal > 0 && natural ? ellipseForD(typedDVal, 1) : null;
+  const unitEllipse = natural ? ellipseForD(1, 1) : null;
+  const ellipseAspect = unitEllipse ? unitEllipse.ry / unitEllipse.rx : 1;
 
   // ── matched-ring SVG nodes for the selected candidate ────────────
   const matchedRingNodes =
@@ -279,6 +283,7 @@ export default function DiffractionWorkshop() {
           spots,
           rings,
           labels,
+          ellipseAspect,
         )
       : [];
 
@@ -398,20 +403,21 @@ export default function DiffractionWorkshop() {
             {matchedRingNodes}
 
             {/* typed d-spacing ring */}
-            {typedRingR !== null && typedRingR > 0 && (
+            {typedRing !== null && typedRing.rx > 0 && typedRing.ry > 0 && (
               <g>
-                <circle
+                <ellipse
                   cx={patternCx}
                   cy={patternCy}
-                  r={typedRingR}
+                  rx={typedRing.rx}
+                  ry={typedRing.ry}
                   fill="none"
                   stroke="#f59e0b"
                   strokeWidth={1.2}
                   strokeDasharray="6 3"
                 />
                 <text
-                  x={patternCx + typedRingR * 0.72}
-                  y={patternCy - typedRingR * 0.72}
+                  x={patternCx + typedRing.rx * 0.72}
+                  y={patternCy - typedRing.ry * 0.72}
                   fill="#f59e0b"
                   fontSize={8}
                   dominantBaseline="middle"
@@ -445,7 +451,7 @@ export default function DiffractionWorkshop() {
           tolerance={tolerance} setTolerance={setTolerance} topN={topN} setTopN={setTopN}
           rings={rings} setRings={setRings} labels={labels} setLabels={setLabels}
           clickMode={clickMode} setClickMode={setClickMode} spotsLength={spots.length}
-          typedD={typedD} setTypedD={setTypedD} typedRingR={typedRingR}
+          typedD={typedD} setTypedD={setTypedD} typedRing={typedRingPattern}
           index={index} candidates={candidates} selectedCandIdx={selectedCandIdx}
           setSelectedCandIdx={setSelectedCandIdx} downloadReport={downloadReport}
           roiMode={roiMode} setRoiMode={setRoiMode} committedRoi={committedRoi}

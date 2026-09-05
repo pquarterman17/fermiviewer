@@ -182,6 +182,9 @@ def _index(client: TestClient, image_id: str, spots: list[list[float]]) -> dict:
 def test_fft_then_index_recovers_silicon_on_anisotropic_pixels(client) -> None:
     src_id = store.add_parsed(_silicon_001(), "si001.dm4")
     fft = client.post(f"/api/image/{src_id}/fft").json()
+    assert fft["pixel_spacing"] == pytest.approx([
+        1 / (N * S_ROW_A * NM), 1 / (N * S_COL_A * NM)
+    ])
     # the registered FFT is calibrated in reciprocal nm, per axis
     assert fft["pixel_unit"] == "1/nm"
     assert fft["pixel_size"] == pytest.approx(1 / (N * S_COL_A * NM))
@@ -229,3 +232,10 @@ def test_an_uncalibrated_fft_still_reads_the_grid_as_square(client) -> None:
     spots = _detect(client, fft_id)
     assert len(spots) == 8
     assert _silicon(_index(client, fft_id, spots)["candidates"])["score"] == 0.75
+
+
+def test_image_meta_uses_null_for_unusable_spacing(client) -> None:
+    image_id = store.add_parsed(_uncalibrated(), "bare")
+    rows = client.get("/api/session/images").json()
+    meta = next(row for row in rows if row["id"] == image_id)
+    assert meta["pixel_spacing"] is None

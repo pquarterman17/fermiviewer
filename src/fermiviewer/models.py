@@ -61,6 +61,9 @@ class ImageMeta(BaseModel):
     shape: list[int]
     dtype: str
     pixel_size: float | None = None
+    # Physical extent along (rows, columns). None means the pair cannot be
+    # stated safely (an uncalibrated axis or mixed units).
+    pixel_spacing: tuple[float, float] | None = None
     pixel_unit: str = ""
     value_unit: str = ""  # physical unit of the pixel values (e.g. AFM height "nm")
     n_channels: int | None = None
@@ -83,6 +86,11 @@ class ImageMeta(BaseModel):
         unit = ""
         if ds.kind is not DataKind.SPECTRUM and ds.pixel_cal.calibrated:
             px, unit = ds.pixel_cal.scale, ds.pixel_cal.units
+        spacing = None
+        if ds.kind is not DataKind.SPECTRUM:
+            candidate = ds.pixel_spacing
+            if all(math.isfinite(value) and value > 0 for value in candidate):
+                spacing = candidate
         ax = ds.energy_axis if spectral else None
         tilt_deg, _ = get_stage_tilt(ds.metadata)
 
@@ -104,6 +112,7 @@ class ImageMeta(BaseModel):
             shape=list(ds.data.shape),
             dtype=str(ds.data.dtype),
             pixel_size=px,
+            pixel_spacing=spacing,
             pixel_unit=unit,
             value_unit=str(ds.metadata.get("value_unit", "")),
             n_channels=ds.n_channels if spectral else None,
