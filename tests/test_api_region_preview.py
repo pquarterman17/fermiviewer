@@ -9,9 +9,13 @@ actually report over the same region.
 
 from __future__ import annotations
 
+import base64
+import io
+
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.project_session import project
@@ -498,3 +502,37 @@ def test_both_of_section_nine_s_answers_are_reported(client) -> None:
     assert plain["pixel_count"] == plain["bbox_pixels"], (
         "a rectangle is its own context, so §9's two answers coincide"
     )
+
+
+# ── the exact raster, for the stage overlay ──────────────────────────
+
+
+def _decode_mask(b64: str) -> np.ndarray:
+    return np.asarray(Image.open(io.BytesIO(base64.b64decode(b64)))) > 0
+
+
+def test_the_exact_mask_is_the_raster_the_summary_counted(client) -> None:
+    """`mask_png` covers exactly `rect` and has `pixel_count` set pixels:
+    the same resolution the numbers came from, not a second rasterization
+    of the outline."""
+    image_id = _image()
+    _install(client)
+    body = _preview(client, image_id, region_ref="picked/r1", include_mask=True)
+    assert body["exact_mask"] is True
+    mask = _decode_mask(body["mask_png"])
+    r1, c1, r2, c2 = body["rect"]
+    assert mask.shape == (r2 - r1 + 1, c2 - c1 + 1)
+    assert int(mask.sum()) == body["pixel_count"] < body["bbox_pixels"]
+    assert mask[0, 0] and not mask.all()  # the bite is a hole in it
+
+
+def test_the_mask_is_absent_unless_asked_for_or_when_the_box_is_the_mask(
+    client,
+) -> None:
+    image_id = _image()
+    _install(client)
+    assert _preview(client, image_id, region_ref="picked/r1")["mask_png"] is None
+    # a plain rectangle: not exact, and a PNG of it would paint nothing the
+    # outline does not already show
+    body = _preview(client, image_id, roi="3,3,12,22", include_mask=True)
+    assert body["exact_mask"] is False and body["mask_png"] is None

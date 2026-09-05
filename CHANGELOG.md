@@ -15,6 +15,17 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **See exactly what a region selects before running an analysis.** Every
+  workshop's Region select now reports what its choice resolves to — pixel
+  count, share of the image, physical area — computed by the same resolver
+  the analysis uses (`POST /api/regions/preview`), and the Analysis Regions
+  card can paint a selected region's exact raster on the stage (amber,
+  pixel-aligned), so the boundary an analysis will honour is the one you
+  see rather than the drawn outline. The preview endpoint gains
+  `include_mask`, returning that raster as an 8-bit PNG over the region's
+  bounding box.
+
 ### Fixed
 - **The single-scale error named in 0.4.0's *Known limitations* is closed.**
   Every site that list called out now measures with both pixel extents

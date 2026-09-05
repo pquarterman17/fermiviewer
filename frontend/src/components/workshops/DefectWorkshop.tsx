@@ -133,6 +133,8 @@ export default function DefectWorkshop() {
     <div className="fvd-ws">
       <AnalysisRegionSelect
         choice={region.choice}
+        imageId={activeId}
+        roi={region.roi}
         options={region.options}
         disabled={busy}
         onChange={region.setChoice}

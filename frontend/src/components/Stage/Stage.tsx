@@ -31,6 +31,7 @@ import EmptyStage from "./EmptyStage";
 import { FloatTools, ZoomChip } from "./FloatTools";
 import FourDProbeMarker from "./FourDProbeMarker";
 import LayersOverlay from "./LayersOverlay";
+import MaskPreviewOverlay from "./MaskPreviewOverlay";
 import MeasureOverlay from "./MeasureOverlay";
 import RegionOverlay from "./RegionOverlay";
 import Minimap from "./Minimap";
@@ -509,6 +510,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
       {activeId && !rasterless && imgSize && view && (
         <>
           <RegionOverlay imageId={activeId} view={view} img={imgSize} vp={vp} />
+          <MaskPreviewOverlay imageId={activeId} view={view} img={imgSize} vp={vp} />
           <MeasureOverlay
             imageId={activeId}
             pixelSize={meta?.pixel_size ?? null}

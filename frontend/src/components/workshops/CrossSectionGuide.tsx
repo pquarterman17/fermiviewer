@@ -93,6 +93,8 @@ export default function CrossSectionGuide() {
           </p>
           <AnalysisRegionSelect
             choice={region.choice}
+            imageId={sourceId}
+            roi={region.roi}
             options={region.options}
             disabled={false}
             onChange={region.setChoice}

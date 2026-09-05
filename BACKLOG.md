@@ -55,17 +55,15 @@ re-verified against the code before folding).*
 current feature-priority spine (adopted 2026-08-22 from a feature audit
 against v0.1.32). Tier 1 items 1–3 (persistent results, results browser /
 report, universal operation parity) shipped in full 2026-08-22 → 08-27
-(every sub-task checked). Item 4's backend halves shipped 2026-08-29 →
-09-01 (region contract, `.fvp` persistence, consumer migration 4C-1..5,
-label↔region conversion, preview summaries), and the anisotropic-pixel
-prerequisite for item 5 landed in v0.4.0 + PR #208. Items 8–9 are parked
+(every sub-task checked). Item 4 shipped in full 2026-08-29 → 09-05
+(region contract, `.fvp` persistence, consumer migration 4C-1..5,
+label↔region conversion, preview summaries and the exact-mask preview),
+and the anisotropic-pixel prerequisite for item 5 landed in v0.4.0 +
+PRs #208–#210. Items 8–9 are parked
 by owner decision: do not advance them while a Tier 1–2 item remains
 valuable and feasible.*
 
 **Tier 1 — Scientific trust and daily workflow**
-4. **First-class region and mask model** — one sub-task left: mask
-   previews before expensive execution (the summaries endpoint shipped
-   2026-09-01; the previews themselves are the frontend lane's)
 5. **Calibration profiles and quantitative standards** — open (5a
    profiles: 5 sub-tasks; 5b standards/QC: 6). The reciprocal half of
    5a's per-axis box shipped 2026-09-04 (`calc/ctf.py`, `calc/lattice.py`,
@@ -84,7 +82,7 @@ valuable and feasible.*
    Tier 3 (items 10–13 there)
 9. **Optional tomography workflow** — 6 sub-tasks
 
-**Open items: 6** *(4 active, 2 parked)*
+**Open items: 5** *(3 active, 2 parked)*
 
 ---
 
@@ -130,16 +128,16 @@ only Tier 3 (build-on-demand by rule) remains.*
 | Plan | Status | Open items |
 |---|---|---|
 | MAIN_PLAN.md | Active (root) | 9 |
-| MICROSCOPY_FEATURE_ROADMAP.md | Active (priority spine; items 4–7 live, 8–9 parked) | 6 |
+| MICROSCOPY_FEATURE_ROADMAP.md | Active (priority spine; items 5–7 live, 8–9 parked) | 5 |
 | PLAN_4DSTEM.md | Active (Tier 3 residue only) | 4 |
 | ANALYSIS_PRESENTATION_PLAN.md | Active (Tier 3 residue only) | 4 |
 
-**Total open items:** 23
+**Total open items:** 22
 
 **Counting method:** top-level numbered items (the plan-format.md unit of a
 tracked work item) — not nested `- [ ]` sub-task checkboxes. Nested-checkbox
-counts by plan, for reference: MAIN_PLAN 5, MICROSCOPY_FEATURE_ROADMAP 36,
-PLAN_4DSTEM 0, ANALYSIS_PRESENTATION_PLAN 0 (41 total). A checkbox-based
+counts by plan, for reference: MAIN_PLAN 5, MICROSCOPY_FEATURE_ROADMAP 35,
+PLAN_4DSTEM 0, ANALYSIS_PRESENTATION_PLAN 0 (40 total). A checkbox-based
 count would disagree with the open-items count above — pick one convention
 when reading this table and don't mix the two.
 

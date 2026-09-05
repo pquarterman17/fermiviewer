@@ -91,3 +91,47 @@ export interface FitShapeResponse {
 export function fitShape(req: FitShapeRequest): Promise<FitShapeResponse> {
   return post("/api/analyze/fit-shape", req);
 }
+
+// ── POST /api/regions/preview (roadmap item 4, last box) ───────────────
+
+export interface RegionPreviewRequest {
+  image_id: string;
+  /** `"set_id/region_id"` or `"set_id"`; empty for none. Exactly one of
+   *  this and `roi` — both empty previews the whole image. */
+  region_ref?: string;
+  /** The frozen `"r1,c1,r2,c2"` 1-based inclusive rect string. */
+  roi?: string;
+  /** Also return the exact raster as `mask_png`. Off by default. */
+  include_mask?: boolean;
+}
+
+export interface RegionPreviewResponse {
+  /** Pixels the region SELECTS — the area in px² (ADR 0007 §9: what a
+   *  reducing analysis reads; a neighbourhood one reads `rect`). */
+  pixel_count: number;
+  image_pixels: number;
+  fraction: number;
+  /** 1-based inclusive bounding box, clamped to the image. */
+  rect: [number, number, number, number];
+  bbox_pixels: number;
+  /** Whether the selection is narrower than its box. */
+  exact_mask: boolean;
+  /** Physical area in `unit²`, or null when the image has no pixel size
+   *  (or its two axes disagree on the unit). */
+  area_calibrated: number | null;
+  unit: string;
+  provenance: Record<string, unknown>;
+  /** Base64 PNG (8-bit grey, 255 inside) covering `rect`, only when
+   *  `include_mask` was set AND `exact_mask` is true; null otherwise. */
+  mask_png: string | null;
+}
+
+/** How much a region selects, resolved exactly as an analysis will resolve
+ *  it (same resolver, same clamping) — a preview of the scope, not of the
+ *  drawn outline. 404 for an unknown image; 422 for a region selecting
+ *  nothing, two scopes at once, or a set drawn on another image. */
+export function previewRegion(
+  req: RegionPreviewRequest,
+): Promise<RegionPreviewResponse> {
+  return post("/api/regions/preview", req);
+}

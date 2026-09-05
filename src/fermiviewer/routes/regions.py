@@ -16,6 +16,7 @@ adapter — session lookup, calibration, and ValueError → 422.
 
 from __future__ import annotations
 
+import base64
 from typing import Any
 
 import numpy as np
@@ -23,6 +24,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from fermiviewer.calc.raster import NoRasterError, raster_of
+from fermiviewer.calc.region_mask import mask_png
 from fermiviewer.calc.region_propose import propose_region
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.project_session import project
@@ -121,6 +123,11 @@ class RegionPreviewRequest(BaseModel):
     region_ref: str = ""
     #: The frozen ``"r1,c1,r2,c2"`` 1-based inclusive rect string.
     roi: str = ""
+    #: Also return the exact raster the region selects, as `mask_png`.
+    #: Off by default: the numbers are what every caller wants and the
+    #: PNG is what one overlay wants, and a summary endpoint that always
+    #: encoded an image would stop being cheap.
+    include_mask: bool = False
 
 
 class RegionPreviewResponse(BaseModel):
@@ -169,6 +176,11 @@ class RegionPreviewResponse(BaseModel):
     #: The LENGTH unit, matching `/regions/propose` — area is in `unit^2`.
     unit: str
     provenance: dict[str, Any]
+    #: Base64 PNG of the selection over `rect` -- 8-bit grey, 255 inside --
+    #: when `include_mask` was asked for AND the selection is narrower than
+    #: its box. Null otherwise: a rectangle's outline is its mask, and
+    #: painting it would show nothing the region overlay does not.
+    mask_png: str | None = None
 
 
 def _spatial_shape(ds: DataStruct, purpose: str) -> tuple[int, int]:
@@ -251,4 +263,11 @@ def preview_region_route(req: RegionPreviewRequest) -> RegionPreviewResponse:
         ),
         unit=ds.pixel_unit or "px",
         provenance=resolved.provenance,
+        # the raster the count above came from -- not a second
+        # rasterization of the outline, which is the whole point
+        mask_png=(
+            base64.b64encode(mask_png(resolved.cropped_mask())).decode("ascii")
+            if req.include_mask and resolved.is_exact
+            else None
+        ),
     )
