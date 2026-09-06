@@ -9,6 +9,7 @@ so nothing here can square an anisotropic image by accident.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import numpy as np
@@ -29,6 +30,8 @@ from fermiviewer.models import ImageMeta
 from fermiviewer.session import UnknownImageError, store
 
 router = APIRouter(prefix="/api")
+
+_log = logging.getLogger(__name__)
 
 
 def _get(img_id: str) -> DataStruct:
@@ -266,8 +269,12 @@ def calibration_apply(req: CalibrationApplyRequest) -> dict[str, Any]:
         try:
             spacing, unit = entry_spacing(entry), str(entry["unit"])
         except (KeyError, TypeError, ValueError) as exc:
+            # the reason stays server-side: exception text from a
+            # hand-edited local file is not part of the response contract
+            # (same policy as profiles_db's legacy import, CodeQL / PR #217)
+            _log.warning("stored calibration %r is malformed: %s", req.key, exc)
             raise HTTPException(
-                422, f"stored calibration {req.key!r} is malformed: {exc}"
+                422, f"stored calibration {req.key!r} is malformed"
             ) from None
         source = f"db:{req.key}"
     elif req.pixel_spacing is not None:

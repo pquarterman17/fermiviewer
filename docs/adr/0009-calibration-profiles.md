@@ -58,7 +58,10 @@ no way to carry anything but a length.
 3. **Applicability is data, checked on apply, never a refusal.**
    `validity` carries optional `valid_from`/`valid_to` dates and
    inclusive `[low, high]` ranges for beam energy (keV), magnification
-   and camera length (mm). Applying a profile to an image compares those
+   and camera length (mm) (checked only when the image's metadata states
+   a literal `camera_length_mm`, which no current parser writes, so that
+   range is inert today until a reader or a consumer route supplies one).
+   Applying a profile to an image compares those
    against what the image's metadata states (`beam_kv`, `voltage_kV`,
    `acceleration_voltage_v`, `magnification`, plus the nested vendor
    keys the calibration DB already searches) and returns the reasons it

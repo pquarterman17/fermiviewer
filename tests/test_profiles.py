@@ -204,6 +204,11 @@ def test_spatial_spacing_needs_both_extents_in_one_unit() -> None:
                 pixel_size_column={"value": 2.0, "unit": "um"},
             )
         )
+    # bare numbers pass validate_fields (canonical unit "") and ARE positive
+    # and DO share a unit -- just an empty one, which is not a length, so
+    # this gets its own message rather than the misleading one above
+    with pytest.raises(ProfileError, match="need a length unit"):
+        spatial_spacing(acq(pixel_size_row=0.5, pixel_size_column=2.0))
     with pytest.raises(ProfileError, match="together"):
         spatial_spacing(acq(pixel_size_row={"value": 0.5, "unit": "nm"}))
     with pytest.raises(ProfileError, match="together"):
@@ -405,6 +410,31 @@ def test_legacy_calibrations_import_square_per_axis_malformed_idempotent() -> No
     ]
     assert get_profile(titan.id) == titan
     assert len(list_profiles("acquisition")) == 2
+
+
+def test_a_non_finite_legacy_magnification_is_skipped_not_fatal() -> None:
+    """Before this, `float("inf")` parsed as a magnification and then blew
+    up in `validate_fields` OUTSIDE the per-entry `try`, aborting the whole
+    batch instead of skipping the one bad key (ADR 0009 §8)."""
+    save_calibration("ok|1000", 0.42, "nm")
+    save_calibration("later|500", 0.3, "nm")
+    entries = {
+        **list_calibrations(),
+        "Titan|inf": {"pixel_size": 0.5, "unit": "nm", "note": "", "saved": "2026-09-01 10:00"},
+    }
+    created, skipped = import_legacy_calibrations(entries)
+    assert {p.name for p in created} == {"ok|1000", "later|500"}
+    assert skipped == ["'Titan|inf': malformed entry"]
+
+    # re-run creates nothing: the two good keys are now already imported,
+    # and the bad one is still malformed
+    again, skipped_again = import_legacy_calibrations(entries)
+    assert again == []
+    assert sorted(skipped_again) == [
+        "'Titan|inf': malformed entry",
+        "'later|500': already imported",
+        "'ok|1000': already imported",
+    ]
 
 
 # ── applicability ─────────────────────────────────────────────────────

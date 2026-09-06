@@ -39,9 +39,10 @@ not. `verified` is the one-line form of the same fact.
 
 Per shared source: the number of snapshotted axes, then per axis the
 `scale` (the pixel size) and the `units`, then the record's calibration
-provenance string. `origin` is deliberately excluded — it shifts where
-zero sits on an axis, not what one step is worth, and no result output
-carries it.
+provenance string, then, per applied-profile kind the source carries, the
+applied profile's `id@version` (ADR 0009 §6). `origin` is deliberately
+excluded — it shifts where zero sits on an axis, not what one step is
+worth, and no result output carries it.
 
 Scale comparison tolerates float noise (`math.isclose`, rel_tol 1e-12) and
 treats NaN as `AxisCal` does: NaN scale means uncalibrated, and two
@@ -60,6 +61,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from fermiviewer.io.profiles_applied import snapshot_version
 from fermiviewer.io.results_model import CalibrationSnapshot, ResultRecord
 
 __all__ = [
@@ -170,10 +172,15 @@ def _axis_differences(
 
 
 def _profile_ref(snap: dict[str, object] | None) -> str:
-    """``id@version`` of an applied-profile snapshot, or 'none'."""
+    """``id@version`` of an applied-profile snapshot, or 'none'.
+
+    `version` goes through `snapshot_version` -- the same coercion
+    `models.py` uses for its wire summary -- so a snapshot whose version
+    is `"1"` in one reading and `1` in another still compares equal here.
+    """
     if snap is None:
         return "none"
-    return f"{snap.get('id')!s}@{snap.get('version')!s}"
+    return f"{snap.get('id')!s}@{snapshot_version(snap.get('version'))}"
 
 
 def _profile_differences(

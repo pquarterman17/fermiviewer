@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from fermiviewer.calc.fourd.scanshape import scan_shape_candidates
 from fermiviewer.datastruct import SPECTRAL_KINDS, AxisCal, DataKind, DataStruct
 from fermiviewer.io.metadata import databar_content_rows, get_stage_tilt
-from fermiviewer.io.profiles_applied import applied_profiles
+from fermiviewer.io.profiles_applied import applied_profiles, snapshot_version
 
 if TYPE_CHECKING:
     from fermiviewer.calc.fourd.dataset import FourDDataset
@@ -51,21 +51,6 @@ def _public_meta(metadata: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _profile_version(value: Any) -> int:
-    """Coerce a snapshot's `version` field to an int, defaulting to 0 for
-    anything that isn't cleanly one (a float with a fractional part, a
-    non-digit string, `None`, ...)."""
-    if isinstance(value, bool):
-        return 0
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float) and value.is_integer():
-        return int(value)
-    if isinstance(value, str) and value.isdigit():
-        return int(value)
-    return 0
-
-
 def _profile_refs(metadata: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """Client-visible summary of the profiles applied to an image (ADR 0009
     §5): identity and version per kind, plus the applicability reasons
@@ -82,7 +67,7 @@ def _profile_refs(metadata: dict[str, Any]) -> dict[str, dict[str, Any]]:
             out[kind] = {
                 "id": str(snap.get("id", "")),
                 "name": str(snap.get("name", "")),
-                "version": _profile_version(snap.get("version")),
+                "version": snapshot_version(snap.get("version")),
                 "applied_at": str(snap.get("applied_at", "")),
                 "applicability": (
                     [str(r) for r in applicability]
@@ -139,6 +124,12 @@ class ImageMeta(BaseModel):
             candidate = ds.pixel_spacing
             if all(math.isfinite(value) and value > 0 for value in candidate):
                 spacing = candidate
+        if spacing is not None:
+            # `pixel_spacing` is already the magnitude pair (ADR 0008 §2);
+            # `pixel_cal.scale` is SIGNED (DM writes negative column
+            # scales), so the pinned identity pixel_size == pixel_spacing[1]
+            # must read off the magnitude here, not the raw scale.
+            px = spacing[1]
         ax = ds.energy_axis if spectral else None
         tilt_deg, _ = get_stage_tilt(ds.metadata)
 

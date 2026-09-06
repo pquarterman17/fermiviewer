@@ -114,6 +114,24 @@ def test_crud_history_and_kinds(client: TestClient) -> None:
     assert client.delete(f"/api/profiles/{p['id']}").status_code == 404
 
 
+def test_an_unreadable_schema_is_a_422_on_every_write_route_too(
+    tmp_path: Path, client: TestClient
+) -> None:
+    """A hand-edited `{"schema": "abc"}` used to raise a bare `ValueError`
+    from `_load`, which the routes' `except ProfileError` misses -> a 500
+    on every profiles endpoint. `profiles_delete` in particular had no
+    `ProfileError` mapping at all, even for a valid int schema it cannot
+    reach a profile through."""
+    path = tmp_path / "profiles.json"
+    path.write_text(json.dumps({"schema": "abc", "profiles": {}}))
+    assert client.get("/api/profiles").status_code == 422
+    assert client.post("/api/profiles", json=DETECTOR).status_code == 422
+    assert client.delete("/api/profiles/x").status_code == 422
+
+    path.write_text(json.dumps({"schema": 9, "profiles": {}}))
+    assert client.delete("/api/profiles/x").status_code == 422
+
+
 def test_validation_errors_are_422(client: TestClient) -> None:
     bad_unit = {
         **DETECTOR,
@@ -415,6 +433,14 @@ def test_comparison_notes_a_profile_version_difference() -> None:
 
     same = calibration_agreement(rec("a", 1), rec("b", 1))
     assert same.agrees and same.verified
+    # `version` read two ways -- a string from one snapshot, an int from
+    # another -- must still agree: both go through `snapshot_version`
+    # (models.py and results_calibration.py used to coerce differently,
+    # so the same profile could compare unequal to itself)
+    string_version = rec("a", 1)
+    string_version.calibration[0].profiles["detector"]["version"] = "1"
+    coerced = calibration_agreement(string_version, rec("b", 1))
+    assert coerced.agrees and coerced.verified
     edited = calibration_agreement(rec("a", 1), rec("b", 2))
     assert edited.differences == (
         "source image 'img': detector profile differs — reference a used d1@1, result b used d1@2",

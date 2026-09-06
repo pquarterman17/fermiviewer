@@ -167,7 +167,11 @@ def profiles_update(profile_id: str, req: ProfileUpdateRequest) -> dict[str, Any
 
 @router.delete("/profiles/{profile_id}")
 def profiles_delete(profile_id: str) -> dict[str, str]:
-    if not delete_profile(profile_id):
+    try:
+        deleted = delete_profile(profile_id)
+    except ProfileError as exc:
+        raise HTTPException(422, str(exc)) from None
+    if not deleted:
         raise HTTPException(404, f"unknown profile id: {profile_id}")
     return {"deleted": profile_id}
 

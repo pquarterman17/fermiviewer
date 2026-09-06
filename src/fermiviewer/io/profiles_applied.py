@@ -29,11 +29,30 @@ __all__ = [
     "detach_profile",
     "profile_quantity",
     "snapshot_profile",
+    "snapshot_version",
 ]
 
 #: `DataStruct.metadata` key under which an image carries the profiles
 #: applied to it, one snapshot per kind.
 PROFILES_META_KEY = "profiles"
+
+
+def snapshot_version(value: Any) -> int:
+    """Coerce a snapshot's `version` field to an int, defaulting to 0 for
+    anything that isn't cleanly one (a float with a fractional part, a
+    non-digit string, `None`, ...). Shared by `models.py` (the wire
+    summary) and `results_calibration.py` (the `id@version` comparison
+    key) so the same snapshot always coerces to the same version instead
+    of comparing unequal to itself across the two readings."""
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return 0
 
 
 def snapshot_profile(

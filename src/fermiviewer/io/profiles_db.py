@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import tempfile
 import threading
@@ -118,7 +119,10 @@ def _load() -> dict[str, Any]:
         return _empty()
     if not isinstance(data, dict) or not isinstance(data.get("profiles"), dict):
         return _empty()
-    schema = int(data.get("schema") or PROFILE_SCHEMA)
+    try:
+        schema = int(data.get("schema") or PROFILE_SCHEMA)
+    except (TypeError, ValueError):
+        raise ProfileError(f"profile store {p} has an unreadable schema") from None
     if schema > PROFILE_SCHEMA:
         raise ProfileError(
             f"profile store {p} has schema {schema}; this build reads {PROFILE_SCHEMA}"
@@ -348,41 +352,47 @@ def import_legacy_calibrations(
                 (row, col), unit = entry_spacing(dict(entry)), str(entry["unit"])
                 if not unit:
                     raise ValueError("unit is empty")
+                fields: dict[str, Any] = {
+                    "pixel_size_row": {"value": row, "unit": unit},
+                    "pixel_size_column": {"value": col, "unit": unit},
+                }
+                instrument, _, mag = key.partition("|")
+                try:
+                    mag_value: float | None = float(mag)
+                except ValueError:
+                    mag_value = None  # no magnitude stated (e.g. "Instrument|?")
+                if mag_value is not None:
+                    if not math.isfinite(mag_value):
+                        raise ValueError(f"magnification {mag!r} is not finite")
+                    if mag_value > 0:
+                        fields["magnification"] = {"value": mag_value, "unit": ""}
+                text = {"legacy_key": key}
+                if instrument and instrument != "?":
+                    text["instrument"] = instrument
+                saved = str(entry.get("saved") or "")
+                created.append(
+                    create_profile(
+                        name=key,
+                        kind="acquisition",
+                        fields=fields,
+                        text=text,
+                        provenance={
+                            "source": LEGACY_SOURCE,
+                            "date": saved[:10] if len(saved) >= 10 else None,
+                            "note": str(entry.get("note") or ""),
+                        },
+                        clock=clock,
+                    )
+                )
             except (KeyError, TypeError, ValueError) as exc:
-                # the reason stays server-side: exception text is not part of
-                # the response contract
+                # the whole per-entry body lives in this try -- a bad
+                # magnification or a field validate_fields refuses (e.g. an
+                # inf magnitude) skips just this entry, never aborts the
+                # batch (ADR 0009 §8). The reason stays server-side:
+                # exception text is not part of the response contract
                 _log.warning("legacy calibration %r not imported: %s", key, exc)
                 skipped.append(f"{key!r}: malformed entry")
                 continue
-            fields: dict[str, Any] = {
-                "pixel_size_row": {"value": row, "unit": unit},
-                "pixel_size_column": {"value": col, "unit": unit},
-            }
-            instrument, _, mag = key.partition("|")
-            try:
-                mag_value = float(mag)
-            except ValueError:
-                mag_value = float("nan")
-            if mag_value > 0:
-                fields["magnification"] = {"value": mag_value, "unit": ""}
-            text = {"legacy_key": key}
-            if instrument and instrument != "?":
-                text["instrument"] = instrument
-            saved = str(entry.get("saved") or "")
-            created.append(
-                create_profile(
-                    name=key,
-                    kind="acquisition",
-                    fields=fields,
-                    text=text,
-                    provenance={
-                        "source": LEGACY_SOURCE,
-                        "date": saved[:10] if len(saved) >= 10 else None,
-                        "note": str(entry.get("note") or ""),
-                    },
-                    clock=clock,
-                )
-            )
             existing.add(key)
         return created, skipped
 
@@ -411,7 +421,10 @@ def image_conditions(metadata: Mapping[str, Any]) -> dict[str, float]:
     """What the image's metadata states, in the profile's units: beam
     energy (keV), magnification, camera length (mm). Every parser spells
     the voltage differently (`beam_kv`, `voltage_kV`, a Volt-valued
-    `acceleration_voltage_v`); one reader, so validity has one meaning."""
+    `acceleration_voltage_v`); one reader, so validity has one meaning.
+    Camera length is read only from a literal `camera_length_mm` key,
+    which no current parser writes, so `Validity.camera_length_mm` is
+    inert today until a reader or a consumer route supplies one."""
     out: dict[str, float] = {}
     kv = _number(metadata, _KV_KEYS)
     if kv is None:

@@ -339,7 +339,14 @@ def spatial_spacing(profile: Profile) -> tuple[tuple[float, float], str] | None:
         raise ProfileError(
             "pixel_size_row and pixel_size_column must be given together"
         )
-    if row.value <= 0 or col.value <= 0 or row.unit != col.unit or not row.unit:
+    if not row.unit or not col.unit:
+        # a bare number passes validate_fields (canonical unit "") and IS
+        # positive and DOES share a unit -- just an empty one, which is not
+        # a length; say that instead of the misleading message below
+        raise ProfileError(
+            "pixel_size_row and pixel_size_column need a length unit (nm, um, ...)"
+        )
+    if row.value <= 0 or col.value <= 0 or row.unit != col.unit:
         raise ProfileError(
             "pixel_size_row and pixel_size_column must be positive and share a unit"
         )
