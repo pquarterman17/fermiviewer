@@ -11,6 +11,7 @@ import {
   physAngle,
   polygonStats,
   tiltDist,
+  type PixelSpacing,
   type TiltSettings,
 } from "./geometry";
 import type { RoiStats } from "./api";
@@ -24,8 +25,12 @@ export interface MeasureStatsInput {
   measures: Measure[];
   /** Image dimensions in pixels (for de-normalising pts). */
   img: { w: number; h: number };
-  /** Calibrated pixel size (null → pixel units). */
+  /** Calibrated pixel size (null → pixel units) — the COLUMN scale. */
   pixelSize: number | null;
+  /** `ImageMeta.pixel_spacing` `[row, column]`; when present and usable
+   *  it, not `pixelSize`, calibrates lengths, areas and angles (ADR 0008).
+   *  Absent/null → `pixelSize` read as square pixels, as before. */
+  pixelSpacing?: PixelSpacing | null;
   /** Pixel unit label, e.g. "nm". */
   pixelUnit: string;
   /** Per-image tilt settings (#34).  null or angle===0 → no correction. */
@@ -144,6 +149,7 @@ function groupOf(values: number[], label: string, unit: string): GroupStats {
  */
 export function computeMeasureStats(input: MeasureStatsInput): MeasureStats {
   const { measures, img, pixelSize, pixelUnit, tilt, roiStats } = input;
+  const spacing = input.pixelSpacing ?? null;
 
   const distVals: number[] = [];
   const angleVals: number[] = [];
@@ -162,18 +168,18 @@ export function computeMeasureStats(input: MeasureStatsInput): MeasureStats {
     ) {
       let total = 0;
       for (let i = 1; i < px.length; i++) {
-        total += tiltDist(px[i - 1], px[i], pixelSize, tilt).value;
+        total += tiltDist(px[i - 1], px[i], pixelSize, tilt, spacing).value;
       }
       // only push if there are at least 2 points (segment exists)
       if (px.length >= 2) distVals.push(total);
     } else if (m.kind === "angle" && px.length === 3) {
-      angleVals.push(physAngle(px[1], px[0], px[2]));
+      angleVals.push(physAngle(px[1], px[0], px[2], spacing));
     } else if (m.kind === "roi" || m.kind === "ellipse") {
       const s = roiStats[m.id];
       if (s !== undefined) roiVals.push(s.mean);
     } else if (m.kind === "polygon" || m.kind === "lasso") {
       const areaPx2 = polygonStats(px).areaPx2;
-      areaVals.push(areaPxToPhysical(areaPx2, pixelSize) ?? areaPx2);
+      areaVals.push(areaPxToPhysical(areaPx2, pixelSize, spacing) ?? areaPx2);
     }
     // annotations (text/arrow/box/circle) carry no numeric value → skipped
   }

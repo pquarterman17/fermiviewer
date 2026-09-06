@@ -71,6 +71,22 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   uncalibrated.
 
 ### Fixed
+- **Client-side measurements use both pixel extents (ADR 0008, 5a-C).**
+  The frontend audit (`docs/frontend-pixel-size-audit.md`) found that
+  every measurement computed in the browser still multiplied by the scalar
+  `pixel_size`, the column extent: stage labels and Inspector rows for
+  distances, polylines, angles and areas, the measurement log, the
+  aggregate statistics, the Regions table and its CSV, the profile CSV's
+  `position_px` column, the box-profile CSV's row axis, the pixel
+  inspector's row coordinate, and the multi-map layer comparison's
+  compatibility check. On a 0.5 × 2.0 nm AFM scan a vertical 10 px line
+  read 20 nm (it is 5), an area was four times too large, and a 45° grid
+  diagonal was reported as 45°. `lib/geometry.ts` now takes
+  `pixel_spacing` `[row, column]` (`calibratedSpacing`, mirroring
+  `calc/calibration.calibrated_spacing`) and every caller passes
+  `ImageMeta.pixel_spacing`; square pixels are pinned bit-identical at
+  each site. The remaining display reads (scale bar, headline, status,
+  export labels) are column-scale by contract and unchanged.
 - **Diffraction ring overlays use the calibrated reciprocal geometry.**
   Matched-phase and typed-d overlays were always SVG circles even after
   indexing learned both pixel extents, so the visual QC could miss equivalent

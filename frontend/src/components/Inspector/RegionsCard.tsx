@@ -136,7 +136,7 @@ export default function RegionsCard() {
   const rows = useMemo(
     () => (meta ? regionRows(measures, meta) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [measures, meta?.shape, meta?.pixel_size, meta?.pixel_unit],
+    [measures, meta?.shape, meta?.pixel_size, meta?.pixel_spacing, meta?.pixel_unit],
   );
 
   if (!activeId || !meta || meta.kind === "spectrum") return null;

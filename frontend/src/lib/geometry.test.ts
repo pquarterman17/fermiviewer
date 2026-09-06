@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   areaPxToPhysical,
   boxProfileLine,
+  calibratedSpacing,
   fitView,
   formatScaleLength,
   niceScaleLength,
@@ -315,6 +316,99 @@ describe("areaPxToPhysical (#12, pixel_size² area conversion)", () => {
 
   it("zero-area input converts to zero, not null", () => {
     expect(areaPxToPhysical(0, 2)).toBe(0);
+  });
+});
+
+// ADR 0008 / roadmap 5a-C: the geometry helpers take `pixel_spacing`
+// ([row, column]) and only fall back to the scalar column scale as
+// square pixels. AFM fixture throughout: 0.5 nm rows × 2.0 nm columns.
+describe("per-axis calibration (ADR 0008, 5a-C)", () => {
+  const AFM: [number, number] = [0.5, 2.0];
+
+  describe("calibratedSpacing", () => {
+    it("a usable pair wins over the scalar", () => {
+      expect(calibratedSpacing(2, AFM)).toEqual([0.5, 2]);
+    });
+    it("no pair → the scalar read as square pixels", () => {
+      expect(calibratedSpacing(2)).toEqual([2, 2]);
+      expect(calibratedSpacing(2, null)).toEqual([2, 2]);
+    });
+    it("an unusable pair (zero, negative, NaN) falls back to the scalar", () => {
+      expect(calibratedSpacing(2, [0, 2])).toEqual([2, 2]);
+      expect(calibratedSpacing(2, [-1, 2])).toEqual([2, 2]);
+      expect(calibratedSpacing(2, [NaN, 2])).toEqual([2, 2]);
+    });
+    it("uncalibrated stays null", () => {
+      expect(calibratedSpacing(null)).toBeNull();
+      expect(calibratedSpacing(null, [0, 0])).toBeNull();
+    });
+  });
+
+  describe("physDist", () => {
+    it("scales each component by its own axis before the hypotenuse", () => {
+      // 30 columns × 2 nm = 60; 40 rows × 0.5 nm = 20 → √(3600+400)
+      expect(physDist(P(0, 0), P(30, 40), 2, AFM).value).toBeCloseTo(
+        Math.sqrt(4000),
+        9,
+      );
+      // the column-scale-only answer would be 100
+      expect(physDist(P(0, 0), P(30, 40), 2).value).toBe(100);
+    });
+    it("axis-aligned lines take exactly one extent", () => {
+      expect(physDist(P(0, 0), P(10, 0), 2, AFM).value).toBeCloseTo(20, 12);
+      expect(physDist(P(0, 0), P(0, 10), 2, AFM).value).toBeCloseTo(5, 12);
+    });
+    it("an equal pair is bit-identical to the scalar path", () => {
+      for (const [dx, dy] of [[3, 4], [7, 11], [0.3, 0.7]]) {
+        expect(physDist(P(0, 0), P(dx, dy), 0.37, [0.37, 0.37])).toEqual(
+          physDist(P(0, 0), P(dx, dy), 0.37),
+        );
+      }
+    });
+  });
+
+  describe("tiltDist", () => {
+    it("tilt stretch happens in pixels, calibration per axis afterwards", () => {
+      const t: TiltSettings = { angle: 30, axis: "Y", geometry: "cross-section" };
+      // dy 10 → 20 px after 1/sin30°, × 0.5 nm rows = 10 nm
+      expect(tiltDist(P(0, 0), P(0, 10), 2, t, AFM).value).toBeCloseTo(10, 9);
+      // the square-pixel reading would be 20 px × 2 nm = 40
+      expect(tiltDist(P(0, 0), P(0, 10), 2, t).value).toBeCloseTo(40, 9);
+    });
+    it("zero tilt delegates to physDist with the same spacing", () => {
+      expect(tiltDist(P(0, 0), P(30, 40), 2, null, AFM)).toEqual(
+        physDist(P(0, 0), P(30, 40), 2, AFM),
+      );
+    });
+  });
+
+  describe("areaPxToPhysical", () => {
+    it("is row extent × column extent, not the column scale squared", () => {
+      expect(areaPxToPhysical(100, 2, AFM)).toBeCloseTo(100, 12);
+      expect(areaPxToPhysical(100, 2)).toBe(400);
+    });
+    it("an equal pair is bit-identical to the scalar path", () => {
+      expect(areaPxToPhysical(123.456, 0.37, [0.37, 0.37])).toBe(
+        areaPxToPhysical(123.456, 0.37),
+      );
+    });
+  });
+
+  describe("physAngle", () => {
+    it("a 45° grid diagonal on 1:3 pixels is a 71.6° physical line", () => {
+      // rows 3× taller than columns: (1, 1) px = (1 col × 1, 1 row × 3)
+      const deg = physAngle(P(0, 0), P(1, 0), P(1, 1), [3, 1]);
+      expect(deg).toBeCloseTo((Math.atan2(3, 1) * 180) / Math.PI, 9);
+      expect(physAngle(P(0, 0), P(1, 0), P(1, 1))).toBeCloseTo(45, 9);
+    });
+    it("axis-aligned rays are unchanged: 90° stays 90°", () => {
+      expect(physAngle(P(0, 0), P(1, 0), P(0, 1), AFM)).toBeCloseTo(90, 10);
+    });
+    it("an equal pair leaves the angle bit-identical", () => {
+      expect(physAngle(P(0, 0), P(3, 1), P(-2, 5), [0.7, 0.7])).toBe(
+        physAngle(P(0, 0), P(3, 1), P(-2, 5)),
+      );
+    });
   });
 });
 

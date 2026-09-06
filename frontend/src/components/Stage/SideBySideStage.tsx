@@ -408,6 +408,7 @@ function SbsPaneView({
           <MeasureOverlay
             imageId={id}
             pixelSize={meta?.pixel_size ?? null}
+            pixelSpacing={meta?.pixel_spacing ?? null}
             pixelUnit={meta?.pixel_unit ?? "px"}
             view={effView}
             img={img}

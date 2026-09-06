@@ -100,3 +100,98 @@ describe("csvBaseName", () => {
     expect(csvBaseName(undefined)).toBe("image");
   });
 });
+
+// ADR 0008 / 5a-C: an anisotropic image (0.5 nm rows × 2 nm columns) must
+// not divide a calibrated path length by the column scale to recover
+// pixels, and a box's y axis must take the row extent.
+describe("anisotropic pixel_spacing", () => {
+  const AFM: [number, number] = [0.5, 2];
+
+  it("profileToCsv recovers position_px from the line geometry, per axis", () => {
+    // a vertical 10-px line is 5 nm long; dist samples at 0, 2.5, 5 nm
+    const csv = profileToCsv(
+      { dist: [0, 2.5, 5], intensity: [1, 2, 3], length: 5, unit: "nm", reduce: "mean" },
+      {
+        imageName: "afm",
+        pixelSize: 2,
+        pixelSpacing: AFM,
+        pixelUnit: "nm",
+        kind: "profile",
+        endpointsPx: [
+          { x: 4, y: 0 },
+          { x: 4, y: 10 },
+        ],
+      },
+    );
+    const lines = csv.trimEnd().split("\n");
+    expect(csv).toContain("# pixel_size: 2 nm/px");
+    expect(csv).toContain("# pixel_spacing: rows 0.5 nm/px, columns 2 nm/px");
+    expect(lines).toContain("position_px,position_nm,intensity");
+    // dist / pixel_size would have said 1.25 px for the 2.5 nm sample
+    expect(lines).toContain("5,2.5,2");
+    expect(lines).toContain("10,5,3");
+  });
+
+  it("profileToCsv maps a polyline segment by segment", () => {
+    // 10 columns (20 nm) then 10 rows (5 nm): total 25 nm over 20 px
+    const csv = profileToCsv(
+      { dist: [0, 20, 22.5, 25], intensity: [0, 0, 0, 0], length: 25, unit: "nm", reduce: "mean" },
+      {
+        imageName: "afm",
+        pixelSize: 2,
+        pixelSpacing: AFM,
+        pixelUnit: "nm",
+        kind: "polyline",
+        endpointsPx: [
+          { x: 0, y: 0 },
+          { x: 10, y: 0 },
+          { x: 10, y: 10 },
+        ],
+      },
+    );
+    const lines = csv.trimEnd().split("\n");
+    expect(lines).toContain("10,20,0");
+    expect(lines).toContain("15,22.5,0");
+    expect(lines).toContain("20,25,0");
+  });
+
+  it("profileToCsv drops the px column rather than guess when the geometry is unknown", () => {
+    const csv = profileToCsv(
+      { dist: [0, 2.5], intensity: [1, 2], length: 2.5, unit: "nm", reduce: "mean" },
+      { imageName: "afm", pixelSize: 2, pixelSpacing: AFM, pixelUnit: "nm", kind: "profile" },
+    );
+    expect(csv).toContain("position_nm,intensity");
+    expect(csv).not.toContain("position_px");
+  });
+
+  it("a square pair leaves the CSV byte-identical", () => {
+    const ctx = {
+      imageName: "foo.dm4",
+      pixelSize: 0.5,
+      pixelUnit: "nm",
+      kind: "profile",
+      endpointsPx: [
+        { x: 12, y: 40 },
+        { x: 220, y: 40 },
+      ],
+    };
+    expect(profileToCsv(profile, { ...ctx, pixelSpacing: [0.5, 0.5] })).toBe(
+      profileToCsv(profile, ctx),
+    );
+    const bctx = { imageName: "foo.dm4", pixelUnit: "nm", kind: "roi" };
+    expect(boxProfileToCsv(box, { ...bctx, pixelSpacing: [0.5, 0.5] })).toBe(
+      boxProfileToCsv(box, bctx),
+    );
+  });
+
+  it("boxProfileToCsv calibrates x with the column extent and y with the row extent", () => {
+    const csv = boxProfileToCsv(
+      { ...box, pixel_size: 2 },
+      { imageName: "afm", pixelUnit: "nm", pixelSpacing: AFM, kind: "roi" },
+    );
+    const lines = csv.trimEnd().split("\n");
+    expect(csv).toContain("# pixel_spacing: rows 0.5 nm/px, columns 2 nm/px");
+    // x col 1 → 2 nm; y row 1 → 0.5 nm (was 2 nm with the column scale)
+    expect(lines).toContain("1,2,110,1,0.5,60");
+  });
+});

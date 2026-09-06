@@ -946,8 +946,11 @@ EELS/dose/spatial/reciprocal calibration using the same persistence rules.
 #### 5a. Calibration profiles
 
 - [ ] Named microscope, detector, camera, and acquisition profiles.
-- [ ] Per-axis spatial/scan/energy/reciprocal calibration; do not assume square
-      pixels in the project/UI model.
+- [x] Per-axis spatial/scan/energy/reciprocal calibration; do not assume square
+      pixels in the project/UI model. *(Spatial and reciprocal shipped
+      2026-09-05/06 as ADR 0008's 5a-A/B/C; the energy axis was already a
+      per-dataset `AxisCal` with its own editor. Named profiles wrapping the
+      record are the first box.)*
 - [ ] EDS detector window/efficiency, solid angle, takeoff angle, live time,
       dead time, probe current, dwell time, and beam energy.
 - [ ] Calibration validity range, source, date, operator note, uncertainty, and
@@ -1021,6 +1024,18 @@ EELS/dose/spatial/reciprocal calibration using the same persistence rules.
 > every square-pixel path unchanged. 5a-B (calibration card per-axis mode,
 > Codex) and 5a-C (frontend `pixel_size` read audit) remain; the box stays
 > unchecked until 5a-B lands.
+
+> **2026-09-06 — 5a-C frontend audit shipped; the box is checked.**
+> `docs/frontend-pixel-size-audit.md` classifies every client read of
+> `pixel_size`. The ADR expected zero geometry findings; there were eleven.
+> Everything the browser measured itself — stage labels, Inspector rows,
+> the measurement log, aggregate stats, the Regions table, both profile
+> CSVs, the pixel inspector, the multi-map compatibility check — still
+> multiplied by the column scale. `lib/geometry.ts` takes `pixel_spacing`
+> and every caller passes `ImageMeta.pixel_spacing`; square pixels are
+> pinned bit-identical. Left for later, named in the audit: shape-fit radii
+> (pixel-space fit on the backend), the stretched rendering of anisotropic
+> images on the stage, and `uniform_pixel_cal` comparing `pixel_size` only.
 
 #### 5b. Standards and quantification QC
 

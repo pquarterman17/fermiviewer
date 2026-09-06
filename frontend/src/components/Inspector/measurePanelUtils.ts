@@ -51,8 +51,16 @@ export const NO_MEASURES: Measure[] = [];
 
 type MetaLike = {
   pixel_size: number | null;
+  /** `[row, column]` extents (ADR 0008); optional so older callers and
+   *  test fixtures that only carry `pixel_size` keep working unchanged */
+  pixel_spacing?: readonly [number, number] | null;
   pixel_unit: string;
 } | null;
+
+/** `pixel_spacing` when the meta carries one, else null (→ square pixels). */
+function spacingOf(meta: MetaLike): readonly [number, number] | null {
+  return meta?.pixel_spacing ?? null;
+}
 
 /** Distance values (calibrated when possible) from line-like measures.
  *  Applies the per-image tilt correction (#34) when active so stats
@@ -64,13 +72,14 @@ export function distanceValues(
   tilt: TiltSettings | null,
 ): number[] {
   const out: number[] = [];
+  const sp = spacingOf(meta);
   for (const m of measures) {
     if (m.kind !== "distance" && m.kind !== "profile" && m.kind !== "polyline")
       continue;
     const px = m.pts.map((p) => ({ x: p.x * img.w, y: p.y * img.h }));
     let total = 0;
     for (let i = 1; i < px.length; i++) {
-      total += tiltDist(px[i - 1], px[i], meta?.pixel_size ?? null, tilt).value;
+      total += tiltDist(px[i - 1], px[i], meta?.pixel_size ?? null, tilt, sp).value;
     }
     out.push(total);
   }
@@ -110,11 +119,12 @@ export function measureRowValue(
 ): string {
   const px = m.pts.map((p) => ({ x: p.x * img.w, y: p.y * img.h }));
   const unit = meta?.pixel_unit ?? "px";
+  const sp = spacingOf(meta);
   if (m.kind === "angle" && px.length === 3) {
-    return `${physAngle(px[1], px[0], px[2]).toFixed(1)}°`;
+    return `${physAngle(px[1], px[0], px[2], sp).toFixed(1)}°`;
   }
   if ((m.kind === "distance" || m.kind === "profile") && px.length === 2) {
-    const d = tiltDist(px[0], px[1], meta?.pixel_size ?? null, tilt);
+    const d = tiltDist(px[0], px[1], meta?.pixel_size ?? null, tilt, sp);
     const theta = tilt != null && tilt.angle !== 0 ? " θ" : "";
     if (d.unit !== "cal") return `${Number(d.value.toPrecision(4))} px${theta}`;
     const disp = m.displayUnit && displayLength(d.value, unit, m.displayUnit);
@@ -125,7 +135,7 @@ export function measureRowValue(
   if (m.kind === "polyline" && px.length >= 2) {
     let total = 0;
     for (let i = 1; i < px.length; i++) {
-      total += tiltDist(px[i - 1], px[i], meta?.pixel_size ?? null, tilt).value;
+      total += tiltDist(px[i - 1], px[i], meta?.pixel_size ?? null, tilt, sp).value;
     }
     const theta = tilt != null && tilt.angle !== 0 ? " θ" : "";
     if (meta?.pixel_size == null) return `${Number(total.toPrecision(4))} px${theta}`;
@@ -140,7 +150,7 @@ export function measureRowValue(
   }
   if (m.kind === "polygon" || m.kind === "lasso") {
     const areaPx2 = polygonStatsNormalizedWithHoles(m.pts, m.holes ?? [], img).areaPx2;
-    const areaPhys = areaPxToPhysical(areaPx2, meta?.pixel_size ?? null);
+    const areaPhys = areaPxToPhysical(areaPx2, meta?.pixel_size ?? null, sp);
     if (areaPhys == null) return `${Number(areaPx2.toPrecision(4))} px²`;
     const disp = m.displayUnit && displayArea(areaPhys, unit, m.displayUnit);
     return disp
@@ -169,12 +179,13 @@ export function showLog(
   // #34: with tilt active the log/CSV carries BOTH columns — value is
   // the corrected length (matches labels), raw is the uncorrected one
   const tiltOn = tilt != null && tilt.angle !== 0;
+  const sp = spacingOf(meta);
   const rows = measures.map((m, i) => {
     const px = m.pts.map((p) => ({ x: p.x * img.w, y: p.y * img.h }));
     let value = "";
     let raw: string | null = tiltOn ? "" : null;
     if (m.kind === "angle" && px.length === 3) {
-      value = `${physAngle(px[1], px[0], px[2]).toFixed(2)}°`;
+      value = `${physAngle(px[1], px[0], px[2], sp).toFixed(2)}°`;
     } else if (
       m.kind === "distance" ||
       m.kind === "profile" ||
@@ -183,8 +194,8 @@ export function showLog(
       let d = 0;
       let dRaw = 0;
       for (let k = 1; k < px.length; k++) {
-        d += tiltDist(px[k - 1], px[k], meta?.pixel_size ?? null, tilt).value;
-        dRaw += physDist(px[k - 1], px[k], meta?.pixel_size ?? null).value;
+        d += tiltDist(px[k - 1], px[k], meta?.pixel_size ?? null, tilt, sp).value;
+        dRaw += physDist(px[k - 1], px[k], meta?.pixel_size ?? null, sp).value;
       }
       // the stage label and this CSV row must never disagree, so the same
       // per-measure override converts both — the raw (uncorrected, tilt-
@@ -208,7 +219,7 @@ export function showLog(
       // (its own doc guarantees this), so this never changes the
       // holes-free case.
       const areaPx2 = polygonStatsNormalizedWithHoles(m.pts, m.holes ?? [], img).areaPx2;
-      const areaPhys = areaPxToPhysical(areaPx2, meta?.pixel_size ?? null);
+      const areaPhys = areaPxToPhysical(areaPx2, meta?.pixel_size ?? null, sp);
       if (areaPhys == null) {
         value = `${Number(areaPx2.toPrecision(6))} px²`;
       } else {

@@ -276,3 +276,60 @@ describe("meanSd", () => {
     expect(n).toBe(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// ADR 0008 / 5a-C: pixel_spacing calibrates the groups per axis; the
+// scalar pixelSize alone is read as square pixels, exactly as before.
+// ---------------------------------------------------------------------------
+
+describe("computeMeasureStats — anisotropic pixel_spacing", () => {
+  // 0.5 nm rows × 2.0 nm columns (AFM fixture). Vertical 10 px line, a
+  // 10×10 px square region and the right angle above.
+  const AFM: [number, number] = [0.5, 2.0];
+  const vertical: Measure = {
+    id: "v",
+    kind: "distance",
+    pts: [
+      { x: 0.5, y: 0.1 },
+      { x: 0.5, y: 0.2 },
+    ],
+  };
+  const square: Measure = {
+    id: "sq",
+    kind: "polygon",
+    pts: [
+      { x: 0.1, y: 0.1 },
+      { x: 0.2, y: 0.1 },
+      { x: 0.2, y: 0.2 },
+      { x: 0.1, y: 0.2 },
+    ],
+  };
+  const input = base({
+    measures: [vertical, square, angleMeasure("a")],
+    pixelSize: 2,
+    pixelSpacing: AFM,
+    pixelUnit: "nm",
+  });
+
+  it("a vertical line takes the ROW extent", () => {
+    const g = computeMeasureStats(input).groups.find((x) => x.label === "Distance")!;
+    expect(g.mean).toBeCloseTo(5, 9); // 10 px × 0.5 nm, not × 2 nm
+    expect(g.unit).toBe("nm");
+  });
+
+  it("an area is rows × columns", () => {
+    const g = computeMeasureStats(input).groups.find((x) => x.label === "Area")!;
+    expect(g.mean).toBeCloseTo(100, 9); // 100 px² × 0.5 × 2, not × 4
+  });
+
+  it("an axis-aligned right angle is still 90°", () => {
+    const g = computeMeasureStats(input).groups.find((x) => x.label === "Angle")!;
+    expect(g.mean).toBeCloseTo(90, 9);
+  });
+
+  it("an equal pair reproduces the scalar result exactly", () => {
+    const scalar = computeMeasureStats(base({ ...input, pixelSpacing: null }));
+    const pair = computeMeasureStats(base({ ...input, pixelSpacing: [2, 2] }));
+    expect(pair).toEqual(scalar);
+  });
+});
