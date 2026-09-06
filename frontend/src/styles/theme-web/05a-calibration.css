@@ -1,0 +1,44 @@
+/* Per-axis calibration controls and the compact anisotropy readout. */
+
+.fvd-calibration-extents {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 6px;
+  margin: 4px 0 8px;
+  padding: 7px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border-soft));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  color: var(--text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fvd-calibration-extents span:last-child {
+  color: var(--text-faint);
+}
+
+.fvd-calibration-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 6px;
+  align-items: end;
+  margin: 8px 0;
+}
+
+.fvd-calibration-pair label {
+  display: grid;
+  gap: 3px;
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.fvd-calibration-pair input {
+  min-width: 0;
+  width: 100%;
+}
+
+.fvd-calibration-pair .fvd-btn {
+  grid-column: 1 / -1;
+  justify-self: start;
+}

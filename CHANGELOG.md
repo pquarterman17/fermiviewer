@@ -16,6 +16,15 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Per-axis calibration is visible and editable (ADR 0008, 5a-B).** The
+  Inspector keeps the familiar square-pixel workflow while adding a per-axis
+  mode with independent row and column extents. Anisotropic images always show
+  both extents; horizontal calibration lines update columns, vertical lines
+  update rows, and diagonal lines are refused with an explanation instead of
+  producing a plausible wrong scale. The Calibration Manager also identifies
+  stored anisotropic entries rather than showing only their column scale.
+  Parser spellings such as `um` normalize to `µm`, and changing the selector
+  converts the drafts so it never silently reinterprets an existing extent.
 - **Calibration edits are per axis (ADR 0008, 5a-A).** Every path that
   wrote a spatial calibration — `/calibration/apply` with a typed value or
   a stored key, auto-apply on import — built one `AxisCal` and wrote it to
