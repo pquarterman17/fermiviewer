@@ -514,6 +514,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
           <MeasureOverlay
             imageId={activeId}
             pixelSize={meta?.pixel_size ?? null}
+            pixelSpacing={meta?.pixel_spacing ?? null}
             pixelUnit={meta?.pixel_unit ?? "px"}
             view={view}
             img={imgSize}

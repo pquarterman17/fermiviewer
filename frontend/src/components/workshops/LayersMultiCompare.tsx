@@ -45,7 +45,21 @@ export function mapCompatibility(
   ) {
     return `calibration ${candidate.pixel_size} ${candidate.pixel_unit}/px does not match`;
   }
+  // pixel_size is the column scale only (ADR 0008): two maps can agree on
+  // it and still differ along rows, which a y-axis layer stack would then
+  // measure in two different units
+  const refRow = rowScale(reference);
+  const candRow = rowScale(candidate);
+  if (refCal && Math.abs(refRow - candRow) > Math.abs(refRow) * 1e-6) {
+    return `row calibration ${candRow} ${candidate.pixel_unit}/px does not match ${refRow}`;
+  }
   return null;
+}
+
+/** Row extent of a calibrated map; square pixels report `pixel_size`. */
+function rowScale(m: ImageMeta): number {
+  const sp = m.pixel_spacing;
+  return sp && Number.isFinite(sp[0]) && sp[0] > 0 ? sp[0] : (m.pixel_size ?? NaN);
 }
 
 export function multiMapTable(result: LayersMultiResult): {

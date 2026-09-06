@@ -152,6 +152,16 @@ describe("LayersMultiCompare", () => {
     ).toMatch(/shape/);
   });
 
+  it("rejects a map whose ROW calibration differs behind a matching pixel_size", () => {
+    // pixel_size is the column scale only (ADR 0008): 0.5 nm columns on
+    // both, but 0.25 nm rows on the candidate → a y-axis stack would mix units
+    const tallRows = { ...image("tall"), pixel_spacing: [0.25, 0.5] as [number, number] };
+    expect(mapCompatibility(images.reference, tallRows)).toMatch(/row calibration/);
+    // both anisotropic the same way is fine
+    const ref = { ...image("ref"), pixel_spacing: [0.25, 0.5] as [number, number] };
+    expect(mapCompatibility(ref, tallRows)).toBeNull();
+  });
+
   it("keeps every interface and layer value in the export matrix", () => {
     expect(multiMapTable(result)).toEqual({
       columns: [

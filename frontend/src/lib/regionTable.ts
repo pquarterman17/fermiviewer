@@ -48,6 +48,10 @@ export interface RegionTableImage {
   /** [h, w, ...] — same convention as ImageMeta.shape. */
   shape: number[];
   pixel_size: number | null;
+  /** `[row, column]` extents (ADR 0008). When present and usable it, not
+   *  `pixel_size²`, converts px² to physical area. Optional so callers and
+   *  fixtures that only know `pixel_size` are unchanged. */
+  pixel_spacing?: readonly [number, number] | null;
   pixel_unit: string;
 }
 
@@ -110,7 +114,11 @@ export function regionRows(
       label: m.text?.trim() || `Region ${n}`,
       kind: m.kind,
       areaPx2: stats.areaPx2,
-      areaPhysical: areaPxToPhysical(stats.areaPx2, image.pixel_size),
+      areaPhysical: areaPxToPhysical(
+        stats.areaPx2,
+        image.pixel_size,
+        image.pixel_spacing ?? null,
+      ),
       perimeterPx: stats.perimeterPx,
       centroid: stats.centroid,
       holeCount: m.holes?.length ?? 0,

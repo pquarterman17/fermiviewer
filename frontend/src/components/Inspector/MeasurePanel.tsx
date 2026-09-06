@@ -67,13 +67,22 @@ export default function MeasurePanel() {
             measures,
             img: { w: meta.shape[1] ?? 1, h: meta.shape[0] ?? 1 },
             pixelSize: meta.pixel_size ?? null,
+            pixelSpacing: meta.pixel_spacing ?? null,
             pixelUnit: meta.pixel_unit ?? "px",
             tilt,
             roiStats,
           })
         : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [measures, roiStats, tilt, meta?.shape, meta?.pixel_size, meta?.pixel_unit],
+    [
+      measures,
+      roiStats,
+      tilt,
+      meta?.shape,
+      meta?.pixel_size,
+      meta?.pixel_spacing,
+      meta?.pixel_unit,
+    ],
   );
 
   if (!activeId || !meta) return null;
@@ -99,6 +108,7 @@ export default function MeasurePanel() {
         const csv = boxProfileToCsv(b, {
           imageName: meta.name,
           pixelUnit: meta.pixel_unit,
+          pixelSpacing: meta.pixel_spacing ?? null,
           kind: m.kind,
         });
         downloadCsv(`${csvBaseName(meta.name)}_box-profile.csv`, csv);

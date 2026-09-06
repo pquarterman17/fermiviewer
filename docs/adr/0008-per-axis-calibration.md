@@ -177,3 +177,13 @@ data was anisotropic in the first place.
   `pixel_spacing`); the measure overlay labels already use both extents
   since v0.4.0, so the expected finding is zero, but the list is the
   deliverable.
+  **Shipped 2026-09-06** (`docs/frontend-pixel-size-audit.md`). The
+  expectation was wrong: the v0.4.0 fixes were backend-only, and the
+  browser's own measurement stack (`lib/geometry.ts` and its callers:
+  stage labels, Inspector rows, log, stats, Regions table, profile CSVs,
+  pixel inspector, multi-map compatibility) still used the column scale.
+  All now take `pixel_spacing` with the scalar as the square-pixel
+  fallback, bit-identical on equal extents. Three items are recorded in
+  the audit as out of scope: shape-fit radii (pixel-space fit), the
+  stage drawing anisotropic images with square screen pixels, and the
+  backend `uniform_pixel_cal` check.

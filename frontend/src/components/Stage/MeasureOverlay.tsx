@@ -25,6 +25,8 @@ const NO_MEASURES: Measure[] = [];
 interface Props {
   imageId: string;
   pixelSize: number | null;
+  /** `ImageMeta.pixel_spacing` — calibrates labels per axis (ADR 0008) */
+  pixelSpacing?: readonly [number, number] | null;
   pixelUnit: string;
   view: View;
   img: Size;
@@ -36,6 +38,7 @@ interface Props {
 export default function MeasureOverlay({
   imageId,
   pixelSize,
+  pixelSpacing = null,
   pixelUnit,
   view,
   img,
@@ -413,7 +416,14 @@ export default function MeasureOverlay({
                   }
             }
           >
-            {measureLabel(m, { img, pixelSize, pixelUnit, tilt, roiStats })}
+            {measureLabel(m, {
+              img,
+              pixelSize,
+              pixelSpacing,
+              pixelUnit,
+              tilt,
+              roiStats,
+            })}
           </text>
         )}
         {!isPending && (

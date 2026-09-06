@@ -137,16 +137,51 @@ export function viewForRect(
   };
 }
 
-/** Calibrated distance between two image-pixel points. */
+/** Per-axis extent of one pixel as `[row, column]` — `ImageMeta.pixel_spacing`.
+ *  `pixel_size` is the COLUMN extent alone (ADR 0008). */
+export type PixelSpacing = readonly [number, number];
+
+/** The `[row, column]` extents a pixel-space quantity is calibrated with,
+ *  or null for pixels. Mirrors calc/calibration.calibrated_spacing: a
+ *  usable pair (both finite and > 0) wins; otherwise a non-null
+ *  `pixelSize` is the column scale read as isotropic — exactly what every
+ *  caller multiplied by before the pair existed, so square-pixel images
+ *  keep their numbers bit for bit. */
+export function calibratedSpacing(
+  pixelSize: number | null,
+  spacing?: PixelSpacing | null,
+): [number, number] | null {
+  if (spacing) {
+    const [r, c] = spacing;
+    if (Number.isFinite(r) && Number.isFinite(c) && r > 0 && c > 0) return [r, c];
+  }
+  return pixelSize != null ? [pixelSize, pixelSize] : null;
+}
+
+/** Length of a (dx columns, dy rows) pixel displacement in physical units.
+ *  Each component takes its OWN axis extent before the Pythagorean sum:
+ *  `hypot(dx, dy) * s` is the length of the wrong triangle whenever the two
+ *  extents differ (a 30-column, 40-row line on 3-wide, 4-tall pixels is
+ *  183.6, not 150). Equal extents keep the single product, bit for bit. */
+function physLength(dx: number, dy: number, sp: [number, number]): number {
+  const [sRow, sCol] = sp;
+  return sRow === sCol
+    ? Math.hypot(dx, dy) * sCol
+    : Math.hypot(dx * sCol, dy * sRow);
+}
+
+/** Calibrated distance between two image-pixel points. `spacing`
+ *  (`ImageMeta.pixel_spacing`) wins over the scalar column scale. */
 export function physDist(
   a: { x: number; y: number },
   b: { x: number; y: number },
   pixelSize: number | null,
+  spacing?: PixelSpacing | null,
 ): { value: number; unit: "px" | "cal" } {
-  const d = Math.hypot(b.x - a.x, b.y - a.y);
-  return pixelSize != null
-    ? { value: d * pixelSize, unit: "cal" }
-    : { value: d, unit: "px" };
+  const sp = calibratedSpacing(pixelSize, spacing);
+  return sp
+    ? { value: physLength(b.x - a.x, b.y - a.y, sp), unit: "cal" }
+    : { value: Math.hypot(b.x - a.x, b.y - a.y), unit: "px" };
 }
 
 export interface PolygonStats {
@@ -273,15 +308,18 @@ export function polygonStatsNormalizedWithHoles(
   return polygonStatsWithHoles(denorm(outerPts), holePtsList.map(denorm));
 }
 
-/** px² → physical area via pixel_size² — ASSUMES SQUARE PIXELS, the
- *  project's pixel_cal convention (one scalar pixel_size for both axes;
- *  see calc/particles.py RegionStats.area_calibrated). null pixelSize
- *  (uncalibrated) → null, mirroring physDist's px/cal split. */
+/** px² → physical area. An area is the ROW extent times the COLUMN extent
+ *  (`DataStruct.pixel_area`), not one length squared: on 0.5 × 2.0 nm AFM
+ *  pixels the squared column scale is four times too large. With only the
+ *  scalar `pixelSize` it is `pixel_size²`, as before. null (uncalibrated)
+ *  → null, mirroring physDist's px/cal split. */
 export function areaPxToPhysical(
   areaPx2: number,
   pixelSize: number | null,
+  spacing?: PixelSpacing | null,
 ): number | null {
-  return pixelSize != null ? areaPx2 * pixelSize * pixelSize : null;
+  const sp = calibratedSpacing(pixelSize, spacing);
+  return sp ? areaPx2 * sp[0] * sp[1] : null;
 }
 
 /** Per-image stage-tilt correction settings (#34). angle 0 = off. */
@@ -303,28 +341,40 @@ export function tiltDist(
   b: { x: number; y: number },
   pixelSize: number | null,
   tilt: TiltSettings | null,
+  spacing?: PixelSpacing | null,
 ): { value: number; unit: "px" | "cal" } {
-  if (!tilt || tilt.angle === 0) return physDist(a, b, pixelSize);
+  if (!tilt || tilt.angle === 0) return physDist(a, b, pixelSize, spacing);
   let dx = b.x - a.x;
   let dy = b.y - a.y;
   const rad = (tilt.angle * Math.PI) / 180;
   const f = tilt.geometry === "surface" ? 1 / Math.cos(rad) : 1 / Math.sin(rad);
   if (tilt.axis === "X") dx *= f;
   else dy *= f;
-  const d = Math.hypot(dx, dy);
-  return pixelSize != null
-    ? { value: d * pixelSize, unit: "cal" }
-    : { value: d, unit: "px" };
+  // the tilt stretch is a pixel-space correction; the calibration is
+  // applied per axis afterwards, exactly as calc/profile_stats does
+  const sp = calibratedSpacing(pixelSize, spacing);
+  return sp
+    ? { value: physLength(dx, dy, sp), unit: "cal" }
+    : { value: Math.hypot(dx, dy), unit: "px" };
 }
 
-/** Angle at vertex v between rays v→a and v→b, in degrees [0, 180]. */
+/** Angle at vertex v between rays v→a and v→b, in degrees [0, 180].
+ *  An angle is not spared by being dimensionless: on anisotropic pixels
+ *  the pixel-space angle is the angle of the sampling grid, not of the
+ *  object (a 45° line on 1:3 pixels really rises at 71.6°), so with a
+ *  usable `spacing` each component is scaled by its own extent first —
+ *  calc/calibration.physical_angle_rad. Equal extents leave the ratio
+ *  untouched, so square-pixel angles do not move. */
 export function physAngle(
   v: { x: number; y: number },
   a: { x: number; y: number },
   b: { x: number; y: number },
+  spacing?: PixelSpacing | null,
 ): number {
-  const a1 = Math.atan2(a.y - v.y, a.x - v.x);
-  const a2 = Math.atan2(b.y - v.y, b.x - v.x);
+  const sp = calibratedSpacing(null, spacing);
+  const [sRow, sCol] = sp && sp[0] !== sp[1] ? sp : [1, 1];
+  const a1 = Math.atan2((a.y - v.y) * sRow, (a.x - v.x) * sCol);
+  const a2 = Math.atan2((b.y - v.y) * sRow, (b.x - v.x) * sCol);
   let deg = Math.abs(((a1 - a2) * 180) / Math.PI);
   if (deg > 180) deg = 360 - deg;
   return deg;

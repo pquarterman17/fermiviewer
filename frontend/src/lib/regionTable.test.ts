@@ -233,3 +233,24 @@ describe("regionCsvRows", () => {
     expect(areaPhysical).toBeCloseTo(20000, 6);
   });
 });
+
+describe("regionRows — per-axis calibration (ADR 0008)", () => {
+  const AFM = {
+    shape: [50, 100],
+    pixel_size: 2,
+    pixel_spacing: [0.5, 2] as const,
+    pixel_unit: "nm",
+  };
+
+  it("physical area is rows × columns, not pixel_size²", () => {
+    const [row] = regionRows([SQUARE], AFM);
+    expect(row.areaPx2).toBeCloseTo(5000, 6);
+    expect(row.areaPhysical).toBeCloseTo(5000, 6); // × 0.5 × 2
+    expect(regionPhysicalAreas([SQUARE], AFM)[0]).toBeCloseTo(5000, 6);
+  });
+
+  it("a square pair is identical to the pixel_size-only image", () => {
+    const square = { ...IMG_CALIBRATED, pixel_spacing: [2, 2] as const };
+    expect(regionRows([SQUARE], square)).toEqual(regionRows([SQUARE], IMG_CALIBRATED));
+  });
+});

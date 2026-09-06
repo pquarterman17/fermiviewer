@@ -50,7 +50,8 @@ export default function PixelInspector() {
         ({cx}, {cy}) = {cell(centre)}
         {meta.pixel_size != null &&
           ` · ${Number((cx * meta.pixel_size).toPrecision(4))}, ` +
-            `${Number((cy * meta.pixel_size).toPrecision(4))} ${meta.pixel_unit}`}
+            // rows take the ROW extent (ADR 0008); square pixels → pixel_size
+            `${Number((cy * (meta.pixel_spacing?.[0] ?? meta.pixel_size)).toPrecision(4))} ${meta.pixel_unit}`}
       </div>
       <table className="fvd-pixel-grid">
         <tbody>

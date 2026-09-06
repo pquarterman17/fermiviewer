@@ -10,6 +10,7 @@ import {
   polygonStats,
   polygonStatsWithHoles,
   tiltDist,
+  type PixelSpacing,
   type Size,
   type TiltSettings,
 } from "../../lib/geometry";
@@ -104,7 +105,11 @@ export function toImagePx(m: Measure, img: Size): { x: number; y: number }[] {
 
 export interface MeasureLabelCtx {
   img: Size;
+  /** column scale (`ImageMeta.pixel_size`); null → pixel units */
   pixelSize: number | null;
+  /** `ImageMeta.pixel_spacing` `[row, column]` — calibrates the geometry
+   *  when present (ADR 0008); absent → `pixelSize` as square pixels */
+  pixelSpacing?: PixelSpacing | null;
   pixelUnit: string;
   tilt: TiltSettings | null;
   roiStats: Record<string, RoiStats>;
@@ -113,13 +118,14 @@ export interface MeasureLabelCtx {
 /** Per-kind display label ("12.3 nm", "μ 4.1 · σ 0.2", …). */
 export function measureLabel(m: Measure, ctx: MeasureLabelCtx): string {
   const { img, pixelSize, pixelUnit, tilt, roiStats } = ctx;
+  const spacing = ctx.pixelSpacing ?? null;
   const px = toImagePx(m, img);
   // #34: non-zero tilt corrects line-like labels; θ suffix flags it
   const theta = tilt != null && tilt.angle !== 0 ? " θ" : "";
   switch (m.kind) {
     case "distance":
     case "profile": {
-      const d = tiltDist(px[0], px[1], pixelSize, tilt);
+      const d = tiltDist(px[0], px[1], pixelSize, tilt, spacing);
       if (d.unit !== "cal") return `${fmt(d.value)} px${theta}`;
       const disp = m.displayUnit && displayLength(d.value, pixelUnit, m.displayUnit);
       return disp
@@ -129,7 +135,7 @@ export function measureLabel(m: Measure, ctx: MeasureLabelCtx): string {
     case "polyline": {
       let total = 0;
       for (let i = 1; i < px.length; i++) {
-        total += tiltDist(px[i - 1], px[i], pixelSize, tilt).value;
+        total += tiltDist(px[i - 1], px[i], pixelSize, tilt, spacing).value;
       }
       if (pixelSize == null) return `${fmt(total)} px${theta}`;
       const disp = m.displayUnit && displayLength(total, pixelUnit, m.displayUnit);
@@ -139,7 +145,7 @@ export function measureLabel(m: Measure, ctx: MeasureLabelCtx): string {
     }
     case "angle":
       return px.length === 3
-        ? `${physAngle(px[1], px[0], px[2]).toFixed(1)}°`
+        ? `${physAngle(px[1], px[0], px[2], spacing).toFixed(1)}°`
         : "";
     case "roi":
     case "ellipse": {
@@ -158,7 +164,7 @@ export function measureLabel(m: Measure, ctx: MeasureLabelCtx): string {
         ? m.holes.map((h) => h.map((p) => ({ x: p.x * img.w, y: p.y * img.h })))
         : undefined;
       const stats = holesPx ? polygonStatsWithHoles(px, holesPx) : polygonStats(px);
-      const areaPhys = areaPxToPhysical(stats.areaPx2, pixelSize);
+      const areaPhys = areaPxToPhysical(stats.areaPx2, pixelSize, spacing);
       // legibility (plan item 4 requirement 4): a holed region must not
       // read identically to a plain region of the same net area
       const holeNote = holesPx

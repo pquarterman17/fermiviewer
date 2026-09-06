@@ -34,6 +34,7 @@ export default function DockPlot() {
     const csv = profileToCsv(profile, {
       imageName: meta?.name ?? "image",
       pixelSize: meta?.pixel_size ?? null,
+      pixelSpacing: meta?.pixel_spacing ?? null,
       pixelUnit: meta?.pixel_unit ?? "px",
       kind: m?.kind ?? "profile",
       width: m?.width,
