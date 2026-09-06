@@ -209,6 +209,23 @@ def test_spatial_spacing_needs_both_extents_in_one_unit() -> None:
     # this gets its own message rather than the misleading one above
     with pytest.raises(ProfileError, match="need a length unit"):
         spatial_spacing(acq(pixel_size_row=0.5, pixel_size_column=2.0))
+    # a non-length unit (e.g. an energy) must not reach recalibrate_axes as
+    # if it were a pixel spacing
+    with pytest.raises(ProfileError, match="must be a length unit, not 'keV'"):
+        spatial_spacing(
+            acq(
+                pixel_size_row={"value": 1, "unit": "keV"},
+                pixel_size_column={"value": 2, "unit": "keV"},
+            )
+        )
+    # every length spelling the legacy calibration DB and the TIFF readers
+    # already tolerate is accepted here too
+    for unit in ("um", "µm", "nm", "Å"):
+        pair = acq(
+            pixel_size_row={"value": 0.5, "unit": unit},
+            pixel_size_column={"value": 2.0, "unit": unit},
+        )
+        assert spatial_spacing(pair) == ((0.5, 2.0), unit)
     with pytest.raises(ProfileError, match="together"):
         spatial_spacing(acq(pixel_size_row={"value": 0.5, "unit": "nm"}))
     with pytest.raises(ProfileError, match="together"):
@@ -435,6 +452,38 @@ def test_a_non_finite_legacy_magnification_is_skipped_not_fatal() -> None:
         "'later|500': already imported",
         "'ok|1000': already imported",
     ]
+
+
+def test_a_corrupted_profile_still_guards_its_legacy_key_from_reimport() -> None:
+    """Before this, `import_legacy_calibrations` built its de-dup set from
+    `list_profiles`, which deliberately SKIPS an entry it cannot parse -- so
+    hand-corrupting a previously imported profile hid its `text.legacy_key`
+    and the next import created a duplicate, contradicting ADR 0009 §8 and
+    the function's own "re-running it ... creates nothing for a key already
+    imported" promise."""
+    save_calibration("Titan|50000", 0.42, "nm")
+    entries = list_calibrations()
+    created, skipped = import_legacy_calibrations(entries)
+    assert {p.name for p in created} == {"Titan|50000"}
+    assert skipped == []
+    profile_id = created[0].id
+
+    # hand-edit the store: a field value nothing in this build can parse
+    store_path = profiles_db.db_path()
+    data = json.loads(store_path.read_text())
+    data["profiles"][profile_id]["fields"]["pixel_size_row"] = {"value": "not-a-number"}
+    store_path.write_text(json.dumps(data))
+
+    # confirm the reproduction: the corrupted profile is now invisible to
+    # list_profiles, which is exactly what used to hide its legacy_key
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        assert list_profiles("acquisition") == []
+
+    again, skipped_again = import_legacy_calibrations(entries)
+    assert again == []
+    assert skipped_again == ["'Titan|50000': already imported"]
+    assert len(json.loads(store_path.read_text())["profiles"]) == 1
 
 
 # ── applicability ─────────────────────────────────────────────────────

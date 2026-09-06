@@ -332,16 +332,24 @@ def import_legacy_calibrations(
     by ``text.legacy_key``) or malformed. The legacy file is not touched.
 
     Holds `_LOCK` across the whole batch (re-entrantly -- it calls
-    `list_profiles` and `create_profile`, which take it too) so a
-    concurrent create cannot slip a duplicate `legacy_key` in between
-    the existing-keys read and this call's writes.
+    `create_profile`, which takes it too) so a concurrent create cannot
+    slip a duplicate `legacy_key` in between the existing-keys read and
+    this call's writes.
+
+    `existing` is read from the RAW store, not `list_profiles`: that
+    function deliberately SKIPS an entry it cannot parse (a hand-edited
+    file), which would hide a corrupted profile's `legacy_key` and let
+    this function re-create it -- exactly the duplicate re-running is
+    supposed to refuse. A profile too broken to parse still guards its
+    key.
     """
     with _LOCK:
-        existing = {
-            p.text.get("legacy_key")
-            for p in list_profiles("acquisition")
-            if "legacy_key" in p.text
-        }
+        existing = set()
+        for raw in _load()["profiles"].values():
+            text = raw.get("text") if isinstance(raw, Mapping) else None
+            key = text.get("legacy_key") if isinstance(text, Mapping) else None
+            if key is not None:
+                existing.add(key)
         created: list[Profile] = []
         skipped: list[str] = []
         for key, entry in entries.items():

@@ -118,18 +118,12 @@ class ImageMeta(BaseModel):
         px = None
         unit = ""
         if ds.kind is not DataKind.SPECTRUM and ds.pixel_cal.calibrated:
-            px, unit = ds.pixel_cal.scale, ds.pixel_cal.units
+            px, unit = ds.pixel_size, ds.pixel_cal.units
         spacing = None
         if ds.kind is not DataKind.SPECTRUM:
             candidate = ds.pixel_spacing
             if all(math.isfinite(value) and value > 0 for value in candidate):
                 spacing = candidate
-        if spacing is not None:
-            # `pixel_spacing` is already the magnitude pair (ADR 0008 §2);
-            # `pixel_cal.scale` is SIGNED (DM writes negative column
-            # scales), so the pinned identity pixel_size == pixel_spacing[1]
-            # must read off the magnitude here, not the raw scale.
-            px = spacing[1]
         ax = ds.energy_axis if spectral else None
         tilt_deg, _ = get_stage_tilt(ds.metadata)
 

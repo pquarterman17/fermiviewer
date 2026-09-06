@@ -121,6 +121,23 @@ FIELD_UNITS: dict[str, dict[str, str]] = {
 #: states a pixel spacing, and applying it writes the spatial axes.
 SPATIAL_FIELDS = ("pixel_size_row", "pixel_size_column")
 
+#: Length-unit spellings this repo already tolerates elsewhere
+#: (`io.tiff_units.TO_NM`, `calc.grain_size._MM_PER_UNIT`). `pixel_size_row`
+#: and `pixel_size_column` have no canonical unit in `FIELD_UNITS` (the
+#: legacy calibration DB mixes µm and nm entries), so `validate_fields`
+#: cannot reject a non-length unit the way it does for every other known
+#: field -- `spatial_spacing` checks against this vocabulary instead.
+_LENGTH_UNITS = frozenset(
+    {"m", "cm", "mm", "um", "µm", "nm", "pm", "a", "å", "ang", "angstrom"}
+)
+
+
+def _is_length_unit(unit: str) -> bool:
+    # Same micro-sign fold `io.tiff_units.length_to_nm` uses: μ (U+03BC,
+    # Greek mu) and µ (U+00B5, micro sign) are keyboard-indistinguishable
+    # and both appear in the wild, so treat them as one unit.
+    return unit.strip().lower().replace("μ", "µ") in _LENGTH_UNITS
+
 
 class ProfileError(ValueError):
     """A profile that does not satisfy the contract. A `ValueError` so the
@@ -346,6 +363,17 @@ def spatial_spacing(profile: Profile) -> tuple[tuple[float, float], str] | None:
         raise ProfileError(
             "pixel_size_row and pixel_size_column need a length unit (nm, um, ...)"
         )
+    for candidate in (row.unit, col.unit):
+        if not _is_length_unit(candidate):
+            # FIELD_UNITS leaves this pair's canonical unit "" on purpose
+            # (the legacy DB mixes µm and nm), so validate_fields lets ANY
+            # string through, including "keV" -- refuse it here instead,
+            # before it reaches recalibrate_axes and gets written to the
+            # spatial axes as if it were a length.
+            raise ProfileError(
+                "pixel_size_row and pixel_size_column must be a length unit, "
+                f"not {candidate!r}"
+            )
     if row.value <= 0 or col.value <= 0 or row.unit != col.unit:
         raise ProfileError(
             "pixel_size_row and pixel_size_column must be positive and share a unit"

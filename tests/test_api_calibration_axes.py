@@ -398,6 +398,9 @@ def test_image_meta_pixel_size_is_the_column_extent() -> None:
     # MAGNITUDE (pixel_spacing[1]), never the signed pixel_cal.scale, or
     # the identity above is false and the headline prints a negative length
     signed = _image((AxisCal(-0.5, units="nm"), AxisCal(-2.0, units="nm")))
+    # the DataStruct property itself must already be a magnitude — the wire
+    # only agrees with the calc layer by construction if both start signless
+    assert signed.pixel_size == 2.0
     meta = ImageMeta.from_datastruct("c", "signed", signed)
     assert meta.pixel_size == 2.0
     assert meta.pixel_spacing == pytest.approx((0.5, 2.0))

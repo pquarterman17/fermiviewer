@@ -92,6 +92,9 @@ no way to carry anything but a length.
    writes the spatial axes through `recalibrate_axes`; a profile that
    states neither leaves the axes alone; one that states one of the two
    is refused as malformed, because half a spacing is not a spacing.
+   The pair must also be in a length unit — `keV` or any other non-length
+   string is refused for the same reason, since it would otherwise be
+   written straight onto the spatial axes.
 
 6. **Results snapshot the applied profiles.** `CalibrationSnapshot`
    gains a modelled `profiles` key — a copy of the source image's
