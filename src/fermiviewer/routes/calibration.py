@@ -168,27 +168,44 @@ def calibration_delete(key: str) -> dict[str, str]:
 
 class CalibrationApplyRequest(BaseModel):
     image_id: str
-    # either a stored key…
+    # EXACTLY one of: a stored key, a manual pixel size (the column scale;
+    # an anisotropic image keeps its ratio), or an explicit (row, column)
+    # pair. Two at once is refused rather than resolved by precedence: a
+    # 200 that applied the key while ignoring the typed value would
+    # describe a calibration the caller did not send.
     key: str | None = None
-    # …or a manual pixel size (the column scale; an anisotropic image keeps
-    # its ratio), or an explicit (row, column) pair
     pixel_size: float | None = Field(default=None, gt=0)
     pixel_spacing: tuple[float, float] | None = None
     unit: str = "nm"
     save_as_key: str | None = None  # offer-save after manual calibration
 
     @model_validator(mode="after")
-    def _at_most_one_manual_form(self) -> CalibrationApplyRequest:
-        if self.pixel_size is not None and self.pixel_spacing is not None:
-            raise ValueError("give either pixel_size or pixel_spacing, not both")
+    def _exactly_one_source(self) -> CalibrationApplyRequest:
+        given = [
+            name
+            for name, value in (
+                ("key", self.key),
+                ("pixel_size", self.pixel_size),
+                ("pixel_spacing", self.pixel_spacing),
+            )
+            if value is not None
+        ]
+        if len(given) != 1:
+            raise ValueError(
+                "give exactly one of key, pixel_size or pixel_spacing"
+                + (f" (got {', '.join(given)})" if given else "")
+            )
         _positive_pair(self.pixel_spacing, "pixel_spacing")
         return self
 
 
+class DetectBarRequest(BaseModel):
+    image_id: str
+
+
 @router.post("/calibration/detect-bar")
-def calibration_detect_bar(req: CalibrationApplyRequest) -> dict[str, Any]:
-    """Auto-detect a burned-in scale bar (bottom-strip search). Only
-    image_id is used from the request body."""
+def calibration_detect_bar(req: DetectBarRequest) -> dict[str, Any]:
+    """Auto-detect a burned-in scale bar (bottom-strip search)."""
     from fermiviewer.calc.scalebar_detect import detect_scale_bar
 
     ds = _get(req.image_id)
@@ -259,8 +276,8 @@ def calibration_apply(req: CalibrationApplyRequest) -> dict[str, Any]:
         if ds.kind is DataKind.SPECTRUM:
             raise HTTPException(400, "1D spectra have no spatial calibration")
         spacing, unit, source = single_length_spacing(ds, req.pixel_size), req.unit, "manual"
-    else:
-        raise HTTPException(422, "give either key, pixel_size or pixel_spacing")
+    else:  # pragma: no cover - the model validator refuses this shape
+        raise HTTPException(422, "give exactly one of key, pixel_size or pixel_spacing")
 
     new_ds = recalibrate_axes(ds, spacing, unit)
     # provenance names where the scale came from (ADR 0008 §6); a vendor

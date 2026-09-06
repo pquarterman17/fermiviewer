@@ -290,21 +290,73 @@ def test_save_route_accepts_a_pair_and_refuses_ambiguity(client) -> None:
     assert bad.status_code == 422
 
 
-def test_apply_route_refuses_two_manual_forms_and_bad_pairs(client) -> None:
+def test_apply_route_takes_exactly_one_source(client) -> None:
+    """Two sources at once are refused, never resolved by precedence: a
+    200 that applied the key and ignored the typed value would describe a
+    calibration the caller did not send."""
+    save_calibration("Stored|1", 0.75, "um")
     image_id = store.add_parsed(_uncal(), "u.dm4")
-    both = client.post(
-        "/api/calibration/apply",
-        json={"image_id": image_id, "pixel_size": 1.0, "pixel_spacing": [1.0, 2.0]},
-    )
-    assert both.status_code == 422
+    for body in (
+        {"pixel_size": 1.0, "pixel_spacing": [1.0, 2.0]},
+        {"key": "Stored|1", "pixel_size": 1.0},
+        {"key": "Stored|1", "pixel_spacing": [1.0, 2.0]},
+        {"key": "Stored|1", "pixel_size": 1.0, "pixel_spacing": [1.0, 2.0]},
+        {},
+    ):
+        r = client.post("/api/calibration/apply", json={"image_id": image_id, **body})
+        assert r.status_code == 422, body
+        assert "exactly one" in r.text
+    # nothing was applied by any of them
+    assert not store.get(image_id).pixel_cal.calibrated
     bad = client.post(
         "/api/calibration/apply",
         json={"image_id": image_id, "pixel_spacing": [1.0, -2.0]},
     )
     assert bad.status_code == 422
-    # the unchanged shape of the old error
-    nothing = client.post("/api/calibration/apply", json={"image_id": image_id})
-    assert nothing.status_code == 422
+    # detect-bar has its own request model and still takes just image_id
+    assert (
+        client.post("/api/calibration/detect-bar", json={"image_id": image_id}).status_code
+        == 200
+    )
+
+
+@pytest.mark.parametrize("bad", [-1.0, 0.0, float("nan")])
+def test_malformed_legacy_pixel_size_is_refused_everywhere(client, bad) -> None:
+    """A legacy entry gets the same finite-positive rule as a pair. Before
+    this, -1 applied as a calibrated pair (AxisCal calls any non-zero
+    finite scale calibrated) and 0/NaN returned 200 with a provenance
+    string on an image that stayed uncalibrated."""
+    p = calibration_db.db_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    # json.dumps writes NaN as a bare token, which json.loads reads back
+    p.write_text(
+        json.dumps({"Bad|1": {"pixel_size": bad, "unit": "nm", "note": "", "saved": "x"}}),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="positive"):
+        entry_spacing(lookup("Bad|1"))
+
+    image_id = store.add_parsed(_uncal(), "u.dm4")
+    r = client.post("/api/calibration/apply", json={"image_id": image_id, "key": "Bad|1"})
+    assert r.status_code == 422
+    assert "malformed" in r.json()["detail"]
+    after = store.get(image_id)
+    assert not after.pixel_cal.calibrated
+    assert "calibration_source" not in after.metadata
+
+    fresh = store.add_parsed(_uncal({"Microscope": "Bad", "Magnification": 1}), "b.dm4")
+    assert auto_apply_calibration(fresh, store.get(fresh)) is False
+    assert not store.get(fresh).pixel_cal.calibrated
+    assert "calibration_source" not in store.get(fresh).metadata
+
+
+def test_save_calibration_refuses_non_finite_lengths() -> None:
+    for bad in (float("nan"), float("inf"), 0.0, -0.5):
+        with pytest.raises(ValueError, match="positive"):
+            save_calibration("Bad|1", bad, "nm")
+        with pytest.raises(ValueError, match="positive"):
+            save_calibration("Bad|2", None, "nm", pixel_spacing=(1.0, bad))
+    assert lookup("Bad|1") is None and lookup("Bad|2") is None
 
 
 # ── the primitives ─────────────────────────────────────────────────────

@@ -128,11 +128,22 @@ def lookup(key: str) -> dict[str, Any] | None:
     return _load().get(key)
 
 
+def _positive(value: float, what: str) -> float:
+    """A finite, positive length. `<= 0` alone lets NaN through, and a NaN
+    or zero scale would write axes that `AxisCal.calibrated` rejects while
+    the caller is told the apply succeeded; a negative one would be
+    accepted as calibrated. None of those is a calibration."""
+    v = float(value)
+    if not math.isfinite(v) or v <= 0:
+        raise ValueError(f"{what} must be positive")
+    return v
+
+
 def _positive_pair(spacing: tuple[float, float]) -> tuple[float, float]:
-    row, col = float(spacing[0]), float(spacing[1])
-    if not (math.isfinite(row) and math.isfinite(col)) or row <= 0 or col <= 0:
-        raise ValueError("pixel_spacing extents must be positive")
-    return row, col
+    return (
+        _positive(spacing[0], "pixel_spacing extents"),
+        _positive(spacing[1], "pixel_spacing extents"),
+    )
 
 
 def save_calibration(
@@ -160,9 +171,9 @@ def save_calibration(
         if row != col:
             entry["pixel_spacing"] = [row, col]
     else:
-        if pixel_size is None or pixel_size <= 0:
+        if pixel_size is None:
             raise ValueError("pixel_size must be positive")
-        entry = {"pixel_size": float(pixel_size)}
+        entry = {"pixel_size": _positive(pixel_size, "pixel_size")}
     data = _load()
     data[key] = {
         **entry,
@@ -181,8 +192,12 @@ def entry_spacing(entry: dict[str, Any]) -> tuple[float, float]:
     ``pixel_spacing`` returns that pair. Either way the column extent is
     ``pixel_size``, which is what a caller that only knows about that
     field sees -- the two readers agree on the axis they share.
+
+    Every length is checked finite and positive, the legacy one included:
+    a hand-edited ``-1``, ``0`` or ``NaN`` is malformed, not a calibration,
+    and raises ValueError like any other bad entry.
     """
-    px = float(entry["pixel_size"])
+    px = _positive(entry["pixel_size"], "pixel_size")
     spacing = entry.get("pixel_spacing")
     if spacing is None:
         return px, px

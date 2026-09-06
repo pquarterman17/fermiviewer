@@ -23,7 +23,9 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   silently squared its pixels. `recalibrate_axes(ds, (row, column), unit)`
   is now the one place a spatial calibration is written; `/calibration/apply`
   and `POST /calibration` accept `pixel_spacing: [row, column]` as an
-  alternative to `pixel_size`; and a single typed length is the column
+  alternative to `pixel_size` (`/calibration/apply` takes exactly one of
+  `key`, `pixel_size` or `pixel_spacing`; two at once is a 422 rather than
+  a silent precedence); and a single typed length is the column
   scale with the row extent following the image's existing ratio
   (`calc/calibration.spacing_at_column_scale`, gate G1), so it stays square
   only when the image already was. Stored entries gain an optional
@@ -33,8 +35,10 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   to equal `pixel_spacing[1]` whenever the pair exists. Provenance follows
   the edit (ADR §6): a manual apply writes `calibration_source: manual`, a
   key writes `db:<key>` (as auto-apply already did), and clearing removes a
-  source that no longer describes any scale. A malformed stored entry is a
-  422 on apply and is skipped on import rather than failing the open.
+  source that no longer describes any scale. A malformed stored entry — a
+  disagreeing pair, or a legacy `pixel_size` that is zero, negative or
+  NaN — is a 422 on apply and is skipped on import rather than failing
+  the open.
 - **See exactly what a region selects before running an analysis.** Every
   workshop's Region select now reports what its choice resolves to — pixel
   count, share of the image, physical area — computed by the same resolver
