@@ -19,6 +19,7 @@ Pure file I/O over `profiles_model`; routes adapt.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 import warnings
@@ -56,6 +57,8 @@ __all__ = [
 ]
 
 LEGACY_SOURCE = "legacy calibration DB"
+
+_log = logging.getLogger(__name__)
 
 #: keys stated in kV (the parsers' normalised names) …
 _KV_KEYS = ("beam_kv", "voltage_kV")
@@ -313,7 +316,10 @@ def import_legacy_calibrations(
             if not unit:
                 raise ValueError("unit is empty")
         except (KeyError, TypeError, ValueError) as exc:
-            skipped.append(f"{key!r}: malformed ({exc})")
+            # the reason stays server-side: exception text is not part of
+            # the response contract
+            _log.warning("legacy calibration %r not imported: %s", key, exc)
+            skipped.append(f"{key!r}: malformed entry")
             continue
         fields: dict[str, Any] = {
             "pixel_size_row": {"value": row, "unit": unit},

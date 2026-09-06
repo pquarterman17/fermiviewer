@@ -349,7 +349,7 @@ def test_legacy_calibrations_import_square_per_axis_malformed_idempotent() -> No
     created, skipped = import_legacy_calibrations(entries, clock=_clock(["t1", "t2"]))
     by_name = {p.name: p for p in created}
     assert set(by_name) == {"Titan|50000", "AFM|1"}
-    assert skipped == ["'Broken|?': malformed (pixel_size must be positive)"]
+    assert skipped == ["'Broken|?': malformed entry"]
 
     titan = by_name["Titan|50000"]
     assert titan.kind == "acquisition"
@@ -369,7 +369,7 @@ def test_legacy_calibrations_import_square_per_axis_malformed_idempotent() -> No
     assert again == []
     assert sorted(skipped_again)[:2] == [
         "'AFM|1': already imported",
-        "'Broken|?': malformed (pixel_size must be positive)",
+        "'Broken|?': malformed entry",
     ]
     assert get_profile(titan.id) == titan
     assert len(list_profiles("acquisition")) == 2
