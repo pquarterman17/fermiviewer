@@ -2,6 +2,15 @@ import type { CalibrationEntry } from "../../lib/api";
 import type { Measure } from "../../store/viewer";
 
 export type SpatialAxis = "row" | "column";
+export type CalibrationUnit = "nm" | "µm" | "Å" | "pm" | "mm";
+
+const NM_PER_UNIT: Record<CalibrationUnit, number> = {
+  pm: 1e-3,
+  Å: 0.1,
+  nm: 1,
+  µm: 1e3,
+  mm: 1e6,
+};
 
 export interface LineAxisMatch {
   axis: SpatialAxis;
@@ -27,6 +36,24 @@ export function calibrationLineAxis(
 export function positiveNumber(value: string): number | null {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+export function canonicalCalibrationUnit(unit: string): CalibrationUnit | null {
+  const normalized = unit.trim().replace(/μ/g, "µ").toLowerCase();
+  if (normalized === "um" || normalized === "µm") return "µm";
+  if (["a", "å", "ang", "angstrom", "ångström"].includes(normalized)) return "Å";
+  if (normalized === "nm" || normalized === "pm" || normalized === "mm") {
+    return normalized;
+  }
+  return null;
+}
+
+export function convertCalibrationValue(
+  value: number,
+  from: CalibrationUnit,
+  to: CalibrationUnit,
+): number {
+  return (value * NM_PER_UNIT[from]) / NM_PER_UNIT[to];
 }
 
 export function formatExtent(value: number): string {

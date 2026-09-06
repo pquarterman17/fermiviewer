@@ -81,6 +81,48 @@ describe("CalibrationCard per-axis editing", () => {
     );
   });
 
+  it("normalizes parser-style um without reinterpreting its values as nm", async () => {
+    useViewer.setState({
+      images: { img: { ...image, pixel_unit: "um" } },
+    });
+    render(<CalibrationCard />);
+    fireEvent.click(screen.getByRole("button", { name: "Per axis" }));
+    expect(screen.getByRole("combobox", { name: "Pixel extent unit" })).toHaveValue("µm");
+    fireEvent.click(screen.getByRole("button", { name: "Apply extents" }));
+    await waitFor(() =>
+      expect(applyCalibrationAxesMock).toHaveBeenCalledWith(
+        "img", [0.5, 2], "µm",
+      ),
+    );
+  });
+
+  it("converts both drafts when the unit changes", async () => {
+    render(<CalibrationCard />);
+    fireEvent.click(screen.getByRole("button", { name: "Per axis" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Pixel extent unit" }), {
+      target: { value: "µm" },
+    });
+    expect(screen.getByRole("spinbutton", { name: "Row pixel extent" })).toHaveValue(0.0005);
+    expect(screen.getByRole("spinbutton", { name: "Column pixel extent" })).toHaveValue(0.002);
+    fireEvent.click(screen.getByRole("button", { name: "Apply extents" }));
+    await waitFor(() =>
+      expect(applyCalibrationAxesMock).toHaveBeenCalledWith(
+        "img", [0.0005, 0.002], "µm",
+      ),
+    );
+  });
+
+  it("does not populate editable drafts under a guessed unit", async () => {
+    useViewer.setState({
+      images: { img: { ...image, pixel_unit: "m" } },
+    });
+    render(<CalibrationCard />);
+    fireEvent.click(screen.getByRole("button", { name: "Per axis" }));
+    expect(screen.getByRole("spinbutton", { name: "Row pixel extent" })).toHaveValue(null);
+    expect(screen.getByRole("spinbutton", { name: "Column pixel extent" })).toHaveValue(null);
+    expect(screen.getByRole("button", { name: "Apply extents" })).toBeDisabled();
+  });
+
   it("uses a horizontal line for columns and preserves the row extent", async () => {
     seed(horizontal);
     render(<CalibrationCard />);

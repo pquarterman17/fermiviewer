@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import type { Measure } from "../../store/viewer";
 import {
+  canonicalCalibrationUnit,
   calibrationEntryLabel,
   calibrationLineAxis,
+  convertCalibrationValue,
   positiveNumber,
 } from "./calibrationUi";
 
@@ -44,4 +46,13 @@ it("labels stored square and anisotropic calibrations honestly", () => {
   expect(calibrationEntryLabel({ ...base, pixel_spacing: [0.5, 2] })).toBe(
     "rows 0.5 · columns 2 nm/px",
   );
+});
+
+it("normalizes parser spellings and converts without changing length", () => {
+  expect(canonicalCalibrationUnit("um")).toBe("µm");
+  expect(canonicalCalibrationUnit("μm")).toBe("µm");
+  expect(canonicalCalibrationUnit("angstrom")).toBe("Å");
+  expect(canonicalCalibrationUnit("1/nm")).toBeNull();
+  expect(convertCalibrationValue(2, "nm", "µm")).toBe(0.002);
+  expect(convertCalibrationValue(0.002, "µm", "nm")).toBe(2);
 });

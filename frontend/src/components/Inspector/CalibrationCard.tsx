@@ -14,12 +14,15 @@ import {
 import { useViewer, type Measure } from "../../store/viewer";
 import Card from "./Card";
 import {
+  canonicalCalibrationUnit,
   calibrationLineAxis,
+  convertCalibrationValue,
   formatExtent,
   positiveNumber,
+  type CalibrationUnit,
 } from "./calibrationUi";
 
-const UNITS = ["nm", "µm", "Å", "pm", "mm"] as const;
+const UNITS: CalibrationUnit[] = ["nm", "µm", "Å", "pm", "mm"];
 
 // stable empty snapshot (zustand React #185 — never return a fresh [])
 const NO_MEASURES: Measure[] = [];
@@ -40,18 +43,20 @@ export default function CalibrationCard() {
   const [len, setLen] = useState("");
   const [rowExtent, setRowExtent] = useState("");
   const [columnExtent, setColumnExtent] = useState("");
-  const [unit, setUnit] = useState<(typeof UNITS)[number]>("nm");
+  const [unit, setUnit] = useState<CalibrationUnit>("nm");
   const [mode, setMode] = useState<"square" | "per-axis">("square");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     const spacing = meta?.pixel_spacing;
     const fallback = meta?.pixel_size;
-    setRowExtent(spacing ? String(spacing[0]) : fallback != null ? String(fallback) : "");
-    setColumnExtent(spacing ? String(spacing[1]) : fallback != null ? String(fallback) : "");
-    if (meta?.pixel_unit && UNITS.includes(meta.pixel_unit as (typeof UNITS)[number])) {
-      setUnit(meta.pixel_unit as (typeof UNITS)[number]);
-    }
+    const sourceUnit = canonicalCalibrationUnit(meta?.pixel_unit ?? "");
+    // Never put values from an unknown unit under the default "nm" label.
+    // The user can deliberately enter a new pair in one of the supported units.
+    const canPopulate = sourceUnit != null;
+    setRowExtent(canPopulate && spacing ? String(spacing[0]) : canPopulate && fallback != null ? String(fallback) : "");
+    setColumnExtent(canPopulate && spacing ? String(spacing[1]) : canPopulate && fallback != null ? String(fallback) : "");
+    if (sourceUnit) setUnit(sourceUnit);
   }, [activeId, meta?.pixel_size, meta?.pixel_spacing, meta?.pixel_unit]);
 
   if (!meta || !activeId) return null;
@@ -84,6 +89,18 @@ export default function CalibrationCard() {
   const canAxisCalibrate =
     lineAxisPreview != null &&
     (lineAxis?.axis === "row" ? columnValue != null : rowValue != null);
+
+  const changeUnit = (next: CalibrationUnit) => {
+    if (next === unit) return;
+    const convertDraft = (draft: string) => {
+      const value = positiveNumber(draft);
+      return value == null ? draft : String(convertCalibrationValue(value, unit, next));
+    };
+    setRowExtent(convertDraft(rowExtent));
+    setColumnExtent(convertDraft(columnExtent));
+    setLen(convertDraft(len));
+    setUnit(next);
+  };
 
   const acceptImage = (image: typeof meta) => {
     useViewer.setState((s) => ({
@@ -205,7 +222,7 @@ export default function CalibrationCard() {
             <select
               aria-label="Pixel extent unit"
               value={unit}
-              onChange={(e) => setUnit(e.target.value as (typeof UNITS)[number])}
+              onChange={(e) => changeUnit(e.target.value as CalibrationUnit)}
             >
               {UNITS.map((u) => <option key={u}>{u}</option>)}
             </select>
@@ -249,7 +266,7 @@ export default function CalibrationCard() {
             value={unit}
             disabled={!line}
             aria-label="Known length unit"
-            onChange={(e) => setUnit(e.target.value as (typeof UNITS)[number])}
+            onChange={(e) => changeUnit(e.target.value as CalibrationUnit)}
           >
             {UNITS.map((u) => (
               <option key={u} value={u}>
