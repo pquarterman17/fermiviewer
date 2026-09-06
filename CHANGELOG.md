@@ -16,6 +16,34 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Named, versioned calibration profiles (ADR 0009, roadmap 5a).** A
+  profile records one thing a quantitative result depends on but the
+  pixels do not carry — the microscope, a detector, a camera, or an
+  acquisition condition set — as named physical fields `{value, unit,
+  sigma}` (known fields must state their canonical unit; `beam_energy`
+  is keV, never eV by accident), descriptive text, a validity window and
+  beam-energy / magnification / camera-length ranges, and provenance
+  (source, date, operator, note). Profiles live in a per-user store
+  (`~/.fermiviewer/profiles.json`, `FV_PROFILES_PATH` overrides); every
+  edit is a new version and the old body is kept in history
+  (`GET /profiles/{id}/history`). `POST /profiles/apply` attaches a
+  profile's snapshot to an image (one per kind, carried in its metadata
+  so it rides the `.fvp`), reports why it might not apply against what
+  the file states (`applicability`) without refusing, and — for an
+  acquisition profile stating `pixel_size_row`/`pixel_size_column` —
+  writes the spatial axes with `calibration_source =
+  profile:<id>@<version>`. Every captured result now copies the applied
+  profiles into its calibration snapshot (`profiles`, the first item-5
+  key ADR 0004 reserved), so a later edit or deletion of the profile
+  cannot change what a stored number meant; result comparison notes a
+  profile version difference beside the pixel-size notes. `ImageMeta`
+  gains `profiles` (id, name, version, applicability per kind).
+  `POST /profiles/import-calibrations` turns the legacy calibration DB
+  into acquisition profiles (a single-length entry becomes square, a
+  per-axis entry stays per axis, malformed entries are named and
+  skipped, re-running creates nothing) and leaves the legacy file and
+  `/calibration/apply` working as before. No analysis route reads a
+  profile yet; `profile_quantity` is the resolver for that follow-up.
 - **Per-axis calibration is visible and editable (ADR 0008, 5a-B).** The
   Inspector keeps the familiar square-pixel workflow while adding a per-axis
   mode with independent row and column extents. Anisotropic images always show

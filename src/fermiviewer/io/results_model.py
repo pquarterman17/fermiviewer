@@ -21,6 +21,7 @@ from typing import Any
 import numpy as np
 
 from fermiviewer.datastruct import AxisCal, DataStruct
+from fermiviewer.io.profiles_model import applied_profiles
 
 __all__ = [
     "CAL_KEYS",
@@ -78,7 +79,9 @@ RESULT_KEYS = frozenset(
     }
 )
 OUTPUT_KEYS = frozenset({"kind", "name", "data", "member"})
-CAL_KEYS = frozenset({"image_id", "axes", "source"})
+#: `profiles` is the first item-5 key (ADR 0009 §6): the applied
+#: calibration profiles, one snapshot per kind, copied with the axes.
+CAL_KEYS = frozenset({"image_id", "axes", "source", "profiles"})
 
 
 # ── structures ───────────────────────────────────────────────────────
@@ -96,14 +99,20 @@ class CalibrationSnapshot:
     Axes are the first supported snapshot content, not the last: roadmap
     item 5's quantitative calibration (detector/profile/standard identity,
     efficiency, dose, factor sets and their uncertainties) extends these
-    entries with further keys. `extra` carries any such key this build does
-    not model verbatim through a load → re-save, so a richer snapshot
-    written by a later build survives an older one untouched.
+    entries with further keys. `profiles` is the first of them (ADR 0009
+    §6): the calibration profiles applied to the image at compute time,
+    ``{kind: snapshot}``, each snapshot the profile's full body with its
+    id and version -- so a later edit to the profile, which bumps its
+    version in the store, cannot change what this record says it used.
+    `extra` carries any key this build does not model verbatim through a
+    load → re-save, so a richer snapshot written by a later build survives
+    an older one untouched.
     """
 
     image_id: str
     axes: tuple[AxisCal, ...] = ()
     source: str | None = None
+    profiles: dict[str, dict[str, Any]] = field(default_factory=dict)
     extra: dict[str, Any] = field(default_factory=dict)
 
 
@@ -188,4 +197,7 @@ def snapshot_calibration(image_id: str, ds: DataStruct) -> CalibrationSnapshot:
         image_id=str(image_id),
         axes=tuple(ds.axes),
         source=str(source) if isinstance(source, str) else None,
+        # a deep-enough copy: the snapshot dicts are JSON bodies, and a
+        # later apply REPLACES the image's entry rather than mutating it
+        profiles={k: dict(v) for k, v in applied_profiles(ds.metadata).items()},
     )

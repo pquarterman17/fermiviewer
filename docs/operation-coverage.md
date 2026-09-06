@@ -9,7 +9,7 @@ Route and op inventories are read live from the app and registry at generation t
 
 ## Summary
 
-- **152** HTTP endpoints; **80** perform analysis, 3 are physics-table lookups, and 69 are allowlisted infrastructure.
+- **163** HTTP endpoints; **80** perform analysis, 3 are physics-table lookups, and 80 are allowlisted infrastructure.
 - **72 of 80** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **88** ops in total.
 - Registered-op reach IS headless reach: batch recipes, folder watch, `fv --script`, and the Python API all resolve steps through the same registry and cannot call anything else.
 - Remaining item-3 work: wave A (0), wave B (0), wave C (0), wave D (0) endpoints; 8 are parked behind the item-8/9 activation gates. Item 3 does not close while any analysis row lacks a wave or a named gate â€” every endpoint is assigned, none is silently deferred.
@@ -199,6 +199,17 @@ Session, project, render, export, jobs, calibration-store and dataset plumbing â
 - `DELETE /api/jobs/{job_id}`
 - `GET /api/jobs/{job_id}`
 - `GET /api/metadata-schema`
+- `GET /api/profiles`
+- `POST /api/profiles`
+- `GET /api/profiles/applied/{img_id}`
+- `POST /api/profiles/apply`
+- `POST /api/profiles/import-calibrations`
+- `GET /api/profiles/kinds`
+- `POST /api/profiles/unapply`
+- `DELETE /api/profiles/{profile_id}`
+- `GET /api/profiles/{profile_id}`
+- `PUT /api/profiles/{profile_id}`
+- `GET /api/profiles/{profile_id}/history`
 - `POST /api/project/load`
 - `POST /api/project/relocate`
 - `POST /api/project/save`

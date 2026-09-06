@@ -165,6 +165,40 @@ def _axis_differences(
             f"{ref_name} has {ref_snap.source!r}, result {cand_name} has "
             f"{cand_snap.source!r}"
         )
+    out.extend(_profile_differences(image_id, ref_snap, cand_snap, ref_name, cand_name))
+    return out
+
+
+def _profile_ref(snap: dict[str, object] | None) -> str:
+    """``id@version`` of an applied-profile snapshot, or 'none'."""
+    if snap is None:
+        return "none"
+    return f"{snap.get('id')!s}@{snap.get('version')!s}"
+
+
+def _profile_differences(
+    image_id: str,
+    ref_snap: CalibrationSnapshot,
+    cand_snap: CalibrationSnapshot,
+    ref_name: str,
+    cand_name: str,
+) -> list[str]:
+    """Per profile kind, whether both records used the same profile AT THE
+    SAME VERSION (ADR 0009 §6). Two results under 'the same detector'
+    computed before and after that profile was edited disagree here, which
+    is exactly what the version exists to make visible. A note, never a
+    rejection, like every other line in this module."""
+    out: list[str] = []
+    kinds = list(ref_snap.profiles)
+    kinds.extend(k for k in cand_snap.profiles if k not in ref_snap.profiles)
+    for kind in kinds:
+        ref_p, cand_p = ref_snap.profiles.get(kind), cand_snap.profiles.get(kind)
+        if _profile_ref(ref_p) != _profile_ref(cand_p):
+            out.append(
+                f"source image {image_id!r}: {kind} profile differs — reference "
+                f"{ref_name} used {_profile_ref(ref_p)}, result {cand_name} used "
+                f"{_profile_ref(cand_p)}"
+            )
     return out
 
 

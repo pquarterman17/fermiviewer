@@ -945,18 +945,43 @@ EELS/dose/spatial/reciprocal calibration using the same persistence rules.
 
 #### 5a. Calibration profiles
 
-- [ ] Named microscope, detector, camera, and acquisition profiles.
+- [x] Named microscope, detector, camera, and acquisition profiles. *(Backend
+      shipped 2026-09-06, ADR 0009; the editor UI is the Codex piece.)*
 - [x] Per-axis spatial/scan/energy/reciprocal calibration; do not assume square
       pixels in the project/UI model. *(Spatial and reciprocal shipped
       2026-09-05/06 as ADR 0008's 5a-A/B/C; the energy axis was already a
       per-dataset `AxisCal` with its own editor. Named profiles wrapping the
       record are the first box.)*
 - [ ] EDS detector window/efficiency, solid angle, takeoff angle, live time,
-      dead time, probe current, dwell time, and beam energy.
-- [ ] Calibration validity range, source, date, operator note, uncertainty, and
-      version history.
-- [ ] Snapshot the applied profile into each result so later profile edits do
-      not rewrite history.
+      dead time, probe current, dwell time, and beam energy. *(The fields
+      exist on detector/acquisition profiles since ADR 0009; the box is the
+      CONSUMERS — no quant route reads a profile yet. `profile_quantity` is
+      the resolver; wire one route at a time, typed value still wins.)*
+- [x] Calibration validity range, source, date, operator note, uncertainty, and
+      version history. *(ADR 0009 §1–§4, 2026-09-06.)*
+- [x] Snapshot the applied profile into each result so later profile edits do
+      not rewrite history. *(ADR 0009 §6: `CalibrationSnapshot.profiles`,
+      through the one `capture_result` path every adopter uses.)*
+
+> **2026-09-06 — profiles backend shipped (ADR 0009).** A profile is a
+> named, versioned record of one kind (microscope / detector / camera /
+> acquisition) in `~/.fermiviewer/profiles.json`: physical fields as
+> `{value, unit, sigma}` with canonical units enforced for known names,
+> descriptive `text`, a `validity` window and ranges, and `provenance`
+> (source, date, operator, note). Every edit is a new version with the
+> old body kept in history. Applying attaches the snapshot to the image's
+> metadata (so it travels in the `.fvp`), reports applicability against
+> what the file states (`beam_kv` in every parser's spelling,
+> magnification) without refusing, and — for an acquisition profile that
+> states a pixel spacing — writes the axes through `recalibrate_axes`
+> with `calibration_source = profile:<id>@<version>`. Results copy the
+> applied profiles into their calibration snapshot (`profiles`, the
+> first item-5 key ADR 0004 §5 reserved); comparison notes a version
+> difference. `POST /profiles/import-calibrations` turns the legacy
+> `calibrations.json` into acquisition profiles, idempotently, leaving
+> the file in place. `tests/test_profiles.py`,
+> `tests/test_api_profiles.py`. Nothing consumes a profile yet — that is
+> the third box, one route at a time.
 
 > **2026-09-04 — the reciprocal half of the second box shipped.**
 > `calc/ctf.py`, `calc/lattice.py` and `calc/diffraction.py::index_spots`

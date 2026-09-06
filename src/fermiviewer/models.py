@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from fermiviewer.calc.fourd.scanshape import scan_shape_candidates
 from fermiviewer.datastruct import SPECTRAL_KINDS, AxisCal, DataKind, DataStruct
 from fermiviewer.io.metadata import databar_content_rows, get_stage_tilt
+from fermiviewer.io.profiles_model import applied_profiles
 
 if TYPE_CHECKING:
     from fermiviewer.calc.fourd.dataset import FourDDataset
@@ -50,6 +51,23 @@ def _public_meta(metadata: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _profile_refs(metadata: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Client-visible summary of the profiles applied to an image (ADR 0009
+    §5): identity and version per kind, plus the applicability reasons
+    recorded at apply time. The full bodies stay in the metadata; the UI
+    fetches a profile by id when it needs the fields."""
+    out: dict[str, dict[str, Any]] = {}
+    for kind, snap in applied_profiles(metadata).items():
+        out[kind] = {
+            "id": str(snap.get("id", "")),
+            "name": str(snap.get("name", "")),
+            "version": int(snap.get("version") or 0),
+            "applied_at": str(snap.get("applied_at", "")),
+            "applicability": [str(r) for r in snap.get("applicability") or ()],
+        }
+    return out
+
+
 class OpenRequest(BaseModel):
     paths: list[str]
 
@@ -77,6 +95,9 @@ class ImageMeta(BaseModel):
     # bar keeps its default off the bar, and Strip Vendor Databar knows
     # where to cut. See io.metadata.databar_content_rows.
     content_rows: int | None = None
+    #: Applied calibration profiles by kind — {id, name, version, applied_at,
+    #: applicability} (ADR 0009 §5). Empty when none.
+    profiles: dict[str, dict[str, Any]] = {}
     meta: dict[str, Any] = {}
 
     @classmethod
@@ -126,6 +147,7 @@ class ImageMeta(BaseModel):
                 if ds.kind is DataKind.IMAGE
                 else None
             ),
+            profiles=_profile_refs(ds.metadata),
             meta=_public_meta(ds.metadata),
         )
 

@@ -98,7 +98,9 @@ keys rather than inventing a second snapshot mechanism. Keys this build
 does not model are carried verbatim through a load → re-save
 (`CalibrationSnapshot.extra`), so a richer snapshot written by a later
 build survives an older one untouched — the same unknown-key rule as
-every other structure in the format. Recalibrating an image later must not silently rewrite
+every other structure in the format. *(2026-09-06: `profiles` is the
+first such key, ADR 0009 §6 — the applied calibration profiles by kind,
+each a full copy with id and version.)* Recalibrating an image later must not silently rewrite
 what a stored composition or distance meant when it was measured; a
 consumer compares the snapshot against the image's current axes to
 surface staleness explicitly. This is the deliberate inverse of the
