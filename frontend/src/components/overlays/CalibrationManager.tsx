@@ -10,6 +10,7 @@ import {
   type CalibrationEntry,
 } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
+import { calibrationEntryLabel } from "../Inspector/calibrationUi";
 import ModalDialog from "./ModalDialog";
 
 export default function CalibrationManager() {
@@ -40,7 +41,12 @@ export default function CalibrationManager() {
         useViewer.setState((s) => ({
           images: { ...s.images, [r.image.id]: r.image },
         }));
-        setStatus(`calibrated: ${r.image.pixel_size} ${r.image.pixel_unit}/px`);
+        const pair = r.image.pixel_spacing;
+        setStatus(
+          pair && pair[0] !== pair[1]
+            ? `calibrated: rows ${pair[0]} · columns ${pair[1]} ${r.image.pixel_unit}/px`
+            : `calibrated: ${r.image.pixel_size} ${r.image.pixel_unit}/px`,
+        );
       })
       .catch((e: Error) => setStatus(`apply: ${e.message}`))
       .finally(() => setBusy(false));
@@ -77,7 +83,7 @@ export default function CalibrationManager() {
             <thead>
               <tr>
                 <th>Instrument | mag</th>
-                <th>px size</th>
+                <th>Pixel extent</th>
                 <th>saved</th>
                 <th />
               </tr>
@@ -87,7 +93,7 @@ export default function CalibrationManager() {
                 <tr key={k} title={entries[k].note}>
                   <td>{k}</td>
                   <td>
-                    {entries[k].pixel_size} {entries[k].unit}
+                    {calibrationEntryLabel(entries[k])}
                   </td>
                   <td>{entries[k].saved}</td>
                   <td style={{ whiteSpace: "nowrap" }}>

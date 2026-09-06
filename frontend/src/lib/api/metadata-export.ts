@@ -123,6 +123,21 @@ export function applyCalibration(
   });
 }
 
+/** Apply independent physical extents for row and column pixels. */
+export function applyCalibrationAxes(
+  id: string,
+  pixelSpacing: [number, number],
+  unit: string,
+  saveAsKey?: string,
+): Promise<{ image: ImageMeta }> {
+  return post("/api/calibration/apply", {
+    image_id: id,
+    pixel_spacing: pixelSpacing,
+    unit,
+    save_as_key: saveAsKey || null,
+  });
+}
+
 /** Drop a calibration back to uncalibrated pixels (Calibration card Clear). */
 export function clearCalibration(id: string): Promise<{ image: ImageMeta }> {
   return post("/api/calibration/clear", { image_id: id });
@@ -258,6 +273,8 @@ export async function exportGif(
 
 export interface CalibrationEntry {
   pixel_size: number;
+  /** Independent [row, column] extents; absent means square pixels. */
+  pixel_spacing?: [number, number];
   unit: string;
   note: string;
   saved: string;

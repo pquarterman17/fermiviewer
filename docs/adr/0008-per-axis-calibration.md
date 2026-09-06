@@ -1,6 +1,6 @@
 # ADR 0008 — Calibration is per-axis in the project and the UI; `pixel_size` is a view of it
 
-**Status:** Proposed (two owner gates, §Gates)
+**Status:** Accepted (G1 and G2 taken as recommended)
 **Date:** 2026-09-05
 **Modules:** `src/fermiviewer/datastruct.py`, `src/fermiviewer/models.py`, `src/fermiviewer/routes/calibration.py`, `src/fermiviewer/io/calibration_db.py`, `frontend/src/components/Inspector/CalibrationCard.tsx`
 **Plan:** `plans/MICROSCOPY_FEATURE_ROADMAP.md` item 5a, second box ("per-axis spatial/scan/energy/reciprocal calibration; do not assume square pixels in the project/UI model")
@@ -166,6 +166,12 @@ data was anisotropic in the first place.
   mode and the always-on two-extent display; CalibrationManager shows
   per-axis entries; nothing else in the UI changes meaning because
   `pixel_size` keeps its meaning.
+  **Implemented 2026-09-05:** square pixels remain the default edit mode;
+  anisotropy is shown as a compact row/column readout; per-axis fields and
+  stored entries expose both extents; line calibration uses only a horizontal
+  column span or vertical row span and refuses diagonals within neither 15°
+  threshold. G2 is taken as recommended: the headline remains the column
+  scale and the second line carries both extents.
 * **5a-C correctness review (Claude).** Grep every frontend read of
   `pixel_size` and classify each as display (fine) or geometry (must use
   `pixel_spacing`); the measure overlay labels already use both extents

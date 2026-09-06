@@ -1008,6 +1008,14 @@ EELS/dose/spatial/reciprocal calibration using the same persistence rules.
 > (`single_length_spacing`, gate G1 taken as recommended). DB entries carry
 > `pixel_spacing` only when the extents differ, `entry_spacing` reads old
 > and new shapes alike, and `auto_apply_calibration` applies per axis.
+
+> **2026-09-05 — 5a-B calibration UI shipped (ADR 0008 §5).** The Inspector
+> keeps the simple square-pixel path as its default and adds independent row
+> and column fields. An anisotropic image visibly reports both extents before
+> an edit; a horizontal line calibrates columns, a vertical line calibrates
+> rows, and a diagonal line is refused rather than converted with an invalid
+> one-axis assumption. Stored calibration rows likewise show both extents.
+> G2 is taken as recommended: `pixel_size` remains the column-scale headline.
 > `tests/test_api_calibration_axes.py`: the 0.5 × 2.0 nm AFM round trip,
 > a legacy-format entry, the `pixel_size == pixel_spacing[1]` identity, and
 > every square-pixel path unchanged. 5a-B (calibration card per-axis mode,
