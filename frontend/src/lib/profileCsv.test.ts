@@ -132,6 +132,32 @@ describe("anisotropic pixel_spacing", () => {
     expect(lines).toContain("10,5,3");
   });
 
+  it("profileToCsv keeps position_px on the drawn line under tilt correction", () => {
+    // the backend's dist for a two-point line carries the stage-tilt
+    // stretch: a vertical 10 px line (5 nm at 0.5 nm rows) under a 60°
+    // surface tilt comes back 10 nm long. Mapping by spacing alone would
+    // put the last sample at 20 px; the drawn line is 10 px.
+    const csv = profileToCsv(
+      { dist: [0, 5, 10], intensity: [1, 2, 3], length: 10, unit: "nm", reduce: "mean" },
+      {
+        imageName: "afm",
+        pixelSize: 2,
+        pixelSpacing: AFM,
+        pixelUnit: "nm",
+        kind: "profile",
+        endpointsPx: [
+          { x: 4, y: 0 },
+          { x: 4, y: 10 },
+        ],
+      },
+    );
+    const lines = csv.trimEnd().split("\n");
+    expect(lines).toContain("0,0,1");
+    expect(lines).toContain("5,5,2");
+    expect(lines).toContain("10,10,3");
+    expect(lines.at(-1)).toBe("10,10,3");
+  });
+
   it("profileToCsv maps a polyline segment by segment", () => {
     // 10 columns (20 nm) then 10 rows (5 nm): total 25 nm over 20 px
     const csv = profileToCsv(

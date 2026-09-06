@@ -33,17 +33,31 @@ function spacingHeader(sp: [number, number], u: string): string {
 }
 
 /** Maps each calibrated position along a line/polyline back to its
- *  pixel-path position, piecewise per segment, when the pixels are not
- *  square: a segment's physical length is `hypot(dx·col, dy·row)` while
- *  its pixel length is `hypot(dx, dy)`, so the two differ by a factor
- *  that depends on the segment's direction and dividing by one scalar
- *  cannot recover it. Returns null when the geometry is unknown. */
+ *  pixel-path position when the pixels are not square: a segment's
+ *  physical length is `hypot(dx·col, dy·row)` while its pixel length is
+ *  `hypot(dx, dy)`, so the two differ by a factor that depends on the
+ *  segment's direction and dividing by one scalar cannot recover it.
+ *
+ *  A two-endpoint line maps by RESPONSE fraction, `dist / length` of the
+ *  pixel separation: the backend's `dist` for that case also carries the
+ *  stage-tilt stretch (`line_profile_stats(tilt_angle_deg=…)`), which a
+ *  map rebuilt from spacing alone would not know about and would read as
+ *  positions beyond the drawn endpoint. The factor is constant along one
+ *  segment, so the fraction is exact. A polyline (no tilt argument on the
+ *  backend) maps piecewise per segment from spacing.
+ *  Returns null when the geometry is unknown. */
 function pixelPositions(
   dist: number[],
+  length: number,
   pts: { x: number; y: number }[] | undefined,
   sp: [number, number],
 ): number[] | null {
   if (!pts || pts.length < 2) return null;
+  if (pts.length === 2) {
+    const pxLen = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+    if (!(length > 0) || !(pxLen > 0)) return null;
+    return dist.map((d) => (d / length) * pxLen);
+  }
   const cumPx = [0];
   const cumPhys = [0];
   for (let i = 1; i < pts.length; i++) {
@@ -110,7 +124,9 @@ export function profileToCsv(p: ProfileResult, ctx: ProfileCsvContext): string {
 
   if (cal) {
     const ps = ctx.pixelSize as number;
-    const pxPos = aniso ? pixelPositions(p.dist, ctx.endpointsPx, aniso) : null;
+    const pxPos = aniso
+      ? pixelPositions(p.dist, p.length, ctx.endpointsPx, aniso)
+      : null;
     if (aniso && !pxPos) {
       // no usable geometry: a per-segment mapping is impossible and a
       // column-scale quotient would be wrong, so the px column is dropped
