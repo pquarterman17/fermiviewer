@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from fermiviewer.calc.fourd.scanshape import scan_shape_candidates
 from fermiviewer.datastruct import SPECTRAL_KINDS, AxisCal, DataKind, DataStruct
 from fermiviewer.io.metadata import databar_content_rows, get_stage_tilt
-from fermiviewer.io.profiles_model import applied_profiles
+from fermiviewer.io.profiles_applied import applied_profiles
 
 if TYPE_CHECKING:
     from fermiviewer.calc.fourd.dataset import FourDDataset
@@ -51,20 +51,47 @@ def _public_meta(metadata: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _profile_version(value: Any) -> int:
+    """Coerce a snapshot's `version` field to an int, defaulting to 0 for
+    anything that isn't cleanly one (a float with a fractional part, a
+    non-digit string, `None`, ...)."""
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return 0
+
+
 def _profile_refs(metadata: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """Client-visible summary of the profiles applied to an image (ADR 0009
     §5): identity and version per kind, plus the applicability reasons
     recorded at apply time. The full bodies stay in the metadata; the UI
-    fetches a profile by id when it needs the fields."""
+    fetches a profile by id when it needs the fields. Snapshots come from
+    project metadata, which may be hand-edited or written by a future
+    build, so every field is coerced defensively rather than trusted, and a
+    kind whose snapshot cannot be summarised at all is dropped instead of
+    failing the whole response."""
     out: dict[str, dict[str, Any]] = {}
     for kind, snap in applied_profiles(metadata).items():
-        out[kind] = {
-            "id": str(snap.get("id", "")),
-            "name": str(snap.get("name", "")),
-            "version": int(snap.get("version") or 0),
-            "applied_at": str(snap.get("applied_at", "")),
-            "applicability": [str(r) for r in snap.get("applicability") or ()],
-        }
+        try:
+            applicability = snap.get("applicability")
+            out[kind] = {
+                "id": str(snap.get("id", "")),
+                "name": str(snap.get("name", "")),
+                "version": _profile_version(snap.get("version")),
+                "applied_at": str(snap.get("applied_at", "")),
+                "applicability": (
+                    [str(r) for r in applicability]
+                    if isinstance(applicability, (list, tuple))
+                    else []
+                ),
+            }
+        except Exception:
+            continue
     return out
 
 

@@ -9,6 +9,7 @@ image's metadata states in each parser's spelling.
 from __future__ import annotations
 
 import json
+import threading
 import warnings
 from pathlib import Path
 
@@ -16,6 +17,13 @@ import pytest
 
 from fermiviewer.io import profiles_db
 from fermiviewer.io.calibration_db import list_calibrations, save_calibration
+from fermiviewer.io.profiles_applied import (
+    applied_profiles,
+    attach_profile,
+    detach_profile,
+    profile_quantity,
+    snapshot_profile,
+)
 from fermiviewer.io.profiles_db import (
     applicability,
     create_profile,
@@ -36,13 +44,8 @@ from fermiviewer.io.profiles_model import (
     Provenance,
     Quantity,
     Validity,
-    applied_profiles,
-    attach_profile,
-    detach_profile,
     profile_from_json,
-    profile_quantity,
     profile_to_json,
-    snapshot_profile,
     spatial_spacing,
     validate_fields,
 )
@@ -324,6 +327,35 @@ def test_a_corrupt_store_is_backed_up_and_a_later_schema_refused(tmp_path: Path)
     path.write_text(json.dumps({"schema": 99, "profiles": {}}))
     with pytest.raises(ProfileError, match="schema 99"):
         list_profiles()
+
+
+def test_concurrent_creates_do_not_clobber_each_other(tmp_path: Path) -> None:
+    """Eight threads each create one profile after a barrier, so their
+    _load()/_save() transactions would race without `_LOCK` -- the last
+    writer's `_save` would silently drop everyone else's profile."""
+    n = 8
+    barrier = threading.Barrier(n)
+    errors: list[BaseException] = []
+
+    def worker(i: int) -> None:
+        try:
+            barrier.wait()
+            create_profile(name=f"p{i}", kind="camera")
+        except BaseException as exc:  # noqa: BLE001 -- surfaced via `errors`
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == []
+    assert {p.name for p in list_profiles()} == {f"p{i}" for i in range(n)}
+    path = tmp_path / "profiles.json"
+    data = json.loads(path.read_text())
+    assert len(data["profiles"]) == n
+    assert not list(tmp_path.glob("profiles.json.tmp-*"))
 
 
 def test_store_file_shape_and_atomic_write(tmp_path: Path) -> None:

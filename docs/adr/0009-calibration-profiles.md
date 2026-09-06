@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-09-06
-**Modules:** `src/fermiviewer/io/profiles_model.py`, `src/fermiviewer/io/profiles_db.py`, `src/fermiviewer/routes/profiles.py`, `src/fermiviewer/io/results_model.py`, `src/fermiviewer/models.py`
+**Modules:** `src/fermiviewer/io/profiles_model.py`, `src/fermiviewer/io/profiles_applied.py`, `src/fermiviewer/io/profiles_db.py`, `src/fermiviewer/routes/profiles.py`, `src/fermiviewer/io/results_model.py`, `src/fermiviewer/models.py`
 **Plan:** `plans/MICROSCOPY_FEATURE_ROADMAP.md` item 5a, boxes 1, 4 and 5 (named profiles; validity, source, date, operator note, uncertainty, version history; snapshot the applied profile into each result)
 **Builds on:** ADR 0004 §5 (results snapshot calibration; item-5 keys extend the same entries), ADR 0008 (calibration is per-axis `AxisCal`; profiles wrap that record)
 

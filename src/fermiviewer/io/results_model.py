@@ -21,7 +21,7 @@ from typing import Any
 import numpy as np
 
 from fermiviewer.datastruct import AxisCal, DataStruct
-from fermiviewer.io.profiles_model import applied_profiles
+from fermiviewer.io.profiles_applied import applied_profiles
 
 __all__ = [
     "CAL_KEYS",

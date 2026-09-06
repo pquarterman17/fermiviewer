@@ -18,6 +18,12 @@ from pydantic import BaseModel, Field
 
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.io.calibration_db import list_calibrations
+from fermiviewer.io.profiles_applied import (
+    applied_profiles,
+    attach_profile,
+    detach_profile,
+    snapshot_profile,
+)
 from fermiviewer.io.profiles_db import (
     applicability,
     create_profile,
@@ -32,11 +38,7 @@ from fermiviewer.io.profiles_model import (
     PROFILE_KINDS,
     Profile,
     ProfileError,
-    applied_profiles,
-    attach_profile,
-    detach_profile,
     profile_to_json,
-    snapshot_profile,
     spatial_spacing,
 )
 from fermiviewer.models import ImageMeta

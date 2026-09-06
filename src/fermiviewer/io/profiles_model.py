@@ -14,11 +14,13 @@ serial, window material) live in `text`. Unknown keys ride through a load
 → re-save verbatim, as everywhere else in the project format.
 
 Pure layer: dataclasses over plain values, stdlib only. The JSON store is
-`profiles_db.py`; routes adapt.
+`profiles_db.py`, the applied-to-an-image snapshots are `profiles_applied.py`;
+routes adapt.
 """
 
 from __future__ import annotations
 
+import datetime
 import math
 import uuid
 from collections.abc import Mapping
@@ -30,29 +32,18 @@ __all__ = [
     "PROFILE_KEYS",
     "PROFILE_KINDS",
     "PROFILE_SCHEMA",
-    "PROFILES_META_KEY",
     "SPATIAL_FIELDS",
     "Profile",
     "ProfileError",
     "Provenance",
     "Quantity",
     "Validity",
-    "applied_profiles",
-    "attach_profile",
-    "detach_profile",
     "new_profile_id",
     "profile_from_json",
-    "profile_quantity",
     "profile_to_json",
-    "snapshot_profile",
     "spatial_spacing",
     "validate_fields",
 ]
-
-#: `DataStruct.metadata` key under which an image carries the profiles
-#: applied to it, one snapshot per kind (ADR 0009 §5). Metadata rides the
-#: `.fvp` manifest, so the snapshots travel with the project.
-PROFILES_META_KEY = "profiles"
 
 #: Revision of the per-profile shape (and of the store file). Written into
 #: every profile so a later build can migrate one at a time.
@@ -272,11 +263,23 @@ def _range(raw: Any, what: str) -> tuple[float, float] | None:
 
 
 def _date(raw: Any, what: str) -> str | None:
+    """The 10-char ``YYYY-MM-DD`` prefix of `raw`, validated as a real
+    calendar date, or None for an absent value. `raw` may carry a
+    timestamp beyond the date -- a ``T`` or single-space separated time --
+    since the legacy calibration DB stores ``"2026-09-01 10:00"`` and
+    existing callers pass ``"2025-12-31T10:00"``; only the date is kept."""
     if raw is None or raw == "":
         return None
-    if not isinstance(raw, str) or len(raw) < 10 or raw[4] != "-" or raw[7] != "-":
+    if not isinstance(raw, str) or len(raw) < 10:
         raise ProfileError(f"{what} must be an ISO date (YYYY-MM-DD)")
-    return raw[:10]
+    prefix, rest = raw[:10], raw[10:]
+    if rest and rest[0] not in ("T", " "):
+        raise ProfileError(f"{what} must be an ISO date (YYYY-MM-DD)")
+    try:
+        datetime.date.fromisoformat(prefix)
+    except ValueError:
+        raise ProfileError(f"{what} must be an ISO date (YYYY-MM-DD)") from None
+    return prefix
 
 
 def validity_from(raw: Mapping[str, Any] | Validity | None) -> Validity:
@@ -389,73 +392,6 @@ def profile_to_json(profile: Profile) -> dict[str, Any]:
         if k not in PROFILE_KEYS:
             entry[k] = v
     return entry
-
-
-def snapshot_profile(
-    profile: Profile, *, applied_at: str, applicability: tuple[str, ...] = ()
-) -> dict[str, Any]:
-    """The immutable copy an image (and through it, a result) carries:
-    the profile body plus when it was applied and why it might not
-    apply. Reads back as a `Profile` via `profile_from_json` -- the two
-    additions are unmodelled keys and ride `extra`."""
-    return {
-        **profile_to_json(profile),
-        "applied_at": applied_at,
-        "applicability": list(applicability),
-    }
-
-
-def applied_profiles(metadata: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
-    """``{kind: snapshot}`` for the profiles applied to an image; empty when
-    none. A hand-edited or foreign value that is not a mapping of
-    mappings is read as none rather than raised on every metadata read."""
-    raw = metadata.get(PROFILES_META_KEY)
-    if not isinstance(raw, Mapping):
-        return {}
-    return {
-        str(kind): dict(snap)
-        for kind, snap in raw.items()
-        if isinstance(snap, Mapping)
-    }
-
-
-def attach_profile(metadata: Mapping[str, Any], snapshot: Mapping[str, Any]) -> dict[str, Any]:
-    """A copy of `metadata` with `snapshot` as the applied profile of its
-    kind, replacing any earlier one of that kind."""
-    out = dict(metadata)
-    profiles = applied_profiles(out)
-    profiles[str(snapshot["kind"])] = dict(snapshot)
-    out[PROFILES_META_KEY] = profiles
-    return out
-
-
-def detach_profile(metadata: Mapping[str, Any], kind: str) -> dict[str, Any]:
-    """A copy of `metadata` without the applied profile of `kind`; the key
-    goes away entirely when no profile remains."""
-    out = dict(metadata)
-    profiles = applied_profiles(out)
-    profiles.pop(kind, None)
-    if profiles:
-        out[PROFILES_META_KEY] = profiles
-    else:
-        out.pop(PROFILES_META_KEY, None)
-    return out
-
-
-def profile_quantity(metadata: Mapping[str, Any], kind: str, name: str) -> Quantity | None:
-    """The resolver a consumer calls for a default: the `name` field of the
-    applied `kind` profile, or None when no such profile or field. A typed
-    request value must still win over this (ADR 0009 non-goals)."""
-    snap = applied_profiles(metadata).get(kind)
-    if snap is None:
-        return None
-    raw = snap.get("fields")
-    if not isinstance(raw, Mapping) or name not in raw:
-        return None
-    try:
-        return _quantity(name, raw[name])
-    except ProfileError:
-        return None
 
 
 def profile_from_json(raw: Mapping[str, Any]) -> Profile:

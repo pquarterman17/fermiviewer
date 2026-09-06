@@ -20,6 +20,7 @@ from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.io.calibration_db import save_calibration
 from fermiviewer.io.project_file import load_project, save_project
 from fermiviewer.io.results_model import CalibrationSnapshot, ResultRecord, snapshot_calibration
+from fermiviewer.models import ImageMeta
 from fermiviewer.project_session import project
 from fermiviewer.result_capture import capture_result
 from fermiviewer.results_calibration import calibration_agreement
@@ -180,6 +181,40 @@ def test_apply_writes_the_snapshot_and_reports_applicability(client: TestClient)
         client.post("/api/profiles/apply", json={"image_id": img, "profile_id": "nope"}).status_code
         == 404
     )
+
+
+def test_a_malformed_snapshot_summarises_tolerantly_instead_of_raising(client: TestClient) -> None:
+    """A hand-edited or future-build project can carry a `version` that
+    isn't an int and an `applicability` that isn't a list (ADR 0009 §5);
+    `_profile_refs` must coerce rather than raise, or every route that
+    builds `ImageMeta` for that image (`/session/open`, `/session/images`,
+    `/image/{id}/meta`) breaks."""
+    img = _image(
+        {
+            "profiles": {
+                "detector": {
+                    "id": "d",
+                    "name": "n",
+                    "kind": "detector",
+                    "version": "future",
+                    "applicability": "nope",
+                },
+                "camera": 7,
+                "microscope": {"version": 2.0, "applicability": ["a", 3]},
+            }
+        }
+    )
+    meta = ImageMeta.from_datastruct(img, store.name(img), store.get(img))
+    profiles = meta.profiles
+    assert profiles["detector"]["version"] == 0
+    assert profiles["detector"]["applicability"] == []
+    assert profiles["microscope"]["version"] == 2
+    assert profiles["microscope"]["applicability"] == ["a", "3"]
+    assert "camera" not in profiles
+
+    r = client.get(f"/api/image/{img}/meta")
+    assert r.status_code == 200, r.text
+    assert r.json()["profiles"] == profiles
 
 
 def test_a_spatial_acquisition_profile_writes_the_axes_per_axis(client: TestClient) -> None:

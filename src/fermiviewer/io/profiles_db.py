@@ -11,7 +11,9 @@ An edit never rewrites a version in place: `update_profile` appends the
 current body to `history`, bumps `version`, writes the new body. A store
 whose `schema` is higher than this build reads is refused (the regions
 rule, ADR 0006 §8) -- reading it under this build's meaning and re-saving
-would silently downgrade it.
+would silently downgrade it. A module-level `_LOCK` is held across each
+complete read/modify/write transaction (and across reads), so concurrent
+requests in FastAPI's threadpool never race a load against a save.
 
 Pure file I/O over `profiles_model`; routes adapt.
 """
@@ -21,6 +23,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import tempfile
+import threading
 import time
 import warnings
 from collections.abc import Callable, Mapping
@@ -59,6 +63,11 @@ __all__ = [
 LEGACY_SOURCE = "legacy calibration DB"
 
 _log = logging.getLogger(__name__)
+
+#: guards every read/modify/write transaction on the store (re-entrant so
+#: `import_legacy_calibrations` can hold it across its whole batch while
+#: calling `list_profiles`/`create_profile`, which take it too)
+_LOCK = threading.RLock()
 
 #: keys stated in kV (the parsers' normalised names) …
 _KV_KEYS = ("beam_kv", "voltage_kV")
@@ -120,9 +129,17 @@ def _load() -> dict[str, Any]:
 def _save(data: dict[str, Any]) -> None:
     p = db_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_name(f"{p.name}.tmp-{os.getpid()}")
-    tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
-    os.replace(tmp, p)
+    fd = tempfile.NamedTemporaryFile(
+        dir=p.parent, prefix=f"{p.name}.tmp-", delete=False
+    )
+    tmp = Path(fd.name)
+    try:
+        with fd:
+            fd.write(json.dumps(data, indent=1).encode("utf-8"))
+        os.replace(tmp, p)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def _entry(data: dict[str, Any], profile_id: str) -> dict[str, Any]:
@@ -142,7 +159,9 @@ def list_profiles(kind: str | None = None) -> list[Profile]:
     rather than hiding every other profile behind it.
     """
     out: list[Profile] = []
-    for pid, raw in _load()["profiles"].items():
+    with _LOCK:
+        profiles = _load()["profiles"]
+    for pid, raw in profiles.items():
         try:
             profile = profile_from_json({**raw, "id": pid})
         except (ProfileError, TypeError, ValueError) as exc:
@@ -155,19 +174,22 @@ def list_profiles(kind: str | None = None) -> list[Profile]:
 
 
 def get_profile(profile_id: str) -> Profile | None:
-    data = _load()
-    try:
-        return profile_from_json({**_entry(data, profile_id), "id": profile_id})
-    except KeyError:
-        return None
+    with _LOCK:
+        data = _load()
+        try:
+            entry = _entry(data, profile_id)
+        except KeyError:
+            return None
+    return profile_from_json({**entry, "id": profile_id})
 
 
 def profile_history(profile_id: str) -> list[Profile]:
     """Every version of a profile, oldest first, current last. None of
     them is the live record: a snapshot in a result compares against
     these by version."""
-    data = _load()
-    entry = _entry(data, profile_id)  # KeyError → caller's 404
+    with _LOCK:
+        data = _load()
+        entry = _entry(data, profile_id)  # KeyError → caller's 404
     versions = [
         profile_from_json({**old, "id": profile_id})
         for old in entry.get("history") or ()
@@ -231,11 +253,12 @@ def create_profile(
         name=name, kind=kind, version=1, created_at=now, updated_at=now,
         fields=fields, text=text, validity=validity, provenance=provenance,
     )
-    data = _load()
-    if profile.id in data["profiles"]:
-        raise ProfileError(f"profile id {profile.id!r} already exists")
-    data["profiles"][profile.id] = {**profile_to_json(profile), "history": []}
-    _save(data)
+    with _LOCK:
+        data = _load()
+        if profile.id in data["profiles"]:
+            raise ProfileError(f"profile id {profile.id!r} already exists")
+        data["profiles"][profile.id] = {**profile_to_json(profile), "history": []}
+        _save(data)
     return profile
 
 
@@ -252,42 +275,44 @@ def update_profile(
     """The next version: given parts replace the current ones wholesale,
     omitted parts are kept. `kind` is immutable -- a detector does not
     become a microscope; make a new profile. Raises KeyError when unknown."""
-    data = _load()
-    entry = _entry(data, profile_id)
-    current = profile_from_json({**entry, "id": profile_id})
-    nxt = _build(
-        profile_id,
-        name=current.name if name is None else name,
-        kind=current.kind,
-        version=current.version + 1,
-        created_at=current.created_at,
-        updated_at=clock(),
-        fields=(
-            {k: q for k, q in current.fields.items()} if fields is None else fields
-        ),
-        text=current.text if text is None else text,
-        validity=(
-            profile_to_json(current)["validity"] if validity is None else validity
-        ),
-        provenance=current.provenance if provenance is None else provenance,
-        extra=current.extra,
-    )
-    history = [h for h in entry.get("history") or () if isinstance(h, Mapping)]
-    history.append({k: v for k, v in entry.items() if k != "history"})
-    data["profiles"][profile_id] = {**profile_to_json(nxt), "history": history}
-    _save(data)
+    with _LOCK:
+        data = _load()
+        entry = _entry(data, profile_id)
+        current = profile_from_json({**entry, "id": profile_id})
+        nxt = _build(
+            profile_id,
+            name=current.name if name is None else name,
+            kind=current.kind,
+            version=current.version + 1,
+            created_at=current.created_at,
+            updated_at=clock(),
+            fields=(
+                {k: q for k, q in current.fields.items()} if fields is None else fields
+            ),
+            text=current.text if text is None else text,
+            validity=(
+                profile_to_json(current)["validity"] if validity is None else validity
+            ),
+            provenance=current.provenance if provenance is None else provenance,
+            extra=current.extra,
+        )
+        history = [h for h in entry.get("history") or () if isinstance(h, Mapping)]
+        history.append({k: v for k, v in entry.items() if k != "history"})
+        data["profiles"][profile_id] = {**profile_to_json(nxt), "history": history}
+        _save(data)
     return nxt
 
 
 def delete_profile(profile_id: str) -> bool:
     """Remove a profile and its history. Snapshots already taken into
     images and results are copies and are unaffected (ADR 0009 §6)."""
-    data = _load()
-    if profile_id in data["profiles"]:
-        del data["profiles"][profile_id]
-        _save(data)
-        return True
-    return False
+    with _LOCK:
+        data = _load()
+        if profile_id in data["profiles"]:
+            del data["profiles"][profile_id]
+            _save(data)
+            return True
+        return False
 
 
 # ── legacy import ────────────────────────────────────────────────────
@@ -301,57 +326,65 @@ def import_legacy_calibrations(
     Returns ``(created, skipped)``: profiles created this call, and one
     sentence per entry left alone -- already imported (idempotent, keyed
     by ``text.legacy_key``) or malformed. The legacy file is not touched.
+
+    Holds `_LOCK` across the whole batch (re-entrantly -- it calls
+    `list_profiles` and `create_profile`, which take it too) so a
+    concurrent create cannot slip a duplicate `legacy_key` in between
+    the existing-keys read and this call's writes.
     """
-    existing = {
-        p.text.get("legacy_key") for p in list_profiles("acquisition") if "legacy_key" in p.text
-    }
-    created: list[Profile] = []
-    skipped: list[str] = []
-    for key, entry in entries.items():
-        if key in existing:
-            skipped.append(f"{key!r}: already imported")
-            continue
-        try:
-            (row, col), unit = entry_spacing(dict(entry)), str(entry["unit"])
-            if not unit:
-                raise ValueError("unit is empty")
-        except (KeyError, TypeError, ValueError) as exc:
-            # the reason stays server-side: exception text is not part of
-            # the response contract
-            _log.warning("legacy calibration %r not imported: %s", key, exc)
-            skipped.append(f"{key!r}: malformed entry")
-            continue
-        fields: dict[str, Any] = {
-            "pixel_size_row": {"value": row, "unit": unit},
-            "pixel_size_column": {"value": col, "unit": unit},
+    with _LOCK:
+        existing = {
+            p.text.get("legacy_key")
+            for p in list_profiles("acquisition")
+            if "legacy_key" in p.text
         }
-        instrument, _, mag = key.partition("|")
-        try:
-            mag_value = float(mag)
-        except ValueError:
-            mag_value = float("nan")
-        if mag_value > 0:
-            fields["magnification"] = {"value": mag_value, "unit": ""}
-        text = {"legacy_key": key}
-        if instrument and instrument != "?":
-            text["instrument"] = instrument
-        saved = str(entry.get("saved") or "")
-        created.append(
-            create_profile(
-                name=key,
-                kind="acquisition",
-                fields=fields,
-                text=text,
-                provenance={
-                    "source": LEGACY_SOURCE,
-                    "date": saved[:10] if len(saved) >= 10 else None,
-                    "note": str(entry.get("note") or ""),
-                },
-                clock=clock,
+        created: list[Profile] = []
+        skipped: list[str] = []
+        for key, entry in entries.items():
+            if key in existing:
+                skipped.append(f"{key!r}: already imported")
+                continue
+            try:
+                (row, col), unit = entry_spacing(dict(entry)), str(entry["unit"])
+                if not unit:
+                    raise ValueError("unit is empty")
+            except (KeyError, TypeError, ValueError) as exc:
+                # the reason stays server-side: exception text is not part of
+                # the response contract
+                _log.warning("legacy calibration %r not imported: %s", key, exc)
+                skipped.append(f"{key!r}: malformed entry")
+                continue
+            fields: dict[str, Any] = {
+                "pixel_size_row": {"value": row, "unit": unit},
+                "pixel_size_column": {"value": col, "unit": unit},
+            }
+            instrument, _, mag = key.partition("|")
+            try:
+                mag_value = float(mag)
+            except ValueError:
+                mag_value = float("nan")
+            if mag_value > 0:
+                fields["magnification"] = {"value": mag_value, "unit": ""}
+            text = {"legacy_key": key}
+            if instrument and instrument != "?":
+                text["instrument"] = instrument
+            saved = str(entry.get("saved") or "")
+            created.append(
+                create_profile(
+                    name=key,
+                    kind="acquisition",
+                    fields=fields,
+                    text=text,
+                    provenance={
+                        "source": LEGACY_SOURCE,
+                        "date": saved[:10] if len(saved) >= 10 else None,
+                        "note": str(entry.get("note") or ""),
+                    },
+                    clock=clock,
+                )
             )
-        )
-        existing.add(key)
-    return created, skipped
+            existing.add(key)
+        return created, skipped
 
 
 # ── applicability ────────────────────────────────────────────────────
