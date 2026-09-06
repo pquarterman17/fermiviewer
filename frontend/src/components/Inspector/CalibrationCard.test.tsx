@@ -4,13 +4,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ImageMeta } from "../../lib/api";
 import { useViewer, type Measure } from "../../store/viewer";
 
-const applyCalibrationMock = vi.fn();
 const applyCalibrationAxesMock = vi.fn();
 const clearCalibrationMock = vi.fn();
 
 vi.mock("../../lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../lib/api")>()),
-  applyCalibration: (...args: unknown[]) => applyCalibrationMock(...args),
   applyCalibrationAxes: (...args: unknown[]) => applyCalibrationAxesMock(...args),
   clearCalibration: (...args: unknown[]) => clearCalibrationMock(...args),
 }));
@@ -64,6 +62,21 @@ describe("CalibrationCard per-axis editing", () => {
     render(<CalibrationCard />);
     expect(screen.getByRole("status")).toHaveTextContent("Rows 0.5");
     expect(screen.getByRole("status")).toHaveTextContent("Columns 2");
+  });
+
+  it("sends an equal pair when square mode is chosen on anisotropic data", async () => {
+    seed(horizontal);
+    render(<CalibrationCard />);
+    fireEvent.change(screen.getByPlaceholderText("e.g. 200"), {
+      target: { value: "400" },
+    });
+    expect(screen.getByText(/4.000 nm\/px on both axes/)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Calibrate from line" }));
+    await waitFor(() =>
+      expect(applyCalibrationAxesMock).toHaveBeenCalledWith(
+        "img", [4, 4], "nm",
+      ),
+    );
   });
 
   it("applies independently edited row and column extents", async () => {

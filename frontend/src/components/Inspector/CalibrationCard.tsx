@@ -7,7 +7,6 @@
 import { useEffect, useState } from "react";
 
 import {
-  applyCalibration,
   applyCalibrationAxes,
   clearCalibration,
 } from "../../lib/api";
@@ -111,7 +110,11 @@ export default function CalibrationCard() {
   const calibrate = () => {
     if (!canSquareCalibrate || !line) return;
     setBusy(true);
-    applyCalibration(activeId, lenVal / lenPx, unit)
+    const pixelSize = lenVal / lenPx;
+    // This is the user's explicit geometry choice. The scalar backend form
+    // intentionally preserves an existing anisotropic ratio (ADR gate G1),
+    // so square mode sends an explicit equal pair instead.
+    applyCalibrationAxes(activeId, [pixelSize, pixelSize], unit)
       .then((r) => {
         acceptImage(r.image);
         removeMeasure(activeId, line.id); // the calibration line disappears
