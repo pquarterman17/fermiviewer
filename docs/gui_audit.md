@@ -76,7 +76,7 @@ Everything not listed above is ✅ — full tables follow.
 | Remove Selected | ✅ | ⌘W + filmstrip ctx |
 | Edit Metadata… | ✅ | |
 | Set Pixel Size… | ✅ | Calibrate Pixel Size |
-| Calibration Database… | ✅ | Manage Calibrations |
+| Calibration Database… | ✅ | Calibration Center |
 
 ### View
 | Control | Status | Notes |

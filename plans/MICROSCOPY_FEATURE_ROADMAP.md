@@ -983,6 +983,15 @@ EELS/dose/spatial/reciprocal calibration using the same persistence rules.
 > `tests/test_api_profiles.py`. Nothing consumes a profile yet — that is
 > the third box, one route at a time.
 
+> **2026-09-06 — Calibration Center UI shipped (5B).** Image → Calibration
+> Center opens a searchable, type-filtered profile library with a dedicated
+> detail/editor pane. Values and uncertainty, validity constraints,
+> provenance, applicability warnings, active-image state, and immutable
+> version history are visible in one place. The same workspace owns create,
+> versioned edit, duplicate, delete, apply/unapply, and idempotent legacy
+> import flows. Frontend API and interaction tests cover profile transport,
+> presentation, warnings, application, and versioned editing.
+
 > **2026-09-04 — the reciprocal half of the second box shipped.**
 > `calc/ctf.py`, `calc/lattice.py` and `calc/diffraction.py::index_spots`
 > (with `index_spots_roi`) take a keyword-only `spacing`; the lattice, CTF

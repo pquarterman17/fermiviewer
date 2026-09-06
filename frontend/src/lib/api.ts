@@ -18,3 +18,4 @@ export * from "./api/project";
 export * from "./api/regionSets";
 export * from "./api/distributions";
 export * from "./api/results";
+export * from "./api/profiles";
