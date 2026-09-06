@@ -35,7 +35,22 @@ export interface ImageMeta {
    *  constructs an ImageMeta — they all come off the wire — so this cannot
    *  hide a production site that forgot to set it. */
   content_rows?: number | null;
+  /** Calibration profiles applied to the image, by kind (ADR 0009 §5):
+   *  identity and version, plus the reasons it fell outside its validity
+   *  when applied. The full body is `GET /profiles/{id}` (current) or
+   *  `GET /profiles/applied/{image_id}` (the snapshot as applied).
+   *  Optional: an older server does not send it. */
+  profiles?: Record<string, AppliedProfileRef>;
   meta: Record<string, string | number | boolean>;
+}
+
+/** One entry of `ImageMeta.profiles`. */
+export interface AppliedProfileRef {
+  id: string;
+  name: string;
+  version: number;
+  applied_at: string;
+  applicability: string[];
 }
 
 export interface Histogram {

@@ -297,7 +297,21 @@
                 },
                 "source": {
                   "type": ["string", "null"],
-                  "description": "Where the calibration came from — the image's metadata.calibration_source convention (fei, gatan, db:<key>, ...)."
+                  "description": "Where the calibration came from — the image's metadata.calibration_source convention (fei, gatan, db:<key>, profile:<id>@<version>, ...)."
+                },
+                "profiles": {
+                  "type": "object",
+                  "description": "The calibration profiles applied to the source at compute time (ADR 0009 §6), keyed by kind (microscope, detector, camera, acquisition). Each value is the profile's full body — id, name, kind, version, fields as {value, unit, sigma}, text, validity, provenance — plus applied_at and applicability (the reasons it fell outside its validity when applied). A COPY: a later edit bumps the profile's version in the per-user store and cannot change what this record says it used. Absent when the source carried no profiles.",
+                  "additionalProperties": {
+                    "type": "object",
+                    "required": ["id", "name", "kind", "version"],
+                    "properties": {
+                      "id": { "type": "string" },
+                      "name": { "type": "string" },
+                      "kind": { "enum": ["microscope", "detector", "camera", "acquisition"] },
+                      "version": { "type": "integer", "minimum": 1 }
+                    }
+                  }
                 }
               }
             }

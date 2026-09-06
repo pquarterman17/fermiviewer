@@ -53,7 +53,9 @@ def client() -> TestClient:
 
 def _image(axes: tuple[AxisCal, AxisCal], metadata: dict | None = None) -> DataStruct:
     return DataStruct(
-        data=np.zeros((16, 32)), kind=DataKind.IMAGE, axes=axes,
+        data=np.zeros((16, 32)),
+        kind=DataKind.IMAGE,
+        axes=axes,
         metadata=dict(metadata or {}),
     )
 
@@ -97,7 +99,10 @@ def test_explicit_pair_round_trips_and_saves_per_axis(client) -> None:
     image_id = store.add_parsed(_afm(), "afm.spm")
     _apply(client, image_id, pixel_size=4.0, unit="nm")
     meta = _apply(
-        client, image_id, pixel_spacing=[ROW_NM, COL_NM], unit="nm",
+        client,
+        image_id,
+        pixel_spacing=[ROW_NM, COL_NM],
+        unit="nm",
         save_as_key="AFM|1",
     )
     assert meta["pixel_spacing"] == pytest.approx([ROW_NM, COL_NM])
@@ -139,9 +144,7 @@ def test_single_length_on_square_or_uncalibrated_pixels_stays_square(client) -> 
     assert meta["pixel_spacing"] == pytest.approx([0.31, 0.31])
     assert _scales(store.get(uncal)) == (0.31, 0.31)
 
-    square = store.add_parsed(
-        _image((AxisCal(0.5, 0.0, "nm"), AxisCal(0.5, 0.0, "nm"))), "sq.dm4"
-    )
+    square = store.add_parsed(_image((AxisCal(0.5, 0.0, "nm"), AxisCal(0.5, 0.0, "nm"))), "sq.dm4")
     meta = _apply(client, square, pixel_size=0.7, unit="um")
     assert meta["pixel_spacing"] == pytest.approx([0.7, 0.7])
     assert meta["pixel_unit"] == "um"
@@ -163,9 +166,7 @@ def test_single_length_spacing_rule() -> None:
     assert single_length_spacing(_uncal(), 0.31) == (0.31, 0.31)
     # the column extent itself is returned bit for bit
     assert single_length_spacing(_afm(), COL_NM) == (ROW_NM, COL_NM)
-    spectrum = DataStruct(
-        data=np.arange(4), kind=DataKind.SPECTRUM, axes=(AxisCal(1, 0, "eV"),)
-    )
+    spectrum = DataStruct(data=np.arange(4), kind=DataKind.SPECTRUM, axes=(AxisCal(1, 0, "eV"),))
     assert single_length_spacing(spectrum, 1.0) == (1.0, 1.0)
 
 
@@ -315,8 +316,7 @@ def test_apply_route_takes_exactly_one_source(client) -> None:
     assert bad.status_code == 422
     # detect-bar has its own request model and still takes just image_id
     assert (
-        client.post("/api/calibration/detect-bar", json={"image_id": image_id}).status_code
-        == 200
+        client.post("/api/calibration/detect-bar", json={"image_id": image_id}).status_code == 200
     )
 
 
@@ -375,9 +375,7 @@ def test_recalibrate_axes_keeps_the_energy_axis_and_rejects_spectra() -> None:
     # the isotropic form is the pair form with equal extents
     assert recalibrate(cube, 0.25, "nm").axes == recalibrate_axes(cube, (0.25, 0.25), "nm").axes
 
-    spectrum = DataStruct(
-        data=np.arange(4), kind=DataKind.SPECTRUM, axes=(AxisCal(1, 0, "eV"),)
-    )
+    spectrum = DataStruct(data=np.arange(4), kind=DataKind.SPECTRUM, axes=(AxisCal(1, 0, "eV"),))
     with pytest.raises(HTTPException, match="no spatial calibration"):
         recalibrate_axes(spectrum, (1.0, 1.0), "nm")
 
@@ -395,3 +393,14 @@ def test_image_meta_pixel_size_is_the_column_extent() -> None:
     meta = ImageMeta.from_datastruct("b", "half", half)
     assert meta.pixel_spacing is None
     assert meta.pixel_size == pytest.approx(COL_NM)
+
+    # DM writes negative column scales; pixel_size must still be the
+    # MAGNITUDE (pixel_spacing[1]), never the signed pixel_cal.scale, or
+    # the identity above is false and the headline prints a negative length
+    signed = _image((AxisCal(-0.5, units="nm"), AxisCal(-2.0, units="nm")))
+    # the DataStruct property itself must already be a magnitude — the wire
+    # only agrees with the calc layer by construction if both start signless
+    assert signed.pixel_size == 2.0
+    meta = ImageMeta.from_datastruct("c", "signed", signed)
+    assert meta.pixel_size == 2.0
+    assert meta.pixel_spacing == pytest.approx((0.5, 2.0))

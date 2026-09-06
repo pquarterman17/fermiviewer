@@ -176,7 +176,13 @@ class DataStruct:
 
     @property
     def pixel_size(self) -> float:
-        return self.pixel_cal.scale if self.pixel_cal.calibrated else float("nan")
+        """Physical size of one pixel along the calibrated spatial axis, or NaN.
+
+        Magnitude, not signed, for the same reason `pixel_area` and
+        `pixel_spacing` are: a negative scale is a direction convention
+        (DM writes them), and a size has no direction.
+        """
+        return abs(self.pixel_cal.scale) if self.pixel_cal.calibrated else float("nan")
 
     @property
     def pixel_unit(self) -> str:

@@ -192,6 +192,10 @@ def _calibration_entry(snap: CalibrationSnapshot) -> dict[str, Any]:
         "axes": axes_to_manifest(snap.axes),
         "source": snap.source,
     }
+    if snap.profiles:
+        # written only when present, so a record with no profiles keeps
+        # the exact entry shape every earlier build wrote (ADR 0009 §6)
+        entry["profiles"] = finite_json(snap.profiles) or {}
     # Item-5 keys a later build wrote (detector, factors, ...) ride through
     # this build's re-save untouched, like every other carried structure.
     return merge_extra(entry, finite_json(snap.extra) or {}, CAL_KEYS)
@@ -281,6 +285,13 @@ def _record_from_entry(raw: Mapping[str, Any], index: int) -> ResultRecord:
             image_id=str(snap.get("image_id") or ""),
             axes=axes_from_manifest(snap.get("axes") or ()),
             source=snap.get("source"),
+            profiles={
+                str(kind): dict(body)
+                for kind, body in (snap.get("profiles") or {}).items()
+                if isinstance(body, Mapping)
+            }
+            if isinstance(snap.get("profiles"), Mapping)
+            else {},
             extra=extra_keys(snap, CAL_KEYS),
         )
         for snap in raw.get("calibration") or ()

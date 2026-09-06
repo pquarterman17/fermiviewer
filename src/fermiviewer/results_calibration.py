@@ -39,9 +39,10 @@ not. `verified` is the one-line form of the same fact.
 
 Per shared source: the number of snapshotted axes, then per axis the
 `scale` (the pixel size) and the `units`, then the record's calibration
-provenance string. `origin` is deliberately excluded — it shifts where
-zero sits on an axis, not what one step is worth, and no result output
-carries it.
+provenance string, then, per applied-profile kind the source carries, the
+applied profile's `id@version` (ADR 0009 §6). `origin` is deliberately
+excluded — it shifts where zero sits on an axis, not what one step is
+worth, and no result output carries it.
 
 Scale comparison tolerates float noise (`math.isclose`, rel_tol 1e-12) and
 treats NaN as `AxisCal` does: NaN scale means uncalibrated, and two
@@ -60,6 +61,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from fermiviewer.io.profiles_applied import snapshot_version
 from fermiviewer.io.results_model import CalibrationSnapshot, ResultRecord
 
 __all__ = [
@@ -165,6 +167,45 @@ def _axis_differences(
             f"{ref_name} has {ref_snap.source!r}, result {cand_name} has "
             f"{cand_snap.source!r}"
         )
+    out.extend(_profile_differences(image_id, ref_snap, cand_snap, ref_name, cand_name))
+    return out
+
+
+def _profile_ref(snap: dict[str, object] | None) -> str:
+    """``id@version`` of an applied-profile snapshot, or 'none'.
+
+    `version` goes through `snapshot_version` -- the same coercion
+    `models.py` uses for its wire summary -- so a snapshot whose version
+    is `"1"` in one reading and `1` in another still compares equal here.
+    """
+    if snap is None:
+        return "none"
+    return f"{snap.get('id')!s}@{snapshot_version(snap.get('version'))}"
+
+
+def _profile_differences(
+    image_id: str,
+    ref_snap: CalibrationSnapshot,
+    cand_snap: CalibrationSnapshot,
+    ref_name: str,
+    cand_name: str,
+) -> list[str]:
+    """Per profile kind, whether both records used the same profile AT THE
+    SAME VERSION (ADR 0009 §6). Two results under 'the same detector'
+    computed before and after that profile was edited disagree here, which
+    is exactly what the version exists to make visible. A note, never a
+    rejection, like every other line in this module."""
+    out: list[str] = []
+    kinds = list(ref_snap.profiles)
+    kinds.extend(k for k in cand_snap.profiles if k not in ref_snap.profiles)
+    for kind in kinds:
+        ref_p, cand_p = ref_snap.profiles.get(kind), cand_snap.profiles.get(kind)
+        if _profile_ref(ref_p) != _profile_ref(cand_p):
+            out.append(
+                f"source image {image_id!r}: {kind} profile differs — reference "
+                f"{ref_name} used {_profile_ref(ref_p)}, result {cand_name} used "
+                f"{_profile_ref(cand_p)}"
+            )
     return out
 
 

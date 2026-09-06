@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from fermiviewer.calc.fourd.scanshape import scan_shape_candidates
 from fermiviewer.datastruct import SPECTRAL_KINDS, AxisCal, DataKind, DataStruct
 from fermiviewer.io.metadata import databar_content_rows, get_stage_tilt
+from fermiviewer.io.profiles_applied import applied_profiles, snapshot_version
 
 if TYPE_CHECKING:
     from fermiviewer.calc.fourd.dataset import FourDDataset
@@ -50,6 +51,35 @@ def _public_meta(metadata: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _profile_refs(metadata: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Client-visible summary of the profiles applied to an image (ADR 0009
+    §5): identity and version per kind, plus the applicability reasons
+    recorded at apply time. The full bodies stay in the metadata; the UI
+    fetches a profile by id when it needs the fields. Snapshots come from
+    project metadata, which may be hand-edited or written by a future
+    build, so every field is coerced defensively rather than trusted, and a
+    kind whose snapshot cannot be summarised at all is dropped instead of
+    failing the whole response."""
+    out: dict[str, dict[str, Any]] = {}
+    for kind, snap in applied_profiles(metadata).items():
+        try:
+            applicability = snap.get("applicability")
+            out[kind] = {
+                "id": str(snap.get("id", "")),
+                "name": str(snap.get("name", "")),
+                "version": snapshot_version(snap.get("version")),
+                "applied_at": str(snap.get("applied_at", "")),
+                "applicability": (
+                    [str(r) for r in applicability]
+                    if isinstance(applicability, (list, tuple))
+                    else []
+                ),
+            }
+        except Exception:
+            continue
+    return out
+
+
 class OpenRequest(BaseModel):
     paths: list[str]
 
@@ -77,6 +107,9 @@ class ImageMeta(BaseModel):
     # bar keeps its default off the bar, and Strip Vendor Databar knows
     # where to cut. See io.metadata.databar_content_rows.
     content_rows: int | None = None
+    #: Applied calibration profiles by kind — {id, name, version, applied_at,
+    #: applicability} (ADR 0009 §5). Empty when none.
+    profiles: dict[str, dict[str, Any]] = {}
     meta: dict[str, Any] = {}
 
     @classmethod
@@ -85,7 +118,7 @@ class ImageMeta(BaseModel):
         px = None
         unit = ""
         if ds.kind is not DataKind.SPECTRUM and ds.pixel_cal.calibrated:
-            px, unit = ds.pixel_cal.scale, ds.pixel_cal.units
+            px, unit = ds.pixel_size, ds.pixel_cal.units
         spacing = None
         if ds.kind is not DataKind.SPECTRUM:
             candidate = ds.pixel_spacing
@@ -126,6 +159,7 @@ class ImageMeta(BaseModel):
                 if ds.kind is DataKind.IMAGE
                 else None
             ),
+            profiles=_profile_refs(ds.metadata),
             meta=_public_meta(ds.metadata),
         )
 
