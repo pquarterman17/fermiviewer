@@ -152,6 +152,7 @@ def create_app() -> FastAPI:
     """Build the FastAPI app. Router registration lives in
     server_routers.py — split out to respect the 500-line ceiling."""
     from fermiviewer.server_routers import include_all_routers
+    from fermiviewer.storelock import StoreLockTimeoutError
 
     app = FastAPI(title="fermiviewer", version=__version__, lifespan=_lifespan)
 
@@ -174,6 +175,23 @@ def create_app() -> FastAPI:
         return await call_next(request)
 
     include_all_routers(app)
+
+    @app.exception_handler(StoreLockTimeoutError)
+    async def _store_lock_busy(
+        request: Request, exc: StoreLockTimeoutError
+    ) -> JSONResponse:
+        """A sibling FermiViewer held a JSON store past the lock timeout.
+
+        Registered once here rather than per route because every store
+        write reaches this through `with _LOCK:`. 503 + Retry-After is the
+        honest answer: the request did not happen and retrying shortly is
+        expected to work. The alternative -- writing anyway -- is the lost
+        update `storelock` exists to prevent.
+        """
+        return JSONResponse(
+            {"detail": str(exc)}, status_code=503, headers={"Retry-After": "1"}
+        )
+
 
     @app.get("/api/health")
     def health() -> dict[str, str]:

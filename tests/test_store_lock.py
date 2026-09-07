@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from fermiviewer.storelock import StoreLock
+from fermiviewer.storelock import StoreLock, StoreLockTimeoutError
 
 
 def _run(code: str, **env: str) -> subprocess.Popen[bytes]:
@@ -268,37 +268,35 @@ def test_degrades_when_the_filesystem_cannot_lock(
 def test_does_not_leak_a_descriptor_when_setup_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A lock file that opens but cannot be prepared must not leak its fd.
+    """A lock file that opens but cannot be locked must not leak its fd.
 
-    The open and the byte-write that follows it were once in one `try`, so
-    a failure after the open returned without closing. `_acquire_file`
-    runs once per store transaction, so on a full lock filesystem -- the
-    exact case it is meant to degrade for -- that leaked one descriptor
-    per save until the process ran out of handles.
+    `_acquire_file` runs once per store transaction, so on a mount that
+    cannot lock -- the exact case it is meant to degrade for -- leaking
+    one descriptor per save would exhaust the process's handles while it
+    still looked like a clean fallback.
 
     The leak is measured rather than asserted structurally: `os.open`
     hands back the lowest free descriptor, so a probe taken before and
     after a run of failed acquisitions returns the same number if every
     fd was closed, and a higher one if they were not.
+
+    This drives the unsupported-filesystem path rather than a failing
+    write, because the lock file is never written to at all any more; see
+    `test_the_lock_file_stays_empty`.
     """
-    import errno as _errno
+    from fermiviewer import storelock as _sl
 
-    def enospc(*args: object, **kwargs: object) -> None:
-        raise OSError(_errno.ENOSPC, "no space left on device")
+    def unsupported(fd: int) -> bool:
+        raise _sl._UnsupportedError("no locks on this mount")
 
+    monkeypatch.setattr(_sl, "_lock_exclusive", unsupported)
     lock = StoreLock(lambda: tmp_path / "store.json")
-    with lock:
-        pass  # create the lock file while writes still work
-
-    monkeypatch.setattr(os, "write", enospc)
 
     def probe() -> int:
         fd = os.open(os.devnull, os.O_RDONLY)
         os.close(fd)
         return fd
 
-    # the file exists but is empty, so every acquisition retries the write
-    (tmp_path / "store.json.lock").write_bytes(b"")
     before = probe()
     for _ in range(20):
         with lock:
@@ -327,3 +325,154 @@ def test_releases_on_an_exception(tmp_path: Path) -> None:
         """
     )
     _drain(child, timeout=120.0)
+
+
+# ── the lock file carries no payload (regression) ─────────────────────
+
+
+def test_the_lock_file_stays_empty(tmp_path: Path) -> None:
+    """The lock file must stay zero bytes while the lock is held.
+
+    `msvcrt.locking` locks a byte range from the current offset, which
+    once read as "the file needs a byte to lock". It does not: Windows
+    locks a range past EOF, and that lock is still exclusive across
+    processes (`test_lock_excludes_another_process` proves the exclusion
+    independently). Writing the placeholder was what broke it -- see
+    `test_a_contended_peer_does_not_degrade_to_the_thread_lock`.
+    """
+    lock = StoreLock(lambda: tmp_path / "store.json")
+    with lock:
+        assert lock._fd is not None, "expected a real file lock"
+        assert (tmp_path / "store.json.lock").stat().st_size == 0, (
+            "the lock file grew a payload byte; on Windows that byte sits "
+            "under a mandatory lock and a peer's write to it takes EACCES"
+        )
+
+
+def test_a_contended_peer_does_not_degrade_to_the_thread_lock(
+    tmp_path: Path,
+) -> None:
+    """A second process must WAIT for the holder and then take a real
+    file lock -- never fall back to thread-only exclusion.
+
+    This is the lost update that reached CI. Windows locks are mandatory
+    where POSIX `flock` is advisory, so when `_acquire_file` still wrote
+    a placeholder byte, a peer that found the lock file empty wrote into
+    a range the holder had locked, took EACCES, was misread as "this
+    filesystem cannot lock", and proceeded unlocked. Both processes then
+    ran the same read/modify/write and one update vanished.
+    """
+    store = tmp_path / "store.json"
+    ready = tmp_path / "ready"
+    hold = 1.5
+    # The holder takes the lock through the low-level primitive rather
+    # than `StoreLock`, so the lock file is left at zero bytes -- the
+    # steady state this module now produces. That is what makes the test
+    # deterministic: an acquirer that still wrote a placeholder byte
+    # would write into the holder's locked range every time, not just
+    # when it lost a race.
+    child = _run(
+        f"""
+        import os, time
+        from pathlib import Path
+        from fermiviewer import storelock
+
+        store = Path({str(store)!r})
+        lock_path = store.with_name(store.name + ".lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_BINARY", 0)
+        fd = os.open(lock_path, flags, 0o644)
+        assert storelock._lock_exclusive(fd), "holder could not lock"
+        assert os.fstat(fd).st_size == 0, "holder wrote to the lock file"
+        Path({str(ready)!r}).write_text("held")
+        time.sleep({hold})
+        storelock._unlock(fd)
+        os.close(fd)
+        """
+    )
+    deadline = time.monotonic() + 60.0
+    while not ready.exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert ready.exists(), "child never took the lock"
+
+    lock = StoreLock(lambda: store)
+    started = time.monotonic()
+    with lock:
+        waited = time.monotonic() - started
+        assert lock._fd is not None, (
+            "degraded to the thread lock while a peer held the file lock -- "
+            "this process would now lose that peer's update"
+        )
+    _drain(child)
+    assert waited > hold / 2, (
+        f"took the lock after only {waited:.2f}s while a peer held it for "
+        f"{hold}s, so the wait was not real"
+    )
+
+
+def test_a_holder_that_never_releases_raises_rather_than_racing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Timing out is an error, not a silent downgrade.
+
+    Where locking works and a peer simply will not let go, proceeding
+    unlocked is precisely the lost update this class exists to prevent,
+    so the caller is told instead.
+    """
+    from fermiviewer import storelock as _sl
+
+    store = tmp_path / "store.json"
+    ready = tmp_path / "ready"
+    child = _run(
+        f"""
+        import time
+        from pathlib import Path
+        from fermiviewer.storelock import StoreLock
+
+        lock = StoreLock(lambda: Path({str(store)!r}))
+        with lock:
+            Path({str(ready)!r}).write_text("held")
+            time.sleep(30)
+        """
+    )
+    try:
+        deadline = time.monotonic() + 60.0
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert ready.exists(), "child never took the lock"
+
+        monkeypatch.setattr(_sl, "_TIMEOUT", 0.3)
+        lock = StoreLock(lambda: store)
+        with pytest.raises(StoreLockTimeoutError):
+            with lock:
+                pass
+        assert lock._fd is None, "a timed-out acquisition must hold no fd"
+    finally:
+        child.kill()
+        child.communicate(timeout=30)
+
+
+def test_a_lock_timeout_surfaces_as_503_not_500(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`StoreLockTimeoutError` reaches the client as a retryable 503.
+
+    The handler is registered once on the app rather than per route,
+    because every store write reaches it through `with _LOCK:`. Without
+    it the new exception would read as an opaque 500 -- an improvement on
+    silently losing the write, but not an answer the UI can act on.
+    """
+    from fastapi.testclient import TestClient
+
+    from fermiviewer.routes import calibration as _cal
+    from fermiviewer.server import create_app
+
+    def busy() -> None:
+        raise StoreLockTimeoutError("another FermiViewer holds the store")
+
+    monkeypatch.setattr(_cal, "list_calibrations", busy)
+    with TestClient(create_app(), raise_server_exceptions=False) as client:
+        resp = client.get("/api/calibration")
+    assert resp.status_code == 503, resp.text
+    assert resp.headers.get("Retry-After") == "1"
+    assert "another FermiViewer" in resp.json()["detail"]

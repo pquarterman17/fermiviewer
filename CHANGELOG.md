@@ -170,7 +170,16 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   `storelock.StoreLock`: the same re-entrant `with` protocol, plus an OS
   advisory lock on a sibling `.lock` file for the outermost transaction.
   Waiting is bounded, and a config dir that cannot hold a lock file
-  degrades to the thread lock rather than failing the request.
+  degrades to the thread lock rather than failing the request. On Windows
+  the lock file is left empty on purpose: `msvcrt.locking` locks a range
+  past end-of-file perfectly well, and the placeholder byte an earlier
+  revision wrote was itself a lost update — Windows locks are *mandatory*
+  where POSIX `flock` is advisory, so a second process that found the file
+  empty wrote into the range the holder had locked, took `EACCES`, was
+  misread as "this filesystem cannot lock" and carried on unlocked. A
+  timeout is now an error (HTTP 503 with `Retry-After`) rather than a
+  silent downgrade: where locking works and a peer will not let go,
+  writing anyway is the very lost update the lock exists to prevent.
 - **A failed metadata sidecar write no longer erases the saved values.**
   `usermeta.write_sidecar` used a plain `write_bytes`, which truncates the
   target before writing: a crash, a full disk or a kill mid-write left a
