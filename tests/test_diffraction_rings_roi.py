@@ -373,9 +373,10 @@ def test_index_spots_roi_keeps_overlay_geometry_in_the_full_image_frame() -> Non
 
     This used to hold *despite* the indexing re-framing spots into the
     ROI's own coordinates; the overlay geometry was converted back. That
-    re-framing is gone — an ROI now gates which spots are indexed and
-    plays no part in the arithmetic — so scoped and unscoped runs agree
-    on the whole geometry, not just on what the overlay needs."""
+    re-framing is gone — the ROI is validated but plays no part in the
+    arithmetic, and every spot passed in is indexed either way — so
+    scoped and unscoped runs agree on the whole geometry, not just on
+    what the overlay needs."""
     import numpy as np
 
     from fermiviewer.calc.diffraction_index import index_spots_roi
@@ -390,11 +391,15 @@ def test_index_spots_roi_keeps_overlay_geometry_in_the_full_image_frame() -> Non
 
 
 def test_index_spots_roi_d_spacing_is_roi_invariant_in_fft_mode() -> None:
-    """An ROI selects WHICH spots to index in FFT mode; it must not rescale
-    the reciprocal grid. Regression for the bug where re-framing the spot
-    into the ROI's own (smaller) size fed that smaller size straight into
-    `_measured_d`'s FFT-mode divisor, so `matched_d` came back scaled by
-    W_full / W_roi (here 128 / 64 = 2x: 6.4 A full-frame vs 3.2 A ROI'd)."""
+    """An ROI must not rescale the reciprocal grid in FFT mode.
+
+    Spot selection happens upstream (`find_spots_roi`); `index_spots_roi`
+    validates the ROI but indexes every spot handed to it, so passing one
+    must leave the measured d-spacing untouched. Regression for the bug
+    where re-framing the spot into the ROI's own (smaller) size fed that
+    smaller size straight into `_measured_d`'s FFT-mode divisor, so
+    `matched_d` came back scaled by W_full / W_roi (here 128 / 64 = 2x:
+    6.4 A full-frame vs 3.2 A ROI'd)."""
     import numpy as np
 
     from fermiviewer.calc.diffraction_index import index_spots_roi

@@ -741,13 +741,14 @@ DOMAINS: tuple[Domain, ...] = (
                 ("diffraction_index",),
                 "table",
                 "shipped",
-                "`spots` rides a RowSpec list param, 1-based (row, col). An "
-                "ROI gates WHICH spots are indexed and plays no part in the "
-                "arithmetic: everything, centre/measured_r included, stays "
-                "in the FULL-image frame. Re-framing into the ROI's own "
-                "smaller size used to rescale every d-spacing by "
-                "W_full/W_roi. A degenerate ROI errors instead of silently "
-                "indexing everything with a shrunken d-scale",
+                "`spots` rides a RowSpec list param, 1-based (row, col), and "
+                "every spot given is indexed: spot selection happens "
+                "upstream (find_spots_roi), so the ROI here is validated but "
+                "plays no part in the arithmetic. Everything, "
+                "centre/measured_r included, stays in the FULL-image frame; "
+                "re-framing into the ROI's own smaller size used to rescale "
+                "every d-spacing by W_full/W_roi. A degenerate ROI errors "
+                "instead of silently indexing with a shrunken d-scale",
             ),
             Row(
                 "POST",
