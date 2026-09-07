@@ -369,7 +369,13 @@ def test_index_spots_roi_refuses_a_roi_that_selects_nothing() -> None:
 
 def test_index_spots_roi_keeps_overlay_geometry_in_the_full_image_frame() -> None:
     """center/measured_r drive the matched-ring overlay, drawn on the whole
-    image — only the indexing itself moves into the ROI frame."""
+    image, so they must be full-image coordinates.
+
+    This used to hold *despite* the indexing re-framing spots into the
+    ROI's own coordinates; the overlay geometry was converted back. That
+    re-framing is gone — an ROI now gates which spots are indexed and
+    plays no part in the arithmetic — so scoped and unscoped runs agree
+    on the whole geometry, not just on what the overlay needs."""
     import numpy as np
 
     from fermiviewer.calc.diffraction_index import index_spots_roi
