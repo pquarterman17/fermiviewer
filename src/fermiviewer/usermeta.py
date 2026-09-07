@@ -13,6 +13,7 @@ import os
 import re
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -240,6 +241,33 @@ def sidecar_bytes(values: dict[str, str]) -> bytes:
     return text.encode("utf-8")
 
 
+#: how long `_replace` retries a Windows sharing violation before giving up
+_REPLACE_TIMEOUT = 2.0
+
+
+def _replace(tmp: Path, target: Path) -> None:
+    """`os.replace`, retried briefly on a Windows sharing violation.
+
+    Windows refuses to replace a file another handle has open, raising
+    PermissionError (WinError 5) — and `read_sidecar` may be reading this
+    exact file for another request in FastAPI's threadpool, which is
+    precisely what makes the atomic swap worth having. Readers hold the
+    handle for microseconds, so retrying turns a spurious failure into the
+    swap that was going to succeed anyway. POSIX has no such restriction
+    and takes the first attempt; a PermissionError there is a real
+    permissions problem and is raised at once.
+    """
+    deadline = time.monotonic() + _REPLACE_TIMEOUT
+    while True:
+        try:
+            os.replace(tmp, target)
+            return
+        except PermissionError:
+            if sys.platform != "win32" or time.monotonic() >= deadline:
+                raise
+            time.sleep(0.01)
+
+
 def write_sidecar(image_path: str, values: dict[str, str]) -> None:
     """Persist the sidecar beside the image, atomically.
 
@@ -247,10 +275,11 @@ def write_sidecar(image_path: str, values: dict[str, str]) -> None:
     kill between truncate and write leaves a zero-length or half-written
     YAML file — and `read_sidecar` reads that as "no saved values", which
     silently loses every field the user had entered. Writing a temp file
-    in the same directory and `os.replace`-ing it over the target makes
-    the swap atomic on both POSIX and Windows: a reader sees either the
-    old sidecar or the new one, never a partial one. Same shape as the
-    JSON stores (`io/calibration_db._save`).
+    in the same directory and replacing the target with it makes the swap
+    atomic: a reader sees either the old sidecar or the new one, never a
+    partial one. Same shape as the JSON stores
+    (`io/calibration_db._save`), which do not need `_replace` because
+    every read and write of those goes through their `StoreLock`.
     """
     sp = sidecar_path(image_path)
     fd = tempfile.NamedTemporaryFile(
@@ -260,7 +289,7 @@ def write_sidecar(image_path: str, values: dict[str, str]) -> None:
     try:
         with fd:
             fd.write(sidecar_bytes(values))
-        os.replace(tmp, sp)
+        _replace(tmp, sp)
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise

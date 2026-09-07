@@ -325,12 +325,18 @@ def test_sidecar_write_is_staged_not_in_place(tmp_path, monkeypatch) -> None:
 
 def test_sidecar_is_never_read_half_written(tmp_path) -> None:
     """A reader concurrent with a write sees one whole sidecar or the
-    other, never a partial parse.
+    other, never a partial file.
 
     The values are long enough that a non-atomic write spans several
     buffer flushes, so an in-place write is caught mid-file within a few
-    iterations. With the staged write the target is only ever swapped by
-    `os.replace`, so every read is complete.
+    iterations. With the staged write the target is only ever swapped
+    whole, so every read is one of the two payloads byte for byte.
+
+    The reader compares raw bytes rather than going through
+    `read_sidecar`, which swallows any OSError into `{}`. On Windows a
+    reader can transiently fail to open a file being replaced, and that
+    would be indistinguishable from a truncated parse at this level —
+    the claim under test is about the file's contents, so read those.
     """
     import threading
 
@@ -338,6 +344,8 @@ def test_sidecar_is_never_read_half_written(tmp_path) -> None:
     image.write_bytes(b"")
     a = {f"F{i}": "a" * 4096 for i in range(40)}
     b = {f"F{i}": "b" * 4096 for i in range(40)}
+    whole = (usermeta.sidecar_bytes(a), usermeta.sidecar_bytes(b))
+    sp = usermeta.sidecar_path(str(image))
     usermeta.write_sidecar(str(image), a)
 
     stop = threading.Event()
@@ -345,9 +353,12 @@ def test_sidecar_is_never_read_half_written(tmp_path) -> None:
 
     def reader() -> None:
         while not stop.is_set():
-            got = usermeta.read_sidecar(str(image))
-            if got not in (a, b):
-                bad.append(len(got))
+            try:
+                raw = sp.read_bytes()
+            except OSError:
+                continue  # target momentarily unopenable, not a torn read
+            if raw not in whole:
+                bad.append(len(raw))
 
     t = threading.Thread(target=reader, daemon=True)
     t.start()
@@ -356,5 +367,5 @@ def test_sidecar_is_never_read_half_written(tmp_path) -> None:
             usermeta.write_sidecar(str(image), b if i % 2 else a)
     finally:
         stop.set()
-        t.join(timeout=5.0)
-    assert bad == [], f"observed {len(bad)} partial sidecars, e.g. {bad[:5]} fields"
+        t.join(timeout=10.0)
+    assert bad == [], f"observed {len(bad)} partial sidecars, sizes {bad[:5]}"
