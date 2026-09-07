@@ -16,6 +16,19 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Calibration Center (roadmap 5B).** The former flat calibration database
+  dialog is now a searchable profile library for microscope, detector, camera,
+  and acquisition calibrations. A two-pane workspace shows physical values and
+  uncertainty, validity limits, provenance, applicability warnings, applied
+  image state, and immutable version history together. Profiles can be created,
+  edited into a new version, duplicated, deleted, applied or removed from the
+  active image, and imported from the legacy calibration database without
+  leaving the workspace. Applying an acquisition profile that states a pixel
+  size is a CALIBRATION EDIT, not an annotation: it rewrites the image's
+  spatial axes, so the workspace says what it will change before you apply,
+  confirms before replacing an existing calibration, and notes that removing
+  the profile afterwards keeps that calibration (clear it from the Inspector's
+  Calibration card).
 - **Named, versioned calibration profiles (ADR 0009, roadmap 5a).** A
   profile records one thing a quantitative result depends on but the
   pixels do not carry — the microscope, a detector, a camera, or an

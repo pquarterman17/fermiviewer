@@ -329,7 +329,7 @@ export function buildImageMenu(ctx: MenuCtx): Entry[] {
       },
     },
     {
-      label: "Manage Calibrations…",
+      label: "Calibration Center…",
       action: () => store.setCalibOpen(true),
     },
     {
