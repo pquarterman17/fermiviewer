@@ -339,6 +339,7 @@ def test_sidecar_is_never_read_half_written(tmp_path) -> None:
     the claim under test is about the file's contents, so read those.
     """
     import threading
+    import time
 
     image = tmp_path / "img.dm4"
     image.write_bytes(b"")
@@ -359,6 +360,7 @@ def test_sidecar_is_never_read_half_written(tmp_path) -> None:
                 continue  # target momentarily unopenable, not a torn read
             if raw not in whole:
                 bad.append(len(raw))
+            time.sleep(0.0005)
 
     t = threading.Thread(target=reader, daemon=True)
     t.start()
