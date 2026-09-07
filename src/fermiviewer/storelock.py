@@ -149,7 +149,16 @@ class StoreLock:
         try:
             lock_path = self._lock_path()
             lock_path.parent.mkdir(parents=True, exist_ok=True)
-            fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o644)
+            flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_BINARY", 0)
+            fd = os.open(lock_path, flags, 0o644)
+            # `msvcrt.locking` locks a byte RANGE from the current offset,
+            # so the file must have a byte to lock; `flock` does not care.
+            # Racing writers both put the same \0 at offset 0, so there is
+            # nothing to lose. Best-effort: a failure here only costs us
+            # the file lock, which the code below already tolerates.
+            if os.fstat(fd).st_size == 0:
+                os.write(fd, b"\0")
+            os.lseek(fd, 0, os.SEEK_SET)
         except OSError as exc:  # read-only config dir, bad path, …
             _log.debug("store lock unavailable (%s); thread lock only", exc)
             return

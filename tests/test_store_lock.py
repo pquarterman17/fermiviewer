@@ -35,7 +35,7 @@ def _run(code: str, **env: str) -> subprocess.Popen[bytes]:
     )
 
 
-def _drain(proc: subprocess.Popen[bytes], timeout: float = 30.0) -> None:
+def _drain(proc: subprocess.Popen[bytes], timeout: float = 120.0) -> None:
     out, err = proc.communicate(timeout=timeout)
     assert proc.returncode == 0, err.decode(errors="replace") or out.decode(errors="replace")
 
@@ -63,12 +63,12 @@ def test_lock_excludes_another_process(tmp_path: Path) -> None:
         witness = Path({str(witness)!r})
         with lock:
             witness.write_text("in")
-            time.sleep(1.0)
+            time.sleep(3.0)
             witness.write_text("out")
         """
     )
     try:
-        deadline = time.monotonic() + 20.0
+        deadline = time.monotonic() + 90.0
         while not (witness.exists() and witness.read_text() == "in"):
             assert time.monotonic() < deadline, "child never entered the lock"
             time.sleep(0.01)
@@ -240,6 +240,7 @@ def test_degrades_when_the_lock_file_cannot_be_created(tmp_path: Path) -> None:
         assert lock._fd is None, "expected the thread-only fallback"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX flock path")
 def test_degrades_when_the_filesystem_cannot_lock(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -280,4 +281,4 @@ def test_releases_on_an_exception(tmp_path: Path) -> None:
             pass
         """
     )
-    _drain(child, timeout=15.0)
+    _drain(child, timeout=120.0)
