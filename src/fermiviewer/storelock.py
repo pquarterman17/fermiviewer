@@ -30,9 +30,13 @@ Deliberately advisory and best-effort:
 * A config dir that cannot hold a lock file (read-only home, an exotic
   filesystem with no `flock`) degrades to the thread lock alone rather
   than failing the request. That is the behaviour we already had.
-* Waiting is bounded (`_TIMEOUT`). A wedged process must not hang the UI
-  forever, so after the timeout we proceed unlocked — back to the old
-  race, not to a deadlock.
+* Waiting is bounded (`_TIMEOUT`), but a timeout is an *error*, not a
+  silent downgrade. Where locking works and a peer simply will not let
+  go, proceeding unlocked would reintroduce exactly the lost update this
+  class exists to prevent, so the wait raises `StoreLockTimeoutError` and the
+  caller decides. Only the two cases where no lock is obtainable at all
+  (no lock file, a filesystem that cannot lock) fall back to the thread
+  lock, and both now say so in the log.
 
 Lock ordering: `profiles_db.import_legacy_calibrations` is the only
 transaction that nests, and it takes profiles → calibrations. Nothing
@@ -53,7 +57,7 @@ from collections.abc import Callable
 from pathlib import Path
 from types import TracebackType
 
-__all__ = ["StoreLock"]
+__all__ = ["StoreLock", "StoreLockTimeoutError"]
 
 _log = logging.getLogger(__name__)
 
@@ -64,6 +68,15 @@ _TIMEOUT = 10.0
 
 #: poll interval while a peer holds the file lock
 _POLL = 0.02
+
+
+class StoreLockTimeoutError(RuntimeError):
+    """A peer held the store lock past `_TIMEOUT`.
+
+    Raised rather than downgrading to the thread lock: on a filesystem
+    that *can* lock, a timeout means a live peer is mid-transaction, so
+    writing anyway is a lost update rather than a degraded mode.
+    """
 
 
 class _UnsupportedError(Exception):
@@ -144,8 +157,14 @@ class StoreLock:
         return p.with_name(f"{p.name}.lock")
 
     def _acquire_file(self) -> None:
-        """Take the OS lock for the outermost `with`. Any failure leaves
-        ``self._fd`` None, i.e. thread-locked only."""
+        """Take the OS lock for the outermost `with`.
+
+        Leaves ``self._fd`` None -- thread-locked only -- when no lock is
+        obtainable at all (no lock file, or a filesystem that cannot
+        lock). Raises `StoreLockTimeoutError` when locking *does* work here and
+        a peer held it past `_TIMEOUT`, because proceeding then would lose
+        that peer's update rather than merely degrade.
+        """
         try:
             lock_path = self._lock_path()
             lock_path.parent.mkdir(parents=True, exist_ok=True)
@@ -154,24 +173,17 @@ class StoreLock:
         except OSError as exc:  # read-only config dir, bad path, …
             _log.debug("store lock unavailable (%s); thread lock only", exc)
             return
-        try:
-            # `msvcrt.locking` locks a byte RANGE from the current offset,
-            # so the file must have a byte to lock; `flock` does not care.
-            # Racing writers both put the same \0 at offset 0, so there is
-            # nothing to lose. Best-effort: a failure here only costs us
-            # the file lock, which the code below already tolerates.
-            if os.fstat(fd).st_size == 0:
-                os.write(fd, b"\0")
-            os.lseek(fd, 0, os.SEEK_SET)
-        except OSError as exc:
-            # Separate from the open above so the descriptor is always
-            # closed. A full lock filesystem is exactly the case this
-            # degrades for, and _acquire_file runs once per store
-            # transaction -- leaking one fd each time would exhaust the
-            # process's handles while it looked like a clean fallback.
-            _log.debug("store lock unusable (%s); thread lock only", exc)
-            os.close(fd)
-            return
+        # The lock file deliberately stays EMPTY. An earlier version wrote a
+        # placeholder NUL here, believing `msvcrt.locking` needed a byte to
+        # exist before it could lock a range -- it does not; Windows locks a
+        # range past EOF happily, and that lock is still exclusive across
+        # processes. The write was not merely redundant, it was the bug:
+        # Windows locks are MANDATORY where POSIX `flock` is advisory, so
+        # once a peer held byte 0, a second process whose `fstat` had lost
+        # the race to that write took EACCES from its own `os.write`, was
+        # treated as "this filesystem cannot lock", and proceeded
+        # thread-locked only -- silently losing its update. Touching the
+        # locked byte at all is the hazard, so we no longer touch it.
         deadline = time.monotonic() + _TIMEOUT
         while True:
             try:
@@ -179,18 +191,28 @@ class StoreLock:
                     self._fd = fd
                     return
             except _UnsupportedError as exc:
-                _log.debug("file locking unsupported (%s); thread lock only", exc)
-                os.close(fd)
-                return
-            if time.monotonic() >= deadline:
+                # No lock is obtainable on this filesystem, so there is
+                # nothing to wait for and nothing to raise about: degrade,
+                # but say so -- this is the one path that really does leave
+                # the caller back in the pre-lock race.
                 _log.warning(
-                    "timed out after %.0fs waiting for another FermiViewer to "
-                    "release %s; proceeding without the cross-process lock",
-                    _TIMEOUT,
+                    "file locking unsupported for %s (%s); falling back to "
+                    "thread-only exclusion, so a second FermiViewer sharing "
+                    "this config dir could lose an update",
                     self._lock_path(),
+                    exc,
                 )
                 os.close(fd)
                 return
+            if time.monotonic() >= deadline:
+                # Locking works here and a peer simply has not let go, so
+                # this is contention, not incapability. Proceeding would
+                # reintroduce the lost update the lock exists to prevent.
+                os.close(fd)
+                raise StoreLockTimeoutError(
+                    f"timed out after {_TIMEOUT:.0f}s waiting for another "
+                    f"FermiViewer to release {self._lock_path()}"
+                )
             time.sleep(_POLL)
 
     def _release_file(self) -> None:
