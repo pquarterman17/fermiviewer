@@ -265,6 +265,51 @@ def test_degrades_when_the_filesystem_cannot_lock(
     assert time.monotonic() - started < 1.0, "spun on an unlockable filesystem"
 
 
+def test_does_not_leak_a_descriptor_when_setup_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A lock file that opens but cannot be prepared must not leak its fd.
+
+    The open and the byte-write that follows it were once in one `try`, so
+    a failure after the open returned without closing. `_acquire_file`
+    runs once per store transaction, so on a full lock filesystem -- the
+    exact case it is meant to degrade for -- that leaked one descriptor
+    per save until the process ran out of handles.
+
+    The leak is measured rather than asserted structurally: `os.open`
+    hands back the lowest free descriptor, so a probe taken before and
+    after a run of failed acquisitions returns the same number if every
+    fd was closed, and a higher one if they were not.
+    """
+    import errno as _errno
+
+    def enospc(*args: object, **kwargs: object) -> None:
+        raise OSError(_errno.ENOSPC, "no space left on device")
+
+    lock = StoreLock(lambda: tmp_path / "store.json")
+    with lock:
+        pass  # create the lock file while writes still work
+
+    monkeypatch.setattr(os, "write", enospc)
+
+    def probe() -> int:
+        fd = os.open(os.devnull, os.O_RDONLY)
+        os.close(fd)
+        return fd
+
+    # the file exists but is empty, so every acquisition retries the write
+    (tmp_path / "store.json.lock").write_bytes(b"")
+    before = probe()
+    for _ in range(20):
+        with lock:
+            assert lock._fd is None, "expected the thread-only fallback"
+    after = probe()
+    assert after == before, (
+        f"leaked descriptors: probe moved {before} -> {after} over 20 "
+        "failed acquisitions"
+    )
+
+
 def test_releases_on_an_exception(tmp_path: Path) -> None:
     """A transaction that raises still releases the file lock, or the
     next request in the same process would block for the full timeout."""

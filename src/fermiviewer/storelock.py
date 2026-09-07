@@ -151,6 +151,10 @@ class StoreLock:
             lock_path.parent.mkdir(parents=True, exist_ok=True)
             flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_BINARY", 0)
             fd = os.open(lock_path, flags, 0o644)
+        except OSError as exc:  # read-only config dir, bad path, …
+            _log.debug("store lock unavailable (%s); thread lock only", exc)
+            return
+        try:
             # `msvcrt.locking` locks a byte RANGE from the current offset,
             # so the file must have a byte to lock; `flock` does not care.
             # Racing writers both put the same \0 at offset 0, so there is
@@ -159,8 +163,14 @@ class StoreLock:
             if os.fstat(fd).st_size == 0:
                 os.write(fd, b"\0")
             os.lseek(fd, 0, os.SEEK_SET)
-        except OSError as exc:  # read-only config dir, bad path, …
-            _log.debug("store lock unavailable (%s); thread lock only", exc)
+        except OSError as exc:
+            # Separate from the open above so the descriptor is always
+            # closed. A full lock filesystem is exactly the case this
+            # degrades for, and _acquire_file runs once per store
+            # transaction -- leaking one fd each time would exhaust the
+            # process's handles while it looked like a clean fallback.
+            _log.debug("store lock unusable (%s); thread lock only", exc)
+            os.close(fd)
             return
         deadline = time.monotonic() + _TIMEOUT
         while True:
