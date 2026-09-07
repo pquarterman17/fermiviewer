@@ -6,7 +6,10 @@ import type {
   ProfileKind,
   ProfileQuantity,
 } from "../../../lib/api";
-import { canonicalCalibrationUnit } from "../../Inspector/calibrationUi";
+import {
+  canonicalCalibrationUnit,
+  convertCalibrationValue,
+} from "../../Inspector/calibrationUi";
 import { KIND_LABEL, PROFILE_KINDS, TEXT_FIELDS, withQuantity } from "./profileDraft";
 
 type RangeKey = "beam_energy_kev" | "magnification" | "camera_length_mm";
@@ -120,6 +123,34 @@ export default function ProfileEditor({
     ? LENGTH_UNITS
     : [...LENGTH_UNITS, pixelPair.unit];
 
+  // Changing the unit CONVERTS the extents, the rule `CalibrationCard.changeUnit`
+  // already follows: picking µm on a 2 nm pixel means the same pixel written
+  // another way, not a pixel 1000x larger. Only conversions this app can state
+  // exactly are made -- between two spellings it recognises -- so a unit it
+  // does not know is switched without touching the numbers, as before.
+  const changeUnit = (unit: string) => {
+    const from = canonicalCalibrationUnit(pixelPair.unit);
+    const to = canonicalCalibrationUnit(unit);
+    if (from == null || to == null || from === to) {
+      updatePixelPair({ ...pixelPair, unit });
+      return;
+    }
+    const convert = (raw: string) => {
+      const value = Number(raw);
+      return raw === "" || !Number.isFinite(value)
+        ? raw
+        : String(convertCalibrationValue(value, from, to));
+    };
+    updatePixelPair({
+      ...pixelPair,
+      unit,
+      row: convert(pixelPair.row),
+      column: convert(pixelPair.column),
+      rowSigma: convert(pixelPair.rowSigma),
+      columnSigma: convert(pixelPair.columnSigma),
+    });
+  };
+
   const updatePixelPair = (next: PixelPairDraft) => {
     setPixelPair(next);
     const fields = { ...draft.fields };
@@ -188,7 +219,7 @@ export default function ProfileEditor({
                 <div className="fvd-cal-quantity-row fvd-cal-pixel-pair" key={name}>
                   <label htmlFor={`q-${name}`}>Pixel size {axis}</label>
                   <input id={`q-${name}`} type="number" min={0} step="any" value={pixelPair[axis]} onChange={(event) => updatePixelPair({ ...pixelPair, [axis]: event.target.value })} />
-                  <select aria-label={`${name} unit`} value={pixelPair.unit} onChange={(event) => updatePixelPair({ ...pixelPair, unit: event.target.value })}>
+                  <select aria-label={`${name} unit`} value={pixelPair.unit} onChange={(event) => changeUnit(event.target.value)}>
                     {unitOptions.map((item) => <option key={item}>{item}</option>)}
                   </select>
                   <input aria-label={`${name} uncertainty`} type="number" min={0} step="any" value={pixelPair[sigmaKey]} disabled={pixelPair[axis] === ""} onChange={(event) => updatePixelPair({ ...pixelPair, [sigmaKey]: event.target.value })} />

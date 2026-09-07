@@ -199,3 +199,24 @@ it("shows a stored unit the select does not offer, folded to its canonical spell
   fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
   expect(screen.getByLabelText("pixel_size_row unit")).toHaveValue("µm");
 });
+
+it("converts the pixel pair when its unit changes instead of reinterpreting it", async () => {
+  // CalibrationCard.changeUnit already converts its drafts so a unit switch
+  // never silently reinterprets an existing extent; this pair must match, or
+  // picking µm on a 2 nm pixel writes a pixel 1000× larger to the image axes.
+  render(<CalibrationCenter onClose={() => {}} />);
+  fireEvent.click(await screen.findByRole("button", { name: /new profile/i }));
+  fireEvent.change(screen.getByLabelText("Type"), { target: { value: "acquisition" } });
+  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Session A" } });
+  fireEvent.change(screen.getByLabelText("Pixel size row"), { target: { value: "2" } });
+  fireEvent.change(screen.getByLabelText("Pixel size column"), { target: { value: "2" } });
+
+  fireEvent.change(screen.getByLabelText("pixel_size_row unit"), { target: { value: "µm" } });
+  expect(screen.getByLabelText("Pixel size row")).toHaveValue(0.002);
+
+  createProfileMock.mockResolvedValue({ profile });
+  fireEvent.click(screen.getByRole("button", { name: "Create profile" }));
+  await waitFor(() => expect(createProfileMock).toHaveBeenCalled());
+  expect(createProfileMock.mock.calls[0][0].fields.pixel_size_row)
+    .toEqual({ value: 0.002, unit: "µm" });
+});
