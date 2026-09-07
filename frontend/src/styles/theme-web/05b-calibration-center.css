@@ -56,6 +56,7 @@
 .fvd-cal-apply-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; margin: 0 20px 12px; padding: 11px 12px; border: 1px solid color-mix(in srgb, var(--success) 32%, var(--border-soft)); border-radius: 8px; background: color-mix(in srgb, var(--success) 7%, transparent); }
 .fvd-cal-apply-card.warn { border-color: color-mix(in srgb, var(--warning) 42%, var(--border-soft)); background: color-mix(in srgb, var(--warning) 8%, transparent); }
 .fvd-cal-apply-card > div { display: grid; gap: 2px; }.fvd-cal-apply-card small { color: var(--text-faint); }
+.fvd-cal-apply-card .fvd-cal-spatial-impact { margin-top: 5px; color: var(--warning); line-height: 1.45; }
 .fvd-cal-warning-list { grid-column: 1 / -1; margin: 3px 0 0; padding: 8px 8px 0 24px; border-top: 1px solid var(--border-soft); color: var(--warning); font-size: 10px; }
 .fvd-cal-no-image { margin: 0 20px 12px; padding: 9px 12px; border: 1px dashed var(--border); border-radius: 7px; color: var(--text-faint); font-size: 10px; }
 .fvd-cal-detail-scroll, .fvd-cal-center-form-scroll { overflow: auto; min-height: 0; padding: 0 20px 20px; }

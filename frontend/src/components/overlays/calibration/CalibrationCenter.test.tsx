@@ -42,7 +42,9 @@ vi.mock("../../../lib/api", async (original) => ({
 const fields = { microscope: {}, detector: { solid_angle: "sr", takeoff_angle: "deg" }, camera: {}, acquisition: {} };
 
 beforeEach(() => {
+  vi.restoreAllMocks();
   vi.clearAllMocks();
+  vi.spyOn(window, "confirm").mockReturnValue(true);
   listProfilesMock.mockResolvedValue([profile]);
   getKindsMock.mockResolvedValue({ kinds: ["microscope", "detector", "camera", "acquisition"], fields });
   historyMock.mockResolvedValue([profile]);
@@ -68,7 +70,7 @@ describe("CalibrationCenter", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Apply to image" }));
     await waitFor(() => expect(applyProfileMock).toHaveBeenCalledWith("im", "det-1"));
     expect(await screen.findByText("beam energy outside range")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Remove" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Remove profile" })).toBeEnabled();
   });
 
   it("opens a populated editor and saves a new immutable version", async () => {
@@ -81,5 +83,58 @@ describe("CalibrationCenter", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save new version" }));
     await waitFor(() => expect(updateProfileMock).toHaveBeenCalled());
     expect(await screen.findByRole("heading", { name: "Ultim Max SDD" })).toBeVisible();
+  });
+
+  it("keeps a half-filled validity pair out of the saved profile", async () => {
+    createProfileMock.mockResolvedValue({ profile: { ...profile, id: "new", name: "New detector" } });
+    listProfilesMock.mockResolvedValueOnce([profile]).mockResolvedValueOnce([profile]);
+    render(<CalibrationCenter onClose={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: /New profile/ }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "New detector" } });
+    fireEvent.change(screen.getByLabelText("Beam energy minimum"), { target: { value: "80" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create profile" }));
+    await waitFor(() => expect(createProfileMock).toHaveBeenCalled());
+    expect(createProfileMock.mock.calls[0][0].validity.beam_energy_kev).toBeNull();
+  });
+
+  it("warns and confirms before replacing an image pixel calibration", async () => {
+    const acquisition = {
+      ...profile,
+      id: "acq-1",
+      name: "STEM scan",
+      kind: "acquisition" as const,
+      fields: {
+        pixel_size_row: { value: 2, unit: "nm" },
+        pixel_size_column: { value: 2, unit: "nm" },
+      },
+    };
+    listProfilesMock.mockResolvedValue([acquisition]);
+    vi.mocked(window.confirm).mockReturnValue(false);
+    render(<CalibrationCenter onClose={vi.fn()} />);
+    expect(await screen.findByText(/Will set pixel size to 2 nm\/px, replacing 1 nm\/px/)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Apply to image" }));
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("replace the image pixel size"));
+    expect(applyProfileMock).not.toHaveBeenCalled();
+  });
+
+  it("duplicates values but resets provenance and legacy import identity", async () => {
+    const legacy = {
+      ...profile,
+      text: { ...profile.text, legacy_key: "Tecnai|100000" },
+    };
+    listProfilesMock.mockResolvedValueOnce([legacy]).mockResolvedValueOnce([legacy]);
+    createProfileMock.mockResolvedValue({ profile: { ...legacy, id: "copy", name: "Ultim Max copy" } });
+    render(<CalibrationCenter onClose={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    expect(screen.getByLabelText("legacy key")).toHaveAttribute("readonly");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Duplicate" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create profile" }));
+    await waitFor(() => expect(createProfileMock).toHaveBeenCalled());
+    expect(createProfileMock.mock.calls[0][0]).toMatchObject({
+      text: { model: "Ultim Max 170" },
+      provenance: { source: "manual", date: null, operator: "", note: "" },
+    });
+    expect(createProfileMock.mock.calls[0][0].text).not.toHaveProperty("legacy_key");
   });
 });

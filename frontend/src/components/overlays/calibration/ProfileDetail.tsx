@@ -1,11 +1,12 @@
 import type { CalibrationProfile } from "../../../lib/api";
-import { compactDate } from "./profileDraft";
+import { compactDate, type SpatialCalibrationImpact } from "./profileDraft";
 
 interface Props {
   profile: CalibrationProfile;
   appliedVersion: number | null;
   applicability: string[];
   activeImageName: string | null;
+  spatialImpact: SpatialCalibrationImpact | null;
   busy: boolean;
   history: CalibrationProfile[] | null;
   onApply: () => void;
@@ -25,6 +26,7 @@ export default function ProfileDetail({
   appliedVersion,
   applicability,
   activeImageName,
+  spatialImpact,
   busy,
   history,
   onApply,
@@ -60,9 +62,18 @@ export default function ProfileDetail({
                 ? stale ? `Applied at v${appliedVersion}; current is v${profile.version}` : `Profile v${appliedVersion} applied`
                 : "This profile is not applied"}
             </small>
+            {spatialImpact && (
+              <small className="fvd-cal-spatial-impact">
+                {isApplied
+                  ? "Removing the profile keeps its pixel calibration. Clear it in Inspector → Calibration."
+                  : spatialImpact.current && !spatialImpact.changes
+                    ? `Pixel size ${spatialImpact.target} matches the image calibration.`
+                    : `Will set pixel size to ${spatialImpact.target}${spatialImpact.current ? `, replacing ${spatialImpact.current}` : ""}.`}
+              </small>
+            )}
           </div>
           {isApplied ? (
-            <button className="fvd-btn" disabled={busy} onClick={onUnapply}>Remove</button>
+            <button className="fvd-btn" disabled={busy} onClick={onUnapply}>Remove profile</button>
           ) : (
             <button className="fvd-btn primary" disabled={busy} onClick={onApply}>Apply to image</button>
           )}

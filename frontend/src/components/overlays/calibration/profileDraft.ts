@@ -1,9 +1,15 @@
 import type {
   CalibrationProfile,
+  ImageMeta,
   ProfileDraft,
   ProfileKind,
   ProfileQuantity,
 } from "../../../lib/api";
+import {
+  canonicalCalibrationUnit,
+  convertCalibrationValue,
+  formatExtent,
+} from "../../Inspector/calibrationUi";
 
 export const PROFILE_KINDS: ProfileKind[] = [
   "microscope",
@@ -64,6 +70,56 @@ export function draftFromProfile(profile: CalibrationProfile): ProfileDraft {
     validity: { ...profile.validity },
     provenance: { ...profile.provenance },
   };
+}
+
+export function draftForDuplicate(profile: CalibrationProfile): ProfileDraft {
+  const draft = draftFromProfile(profile);
+  const { legacy_key: _legacyKey, ...text } = draft.text;
+  return {
+    ...draft,
+    name: `${profile.name} copy`,
+    text,
+    provenance: { ...emptyProvenance },
+  };
+}
+
+export interface SpatialCalibrationImpact {
+  target: string;
+  current: string | null;
+  changes: boolean;
+}
+
+function spacingLabel(spacing: [number, number], unit: string): string {
+  const [row, column] = spacing.map(formatExtent);
+  return row === column
+    ? `${row} ${unit}/px`
+    : `rows ${row} · columns ${column} ${unit}/px`;
+}
+
+export function spatialCalibrationImpact(
+  profile: CalibrationProfile,
+  image: ImageMeta | null,
+): SpatialCalibrationImpact | null {
+  const row = profile.fields.pixel_size_row;
+  const column = profile.fields.pixel_size_column;
+  if (!row || !column || row.unit !== column.unit) return null;
+  const spacing: [number, number] = [row.value, column.value];
+  const currentSpacing = image?.pixel_spacing ?? null;
+  const current = currentSpacing && image
+    ? spacingLabel(currentSpacing, image.pixel_unit)
+    : null;
+  let changes = currentSpacing == null || image == null;
+  const from = canonicalCalibrationUnit(row.unit);
+  const to = canonicalCalibrationUnit(image?.pixel_unit ?? "");
+  if (currentSpacing && from && to) {
+    const converted = spacing.map((value) => convertCalibrationValue(value, from, to));
+    changes = converted.some((value, index) =>
+      Math.abs(value - currentSpacing[index]) > Math.max(1e-12, Math.abs(currentSpacing[index]) * 1e-9),
+    );
+  } else if (currentSpacing && image) {
+    changes = row.unit !== image.pixel_unit || spacing.some((value, index) => value !== currentSpacing[index]);
+  }
+  return { target: spacingLabel(spacing, row.unit), current, changes };
 }
 
 export function withQuantity(

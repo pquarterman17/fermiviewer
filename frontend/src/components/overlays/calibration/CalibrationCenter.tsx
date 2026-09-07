@@ -20,8 +20,10 @@ import ProfileEditor from "./ProfileEditor";
 import ProfileLibrary from "./ProfileLibrary";
 import {
   draftFromProfile,
+  draftForDuplicate,
   emptyProfile,
   profileSearchText,
+  spatialCalibrationImpact,
 } from "./profileDraft";
 
 const EMPTY_FIELDS: Record<ProfileKind, Record<string, string>> = {
@@ -48,6 +50,9 @@ export default function CalibrationCenter({ onClose }: Props) {
 
   const selected = profiles.find((profile) => profile.id === selectedId) ?? null;
   const activeProfiles = activeMeta?.profiles ?? {};
+  const spatialImpact = selected
+    ? spatialCalibrationImpact(selected, activeMeta)
+    : null;
 
   const refresh = (preferId?: string) => {
     setLoading(true);
@@ -105,6 +110,12 @@ export default function CalibrationCenter({ onClose }: Props) {
 
   const apply = () => {
     if (!activeId || !selected) return;
+    if (
+      spatialImpact?.changes && spatialImpact.current &&
+      !window.confirm(
+        `Apply “${selected.name}” and replace the image pixel size (${spatialImpact.current}) with ${spatialImpact.target}?`,
+      )
+    ) return;
     setBusy(true);
     applyProfile(activeId, selected.id)
       .then(({ image, applicability }) => {
@@ -172,6 +183,7 @@ export default function CalibrationCenter({ onClose }: Props) {
           <ProfileDetail
             profile={selected}
             activeImageName={activeMeta?.name ?? null}
+            spatialImpact={spatialImpact}
             appliedVersion={activeProfiles[selected.kind]?.id === selected.id ? activeProfiles[selected.kind].version : null}
             applicability={activeProfiles[selected.kind]?.id === selected.id ? activeProfiles[selected.kind].applicability ?? [] : []}
             busy={busy}
@@ -179,7 +191,7 @@ export default function CalibrationCenter({ onClose }: Props) {
             onApply={apply}
             onUnapply={unapply}
             onEdit={() => { setDraft(draftFromProfile(selected)); setEditing(true); setCreating(false); }}
-            onDuplicate={() => { setDraft({ ...draftFromProfile(selected), name: `${selected.name} copy` }); setEditing(true); setCreating(true); }}
+            onDuplicate={() => { setDraft(draftForDuplicate(selected)); setEditing(true); setCreating(true); }}
             onDelete={remove}
             onHistory={() => history ? setHistory(null) : getProfileHistory(selected.id).then(setHistory).catch((error: Error) => setStatus(`profile history: ${error.message}`))}
           />

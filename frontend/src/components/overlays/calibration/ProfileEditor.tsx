@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import type {
   CalibrationProfile,
   ProfileDraft,
@@ -34,6 +36,14 @@ export default function ProfileEditor({
   onSave,
   onCancel,
 }: Props) {
+  const [ranges, setRanges] = useState<Record<RangeKey, [string, string]>>(() =>
+    Object.fromEntries(
+      (Object.keys(RANGE_LABELS) as RangeKey[]).map((key) => [
+        key,
+        draft.validity[key]?.map(String) ?? ["", ""],
+      ]),
+    ) as Record<RangeKey, [string, string]>,
+  );
   const fieldNames = Array.from(
     new Set([...Object.keys(knownFields[draft.kind] ?? {}), ...Object.keys(draft.fields)]),
   );
@@ -42,20 +52,17 @@ export default function ProfileEditor({
   );
 
   const setRange = (key: RangeKey, index: 0 | 1, raw: string) => {
-    if (raw === "") {
-      onChange({
-        ...draft,
-        validity: { ...draft.validity, [key]: null },
-      });
-      return;
-    }
-    const value = Number(raw);
-    const current = draft.validity[key] ?? [value, value];
-    const next: [number, number] = [...current];
-    next[index] = value;
+    const next: [string, string] = [...ranges[key]];
+    next[index] = raw;
+    setRanges({ ...ranges, [key]: next });
     onChange({
       ...draft,
-      validity: { ...draft.validity, [key]: next },
+      validity: {
+        ...draft.validity,
+        [key]: next.every((value) => value !== "")
+          ? [Number(next[0]), Number(next[1])]
+          : null,
+      },
     });
   };
 
@@ -87,7 +94,7 @@ export default function ProfileEditor({
             <label className="wide">Name<input autoFocus value={draft.name} onChange={(e) => onChange({ ...draft, name: e.target.value })} /></label>
             <label>Type<select disabled={!creating} value={draft.kind} onChange={(e) => onChange({ ...draft, kind: e.target.value as ProfileKind, fields: {}, text: {} })}>{PROFILE_KINDS.map((kind) => <option key={kind} value={kind}>{KIND_LABEL[kind].slice(0, -1)}</option>)}</select></label>
             {textNames.map((name) => (
-              <label key={name}>{name.replaceAll("_", " ")}<input value={draft.text[name] ?? ""} onChange={(e) => onChange({ ...draft, text: { ...draft.text, [name]: e.target.value } })} /></label>
+              <label key={name}>{name.replaceAll("_", " ")}<input value={draft.text[name] ?? ""} readOnly={name === "legacy_key"} title={name === "legacy_key" ? "Preserved import identity" : undefined} onChange={(e) => name !== "legacy_key" && onChange({ ...draft, text: { ...draft.text, [name]: e.target.value } })} /></label>
             ))}
           </div>
         </section>
@@ -119,10 +126,10 @@ export default function ProfileEditor({
           <div className="fvd-cal-range-grid">
             {(Object.keys(RANGE_LABELS) as RangeKey[]).map((key) => (
               <div className="fvd-cal-range" key={key}>
-                <span>{RANGE_LABELS[key][0]} <small>{RANGE_LABELS[key][1]}</small></span>
-                <input aria-label={`${RANGE_LABELS[key][0]} minimum`} type="number" step="any" placeholder="Min" value={draft.validity[key]?.[0] ?? ""} onChange={(e) => setRange(key, 0, e.target.value)} />
+                <span>{RANGE_LABELS[key][0]} <small>{RANGE_LABELS[key][1]} · both required</small></span>
+                <input aria-label={`${RANGE_LABELS[key][0]} minimum`} type="number" step="any" placeholder="Min" value={ranges[key][0]} onChange={(e) => setRange(key, 0, e.target.value)} />
                 <span>to</span>
-                <input aria-label={`${RANGE_LABELS[key][0]} maximum`} type="number" step="any" placeholder="Max" value={draft.validity[key]?.[1] ?? ""} onChange={(e) => setRange(key, 1, e.target.value)} />
+                <input aria-label={`${RANGE_LABELS[key][0]} maximum`} type="number" step="any" placeholder="Max" value={ranges[key][1]} onChange={(e) => setRange(key, 1, e.target.value)} />
               </div>
             ))}
           </div>
