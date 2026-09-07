@@ -7,6 +7,9 @@ self-healing, and that a workspace written as a legacy v1 pair still opens.
 
 from __future__ import annotations
 
+import json
+import threading
+
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
@@ -117,6 +120,45 @@ def test_delete(client, tmp_path) -> None:
     assert client.get("/api/workspaces").json()["workspaces"] == []
     # deleting again is a no-op (already gone)
     assert client.delete("/api/workspaces/temp").json()["deleted"] is False
+
+
+def test_concurrent_registers_do_not_clobber_each_other() -> None:
+    """Eight threads each `register` one workspace after a barrier, so their
+    `_read_index()`/`_write_index()` transactions would race without
+    `_LOCK` -- the last writer's write would silently drop everyone else's
+    entry (or, writing without a temp-then-replace, interleave into an
+    unparseable `index.json`)."""
+    n = 8
+    workspaces.workspaces_dir().mkdir(parents=True, exist_ok=True)
+    barrier = threading.Barrier(n)
+    errors: list[BaseException] = []
+
+    def worker(i: int) -> None:
+        try:
+            slug = f"ws-{i}"
+            # a real workspace file, so `list_workspaces`'s self-healing
+            # prune (gone-manifest → drop the entry) does not itself remove
+            # what this test is trying to observe
+            workspaces.project_path(slug).touch()
+            barrier.wait()
+            workspaces.register(slug, f"Workspace {i}", i, "2026-01-01T00:00:00+00:00")
+        except BaseException as exc:  # noqa: BLE001 -- surfaced via `errors`
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == []
+    listed = workspaces.list_workspaces()
+    assert {w["slug"] for w in listed} == {f"ws-{i}" for i in range(n)}
+
+    path = workspaces.workspaces_dir() / "index.json"
+    data = json.loads(path.read_text())
+    assert len(data["workspaces"]) == n
+    assert not list(workspaces.workspaces_dir().glob("index.json.tmp-*"))
 
 
 def test_list_self_heals_orphaned_index(client, tmp_path) -> None:
