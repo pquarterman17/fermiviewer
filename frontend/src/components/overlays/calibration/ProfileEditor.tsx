@@ -6,6 +6,7 @@ import type {
   ProfileKind,
   ProfileQuantity,
 } from "../../../lib/api";
+import { canonicalCalibrationUnit } from "../../Inspector/calibrationUi";
 import { KIND_LABEL, PROFILE_KINDS, TEXT_FIELDS, withQuantity } from "./profileDraft";
 
 type RangeKey = "beam_energy_kev" | "magnification" | "camera_length_mm";
@@ -24,6 +25,40 @@ interface PixelPairDraft {
   unit: string;
   rowSigma: string;
   columnSigma: string;
+}
+
+type RangeDraft = Record<RangeKey, [string, string]>;
+
+// `ranges` and `pixelPair` hold the raw strings the user is typing, because a
+// half-filled pair has no representation in the draft (the backend refuses a
+// lone bound and a lone pixel extent). That makes them MIRRORS of the draft,
+// so every place the draft's fields or validity are replaced wholesale has to
+// re-seed them from the new draft -- see `changeKind`.
+function seedRanges(draft: ProfileDraft): RangeDraft {
+  return Object.fromEntries(
+    (Object.keys(RANGE_LABELS) as RangeKey[]).map((key) => [
+      key,
+      draft.validity[key]?.map(String) ?? ["", ""],
+    ]),
+  ) as RangeDraft;
+}
+
+function seedPixelPair(draft: ProfileDraft): PixelPairDraft {
+  const row = draft.fields.pixel_size_row;
+  const column = draft.fields.pixel_size_column;
+  const stored = row?.unit ?? column?.unit ?? "";
+  return {
+    row: row == null ? "" : String(row.value),
+    column: column == null ? "" : String(column.value),
+    // A stored unit may be a spelling the backend accepts but this select does
+    // not offer (`um` arrives that way through the legacy calibration import),
+    // which would render the select with nothing selected. Fold it to the
+    // canonical spelling; anything the helper does not know is kept verbatim
+    // and added as an option below rather than silently rewritten.
+    unit: canonicalCalibrationUnit(stored) ?? (stored || "nm"),
+    rowSigma: row?.sigma == null ? "" : String(row.sigma),
+    columnSigma: column?.sigma == null ? "" : String(column.sigma),
+  };
 }
 
 interface Props {
@@ -47,25 +82,8 @@ export default function ProfileEditor({
   onSave,
   onCancel,
 }: Props) {
-  const [ranges, setRanges] = useState<Record<RangeKey, [string, string]>>(() =>
-    Object.fromEntries(
-      (Object.keys(RANGE_LABELS) as RangeKey[]).map((key) => [
-        key,
-        draft.validity[key]?.map(String) ?? ["", ""],
-      ]),
-    ) as Record<RangeKey, [string, string]>,
-  );
-  const [pixelPair, setPixelPair] = useState<PixelPairDraft>(() => {
-    const row = draft.fields.pixel_size_row;
-    const column = draft.fields.pixel_size_column;
-    return {
-      row: row == null ? "" : String(row.value),
-      column: column == null ? "" : String(column.value),
-      unit: row?.unit ?? column?.unit ?? "nm",
-      rowSigma: row?.sigma == null ? "" : String(row.sigma),
-      columnSigma: column?.sigma == null ? "" : String(column.sigma),
-    };
-  });
+  const [ranges, setRanges] = useState<RangeDraft>(() => seedRanges(draft));
+  const [pixelPair, setPixelPair] = useState<PixelPairDraft>(() => seedPixelPair(draft));
   const fieldNames = Array.from(
     new Set([...Object.keys(knownFields[draft.kind] ?? {}), ...Object.keys(draft.fields)]),
   );
@@ -87,6 +105,20 @@ export default function ProfileEditor({
       },
     });
   };
+
+  // The Type select replaces `fields` and `text` wholesale, so the mirrors have
+  // to be re-seeded from the draft that is about to be set -- otherwise the
+  // pixel-size inputs keep showing values the save has already discarded.
+  const changeKind = (kind: ProfileKind) => {
+    const next: ProfileDraft = { ...draft, kind, fields: {}, text: {} };
+    setPixelPair(seedPixelPair(next));
+    setRanges(seedRanges(next));
+    onChange(next);
+  };
+
+  const unitOptions = LENGTH_UNITS.includes(pixelPair.unit) || pixelPair.unit === ""
+    ? LENGTH_UNITS
+    : [...LENGTH_UNITS, pixelPair.unit];
 
   const updatePixelPair = (next: PixelPairDraft) => {
     setPixelPair(next);
@@ -131,7 +163,7 @@ export default function ProfileEditor({
           <h4>Identity</h4>
           <div className="fvd-cal-form-grid">
             <label className="wide">Name<input autoFocus value={draft.name} onChange={(e) => onChange({ ...draft, name: e.target.value })} /></label>
-            <label>Type<select disabled={!creating} value={draft.kind} onChange={(e) => onChange({ ...draft, kind: e.target.value as ProfileKind, fields: {}, text: {} })}>{PROFILE_KINDS.map((kind) => <option key={kind} value={kind}>{KIND_LABEL[kind].slice(0, -1)}</option>)}</select></label>
+            <label>Type<select disabled={!creating} value={draft.kind} onChange={(e) => changeKind(e.target.value as ProfileKind)}>{PROFILE_KINDS.map((kind) => <option key={kind} value={kind}>{KIND_LABEL[kind].slice(0, -1)}</option>)}</select></label>
             {textNames.map((name) => (
               <label key={name}>{name.replaceAll("_", " ")}<input value={draft.text[name] ?? ""} readOnly={name === "legacy_key"} title={name === "legacy_key" ? "Preserved import identity" : undefined} onChange={(e) => name !== "legacy_key" && onChange({ ...draft, text: { ...draft.text, [name]: e.target.value } })} /></label>
             ))}
@@ -157,7 +189,7 @@ export default function ProfileEditor({
                   <label htmlFor={`q-${name}`}>Pixel size {axis}</label>
                   <input id={`q-${name}`} type="number" min={0} step="any" value={pixelPair[axis]} onChange={(event) => updatePixelPair({ ...pixelPair, [axis]: event.target.value })} />
                   <select aria-label={`${name} unit`} value={pixelPair.unit} onChange={(event) => updatePixelPair({ ...pixelPair, unit: event.target.value })}>
-                    {LENGTH_UNITS.map((item) => <option key={item}>{item}</option>)}
+                    {unitOptions.map((item) => <option key={item}>{item}</option>)}
                   </select>
                   <input aria-label={`${name} uncertainty`} type="number" min={0} step="any" value={pixelPair[sigmaKey]} disabled={pixelPair[axis] === ""} onChange={(event) => updatePixelPair({ ...pixelPair, [sigmaKey]: event.target.value })} />
                 </div>

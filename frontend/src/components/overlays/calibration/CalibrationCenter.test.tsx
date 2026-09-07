@@ -159,3 +159,43 @@ describe("CalibrationCenter", () => {
     expect(createProfileMock.mock.calls[0][0].text).not.toHaveProperty("legacy_key");
   });
 });
+
+it("clears the pixel-size mirror when the profile type changes", async () => {
+  // `pixelPair` mirrors draft.fields, and the Type select replaces fields
+  // wholesale: without a re-seed the inputs keep showing a pixel size the
+  // save has already discarded.
+  render(<CalibrationCenter onClose={() => {}} />);
+  fireEvent.click(await screen.findByRole("button", { name: /new profile/i }));
+  fireEvent.change(screen.getByLabelText("Type"), { target: { value: "acquisition" } });
+  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Session A" } });
+  fireEvent.change(screen.getByLabelText("Pixel size row"), { target: { value: "0.5" } });
+  fireEvent.change(screen.getByLabelText("Pixel size column"), { target: { value: "2" } });
+  expect(screen.getByLabelText("Pixel size row")).toHaveValue(0.5);
+
+  fireEvent.change(screen.getByLabelText("Type"), { target: { value: "detector" } });
+  fireEvent.change(screen.getByLabelText("Type"), { target: { value: "acquisition" } });
+  expect(screen.getByLabelText("Pixel size row")).toHaveValue(null);
+  expect(screen.getByLabelText("Pixel size column")).toHaveValue(null);
+
+  createProfileMock.mockResolvedValue({ profile });
+  fireEvent.click(screen.getByRole("button", { name: "Create profile" }));
+  await waitFor(() => expect(createProfileMock).toHaveBeenCalled());
+  expect(createProfileMock.mock.calls[0][0].fields).toEqual({});
+});
+
+it("shows a stored unit the select does not offer, folded to its canonical spelling", async () => {
+  // `um` reaches the store through the legacy calibration import; seeding the
+  // select with it verbatim would render with nothing selected.
+  const imported: CalibrationProfile = {
+    ...profile, id: "acq-1", name: "Scope|1000", kind: "acquisition", version: 1,
+    fields: {
+      pixel_size_row: { value: 0.5, unit: "um" },
+      pixel_size_column: { value: 0.5, unit: "um" },
+    },
+    text: { legacy_key: "Scope|1000" },
+  };
+  listProfilesMock.mockResolvedValue([imported]);
+  render(<CalibrationCenter onClose={() => {}} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+  expect(screen.getByLabelText("pixel_size_row unit")).toHaveValue("µm");
+});
