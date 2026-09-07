@@ -13,9 +13,12 @@ the pair, so an old workspace keeps opening (upgraded in memory) and the next
 save writes the ``.fvp`` beside it; ``delete_workspace`` removes all three
 names so nothing is left orphaned.
 
-A module-level `_LOCK` is held across each complete read/modify/write
-transaction (and across reads), so concurrent requests in FastAPI's
-threadpool never race a load against a save.
+A module-level `_LOCK` (`storelock.StoreLock`) is held across each
+complete read/modify/write transaction (and across reads). It excludes
+both other threads -- FastAPI's threadpool -- and other *processes*
+sharing the same config dir, which the launcher can produce: `server.py`
+floats a second launch to another port when its health probe misses a
+sibling that has bound the port but is still starting.
 """
 
 from __future__ import annotations
@@ -24,12 +27,12 @@ import json
 import os
 import re
 import tempfile
-import threading
 from pathlib import Path
 from typing import Any
 
 from fermiviewer.io.project_file import PROJECT_SUFFIX
 from fermiviewer.io.user_paths import PathPolicyError, safe_config_path
+from fermiviewer.storelock import StoreLock
 from fermiviewer.usermeta import config_dir
 
 __all__ = [
@@ -45,10 +48,11 @@ __all__ = [
 
 _INDEX_VERSION = 1
 
-#: guards every read/modify/write transaction on the index (re-entrant so
+#: guards every read/modify/write transaction on the index, across threads
+#: and across processes (re-entrant so
 #: `list_workspaces` can hold it across its prune-and-persist while it also
 #: calls `stored_path`, which touches the filesystem but not the lock)
-_LOCK = threading.RLock()
+_LOCK = StoreLock(lambda: _index_path())
 
 
 def workspaces_dir() -> Path:

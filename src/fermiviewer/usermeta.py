@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -240,8 +241,29 @@ def sidecar_bytes(values: dict[str, str]) -> bytes:
 
 
 def write_sidecar(image_path: str, values: dict[str, str]) -> None:
+    """Persist the sidecar beside the image, atomically.
+
+    A plain `write_bytes` truncates first, so a crash, a full disk or a
+    kill between truncate and write leaves a zero-length or half-written
+    YAML file — and `read_sidecar` reads that as "no saved values", which
+    silently loses every field the user had entered. Writing a temp file
+    in the same directory and `os.replace`-ing it over the target makes
+    the swap atomic on both POSIX and Windows: a reader sees either the
+    old sidecar or the new one, never a partial one. Same shape as the
+    JSON stores (`io/calibration_db._save`).
+    """
     sp = sidecar_path(image_path)
-    sp.write_bytes(sidecar_bytes(values))
+    fd = tempfile.NamedTemporaryFile(
+        dir=sp.parent, prefix=f"{sp.name}.tmp-", delete=False
+    )
+    tmp = Path(fd.name)
+    try:
+        with fd:
+            fd.write(sidecar_bytes(values))
+        os.replace(tmp, sp)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 # ── value resolution ──────────────────────────────────────────────────

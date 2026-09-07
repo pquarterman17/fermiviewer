@@ -12,9 +12,12 @@ that does not know about ``pixel_spacing`` keeps working, and
 :func:`entry_spacing` is how a reader that does gets both extents out of
 either shape of entry.
 
-A module-level `_LOCK` is held across each complete read/modify/write
-transaction (and across reads), so concurrent requests in FastAPI's
-threadpool never race a load against a save.
+A module-level `_LOCK` (`storelock.StoreLock`) is held across each
+complete read/modify/write transaction (and across reads). It excludes
+both other threads -- FastAPI's threadpool -- and other *processes*
+sharing the same config dir, which the launcher can produce: `server.py`
+floats a second launch to another port when its health probe misses a
+sibling that has bound the port but is still starting.
 """
 
 from __future__ import annotations
@@ -23,11 +26,12 @@ import json
 import math
 import os
 import tempfile
-import threading
 import time
 import warnings
 from pathlib import Path
 from typing import Any
+
+from fermiviewer.storelock import StoreLock
 
 __all__ = [
     "db_path",
@@ -47,8 +51,9 @@ _MAG_KEYS = (
     "mag",
 )
 
-#: guards every read/modify/write transaction on the store
-_LOCK = threading.RLock()
+#: guards every read/modify/write transaction on the store, across
+#: threads AND across processes (`storelock`)
+_LOCK = StoreLock(lambda: db_path())
 
 
 def db_path() -> Path:

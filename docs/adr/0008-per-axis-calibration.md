@@ -2,7 +2,7 @@
 
 **Status:** Accepted (G1 and G2 taken as recommended)
 **Date:** 2026-09-05
-**Modules:** `src/fermiviewer/datastruct.py`, `src/fermiviewer/models.py`, `src/fermiviewer/routes/calibration.py`, `src/fermiviewer/io/calibration_db.py`, `frontend/src/components/Inspector/CalibrationCard.tsx`
+**Modules:** `src/fermiviewer/datastruct.py`, `src/fermiviewer/models.py`, `src/fermiviewer/routes/calibration.py`, `src/fermiviewer/io/calibration_db.py`, `src/fermiviewer/storelock.py`, `frontend/src/components/Inspector/CalibrationCard.tsx`
 **Plan:** `plans/MICROSCOPY_FEATURE_ROADMAP.md` item 5a, second box ("per-axis spatial/scan/energy/reciprocal calibration; do not assume square pixels in the project/UI model")
 **Builds on:** ADR 0002 (project file format), ADR 0004 (results carry calibration snapshots)
 

@@ -290,3 +290,71 @@ def test_batch_autofill(cfg, client, tmp_path) -> None:
     got = client.get(f"/api/image/{match_id}/usermeta").json()
     assert got["values"]["Wafer"] == "1234"
     assert got["has_sidecar"] is True
+
+
+# ── sidecar durability ────────────────────────────────────────────────
+
+
+def test_sidecar_write_is_staged_not_in_place(tmp_path, monkeypatch) -> None:
+    """A failed sidecar write must leave the previous one intact.
+
+    `write_sidecar` used a plain `write_bytes`, which truncates the target
+    first: a crash, a full disk or a kill between truncate and write left
+    a zero-length file, and `read_sidecar` reads that as "no saved
+    values" — every field the user had typed, gone. Staging in a temp file
+    and `os.replace`-ing makes the swap atomic, so a write that dies never
+    touches what is already on disk. Failing the replace is the one point
+    where the difference is observable: in-place, the old values are
+    already overwritten by then; staged, they are untouched.
+    """
+    image = tmp_path / "img.dm4"
+    image.write_bytes(b"")
+    usermeta.write_sidecar(str(image), {"Design": "1234", "Lot": "44576"})
+
+    def boom(*args: object, **kwargs: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(usermeta.os, "replace", boom)
+    with pytest.raises(OSError):
+        usermeta.write_sidecar(str(image), {"Design": "9999", "Lot": "00000"})
+
+    assert usermeta.read_sidecar(str(image)) == {"Design": "1234", "Lot": "44576"}
+    leftovers = [p.name for p in tmp_path.iterdir() if ".tmp-" in p.name]
+    assert leftovers == [], f"temp files left behind: {leftovers}"
+
+
+def test_sidecar_is_never_read_half_written(tmp_path) -> None:
+    """A reader concurrent with a write sees one whole sidecar or the
+    other, never a partial parse.
+
+    The values are long enough that a non-atomic write spans several
+    buffer flushes, so an in-place write is caught mid-file within a few
+    iterations. With the staged write the target is only ever swapped by
+    `os.replace`, so every read is complete.
+    """
+    import threading
+
+    image = tmp_path / "img.dm4"
+    image.write_bytes(b"")
+    a = {f"F{i}": "a" * 4096 for i in range(40)}
+    b = {f"F{i}": "b" * 4096 for i in range(40)}
+    usermeta.write_sidecar(str(image), a)
+
+    stop = threading.Event()
+    bad: list[int] = []
+
+    def reader() -> None:
+        while not stop.is_set():
+            got = usermeta.read_sidecar(str(image))
+            if got not in (a, b):
+                bad.append(len(got))
+
+    t = threading.Thread(target=reader, daemon=True)
+    t.start()
+    try:
+        for i in range(60):
+            usermeta.write_sidecar(str(image), b if i % 2 else a)
+    finally:
+        stop.set()
+        t.join(timeout=5.0)
+    assert bad == [], f"observed {len(bad)} partial sidecars, e.g. {bad[:5]} fields"

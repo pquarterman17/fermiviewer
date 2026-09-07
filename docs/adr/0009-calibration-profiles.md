@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-09-06
-**Modules:** `src/fermiviewer/io/profiles_model.py`, `src/fermiviewer/io/profiles_applied.py`, `src/fermiviewer/io/profiles_db.py`, `src/fermiviewer/routes/profiles.py`, `src/fermiviewer/io/results_model.py`, `src/fermiviewer/models.py`
+**Modules:** `src/fermiviewer/io/profiles_model.py`, `src/fermiviewer/io/profiles_applied.py`, `src/fermiviewer/io/profiles_db.py`, `src/fermiviewer/routes/profiles.py`, `src/fermiviewer/io/results_model.py`, `src/fermiviewer/models.py`, `src/fermiviewer/storelock.py`
 **Plan:** `plans/MICROSCOPY_FEATURE_ROADMAP.md` item 5a, boxes 1, 4 and 5 (named profiles; validity, source, date, operator note, uncertainty, version history; snapshot the applied profile into each result)
 **Builds on:** ADR 0004 §5 (results snapshot calibration; item-5 keys extend the same entries), ADR 0008 (calibration is per-axis `AxisCal`; profiles wrap that record)
 
@@ -115,6 +115,18 @@ no way to carry anything but a length.
    `.corrupt-<epoch>` and warned about — the `calibration_db` rules. A
    store whose `schema` is higher than this build reads is refused, not
    downgraded (the regions rule, ADR 0006).
+
+   Every read/modify/write transaction is held under a
+   `storelock.StoreLock`. Temp-then-replace alone only guarantees that a
+   *reader* never sees a half-written file; it does nothing about two
+   writers, who each load the same JSON and write their own copy back so
+   the second replace wins whole. The lock excludes other threads and
+   other processes, the latter because the launcher can produce a second
+   server on the same config dir (`server.py` floats to another port when
+   its health probe misses a still-starting sibling). It is advisory and
+   bounded: a config dir that cannot hold a lock file, or a filesystem
+   that cannot lock, degrades to thread-only rather than failing the
+   request.
 
 8. **The legacy calibration DB is imported, not replaced.** Each
    `instrument|magnification` entry becomes an `acquisition` profile
