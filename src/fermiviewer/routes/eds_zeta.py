@@ -26,24 +26,42 @@ from fermiviewer.routes._eds_common import (
     fit_summed_peaks,
     spectral_dataset,
 )
+from fermiviewer.routes._eds_params import (
+    provenance_block,
+    resolve_beam_kv,
+    resolve_eds_param,
+    resolve_live_time_s,
+)
 
 router = APIRouter(prefix="/api")
 
 
 class EdsZetaRequest(BaseModel):
+    """`None` on an acquisition parameter means "not stated by the caller",
+    not "zero": the image's applied calibration profiles supply it, and
+    failing those the literal this route documents (ADR 0010 §2). A value
+    the caller DID type always wins — a profile is a default, never an
+    override."""
+
     image_id: str
     elements: list[str]
-    beam_kv: float = 200.0
+    #: kV; acquisition.beam_energy, else microscope.accelerating_voltage,
+    #: else 200
+    beam_kv: float | None = None
     background: str = "linear"
     e0_kev: float | None = None
     center_tol_kev: float = 0.0
     weights: str | None = "poisson"
     zeta_factors: list[float] | None = None  # explicit per-element ζ (kg/m²)
     zeta_si: float | None = None  # or scale the 200 kV k table
-    probe_current_na: float = 1.0
-    live_time_s: float = 100.0
-    take_off_angle_deg: float = 20.0
+    #: nA; acquisition.probe_current (stored in pA), else 1.0
+    probe_current_na: float | None = None
+    #: s; acquisition.live_time, else real_time x (1 - dead_time), else 100
+    live_time_s: float | None = None
+    #: deg; detector.takeoff_angle, else 20
+    take_off_angle_deg: float | None = None
     absorption: bool = True
+    #: a property of the SPECIMEN — no instrument profile states it
     density_g_cm3: float | None = None
     remove_artifacts: bool = False
     escape_fraction: float = DEFAULT_ESCAPE_FRACTION
@@ -60,6 +78,19 @@ def eds_zeta(req: EdsZetaRequest) -> dict:
     table by one absolute ``zeta_si``.
     """
     ds = spectral_dataset(req.image_id)
+    # Resolve every acquisition parameter BEFORE any numerics, so a
+    # profile whose unit this build cannot read fails the request instead
+    # of contributing an unknown magnitude to a published composition.
+    cal = {
+        "beam_kv": resolve_beam_kv(ds.metadata, req.beam_kv),
+        "probe_current_na": resolve_eds_param(
+            ds.metadata, "probe_current_na", req.probe_current_na
+        ),
+        "live_time_s": resolve_live_time_s(ds.metadata, req.live_time_s),
+        "take_off_angle_deg": resolve_eds_param(
+            ds.metadata, "take_off_angle_deg", req.take_off_angle_deg
+        ),
+    }
     energy = to_kev(ds.energy_axis, ds.energy_cal.units)
     spectrum = ds.sum_spectrum()
 
@@ -76,7 +107,7 @@ def eds_zeta(req: EdsZetaRequest) -> dict:
         energy,
         spectrum,
         req.elements,
-        beam_kv=req.beam_kv,
+        beam_kv=cal["beam_kv"].value,
         background=background_component(req.background, req.e0_kev),
         weights=req.weights,
         center_tol_kev=req.center_tol_kev,
@@ -85,7 +116,7 @@ def eds_zeta(req: EdsZetaRequest) -> dict:
     )
 
     try:
-        dose = dose_electrons(req.probe_current_na, req.live_time_s)
+        dose = dose_electrons(cal["probe_current_na"].value, cal["live_time_s"].value)
         net = np.array([max(pf.net_areas[s], 0.0) for s in req.elements])
         if not np.all(np.isfinite(net)):
             raise ValueError("an element has no fittable line")
@@ -94,7 +125,7 @@ def eds_zeta(req: EdsZetaRequest) -> dict:
             list(req.elements),
             zeta,
             dose,
-            take_off_angle_deg=req.take_off_angle_deg,
+            take_off_angle_deg=cal["take_off_angle_deg"].value,
             absorption=req.absorption,
             density_g_cm3=req.density_g_cm3,
         )
@@ -150,6 +181,10 @@ def eds_zeta(req: EdsZetaRequest) -> dict:
             "zeta_factors": zeta.tolist(),
             "dose_electrons": dose,
         },
+        # What each acquisition parameter was, and where it came from —
+        # reported for the defaults too, so a run on a placeholder 20 deg
+        # takeoff angle does not look like one on a measured value.
+        "calibration": provenance_block(cal),
     }
     if removal is not None:
         resp["artifacts"] = artifact_block(removal)

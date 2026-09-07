@@ -16,6 +16,29 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Quantitative EDS routes now read the calibration profile you applied
+  (ADR 0010, roadmap 5a box 3 / 5C).** ADR 0009 shipped profiles that rode
+  into the project file and into every result's calibration snapshot, and
+  said plainly that nothing consumed one. So a user could record their
+  detector's takeoff angle and their probe current, apply the profile,
+  see it displayed — and still get a composition computed from the literal
+  defaults. `/eds/quantify`, `/eds/zeta`, `/eds/peakfit`, `/eds/artifacts`
+  and `/eds/recalibrate` now resolve beam voltage, takeoff angle, probe
+  current and live time as **request → applied profile → route default**,
+  with the value you typed always winning. Conversion is dimensional and
+  refuses rather than guesses: the store keeps probe current in picoamps
+  and the dose integral takes nanoamps, and reading one as the other is a
+  factor of 1000 on the dose and on every composition derived from it. A
+  profile stating real time and a dead-time percentage supplies live time
+  as `real × (1 − dead/100)`. Every response carries a `calibration` block
+  naming each parameter's value, unit, origin, and — for a profile — which
+  version and field it came from; reported for the defaults too, so a run
+  on a placeholder 20° takeoff angle does not look like one on a measured
+  35°. Four profile fields (`solid_angle`, `efficiency`, `window_thickness`,
+  `dwell_time`) have no consumer in the codebase at all and are left
+  unwired on purpose; they arrive with the ζ-derivation physics that reads
+  them.
+
 - **Calibration Center (roadmap 5B).** The former flat calibration database
   dialog is now a searchable profile library for microscope, detector, camera,
   and acquisition calibrations. A two-pane workspace shows physical values and

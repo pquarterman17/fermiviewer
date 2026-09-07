@@ -28,6 +28,7 @@ from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.io.project_results import ResultOutput
 from fermiviewer.models import ImageMeta
 from fermiviewer.result_capture import capture_result
+from fermiviewer.routes._eds_params import provenance_block, resolve_eds_param
 from fermiviewer.session import UnknownImageError, store
 
 router = APIRouter(prefix="/api")
@@ -86,8 +87,11 @@ class EdsQuantifyRequest(BaseModel):
     thickness_nm: float = Field(default=100, gt=0)
     # Strict upper bound, matching zaf_correction's own (0, 90) check: at
     # exactly 90° the calculation refuses, so admitting it here would turn
-    # invalid input into a captured "failed" scientific record.
-    take_off_angle_deg: float = Field(default=20, gt=0, lt=90)
+    # invalid input into a captured "failed" scientific record. `None`
+    # means "not stated": detector.takeoff_angle supplies it, else 20
+    # (ADR 0010 §2). The same bound is re-checked on the RESOLVED value —
+    # a profile never passes through pydantic.
+    take_off_angle_deg: float | None = Field(default=None, gt=0, lt=90)
     #: Capture this run as a persisted ResultRecord (1C). Default off until
     #: the client grows its capture affordance — recording is a user
     #: decision, not a side effect of every exploratory run.
@@ -117,6 +121,11 @@ def eds_quantify(req: EdsQuantifyRequest) -> dict:
 
 
 def _quantify(req: EdsQuantifyRequest, ds: DataStruct) -> dict:
+    cal = {
+        "take_off_angle_deg": resolve_eds_param(
+            ds.metadata, "take_off_angle_deg", req.take_off_angle_deg
+        )
+    }
     # half_window_kev and the line library are keV; the axis may be in eV.
     energy_kev = to_kev(ds.energy_axis, ds.energy_cal.units)
     entries = extract_element_maps(
@@ -129,7 +138,10 @@ def _quantify(req: EdsQuantifyRequest, ds: DataStruct) -> dict:
     res: ClResult | ZafResult
     if req.method == "zaf":
         res = zaf_correction(
-            maps, syms, thickness_nm=req.thickness_nm, take_off_angle_deg=req.take_off_angle_deg
+            maps,
+            syms,
+            thickness_nm=req.thickness_nm,
+            take_off_angle_deg=cal["take_off_angle_deg"].value,
         )
     else:
         res = cliff_lorimer(maps, syms)
@@ -168,9 +180,13 @@ def _quantify(req: EdsQuantifyRequest, ds: DataStruct) -> dict:
         "mean_weight_pct_error": unc.weight_pct_sigma.tolist(),
         "k_factors": res.k_factors.tolist(),
         "maps": map_meta,
+        # Reported by both methods even though only ZAF consumes the angle:
+        # a Cliff-Lorimer run that IGNORES an applied detector profile
+        # should say so rather than omit the block and read as unaffected.
+        "calibration": provenance_block(cal),
     }
     if req.record:
-        body["result"] = _capture_quant(req, ds, body, map_meta)
+        body["result"] = _capture_quant(req, ds, body, map_meta, cal)
     return body
 
 
@@ -179,6 +195,7 @@ def _capture_quant(
     ds: DataStruct,
     body: dict,
     map_meta: list,
+    cal: dict,
 ) -> dict:
     """This run as a persisted ResultRecord (ADR 0004): per-element at%
     scalars with their counting-statistics σ, the composition table inline
@@ -233,8 +250,14 @@ def _capture_quant(
         source_ids=[req.image_id],
         # Resolved params: the reproduction key, defaults included. The
         # requested element list is a parameter; the usable subset is the
-        # result (`elements` output rows).
-        params=req.model_dump(exclude={"record"}),
+        # result (`elements` output rows). A parameter the caller left
+        # unstated is recorded as the value actually USED, not as null —
+        # otherwise re-running the record after editing the profile would
+        # silently reproduce different numbers (ADR 0010 §4).
+        params={
+            **req.model_dump(exclude={"record"}),
+            **{name: r.value for name, r in cal.items()},
+        },
         outputs=outputs,
         derived_ids=[m["id"] for m in map_meta if m is not None],
     )

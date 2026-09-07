@@ -953,10 +953,15 @@ EELS/dose/spatial/reciprocal calibration using the same persistence rules.
       per-dataset `AxisCal` with its own editor. Named profiles wrapping the
       record are the first box.)*
 - [ ] EDS detector window/efficiency, solid angle, takeoff angle, live time,
-      dead time, probe current, dwell time, and beam energy. *(The fields
-      exist on detector/acquisition profiles since ADR 0009; the box is the
-      CONSUMERS — no quant route reads a profile yet. `profile_quantity` is
-      the resolver; wire one route at a time, typed value still wins.)*
+      dead time, probe current, dwell time, and beam energy. *(Five of the
+      nine are wired as of 2026-09-07, ADR 0010: beam energy, takeoff angle,
+      probe current, live time, and dead time — the last as `live = real ×
+      (1 − dead/100)`. The remaining four have NO consumer in the codebase
+      to wire to: `detector_solid_angle_sr` is exported and called from
+      nowhere, efficiency appears only in a docstring, no absorption path
+      models the window, and nothing reads dwell time. They arrive with the
+      absolute-intensity physics in 5C-3 rather than as parameters no
+      calculation consumes.)*
 - [x] Calibration validity range, source, date, operator note, uncertainty, and
       version history. *(ADR 0009 §1–§4, 2026-09-06.)*
 - [x] Snapshot the applied profile into each result so later profile edits do
