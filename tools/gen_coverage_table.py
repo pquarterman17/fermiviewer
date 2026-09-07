@@ -648,6 +648,19 @@ DOMAINS: tuple[Domain, ...] = (
             ),
             Row(
                 "POST",
+                "/api/factors/derive",
+                "Calibration Center → Standards",
+                ("eds_derive_factors",),
+                "table + scalar",
+                "shipped",
+                "derives Cliff-Lorimer k or Watanabe zeta by measuring a "
+                "known standard (ADR 0011). The op takes the composition "
+                "INLINE rather than by stored standard_id: a recipe step "
+                "naming a per-user store id would replay only on the "
+                "machine holding it",
+            ),
+            Row(
+                "POST",
                 "/api/eds/zeta",
                 "EDS Model Fit",
                 ("eds_zeta",),
@@ -890,6 +903,28 @@ INFRASTRUCTURE: tuple[tuple[str, str], ...] = (
     ("POST", "/api/calibration/apply"),
     ("POST", "/api/calibration/clear"),
     ("DELETE", "/api/calibration/{key:path}"),
+    # known standards and derived factor sets (ADR 0011): stores, like the
+    # profile entries below. The two endpoints that actually MEASURE
+    # something -- /factors/derive and /factors/{id}/transfer -- are
+    # analysis rows in the EDS domain instead.
+    ("GET", "/api/standards"),
+    ("POST", "/api/standards"),
+    ("GET", "/api/standards/bases"),
+    ("GET", "/api/standards/{standard_id}"),
+    ("POST", "/api/standards/{standard_id}"),
+    ("DELETE", "/api/standards/{standard_id}"),
+    ("GET", "/api/standards/{standard_id}/history"),
+    ("POST", "/api/standards/{standard_id}/regions"),
+    ("DELETE", "/api/standards/{standard_id}/regions/{label}"),
+    ("GET", "/api/factors"),
+    ("GET", "/api/factors/{set_id}"),
+    ("DELETE", "/api/factors/{set_id}"),
+    ("GET", "/api/factors/{set_id}/compare"),
+    # /factors/{id}/transfer rescales a stored zeta set for another
+    # detector geometry. It reads no DataStruct at all -- its inputs are a
+    # stored set and two solid angles -- so it cannot be an op (an op is a
+    # function of a dataset) and is store arithmetic, not analysis.
+    ("POST", "/api/factors/{set_id}/transfer"),
     # calibration profiles (ADR 0009): the per-user store and apply/unapply
     # are calibration plumbing like the entries above; no analysis runs here
     ("GET", "/api/profiles"),

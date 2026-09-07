@@ -953,10 +953,15 @@ EELS/dose/spatial/reciprocal calibration using the same persistence rules.
       per-dataset `AxisCal` with its own editor. Named profiles wrapping the
       record are the first box.)*
 - [ ] EDS detector window/efficiency, solid angle, takeoff angle, live time,
-      dead time, probe current, dwell time, and beam energy. *(The fields
-      exist on detector/acquisition profiles since ADR 0009; the box is the
-      CONSUMERS — no quant route reads a profile yet. `profile_quantity` is
-      the resolver; wire one route at a time, typed value still wins.)*
+      dead time, probe current, dwell time, and beam energy. *(Five of the
+      nine are wired as of 2026-09-07, ADR 0010: beam energy, takeoff angle,
+      probe current, live time, and dead time — the last as `live = real ×
+      (1 − dead/100)`. The remaining four have NO consumer in the codebase
+      to wire to: `detector_solid_angle_sr` is exported and called from
+      nowhere, efficiency appears only in a docstring, no absorption path
+      models the window, and nothing reads dwell time. They arrive with the
+      absolute-intensity physics in 5C-3 rather than as parameters no
+      calculation consumes.)*
 - [x] Calibration validity range, source, date, operator note, uncertainty, and
       version history. *(ADR 0009 §1–§4, 2026-09-06.)*
 - [x] Snapshot the applied profile into each result so later profile edits do
@@ -1073,17 +1078,43 @@ EELS/dose/spatial/reciprocal calibration using the same persistence rules.
 
 #### 5b. Standards and quantification QC
 
-- [ ] Import a known-composition standard and define its reference regions.
-- [ ] Derive and store experimental Cliff–Lorimer, ζ, and supported EELS factor
-      sets with uncertainty and provenance.
-- [ ] Compare measured and built-in factors without silently replacing either.
-- [ ] Surface peak interference, fit residuals, detection limits, absorption or
+- [x] Import a known-composition standard and define its reference regions.
+      *(2026-09-07, ADR 0011. A standard is a MATERIAL — composition on a
+      stated wt/at basis, optional density/mass-thickness, provenance,
+      versioned edits — and its reference regions name an image plus the
+      frozen region/roi string. A stored image id is deliberately not
+      checked at save time: a standard outlives its session, so a stale
+      reference fails at derivation where the user can act on it.)*
+- [x] Derive and store experimental Cliff–Lorimer, ζ, and supported EELS factor
+      sets with uncertainty and provenance. *(EDS half shipped 2026-09-07,
+      ADR 0011: `k_i ∝ w_i/I_i` and `ζ_i = C_i·ρt·D_e/I_i`, both taken from
+      the shipped quantifiers' own conventions and verified by round trip
+      through them. Factor sets are IMMUTABLE — a measurement, not a
+      description — and record the conditions they are a factor for. The
+      EELS half is not started.)*
+- [x] Compare measured and built-in factors without silently replacing either.
+      *(2026-09-07. `GET /factors/{id}/compare` rebases the built-in table
+      onto the derived set's reference element and reports both with their
+      ratio, resolving nothing. A ζ set says there is no table to compare
+      against rather than comparing against something else.)*
+- [x] Surface peak interference, fit residuals, detection limits, absorption or
       thickness concerns, extrapolation, missing metadata, and poor-count
-      warnings beside the reported composition.
+      warnings beside the reported composition. *(2026-09-07, `calc/eds_qc.py`.
+      Findings, never exceptions: the number is still computed and its
+      caveats travel with it. Counting statistics are graded on the
+      INTENSITY, because Cliff–Lorimer normalisation turns nine counts into
+      a confident-looking 4.1 at%. Known limit, pinned as a test: the
+      interference check sees principal lines only, so a Kβ/Kα clash is not
+      caught.)*
 - [ ] Add a compact calibration/QC panel to every quantitative result and
-      export.
+      export. *(The backend blocks exist — every quantitative response now
+      carries `calibration` (ADR 0010) and `qc` (ADR 0011). The panel is the
+      Codex piece, 5D.)*
 - [ ] Verify representative cases against golden or independently calculated
-      references before enabling a method by default.
+      references before enabling a method by default. *(Partly: both
+      derivations are pinned by round trip through independently written
+      quantifiers, and a hand-worked k value. A golden dataset with a
+      certified answer is still wanted.)*
 
 **Done when:** an EDS composition can be traced from raw counts through the
 standard, detector/acquisition metadata, factors, corrections, uncertainty,

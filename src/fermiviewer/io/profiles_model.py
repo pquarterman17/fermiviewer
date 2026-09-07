@@ -41,6 +41,7 @@ __all__ = [
     "new_profile_id",
     "profile_from_json",
     "profile_to_json",
+    "quantity_from",
     "spatial_spacing",
     "validate_fields",
 ]
@@ -217,7 +218,14 @@ def _finite(value: Any, what: str) -> float:
     return v
 
 
-def _quantity(name: str, raw: Any, default_unit: str = "") -> Quantity:
+def quantity_from(name: str, raw: Any, default_unit: str = "") -> Quantity:
+    """Coerce one raw field value to a `Quantity`, or raise `ProfileError`.
+
+    Public because `profiles_applied.profile_quantity` reads a field back
+    out of a SNAPSHOT, where the same coercion (and the same canonical
+    unit for a bare number) has to apply -- it previously reached in for
+    the private name, which is how the two readings could drift apart.
+    """
     if isinstance(raw, Quantity):
         value, unit, sigma = raw.value, raw.unit, raw.sigma
     elif isinstance(raw, Mapping):
@@ -258,7 +266,7 @@ def validate_fields(kind: str, raw: Mapping[str, Any]) -> dict[str, Quantity]:
     for name, raw_q in raw.items():
         if not isinstance(name, str) or not name.strip():
             raise ProfileError("field names must be non-empty strings")
-        q = _quantity(name, raw_q, canonical.get(name, ""))
+        q = quantity_from(name, raw_q, canonical.get(name, ""))
         expected = canonical.get(name)
         if expected and q.unit != expected:
             raise ProfileError(

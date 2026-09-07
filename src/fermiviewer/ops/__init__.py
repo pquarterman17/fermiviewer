@@ -12,6 +12,7 @@ from fermiviewer.ops import (
     catalogue_atoms_defects,  # noqa: F401  (wave B: atoms/template/defect ops)
     catalogue_diffraction,  # noqa: F401  (wave C: detect/calibrate/simulate ops)
     catalogue_eds_calib,  # noqa: F401  (wave D: EDS recalibrate/auto-assign)
+    catalogue_eds_factors,  # noqa: F401  (ADR 0011: experimental k/zeta derivation)
     catalogue_eds_model,  # noqa: F401  (wave D: EDS continuum/artifacts/zeta)
     catalogue_eels_advanced,  # noqa: F401  (wave D: KK/SVD/align/deconvolution)
     catalogue_eels_core,  # noqa: F401  (wave D: background/ELNES/auto-assign)

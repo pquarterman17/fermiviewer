@@ -43,6 +43,7 @@ from fermiviewer.routes._eds_common import (
     fit_summed_peaks,
     spectral_dataset,
 )
+from fermiviewer.routes._eds_params import provenance_block, resolve_beam_kv
 from fermiviewer.session import store
 
 router = APIRouter(prefix="/api")
@@ -94,7 +95,9 @@ def eds_continuum(req: EdsContinuumRequest) -> dict:
 class EdsPeakfitRequest(BaseModel):
     image_id: str
     elements: list[str]
-    beam_kv: float = 200.0
+    #: kV; `None` means unstated — acquisition.beam_energy, else
+    #: microscope.accelerating_voltage, else 200 (ADR 0010 §2)
+    beam_kv: float | None = None
     background: str = "linear"  # "none" | "linear" | "bremsstrahlung"
     e0_kev: float | None = None  # required when background="bremsstrahlung"
     center_tol_kev: float = 0.0
@@ -120,13 +123,14 @@ def eds_peakfit(req: EdsPeakfitRequest) -> dict:
     for the full reasoning (same delta-method core).
     """
     ds = spectral_dataset(req.image_id)
+    beam = resolve_beam_kv(ds.metadata, req.beam_kv)
     energy = to_kev(ds.energy_axis, ds.energy_cal.units)
     spectrum = ds.sum_spectrum()
     pf, removal = fit_summed_peaks(
         energy,
         spectrum,
         req.elements,
-        beam_kv=req.beam_kv,
+        beam_kv=beam.value,
         background=background_component(req.background, req.e0_kev),
         weights=req.weights,
         center_tol_kev=req.center_tol_kev,
@@ -146,6 +150,7 @@ def eds_peakfit(req: EdsPeakfitRequest) -> dict:
         for s in req.elements
     ]
     resp: dict = {
+        "calibration": provenance_block({"beam_kv": beam}),
         "energy": energy.tolist(),
         "spectrum": spectrum.tolist(),
         "model": pf.fit.model.tolist(),
@@ -190,7 +195,9 @@ def eds_peakfit(req: EdsPeakfitRequest) -> dict:
 class EdsArtifactsRequest(BaseModel):
     image_id: str
     elements: list[str]
-    beam_kv: float = 200.0
+    #: kV; `None` means unstated — acquisition.beam_energy, else
+    #: microscope.accelerating_voltage, else 200 (ADR 0010 §2)
+    beam_kv: float | None = None
     background: str = "linear"
     e0_kev: float | None = None
     weights: str | None = "poisson"
@@ -208,6 +215,7 @@ def eds_artifacts(req: EdsArtifactsRequest) -> dict:
     markers and the artifact-subtracted spectrum.
     """
     ds = spectral_dataset(req.image_id)
+    beam = resolve_beam_kv(ds.metadata, req.beam_kv)
     energy = to_kev(ds.energy_axis, ds.energy_cal.units)
     spectrum = ds.sum_spectrum()
     try:
@@ -215,7 +223,7 @@ def eds_artifacts(req: EdsArtifactsRequest) -> dict:
             energy,
             spectrum,
             req.elements,
-            beam_kv=req.beam_kv,
+            beam_kv=beam.value,
             background=background_component(req.background, req.e0_kev),
             weights=req.weights,
         )
@@ -224,6 +232,7 @@ def eds_artifacts(req: EdsArtifactsRequest) -> dict:
         raise HTTPException(422, str(e)) from None
 
     return {
+        "calibration": provenance_block({"beam_kv": beam}),
         "energy": energy.tolist(),
         "spectrum": spectrum.tolist(),
         "artifacts": artifact_block(removal),
@@ -235,7 +244,9 @@ class EdsRecalibrateRequest(BaseModel):
     image_id: str
     elements: list[str] = []  # known lines (true energies looked up)
     pairs: list[tuple[float, float]] = []  # explicit (observed_kev, true_kev)
-    beam_kv: float = 200.0
+    #: kV; `None` means unstated — acquisition.beam_energy, else
+    #: microscope.accelerating_voltage, else 200 (ADR 0010 §2)
+    beam_kv: float | None = None
     search_kev: float = 0.15
     apply: bool = True  # apply to the image's energy axis
 
@@ -251,17 +262,19 @@ def eds_recalibrate(req: EdsRecalibrateRequest) -> dict:
     (``scale' = gain·scale``, ``origin' = origin − offset/scale'``).
     """
     ds = spectral_dataset(req.image_id)
+    beam = resolve_beam_kv(ds.metadata, req.beam_kv)
     energy = to_kev(ds.energy_axis, ds.energy_cal.units)
     spectrum = ds.sum_spectrum()
 
     try:
-        anchors, skipped = resolve_anchors(req.elements, req.pairs, req.beam_kv)
+        anchors, skipped = resolve_anchors(req.elements, req.pairs, beam.value)
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
 
     res = recalibrate_axis(energy, spectrum, anchors, search_kev=req.search_kev)
 
     resp: dict = {
+        "calibration": provenance_block({"beam_kv": beam}),
         "gain": res.gain,
         "offset": res.offset,
         "anchors": [list(p) for p in res.anchors],  # [[observed, true], ...]

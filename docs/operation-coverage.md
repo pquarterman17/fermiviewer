@@ -9,8 +9,8 @@ Route and op inventories are read live from the app and registry at generation t
 
 ## Summary
 
-- **163** HTTP endpoints; **80** perform analysis, 3 are physics-table lookups, and 80 are allowlisted infrastructure.
-- **72 of 80** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **88** ops in total.
+- **178** HTTP endpoints; **81** perform analysis, 3 are physics-table lookups, and 94 are allowlisted infrastructure.
+- **73 of 81** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **89** ops in total.
 - Registered-op reach IS headless reach: batch recipes, folder watch, `fv --script`, and the Python API all resolve steps through the same registry and cannot call anything else.
 - Remaining item-3 work: wave A (0), wave B (0), wave C (0), wave D (0) endpoints; 8 are parked behind the item-8/9 activation gates. Item 3 does not close while any analysis row lacks a wave or a named gate — every endpoint is assigned, none is silently deferred.
 
@@ -99,6 +99,7 @@ Route and op inventories are read live from the app and registry at generation t
 |---|---|---|---|---|
 | `POST /api/eds/quantify` | EDS Quantify panel | `eds_quantify` | table + map ×N | shipped |
 | `POST /api/eds/peakfit` | EDS Model Fit. *op and route use different entry points into calc/eds_peakfit* | `eds_peakfit` | fit + table | shipped |
+| `POST /api/factors/derive` | Calibration Center → Standards. *derives Cliff-Lorimer k or Watanabe zeta by measuring a known standard (ADR 0011). The op takes the composition INLINE rather than by stored standard_id: a recipe step naming a per-user store id would replay only on the machine holding it* | `eds_derive_factors` | table + scalar | shipped |
 | `POST /api/eds/zeta` | EDS Model Fit. *mass-thickness scalar carries its counting-statistics sigma in- envelope (§5)* | `eds_zeta` | fit + table + scalar | shipped |
 | `POST /api/eds/continuum` | EDS Model Fit | `eds_continuum` | fit + curve | shipped |
 | `POST /api/eds/artifacts` | — (wrapper only, no GUI caller). *headless reach is this endpoint's ONLY reach* | `eds_artifacts` | curve ×2 + table | shipped |
@@ -178,6 +179,11 @@ Session, project, render, export, jobs, calibration-store and dataset plumbing �
 - `POST /api/export/figure`
 - `POST /api/export/gif`
 - `POST /api/export/table`
+- `GET /api/factors`
+- `DELETE /api/factors/{set_id}`
+- `GET /api/factors/{set_id}`
+- `GET /api/factors/{set_id}/compare`
+- `POST /api/factors/{set_id}/transfer`
 - `GET /api/fourd`
 - `DELETE /api/fourd/{fourd_id}`
 - `GET /api/fourd/{fourd_id}/meta`
@@ -232,6 +238,15 @@ Session, project, render, export, jobs, calibration-store and dataset plumbing �
 - `POST /api/session/open-raw`
 - `GET /api/session/supported-extensions`
 - `POST /api/session/upload`
+- `GET /api/standards`
+- `POST /api/standards`
+- `GET /api/standards/bases`
+- `DELETE /api/standards/{standard_id}`
+- `GET /api/standards/{standard_id}`
+- `POST /api/standards/{standard_id}`
+- `GET /api/standards/{standard_id}/history`
+- `POST /api/standards/{standard_id}/regions`
+- `DELETE /api/standards/{standard_id}/regions/{label}`
 - `POST /api/usermeta/batch-autofill`
 - `POST /api/watch/start`
 - `GET /api/watch/status`
