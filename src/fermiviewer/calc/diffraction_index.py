@@ -24,7 +24,6 @@ from fermiviewer.calc.crystal import Phase
 from fermiviewer.calc.diffraction import (
     IndexCandidate,
     index_spots,
-    roi_frame,
     roi_selects_pixels,
 )
 
@@ -63,10 +62,12 @@ def pattern_spacing(
 class IndexedPattern:
     """`index_spots` over an optional ROI, plus the overlay geometry.
 
-    `center` and `measured_r` are deliberately in the FULL-image frame even
-    when an ROI scoped the indexing: they drive the matched-ring overlay,
-    which is drawn on the whole image (the `.center`/`.measuredR` fields of
-    indexDiffraction.m). Only the indexing itself moves into the ROI frame.
+    `center` and `measured_r` are in the FULL-image frame: they drive the
+    matched-ring overlay, which is drawn on the whole image (the
+    `.center`/`.measuredR` fields of indexDiffraction.m). The indexing
+    itself (`candidates`) ALSO runs against the full-image frame — an ROI
+    only gates which request is accepted (see `index_spots_roi`), it does
+    not rescale the geometry `candidates` are measured against.
     """
 
     center: tuple[int, int]  # 1-based (row, col), full image
@@ -87,8 +88,20 @@ def index_spots_roi(
     extra_phases: list[Phase] | None = None,
     spacing: tuple[float, float] | None = None,
 ) -> IndexedPattern:
-    """Index 1-based full-image `spots` against the phase database, scoping
-    the pattern geometry to `roi` when one is given.
+    """Index 1-based full-image `spots` against the phase database.
+
+    `roi`, when given, gates the request (a degenerate or out-of-image ROI
+    is a `ValueError` — see below) but otherwise plays no part in the
+    indexing arithmetic: an ROI is how the caller chose WHICH spots were
+    worth detecting (`find_spots_roi`, upstream of this call), not a
+    smaller pattern. `spots`, the DC centre, and the reciprocal grid (FFT
+    mode) or physical pixel size (camera mode) all resolve against the
+    FULL `img_shape`, so a given spot's measured d-spacing comes out
+    identical whether or not an ROI was in force. Re-framing spots into an
+    ROI-local, smaller image size used to feed that smaller size to
+    `_measured_d`'s FFT-mode reciprocal grid (``d`` scales with frame
+    width) and, for any off-centre ROI, to a wrong DC centre in EITHER
+    mode — both silently rescaled every measured d.
 
     Takes a SHAPE, not the array: nothing here reads a pixel, and passing
     the image would make `apply_roi`'s circle branch copy and mask a patch
@@ -100,7 +113,7 @@ def index_spots_roi(
     believed a region was in force.
 
     `spacing` (per-axis pixel extent, ``(row, column)``) passes straight
-    through to `index_spots`: an ROI moves the frame, not the scale.
+    through to `index_spots`.
     """
     if roi is not None and not roi_selects_pixels(img_shape, roi):
         raise ValueError("roi selects no pixels of the image")
@@ -108,13 +121,13 @@ def index_spots_roi(
     if spots.ndim != 2 or (spots.size and spots.shape[1] != 2):
         raise ValueError("spots must be an (N, 2) array of 1-based (row, col)")
 
-    frame = roi_frame(img_shape, roi)
-    # a 1-based coordinate minus a 0-based origin IS the 1-based coordinate
-    # in the sub-image frame
-    local = spots - np.array([[frame.row_off, frame.col_off]], dtype=np.float64)
+    # Indexing always runs against the FULL image frame -- see the ROI
+    # paragraph above -- so `spots` pass through unshifted and `img_shape`
+    # unshrunk, regardless of `roi`.
+    full_shape = (int(img_shape[0]), int(img_shape[1]))
     candidates = index_spots(
-        local,
-        (frame.height, frame.width),
+        spots,
+        full_shape,
         pixel_size=pixel_size,
         camera_length=camera_length,
         acc_voltage=acc_voltage,
@@ -124,7 +137,7 @@ def index_spots_roi(
         spacing=spacing,
     )
 
-    full_center = (int(img_shape[0]) // 2 + 1, int(img_shape[1]) // 2 + 1)
+    full_center = (full_shape[0] // 2 + 1, full_shape[1] // 2 + 1)
     measured_r = (
         np.hypot(
             spots[:, 0] - full_center[0], spots[:, 1] - full_center[1]

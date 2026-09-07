@@ -224,8 +224,9 @@ def multi_layers_route(req: LayersMultiRequest) -> dict:
 
     sizes = [ds.pixel_size for ds in structs]
     units = [ds.pixel_unit for ds in structs]
+    spacings = [ds.pixel_spacing for ds in structs]
     try:
-        uniform_pixel_cal(sizes, units, reference=req.reference)
+        uniform_pixel_cal(sizes, units, reference=req.reference, spacings=spacings)
     except MapCalibrationError as e:
         name = store.name(req.image_ids[e.index])
         raise HTTPException(
@@ -237,7 +238,7 @@ def multi_layers_route(req: LayersMultiRequest) -> dict:
             reference=req.reference, roi=req.roi, axis=req.axis,
             sensitivity=req.sensitivity, n_layers=req.n_layers,
             modality=req.modality, waviness=req.waviness,
-            spacings=[ds.pixel_spacing for ds in structs],
+            spacings=spacings,
         )
     except MapMeasureError as e:
         raise HTTPException(422, f"{store.name(req.image_ids[e.index])}: {e}") from None

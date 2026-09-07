@@ -35,6 +35,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from fermiviewer.calc.calibration import usable_spacing
 from fermiviewer.calc.layers import analyze_layers, recompute_layers
 from fermiviewer.calc.layers_report import interface_layer_blocks
 
@@ -89,6 +90,7 @@ def uniform_pixel_cal(
     *,
     reference: int = 0,
     rtol: float = 1e-6,
+    spacings: Sequence[tuple[float, float] | None] | None = None,
 ) -> tuple[float, str, bool]:
     """The reference map's pixel calibration, checked to hold for ALL maps.
 
@@ -105,20 +107,44 @@ def uniform_pixel_cal(
     (``atol=0`` — a relative tolerance only; two sizes differing by a real
     factor are never "close enough", however small they both are).
 
+    ``pixel_size`` is only the COLUMN scale (ADR 0008), so matching it alone
+    is not enough: two maps can share it while their ROW extents differ, and
+    `compare_layers_across_maps` measures the growth axis with each map's OWN
+    row extent (via `spacing`), producing thicknesses that disagree by that
+    ratio while both are labelled with the same unit. ``spacings`` — each
+    map's `DataStruct.pixel_spacing`, one entry per map, `None` where a map
+    has no usable spacing — lets this check catch that: for every calibrated
+    map with a usable spacing, its ROW extent must also equal the reference's
+    (within ``rtol``) or `MapCalibrationError` is raised, exactly as for a
+    mismatched column scale. A map (or the reference) with no usable spacing
+    falls back to reading its row extent as its own column `pixel_size` —
+    the same isotropic assumption `growth_axis_scales` makes downstream — so
+    it is compared consistently with the column-scale check above rather
+    than skipped. Omitting ``spacings`` entirely (the default) skips the row
+    check altogether, matching the calibration this function used to do.
+
     Raises :class:`MapCalibrationError` (carrying the offending map's index)
-    on the first incompatible map, and plain ``ValueError`` if the two
-    sequences disagree in length or are empty.
+    on the first incompatible map, and plain ``ValueError`` if the sequences
+    disagree in length or ``pixel_sizes`` is empty.
     """
     if len(pixel_sizes) != len(pixel_units):
         raise ValueError("pixel_sizes and pixel_units must have the same length")
     if not pixel_sizes:
         raise ValueError("give at least one map")
+    if spacings is not None and len(spacings) != len(pixel_sizes):
+        raise ValueError("spacings must have one entry per map")
 
     ref_idx = _clamp_reference(reference, len(pixel_sizes))
     ref_px, ref_unit = float(pixel_sizes[ref_idx]), pixel_units[ref_idx]
     ref_calibrated = bool(np.isfinite(ref_px) and ref_px > 0 and ref_unit)
     px = ref_px if np.isfinite(ref_px) and ref_px > 0 else 1.0
     unit = ref_unit if ref_unit else "px"
+
+    def _row_extent(idx: int, fallback: float) -> float:
+        sp = usable_spacing(spacings[idx]) if spacings is not None else None
+        return sp[0] if sp is not None else fallback
+
+    ref_row = _row_extent(ref_idx, ref_px)
 
     for k, (size, map_unit) in enumerate(zip(pixel_sizes, pixel_units, strict=True)):
         size = float(size)
@@ -129,6 +155,10 @@ def uniform_pixel_cal(
             map_unit != ref_unit or not np.isclose(size, ref_px, rtol=rtol, atol=0)
         ):
             raise MapCalibrationError("incompatible spatial calibration", k)
+        if calibrated and spacings is not None:
+            row_k = _row_extent(k, size)
+            if not np.isclose(row_k, ref_row, rtol=rtol, atol=0):
+                raise MapCalibrationError("incompatible spatial calibration", k)
     return px, unit, ref_calibrated
 
 
@@ -190,7 +220,7 @@ def compare_layers_across_maps(
 
     ref_idx = _clamp_reference(reference, len(images))
     px, unit, _calibrated = uniform_pixel_cal(
-        pixel_sizes, pixel_units, reference=ref_idx
+        pixel_sizes, pixel_units, reference=ref_idx, spacings=spacings
     )
 
     try:

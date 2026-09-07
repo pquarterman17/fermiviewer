@@ -505,6 +505,87 @@ def test_uniform_pixel_cal_reference_index_is_clamped() -> None:
     assert (px, unit) == (2.0, "um")
 
 
+# ── row-spacing compatibility (ADR 0008: `pixel_size` is the COLUMN scale
+# only; `compare_layers_across_maps` measures the growth axis with each
+# map's OWN row extent, so two maps can share `pixel_size`/unit and still
+# disagree about what a "thickness" means) ────────────────────────────
+
+
+def test_uniform_pixel_cal_matching_row_spacing_is_compatible() -> None:
+    px, unit, calibrated = uniform_pixel_cal(
+        [2.0, 2.0], ["nm", "nm"], spacings=[(0.5, 2.0), (0.5, 2.0)]
+    )
+    assert (px, unit, calibrated) == (2.0, "nm", True)
+
+
+def test_uniform_pixel_cal_mismatched_row_spacing() -> None:
+    """The bug: two maps with `pixel_size=2.0 nm` and `pixel_spacing`
+    `(0.5, 2.0)` and `(1.0, 2.0)` used to compare as compatible -- same
+    column scale, same unit -- and `compare_layers_across_maps` then
+    measured the growth-axis extent with each map's OWN row spacing,
+    reporting thicknesses a factor of 2 apart while both are labelled
+    "nm" as one comparison. This is the same kind of check as the existing
+    column-scale/unit ones, just along the other axis.
+    """
+    with pytest.raises(MapCalibrationError) as exc:
+        uniform_pixel_cal(
+            [2.0, 2.0], ["nm", "nm"], spacings=[(0.5, 2.0), (1.0, 2.0)]
+        )
+    assert exc.value.index == 1          # the offending map, not the reference
+    # ...but a difference below rtol is the same calibration, exactly like
+    # the existing column-scale check
+    px, _, _ = uniform_pixel_cal(
+        [2.0, 2.0], ["nm", "nm"],
+        spacings=[(0.5, 2.0), (0.5 * (1 + 1e-9), 2.0)],
+    )
+    assert px == 2.0
+
+
+def test_uniform_pixel_cal_spacings_omitted_keeps_old_behaviour() -> None:
+    """Backward compatibility: omitting `spacings` never checks the row
+    extent at all -- the exact gap this closes, left reachable on purpose
+    for a caller with no per-axis spacing to give."""
+    px, unit, calibrated = uniform_pixel_cal([2.0, 2.0], ["nm", "nm"])
+    assert (px, unit, calibrated) == (2.0, "nm", True)
+
+
+def test_uniform_pixel_cal_unusable_spacing_entry_falls_back_to_column_scale() -> None:
+    """A map with no usable spacing is read as isotropic -- the same
+    assumption `growth_axis_scales` makes downstream -- so it is compared
+    against the column scale rather than skipped or auto-accepted."""
+    with pytest.raises(MapCalibrationError) as exc:
+        uniform_pixel_cal([2.0, 2.0], ["nm", "nm"], spacings=[(4.0, 2.0), None])
+    assert exc.value.index == 1
+    # ...and it is fine when the isotropic fallback happens to match
+    px, _, _ = uniform_pixel_cal([2.0, 2.0], ["nm", "nm"], spacings=[(2.0, 2.0), None])
+    assert px == 2.0
+
+
+def test_uniform_pixel_cal_square_pixels_unchanged_by_spacings() -> None:
+    """Square pixels must give the IDENTICAL result whether or not
+    `spacings` is passed -- the common case this fix must not disturb."""
+    without = uniform_pixel_cal([0.5, 0.5, 0.5], ["nm", "nm", "nm"])
+    with_sp = uniform_pixel_cal(
+        [0.5, 0.5, 0.5], ["nm", "nm", "nm"],
+        spacings=[(0.5, 0.5), (0.5, 0.5), (0.5, 0.5)],
+    )
+    assert without == with_sp
+
+
+def test_compare_layers_across_maps_rejects_row_spacing_mismatch() -> None:
+    """Integration-level reproduction of the bug via the public entry
+    point: two maps, `pixel_size=2.0 nm` each, `pixel_spacing` (0.5, 2.0)
+    and (1.0, 2.0) -- must now raise `MapCalibrationError` instead of
+    silently reporting layer thicknesses a factor of 2 apart."""
+    img = _erf_stack(2.0)
+    with pytest.raises(MapCalibrationError) as exc:
+        compare_layers_across_maps(
+            [img, img], [2.0, 2.0], ["nm", "nm"], waviness=False,
+            spacings=[(0.5, 2.0), (1.0, 2.0)],
+        )
+    assert exc.value.index == 1
+
+
 def test_compare_layers_across_maps_preserves_input_order() -> None:
     sharp, diffuse = _erf_stack(1.5), _erf_stack(5.0)
     px, units = [0.5, 0.5], ["nm", "nm"]

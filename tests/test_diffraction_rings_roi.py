@@ -383,6 +383,28 @@ def test_index_spots_roi_keeps_overlay_geometry_in_the_full_image_frame() -> Non
     assert scoped.measured_r == whole.measured_r
 
 
+def test_index_spots_roi_d_spacing_is_roi_invariant_in_fft_mode() -> None:
+    """An ROI selects WHICH spots to index in FFT mode; it must not rescale
+    the reciprocal grid. Regression for the bug where re-framing the spot
+    into the ROI's own (smaller) size fed that smaller size straight into
+    `_measured_d`'s FFT-mode divisor, so `matched_d` came back scaled by
+    W_full / W_roi (here 128 / 64 = 2x: 6.4 A full-frame vs 3.2 A ROI'd)."""
+    import numpy as np
+
+    from fermiviewer.calc.diffraction_index import index_spots_roi
+
+    spot = np.array([[65.0, 85.0]])  # 1-based (row, col) on a 128x128 pattern
+    roi = {"kind": "rect", "r0": 32, "c0": 32, "r1": 96, "c1": 96}  # centred, contains the spot
+
+    full = index_spots_roi((128, 128), spot, None, tolerance=1.0, top_n=1)
+    scoped = index_spots_roi((128, 128), spot, roi, tolerance=1.0, top_n=1)
+
+    full_d = full.candidates[0].matched_d
+    scoped_d = scoped.candidates[0].matched_d
+    assert full_d == pytest.approx([6.4])
+    assert scoped_d == pytest.approx(full_d)
+
+
 def test_index_spots_roi_rejects_a_ragged_spot_list() -> None:
     """It used to escape np.asarray as an unhandled 500."""
     import numpy as np
