@@ -348,3 +348,31 @@ def test_the_op_rejects_a_composition_missing_a_measured_element() -> None:
     with pytest.raises(ValueError, match=r"states nothing for \['Cr'\]"):
         spec.fn(ds, {**{k: v.default for k, v in spec.params.items()},
                      "elements": "Fe,Cr", "composition": "Fe:70", "basis": "wt"})
+
+
+def test_a_bare_number_factor_faces_the_positivity_check() -> None:
+    """It used to short-circuit past it, so a hand-edited {"Fe": 0} loaded
+    as a factor of zero and `zeta_quantify` refused it far from where it
+    was written."""
+    from fermiviewer.io.factors_db import FactorSetError, factor_set_from_json
+
+    body = {
+        "id": "f1",
+        "name": "n",
+        "kind": "zeta",
+        "created_at": "t",
+        "factors": {"Fe": 0.0},
+    }
+    with pytest.raises(FactorSetError, match="must be > 0"):
+        factor_set_from_json(body)
+
+
+def test_the_op_fits_the_same_background_as_the_route() -> None:
+    """The op passed `background=None` while /factors/derive defaults to
+    "linear", so identical data gave a recipe and the route DIFFERENT net
+    areas and so different factors."""
+    import fermiviewer.ops  # noqa: F401
+    from fermiviewer.ops.registry import get_spec
+
+    spec = get_spec("eds_derive_factors")
+    assert spec.params["background"].default == "linear"

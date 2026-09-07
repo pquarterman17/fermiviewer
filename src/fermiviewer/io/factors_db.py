@@ -137,8 +137,12 @@ def _number(value: Any, what: str) -> float:
 
 
 def _entry_from(symbol: str, raw: Any) -> FactorEntry:
+    # A bare number is normalised into the mapping form rather than
+    # short-circuiting: it used to bypass the positivity check below, so a
+    # hand-edited {"Fe": 0} loaded as a factor of zero and `zeta_quantify`
+    # then refused it far from where it was written.
     if isinstance(raw, (int, float)) and not isinstance(raw, bool):
-        return FactorEntry(element=symbol, value=_number(raw, f"factor {symbol!r}"))
+        raw = {"value": raw}
     if not isinstance(raw, Mapping) or "value" not in raw:
         raise FactorSetError(f"factor {symbol!r} needs a value")
     value = _number(raw["value"], f"factor {symbol!r} value")

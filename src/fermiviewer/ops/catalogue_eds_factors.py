@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from fermiviewer.calc.eds_continuum import background_component
 from fermiviewer.calc.eds_factors import derive_k_factors, derive_zeta_factors, weight_fractions
 from fermiviewer.calc.eds_peakfit import fit_peaks
 from fermiviewer.calc.eds_zeta import dose_electrons
@@ -68,8 +69,17 @@ def _eds_derive_factors(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     wf, _sig = weight_fractions({s: pct[s] for s in elements}, basis)
 
     energy = to_kev(ds.energy_axis, ds.energy_cal.units)
+    # The SAME background the route fits. Passing None here while
+    # /factors/derive defaults to "linear" would make a recipe and the
+    # route produce DIFFERENT factors from identical data — net areas
+    # sit on top of whatever background was (or was not) removed.
+    e0 = params["e0_kev"]
     pf = fit_peaks(
-        energy, ds.sum_spectrum(), elements, beam_kv=params["beam_kv"], background=None
+        energy,
+        ds.sum_spectrum(),
+        elements,
+        beam_kv=params["beam_kv"],
+        background=background_component(params["background"], e0 if e0 > 0 else None),
     )
     net = [max(float(pf.net_areas[s]), 0.0) for s in elements]
     net_sigma = [float(pf.net_area_errors[s]) for s in elements]
@@ -189,6 +199,20 @@ register(
             ),
             "beam_kv": OpParam(
                 float, 200.0, minimum=0.0, doc="beam energy (kV), selects K/L/M lines"
+            ),
+            "background": OpParam(
+                str,
+                "linear",
+                doc="'none' | 'linear' | 'bremsstrahlung' — must match what "
+                "/factors/derive uses, or the same data yields different net "
+                "areas and so different factors",
+            ),
+            "e0_kev": OpParam(
+                float,
+                0.0,
+                minimum=0.0,
+                doc="beam energy for the bremsstrahlung background; 0 means "
+                "unset (the other backgrounds ignore it)",
             ),
             "mass_thickness_kg_m2": OpParam(
                 float,

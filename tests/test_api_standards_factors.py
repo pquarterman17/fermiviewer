@@ -372,3 +372,113 @@ def test_derivation_carries_its_own_qc(client, cube_id) -> None:
     body = _derive(client, std["id"], cube_id)
     assert isinstance(body["qc"], list)
     assert {"code", "severity", "message"} <= set(body["qc"][0]) if body["qc"] else True
+
+
+# ── self-review findings (each verified against the unfixed code) ──────
+
+
+def test_provenance_records_the_image_actually_measured(client, cube_id) -> None:
+    """Deriving via a stored reference region left `image_id` null in the
+    factor set — a null provenance for the one thing it is a factor for,
+    which defeats the traceability the whole feature exists for."""
+    std = _standard(client)
+    client.post(
+        f"/api/standards/{std['id']}/regions",
+        json={"label": "matrix", "image_id": cube_id},
+    )
+    r = client.post(
+        "/api/factors/derive",
+        json={
+            "standard_id": std["id"],
+            "region_label": "matrix",
+            "elements": ["Fe", "Cr"],
+            "store": True,
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["factor_set"]["derived_from"]["image_id"] == cube_id
+
+
+def test_a_region_that_would_not_be_applied_is_refused(client, cube_id) -> None:
+    """The fit uses the whole summed spectrum. Accepting a roi and
+    recording it in provenance anyway would put a region in the factor
+    set's history that had no effect on its numbers — a false record,
+    worse than the missing feature."""
+    std = _standard(client)
+    r = client.post(
+        "/api/factors/derive",
+        json={
+            "standard_id": std["id"],
+            "image_id": cube_id,
+            "elements": ["Fe", "Cr"],
+            "roi": "1,1,2,2",
+        },
+    )
+    assert r.status_code == 422
+    assert "not implemented" in r.json()["detail"]
+
+
+def test_agreement_is_unknown_rather_than_false_without_a_sigma(
+    client, cube_id
+) -> None:
+    """A set derived without per-element counting errors has sigma 0
+    everywhere; reporting "does not agree" for a factor matching to seven
+    figures inverts the ADR 0004 §3 rule about absent uncertainty."""
+    std = _standard(client, composition={"Si": 50.0, "Fe": 50.0})
+    r = client.post(
+        "/api/factors/derive",
+        json={
+            "standard_id": std["id"],
+            "image_id": cube_id,
+            "elements": ["Si", "Fe"],
+            "store": True,
+        },
+    )
+    fid = r.json()["factor_set"]["id"]
+    rows = {x["element"]: x for x in client.get(f"/api/factors/{fid}/compare").json()["rows"]}
+    for row in rows.values():
+        if row["measured_sigma"] == 0.0 and row["builtin_rebased"] is not None:
+            assert row["agrees_within_sigma"] is None
+
+
+def test_quantify_reports_an_element_below_its_detection_limit(
+    client, tmp_path
+) -> None:
+    """`check_detection_limit` had no consumer at all — the same criticism
+    this PR levels at `detector_solid_angle_sr`.
+
+    Needs its own cube: the shared fixture is pure Gaussians on nothing, so
+    its background is zero and NO signal can be below 3·sqrt(0). Currie's
+    criterion is only meaningful against a real continuum, which is also
+    the only situation where a spurious trace element gets reported.
+    """
+    from fermiviewer.calc.eds_continuum import kramers_continuum
+
+    pixel = kramers_continuum(ENERGY, 18.0, amp=400.0) + _peak(FE_AREA, FE)
+    arr = np.empty((NE, NY, NX))
+    for y in range(NY):
+        for x in range(NX):
+            arr[:, y, x] = pixel
+    f = write_mini_dm4(
+        tmp_path / "bg.dm4",
+        dims=[NX, NY, NE],
+        data=arr.ravel().astype(np.float32),
+        data_type=2,
+        cal=[
+            {"scale": 1, "origin": 0, "units": "nm"},
+            {"scale": 1, "origin": 0, "units": "nm"},
+            {"scale": SCALE, "origin": 0, "units": "keV"},
+        ],
+    )
+    img = client.post("/api/session/open", json={"paths": [str(f)]}).json()[0]["id"]
+    r = client.post(
+        "/api/eds/quantify", json={"image_id": img, "elements": ["Fe", "Ni"]}
+    )
+    assert r.status_code == 200, r.text
+    findings = {f["code"]: f for f in r.json()["qc"]}
+    # Ni is absent from the spectrum but sits on the continuum. Asserting
+    # the SPECIFIC code, not "some finding fired" — the unfixed code
+    # already flagged it on counting statistics, so a disjunction would
+    # pass without the detection-limit rule ever being wired.
+    assert "below_detection_limit" in findings, sorted(findings)
+    assert "Ni" in findings["below_detection_limit"]["elements"]

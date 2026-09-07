@@ -655,6 +655,8 @@ The registered operation catalogue: name, category, summary, params.
 | `kind` | `str` | k | no |  |  | 'k' (dimensionless, relative) or 'zeta' (absolute) |
 | `reference_element` | `str` |  | no |  |  | k only: which element is defined as 1.0; empty picks Si when present (matching the built-in table) else the major element |
 | `beam_kv` | `float` | 200.0 | no |  | [0.0, ] | beam energy (kV), selects K/L/M lines |
+| `background` | `str` | linear | no |  |  | 'none' \| 'linear' \| 'bremsstrahlung' — must match what /factors/derive uses, or the same data yields different net areas and so different factors |
+| `e0_kev` | `float` | 0.0 | no |  | [0.0, ] | beam energy for the bremsstrahlung background; 0 means unset (the other backgrounds ignore it) |
 | `mass_thickness_kg_m2` | `float` | 0.0 | no |  | [0.0, ] | ζ only: the standard's certified mass-thickness. There is no way to infer it that does not invent the answer, so ζ without it is an error |
 | `probe_current_na` | `float` | 1.0 | no |  | [0.0, ] | ζ only: beam current for the dose integral |
 | `live_time_s` | `float` | 100.0 | no |  | [0.0, ] | ζ only: live time for the dose integral |

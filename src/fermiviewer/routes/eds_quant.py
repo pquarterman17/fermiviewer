@@ -22,6 +22,7 @@ from fermiviewer.calc.eds_maps import extract_element_maps
 from fermiviewer.calc.eds_qc import (
     check_absorption,
     check_counting_statistics,
+    check_detection_limit,
     check_factor_conditions,
     check_peak_interference,
     check_resolved_parameters,
@@ -189,6 +190,15 @@ def _quantify(req: EdsQuantifyRequest, ds: DataStruct) -> dict:
             if mask.sum() >= 2
             else float("nan")
         )
+    # Gross counts in each element's window, from the same mask the
+    # variance uses. The maps are background-subtracted, so gross - net is
+    # the background under the peak — which is what Currie's 3σ detection
+    # criterion needs, and it is already computed here.
+    background = []
+    for e in entries:
+        mask = (energy_kev >= e.window[0]) & (energy_kev <= e.window[1])
+        gross = float(field_sum[mask].sum()) if mask.any() else float("nan")
+        background.append(max(gross - float(e.total), 0.0))
     unc = cliff_lorimer_uncertainty(
         [e.total for e in entries],
         var_i,
@@ -218,6 +228,7 @@ def _quantify(req: EdsQuantifyRequest, ds: DataStruct) -> dict:
                 *check_counting_statistics(
                     syms, [e.total for e in entries], [float(np.sqrt(v)) for v in var_i]
                 ),
+                *check_detection_limit(syms, [e.total for e in entries], background),
                 *check_peak_interference(syms, beam_kv=cal["beam_kv"].value),
                 *check_factor_conditions(
                     beam_kv=cal["beam_kv"].value,
