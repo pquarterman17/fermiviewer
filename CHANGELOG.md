@@ -16,6 +16,26 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Known standards, experimental factor sets, and QC beside every
+  composition (ADR 0011, roadmap 5b / 5C).** The built-in k-factor table is
+  47 numbers from one instrument at 200 kV, used at every voltage on every
+  instrument, and the extrapolation is invisible in the answer. You can now
+  import a standard of known composition (wt% or at%, on a basis that must
+  be stated because guessing costs the accuracy the standard provides),
+  define its reference regions, and derive Cliff–Lorimer k or Watanabe ζ
+  factors from measuring it — with uncertainty and with enough provenance
+  to say which standard at which version, on which image, at what beam
+  voltage. Derived sets are immutable: a factor is a measurement, and
+  editing one in place would change what an already published composition
+  was computed with. `GET /factors/{id}/compare` puts a measured set beside
+  the built-in table and resolves nothing, because a disagreement is
+  information about the instrument. Every quantitative response now also
+  carries a `qc` block — poor counting statistics, peak interference,
+  structured fit residuals, heavy self-absorption, factors used away from
+  the voltage they were derived at, and acquisition parameters that fell
+  back to a placeholder — as findings rather than exceptions, so the number
+  is still computed and its caveats travel with it.
+
 - **Quantitative EDS routes now read the calibration profile you applied
   (ADR 0010, roadmap 5a box 3 / 5C).** ADR 0009 shipped profiles that rode
   into the project file and into every result's calibration snapshot, and

@@ -283,7 +283,7 @@ The registered operation catalogue: name, category, summary, params.
 
 ## Operation catalogue
 
-88 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
+89 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
 
 ### analysis
 
@@ -642,6 +642,22 @@ The registered operation catalogue: name, category, summary, params.
 | `exclude_windows` | `str` |  | no |  |  | comma-separated 'lo:hi' keV regions also masked, e.g. '6.2:6.6,8.0:8.2'; empty = none |
 | `fit_absorption` | `bool` | True | no |  |  | free the low-energy detector-absorption rolloff |
 | `weights` | `str` | poisson | no | 'poisson', 'uniform' |  | fit weighting scheme |
+
+#### `eds_derive_factors` — Experimental Cliff-Lorimer k or Watanabe ζ factors derived by measuring a standard of known composition (calc/eds_factors). k_i ∝ w_i/I_i normalised to a reference element; ζ_i = C_i·ρt·D_e/I_i, which additionally needs the standard's certified mass-thickness and the electron dose. The composition is stated INLINE rather than by stored id so the step replays on any machine (ADR 0011)
+
+*category: `eds` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `elements` | `str` |  | no |  |  | comma-separated element symbols to measure, e.g. 'Fe,Cr' |
+| `composition` | `str` |  | no |  |  | the standard's certified composition as 'Symbol:percent' pairs, e.g. 'Fe:70,Cr:30'; every measured element must appear |
+| `basis` | `str` | wt | no |  |  | 'wt' or 'at' — which basis the percentages are on. NOT interchangeable: at% is converted by w ∝ a·M, and reading one as the other is an error of tens of percent for a pair with dissimilar masses |
+| `kind` | `str` | k | no |  |  | 'k' (dimensionless, relative) or 'zeta' (absolute) |
+| `reference_element` | `str` |  | no |  |  | k only: which element is defined as 1.0; empty picks Si when present (matching the built-in table) else the major element |
+| `beam_kv` | `float` | 200.0 | no |  | [0.0, ] | beam energy (kV), selects K/L/M lines |
+| `mass_thickness_kg_m2` | `float` | 0.0 | no |  | [0.0, ] | ζ only: the standard's certified mass-thickness. There is no way to infer it that does not invent the answer, so ζ without it is an error |
+| `probe_current_na` | `float` | 1.0 | no |  | [0.0, ] | ζ only: beam current for the dose integral |
+| `live_time_s` | `float` | 100.0 | no |  | [0.0, ] | ζ only: live time for the dose integral |
 
 #### `eds_element_map` — EDS energy-window element map
 

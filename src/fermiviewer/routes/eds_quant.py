@@ -19,6 +19,14 @@ from pydantic import BaseModel, Field
 
 from fermiviewer.calc.eds import ClResult, ZafResult, cliff_lorimer, zaf_correction
 from fermiviewer.calc.eds_maps import extract_element_maps
+from fermiviewer.calc.eds_qc import (
+    check_absorption,
+    check_counting_statistics,
+    check_factor_conditions,
+    check_peak_interference,
+    check_resolved_parameters,
+    findings_to_json,
+)
 from fermiviewer.calc.energy_units import to_kev
 from fermiviewer.calc.uncertainty import (
     cliff_lorimer_uncertainty,
@@ -28,10 +36,19 @@ from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.io.project_results import ResultOutput
 from fermiviewer.models import ImageMeta
 from fermiviewer.result_capture import capture_result
-from fermiviewer.routes._eds_params import provenance_block, resolve_eds_param
+from fermiviewer.routes._eds_params import (
+    provenance_block,
+    resolve_beam_kv,
+    resolve_eds_param,
+)
 from fermiviewer.session import UnknownImageError, store
 
 router = APIRouter(prefix="/api")
+
+#: The built-in k table's voltage. /eds/quantify always uses that table
+#: (it takes no k_factors), so the extrapolation check compares the beam
+#: against it -- see `eds_qc.check_factor_conditions`.
+BUILTIN_K_KV = 200.0
 
 
 def _cube(img_id: str) -> DataStruct:
@@ -92,6 +109,12 @@ class EdsQuantifyRequest(BaseModel):
     # (ADR 0010 §2). The same bound is re-checked on the RESOLVED value —
     # a profile never passes through pydantic.
     take_off_angle_deg: float | None = Field(default=None, gt=0, lt=90)
+    #: Not an input to the arithmetic — this route always uses the
+    #: built-in 200 kV k table. It is here so the beam voltage can be
+    #: KNOWN, and the extrapolation reported: using that table at 80 kV
+    #: is a real error of tens of percent that is otherwise invisible in
+    #: the answer. `None` means the applied profile supplies it.
+    beam_kv: float | None = None
     #: Capture this run as a persisted ResultRecord (1C). Default off until
     #: the client grows its capture affordance — recording is a user
     #: decision, not a side effect of every exploratory run.
@@ -124,7 +147,8 @@ def _quantify(req: EdsQuantifyRequest, ds: DataStruct) -> dict:
     cal = {
         "take_off_angle_deg": resolve_eds_param(
             ds.metadata, "take_off_angle_deg", req.take_off_angle_deg
-        )
+        ),
+        "beam_kv": resolve_beam_kv(ds.metadata, req.beam_kv),
     }
     # half_window_kev and the line library are keV; the axis may be in eV.
     energy_kev = to_kev(ds.energy_axis, ds.energy_cal.units)
@@ -184,6 +208,30 @@ def _quantify(req: EdsQuantifyRequest, ds: DataStruct) -> dict:
         # a Cliff-Lorimer run that IGNORES an applied detector profile
         # should say so rather than omit the block and read as unaffected.
         "calibration": provenance_block(cal),
+        # Caveats travel with the number. A composition is well-formed
+        # whether or not an element was measured on nine counts, whether
+        # or not a 200 kV table was used at 80 kV, and whether or not the
+        # takeoff angle is a placeholder — none of which a reader can see
+        # in the percentage alone.
+        "qc": findings_to_json(
+            [
+                *check_counting_statistics(
+                    syms, [e.total for e in entries], [float(np.sqrt(v)) for v in var_i]
+                ),
+                *check_peak_interference(syms, beam_kv=cal["beam_kv"].value),
+                *check_factor_conditions(
+                    beam_kv=cal["beam_kv"].value,
+                    factor_kv=BUILTIN_K_KV,
+                    source="built-in 200 kV",
+                ),
+                *(
+                    check_absorption(syms, getattr(res, "a_factors", []))
+                    if req.method == "zaf"
+                    else []
+                ),
+                *check_resolved_parameters(provenance_block(cal)),
+            ]
+        ),
     }
     if req.record:
         body["result"] = _capture_quant(req, ds, body, map_meta, cal)
