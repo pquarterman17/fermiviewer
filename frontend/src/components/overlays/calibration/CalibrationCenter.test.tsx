@@ -39,7 +39,10 @@ vi.mock("../../../lib/api", async (original) => ({
   deleteProfile: vi.fn(), unapplyProfile: vi.fn(), importLegacyCalibrations: vi.fn(),
 }));
 
-const fields = { microscope: {}, detector: { solid_angle: "sr", takeoff_angle: "deg" }, camera: {}, acquisition: {} };
+const fields = {
+  microscope: {}, detector: { solid_angle: "sr", takeoff_angle: "deg" }, camera: {},
+  acquisition: { pixel_size_row: "", pixel_size_column: "" },
+};
 
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -115,6 +118,24 @@ describe("CalibrationCenter", () => {
     fireEvent.click(screen.getByRole("button", { name: "Apply to image" }));
     expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("replace the image pixel size"));
     expect(applyProfileMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps acquisition pixel size atomic and constrains it to length units", async () => {
+    createProfileMock.mockResolvedValue({ profile: { ...profile, id: "new", name: "Scan", kind: "acquisition" } });
+    listProfilesMock.mockResolvedValueOnce([profile]).mockResolvedValueOnce([profile]);
+    render(<CalibrationCenter onClose={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Acquisition" }));
+    fireEvent.click(screen.getByRole("button", { name: /New profile/ }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Scan" } });
+    fireEvent.change(screen.getByLabelText("Pixel size row"), { target: { value: "2" } });
+    const unit = screen.getByLabelText("pixel_size_row unit");
+    expect(Array.from(unit.querySelectorAll("option"), (option) => option.value)).toEqual([
+      "pm", "Å", "nm", "µm", "mm",
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "Create profile" }));
+    await waitFor(() => expect(createProfileMock).toHaveBeenCalled());
+    expect(createProfileMock.mock.calls[0][0].fields).not.toHaveProperty("pixel_size_row");
+    expect(createProfileMock.mock.calls[0][0].fields).not.toHaveProperty("pixel_size_column");
   });
 
   it("duplicates values but resets provenance and legacy import identity", async () => {

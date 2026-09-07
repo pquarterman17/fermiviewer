@@ -4,6 +4,7 @@ import type {
   CalibrationProfile,
   ProfileDraft,
   ProfileKind,
+  ProfileQuantity,
 } from "../../../lib/api";
 import { KIND_LABEL, PROFILE_KINDS, TEXT_FIELDS, withQuantity } from "./profileDraft";
 
@@ -14,6 +15,16 @@ const RANGE_LABELS: Record<RangeKey, [string, string]> = {
   magnification: ["Magnification", "×"],
   camera_length_mm: ["Camera length", "mm"],
 };
+const PIXEL_FIELDS = ["pixel_size_row", "pixel_size_column"] as const;
+const LENGTH_UNITS = ["pm", "Å", "nm", "µm", "mm"];
+
+interface PixelPairDraft {
+  row: string;
+  column: string;
+  unit: string;
+  rowSigma: string;
+  columnSigma: string;
+}
 
 interface Props {
   profile: CalibrationProfile | null;
@@ -44,6 +55,17 @@ export default function ProfileEditor({
       ]),
     ) as Record<RangeKey, [string, string]>,
   );
+  const [pixelPair, setPixelPair] = useState<PixelPairDraft>(() => {
+    const row = draft.fields.pixel_size_row;
+    const column = draft.fields.pixel_size_column;
+    return {
+      row: row == null ? "" : String(row.value),
+      column: column == null ? "" : String(column.value),
+      unit: row?.unit ?? column?.unit ?? "nm",
+      rowSigma: row?.sigma == null ? "" : String(row.sigma),
+      columnSigma: column?.sigma == null ? "" : String(column.sigma),
+    };
+  });
   const fieldNames = Array.from(
     new Set([...Object.keys(knownFields[draft.kind] ?? {}), ...Object.keys(draft.fields)]),
   );
@@ -64,6 +86,23 @@ export default function ProfileEditor({
           : null,
       },
     });
+  };
+
+  const updatePixelPair = (next: PixelPairDraft) => {
+    setPixelPair(next);
+    const fields = { ...draft.fields };
+    delete fields.pixel_size_row;
+    delete fields.pixel_size_column;
+    if (next.row !== "" && next.column !== "") {
+      const quantity = (value: string, sigma: string): ProfileQuantity => ({
+        value: Number(value),
+        unit: next.unit,
+        ...(sigma === "" ? {} : { sigma: Number(sigma) }),
+      });
+      fields.pixel_size_row = quantity(next.row, next.rowSigma);
+      fields.pixel_size_column = quantity(next.column, next.columnSigma);
+    }
+    onChange({ ...draft, fields });
   };
 
   return (
@@ -101,11 +140,29 @@ export default function ProfileEditor({
 
         <section className="fvd-cal-form-section">
           <div className="fvd-cal-form-title"><h4>Calibration values</h4><span>Leave unused values blank</span></div>
+          {draft.kind === "acquisition" && (
+            <p className="fvd-cal-pair-note">Spatial pixel size is a row/column pair · both values required · one shared length unit</p>
+          )}
           <div className="fvd-cal-quantity-head"><span>Quantity</span><span>Value</span><span>Unit</span><span>± 1σ</span></div>
           {fieldNames.map((name) => {
             const quantity = draft.fields[name];
             const canonical = knownFields[draft.kind]?.[name];
             const unit = quantity?.unit ?? canonical ?? "";
+            const pixelIndex = PIXEL_FIELDS.indexOf(name as typeof PIXEL_FIELDS[number]);
+            if (draft.kind === "acquisition" && pixelIndex >= 0) {
+              const axis = pixelIndex === 0 ? "row" : "column";
+              const sigmaKey = pixelIndex === 0 ? "rowSigma" : "columnSigma";
+              return (
+                <div className="fvd-cal-quantity-row fvd-cal-pixel-pair" key={name}>
+                  <label htmlFor={`q-${name}`}>Pixel size {axis}</label>
+                  <input id={`q-${name}`} type="number" min={0} step="any" value={pixelPair[axis]} onChange={(event) => updatePixelPair({ ...pixelPair, [axis]: event.target.value })} />
+                  <select aria-label={`${name} unit`} value={pixelPair.unit} onChange={(event) => updatePixelPair({ ...pixelPair, unit: event.target.value })}>
+                    {LENGTH_UNITS.map((item) => <option key={item}>{item}</option>)}
+                  </select>
+                  <input aria-label={`${name} uncertainty`} type="number" min={0} step="any" value={pixelPair[sigmaKey]} disabled={pixelPair[axis] === ""} onChange={(event) => updatePixelPair({ ...pixelPair, [sigmaKey]: event.target.value })} />
+                </div>
+              );
+            }
             return (
               <div className="fvd-cal-quantity-row" key={name}>
                 <label htmlFor={`q-${name}`}>{name.replaceAll("_", " ")}</label>

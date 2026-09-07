@@ -74,8 +74,9 @@
 
 .fvd-cal-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
 .fvd-cal-form-grid label, .fvd-cal-textarea { display: grid; gap: 4px; color: var(--text-faint); font-size: 9px; text-transform: capitalize; }.fvd-cal-form-grid label.wide { grid-column: 1 / -1; }
-.fvd-cal-form-grid input, .fvd-cal-form-grid select, .fvd-cal-textarea textarea, .fvd-cal-quantity-row input, .fvd-cal-range input { width: 100%; min-width: 0; }
+.fvd-cal-form-grid input, .fvd-cal-form-grid select, .fvd-cal-textarea textarea, .fvd-cal-quantity-row input, .fvd-cal-quantity-row select, .fvd-cal-range input { width: 100%; min-width: 0; }
 .fvd-cal-form-title { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }.fvd-cal-form-title span { color: var(--text-faint); font-size: 9px; }
+.fvd-cal-pair-note { margin: -3px 0 9px; color: var(--warning); font-size: 9px; }
 .fvd-cal-quantity-head, .fvd-cal-quantity-row { display: grid; grid-template-columns: minmax(130px, 1.4fr) minmax(70px, .8fr) minmax(55px, .6fr) minmax(70px, .8fr); gap: 7px; align-items: center; }
 .fvd-cal-quantity-head { padding: 0 3px 5px; color: var(--text-faint); font-size: 8px; text-transform: uppercase; letter-spacing: .06em; }
 .fvd-cal-quantity-row { padding: 4px 3px; border-top: 1px solid color-mix(in srgb, var(--border-soft) 65%, transparent); }
