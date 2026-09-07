@@ -434,11 +434,15 @@ class IndexRequest(BaseModel):
 def diffraction_index(req: IndexRequest) -> dict:
     ds = _get(req.image_id)
     cam = req.camera_length_mm if req.camera_length_mm is not None else float("nan")
-    # One composition, shared with the `diffraction_index` op: ROI framing,
-    # spot re-centring and the full-image overlay geometry all live in
+    # One composition, shared with the `diffraction_index` op: ROI
+    # validation and the full-image overlay/indexing geometry all live in
     # calc/diffraction_index.py (ADR 0005 §1). A degenerate or out-of-image
-    # ROI is now a 422 — it used to leave the spots unshifted while shrinking
-    # the effective frame, which silently rescaled every measured d.
+    # ROI is a 422; a non-degenerate one gates the request but does not
+    # rescale anything — spots and the reciprocal grid / DC centre always
+    # resolve against the FULL image, so a measured d is the same with or
+    # without an ROI (see `index_spots_roi`'s docstring for the bug this
+    # replaced: re-framing into the ROI's own smaller size used to silently
+    # rescale every measured d).
     # The 422 that conversion raises is a COMPUTATION failure (the inputs
     # already resolved), so a requested capture must record it, not lose it.
     try:

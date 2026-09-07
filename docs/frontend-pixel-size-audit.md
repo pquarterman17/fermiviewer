@@ -72,8 +72,13 @@ the right one.
 * The stage renders every image with square screen pixels, so an
   anisotropic image is drawn stretched. Its measurements are now right;
   its picture is not. Separate roadmap item.
-* Backend `uniform_pixel_cal` (used by multi-image analyses) compares
-  `pixel_size` only, the same gap `mapCompatibility` had.
+* ~~Backend `uniform_pixel_cal` (used by multi-image analyses) compares
+  `pixel_size` only, the same gap `mapCompatibility` had.~~ Closed:
+  `uniform_pixel_cal` now takes an optional `spacings` sequence and also
+  compares each map's ROW extent against the reference's, raising
+  `MapCalibrationError` on a mismatch — both callers (`routes/layers.py`,
+  `calc/layers_multi.compare_layers_across_maps`, and transitively
+  `ops/catalogue_layers_multi.py`) pass `DataStruct.pixel_spacing` through.
 
 ## Tests
 

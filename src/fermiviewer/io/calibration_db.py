@@ -11,6 +11,13 @@ field for square pixels and what every older file holds -- so a reader
 that does not know about ``pixel_spacing`` keeps working, and
 :func:`entry_spacing` is how a reader that does gets both extents out of
 either shape of entry.
+
+A module-level `_LOCK` (`storelock.StoreLock`) is held across each
+complete read/modify/write transaction (and across reads). It excludes
+both other threads -- FastAPI's threadpool -- and other *processes*
+sharing the same config dir, which the launcher can produce: `server.py`
+floats a second launch to another port when its health probe misses a
+sibling that has bound the port but is still starting.
 """
 
 from __future__ import annotations
@@ -18,10 +25,13 @@ from __future__ import annotations
 import json
 import math
 import os
+import tempfile
 import time
 import warnings
 from pathlib import Path
 from typing import Any
+
+from fermiviewer.storelock import StoreLock
 
 __all__ = [
     "db_path",
@@ -40,6 +50,10 @@ _MAG_KEYS = (
     "Magnification",
     "mag",
 )
+
+#: guards every read/modify/write transaction on the store, across
+#: threads AND across processes (`storelock`)
+_LOCK = StoreLock(lambda: db_path())
 
 
 def db_path() -> Path:
@@ -82,9 +96,17 @@ def _save(data: dict[str, dict[str, Any]]) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     # Write to a temp file in the same directory then atomically replace,
     # so a crash/kill mid-write never leaves a half-written JSON file.
-    tmp = p.with_name(f"{p.name}.tmp-{os.getpid()}")
-    tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
-    os.replace(tmp, p)
+    fd = tempfile.NamedTemporaryFile(
+        dir=p.parent, prefix=f"{p.name}.tmp-", delete=False
+    )
+    tmp = Path(fd.name)
+    try:
+        with fd:
+            fd.write(json.dumps(data, indent=1).encode("utf-8"))
+        os.replace(tmp, p)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def _search(node: Any, key: str) -> Any:
@@ -121,11 +143,13 @@ def extract_calibration_key(metadata: dict[str, Any]) -> str | None:
 
 
 def list_calibrations() -> dict[str, dict[str, Any]]:
-    return _load()
+    with _LOCK:
+        return _load()
 
 
 def lookup(key: str) -> dict[str, Any] | None:
-    return _load().get(key)
+    with _LOCK:
+        return _load().get(key)
 
 
 def _positive(value: float, what: str) -> float:
@@ -174,14 +198,15 @@ def save_calibration(
         if pixel_size is None:
             raise ValueError("pixel_size must be positive")
         entry = {"pixel_size": _positive(pixel_size, "pixel_size")}
-    data = _load()
-    data[key] = {
-        **entry,
-        "unit": unit,
-        "note": note,
-        "saved": time.strftime("%Y-%m-%d %H:%M"),
-    }
-    _save(data)
+    with _LOCK:
+        data = _load()
+        data[key] = {
+            **entry,
+            "unit": unit,
+            "note": note,
+            "saved": time.strftime("%Y-%m-%d %H:%M"),
+        }
+        _save(data)
 
 
 def entry_spacing(entry: dict[str, Any]) -> tuple[float, float]:
@@ -212,9 +237,10 @@ def entry_spacing(entry: dict[str, Any]) -> tuple[float, float]:
 
 
 def delete_calibration(key: str) -> bool:
-    data = _load()
-    if key in data:
-        del data[key]
-        _save(data)
-        return True
-    return False
+    with _LOCK:
+        data = _load()
+        if key in data:
+            del data[key]
+            _save(data)
+            return True
+        return False

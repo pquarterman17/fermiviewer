@@ -12,17 +12,27 @@ Workspaces saved by a build before plan #32 are a v1 ``<slug>.json`` +
 the pair, so an old workspace keeps opening (upgraded in memory) and the next
 save writes the ``.fvp`` beside it; ``delete_workspace`` removes all three
 names so nothing is left orphaned.
+
+A module-level `_LOCK` (`storelock.StoreLock`) is held across each
+complete read/modify/write transaction (and across reads). It excludes
+both other threads -- FastAPI's threadpool -- and other *processes*
+sharing the same config dir, which the launcher can produce: `server.py`
+floats a second launch to another port when its health probe misses a
+sibling that has bound the port but is still starting.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
+import tempfile
 from pathlib import Path
 from typing import Any
 
 from fermiviewer.io.project_file import PROJECT_SUFFIX
 from fermiviewer.io.user_paths import PathPolicyError, safe_config_path
+from fermiviewer.storelock import StoreLock
 from fermiviewer.usermeta import config_dir
 
 __all__ = [
@@ -37,6 +47,12 @@ __all__ = [
 ]
 
 _INDEX_VERSION = 1
+
+#: guards every read/modify/write transaction on the index, across threads
+#: and across processes (re-entrant so
+#: `list_workspaces` can hold it across its prune-and-persist while it also
+#: calls `stored_path`, which touches the filesystem but not the lock)
+_LOCK = StoreLock(lambda: _index_path())
 
 
 def workspaces_dir() -> Path:
@@ -122,53 +138,66 @@ def _read_index() -> dict[str, Any]:
 def _write_index(data: dict[str, Any]) -> None:
     path = _index_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=1), encoding="utf-8")
+    fd = tempfile.NamedTemporaryFile(
+        dir=path.parent, prefix=f"{path.name}.tmp-", delete=False
+    )
+    tmp = Path(fd.name)
+    try:
+        with fd:
+            fd.write(json.dumps(data, indent=1).encode("utf-8"))
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def list_workspaces() -> list[dict[str, Any]]:
     """Saved workspaces as ``[{slug, name, saved_at, n_images}]``, sorted
     by display name. Self-healing: index entries whose manifest is gone
     (deleted out-of-band) are pruned on read."""
-    data = _read_index()
-    entries = data["workspaces"]
-    out: list[dict[str, Any]] = []
-    keep: dict[str, Any] = {}
-    for slug, info in entries.items():
-        if stored_path(slug) is None:
-            continue
-        keep[slug] = info
-        out.append(
-            {
-                "slug": slug,
-                "name": info.get("name", slug),
-                "saved_at": info.get("saved_at"),
-                "n_images": int(info.get("n_images", 0)),
-            }
-        )
-    if len(keep) != len(entries):  # stale entries pruned → persist
-        data["workspaces"] = keep
-        _write_index(data)
+    with _LOCK:
+        data = _read_index()
+        entries = data["workspaces"]
+        out: list[dict[str, Any]] = []
+        keep: dict[str, Any] = {}
+        for slug, info in entries.items():
+            if stored_path(slug) is None:
+                continue
+            keep[slug] = info
+            out.append(
+                {
+                    "slug": slug,
+                    "name": info.get("name", slug),
+                    "saved_at": info.get("saved_at"),
+                    "n_images": int(info.get("n_images", 0)),
+                }
+            )
+        if len(keep) != len(entries):  # stale entries pruned → persist
+            data["workspaces"] = keep
+            _write_index(data)
     out.sort(key=lambda w: w["name"].lower())
     return out
 
 
 def register(slug: str, name: str, n_images: int, saved_at: str) -> None:
     """Record (or update) a workspace's index entry."""
-    data = _read_index()
-    data["workspaces"][slug] = {
-        "name": name,
-        "saved_at": saved_at,
-        "n_images": n_images,
-    }
-    _write_index(data)
+    with _LOCK:
+        data = _read_index()
+        data["workspaces"][slug] = {
+            "name": name,
+            "saved_at": saved_at,
+            "n_images": n_images,
+        }
+        _write_index(data)
 
 
 def delete_workspace(slug: str) -> bool:
     """Remove a workspace's index entry + its files, current and legacy.
     Returns True if anything was actually removed."""
-    data = _read_index()
-    existed = data["workspaces"].pop(slug, None) is not None
-    _write_index(data)
+    with _LOCK:
+        data = _read_index()
+        existed = data["workspaces"].pop(slug, None) is not None
+        _write_index(data)
     removed = False
     for ext in (PROJECT_SUFFIX, ".json", ".npz"):
         f = _slug_path(slug, ext)

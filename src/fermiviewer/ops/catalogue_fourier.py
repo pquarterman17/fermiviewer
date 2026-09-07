@@ -144,6 +144,8 @@ def _gpa(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         mask_radius=params["mask_radius"],
         mask_order=params["mask_order"],
         pixel_size=params["pixel_size"],
+        # route parity: `pixel_size` is the column scale, rows follow the image's ratio
+        spacing=spacing_at_column_scale(params["pixel_size"], ds.pixel_spacing),
     )
     maps = {"exx": res.exx, "eyy": res.eyy, "exy": res.exy, "rotation": res.rotation}
     means = gpa_mean_strain(res)

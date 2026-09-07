@@ -78,6 +78,8 @@ def analyze_gpa(req: GpaRequest) -> dict:
             mask_radius=req.mask_radius,
             mask_order=req.mask_order,
             pixel_size=req.pixel_size,
+            # `req.pixel_size` is the column scale; rows follow the image's ratio
+            spacing=spacing_at_column_scale(req.pixel_size, ds.pixel_spacing),
         )
     except ValueError as e:
         raise HTTPException(422, str(e)) from None

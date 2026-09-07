@@ -70,15 +70,28 @@ def geometric_phase_analysis(
     (`DataStruct.pixel_spacing`); `pixel_size` is the isotropic fallback
     for a caller with a single length, and an explicit `spacing` wins.
 
-    STRAIN IS DIMENSIONLESS and does not depend on either. `exx` is
-    ``d(u_x)/dx``, so the scale appears in the numerator and the
-    denominator and cancels. Until 2026-09-02 it did not: the
+    `exx` and `eyy` ARE DIMENSIONLESS and do not depend on either scale:
+    `exx` is ``d(u_x)/dx``, so the scale appears in the numerator and the
+    denominator and cancels -- true whether the pixels are square or not.
+    Until 2026-09-02 that cancellation did not happen at all: the
     displacements were converted to physical units but the gradients were
     still taken against PIXEL indices, so every strain component came out
     multiplied by `pixel_size` -- exx was 10x too large at
     `pixel_size=10`, and only correct at the default of 1. The gradients
     now carry the physical spacing, which is what makes the cancellation
-    happen.
+    happen for `exx`/`eyy`.
+
+    `exy` and `rotation` DO depend on the extent RATIO `s_col/s_row` when
+    the pixels are not square, and no fallback removes that -- it is
+    physical, not a bug. `exy = 0.5*(dudy + dvdx)`: `dudy` is `u_x`
+    differentiated against ROWS (so it carries `s_col/s_row`) and `dvdx`
+    is `u_y` differentiated against COLUMNS (so it carries `s_row/s_col`).
+    Those two terms only cancel each other's anisotropy when `s_col ==
+    s_row`; on 1:4 pixels they differ by a factor of 4, and dropping the
+    `spacing` (or passing only the isotropic `pixel_size`) silently
+    recovers the pixel-index answer for these two components even though
+    `exx`/`eyy` still come out right. `rotation = 0.5*(dvdx - dudy)` is
+    built from the same two terms and inherits the same dependence.
 
     The two DISPLACEMENTS are lengths and do scale, but not by the same
     number when the pixels are not square: `displacement_x` is along

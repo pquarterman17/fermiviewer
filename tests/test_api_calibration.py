@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import glob
+import json
+import threading
 import warnings
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -279,3 +282,32 @@ def test_corrupt_db_backed_up_and_warns() -> None:
     assert set(fresh) == {"Fresh|1"}
     assert fresh["Fresh|1"]["pixel_size"] == pytest.approx(1.0)
     assert p.is_file()
+
+
+def test_concurrent_saves_do_not_clobber_each_other(tmp_path: Path) -> None:
+    """Eight threads each save one calibration after a barrier, so their
+    _load()/_save() transactions would race without `_LOCK` -- the last
+    writer's `_save` would silently drop everyone else's entry."""
+    n = 8
+    barrier = threading.Barrier(n)
+    errors: list[BaseException] = []
+
+    def worker(i: int) -> None:
+        try:
+            barrier.wait()
+            save_calibration(f"Key{i}|1", 1.0, "nm")
+        except BaseException as exc:  # noqa: BLE001 -- surfaced via `errors`
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == []
+    assert set(calibration_db.list_calibrations()) == {f"Key{i}|1" for i in range(n)}
+    p = calibration_db.db_path()
+    data = json.loads(p.read_text())
+    assert len(data) == n
+    assert list(p.parent.glob(f"{p.name}.tmp-*")) == []

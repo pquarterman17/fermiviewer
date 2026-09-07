@@ -11,9 +11,12 @@ An edit never rewrites a version in place: `update_profile` appends the
 current body to `history`, bumps `version`, writes the new body. A store
 whose `schema` is higher than this build reads is refused (the regions
 rule, ADR 0006 §8) -- reading it under this build's meaning and re-saving
-would silently downgrade it. A module-level `_LOCK` is held across each
-complete read/modify/write transaction (and across reads), so concurrent
-requests in FastAPI's threadpool never race a load against a save.
+would silently downgrade it. A module-level `_LOCK` (`storelock.StoreLock`) is held across each
+complete read/modify/write transaction (and across reads). It excludes
+both other threads -- FastAPI's threadpool -- and other *processes*
+sharing the same config dir, which the launcher can produce: `server.py`
+floats a second launch to another port when its health probe misses a
+sibling that has bound the port but is still starting.
 
 Pure file I/O over `profiles_model`; routes adapt.
 """
@@ -25,7 +28,6 @@ import logging
 import math
 import os
 import tempfile
-import threading
 import time
 import warnings
 from collections.abc import Callable, Mapping
@@ -47,6 +49,7 @@ from fermiviewer.io.profiles_model import (
     validate_fields,
     validity_from,
 )
+from fermiviewer.storelock import StoreLock
 
 __all__ = [
     "LEGACY_SOURCE",
@@ -65,10 +68,11 @@ LEGACY_SOURCE = "legacy calibration DB"
 
 _log = logging.getLogger(__name__)
 
-#: guards every read/modify/write transaction on the store (re-entrant so
+#: guards every read/modify/write transaction on the store, across threads
+#: and across processes (re-entrant so
 #: `import_legacy_calibrations` can hold it across its whole batch while
 #: calling `list_profiles`/`create_profile`, which take it too)
-_LOCK = threading.RLock()
+_LOCK = StoreLock(lambda: db_path())
 
 #: keys stated in kV (the parsers' normalised names) …
 _KV_KEYS = ("beam_kv", "voltage_kV")

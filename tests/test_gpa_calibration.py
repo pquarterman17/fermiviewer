@@ -24,7 +24,11 @@ import warnings
 import numpy as np
 import pytest
 
+import fermiviewer.ops as ops
 from fermiviewer.calc.gpa import geometric_phase_analysis
+from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
+from fermiviewer.routes.imaging_ops import GpaRequest, analyze_gpa
+from fermiviewer.session import store
 
 #: interior window, avoiding phase-unwrap edge artefacts (the window the
 #: MATLAB golden capture uses)
@@ -223,3 +227,137 @@ def test_the_two_entry_paths_agree_bit_for_bit_at_unit_scale() -> None:
         np.testing.assert_array_equal(
             getattr(default, field), getattr(explicit, field)
         )
+
+
+# ── the two live callers must actually pass `spacing` (ADR 0008) ─────────
+#
+# `geometric_phase_analysis` has always honoured `spacing` correctly (see
+# above); the defect was that neither `routes/imaging_ops.py::analyze_gpa`
+# nor `ops/catalogue_fourier.py::_gpa` ever passed it, so every GPA request
+# through the API silently read the image as isotropic. `exx`/`eyy` cancel
+# regardless (see `test_normal_strains_survive_anisotropy_but_shear_need
+# _not` above), so the defect was invisible there; `exy` and `rotation`
+# mix the two axes and came out wrong by the extent ratio on any
+# anisotropic image -- a factor of 4 on 1:4 pixels.
+
+ROW_SPACING, COL_SPACING = 0.5, 2.0  # 1:4 pixels, ADR 0008's own example
+
+
+def _aniso_ds(img: np.ndarray) -> DataStruct:
+    return DataStruct(
+        data=img,
+        kind=DataKind.IMAGE,
+        axes=(
+            AxisCal(ROW_SPACING, 0.0, "nm"),
+            AxisCal(COL_SPACING, 0.0, "nm"),
+        ),
+        metadata={"source": "synthetic"},
+    )
+
+
+@pytest.fixture(autouse=True)
+def _clean_store():
+    store.clear()
+    yield
+    store.clear()
+
+
+def test_gpa_route_passes_pixel_spacing_to_the_calc() -> None:
+    """The defect, reproduced through `analyze_gpa` itself: at
+    `pixel_size=2.0` (the COLUMN scale, ADR 0008) on an image whose rows
+    are 0.5 nm and whose columns are 2.0 nm, the route must report the
+    SAME `exy`/`rotation` as calling the calc directly with
+    `spacing=(0.5, 2.0)` -- not the isotropic answer at `spacing=(2, 2)`.
+    """
+    latt = _chirped_lattice()
+    image_id = store.add_parsed(_aniso_ds(latt), "aniso.dm4")
+    req = GpaRequest(image_id=image_id, g1=G1, g2=G2, pixel_size=COL_SPACING)
+    body = analyze_gpa(req)
+
+    maps = {m["name"].split("(")[0]: m["id"] for m in body["maps"]}
+    got_exy = store.get(maps["exy"]).data
+    got_rotation = store.get(maps["rotation"]).data
+
+    correct = geometric_phase_analysis(
+        latt, G1, G2, pixel_size=COL_SPACING, spacing=(ROW_SPACING, COL_SPACING)
+    )
+    isotropic_wrong = geometric_phase_analysis(latt, G1, G2, pixel_size=COL_SPACING)
+
+    np.testing.assert_array_equal(got_exy, correct.exy)
+    np.testing.assert_array_equal(got_rotation, correct.rotation)
+    # and it must actually differ from the isotropic (unfixed) answer --
+    # otherwise this test would pass whether or not `spacing` was wired up
+    assert not np.allclose(correct.exy, isotropic_wrong.exy)
+    assert not np.allclose(correct.rotation, isotropic_wrong.rotation)
+
+
+def test_gpa_route_square_pixels_are_bit_identical() -> None:
+    """Square pixels must be untouched by the fix: `spacing_at_column_scale`
+    returns the spacing unchanged when `pixel_size` already matches its
+    column extent, and `None` (falling back to isotropic) otherwise --
+    either way the numbers on a square-pixel image must not move."""
+    latt = _chirped_lattice()
+    square_ds = DataStruct(
+        data=latt,
+        kind=DataKind.IMAGE,
+        axes=(AxisCal(0.5, 0.0, "nm"), AxisCal(0.5, 0.0, "nm")),
+        metadata={"source": "synthetic"},
+    )
+    image_id = store.add_parsed(square_ds, "square.dm4")
+    req = GpaRequest(image_id=image_id, g1=G1, g2=G2, pixel_size=0.5)
+    body = analyze_gpa(req)
+    got = {m["name"].split("(")[0]: store.get(m["id"]).data for m in body["maps"]}
+
+    expected = geometric_phase_analysis(latt, G1, G2, pixel_size=0.5)
+    for key in ("exx", "eyy", "exy", "rotation"):
+        np.testing.assert_array_equal(got[key], getattr(expected, key))
+
+
+def test_gpa_op_passes_pixel_spacing_to_the_calc() -> None:
+    """Same defect, the op entry point (`ops/catalogue_fourier.py::_gpa`,
+    registered as `gpa`)."""
+    latt = _chirped_lattice()
+    ds = _aniso_ds(latt)
+    params = {
+        "g1x": G1[0], "g1y": G1[1], "g2x": G2[0], "g2y": G2[1],
+        "mask_radius": 0.0, "mask_order": 2.0, "pixel_size": COL_SPACING,
+    }
+    result = ops.run("gpa", ds, params)
+    outputs = {
+        o["name"]: o["data"]["values"]
+        for o in result.value["outputs"]
+        if o["kind"] == "map"
+    }
+
+    correct = geometric_phase_analysis(
+        latt, G1, G2, pixel_size=COL_SPACING, spacing=(ROW_SPACING, COL_SPACING)
+    )
+    isotropic_wrong = geometric_phase_analysis(latt, G1, G2, pixel_size=COL_SPACING)
+
+    np.testing.assert_array_equal(np.asarray(outputs["exy"]), correct.exy)
+    np.testing.assert_array_equal(np.asarray(outputs["rotation"]), correct.rotation)
+    assert not np.allclose(correct.exy, isotropic_wrong.exy)
+    assert not np.allclose(correct.rotation, isotropic_wrong.rotation)
+
+
+def test_gpa_op_square_pixels_are_bit_identical() -> None:
+    latt = _chirped_lattice()
+    ds = DataStruct(
+        data=latt,
+        kind=DataKind.IMAGE,
+        axes=(AxisCal(0.5, 0.0, "nm"), AxisCal(0.5, 0.0, "nm")),
+        metadata={"source": "synthetic"},
+    )
+    params = {
+        "g1x": G1[0], "g1y": G1[1], "g2x": G2[0], "g2y": G2[1],
+        "mask_radius": 0.0, "mask_order": 2.0, "pixel_size": 0.5,
+    }
+    result = ops.run("gpa", ds, params)
+    outputs = {
+        o["name"]: o["data"]["values"]
+        for o in result.value["outputs"]
+        if o["kind"] == "map"
+    }
+    expected = geometric_phase_analysis(latt, G1, G2, pixel_size=0.5)
+    for key in ("exx", "eyy", "exy", "rotation"):
+        np.testing.assert_array_equal(np.asarray(outputs[key]), getattr(expected, key))

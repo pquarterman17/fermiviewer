@@ -112,6 +112,31 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   uncalibrated.
 
 ### Fixed
+- **Two FermiViewer processes no longer lose each other's saved state.**
+  The calibration database, the profile store and the workspace index each
+  serialised their read/modify/write transactions with a `threading.RLock`,
+  which stops at the process boundary. A second process is reachable: the
+  launcher only adopts a running sibling when `/api/health` answers inside
+  its probe window, so a sibling that has bound the port but is still
+  importing numpy reads as a foreign app and the new launch floats to the
+  next free port instead of reusing it. Both then shared one
+  `~/.fermiviewer/` with no lock between them, and a concurrent save was a
+  lost update — both loaded the same JSON, both wrote their own copy back,
+  and the second `os.replace` won whole (in the regression, three of four
+  saved profiles vanished). All three stores now hold a
+  `storelock.StoreLock`: the same re-entrant `with` protocol, plus an OS
+  advisory lock on a sibling `.lock` file for the outermost transaction.
+  Waiting is bounded, and a config dir that cannot hold a lock file
+  degrades to the thread lock rather than failing the request.
+- **A failed metadata sidecar write no longer erases the saved values.**
+  `usermeta.write_sidecar` used a plain `write_bytes`, which truncates the
+  target before writing: a crash, a full disk or a kill mid-write left a
+  zero-length `.fvmeta.yaml`, which `read_sidecar` reads as "nothing
+  saved" — silently discarding every field the user had entered. It now
+  stages a temp file beside the image and `os.replace`s it, so a reader
+  sees the old sidecar or the new one and a failed write changes nothing.
+  A concurrent reader observed 16 empty sidecars in 60 writes before the
+  fix and none after.
 - **Client-side measurements use both pixel extents (ADR 0008, 5a-C).**
   The frontend audit (`docs/frontend-pixel-size-audit.md`) found that
   every measurement computed in the browser still multiplied by the scalar
