@@ -33,17 +33,12 @@ from fermiviewer.calc.eds_qc import (
 )
 from fermiviewer.calc.eds_zeta import dose_electrons
 from fermiviewer.calc.energy_units import to_kev
-from fermiviewer.calc.raster import masked_sum_spectrum
-from fermiviewer.datastruct import DataKind
 from fermiviewer.io.factors_db import (
     FactorSetError,
     create_factor_set,
     factor_set_to_json,
 )
-from fermiviewer.io.standards_db import get_standard
-from fermiviewer.io.standards_model import Standard, StandardError, standard_from_json
-from fermiviewer.project_session import project
-from fermiviewer.region_resolve import RegionReferenceError, resolve_region
+from fermiviewer.io.standards_model import Standard, StandardError
 from fermiviewer.routes._eds_common import (
     background_component,
     fit_summed_peaks,
@@ -55,49 +50,13 @@ from fermiviewer.routes._eds_params import (
     resolve_eds_param,
     resolve_live_time_s,
 )
+from fermiviewer.routes._factors_common import (
+    measurement_scope,
+    resolved_standard,
+    scoped_spectrum,
+)
 
 router = APIRouter(prefix="/api")
-
-def _standard(standard_id: str) -> Standard:
-    std = get_standard(standard_id)
-    if std is None:
-        raise HTTPException(404, f"unknown standard id: {standard_id}")
-    return std
-
-
-def _resolved_standard(req: FactorDeriveRequest) -> Standard:
-    """The stored standard, or a throwaway one built from the request.
-
-    An inline composition is validated by exactly the same
-    `standard_from_json` the store uses, so the two paths cannot diverge
-    on what counts as a valid composition.
-    """
-    if req.standard_id:
-        if req.composition is not None:
-            raise HTTPException(
-                422, "give a standard_id or an inline composition, not both"
-            )
-        return _standard(req.standard_id)
-    if not req.composition or req.basis is None:
-        raise HTTPException(
-            422, "give a standard_id, or an inline composition with its basis"
-        )
-    body: dict[str, Any] = {
-        "id": "inline",
-        "name": "inline composition",
-        "version": 0,
-        "created_at": "-",
-        "updated_at": "-",
-        "basis": req.basis,
-        "composition": dict(req.composition),
-    }
-    if req.mass_thickness_kg_m2 is not None:
-        body["mass_thickness"] = {"value": req.mass_thickness_kg_m2, "unit": "kg/m2"}
-    try:
-        return standard_from_json(body)
-    except StandardError as exc:
-        raise HTTPException(422, str(exc)) from None
-
 
 class FactorDeriveRequest(BaseModel):
     """Either name a stored standard, or state its composition inline.
@@ -154,31 +113,13 @@ def _measure(
     `image_id` is then None -- recording that would give a factor set a
     null provenance for the one thing it is a factor for.
     """
-    image_id = req.image_id
-    region_ref, roi_ref = req.region or "", req.roi or ""
-    if image_id is None:
-        if not req.region_label:
-            raise HTTPException(
-                422, "give an image_id, or a region_label naming a stored reference region"
-            )
-        stored = next((r for r in std.regions if r.label == req.region_label), None)
-        if stored is None:
-            raise HTTPException(
-                404, f"standard has no reference region labelled {req.region_label!r}"
-            )
-        if not stored.image_id:
-            raise HTTPException(
-                422,
-                f"reference region {stored.label!r} records no image; it cannot be "
-                "measured until one is given",
-            )
-        image_id = stored.image_id
-        # The stored region IS the scope. A reference region that names an
-        # image but no sub-region means the whole image, which is what
-        # `resolve_region` already reads an empty pair as.
-        if not (req.region or req.roi):
-            region_ref, roi_ref = stored.region, stored.roi
-
+    image_id, region_ref, roi_ref = measurement_scope(
+        std,
+        image_id=req.image_id,
+        region_label=req.region_label,
+        region=req.region,
+        roi=req.roi,
+    )
     ds = spectral_dataset(image_id)
     cal = {
         "beam_kv": resolve_beam_kv(ds.metadata, req.beam_kv),
@@ -194,7 +135,7 @@ def _measure(
             422, f"the standard states no composition for {missing}"
         )
     energy = to_kev(ds.energy_axis, ds.energy_cal.units)
-    spectrum, scope = _scoped_spectrum(ds, image_id, region_ref, roi_ref)
+    spectrum, scope = scoped_spectrum(ds, image_id, region_ref, roi_ref)
     pf, _ = fit_summed_peaks(
         energy,
         spectrum,
@@ -207,49 +148,6 @@ def _measure(
         escape_fraction=0.0,
     )
     return pf, ds, cal, elements, image_id, scope
-
-
-def _scoped_spectrum(
-    ds: Any, image_id: str, region: str, roi: str
-) -> tuple[Any, dict[str, Any]]:
-    """The spectrum to fit, restricted to a region when one is given.
-
-    The whole point of a reference region on a standard: a specimen has a
-    matrix and inclusions, and a factor derived from the WHOLE field is a
-    factor for the average of everything in it, not for the phase whose
-    composition the certificate states.
-
-    Uses `resolve_region` and `masked_sum_spectrum` -- the same pair the
-    spectrum route and the `sum_spectrum` op use (ADR 0005 §1, ADR 0007
-    §11) -- so a reference here selects exactly the pixels the same string
-    selects anywhere else. An exact (non-rectangular) region narrows to
-    its mask, not to its bounding box.
-    """
-    if not (region or roi):
-        return ds.sum_spectrum(), {"scoped": False, "region": "", "roi": ""}
-    if ds.kind is not DataKind.SPECTRUM_IMAGE:
-        raise HTTPException(
-            422, "a region needs a spectrum-image cube (a 1D spectrum has no pixels)"
-        )
-    grid = (int(ds.data.shape[0]), int(ds.data.shape[1]))
-    try:
-        resolved = resolve_region(
-            grid,
-            region=region,
-            roi=roi,
-            sets=project.current().region_sets,
-            image_id=image_id,
-        )
-    except (RegionReferenceError, ValueError) as exc:
-        raise HTTPException(422, str(exc)) from None
-    return masked_sum_spectrum(ds.data, resolved.rect, resolved.mask), {
-        "scoped": True,
-        "region": region,
-        "roi": roi,
-        "rect": list(resolved.rect),
-        "pixel_count": resolved.pixel_count,
-        "exact": resolved.is_exact,
-    }
 
 
 def _factor_json(f: DerivedFactor) -> dict[str, Any]:
@@ -266,7 +164,9 @@ def _factor_json(f: DerivedFactor) -> dict[str, Any]:
 @router.post("/factors/derive")
 def factors_derive(req: FactorDeriveRequest) -> dict[str, Any]:
     """Derive a k or ζ factor set by measuring a known standard."""
-    std = _resolved_standard(req)
+    std = resolved_standard(
+        req.standard_id, req.composition, req.basis, req.mass_thickness_kg_m2
+    )
     pf, ds, cal, elements, image_id, scope = _measure(req, std)
 
     pct = {sym: std.composition[sym].value for sym in elements}

@@ -13,6 +13,34 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **EELS cross-sections derived from a standard, and factor derivation
+  restricted to a region (ADR 0011, roadmap 5b).** The hydrogenic model in
+  `eels_quant.cross_section` knows nothing about your spectrometer, and
+  quantifying against it inherits its tens-of-percent error silently.
+  `POST /api/factors/derive-eels` (op `eels_derive_cross_sections`) now
+  measures a standard of known composition and inverts the shipped
+  quantification — `σ_i ∝ I_i/a_i` — so the relative sensitivities become
+  your instrument's, measured. Only ratios are measurable and σ carries m²,
+  so the absolute scale is anchored to the reference element's model value
+  (or one you supply) and the anchor's origin is recorded, never implied.
+  Every entry keeps the model value it was compared against, so neither
+  silently stands in for the other.
+- Derived sets store as the new `sigma` kind alongside `k` and `zeta`,
+  carrying the standard's ATOMIC fraction — EELS quantifies on the atomic
+  basis where Cliff–Lorimer uses the weight basis, so the same certificate
+  converts in opposite directions. Both conversions now live in
+  `calc/composition.py`; two spellings of one conversion is how they drift.
+
+### Fixed
+- A `region` or `roi` on `POST /api/factors/derive` is now applied to the
+  sum, not merely recorded in the factor set's provenance. A specimen has a
+  matrix and inclusions, so a factor derived from the whole field was a
+  factor for the average of everything in it rather than for the phase the
+  certificate describes.
+
 ## [0.5.0] - 2026-09-07
 
 ### Added

@@ -1,6 +1,13 @@
 """Which applied-profile field supplies which EDS request parameter
 (ADR 0010 §3), shared by every EDS route module.
 
+The TABLE below is EDS-only. The machinery around it -- `ParamSpec`,
+`resolve_spec`, the bounds check, `resolve_beam_kv` and
+`provenance_block` -- is not, and `routes/factors_eels.py` reuses it for
+the one EELS parameter a profile supplies (the collection semi-angle).
+Beam voltage in particular is a property of the microscope, not of which
+spectrometer is looking at it.
+
 One table, not a copy per route. The 4C review named this exact seam --
 "a sibling op that never got the same fix" -- and a per-route copy of a
 UNIT mapping is the worst version of it: the copies stay plausible while
@@ -39,6 +46,7 @@ __all__ = [
     "resolve_beam_kv",
     "resolve_eds_param",
     "resolve_live_time_s",
+    "resolve_spec",
 ]
 
 
@@ -98,14 +106,23 @@ EDS_PARAMS: dict[str, ParamSpec] = {
 def resolve_eds_param(
     metadata: Mapping[str, Any], name: str, requested: float | None
 ) -> Resolved:
-    """One `EDS_PARAMS` entry resolved for this image, request value first.
+    """One `EDS_PARAMS` entry resolved for this image, request value first."""
+    return resolve_spec(metadata, name, EDS_PARAMS[name], requested)
+
+
+def resolve_spec(
+    metadata: Mapping[str, Any],
+    name: str,
+    spec: ParamSpec,
+    requested: float | None,
+) -> Resolved:
+    """Any `ParamSpec` resolved for this image, request value first.
 
     An unconvertible stored unit is a 422, never a silent fall through to
     the built-in default: answering with 20 deg because the applied
     profile said something this build could not read would hide the one
     thing the user needs to know.
     """
-    spec = EDS_PARAMS[name]
     try:
         resolved = resolve_param(
             metadata,

@@ -16,6 +16,7 @@ from fermiviewer.ops import (
     catalogue_eds_model,  # noqa: F401  (wave D: EDS continuum/artifacts/zeta)
     catalogue_eels_advanced,  # noqa: F401  (wave D: KK/SVD/align/deconvolution)
     catalogue_eels_core,  # noqa: F401  (wave D: background/ELNES/auto-assign)
+    catalogue_eels_factors,  # noqa: F401  (ADR 0011: experimental EELS cross-sections)
     catalogue_eels_maps,  # noqa: F401  (wave D: thickness/quantify/fit/species maps)
     catalogue_fourier,  # noqa: F401  (wave B: FFT/VDF/GPA/lattice/CTF ops)
     catalogue_grains_edit,  # noqa: F401  (grain label editing)

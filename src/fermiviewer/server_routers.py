@@ -38,6 +38,7 @@ def include_all_routers(app: FastAPI) -> None:
     from fermiviewer.routes.export_batch import router as export_batch_router
     from fermiviewer.routes.export_table import router as export_table_router
     from fermiviewer.routes.factors import router as factors_router
+    from fermiviewer.routes.factors_eels import router as factors_eels_router
     from fermiviewer.routes.factors_store import router as factors_store_router
     from fermiviewer.routes.filter import router as filter_router
     from fermiviewer.routes.folders import router as folders_router
@@ -72,7 +73,7 @@ def include_all_routers(app: FastAPI) -> None:
         structure_particles_router,
         grains_trained_router,
         jobs_router, calibration_router, profiles_router, composite_router, dev_router,
-        standards_router, factors_router, factors_store_router,
+        standards_router, factors_router, factors_store_router, factors_eels_router,
         usermeta_router,
         diffraction_setup_router, spectral_fit_router, eds_advanced_router,
         eds_zeta_router, eds_quant_router, eds_maps_router, eels_advanced_router,

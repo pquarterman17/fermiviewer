@@ -661,6 +661,19 @@ DOMAINS: tuple[Domain, ...] = (
             ),
             Row(
                 "POST",
+                "/api/factors/derive-eels",
+                "Calibration Center → Standards",
+                ("eels_derive_cross_sections",),
+                "table + scalar",
+                "shipped",
+                "derives EELS partial cross-sections by measuring a known "
+                "standard (ADR 0011). Inverts quantify's N ∝ I/sigma on the "
+                "ATOMIC basis, the opposite of Cliff-Lorimer's weight basis. "
+                "Composition INLINE for the same replay reason as its EDS "
+                "sibling",
+            ),
+            Row(
+                "POST",
                 "/api/eds/zeta",
                 "EDS Model Fit",
                 ("eds_zeta",),

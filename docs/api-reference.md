@@ -283,7 +283,7 @@ The registered operation catalogue: name, category, summary, params.
 
 ## Operation catalogue
 
-89 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
+90 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
 
 ### analysis
 
@@ -779,6 +779,28 @@ The registered operation catalogue: name, category, summary, params.
 | `fit_lo` | `float` |  | yes |  |  | pre-edge fit window lower edge (eV) |
 | `fit_hi` | `float` |  | yes |  |  | pre-edge fit window upper edge (eV) |
 | `method` | `str` | powerlaw | no | 'powerlaw', 'exponential' |  | pre-edge background model |
+
+#### `eels_derive_cross_sections` — Experimental EELS partial cross-sections derived by measuring a standard of known composition (calc/eels_factors). Inverting quantify's N ∝ I/σ gives σ_i ∝ I_i/a_i, on the ATOMIC basis — the opposite of the weight basis Cliff-Lorimer uses. Only RATIOS are measurable, so the absolute scale is anchored to the reference element's hydrogenic σ unless one is supplied. The composition is stated INLINE rather than by stored id so the step replays on any machine (ADR 0011)
+
+*category: `eels` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `edges` | `str` |  | no |  |  | comma-separated edges, each 'Symbol:shell:Z:onset_eV:sigLo-sigHi:bgLo-bgHi', e.g. 'Fe:L:26:708:700-800:600-690'; one per element |
+| `composition` | `str` |  | no |  |  | the standard's certified composition as 'Symbol:percent' pairs, e.g. 'Fe:70,Cr:30'; every measured element must appear |
+| `basis` | `str` | wt | no |  |  | 'wt' or 'at' — which basis the percentages are on. NOT interchangeable: wt% is converted by a ∝ w/M, and reading one as the other is an error of tens of percent for a pair with dissimilar masses |
+| `reference_element` | `str` |  | no |  |  | which element defines the absolute scale; empty picks the major one, whose relative counting error is smallest |
+| `reference_value_m2` | `float` | 0.0 | no |  | [0.0, ] | an independently known σ for the reference element (m²); 0 means use the hydrogenic model's own value, and the set's absolute scale is then only as good as that model was for that one edge |
+| `region` | `list[record(kind, mode, bounds, outline, holes, group)]` | [] | no |  |  | region geometry in canonical 0-based inclusive (row, col) form; parts apply in order, empty = whole image. Mutually exclusive with roi |
+| &nbsp;&nbsp;`region[].kind` | `str` |  | no | 'rect', 'ellipse', 'circle', 'polygon' |  | rect\|ellipse\|circle\|polygon |
+| &nbsp;&nbsp;`region[].mode` | `str` | include | no | 'include', 'exclude' |  | include \| exclude |
+| &nbsp;&nbsp;`region[].bounds` | `list[4 x float]` | [] | no |  |  | one [r0, c0, r1, c1], 0-based INCLUSIVE — rect/ellipse/circle |
+| &nbsp;&nbsp;`region[].outline` | `list[2 x float]` | [] | no |  |  | [[row, col], ...] ring, closed implicitly — polygon only |
+| &nbsp;&nbsp;`region[].holes` | `list[ring[2 x float]]` | [] | no |  |  | [[[row, col], ...], ...] — inner RINGS subtracted from this part; `Shape.holes` is a sequence, so a region with two holes has to be writable here |
+| &nbsp;&nbsp;`region[].group` | `int` | 0 | no |  | [0, ] | which region this part belongs to. Parts sharing a group are ONE region evaluated in order; groups are then unioned, exactly as a whole-set reference unions a RegionSet's regions. Default 0 = one region, the common case |
+| `beam_kv` | `float` | 200.0 | no |  | [0.0, ] | beam energy (kV) for the σ model |
+| `collection_semi_angle_mrad` | `float` | 10.0 | no |  | [0.0, ] | spectrometer collection semi-angle β. σ depends on it strongly and in an energy-dependent way, so a set derived at the wrong β is wrong by more at higher-energy edges |
+| `background` | `str` | powerlaw | no |  |  | 'powerlaw' \| 'exponential' — must match what /factors/derive-eels uses, or the same data yields different net intensities and so different cross-sections |
 
 #### `eels_fit` — Simultaneous background + multi-edge model fit (calc/eels_model.fit_edges)
 
