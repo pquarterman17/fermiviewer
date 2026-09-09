@@ -33,6 +33,8 @@ from fermiviewer.calc.eds_qc import (
 )
 from fermiviewer.calc.eds_zeta import dose_electrons
 from fermiviewer.calc.energy_units import to_kev
+from fermiviewer.calc.raster import masked_sum_spectrum
+from fermiviewer.datastruct import DataKind
 from fermiviewer.io.factors_db import (
     FactorSetError,
     create_factor_set,
@@ -40,6 +42,8 @@ from fermiviewer.io.factors_db import (
 )
 from fermiviewer.io.standards_db import get_standard
 from fermiviewer.io.standards_model import Standard, StandardError, standard_from_json
+from fermiviewer.project_session import project
+from fermiviewer.region_resolve import RegionReferenceError, resolve_region
 from fermiviewer.routes._eds_common import (
     background_component,
     fit_summed_peaks,
@@ -140,27 +144,18 @@ class FactorDeriveRequest(BaseModel):
 
 def _measure(
     req: FactorDeriveRequest, std: Standard
-) -> tuple[Any, Any, dict, list[str], str]:
+) -> tuple[Any, Any, dict, list[str], str, dict[str, Any]]:
     """Fit the standard's reference spectrum and return the pieces every
     derivation needs: the fit, the resolved calibration, the element
-    order, and the image actually measured.
+    order, the image actually measured, and the region scope applied.
 
     The measured image is returned rather than re-read from the request
     because `region_label` resolves to one and the request's own
     `image_id` is then None -- recording that would give a factor set a
     null provenance for the one thing it is a factor for.
     """
-    if req.region or req.roi:
-        # Accepting these and fitting the whole spectrum anyway would put a
-        # region in the factor set's provenance that had no effect on its
-        # numbers -- a false record, worse than the missing feature.
-        raise HTTPException(
-            422,
-            "region/roi restriction of the derivation spectrum is not "
-            "implemented; the fit uses the whole summed spectrum, so a "
-            "region here would be recorded but not applied",
-        )
     image_id = req.image_id
+    region_ref, roi_ref = req.region or "", req.roi or ""
     if image_id is None:
         if not req.region_label:
             raise HTTPException(
@@ -178,6 +173,11 @@ def _measure(
                 "measured until one is given",
             )
         image_id = stored.image_id
+        # The stored region IS the scope. A reference region that names an
+        # image but no sub-region means the whole image, which is what
+        # `resolve_region` already reads an empty pair as.
+        if not (req.region or req.roi):
+            region_ref, roi_ref = stored.region, stored.roi
 
     ds = spectral_dataset(image_id)
     cal = {
@@ -194,9 +194,10 @@ def _measure(
             422, f"the standard states no composition for {missing}"
         )
     energy = to_kev(ds.energy_axis, ds.energy_cal.units)
+    spectrum, scope = _scoped_spectrum(ds, image_id, region_ref, roi_ref)
     pf, _ = fit_summed_peaks(
         energy,
-        ds.sum_spectrum(),
+        spectrum,
         elements,
         beam_kv=cal["beam_kv"].value,
         background=background_component(req.background, req.e0_kev),
@@ -205,7 +206,50 @@ def _measure(
         strip_artifacts=False,
         escape_fraction=0.0,
     )
-    return pf, ds, cal, elements, image_id
+    return pf, ds, cal, elements, image_id, scope
+
+
+def _scoped_spectrum(
+    ds: Any, image_id: str, region: str, roi: str
+) -> tuple[Any, dict[str, Any]]:
+    """The spectrum to fit, restricted to a region when one is given.
+
+    The whole point of a reference region on a standard: a specimen has a
+    matrix and inclusions, and a factor derived from the WHOLE field is a
+    factor for the average of everything in it, not for the phase whose
+    composition the certificate states.
+
+    Uses `resolve_region` and `masked_sum_spectrum` -- the same pair the
+    spectrum route and the `sum_spectrum` op use (ADR 0005 §1, ADR 0007
+    §11) -- so a reference here selects exactly the pixels the same string
+    selects anywhere else. An exact (non-rectangular) region narrows to
+    its mask, not to its bounding box.
+    """
+    if not (region or roi):
+        return ds.sum_spectrum(), {"scoped": False, "region": "", "roi": ""}
+    if ds.kind is not DataKind.SPECTRUM_IMAGE:
+        raise HTTPException(
+            422, "a region needs a spectrum-image cube (a 1D spectrum has no pixels)"
+        )
+    grid = (int(ds.data.shape[0]), int(ds.data.shape[1]))
+    try:
+        resolved = resolve_region(
+            grid,
+            region=region,
+            roi=roi,
+            sets=project.current().region_sets,
+            image_id=image_id,
+        )
+    except (RegionReferenceError, ValueError) as exc:
+        raise HTTPException(422, str(exc)) from None
+    return masked_sum_spectrum(ds.data, resolved.rect, resolved.mask), {
+        "scoped": True,
+        "region": region,
+        "roi": roi,
+        "rect": list(resolved.rect),
+        "pixel_count": resolved.pixel_count,
+        "exact": resolved.is_exact,
+    }
 
 
 def _factor_json(f: DerivedFactor) -> dict[str, Any]:
@@ -223,7 +267,7 @@ def _factor_json(f: DerivedFactor) -> dict[str, Any]:
 def factors_derive(req: FactorDeriveRequest) -> dict[str, Any]:
     """Derive a k or ζ factor set by measuring a known standard."""
     std = _resolved_standard(req)
-    pf, ds, cal, elements, image_id = _measure(req, std)
+    pf, ds, cal, elements, image_id, scope = _measure(req, std)
 
     pct = {sym: std.composition[sym].value for sym in elements}
     sig = {
@@ -292,6 +336,13 @@ def factors_derive(req: FactorDeriveRequest) -> dict[str, Any]:
         # when a stored reference region supplied it)
         "image_id": image_id,
         "region_label": req.region_label,
+        # the scope ACTUALLY applied (a stored reference region supplies
+        # its own when the request names none), and what it selected --
+        # so the record says how many pixels the factor came from, not
+        # merely which string asked
+        "region": scope["region"],
+        "roi": scope["roi"],
+        "scope": scope,
     }
     body: dict[str, Any] = {
         "kind": req.kind,

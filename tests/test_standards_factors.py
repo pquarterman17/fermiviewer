@@ -376,3 +376,65 @@ def test_the_op_fits_the_same_background_as_the_route() -> None:
 
     spec = get_spec("eds_derive_factors")
     assert spec.params["background"].default == "linear"
+
+
+def test_the_op_takes_the_same_region_contract_as_the_route() -> None:
+    """A factor derived from the whole field is a factor for the average
+    of everything in it, so the op needs the scope too — as inline
+    geometry (ADR 0007 §11), which replays without a project."""
+    import fermiviewer.ops  # noqa: F401
+    from fermiviewer.ops.registry import get_spec
+
+    assert "region" in get_spec("eds_derive_factors").params
+
+
+def test_the_op_region_restricts_which_pixels_are_fitted() -> None:
+    """Same inhomogeneous-cube proof the API test makes: if the region
+    were accepted but not applied, both derivations would agree."""
+    import fermiviewer.ops  # noqa: F401
+    from fermiviewer.calc.eds import line_energy
+    from fermiviewer.calc.eds_calib import fano_sigma_kev
+    from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
+    from fermiviewer.ops.registry import get_spec
+
+    energy = np.arange(1200) * 0.02
+
+    def peak(area: float, centre: float) -> np.ndarray:
+        s = fano_sigma_kev(centre)
+        return (area / (s * np.sqrt(2 * np.pi))) * np.exp(
+            -0.5 * ((energy - centre) / s) ** 2
+        )
+
+    fe, cr = line_energy("Fe")[0], line_energy("Cr")[0]
+    cube = np.empty((2, 2, 1200))
+    cube[:, 0, :] = peak(21000.0, fe) + peak(6000.0, cr)   # column 0
+    cube[:, 1, :] = peak(6000.0, fe) + peak(21000.0, cr)   # column 1
+    ds = DataStruct(
+        data=cube,
+        kind=DataKind.SPECTRUM_IMAGE,
+        axes=(AxisCal(), AxisCal(), AxisCal(scale=0.02, origin=0.0, units="keV")),
+        metadata={},
+    )
+    spec = get_spec("eds_derive_factors")
+    base = {k: v.default for k, v in spec.params.items()}
+    base.update(elements="Fe,Cr", composition="Fe:70,Cr:30", basis="wt")
+
+    def k_cr(params: dict) -> float:
+        rows = spec.fn(ds, params).value["outputs"][0]["data"]["rows"]
+        return next(r[1] for r in rows if r[0] == "Cr")
+
+    whole = k_cr(dict(base))
+    # coerced through REGION_PARAM so the test exercises the real
+    # validation path rather than a hand-built dict
+    from fermiviewer.ops._region_param import REGION_PARAM
+
+    left = k_cr(
+        {
+            **base,
+            "region": REGION_PARAM.coerce(
+                "region", [{"kind": "rect", "bounds": [[0, 0, 1, 0]], "group": 0}]
+            ),
+        }
+    )
+    assert left != pytest.approx(whole, rel=1e-3)
+    assert left == pytest.approx(1.5, rel=0.02)

@@ -23,9 +23,11 @@ from fermiviewer.calc.eds_factors import derive_k_factors, derive_zeta_factors, 
 from fermiviewer.calc.eds_peakfit import fit_peaks
 from fermiviewer.calc.eds_zeta import dose_electrons
 from fermiviewer.calc.energy_units import to_kev
-from fermiviewer.datastruct import SPECTRAL_KINDS, DataStruct
+from fermiviewer.calc.raster import masked_sum_spectrum
+from fermiviewer.datastruct import SPECTRAL_KINDS, DataKind, DataStruct
 from fermiviewer.ops._envelopes import output
 from fermiviewer.ops._parsing import split_csv
+from fermiviewer.ops._region_param import REGION_PARAM, region_from_params
 from fermiviewer.ops.base import OpParam, OpResult, OpSpec
 from fermiviewer.ops.registry import register
 
@@ -74,9 +76,21 @@ def _eds_derive_factors(ds: DataStruct, params: dict[str, Any]) -> OpResult:
     # route produce DIFFERENT factors from identical data — net areas
     # sit on top of whatever background was (or was not) removed.
     e0 = params["e0_kev"]
+    # The SAME region contract as the route: a standard's reference region
+    # exists because a factor derived from the whole field is a factor for
+    # the average of everything in it. Inline geometry, per ADR 0007 §11 —
+    # a recipe carrying a region replays on a machine with no project.
+    scoped = region_from_params(params, ds.data.shape[:2])
+    if scoped is not None and ds.kind is not DataKind.SPECTRUM_IMAGE:
+        raise ValueError("a region needs a spectrum-image cube")
+    spectrum = (
+        ds.sum_spectrum()
+        if scoped is None
+        else masked_sum_spectrum(ds.data, scoped.rect, scoped.mask)
+    )
     pf = fit_peaks(
         energy,
-        ds.sum_spectrum(),
+        spectrum,
         elements,
         beam_kv=params["beam_kv"],
         background=background_component(params["background"], e0 if e0 > 0 else None),
@@ -197,6 +211,7 @@ register(
                 "when present (matching the built-in table) else the major "
                 "element",
             ),
+            "region": REGION_PARAM,
             "beam_kv": OpParam(
                 float, 200.0, minimum=0.0, doc="beam energy (kV), selects K/L/M lines"
             ),

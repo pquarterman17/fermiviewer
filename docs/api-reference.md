@@ -654,6 +654,13 @@ The registered operation catalogue: name, category, summary, params.
 | `basis` | `str` | wt | no |  |  | 'wt' or 'at' — which basis the percentages are on. NOT interchangeable: at% is converted by w ∝ a·M, and reading one as the other is an error of tens of percent for a pair with dissimilar masses |
 | `kind` | `str` | k | no |  |  | 'k' (dimensionless, relative) or 'zeta' (absolute) |
 | `reference_element` | `str` |  | no |  |  | k only: which element is defined as 1.0; empty picks Si when present (matching the built-in table) else the major element |
+| `region` | `list[record(kind, mode, bounds, outline, holes, group)]` | [] | no |  |  | region geometry in canonical 0-based inclusive (row, col) form; parts apply in order, empty = whole image. Mutually exclusive with roi |
+| &nbsp;&nbsp;`region[].kind` | `str` |  | no | 'rect', 'ellipse', 'circle', 'polygon' |  | rect\|ellipse\|circle\|polygon |
+| &nbsp;&nbsp;`region[].mode` | `str` | include | no | 'include', 'exclude' |  | include \| exclude |
+| &nbsp;&nbsp;`region[].bounds` | `list[4 x float]` | [] | no |  |  | one [r0, c0, r1, c1], 0-based INCLUSIVE — rect/ellipse/circle |
+| &nbsp;&nbsp;`region[].outline` | `list[2 x float]` | [] | no |  |  | [[row, col], ...] ring, closed implicitly — polygon only |
+| &nbsp;&nbsp;`region[].holes` | `list[ring[2 x float]]` | [] | no |  |  | [[[row, col], ...], ...] — inner RINGS subtracted from this part; `Shape.holes` is a sequence, so a region with two holes has to be writable here |
+| &nbsp;&nbsp;`region[].group` | `int` | 0 | no |  | [0, ] | which region this part belongs to. Parts sharing a group are ONE region evaluated in order; groups are then unioned, exactly as a whole-set reference unions a RegionSet's regions. Default 0 = one region, the common case |
 | `beam_kv` | `float` | 200.0 | no |  | [0.0, ] | beam energy (kV), selects K/L/M lines |
 | `background` | `str` | linear | no |  |  | 'none' \| 'linear' \| 'bremsstrahlung' — must match what /factors/derive uses, or the same data yields different net areas and so different factors |
 | `e0_kev` | `float` | 0.0 | no |  | [0.0, ] | beam energy for the bremsstrahlung background; 0 means unset (the other backgrounds ignore it) |
