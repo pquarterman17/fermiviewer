@@ -48,6 +48,8 @@ export interface LayersResult {
   depth_profile: number[];
   interfaces: LayerInterface[];
   layers: LayerBand[];
+  /** present only when the request asked to persist this run (ADR 0004) */
+  result?: { id: string; analysis: string; label: string };
 }
 
 /** Cross-section layer analysis: thickness + interface sharpness (σ_erf). */
@@ -64,6 +66,9 @@ export function analyzeLayers(
     traceWindow?: number;
     modality?: "haadf" | "eels" | "bf" | "df";
     destripe?: boolean;
+    /** persist this run as a result record; off by default so a sweep of
+        `sensitivity` does not fill the results panel */
+    record?: boolean;
   } = {},
 ): Promise<LayersResult> {
   return post("/api/analyze/layers", {
@@ -78,6 +83,7 @@ export function analyzeLayers(
     trace_window: opts.traceWindow ?? 10,
     modality: opts.modality ?? "haadf",
     destripe: opts.destripe ?? false,
+    record: opts.record ?? false,
   });
 }
 
@@ -133,6 +139,7 @@ export function editLayers(
     waviness?: boolean;
     reduce?: "mean" | "sum" | "median";
     destripe?: boolean;
+    record?: boolean;
   } = {},
 ): Promise<LayersResult> {
   return post("/api/analyze/layers/edit", {
@@ -143,6 +150,7 @@ export function editLayers(
     waviness: opts.waviness ?? false,
     reduce: opts.reduce ?? "mean",
     destripe: opts.destripe ?? false,
+    record: opts.record ?? false,
   });
 }
 

@@ -60,6 +60,7 @@ export default function LayersWorkshop() {
   const [busy, setBusy] = useState(false);
   const [addPos, setAddPos] = useState("");
   const [mode, setMode] = useState<"single" | "compare">("single");
+  const [saveResult, setSaveResult] = useState(false);
   const layersFocusReq = useViewer((s) => s.layersFocusReq);
   const setLayersFocusReq = useViewer((s) => s.setLayersFocusReq);
   const images = useViewer((s) => s.images);
@@ -143,6 +144,10 @@ export default function LayersWorkshop() {
       waviness,
       reduce: decurtain ? "median" : "mean",
       destripe: decurtain,
+      // An edited run saves as its own record when saving is on, rather
+      // than replacing the detected one: the distance between the two is
+      // the finding (see routes/_layers_result.py).
+      record: saveResult,
     })
       .then(applyResult)
       .catch((e: Error) => setStatus(`Layers edit: ${e.message}`))
@@ -196,6 +201,7 @@ export default function LayersWorkshop() {
       waviness,
       reduce: decurtain ? "median" : "mean",
       destripe: decurtain,
+      record: saveResult,
     })
       .then(applyResult)
       .catch((e: Error) => setStatus(`Layers: ${e.message}`))
@@ -460,6 +466,17 @@ export default function LayersWorkshop() {
           <button className="fvd-btn" disabled={!canUseResult} onClick={() => exportCsv(result)} title="Export layers + interfaces as CSV">
             Export CSV
           </button>
+          <label
+            className="fvd-check"
+            title="Keep this run, its settings, the layer table and the depth profile it was measured from in Results & Methods"
+          >
+            <input
+              type="checkbox"
+              checked={saveResult}
+              onChange={(e) => setSaveResult(e.target.checked)}
+            />
+            Save result
+          </label>
         </div>
       )}
 

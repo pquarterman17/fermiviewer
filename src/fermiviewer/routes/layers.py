@@ -32,6 +32,7 @@ from fermiviewer.calc.layers_multi import (
 from fermiviewer.calc.layers_report import layer_result_to_dict
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.models import ImageMeta
+from fermiviewer.routes._layers_result import capture_layers
 from fermiviewer.session import UnknownImageError, store
 
 router = APIRouter(prefix="/api")
@@ -56,6 +57,11 @@ class LayersRequest(BaseModel):
     trace_window: int = 10
     modality: str = "haadf"          # "haadf" | "eels" | "bf" | "df"
     destripe: bool = False           # FFT notch out FIB curtaining first
+    #: persist this run as a ResultRecord (ADR 0004). Off by default, the
+    #: same call `/measure/profile` makes: running the analysis is
+    #: exploratory — a user sweeping `sensitivity` would otherwise fill the
+    #: results panel with a dozen records they never meant to keep.
+    record: bool = False
 
 
 @router.post("/analyze/layers")
@@ -83,7 +89,16 @@ def analyze_layers_route(req: LayersRequest) -> dict:
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
 
-    return layer_result_to_dict(res)
+    body = layer_result_to_dict(res)
+    if req.record:
+        body["result"] = capture_layers(
+            res,
+            image_id=req.image_id,
+            params=req.model_dump(exclude={"record"}),
+            origin="detected",
+            calibrated=unit != "px",
+        )
+    return body
 
 
 class LayersEditRequest(BaseModel):
@@ -96,6 +111,7 @@ class LayersEditRequest(BaseModel):
     waviness: bool = False
     trace_window: int = 10
     destripe: bool = False
+    record: bool = False
 
 
 @router.post("/analyze/layers/edit")
@@ -117,7 +133,21 @@ def edit_layers_route(req: LayersEditRequest) -> dict:
         )
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
-    return layer_result_to_dict(res)
+    body = layer_result_to_dict(res)
+    if req.record:
+        # An edited run is a SEPARATE record, not a correction of the
+        # detected one. The gap between what the detector proposed and where
+        # the operator put the interface is itself a finding, and overwriting
+        # would erase it (see routes/_layers_result.py).
+        body["result"] = capture_layers(
+            res,
+            image_id=req.image_id,
+            params=req.model_dump(exclude={"record"}),
+            origin="edited",
+            calibrated=unit != "px",
+            given_positions=list(req.positions),
+        )
+    return body
 
 
 class GrainLayerBoundsRequest(BaseModel):
