@@ -11,6 +11,7 @@ import {
   downloadCsv,
   profileToCsv,
 } from "../../lib/profileCsv";
+import { profileGeometry } from "../../lib/profileGeometry";
 import { useStageInfo } from "../../store/stage";
 import { useViewer } from "../../store/viewer";
 import PlotContextSurface from "../plots/PlotContextSurface";
@@ -122,11 +123,33 @@ export default function DockPlot() {
 
   if (!profile) return null;
 
+  const geom = (() => {
+    const s = useViewer.getState();
+    const id = s.activeId;
+    const meta = id ? s.images[id] : undefined;
+    const m = id
+      ? (s.measures[id] ?? []).find((x) => x.id === profile.measureId)
+      : undefined;
+    return profileGeometry(m, {
+      w: meta?.shape[1] ?? 1,
+      h: meta?.shape[0] ?? 1,
+    });
+  })();
+
   return (
     <div className="fvd-glass fvd-dock-plot">
       <div className="fvd-dock-head">
         <span>
           Profile — {Number(profile.length.toPrecision(4))} {profile.unit}
+          {geom && (
+            <span
+              className="dim"
+              title="Direction of integration and the perpendicular width averaged into each sample"
+            >
+              {" · "}{geom.angleDeg.toFixed(1)}°
+              {geom.widthPx > 1 && ` · ${geom.widthPx} px wide`}
+            </span>
+          )}
         </span>
         <button
           className="fvd-icon-btn"

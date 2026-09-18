@@ -306,6 +306,12 @@ export interface ViewerState {
     measureId: string,
     patch: Partial<Pick<Measure, "color" | "labelDx" | "labelDy" | "endSymbol">>,
   ) => void;
+  /** Set a box profile's perpendicular averaging width, in image pixels.
+   *  A MEASUREMENT edit, not a style one: it changes how many rows are
+   *  averaged into every sample, so the numbers move. Hence its own action
+   *  rather than a `setMeasureStyle` patch, which is documented as display
+   *  only and pushes no undo entry. */
+  setMeasureWidth: (imageId: string, measureId: string, width: number) => void;
   /** Set per-annotation font size override (audit #12); null clears it. */
   setMeasureFontSize: (imageId: string, measureId: string, size: number | null) => void;
   /** Set (or, with undefined, clear back to "image default") one measure's

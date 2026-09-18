@@ -31,6 +31,7 @@ export function createMeasureActions(
   | "resetToOriginal"
   | "setMeasureText"
   | "setMeasureStyle"
+  | "setMeasureWidth"
   | "setMeasureFontSize"
   | "setMeasureDisplayUnit"
   | "setAllMeasureDisplayUnits"
@@ -205,6 +206,20 @@ export function createMeasureActions(
           ...s.measures,
           [imageId]: (s.measures[imageId] ?? []).map((m) =>
             m.id === measureId ? { ...m, ...patch } : m,
+          ),
+        },
+      })),
+
+    setMeasureWidth: (imageId, measureId, width) =>
+      set((s) => ({
+        measures: {
+          ...s.measures,
+          [imageId]: (s.measures[imageId] ?? []).map((m) =>
+            m.id === measureId
+              // 1 is a single-pixel line, not a box; the upper clamp keeps a
+              // stray drag from asking the server to average the whole frame
+              ? { ...m, width: Math.min(999, Math.max(1, Math.round(width))) }
+              : m,
           ),
         },
       })),
