@@ -68,30 +68,6 @@
 
 /* ── dock plot ── */
 
-.fvd-dock-plot {
-  left: 10px;
-  right: 10px;
-  bottom: 40px;
-  height: 180px;
-  display: flex;
-  flex-direction: column;
-  padding: var(--pad);
-}
-
-.fvd-dock-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: var(--font-size-sm);
-  color: var(--text-dim);
-  padding-bottom: 4px;
-}
-
-.fvd-dock-body {
-  flex: 1;
-  min-height: 0;
-}
-
 /* ── inspector: adjust / measure / overlay style ── */
 
 .fvd-hist {

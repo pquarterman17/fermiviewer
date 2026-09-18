@@ -1,0 +1,48 @@
+/* The bottom dock plot: the profile chart, its header, and the span
+   measurement / edge-fit readout.
+
+   Split from 05-measurements-inspector.css when the measurement bar pushed
+   that file past the 500-line stylesheet ratchet. The seam was already
+   there: everything here styles one floating panel, and nothing here
+   styles the inspector. */
+
+.fvd-dock-plot {
+  left: 10px;
+  right: 10px;
+  bottom: 40px;
+  height: 180px;
+  display: flex;
+  flex-direction: column;
+  padding: var(--pad);
+}
+
+.fvd-dock-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+  padding-bottom: 4px;
+}
+
+.fvd-dock-body {
+  flex: 1;
+  min-height: 0;
+}
+
+/* span measurement + edge fit readout, between the dock header and the
+   plot itself (feature request 2026-09-18) */
+.fvd-dock-measure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--font-size-sm);
+  padding: 2px 0 6px;
+  border-bottom: 1px solid var(--border-soft);
+  margin-bottom: 4px;
+}
+
+.fvd-dock-measure .fvd-btn {
+  padding: 1px 8px;
+}
