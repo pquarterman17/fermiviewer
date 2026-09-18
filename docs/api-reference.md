@@ -466,10 +466,10 @@ The registered operation catalogue: name, category, summary, params.
 
 | Param | Type | Default | Required | Choices | Bounds | Description |
 |---|---|---|---|---|---|---|
-| `row1` | `float` | 1.0 | no |  |  | profile start row, 1-based |
-| `col1` | `float` | 1.0 | no |  |  | profile start column, 1-based |
-| `row2` | `float` | 1.0 | no |  |  | profile end row, 1-based |
-| `col2` | `float` | 1.0 | no |  |  | profile end column, 1-based |
+| `row1` | `float` |  | yes |  |  | profile start row, 1-based |
+| `col1` | `float` |  | yes |  |  | profile start column, 1-based |
+| `row2` | `float` |  | yes |  |  | profile end row, 1-based |
+| `col2` | `float` |  | yes |  |  | profile end column, 1-based |
 | `width` | `float` | 20.0 | no |  | [3.0, ] | perpendicular box width in pixels; this is what gives the columns to trace across, so a width of 1 is a line and has no roughness to measure |
 | `interface_pos` | `float` | -1.0 | no |  |  | depth along the box where the interface sits, in box pixels; negative fits the averaged profile and uses that centre |
 | `trace_window` | `float` | 10.0 | no |  | [3.0, ] | half-height of the per-column search window. An interface that wanders further than this is CLIPPED and sigma_w comes back a lower bound — check window_limited_fraction |

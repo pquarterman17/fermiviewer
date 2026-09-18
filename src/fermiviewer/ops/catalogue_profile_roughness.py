@@ -116,10 +116,14 @@ register(
         "cannot separate them; tracing every column measures sigma_w "
         "directly and the grading falls out of the subtraction",
         params={
-            "row1": OpParam(float, 1.0, doc="profile start row, 1-based"),
-            "col1": OpParam(float, 1.0, doc="profile start column, 1-based"),
-            "row2": OpParam(float, 1.0, doc="profile end row, 1-based"),
-            "col2": OpParam(float, 1.0, doc="profile end column, 1-based"),
+            # required, with no default: a profile line has no sensible
+            # one, and defaulting all four to the same corner would make a
+            # zero-length line the thing a caller gets by saying nothing
+            # (`roi_stats` and `line_profile` take the same position)
+            "row1": OpParam(float, required=True, doc="profile start row, 1-based"),
+            "col1": OpParam(float, required=True, doc="profile start column, 1-based"),
+            "row2": OpParam(float, required=True, doc="profile end row, 1-based"),
+            "col2": OpParam(float, required=True, doc="profile end column, 1-based"),
             "width": OpParam(
                 float,
                 20.0,
