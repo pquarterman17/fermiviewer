@@ -294,6 +294,11 @@ export interface LayersOverlayState {
   axis: "y" | "x";
   interfaces: number[];              // depth positions (image pixels)
   traces: (number[] | null)[];
+  /** Off-axis tilt the profile was collapsed along, degrees. ONE angle for
+      the whole stack: layers in a film stack are parallel, so a per-interface
+      angle would let two of them cross and leave "depth" with no single
+      meaning to measure a thickness along. */
+  tiltDeg?: number;
   lateralOffset?: number;
   lateralRange?: [number, number];
   depthRange?: [number, number];

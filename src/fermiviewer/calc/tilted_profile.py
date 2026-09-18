@@ -47,6 +47,11 @@ class TiltedProfile:
     #: 0-based depth in pixels ALONG THE TILTED AXIS, from the box edge
     depth_pos: np.ndarray
     profile: np.ndarray
+    #: the resampled box itself, depth down the rows. Returned because a
+    #: waviness trace must run in the SAME frame the profile was collapsed
+    #: in -- tracing the un-rotated block while profiling the rotated one
+    #: would put every trace at a depth the profile never had.
+    block: np.ndarray
     #: the angle actually used, degrees, signed
     tilt_deg: float
     #: lateral pixels averaged at every depth -- constant by construction
@@ -148,6 +153,7 @@ def tilted_depth_profile(
     return TiltedProfile(
         depth_pos=np.arange(n_depth, dtype=np.float64),
         profile=np.asarray(profile, dtype=np.float64),
+        block=np.asarray(samples, dtype=np.float64),
         tilt_deg=float(tilt_deg),
         lateral_samples=int(n_lat),
         sampled_fraction=float(scale),

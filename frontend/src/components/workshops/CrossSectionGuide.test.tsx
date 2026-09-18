@@ -23,7 +23,7 @@ const image = {
 } satisfies ImageMeta;
 
 const layersResult = {
-  axis: "y", layers_horizontal: true, tilt_deg: 0, coherence: 0.9,
+  axis: "y", layers_horizontal: true, tilt_deg: 0, applied_tilt_deg: null, sampled_fraction: 1, coherence: 0.9,
   pixel_size: 0.5, unit: "nm", depth_pos: [0, 1, 2], depth_profile: [10, 20, 30],
   interfaces: [], layers: [],
 } as LayersResult;
@@ -66,7 +66,7 @@ describe("CrossSectionGuide", () => {
       layers: {
         sourceId: "src", regionLabel: "Whole image", roi: null,
         result: {
-          axis: "y", layers_horizontal: true, tilt_deg: 0, coherence: 0.9,
+          axis: "y", layers_horizontal: true, tilt_deg: 0, applied_tilt_deg: null, sampled_fraction: 1, coherence: 0.9,
           pixel_size: 0.5, unit: "nm", depth_pos: [], depth_profile: [],
           interfaces: [], layers: [],
         } as LayersResult,

@@ -50,6 +50,13 @@ export interface LayersResult {
   layers: LayerBand[];
   /** present only when the request asked to persist this run (ADR 0004) */
   result?: { id: string; analysis: string; label: string };
+  /** The angle the collapse was CORRECTED for, or null when it ran along the
+      image axes. Distinct from `tilt_deg`, which is what the orientation
+      detector measured: one describes the specimen, the other changed every
+      number in this result. */
+  applied_tilt_deg: number | null;
+  /** linear extent kept after shrinking the box to fit the rotation, 0-1 */
+  sampled_fraction: number;
 }
 
 /** Cross-section layer analysis: thickness + interface sharpness (σ_erf). */
@@ -69,6 +76,9 @@ export function analyzeLayers(
     /** persist this run as a result record; off by default so a sweep of
         `sensitivity` does not fill the results panel */
     record?: boolean;
+    /** collapse along an axis rotated by this many degrees; null leaves the
+        profile along the image axes */
+    tiltDeg?: number | null;
   } = {},
 ): Promise<LayersResult> {
   return post("/api/analyze/layers", {
@@ -84,6 +94,7 @@ export function analyzeLayers(
     modality: opts.modality ?? "haadf",
     destripe: opts.destripe ?? false,
     record: opts.record ?? false,
+    tilt_deg: opts.tiltDeg ?? null,
   });
 }
 
@@ -140,6 +151,7 @@ export function editLayers(
     reduce?: "mean" | "sum" | "median";
     destripe?: boolean;
     record?: boolean;
+    tiltDeg?: number | null;
   } = {},
 ): Promise<LayersResult> {
   return post("/api/analyze/layers/edit", {
@@ -151,6 +163,7 @@ export function editLayers(
     reduce: opts.reduce ?? "mean",
     destripe: opts.destripe ?? false,
     record: opts.record ?? false,
+    tilt_deg: opts.tiltDeg ?? null,
   });
 }
 

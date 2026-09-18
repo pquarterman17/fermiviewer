@@ -128,3 +128,65 @@ def test_sum_is_refused_because_the_box_changes_size_with_the_angle() -> None:
         tilted_depth_profile(
             _tilted_stack(0.0), None, axis="y", tilt_deg=5.0, reduce="sum"
         )
+
+
+# ── wired into the layers analysis ───────────────────────────────────
+
+
+def test_a_tilt_correction_sharpens_the_interface_the_analysis_reports() -> None:
+    """End to end: the σ_erf a user reads must improve, not just the raw
+    profile. A correction that fixed the curve but never reached the fit
+    would leave the reported number wrong."""
+    from fermiviewer.calc.layers import analyze_layers
+
+    img = _tilted_stack(TILT)
+    square = analyze_layers(img, axis="y")
+    levelled = analyze_layers(img, axis="y", tilt_deg=TILT)
+    assert square.applied_tilt_deg is None
+    assert levelled.applied_tilt_deg == pytest.approx(TILT)
+    assert levelled.sampled_fraction < 1.0
+    (flat,) = levelled.interfaces
+    (smeared,) = square.interfaces
+    assert flat.sigma_erf == pytest.approx(SIGMA, rel=0.25)
+    # Uncorrected, the edge is wider than the fit window, so the erf fit is
+    # rejected outright and there is no width to report. A rejected fit must
+    # also report no quality — r² of 0, not the 1.0 of the fit that was just
+    # thrown away, which `assessLayerQuality` would read as a fine interface.
+    assert not np.isfinite(smeared.sigma_erf)
+    assert smeared.r_squared == 0.0
+    assert np.isfinite(flat.sigma_erf) and flat.r_squared > 0.9
+
+
+def test_re_measuring_an_edit_uses_the_same_frame_it_was_dragged_in() -> None:
+    """The positions a user drags are depths in the COLLAPSED profile. Feed
+    them back with a different tilt and they mean something else, so every
+    interface moves. Both calls here pass the same tilt, and the refit must
+    land essentially where the detector did."""
+    from fermiviewer.calc.layers import analyze_layers, recompute_layers
+
+    img = _tilted_stack(TILT)
+    detected = analyze_layers(img, axis="y", tilt_deg=TILT)
+    positions = [i.position for i in detected.interfaces]
+    same = recompute_layers(img, positions, axis="y", tilt_deg=TILT)
+    assert same.applied_tilt_deg == pytest.approx(TILT)
+    assert [i.position for i in same.interfaces] == pytest.approx(positions, abs=1.0)
+
+    # and the trap: the SAME positions read against the uncorrected frame
+    # describe a different profile, so the answer is not the same measurement
+    other = recompute_layers(img, positions, axis="y", tilt_deg=None)
+    assert other.applied_tilt_deg is None
+    assert other.depth_profile.size != same.depth_profile.size
+
+
+def test_a_waviness_trace_runs_in_the_corrected_frame() -> None:
+    """A trace taken from the un-rotated block while the profile came from
+    the rotated one would sit at depths the profile never had — so the
+    trace's mean would not match its own interface position."""
+    from fermiviewer.calc.layers import analyze_layers
+
+    res = analyze_layers(_tilted_stack(TILT), axis="y", tilt_deg=TILT, waviness=True)
+    (iface,) = res.interfaces
+    assert iface.trace is not None
+    assert iface.trace.size == res.depth_profile.size or iface.trace.size > 1
+    # the levelled interface is flat, so its trace sits on its own centre
+    assert float(np.nanmean(iface.trace)) == pytest.approx(iface.position, abs=2.0)

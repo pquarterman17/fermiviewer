@@ -112,6 +112,13 @@ def layer_result_to_dict(res: LayerResult) -> dict:
         "axis": res.axis,
         "layers_horizontal": res.layers_horizontal,
         "tilt_deg": _nan_none(res.tilt_deg),
+        # what was MEASURED vs what was APPLIED: `tilt_deg` is the
+        # orientation detector's reading, `applied_tilt_deg` is the angle
+        # the collapse was actually corrected for (null when it was not).
+        # A reader has to be able to tell those apart -- one is a
+        # description of the specimen, the other changes every number below.
+        "applied_tilt_deg": res.applied_tilt_deg,
+        "sampled_fraction": res.sampled_fraction,
         "coherence": _nan_none(res.coherence),
         "pixel_size": res.pixel_size,
         # the other axis: what a consumer converts lateral (trace) positions

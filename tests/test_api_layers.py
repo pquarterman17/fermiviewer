@@ -577,3 +577,43 @@ def test_an_uncalibrated_image_says_so_rather_than_implying_nanometres(
     ).json()
     entry = client.get(f"/api/results/{body['result']['id']}").json()
     assert any("not calibrated units" in w for w in entry["warnings"])
+
+
+def test_the_route_distinguishes_a_measured_tilt_from_an_applied_one(
+    client, image_id
+) -> None:
+    """`tilt_deg` describes the specimen; `applied_tilt_deg` changes every
+    number in the response. Reporting only one would leave a reader unable
+    to tell whether a correction had happened."""
+    plain = client.post("/api/analyze/layers", json={"image_id": image_id}).json()
+    assert plain["applied_tilt_deg"] is None
+    assert plain["sampled_fraction"] == pytest.approx(1.0)
+
+    tilted = client.post(
+        "/api/analyze/layers", json={"image_id": image_id, "tilt_deg": 8.0}
+    )
+    assert tilted.status_code == 200
+    body = tilted.json()
+    assert body["applied_tilt_deg"] == pytest.approx(8.0)
+    # the rotated box had to shrink to stay inside the ROI, and the response
+    # says by how much rather than quietly returning a shorter profile
+    assert body["sampled_fraction"] < 1.0
+    assert len(body["depth_profile"]) < len(plain["depth_profile"])
+
+
+def test_a_tilt_that_does_not_fit_is_a_422_not_a_silent_narrowing(
+    client, image_id
+) -> None:
+    """A steep tilt on a NARROW strip leaves no box to average over.
+
+    It takes a thin ROI to get there: on the full 120x60 frame even 80 deg
+    still leaves 28 lateral pixels, so the refusal is about the box running
+    out, not about the angle being large. Returning a one-pixel-wide
+    "profile" instead would be a line sample wearing an average's name.
+    """
+    r = client.post(
+        "/api/analyze/layers",
+        json={"image_id": image_id, "roi": [1, 1, H, 5], "tilt_deg": 80.0},
+    )
+    assert r.status_code == 422
+    assert "lateral pixels" in r.json()["detail"]

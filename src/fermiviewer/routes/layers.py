@@ -57,6 +57,11 @@ class LayersRequest(BaseModel):
     trace_window: int = 10
     modality: str = "haadf"          # "haadf" | "eels" | "bf" | "df"
     destripe: bool = False           # FFT notch out FIB curtaining first
+    #: collapse along an axis rotated by this many degrees instead of along
+    #: the image axes. None leaves the profile uncorrected — the behaviour
+    #: every existing client gets. Pass the response's own `tilt_deg` to
+    #: level a stack that is merely mounted off-square.
+    tilt_deg: float | None = None
     #: persist this run as a ResultRecord (ADR 0004). Off by default, the
     #: same call `/measure/profile` makes: running the analysis is
     #: exploratory — a user sweeping `sensitivity` would otherwise fill the
@@ -85,6 +90,7 @@ def analyze_layers_route(req: LayersRequest) -> dict:
             fit_window=req.fit_window, waviness=req.waviness,
             trace_window=req.trace_window, modality=req.modality,
             destripe_fib=req.destripe, spacing=ds.pixel_spacing,
+            tilt_deg=req.tilt_deg,
         )
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
@@ -112,6 +118,10 @@ class LayersEditRequest(BaseModel):
     trace_window: int = 10
     destripe: bool = False
     record: bool = False
+    #: MUST match the run the positions came from: they are depths in the
+    #: collapsed profile, so re-measuring under a different tilt reads them
+    #: against a different frame and moves every interface the user placed.
+    tilt_deg: float | None = None
 
 
 @router.post("/analyze/layers/edit")
@@ -130,6 +140,7 @@ def edit_layers_route(req: LayersEditRequest) -> dict:
             reduce=req.reduce, pixel_size=px, unit=unit, fit_window=req.fit_window,
             waviness=req.waviness, trace_window=req.trace_window,
             destripe_fib=req.destripe, spacing=ds.pixel_spacing,
+            tilt_deg=req.tilt_deg,
         )
     except ValueError as e:
         raise HTTPException(422, str(e)) from None

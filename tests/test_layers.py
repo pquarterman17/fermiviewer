@@ -637,3 +637,26 @@ def test_compare_layers_across_maps_names_the_failing_map() -> None:
     with pytest.raises(MapMeasureError) as exc:
         compare_layers_across_maps([good, bad], [1.0, 1.0], ["nm", "nm"])
     assert exc.value.index == 1
+
+
+def test_a_rejected_erf_fit_reports_no_quality_either() -> None:
+    """A fit whose centre escaped its window is discarded, so its r² must go
+    with it.
+
+    Keeping the rejected fit's r² put "perfect fit" (1.0) beside "no
+    measurable width" (NaN σ) on the same interface — and the quality
+    assessor grades on r² alone, so such an interface rated good. The
+    too-narrow-window branch already returned 0.0; this is the same
+    situation and now says the same thing.
+    """
+    import numpy as np
+
+    from fermiviewer.calc.layers import _refine_interface
+
+    # a step far wider than the window: the erf fit's centre lands outside
+    depth = np.arange(200, dtype=np.float64)
+    profile = np.clip((depth - 100.0) / 80.0 + 0.5, 0.0, 1.0)
+    centre, sigma, r2 = _refine_interface(depth, profile, idx=100, window=4)
+    assert not np.isfinite(sigma)
+    assert r2 == 0.0
+    assert centre == pytest.approx(100.0)
