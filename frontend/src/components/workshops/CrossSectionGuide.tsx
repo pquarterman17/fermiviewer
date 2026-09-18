@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import { useAnalysisRoi } from "../../hooks/useAnalysisRoi";
 import { assessGrainQuality, assessLayerQuality } from "../../lib/analysisQuality";
 import { buildCrossSectionReport } from "../../lib/crossSectionReport";
-import { downloadJson, exportBaseName } from "../../lib/resultsExport";
+import { layersCsvText, profileCsvText } from "../../lib/layersCsv";
+import { downloadCsv, downloadJson, exportBaseName } from "../../lib/resultsExport";
 import { matchesCrossSectionRegion, useCrossSection } from "../../store/crossSection";
 import { useViewer } from "../../store/viewer";
 import { grainSourceId } from "../../lib/grainWorkflow";
@@ -47,10 +48,23 @@ export default function CrossSectionGuide() {
     setActive(sourceId);
     setStep(next);
   };
+  const base = exportBaseName(source.name);
   const exportReport = () => {
     const report = buildCrossSectionReport(source, region.label, layers, grains, perLayer);
-    const name = `${exportBaseName(source.name)}_cross_section.json`;
+    const name = `${base}_cross_section.json`;
     downloadJson(name, JSON.stringify(report, null, 2) + "\n");
+    setStatus(`cross-section report: exported ${name}`);
+  };
+  const exportLayersCsv = () => {
+    if (!layers) return;
+    const name = `${base}_layers.csv`;
+    downloadCsv(name, layersCsvText(layers.result));
+    setStatus(`cross-section report: exported ${name}`);
+  };
+  const exportProfileCsv = () => {
+    if (!layers) return;
+    const name = `${base}_depth_profile.csv`;
+    downloadCsv(name, profileCsvText(layers.result));
     setStatus(`cross-section report: exported ${name}`);
   };
   const layerQuality = layers ? assessLayerQuality(layers.result) : null;
@@ -61,7 +75,14 @@ export default function CrossSectionGuide() {
     (layerQuality?.rating === "poor" && !layers?.qualityAccepted) ||
     (grainQuality?.rating === "poor" && !grains?.qualityAccepted),
   );
-  const perLayerPending = Boolean(layers && grains && !perLayer);
+  // Advisory, NOT a gate. `buildCrossSectionReport` already emits
+  // `per_layer_grains: null` plus a limitations line when this step was not
+  // run, so blocking export on it enforced a precondition the report format
+  // does not have. Worse, `setLayers`/`setGrains` both reset `perLayer`, so
+  // nudging one interface silently re-armed the block and an export that
+  // worked a minute earlier went dead with no error -- a disabled button
+  // swallows the click entirely.
+  const perLayerMissing = Boolean(layers && grains && !perLayer);
 
   return (
     <div className="fvd-ws fvd-cross-guide">
@@ -148,12 +169,46 @@ export default function CrossSectionGuide() {
           {reportBlocked && (
             <div className="fvd-quality poor">A poor result must be acknowledged in its analysis step before combined export.</div>
           )}
-          {perLayerPending && (
-            <div className="fvd-quality review">Measure the selected film layers to complete the combined report.</div>
+          {perLayerMissing && (
+            <div className="fvd-quality review">
+              No per-layer grain measurement yet. Exporting now is fine — the report
+              records its absence as a limitation rather than omitting it silently.
+            </div>
           )}
-          <button className="fvd-btn primary" disabled={(!layers && !grains) || reportBlocked || perLayerPending} onClick={exportReport}>
-            Export combined JSON report
-          </button>
+          <div className="fvd-guide-exports">
+            <button
+              className="fvd-btn primary"
+              disabled={(!layers && !grains) || reportBlocked}
+              title={reportBlocked
+                ? "Acknowledge the poor result in its analysis step first"
+                : (!layers && !grains)
+                  ? "Run the layers or grains step first"
+                  : "Layers, grains and per-layer grains as one JSON report"}
+              onClick={exportReport}
+            >
+              Export combined JSON report
+            </button>
+            <button
+              className="fvd-btn"
+              disabled={!layers || reportBlocked}
+              title={layers
+                ? "Layer thicknesses and interface roughness as CSV"
+                : "Run the layers step first"}
+              onClick={exportLayersCsv}
+            >
+              Export layers CSV
+            </button>
+            <button
+              className="fvd-btn"
+              disabled={!layers || reportBlocked}
+              title={layers
+                ? "The integrated depth profile the interfaces were found in"
+                : "Run the layers step first"}
+              onClick={exportProfileCsv}
+            >
+              Export profile CSV
+            </button>
+          </div>
           <div className="fvd-ws-note">
             Per-layer grains are clipped at reviewed interfaces; shape angles are morphological, not crystallographic.
           </div>
