@@ -56,6 +56,7 @@ __all__ = [
     "sigma_chem",
     "trace_interface",
     "trace_psd",
+    "window_limited_fraction",
 ]
 
 _MAD_TO_SIGMA = 1.4826  # normal-consistency factor for the MAD
@@ -111,6 +112,32 @@ def trace_interface(
             line = gaussian_filter1d(line, smooth)
         out[j] = _parabolic_edge(line, approx, window)
     return out
+
+
+def window_limited_fraction(
+    trace: np.ndarray, centre: float, window: int, tol: float = 1.0
+) -> float:
+    """Fraction of traced columns pinned against the search window's edge.
+
+    :func:`trace_interface` looks for the interface only within ``+/-window``
+    of `centre`. An interface that wanders further than that is CLIPPED: the
+    trace flattens against the bound, and the roughness computed from it is
+    a lower bound, not a measurement. On a synthetic stack with a true rms
+    of 12 px and the default window of 10, sigma_w comes back around 3.9 —
+    a three-fold underestimate — while `TraceRoughness.quality` still reads
+    1.00, because every column WAS traced; they were just all traced to the
+    wrong place. Quality answers "did the trace succeed", which is a
+    different question from "was the window big enough".
+
+    Returns 0.0 for a trace comfortably inside its window. Anything much
+    above 0 means widening `trace_window` and re-measuring.
+    """
+    y = np.asarray(trace, dtype=np.float64)
+    finite = y[np.isfinite(y)]
+    if finite.size == 0 or window <= 0:
+        return 0.0
+    at_edge = np.abs(np.abs(finite - centre) - window) <= tol
+    return float(at_edge.sum() / finite.size)
 
 
 @dataclass(frozen=True)

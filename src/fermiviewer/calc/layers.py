@@ -40,6 +40,7 @@ from fermiviewer.calc.trace_roughness import (
     robust_sigma,
     robust_sigma_w,
     trace_interface,
+    window_limited_fraction,
 )
 
 __all__ = [
@@ -76,6 +77,12 @@ class Interface:
     r_squared: float
     sigma_w: float = float("nan")          # geometric waviness, calibrated (Tier 2)
     trace: np.ndarray | None = None        # per-lateral-column edge depths (px)
+    #: fraction of the trace pinned against the +/-trace_window search
+    #: bound. Above ~0.05 the interface wanders further than the window
+    #: allows and `sigma_w` is a LOWER BOUND -- distinct from the trace's
+    #: `quality`, which says every column was traced even when they were
+    #: all traced to the same wrong place.
+    window_limited: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -184,6 +191,7 @@ def _interfaces_and_layers(
             depth_pos, profile, int(idx), max(3, min(fit_window, half_gap))
         )
         sigma_w = float("nan")
+        window_limited = 0.0
         trace: np.ndarray | None = None
         if sub is not None:
             win = max(3, min(trace_window, half_gap))
@@ -191,6 +199,7 @@ def _interfaces_and_layers(
             # detrended + outlier-robust + noise-floor-corrected (item #8);
             # the raw std conflated tilt/bow + hot columns with roughness
             sigma_w = robust_sigma_w(trace) * pixel_size
+            window_limited = window_limited_fraction(trace, center, win)
         interfaces.append(
             Interface(
                 position=center,
@@ -198,6 +207,7 @@ def _interfaces_and_layers(
                 r_squared=r2,
                 sigma_w=sigma_w,
                 trace=trace,
+                window_limited=window_limited,
             )
         )
     interfaces.sort(key=lambda it: it.position)

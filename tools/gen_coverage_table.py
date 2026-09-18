@@ -167,6 +167,20 @@ DOMAINS: tuple[Domain, ...] = (
             ),
             Row(
                 "POST",
+                "/api/measure/profile-roughness",
+                "— (no GUI caller)",
+                ("profile_roughness",),
+                "scalar set + curve",
+                "shipped",
+                "interfacial roughness traced column-by-column across a box "
+                "profile. The averaged profile's edge width mixes "
+                "compositional grading with geometric waviness, so one "
+                "number from it cannot separate them; the columns can. The "
+                "op takes the line as four scalars so a recipe replays "
+                "anywhere",
+            ),
+            Row(
+                "POST",
                 "/api/analyze/roughness",
                 "Roughness workshop",
                 ("roughness",),

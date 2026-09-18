@@ -133,6 +133,11 @@ def layer_result_to_dict(res: LayerResult) -> dict:
                 "sigma_erf": _nan_none(i.sigma_erf),
                 "r_squared": i.r_squared,
                 "sigma_w": _nan_none(i.sigma_w),
+                # above ~0.05 the trace hit its search bound and sigma_w is a
+                # lower bound, not a measurement -- a distinct signal from
+                # the trace's `quality`, which can read 1.0 while every
+                # column was traced to the same clipped place
+                "window_limited": i.window_limited,
                 "trace": i.trace.tolist() if i.trace is not None else None,
                 "roughness": rough[k],
             }

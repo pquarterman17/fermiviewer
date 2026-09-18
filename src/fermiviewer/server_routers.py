@@ -51,6 +51,9 @@ def include_all_routers(app: FastAPI) -> None:
     from fermiviewer.routes.layers import router as layers_router
     from fermiviewer.routes.measure import router as measure_router
     from fermiviewer.routes.montage_compare import router as montage_compare_router
+    from fermiviewer.routes.profile_roughness import (
+        router as profile_roughness_router,
+    )
     from fermiviewer.routes.profiles import router as profiles_router
     from fermiviewer.routes.project_io import router as project_io_router
     from fermiviewer.routes.region_sets_api import router as region_sets_api_router
@@ -73,6 +76,7 @@ def include_all_routers(app: FastAPI) -> None:
         structure_particles_router,
         grains_trained_router,
         jobs_router, calibration_router, profiles_router, composite_router, dev_router,
+        profile_roughness_router,
         standards_router, factors_router, factors_store_router, factors_eels_router,
         usermeta_router,
         diffraction_setup_router, spectral_fit_router, eds_advanced_router,

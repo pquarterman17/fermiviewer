@@ -9,8 +9,8 @@ Route and op inventories are read live from the app and registry at generation t
 
 ## Summary
 
-- **179** HTTP endpoints; **82** perform analysis, 3 are physics-table lookups, and 94 are allowlisted infrastructure.
-- **74 of 82** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **90** ops in total.
+- **180** HTTP endpoints; **83** perform analysis, 3 are physics-table lookups, and 94 are allowlisted infrastructure.
+- **75 of 83** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **91** ops in total.
 - Registered-op reach IS headless reach: batch recipes, folder watch, `fv --script`, and the Python API all resolve steps through the same registry and cannot call anything else.
 - Remaining item-3 work: wave A (0), wave B (0), wave C (0), wave D (0) endpoints; 8 are parked behind the item-8/9 activation gates. Item 3 does not close while any analysis row lacks a wave or a named gate — every endpoint is assigned, none is silently deferred.
 
@@ -27,6 +27,7 @@ Route and op inventories are read live from the app and registry at generation t
 | `POST /api/analyze/vdf` | Image menu. *op flattens the aperture centre to two required floats* | `vdf` | map | shipped |
 | `POST /api/analyze/gpa` | Structure workshop, Template/GPA mode. *the four strain maps inline as `map` envelopes in the op; the route registers them as session images (grains precedent, ADR 0005 wave-B addendum)* | `gpa` | map ×4 + scalar ×4 | shipped |
 | `POST /api/analyze/radial` | Image menu. *azimuthal sector mode has no op* | `radial_profile` | curve ×2 | shipped |
+| `POST /api/measure/profile-roughness` | — (no GUI caller). *interfacial roughness traced column-by-column across a box profile. The averaged profile's edge width mixes compositional grading with geometric waviness, so one number from it cannot separate them; the columns can. The op takes the line as four scalars so a recipe replays anywhere* | `profile_roughness` | scalar set + curve | shipped |
 | `POST /api/analyze/roughness` | Roughness workshop. *route adds bearing curve + ROI* | `roughness` | scalar set + curve (bearing) | shipped |
 | `POST /api/analyze/noise` | Noise workshop. *route adds block stats + ROI* | `noise` | scalar set + fit + curve | shipped |
 | `POST /api/analyze/interface-width` | Interface Width workshop. *no image subject — op ignores `ds`, profile travels as x/y CSV (`distribution_fit` precedent, blessed in ADR 0005's wave-A addendum)* | `interface_width` | fit | shipped |

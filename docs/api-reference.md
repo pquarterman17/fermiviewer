@@ -283,7 +283,7 @@ The registered operation catalogue: name, category, summary, params.
 
 ## Operation catalogue
 
-90 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
+91 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
 
 ### analysis
 
@@ -459,6 +459,20 @@ The registered operation catalogue: name, category, summary, params.
 | Param | Type | Default | Required | Choices | Bounds | Description |
 |---|---|---|---|---|---|---|
 | `method` | `str` | mad | no | 'mad', 'localvar', 'both' |  |  |
+
+#### `profile_roughness` — Interfacial roughness traced column-by-column across a box profile (calc/trace_roughness). The averaged profile's edge width mixes compositional grading with geometric waviness — sigma_erf^2 ~ sigma_chem^2 + sigma_w^2 — so one number from it cannot separate them; tracing every column measures sigma_w directly and the grading falls out of the subtraction
+
+*category: `analysis` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `row1` | `float` | 1.0 | no |  |  | profile start row, 1-based |
+| `col1` | `float` | 1.0 | no |  |  | profile start column, 1-based |
+| `row2` | `float` | 1.0 | no |  |  | profile end row, 1-based |
+| `col2` | `float` | 1.0 | no |  |  | profile end column, 1-based |
+| `width` | `float` | 20.0 | no |  | [3.0, ] | perpendicular box width in pixels; this is what gives the columns to trace across, so a width of 1 is a line and has no roughness to measure |
+| `interface_pos` | `float` | -1.0 | no |  |  | depth along the box where the interface sits, in box pixels; negative fits the averaged profile and uses that centre |
+| `trace_window` | `float` | 10.0 | no |  | [3.0, ] | half-height of the per-column search window. An interface that wanders further than this is CLIPPED and sigma_w comes back a lower bound — check window_limited_fraction |
 
 #### `roi_stats` — Rectangle or inscribed-ellipse intensity statistics (calc/profile_stats.roi_stats). Corners are 1-BASED INCLUSIVE pixel coordinates — not the diffraction catalogue's 0-based half-open rect, and not the corner-ROI string other ops take
 

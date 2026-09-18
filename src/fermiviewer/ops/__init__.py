@@ -26,6 +26,7 @@ from fermiviewer.ops import (
     catalogue_measure,  # noqa: F401  (wave D: profile/ROI/box/distance ops)
     catalogue_measure_reads,  # noqa: F401  (wave D: spectrum/histogram/scalebar)
     catalogue_montage,  # noqa: F401  (montage + physical-scale compare)
+    catalogue_profile_roughness,  # noqa: F401  (per-column interfacial roughness)
     catalogue_shape_strain,  # noqa: F401  (fit-shape + atom-column strain)
     catalogue_spectral,  # noqa: F401  (EELS/EDS/diffraction ops)
     catalogue_stack,  # noqa: F401  (multi-input: image math/align/MIP)

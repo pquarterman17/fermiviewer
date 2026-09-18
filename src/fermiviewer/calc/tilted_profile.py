@@ -39,7 +39,7 @@ from scipy.ndimage import map_coordinates
 
 from fermiviewer.calc.roi import roi_slices
 
-__all__ = ["TiltedProfile", "tilted_depth_profile"]
+__all__ = ["TiltedProfile", "line_box_block", "tilted_depth_profile"]
 
 
 @dataclass(frozen=True)
@@ -60,6 +60,88 @@ class TiltedProfile:
     #: tilt cost nothing; a small number means the answer rests on a narrow
     #: strip and the caller should say so.
     sampled_fraction: float
+
+
+def _sample_box(
+    block: np.ndarray,
+    r_centre: float,
+    c_centre: float,
+    n_depth: int,
+    n_lat: int,
+    theta: float,
+) -> np.ndarray:
+    """Bilinearly resample an `n_depth x n_lat` box centred on
+    ``(r_centre, c_centre)`` and rotated by `theta` radians.
+
+    Depth runs down the returned block's rows. Bilinear (`map_coordinates`
+    order 1) is the same interpolation `calc.profiles.line_profile` uses for
+    an arbitrary-angle line, so a box sampled here and a line drawn along
+    the same direction agree rather than differing by the interpolator.
+
+    "nearest" at the boundary rather than a NaN fill: callers size the box
+    to stay inside, so this only guards float round-off at the very edge,
+    where clamping to the boundary pixel is right and a NaN would not be.
+    """
+    cos_t, sin_t = float(np.cos(theta)), float(np.sin(theta))
+    d = np.arange(n_depth, dtype=np.float64) - (n_depth - 1) / 2.0
+    lat = np.arange(n_lat, dtype=np.float64) - (n_lat - 1) / 2.0
+    dd, ll = np.meshgrid(d, lat, indexing="ij")
+    rr = r_centre + dd * cos_t - ll * sin_t
+    cc = c_centre + dd * sin_t + ll * cos_t
+    return np.asarray(
+        map_coordinates(block, [rr, cc], order=1, mode="nearest"),
+        dtype=np.float64,
+    )
+
+
+def line_box_block(
+    img: np.ndarray,
+    x1: float,
+    y1: float,
+    x2: float,
+    y2: float,
+    width: float,
+) -> np.ndarray:
+    """The box a line-plus-width profile averages over, as a 2-D block.
+
+    Rows run ALONG the line (this is the depth axis a profile is measured
+    down) and columns run across its perpendicular width. That is the
+    orientation `calc.trace_roughness.trace_interface` wants for
+    ``axis="y"``: every column is its own depth profile, so an interface
+    can be traced across the box one column at a time.
+
+    This is what makes per-column roughness reachable from a box profile at
+    all. The averaged profile a box already produces cannot separate a rough
+    interface from a genuinely graded one -- both widen the same edge, and
+    ``sigma_erf² ~ sigma_chem² + sigma_w²`` only comes apart once sigma_w is
+    measured from the columns themselves.
+
+    Coordinates are (x=column, y=row) in image pixels, matching
+    `calc.profiles.line_profile`'s endpoints rather than the (row, col)
+    convention the region types use -- this function's callers hold a line,
+    not a region.
+    """
+    arr = np.asarray(img, dtype=np.float64)
+    if arr.ndim != 2:
+        raise ValueError("a box profile needs a 2-D image")
+    length = float(np.hypot(x2 - x1, y2 - y1))
+    if not length > 0:
+        raise ValueError("the profile line has zero length")
+    if not width >= 1:
+        raise ValueError("width must be at least 1 pixel")
+    n_depth = max(int(round(length)) + 1, 2)
+    n_lat = max(int(round(width)), 1)
+    # angle of the line in (row, col): the depth direction. atan2 takes the
+    # ROW delta first because the box's depth runs down its own rows.
+    theta = float(np.arctan2(x2 - x1, y2 - y1))
+    return _sample_box(
+        arr,
+        (y1 + y2) / 2.0,
+        (x1 + x2) / 2.0,
+        n_depth,
+        n_lat,
+        theta,
+    )
 
 
 def _inscribed_scale(height: float, width: float, tilt_deg: float) -> float:
@@ -132,20 +214,14 @@ def tilted_depth_profile(
             "box; widen the region or reduce the tilt"
         )
 
-    theta = np.radians(tilt_deg)
-    cos_t, sin_t = float(np.cos(theta)), float(np.sin(theta))
-    d = np.arange(n_depth, dtype=np.float64) - (n_depth - 1) / 2.0
-    lat = np.arange(n_lat, dtype=np.float64) - (n_lat - 1) / 2.0
-    dd, ll = np.meshgrid(d, lat, indexing="ij")
-    r_centre = (height - 1) / 2.0
-    c_centre = (width - 1) / 2.0
-    rr = r_centre + dd * cos_t - ll * sin_t
-    cc = c_centre + dd * sin_t + ll * cos_t
-
-    # "nearest" rather than a NaN fill: the inscribed box already keeps every
-    # sample inside, so this only guards float round-off at the very edge,
-    # where clamping to the boundary pixel is right and a NaN would not be.
-    samples = map_coordinates(block, [rr, cc], order=1, mode="nearest")
+    samples = _sample_box(
+        block,
+        (height - 1) / 2.0,
+        (width - 1) / 2.0,
+        n_depth,
+        n_lat,
+        float(np.radians(tilt_deg)),
+    )
     profile = (
         np.nanmedian(samples, axis=1) if reduce == "median"
         else np.mean(samples, axis=1)
