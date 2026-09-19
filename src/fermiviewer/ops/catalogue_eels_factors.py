@@ -15,7 +15,11 @@ from typing import Any
 
 from fermiviewer.calc.composition import atomic_fractions
 from fermiviewer.calc.eels_factors import derive_cross_sections
-from fermiviewer.calc.eels_quant import ElementEdge, quantify
+from fermiviewer.calc.eels_quant import (
+    ElementEdge,
+    quantify,
+    resolve_edge_element,
+)
 from fermiviewer.calc.raster import masked_sum_spectrum
 from fermiviewer.calc.uncertainty import eels_intensity_sigma
 from fermiviewer.datastruct import SPECTRAL_KINDS, DataKind, DataStruct
@@ -62,9 +66,12 @@ def _edges(raw: str) -> list[ElementEdge]:
         if shell not in ("K", "L"):
             raise ValueError(f"edge {item!r}: shell must be 'K' or 'L'")
         try:
-            z, onset = int(z_raw), float(onset_raw)
+            z_given, onset = int(z_raw), float(onset_raw)
         except ValueError:
             raise ValueError(f"edge {item!r} has a non-numeric Z or onset") from None
+        # the SAME resolver the route uses: a recipe that replays what the
+        # route rejects is a second, quieter version of the same bug
+        symbol, z = resolve_edge_element(symbol, z_given)
         if not onset > 0:
             raise ValueError(f"edge {item!r}: onset must be positive")
         out.append(

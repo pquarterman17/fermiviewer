@@ -14,8 +14,16 @@ from dataclasses import dataclass
 import numpy as np
 
 from fermiviewer.calc.eels import background
+from fermiviewer.calc.elements import ELEMENTS, atomic_number
 
-__all__ = ["ElementEdge", "QuantResult", "cross_section", "elnes", "quantify"]
+__all__ = [
+    "ElementEdge",
+    "QuantResult",
+    "cross_section",
+    "elnes",
+    "quantify",
+    "resolve_edge_element",
+]
 
 _EPS = np.finfo(np.float64).eps
 
@@ -66,6 +74,41 @@ class ElementEdge:
     onset_ev: float
     signal_window: tuple[float, float]
     bg_window: tuple[float, float]
+
+
+def resolve_edge_element(symbol: str, z: int | None = None) -> tuple[str, int]:
+    """``(symbol, Z)`` for an edge, refusing an identity that cannot hold.
+
+    An edge carries its element twice over: `z` reaches the hydrogenic model
+    in :func:`cross_section`, while anything converting a composition looks
+    up the SYMBOL's atomic mass. Taking both from a caller lets them
+    disagree — ``("Fe", 8)`` computes oxygen's model against iron's mass and
+    returns a number that looks entirely ordinary.
+
+    An unknown symbol is refused for the same reason: `calc.composition`
+    deliberately treats one as mass 1.0, bounded and visible rather than
+    blocking a derivation, but its docstring puts rejection at the point the
+    composition is ENTERED. A cross-section anchored on a stand-in mass is
+    wrong by the element's whole atomic mass.
+
+    Lives here, in the pure layer, because the route and the registered op
+    both need it and a mirrored check is how the two come to disagree about
+    what they accept (ADR 0005 §1).
+    """
+    name = symbol.strip()
+    if name not in ELEMENTS:
+        raise ValueError(
+            f"unknown element {symbol!r}: a cross-section derived against it "
+            "would use a stand-in atomic mass of 1.0"
+        )
+    known = atomic_number(name)
+    if z is not None and z != known:
+        raise ValueError(
+            f"{name} has atomic number {known}, not {z}: the model uses z "
+            "while the composition uses the symbol's mass, so the two must "
+            "name one element"
+        )
+    return name, known
 
 
 @dataclass(frozen=True)

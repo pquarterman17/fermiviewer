@@ -602,3 +602,76 @@ def test_an_unknown_element_symbol_is_refused(client, cube_id) -> None:
     )
     assert r.status_code == 422
     assert "unknown element" in r.json()["detail"]
+
+
+# ── the op replays what the route accepts, and refuses what it refuses ──
+
+
+def _op_edges(fe_z: int = 26, fe_symbol: str = "Fe") -> str:
+    return (
+        f"O:K:8:{O_EDGE.onset_ev:g}:{O_SIGNAL[0]:g}-{O_SIGNAL[1]:g}"
+        f":{O_BG[0]:g}-{O_BG[1]:g},"
+        f"{fe_symbol}:L:{fe_z}:{FE_EDGE.onset_ev:g}"
+        f":{FE_SIGNAL[0]:g}-{FE_SIGNAL[1]:g}:{FE_BG[0]:g}-{FE_BG[1]:g}"
+    )
+
+
+def _run_op(cube_id: str, edges: str, composition: str):
+    from fermiviewer.ops import run
+    from fermiviewer.session import store as session_store
+
+    return run(
+        "eels_derive_cross_sections",
+        session_store.get(cube_id),
+        {
+            "edges": edges, "composition": composition, "basis": "at",
+            "reference_element": "", "reference_value_m2": 0.0,
+            "beam_kv": 200.0, "collection_semi_angle_mrad": 10.0,
+            "background": "powerlaw",
+        },
+    )
+
+
+def test_the_op_refuses_an_element_z_mismatch_exactly_as_the_route_does(
+    client, cube_id
+) -> None:
+    """A recipe that replays what the route rejects is the same bug, quieter.
+
+    The route validated the identity and the op went on parsing the caller's
+    Z directly, so `element="Fe", z=8` was refused interactively and accepted
+    on replay. Both now go through `calc.eels_quant.resolve_edge_element` —
+    shared, not mirrored, because a second copy is how the two drift.
+    """
+    with pytest.raises(ValueError, match="atomic number 26, not 8"):
+        _run_op(cube_id, _op_edges(fe_z=8), "O:60,Fe:40")
+
+    # and the route says the same thing about the same input
+    edges = _edge_specs()
+    edges[1]["z"] = 8
+    r = _derive(
+        client, image_id=cube_id, composition=dict(AT_PCT), basis="at", edges=edges
+    )
+    assert r.status_code == 422
+    assert "26" in r.json()["detail"] and "8" in r.json()["detail"]
+
+
+def test_the_op_refuses_an_unknown_symbol_too(client, cube_id) -> None:
+    with pytest.raises(ValueError, match="unknown element"):
+        _run_op(cube_id, _op_edges(fe_symbol="Zz"), "O:60,Zz:40")
+
+
+def test_the_op_and_the_route_agree_on_a_well_formed_request(
+    client, cube_id
+) -> None:
+    """The other half of sharing the resolver: it must not have changed what
+    a correct request produces."""
+    result = _run_op(cube_id, _op_edges(), "O:60,Fe:40")
+    route = _derive_ok(
+        client, image_id=cube_id, composition=dict(AT_PCT), basis="at"
+    )
+    table = result.value["outputs"][0]["data"]
+    col = table["columns"].index("cross_section")
+    for row in table["rows"]:
+        assert row[col] == pytest.approx(
+            route["factors"][row[0]]["value"], rel=1e-9
+        )
