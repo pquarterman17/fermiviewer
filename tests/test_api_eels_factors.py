@@ -544,3 +544,61 @@ def test_op_edge_parser_refusals(edges, match) -> None:
             "eels_derive_cross_sections", _dummy_ds(),
             {"edges": edges, "composition": "O:60,Fe:40", "basis": "at"},
         )
+
+
+def test_an_element_and_z_that_name_different_elements_are_refused(
+    client, cube_id
+) -> None:
+    """The two identities are used in DIFFERENT places, so they must agree.
+
+    `quantify` feeds `z` to the hydrogenic model while the composition
+    conversion looks up the SYMBOL's atomic mass. Taking both from the
+    caller let them disagree: `element="Fe", z=8` came back 200 with a
+    perfectly plausible cross-section computed from oxygen's model and
+    iron's mass, storable as a factor set with nothing to mark it.
+    """
+    edges = _edge_specs()
+    edges[1]["z"] = 8                      # iron, labelled with oxygen's Z
+    r = _derive(
+        client, image_id=cube_id, composition=dict(AT_PCT), basis="at", edges=edges
+    )
+    assert r.status_code == 422
+    detail = r.json()["detail"]
+    assert "26" in detail and "8" in detail   # names both numbers
+
+
+def test_z_is_resolved_from_the_symbol_when_it_is_not_given(client, cube_id) -> None:
+    """Omitting `z` is the safe way to ask: there is exactly one atomic
+    number for a symbol, and no chance of contradicting it."""
+    edges = [{k: v for k, v in e.items() if k != "z"} for e in _edge_specs()]
+    body = _derive_ok(
+        client, image_id=cube_id, composition=dict(AT_PCT), basis="at", edges=edges
+    )
+    stated = _derive_ok(
+        client, image_id=cube_id, composition=dict(AT_PCT), basis="at"
+    )
+    # identical to stating the correct z explicitly
+    for sym in ("Fe", "O"):
+        assert body["factors"][sym]["value"] == pytest.approx(
+            stated["factors"][sym]["value"], rel=1e-12
+        )
+
+
+def test_an_unknown_element_symbol_is_refused(client, cube_id) -> None:
+    """`calc.composition` treats an unknown symbol as mass 1.0 — bounded and
+    visible rather than blocking a derivation — but its own docstring says
+    rejection belongs where the composition is ENTERED. This is that place:
+    anchoring a cross-section on a stand-in mass of 1.0 is wrong by the
+    element's whole atomic mass, silently.
+    """
+    edges = _edge_specs()
+    edges[1]["element"] = "Zz"
+    r = _derive(
+        client,
+        image_id=cube_id,
+        composition={"O": AT_PCT["O"], "Zz": AT_PCT["Fe"]},
+        basis="at",
+        edges=edges,
+    )
+    assert r.status_code == 422
+    assert "unknown element" in r.json()["detail"]

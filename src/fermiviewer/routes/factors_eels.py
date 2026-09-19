@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 from fermiviewer.calc.composition import atomic_fractions
 from fermiviewer.calc.eels_factors import DerivedCrossSection, derive_cross_sections
 from fermiviewer.calc.eels_quant import ElementEdge, quantify
+from fermiviewer.calc.elements import ELEMENTS, atomic_number
 from fermiviewer.calc.uncertainty import eels_intensity_sigma
 from fermiviewer.io.factors_db import (
     FactorSetError,
@@ -63,7 +64,10 @@ BETA_PARAM = ParamSpec(
 class EelsEdgeSpec(BaseModel):
     element: str
     shell: Literal["K", "L"]
-    z: int
+    #: atomic number for the hydrogenic model. Optional: it is resolved from
+    #: `element` when omitted, and CHECKED against it when given — the two
+    #: must describe one element (see `_resolved_edges`).
+    z: int | None = None
     onset_ev: float
     signal_window: tuple[float, float]
     bg_window: tuple[float, float]
@@ -106,6 +110,52 @@ class CrossSectionDeriveRequest(BaseModel):
     store: bool = False
     name: str = ""
     note: str = ""
+
+
+def _resolved_edges(specs: list[EelsEdgeSpec]) -> list[ElementEdge]:
+    """Edges with `z` resolved from the symbol, refusing an incoherent pair.
+
+    The two identities are used in DIFFERENT places: `quantify` feeds `z`
+    to the hydrogenic model, while the composition conversion looks up the
+    SYMBOL's atomic mass. Taking both from the caller let them disagree —
+    `element="Fe", z=8` returned a perfectly plausible cross-section
+    computed from oxygen's model and iron's mass, storable as a factor set
+    with nothing to mark it.
+
+    An unknown symbol is refused for the same reason. `calc.composition`
+    deliberately treats one as mass 1.0 — bounded and visible rather than
+    blocking a whole derivation — but its docstring says rejection belongs
+    where the composition is ENTERED, and this is that place: a derivation
+    anchored on a mass of 1.0 would be wrong by the element's whole mass.
+    """
+    out: list[ElementEdge] = []
+    for spec in specs:
+        symbol = spec.element.strip()
+        if symbol not in ELEMENTS:
+            raise HTTPException(
+                422,
+                f"unknown element {spec.element!r}: a cross-section derived "
+                "against it would use a stand-in atomic mass of 1.0",
+            )
+        known = atomic_number(symbol)
+        if spec.z is not None and spec.z != known:
+            raise HTTPException(
+                422,
+                f"{symbol} has atomic number {known}, not {spec.z}: the model "
+                "uses z while the composition uses the symbol's mass, so the "
+                "two must name one element",
+            )
+        out.append(
+            ElementEdge(
+                element=symbol,
+                shell=spec.shell,
+                z=known,
+                onset_ev=spec.onset_ev,
+                signal_window=spec.signal_window,
+                bg_window=spec.bg_window,
+            )
+        )
+    return out
 
 
 def _factor_json(f: DerivedCrossSection) -> dict[str, Any]:
@@ -170,12 +220,7 @@ def factors_derive_eels(req: CrossSectionDeriveRequest) -> dict[str, Any]:
         raise HTTPException(422, str(exc)) from None
 
     spectrum, scope = scoped_spectrum(ds, image_id, region_ref, roi_ref)
-    edges = [
-        ElementEdge(
-            e.element, e.shell, e.z, e.onset_ev, e.signal_window, e.bg_window
-        )
-        for e in req.edges
-    ]
+    edges = _resolved_edges(req.edges)
     # `ds.energy_axis` raw, in eV -- the same axis /eels/quantify passes,
     # deliberately without the `to_kev` conversion the EDS derivation
     # applies. Converting here and not there would make the two disagree

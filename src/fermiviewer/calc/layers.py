@@ -22,20 +22,18 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from fermiviewer.calc.calibration import growth_axis_scales
+from fermiviewer.calc.layers_collapse import collapse, tilted_scales
 from fermiviewer.calc.layers_detect import (
     detect_interfaces,
     detect_interfaces_scale_space,
 )
 from fermiviewer.calc.layers_profile import (
     OrientationResult,
-    _roi_subimage,
     cross_section_profile,
     destripe,
     detect_growth_orientation,
 )
 from fermiviewer.calc.profile_stats import fit_interface_width
-from fermiviewer.calc.tilted_profile import tilted_depth_profile
 from fermiviewer.calc.trace_roughness import (
     robust_sigma,
     robust_sigma_w,
@@ -248,68 +246,6 @@ def _refuse_traced_mask(mask: np.ndarray | None, waviness: bool) -> None:
         )
 
 
-@dataclass(frozen=True)
-class _Collapsed:
-    """What both entry points need out of "turn the ROI into a profile"."""
-
-    depth_pos: np.ndarray
-    profile: np.ndarray
-    #: block a waviness trace runs over, already in `trace_axis` orientation
-    sub: np.ndarray | None
-    trace_axis: str
-    applied_tilt_deg: float | None
-    sampled_fraction: float
-
-
-def _collapse(
-    work: np.ndarray,
-    roi: tuple[int, int, int, int] | None,
-    axis: str,
-    reduce: str,
-    mask: np.ndarray | None,
-    tilt_deg: float | None,
-    waviness: bool,
-) -> _Collapsed:
-    """The ROI as a depth profile, tilt-corrected when asked.
-
-    Shared by :func:`analyze_layers` and :func:`recompute_layers` because an
-    edited run has to be collapsed EXACTLY as the detected one was: two
-    spellings of this would let a re-measure land its interfaces in a
-    slightly different frame from the one the user dragged them in.
-
-    The block a waviness trace runs over must come from the same collapse,
-    or every trace sits at a depth the profile never had. After a tilt
-    correction that is the resampled box, whose depth already runs down the
-    rows -- hence a trace axis of "y" whatever `axis` was.
-    """
-    if tilt_deg is not None and tilt_deg != 0.0:
-        if mask is not None:
-            raise ValueError(
-                "a tilt correction and an irregular region cannot be combined: "
-                "the rotated box is rectangular by construction"
-            )
-        tilted = tilted_depth_profile(
-            work, roi, axis=axis, tilt_deg=tilt_deg, reduce=reduce
-        )
-        return _Collapsed(
-            depth_pos=tilted.depth_pos,
-            profile=tilted.profile,
-            sub=tilted.block if waviness else None,
-            trace_axis="y",
-            applied_tilt_deg=tilted.tilt_deg,
-            sampled_fraction=tilted.sampled_fraction,
-        )
-    depth_pos, profile = cross_section_profile(work, roi, axis, reduce, mask)
-    return _Collapsed(
-        depth_pos=depth_pos,
-        profile=profile,
-        # the ROI sub-image, clamped like box_integrate
-        sub=_roi_subimage(work, roi) if waviness else None,
-        trace_axis=axis,
-        applied_tilt_deg=None,
-        sampled_fraction=1.0,
-    )
-
 
 def analyze_layers(
     img: np.ndarray,
@@ -368,7 +304,9 @@ def analyze_layers(
     use_axis = orient.axis if axis == "auto" else axis
     if use_axis not in ("x", "y"):
         raise ValueError("axis must be 'auto', 'x', or 'y'")
-    depth_size, lateral_size = growth_axis_scales(use_axis, pixel_size, spacing)
+    depth_size, lateral_size = tilted_scales(
+        use_axis, tilt_deg, pixel_size, spacing
+    )
 
     work = (
         destripe(arr, use_axis, cutoff=destripe_cutoff, strength=destripe_strength)
@@ -376,7 +314,7 @@ def analyze_layers(
         else arr
     )
     _refuse_traced_mask(mask, waviness)
-    col = _collapse(work, roi, use_axis, reduce, mask, tilt_deg, waviness)
+    col = collapse(work, roi, use_axis, reduce, mask, tilt_deg, waviness)
     depth_pos, profile = col.depth_pos, col.profile
     preset = _MODALITY_PRESETS.get(modality.lower(), _MODALITY_PRESETS["haadf"])
     if preset["scale_space"]:
@@ -446,7 +384,7 @@ def recompute_layers(
         raise ValueError("layer analysis needs a 2-D image")
     if axis not in ("x", "y"):
         raise ValueError("axis must be 'x' or 'y'")
-    depth_size, lateral_size = growth_axis_scales(axis, pixel_size, spacing)
+    depth_size, lateral_size = tilted_scales(axis, tilt_deg, pixel_size, spacing)
 
     work = (
         destripe(arr, axis, cutoff=destripe_cutoff, strength=destripe_strength)
@@ -454,7 +392,7 @@ def recompute_layers(
         else arr
     )
     _refuse_traced_mask(mask, waviness)
-    col = _collapse(work, roi, axis, reduce, mask, tilt_deg, waviness)
+    col = collapse(work, roi, axis, reduce, mask, tilt_deg, waviness)
     depth_pos, profile = col.depth_pos, col.profile
     n = profile.size
     idxs = np.array(

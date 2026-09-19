@@ -190,3 +190,55 @@ def test_a_waviness_trace_runs_in_the_corrected_frame() -> None:
     assert iface.trace.size == res.depth_profile.size or iface.trace.size > 1
     # the levelled interface is flat, so its trace sits on its own centre
     assert float(np.nanmean(iface.trace)) == pytest.approx(iface.position, abs=2.0)
+
+
+def test_a_tilted_collapse_calibrates_along_the_rotated_axis() -> None:
+    """On anisotropic pixels the corrected depth axis is a MIX of the row and
+    column extents, so the untilted scale is the wrong ruler for it.
+
+    `growth_axis_scales` answers for a stack aligned to the image axes. Left
+    in place after a tilt it measured each resampled depth step with the row
+    extent: at 45° on 4 nm rows and 1 nm columns that is 4.0 nm where the
+    true step is 2.92, so every thickness, σ_erf, σ_w and thickness_std came
+    back 1.37x too large while looking entirely ordinary.
+    """
+    import math
+
+    from fermiviewer.calc.layers import analyze_layers, recompute_layers
+
+    spacing = (4.0, 1.0)
+    img = _tilted_stack(45.0)
+    res = analyze_layers(
+        img, axis="y", tilt_deg=45.0, pixel_size=1.0, unit="nm", spacing=spacing
+    )
+    expected = math.hypot(4.0 / math.sqrt(2), 1.0 / math.sqrt(2))
+    assert res.pixel_size == pytest.approx(expected, rel=1e-9)
+    # and not the row extent it used to report
+    assert res.pixel_size != pytest.approx(4.0, rel=1e-3)
+
+    # σ_erf is quoted in that scale, so it moves with it
+    (iface,) = res.interfaces
+    assert iface.sigma_erf == pytest.approx(SIGMA * expected, rel=0.25)
+
+    # the edit path must agree: a re-measure that used a different ruler
+    # would shift every thickness the moment a user nudged one interface
+    again = recompute_layers(
+        img, [iface.position], axis="y", tilt_deg=45.0,
+        pixel_size=1.0, unit="nm", spacing=spacing,
+    )
+    assert again.pixel_size == pytest.approx(res.pixel_size, rel=1e-9)
+
+
+def test_an_untilted_collapse_keeps_the_axis_aligned_scale() -> None:
+    """The no-op half: without a tilt the answer must be exactly what
+    `growth_axis_scales` gives, or every existing result shifts."""
+    from fermiviewer.calc.calibration import growth_axis_scales
+    from fermiviewer.calc.layers import analyze_layers
+
+    spacing = (4.0, 1.0)
+    res = analyze_layers(
+        _tilted_stack(0.0), axis="y", pixel_size=1.0, unit="nm", spacing=spacing
+    )
+    depth, _ = growth_axis_scales("y", 1.0, spacing)
+    assert res.pixel_size == pytest.approx(depth)
+    assert res.pixel_size == pytest.approx(4.0)
