@@ -95,6 +95,53 @@ describe("LayersOverlay tilt", () => {
     expect(published!).toBeLessThan(0);
   });
 
+  it("draws the detector's line only where the operator moved one", () => {
+    // The gap between what the detector proposed and where the operator put
+    // the interface IS the finding — it says where the automatic method
+    // could not be trusted. But drawing a faded twin at EVERY interface
+    // would make the display say "disagreement" everywhere, so the ones
+    // that still agree are omitted.
+    useViewer.setState({
+      layersOverlay: { ...overlayState(0), detected: [50, 100] },
+    });
+    const { container } = draw();
+    const faded = Array.from(container.querySelectorAll("line")).filter(
+      (l) => l.getAttribute("stroke-dasharray") === "2 4",
+    );
+    // interfaces are [50, 120]: 50 is unmoved, 100 -> 120 is the edit
+    expect(faded).toHaveLength(1);
+    expect(Number(faded[0].getAttribute("y1"))).toBeCloseTo(100, 6);
+  });
+
+  it("tilts the detector's line with the same mapping as the live one", () => {
+    // Drawing the detected set flat while the live set is tilted would show
+    // a gap at every interface that is a coordinate bug, not a disagreement.
+    useViewer.setState({
+      layersOverlay: { ...overlayState(10), detected: [100] },
+    });
+    const { container } = draw();
+    const rise = (l: Element) =>
+      Number(l.getAttribute("y2")) - Number(l.getAttribute("y1"));
+    const faded = Array.from(container.querySelectorAll("line")).find(
+      (l) => l.getAttribute("stroke-dasharray") === "2 4",
+    )!;
+    const live = lines(container)[0];
+    expect(rise(faded)).toBeCloseTo(rise(live), 6);
+  });
+
+  it("draws no detector line on a freshly detected run", () => {
+    // the two coincide then; a twin at every interface would be noise
+    useViewer.setState({
+      layersOverlay: { ...overlayState(0), detected: [50, 120] },
+    });
+    const { container } = draw();
+    expect(
+      Array.from(container.querySelectorAll("line")).filter(
+        (l) => l.getAttribute("stroke-dasharray") === "2 4",
+      ),
+    ).toHaveLength(0);
+  });
+
   it("draws nothing for another image's overlay", () => {
     useViewer.setState({ layersOverlay: overlayState(0) });
     const { container } = render(

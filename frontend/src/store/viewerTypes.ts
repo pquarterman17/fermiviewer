@@ -306,6 +306,12 @@ export interface LayersOverlayState {
   imageId: string;
   axis: "y" | "x";
   interfaces: number[];              // depth positions (image pixels)
+  /** Where the DETECTOR put the interfaces, when the current set came from
+      an operator's edit. Drawn alongside so the disagreement is visible on
+      screen and not only in the saved records — that gap is the finding:
+      it says where the automatic method could not be trusted on this
+      specimen. Absent on a freshly detected run, where the two coincide. */
+  detected?: number[];
   traces: (number[] | null)[];
   /** Off-axis tilt the profile was collapsed along, degrees. ONE angle for
       the whole stack: layers in a film stack are parallel, so a per-interface

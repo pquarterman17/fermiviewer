@@ -95,6 +95,24 @@ export default function LayersOverlay({
   const lateralHi = overlay.lateralRange?.[1] ?? (horizontal ? img.w : img.h);
   const halfSpan = Math.max((lateralHi - lateralLo) / 2, 1);
 
+  // ONE mapping for both the live lines and the detector's. Drawing the
+  // detected set flat while the live set is tilted would show a gap at
+  // every interface that is really a coordinate bug, not a disagreement.
+  const depthAtLateral = (pos: number, lateral: number) =>
+    pos - (lateral - (lateralLo + lateralHi) / 2) * Math.tan(theta);
+  const endpointsFor = (pos: number) => {
+    const d0 = depthAtLateral(pos, lateralLo);
+    const d1 = depthAtLateral(pos, lateralHi);
+    return [
+      horizontal
+        ? imageToScreen(lateralLo, d0, view, img, vp)
+        : imageToScreen(d0, lateralLo, view, img, vp),
+      horizontal
+        ? imageToScreen(lateralHi, d1, view, img, vp)
+        : imageToScreen(d1, lateralHi, view, img, vp),
+    ] as const;
+  };
+
   const tiltFromPointer = (clientX: number, clientY: number): number => {
     const rect = svgRef.current?.getBoundingClientRect();
     const p = screenToImage(
@@ -161,6 +179,32 @@ export default function LayersOverlay({
           onClick={(e) => commit([...positions, depthAt(e.clientX, e.clientY)])}
         />
       )}
+      {/* The detector's own positions, when an edit has moved the current
+          set away from them. Drawn UNDER the live lines, thinner and
+          faded, and never interactive: it is a record of what the
+          automatic method proposed, not a thing to drag. Where the two
+          agree the line is omitted rather than drawn twice — a doubled
+          line at every unedited interface would make the display say
+          "disagreement" everywhere. */}
+      {(overlay.detected ?? []).map((pos, k) => {
+        const moved = !positions.some((p) => Math.abs(p - pos) < 0.5);
+        if (!moved) return null;
+        const [a0, b0] = endpointsFor(pos);
+        return (
+          <line
+            key={`detected-${k}`}
+            x1={a0.x}
+            y1={a0.y}
+            x2={b0.x}
+            y2={b0.y}
+            stroke="#f59e0b"
+            strokeWidth={1}
+            strokeDasharray="2 4"
+            opacity={0.35}
+            pointerEvents="none"
+          />
+        );
+      })}
       {positions.map((_pos, k) => {
         const pos = lineFor(k);
         const lateral0 = lateralLo;

@@ -8,7 +8,7 @@
 // main workshop component and re-exports LayerStack so no external import
 // site changes.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   analyzeLayers,
@@ -17,7 +17,6 @@ import {
   type LayersResult,
 } from "../../lib/api";
 import {
-  layerOverlayCoordinates,
   roiLocalDepths,
   useAnalysisRoi,
   type AnalysisRoi,
@@ -32,7 +31,12 @@ import LayersRoughnessDetail from "./LayersRoughnessDetail";
 import LayersMultiCompare from "./LayersMultiCompare";
 import { LayerStack, exportCsv } from "./layers/LayerStack";
 import { LayersControls } from "./layers/LayersControls";
+import { LayersEditRow } from "./layers/LayersEditRow";
 import { LayersMode } from "./layers/LayersMode";
+import {
+  layersOverlayState,
+  movedFromDetected,
+} from "./layers/layersOverlayPublish";
 import { useLayersStageEdits } from "./layers/useLayersStageEdits";
 
 export { LayerStack } from "./layers/LayerStack";
@@ -66,6 +70,10 @@ export default function LayersWorkshop() {
   // orientation detector measured, which is a different number and must not
   // silently become the correction.
   const [tiltDeg, setTiltDeg] = useState<number | null>(null);
+  // The detector's own positions, in ROI-local profile depths, held across
+  // edits so the overlay can show both. Cleared by a fresh detection (the
+  // two coincide then) and by an image or region change.
+  const detectedRef = useRef<number[] | null>(null);
   const layersFocusReq = useViewer((s) => s.layersFocusReq);
   const setLayersFocusReq = useViewer((s) => s.setLayersFocusReq);
   const images = useViewer((s) => s.images);
@@ -80,6 +88,8 @@ export default function LayersWorkshop() {
     ? assessLayerQuality(result, Number(nLayers) || 0)
     : null;
   const canUseResult = layerQuality?.rating !== "poor" || qualityAccepted;
+  // how many interfaces the operator has moved off the detector's guess
+  const movedCount = movedFromDetected(result, detectedRef.current);
 
   // set the result + stage overlay + status from any (analyze or edit) response
   const applyResult = (
@@ -91,21 +101,9 @@ export default function LayersWorkshop() {
     setQualityAccepted(false);
     setLayersEdit(false);
     if (imageId) {
-      const overlay = layerOverlayCoordinates(
-        r.axis,
-        r.interfaces.map((i) => i.position),
-        r.interfaces.map((i) => i.trace),
-        roi,
-        r.applied_tilt_deg == null
-          ? null
-          : { tiltDeg: r.applied_tilt_deg, nDepth: r.depth_pos.length },
+      setLayersOverlay(
+        layersOverlayState(r, imageId, roi, detectedRef.current),
       );
-      setLayersOverlay({
-        imageId,
-        axis: r.axis,
-        tiltDeg: r.applied_tilt_deg ?? 0,
-        ...overlay,
-      });
       useCrossSection.getState().setLayers({
         sourceId: imageId,
         regionLabel: analysisRoi.label,
@@ -175,6 +173,7 @@ export default function LayersWorkshop() {
     setLayersEditReq(null);
     setDetailIdx(null);
     setQualityAccepted(false);
+    detectedRef.current = null;
   }, [activeId, roiKey, setLayersOverlay, setLayersEdit, setLayersEditReq]);
 
   // a stage click on an interface line focuses its roughness detail card
@@ -218,7 +217,12 @@ export default function LayersWorkshop() {
       destripe: decurtain,
       record: saveResult,
     })
-      .then(applyResult)
+      .then((r) => {
+        // a detection IS the reference: the two sets coincide, so there is
+        // no disagreement to draw until an edit moves one of them
+        detectedRef.current = r.interfaces.map((i) => i.position);
+        applyResult(r);
+      })
       .catch((e: Error) => setStatus(`Layers: ${e.message}`))
       .finally(() => setBusy(false));
   };
@@ -396,20 +400,12 @@ export default function LayersWorkshop() {
         </>
       )}
       {result && (
-        <div className="fvd-ws-row">
-          <label className="k" style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <input
-              type="checkbox"
-              checked={layersEdit}
-              disabled={!canUseResult}
-              onChange={(e) => setLayersEdit(e.target.checked)}
-            />
-            edit on stage
-          </label>
-          <span className="k" style={{ fontSize: 10, opacity: 0.7 }}>
-            drag a line to nudge · click to add · right-click to remove
-          </span>
-        </div>
+        <LayersEditRow
+          editing={layersEdit}
+          disabled={!canUseResult}
+          onEditing={setLayersEdit}
+          movedCount={movedCount}
+        />
       )}
       {result && result.interfaces.length === 0 && (
         <div className="fvd-ws-note">No interfaces detected — try a lower sensitivity.</div>
