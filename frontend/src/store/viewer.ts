@@ -27,8 +27,8 @@ import { createMeasureActions } from "./viewerMeasureActions";
 import { createProjectActions } from "./viewerProjectActions";
 import { createRegionActions } from "./viewerRegionActions";
 import type { ViewerState } from "./viewerState";
+import { applyUndoEntry } from "./viewerUndo";
 import {
-  applyUndoEntry,
   clientState,
   ingestImages,
   initialTheme,
@@ -124,6 +124,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   layersOverlay: null,
   layersEdit: false,
   layersEditReq: null,
+  layersTiltReq: null,
   layersFocusReq: null,
   panTool: false,
   profileWidth: pref("profileWidth", 1),
@@ -367,6 +368,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   setLayersOverlay: (layersOverlay) => set({ layersOverlay }),
   setLayersEdit: (layersEdit) => set({ layersEdit }),
   setLayersEditReq: (layersEditReq) => set({ layersEditReq }),
+  setLayersTiltReq: (layersTiltReq) => set({ layersTiltReq }),
   setLayersFocusReq: (layersFocusReq) => set({ layersFocusReq }),
   setProfileWidth: (w) => {
     const profileWidth = Math.max(1, Math.min(99, Math.round(w)));

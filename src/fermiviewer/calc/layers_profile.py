@@ -30,6 +30,7 @@ __all__ = [
     "cross_section_profile",
     "destripe",
     "detect_growth_orientation",
+    "roi_subimage",
 ]
 
 
@@ -86,7 +87,7 @@ def detect_growth_orientation(
     return OrientationResult(axis, layers_horizontal, float(np.degrees(tilt)), coherence)
 
 
-def _roi_subimage(arr: np.ndarray, roi: tuple[int, int, int, int] | None) -> np.ndarray:
+def roi_subimage(arr: np.ndarray, roi: tuple[int, int, int, int] | None) -> np.ndarray:
     """The ROI sub-image, clamped exactly like ``box_integrate`` (1-based,
     inclusive) so trace indices line up with the depth profile."""
     return extract_rect_roi(arr, roi)
@@ -131,7 +132,7 @@ def cross_section_profile(
         rows, cols = roi_slices(arr.shape, roi)
         return masked_depth_profile(arr[rows, cols], mask[rows, cols], axis, reduce)
     if reduce == "median":
-        sub = _roi_subimage(arr, roi)
+        sub = roi_subimage(arr, roi)
         if axis == "y":
             has_data = (~np.isnan(sub)).any(axis=1)
             prof = np.full(sub.shape[0], np.nan)
@@ -143,7 +144,7 @@ def cross_section_profile(
         return np.arange(prof.size, dtype=np.float64), prof
     h, w = arr.shape
     r1, c1, r2, c2 = roi if roi is not None else (1, 1, h, w)
-    if not np.all(np.isfinite(_roi_subimage(arr, roi))):
+    if not np.all(np.isfinite(roi_subimage(arr, roi))):
         raise ValueError(
             "cross_section_profile: non-finite values in ROI; use "
             "reduce='median' or pre-sanitize (calc.normalize.sanitize)"

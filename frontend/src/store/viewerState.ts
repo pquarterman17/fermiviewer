@@ -132,6 +132,11 @@ export interface ViewerState {
   layersOverlay: LayersOverlayState | null;
   layersEdit: boolean;                 // stage interface-editing mode
   layersEditReq: number[] | null;      // positions requested by a stage edit
+  //: tilt requested by dragging the overlay's rotate handle, degrees. Separate
+  //: from layersEditReq because it re-collapses the profile rather than moving
+  //: interfaces within it — the positions are depths in that profile, so the
+  //: two cannot be applied in one step.
+  layersTiltReq: number | null;
   layersFocusReq: number | null;       // interface index clicked on the stage
   panTool: boolean;
   profileWidth: number;  // ⊥ averaging width (px) for profile captures
@@ -301,6 +306,12 @@ export interface ViewerState {
     measureId: string,
     patch: Partial<Pick<Measure, "color" | "labelDx" | "labelDy" | "endSymbol">>,
   ) => void;
+  /** Set a box profile's perpendicular averaging width, in image pixels.
+   *  A MEASUREMENT edit, not a style one: it changes how many rows are
+   *  averaged into every sample, so the numbers move. Hence its own action
+   *  rather than a `setMeasureStyle` patch, which is documented as display
+   *  only and pushes no undo entry. */
+  setMeasureWidth: (imageId: string, measureId: string, width: number) => void;
   /** Set per-annotation font size override (audit #12); null clears it. */
   setMeasureFontSize: (imageId: string, measureId: string, size: number | null) => void;
   /** Set (or, with undefined, clear back to "image default") one measure's
@@ -328,6 +339,7 @@ export interface ViewerState {
   setLayersOverlay: (o: LayersOverlayState | null) => void;
   setLayersEdit: (b: boolean) => void;
   setLayersEditReq: (p: number[] | null) => void;
+  setLayersTiltReq: (t: number | null) => void;
   setLayersFocusReq: (k: number | null) => void;
   setPanTool: (on: boolean) => void;
   setProfileWidth: (w: number) => void;

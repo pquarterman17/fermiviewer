@@ -19,8 +19,9 @@ textbook that might spell them differently:
   ``ζ_i = C_i·ρt·D_e/I_i``. ζ is absolute and carries kg·m⁻².
 
 Both take WEIGHT fractions. A standard certified in atomic percent is
-converted here (`weight_fractions`) rather than at the call site, because
-doing it in two places is how the two spellings drift.
+converted by `calc.composition.weight_fractions`, which lives beside its
+atomic mirror because the EELS derivation needs the opposite basis and
+two spellings of one conversion is how they drift.
 
 Pure library (numpy only).
 
@@ -37,7 +38,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from fermiviewer.calc.elements import ELEMENTS, atomic_mass
+from fermiviewer.calc.composition import weight_fractions
 
 __all__ = [
     "DerivedFactor",
@@ -64,47 +65,6 @@ class DerivedFactor:
     weight_fraction: float
     weight_fraction_sigma: float
 
-
-def weight_fractions(
-    composition_pct: Mapping[str, float],
-    basis: str,
-    *,
-    sigma_pct: Mapping[str, float] | None = None,
-) -> tuple[dict[str, float], dict[str, float]]:
-    """``(fractions, sigmas)`` as WEIGHT fractions summing to 1.
-
-    A ``"wt"`` composition is only renormalised — a certificate that lists
-    the major elements need not reach 100%, and the ratios a derivation
-    uses must not depend on whether the balance was quoted.
-
-    A ``"at"`` composition is converted by ``w_i ∝ a_i·M_i``. Treating an
-    atomic percent as a weight percent is a silent error of tens of
-    percent for any pair with dissimilar masses, which is precisely the
-    size of the effect a standard is being used to pin down.
-    """
-    if basis not in ("wt", "at"):
-        raise ValueError(f"composition basis must be 'wt' or 'at', got {basis!r}")
-    if not composition_pct:
-        raise ValueError("composition is empty")
-    sig = dict(sigma_pct or {})
-    if basis == "at":
-        weights = {
-            sym: pct * (atomic_mass(sym) if sym in ELEMENTS else 1.0)
-            for sym, pct in composition_pct.items()
-        }
-        # the 1σ scales with the same factor before renormalisation
-        sig = {
-            sym: s * (atomic_mass(sym) if sym in ELEMENTS else 1.0)
-            for sym, s in sig.items()
-        }
-    else:
-        weights = dict(composition_pct)
-    total = sum(weights.values())
-    if total <= 0:
-        raise ValueError("composition sums to zero")
-    fractions = {sym: v / total for sym, v in weights.items()}
-    sigmas = {sym: sig.get(sym, 0.0) / total for sym in fractions}
-    return fractions, sigmas
 
 
 def _relative(value: float, sigma: float) -> float:

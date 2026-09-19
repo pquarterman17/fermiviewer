@@ -1,7 +1,7 @@
 // Bottom dock plot (handoff §5 <DockPlot>): uPlot line profile —
 // canvas-based, handles 10⁴–10⁶ points at 60 fps.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 
@@ -11,6 +11,9 @@ import {
   downloadCsv,
   profileToCsv,
 } from "../../lib/profileCsv";
+import { analyzeInterfaceWidth, type InterfaceWidthResult } from "../../lib/api/diagnostics";
+import { profileGeometry } from "../../lib/profileGeometry";
+import { profileSpan, withSigma, type ProfileSpan } from "../../lib/profileSpan";
 import { useStageInfo } from "../../store/stage";
 import { useViewer } from "../../store/viewer";
 import PlotContextSurface from "../plots/PlotContextSurface";
@@ -20,6 +23,23 @@ export default function DockPlot() {
   const setProfile = useStageInfo((s) => s.setProfile);
   const hostRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
+  // Measure mode repurposes uPlot's own drag-select: same gesture, but the
+  // selection is kept instead of zooming to it. One drag answers both
+  // questions a profile raises — how far apart are these two features, and
+  // how sharp is the edge between them — so they are not separate tools.
+  const [measuring, setMeasuring] = useState(false);
+  const [span, setSpan] = useState<ProfileSpan | null>(null);
+  const [fit, setFit] = useState<InterfaceWidthResult | null>(null);
+  const [fitError, setFitError] = useState<string | null>(null);
+
+  // Clear the measurement when the profile changes. A span and an edge fit
+  // belong to the curve they were taken from; leaving them up under a new
+  // profile shows one measurement labelled as another's.
+  useEffect(() => {
+    setSpan(null);
+    setFit(null);
+    setFitError(null);
+  }, [profile?.measureId, profile?.dist, profile?.intensity]);
 
   const exportProfile = () => {
     const s = useViewer.getState();
@@ -96,7 +116,24 @@ export default function DockPlot() {
             { stroke: "#888", grid: { stroke: "rgba(128,128,128,0.15)" } },
           ],
           legend: { show: false },
-          cursor: { y: false },
+          cursor: measuring
+            // setScale false: keep the selection rather than zooming into it
+            ? { y: false, drag: { x: true, y: false, setScale: false } }
+            : { y: false },
+          hooks: measuring
+            ? {
+                setSelect: [
+                  (u) => {
+                    if (u.select.width <= 0) return;
+                    const a = u.posToVal(u.select.left, "x");
+                    const b = u.posToVal(u.select.left + u.select.width, "x");
+                    setFit(null);
+                    setFitError(null);
+                    setSpan(profileSpan(profile.dist, profile.intensity, a, b));
+                  },
+                ],
+              }
+            : {},
         },
         data as uPlot.AlignedData,
         host,
@@ -118,16 +155,69 @@ export default function DockPlot() {
       plotRef.current?.destroy();
       plotRef.current = null;
     };
-  }, [profile]);
+  }, [profile, measuring]);
 
   if (!profile) return null;
+
+  const geom = (() => {
+    const s = useViewer.getState();
+    const id = s.activeId;
+    const meta = id ? s.images[id] : undefined;
+    const m = id
+      ? (s.measures[id] ?? []).find((x) => x.id === profile.measureId)
+      : undefined;
+    return profileGeometry(m, {
+      w: meta?.shape[1] ?? 1,
+      h: meta?.shape[0] ?? 1,
+    });
+  })();
+
+  const runFit = () => {
+    if (!span) return;
+    setFitError(null);
+    analyzeInterfaceWidth(span.x, span.y)
+      .then(setFit)
+      .catch((e: Error) => {
+        setFit(null);
+        setFitError(e.message);
+      });
+  };
 
   return (
     <div className="fvd-glass fvd-dock-plot">
       <div className="fvd-dock-head">
         <span>
           Profile — {Number(profile.length.toPrecision(4))} {profile.unit}
+          {geom && (
+            <span
+              className="dim"
+              title="Direction of integration and the perpendicular width averaged into each sample"
+            >
+              {" · "}{geom.angleDeg.toFixed(1)}°
+              {geom.widthPx > 1 && ` · ${geom.widthPx} px wide`}
+            </span>
+          )}
         </span>
+        <button
+          className={`fvd-icon-btn${measuring ? " active" : ""}`}
+          title={
+            measuring
+              ? "Stop measuring (drag zooms again)"
+              : "Measure: drag across the plot for a distance, then fit the edge inside it"
+          }
+          // the glyph is the whole label otherwise, which leaves a screen
+          // reader announcing "↔ button"
+          aria-label="Measure span"
+          aria-pressed={measuring}
+          onClick={() => {
+            setMeasuring((on) => !on);
+            setSpan(null);
+            setFit(null);
+            setFitError(null);
+          }}
+        >
+          ↔
+        </button>
         <button
           className="fvd-icon-btn"
           title="Download profile as CSV (provenance header + calibrated x-axis)"
@@ -143,6 +233,39 @@ export default function DockPlot() {
           ✕
         </button>
       </div>
+      {measuring && (
+        <div className="fvd-dock-measure">
+          {!span && <span className="dim">Drag across the plot to measure.</span>}
+          {span && (
+            <>
+              <span>
+                Δ {Number(span.length.toPrecision(4))} {profile.unit}
+              </span>
+              <span className="dim">
+                step {Number(span.step.toPrecision(3))}
+              </span>
+              <button className="fvd-btn" onClick={runFit} title="Fit an erf edge to the selected samples">
+                Fit edge
+              </button>
+            </>
+          )}
+          {fit && (
+            <>
+              <span>
+                centre {withSigma(fit.center, fit.center_sigma, profile.unit)}
+              </span>
+              <span>
+                10-90% {withSigma(fit.width_10_90, fit.width_sigma, profile.unit)}
+              </span>
+              {/* r² sits beside the widths on purpose: a tight-looking σ on a
+                  fit that did not describe the data is the misreading this
+                  readout has to prevent */}
+              <span className="dim">r² {fit.r_squared.toFixed(3)}</span>
+            </>
+          )}
+          {fitError && <span className="fvd-quality poor">{fitError}</span>}
+        </div>
+      )}
       <PlotContextSurface
         ref={hostRef}
         plotRef={plotRef}

@@ -24,7 +24,7 @@ function makeLayers(): LayersResult {
   return {
     axis: "y",
     layers_horizontal: true,
-    tilt_deg: 0.4,
+    tilt_deg: 0.4, applied_tilt_deg: null, sampled_fraction: 1,
     coherence: 0.9,
     pixel_size: 1,
     unit: "nm",

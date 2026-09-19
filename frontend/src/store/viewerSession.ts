@@ -22,7 +22,6 @@ import {
 } from "../lib/groups";
 import { restoreRegionUi } from "../lib/regionWorkspace";
 import { useBrowseScale } from "./browseScale";
-import { applyHoleUndoEntry } from "./viewerHoleUndo";
 import type { ViewerState } from "./viewerState";
 import {
   DEFAULT_DISPLAY,
@@ -32,7 +31,6 @@ import {
   type OverlayStyle,
   type SavedRoi,
   type Theme,
-  type UndoEntry,
   type View,
 } from "./viewerTypes";
 
@@ -233,97 +231,6 @@ export function ingestImages(
   });
 }
 
-type SetFull = (fn: (s: ViewerState) => Partial<ViewerState>) => void;
-
-/** Apply one undo entry in the given direction (pure state surgery —
- *  never calls the public actions, so no re-push loops). */
-export function applyUndoEntry(
-  set: SetFull,
-  e: UndoEntry,
-  dir: "undo" | "redo",
-): void {
-  const inverse = dir === "undo";
-  switch (e.t) {
-    case "measure-add":
-    case "measure-del": {
-      const doRemove = (e.t === "measure-add") === inverse;
-      if (doRemove) {
-        set((s) => ({
-          measures: {
-            ...s.measures,
-            [e.imageId]: (s.measures[e.imageId] ?? []).filter(
-              (m) => m.id !== e.measure.id,
-            ),
-          },
-          selectedMeasure:
-            s.selectedMeasure === e.measure.id ? null : s.selectedMeasure,
-        }));
-      } else {
-        set((s) => ({
-          measures: {
-            ...s.measures,
-            [e.imageId]: [...(s.measures[e.imageId] ?? []), e.measure],
-          },
-        }));
-      }
-      break;
-    }
-    case "measure-move":
-      set((s) => ({
-        measures: {
-          ...s.measures,
-          [e.imageId]: (s.measures[e.imageId] ?? []).map((m) =>
-            m.id === e.measureId
-              ? {
-                  ...m,
-                  pts: inverse ? e.before : e.after,
-                  // holes-detach fix: only entries from a body-translate
-                  // that actually had holes carry these — leave m.holes
-                  // untouched for every other measure-move producer.
-                  ...(e.beforeHoles !== undefined || e.afterHoles !== undefined
-                    ? { holes: inverse ? e.beforeHoles : e.afterHoles }
-                    : {}),
-                }
-              : m,
-          ),
-        },
-      }));
-      break;
-    case "hole-add":
-    case "hole-remove":
-      // logic lives in viewerHoleUndo.ts — this case alone tipped the
-      // module over the frontend size ratchet
-      applyHoleUndoEntry(set, e, inverse);
-      break;
-    case "derived":
-      if (inverse) {
-        set((s) => {
-          const images = { ...s.images };
-          delete images[e.meta.id];
-          return {
-            images,
-            order: s.order.filter((i) => i !== e.meta.id),
-            selected: s.selected.filter((i) => i !== e.meta.id),
-            activeId:
-              s.activeId === e.meta.id
-                ? e.parentId in images
-                  ? e.parentId
-                  : null
-                : s.activeId,
-          };
-        });
-      } else {
-        set((s) => ({
-          images: { ...s.images, [e.meta.id]: e.meta },
-          order: s.order.includes(e.meta.id)
-            ? s.order
-            : [...s.order, e.meta.id],
-          activeId: e.meta.id,
-        }));
-      }
-      break;
-  }
-}
 
 /** The serializable slice of store state a saved session captures —
  *  shared by every save path (file + named workspace).

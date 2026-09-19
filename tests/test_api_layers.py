@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from scipy.special import erf
 
+from fermiviewer.project_session import project
 from fermiviewer.server import create_app
 from fermiviewer.session import store
 from fixtures.minidm4 import write_mini_dm4
@@ -29,9 +30,13 @@ def _layered_image() -> np.ndarray:
 
 @pytest.fixture(autouse=True)
 def _clean_store():
+    # `project` too: result records live in the server-carried session, so
+    # without this a capture leaks into the next test's /api/results count.
     store.clear()
+    project.clear()
     yield
     store.clear()
+    project.clear()
 
 
 @pytest.fixture()
@@ -455,3 +460,160 @@ def test_layers_multi_route_and_op_both_reject_an_uncalibrated_map(
 
     with pytest.raises(MapCalibrationError, match="incompatible spatial calibration"):
         ops.run("layers_multi", ref_ds, {"axis": "y"}, inputs={"others": [other_ds]})
+
+
+# ── ADR 0004 result records ──────────────────────────────────────────
+
+
+def test_layers_records_nothing_unless_asked(client, image_id) -> None:
+    """Sweeping `sensitivity` must not fill the results panel with runs the
+    user never meant to keep — the same default `/measure/profile` takes."""
+    r = client.post("/api/analyze/layers", json={"image_id": image_id})
+    assert r.status_code == 200
+    assert "result" not in r.json()
+    assert client.get("/api/results").json()["results"] == []
+
+
+def test_layers_captures_the_profile_it_measured_not_only_the_answer(
+    client, image_id
+) -> None:
+    """The layer table is the conclusion; the depth profile is the evidence.
+
+    A record holding only thicknesses cannot be checked — a reader has no
+    way to see whether an interface sits on a real step or on noise. So the
+    curve the detector actually ran on is persisted beside the tables.
+    """
+    r = client.post(
+        "/api/analyze/layers", json={"image_id": image_id, "record": True}
+    )
+    assert r.status_code == 200
+    body = r.json()
+    result_id = body["result"]["id"]
+
+    entry = client.get(f"/api/results/{result_id}").json()
+    assert entry["analysis"] == "analyze.layers"
+    assert entry["status"] == "completed"
+    assert entry["missing_members"] == []
+    assert "record" not in entry["params"]            # never the toggle itself
+    assert entry["params"]["interface_origin"] == "detected"
+
+    names = {o["name"]: o for o in entry["outputs"]}
+    assert set(names) >= {
+        "layers", "interfaces", "depth_profile",
+        "n_layers", "tilt_deg", "orientation_coherence",
+    }
+    assert names["n_layers"]["data"]["value"] == len(body["layers"])
+
+    curve = names["depth_profile"]
+    data = client.get(
+        f"/api/results/{result_id}/outputs/"
+        f"{entry['outputs'].index(curve)}/data"
+    ).json()
+    # one (depth, intensity) pair per profile sample — the same curve the
+    # on-screen plot draws, not a summary of it
+    assert data["shape"] == [len(body["depth_profile"]), 2]
+    assert data["values"][0][1] == pytest.approx(body["depth_profile"][0])
+
+    ifaces = names["interfaces"]
+    idata = client.get(
+        f"/api/results/{result_id}/outputs/"
+        f"{entry['outputs'].index(ifaces)}/data"
+    ).json()
+    assert idata["shape"] == [len(body["interfaces"]), 5]
+    positions = [row[1] for row in idata["values"]]
+    assert positions == pytest.approx(
+        [i["position"] for i in body["interfaces"]], abs=1e-9
+    )
+    # σ_w is absent without `waviness`, and absent means null — a 0 there
+    # would read as a perfectly flat interface (ADR 0004 §3)
+    assert all(row[3] is None for row in idata["values"])
+
+
+def test_an_edited_run_is_a_second_record_not_an_overwrite(
+    client, image_id
+) -> None:
+    """The gap between where the detector put an interface and where the
+    operator put it IS the finding — it says the automatic method could not
+    be trusted here. Replacing the first record would erase exactly that.
+    """
+    detected = client.post(
+        "/api/analyze/layers", json={"image_id": image_id, "record": True}
+    ).json()
+    moved = [i["position"] + 4.0 for i in detected["interfaces"]]
+    edited = client.post(
+        "/api/analyze/layers/edit",
+        json={
+            "image_id": image_id, "positions": moved,
+            "axis": detected["axis"], "record": True,
+        },
+    )
+    assert edited.status_code == 200
+
+    entries = client.get("/api/results").json()["results"]
+    assert len(entries) == 2
+    origins = [e["params"]["interface_origin"] for e in entries]
+    assert sorted(origins) == ["detected", "edited"]
+
+    edit_entry = next(e for e in entries if e["params"]["interface_origin"] == "edited")
+    # what the operator ASKED for is recorded, not merely what the refit
+    # settled on — otherwise the record cannot show the disagreement
+    assert edit_entry["params"]["given_positions"] == pytest.approx(moved)
+    detect_entry = next(
+        e for e in entries if e["params"]["interface_origin"] == "detected"
+    )
+    assert "given_positions" not in detect_entry["params"]
+
+
+def test_an_uncalibrated_image_says_so_rather_than_implying_nanometres(
+    client, tmp_path
+) -> None:
+    f = write_mini_dm4(
+        tmp_path / "raw.dm4", dims=[W, H],
+        data=_layered_image().ravel().astype(np.float32), data_type=2,
+    )
+    img = client.post("/api/session/open", json={"paths": [str(f)]}).json()[0]["id"]
+    body = client.post(
+        "/api/analyze/layers", json={"image_id": img, "record": True}
+    ).json()
+    entry = client.get(f"/api/results/{body['result']['id']}").json()
+    assert any("not calibrated units" in w for w in entry["warnings"])
+
+
+def test_the_route_distinguishes_a_measured_tilt_from_an_applied_one(
+    client, image_id
+) -> None:
+    """`tilt_deg` describes the specimen; `applied_tilt_deg` changes every
+    number in the response. Reporting only one would leave a reader unable
+    to tell whether a correction had happened."""
+    plain = client.post("/api/analyze/layers", json={"image_id": image_id}).json()
+    assert plain["applied_tilt_deg"] is None
+    assert plain["sampled_fraction"] == pytest.approx(1.0)
+
+    tilted = client.post(
+        "/api/analyze/layers", json={"image_id": image_id, "tilt_deg": 8.0}
+    )
+    assert tilted.status_code == 200
+    body = tilted.json()
+    assert body["applied_tilt_deg"] == pytest.approx(8.0)
+    # the rotated box had to shrink to stay inside the ROI, and the response
+    # says by how much rather than quietly returning a shorter profile
+    assert body["sampled_fraction"] < 1.0
+    assert len(body["depth_profile"]) < len(plain["depth_profile"])
+
+
+def test_a_tilt_that_does_not_fit_is_a_422_not_a_silent_narrowing(
+    client, image_id
+) -> None:
+    """A steep tilt on a NARROW strip leaves no box to average over.
+
+    It takes a thin ROI to get there: on the full 120x60 frame even 80 deg
+    still leaves 28 lateral pixels, so the refusal is about the box running
+    out, not about the angle being large. Returning a one-pixel-wide
+    "profile" instead would be a line sample wearing an average's name.
+    """
+    r = client.post(
+        "/api/analyze/layers",
+        json={"image_id": image_id, "roi": [1, 1, H, 5], "tilt_deg": 80.0},
+    )
+    assert r.status_code == 422
+    assert "lateral pixels" in r.json()["detail"]

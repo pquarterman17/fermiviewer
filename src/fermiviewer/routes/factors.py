@@ -33,13 +33,13 @@ from fermiviewer.calc.eds_qc import (
 )
 from fermiviewer.calc.eds_zeta import dose_electrons
 from fermiviewer.calc.energy_units import to_kev
+from fermiviewer.datastruct import DataKind
 from fermiviewer.io.factors_db import (
     FactorSetError,
     create_factor_set,
     factor_set_to_json,
 )
-from fermiviewer.io.standards_db import get_standard
-from fermiviewer.io.standards_model import Standard, StandardError, standard_from_json
+from fermiviewer.io.standards_model import Standard, StandardError
 from fermiviewer.routes._eds_common import (
     background_component,
     fit_summed_peaks,
@@ -51,49 +51,13 @@ from fermiviewer.routes._eds_params import (
     resolve_eds_param,
     resolve_live_time_s,
 )
+from fermiviewer.routes._factors_common import (
+    measurement_scope,
+    resolved_standard,
+    scoped_spectrum,
+)
 
 router = APIRouter(prefix="/api")
-
-def _standard(standard_id: str) -> Standard:
-    std = get_standard(standard_id)
-    if std is None:
-        raise HTTPException(404, f"unknown standard id: {standard_id}")
-    return std
-
-
-def _resolved_standard(req: FactorDeriveRequest) -> Standard:
-    """The stored standard, or a throwaway one built from the request.
-
-    An inline composition is validated by exactly the same
-    `standard_from_json` the store uses, so the two paths cannot diverge
-    on what counts as a valid composition.
-    """
-    if req.standard_id:
-        if req.composition is not None:
-            raise HTTPException(
-                422, "give a standard_id or an inline composition, not both"
-            )
-        return _standard(req.standard_id)
-    if not req.composition or req.basis is None:
-        raise HTTPException(
-            422, "give a standard_id, or an inline composition with its basis"
-        )
-    body: dict[str, Any] = {
-        "id": "inline",
-        "name": "inline composition",
-        "version": 0,
-        "created_at": "-",
-        "updated_at": "-",
-        "basis": req.basis,
-        "composition": dict(req.composition),
-    }
-    if req.mass_thickness_kg_m2 is not None:
-        body["mass_thickness"] = {"value": req.mass_thickness_kg_m2, "unit": "kg/m2"}
-    try:
-        return standard_from_json(body)
-    except StandardError as exc:
-        raise HTTPException(422, str(exc)) from None
-
 
 class FactorDeriveRequest(BaseModel):
     """Either name a stored standard, or state its composition inline.
@@ -140,45 +104,23 @@ class FactorDeriveRequest(BaseModel):
 
 def _measure(
     req: FactorDeriveRequest, std: Standard
-) -> tuple[Any, Any, dict, list[str], str]:
+) -> tuple[Any, Any, dict, list[str], str, dict[str, Any]]:
     """Fit the standard's reference spectrum and return the pieces every
     derivation needs: the fit, the resolved calibration, the element
-    order, and the image actually measured.
+    order, the image actually measured, and the region scope applied.
 
     The measured image is returned rather than re-read from the request
     because `region_label` resolves to one and the request's own
     `image_id` is then None -- recording that would give a factor set a
     null provenance for the one thing it is a factor for.
     """
-    if req.region or req.roi:
-        # Accepting these and fitting the whole spectrum anyway would put a
-        # region in the factor set's provenance that had no effect on its
-        # numbers -- a false record, worse than the missing feature.
-        raise HTTPException(
-            422,
-            "region/roi restriction of the derivation spectrum is not "
-            "implemented; the fit uses the whole summed spectrum, so a "
-            "region here would be recorded but not applied",
-        )
-    image_id = req.image_id
-    if image_id is None:
-        if not req.region_label:
-            raise HTTPException(
-                422, "give an image_id, or a region_label naming a stored reference region"
-            )
-        stored = next((r for r in std.regions if r.label == req.region_label), None)
-        if stored is None:
-            raise HTTPException(
-                404, f"standard has no reference region labelled {req.region_label!r}"
-            )
-        if not stored.image_id:
-            raise HTTPException(
-                422,
-                f"reference region {stored.label!r} records no image; it cannot be "
-                "measured until one is given",
-            )
-        image_id = stored.image_id
-
+    image_id, region_ref, roi_ref = measurement_scope(
+        std,
+        image_id=req.image_id,
+        region_label=req.region_label,
+        region=req.region,
+        roi=req.roi,
+    )
     ds = spectral_dataset(image_id)
     cal = {
         "beam_kv": resolve_beam_kv(ds.metadata, req.beam_kv),
@@ -194,9 +136,10 @@ def _measure(
             422, f"the standard states no composition for {missing}"
         )
     energy = to_kev(ds.energy_axis, ds.energy_cal.units)
+    spectrum, scope = scoped_spectrum(ds, image_id, region_ref, roi_ref)
     pf, _ = fit_summed_peaks(
         energy,
-        ds.sum_spectrum(),
+        spectrum,
         elements,
         beam_kv=cal["beam_kv"].value,
         background=background_component(req.background, req.e0_kev),
@@ -205,7 +148,22 @@ def _measure(
         strip_artifacts=False,
         escape_fraction=0.0,
     )
-    return pf, ds, cal, elements, image_id
+    return pf, ds, cal, elements, image_id, scope
+
+
+def _dose_fraction(ds: Any, scope: dict[str, Any]) -> float:
+    """Share of the acquisition's dose that landed on the summed pixels.
+
+    1.0 for an unscoped sum (and for a 1-D spectrum, which has no pixels to
+    take a share of), so an existing whole-cube derivation is unchanged.
+    """
+    if not scope.get("scoped") or ds.kind is not DataKind.SPECTRUM_IMAGE:
+        return 1.0
+    total = int(ds.data.shape[0]) * int(ds.data.shape[1])
+    counted = int(scope.get("pixel_count") or 0)
+    if total <= 0 or counted <= 0:
+        return 1.0
+    return counted / total
 
 
 def _factor_json(f: DerivedFactor) -> dict[str, Any]:
@@ -222,8 +180,10 @@ def _factor_json(f: DerivedFactor) -> dict[str, Any]:
 @router.post("/factors/derive")
 def factors_derive(req: FactorDeriveRequest) -> dict[str, Any]:
     """Derive a k or ζ factor set by measuring a known standard."""
-    std = _resolved_standard(req)
-    pf, ds, cal, elements, image_id = _measure(req, std)
+    std = resolved_standard(
+        req.standard_id, req.composition, req.basis, req.mass_thickness_kg_m2
+    )
+    pf, ds, cal, elements, image_id, scope = _measure(req, std)
 
     pct = {sym: std.composition[sym].value for sym in elements}
     sig = {
@@ -247,7 +207,15 @@ def factors_derive(req: FactorDeriveRequest) -> dict[str, Any]:
                     "ζ needs the standard's certified mass-thickness; there is no way "
                     "to infer it that does not invent the answer",
                 )
-            dose = dose_electrons(cal["probe_current_na"].value, cal["live_time_s"].value)
+            # The dose that produced THESE counts. `live_time_s` describes
+            # the whole acquisition, so a region-scoped sum -- which uses
+            # only some of its pixels' counts -- must divide by only that
+            # share of the dose. Without this, zeta (an ABSOLUTE quantity)
+            # scaled with the region's pixel count: 2x for half a cube, 4x
+            # for a quarter, silently.
+            dose = dose_electrons(
+                cal["probe_current_na"].value, cal["live_time_s"].value
+            ) * _dose_fraction(ds, scope)
             derived = derive_zeta_factors(
                 elements,
                 net,
@@ -292,6 +260,13 @@ def factors_derive(req: FactorDeriveRequest) -> dict[str, Any]:
         # when a stored reference region supplied it)
         "image_id": image_id,
         "region_label": req.region_label,
+        # the scope ACTUALLY applied (a stored reference region supplies
+        # its own when the request names none), and what it selected --
+        # so the record says how many pixels the factor came from, not
+        # merely which string asked
+        "region": scope["region"],
+        "roi": scope["roi"],
+        "scope": scope,
     }
     body: dict[str, Any] = {
         "kind": req.kind,

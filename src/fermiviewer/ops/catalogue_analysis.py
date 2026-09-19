@@ -394,6 +394,16 @@ def _interface_width(ds: DataStruct, params: dict[str, Any]) -> OpResult:
                 "amplitude": fit.amplitude,
                 "offset": fit.offset,
             },
+            # 1σ from the residual scatter; null (never 0) when the fit is
+            # exactly determined — an absent uncertainty is absent
+            "coefficient_sigmas": {
+                "center": (
+                    None if not np.isfinite(fit.center_sigma) else fit.center_sigma
+                ),
+                "width_10_90": (
+                    None if not np.isfinite(fit.width_sigma) else fit.width_sigma
+                ),
+            },
             "r_squared": fit.r_squared,
             "x_fit": fit.x_fit.tolist(),
             "y_fit": fit.y_fit.tolist(),

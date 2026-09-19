@@ -38,6 +38,11 @@ export function layerOverlayCoordinates(
   positions: number[],
   traces: (number[] | null)[],
   roi: AnalysisRoi | null,
+  /** the collapse's tilt and how many depth samples it produced. A tilted
+      profile is sampled along a rotated axis CENTRED on the ROI and
+      shortened to fit, so depth index i is no longer `roi[0]-1+i`: the box
+      both shrinks and re-centres. Omit for an untilted collapse. */
+  tilt?: { tiltDeg: number; nDepth: number } | null,
 ): {
   interfaces: number[];
   traces: (number[] | null)[];
@@ -45,15 +50,35 @@ export function layerOverlayCoordinates(
   lateralRange?: [number, number];
   depthRange?: [number, number];
 } {
-  if (!roi) return { interfaces: positions, traces, lateralOffset: 0 };
-  const depthOffset = (axis === "y" ? roi[0] : roi[1]) - 1;
-  const lateralOffset = (axis === "y" ? roi[1] : roi[0]) - 1;
+  if (!roi && !tilt) return { interfaces: positions, traces, lateralOffset: 0 };
+  const lo = roi ? (axis === "y" ? roi[0] : roi[1]) - 1 : 0;
+  const hi = roi ? (axis === "y" ? roi[2] : roi[3]) : Infinity;
+  // Untilted: depth index i IS row lo+i. Tilted: the samples run along a
+  // rotated axis through the ROI's CENTRE, n_depth of them, each one pixel
+  // apart along that axis — so the row at index i is
+  // `centre + (i - (n-1)/2)·cos θ`. Using the untilted offset drew every
+  // line tens of pixels off the feature at a 20° tilt.
+  // `lo + (rows-1)/2`, not the midpoint of the bounds: the sampler centres
+  // on `(height - 1) / 2` of the ROI's PIXELS, and the half-pixel
+  // difference between those two readings is a real half-row shift.
+  const depthOffset =
+    tilt && Number.isFinite(hi)
+      ? lo + (hi - lo - 1) / 2
+        - ((tilt.nDepth - 1) / 2) * Math.cos((tilt.tiltDeg * Math.PI) / 180)
+      : lo;
+  const scale = tilt ? Math.cos((tilt.tiltDeg * Math.PI) / 180) : 1;
+  const lateralOffset = roi ? (axis === "y" ? roi[1] : roi[0]) - 1 : 0;
+  const toImage = (p: number) => p * scale + depthOffset;
   return {
-    interfaces: positions.map((p) => p + depthOffset),
-    traces: traces.map((trace) => trace?.map((p) => p + depthOffset) ?? null),
+    interfaces: positions.map(toImage),
+    traces: traces.map((trace) => trace?.map(toImage) ?? null),
     lateralOffset,
-    lateralRange: axis === "y" ? [roi[1] - 1, roi[3]] : [roi[0] - 1, roi[2]],
-    depthRange: axis === "y" ? [roi[0] - 1, roi[2]] : [roi[1] - 1, roi[3]],
+    lateralRange: roi
+      ? axis === "y" ? [roi[1] - 1, roi[3]] : [roi[0] - 1, roi[2]]
+      : undefined,
+    depthRange: roi
+      ? axis === "y" ? [roi[0] - 1, roi[2]] : [roi[1] - 1, roi[3]]
+      : undefined,
   };
 }
 

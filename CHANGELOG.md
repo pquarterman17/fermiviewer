@@ -13,6 +13,71 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Interfacial roughness from the box, not from the averaged profile
+  (`POST /api/measure/profile-roughness`, op `profile_roughness`).** A box
+  profile's edge width is wide for two different reasons — the interface is
+  genuinely graded, or it is sharp but wavy and the lateral averaging smeared
+  it — and they combine as `σ_erf² ≈ σ_chem² + σ_w²`, so one number from the
+  averaged profile cannot separate them. Tracing the interface column by
+  column measures σ_w directly and the grading falls out of the subtraction.
+  The metrology already existed; what was missing was a way to run it on the
+  box you actually drew, at whatever angle you drew it.
+- **Span measurement and edge fitting on the profile plot.** Drag across the
+  plot for the distance between two features and the step across them, then
+  fit an erf edge to the samples inside. `fit_interface_width` now reports 1σ
+  on the fitted centre and 10-90% width, validated against run-to-run scatter
+  by Monte Carlo rather than asserted.
+- **Draggable box width and a direction readout on box profiles.** Rotation
+  already worked — the backend samples at any angle, so dragging an endpoint
+  always turned the integration direction — but the width could not be
+  reached by any handle and the angle was never reported. A profile at 7° and
+  one at 0° look identical on a plot and mean different things.
+- **A tilt handle on the cross-section overlay**, with the profile
+  re-integrated along the rotated axis. One angle for the whole stack:
+  parallel layers cannot converge.
+- Layers analyses now persist as result records, so a cross-section survives
+  the project save instead of living only in the browser tab.
+
+### Fixed
+- **A rough interface could be under-measured several-fold in silence.** The
+  per-column trace searches only ±`trace_window` around the interface; one
+  that wanders further is clipped, and `sigma_w` came back a lower bound
+  while the trace's `quality` still read 1.00 — every column WAS traced, just
+  all to the same wrong place. Both the layers result and the new endpoint
+  now report `window_limited`, and the endpoint says in words that the number
+  is a lower bound.
+- **A rejected erf fit reported a perfect fit quality.** When the fitted
+  centre escapes its window the fit is discarded and σ becomes NaN, but its
+  r² was still returned — and `assessLayerQuality` grades on r² alone, so an
+  interface with no measurable width rated good.
+- **EELS cross-sections derived from a standard, and factor derivation
+  restricted to a region (ADR 0011, roadmap 5b).** The hydrogenic model in
+  `eels_quant.cross_section` knows nothing about your spectrometer, and
+  quantifying against it inherits its tens-of-percent error silently.
+  `POST /api/factors/derive-eels` (op `eels_derive_cross_sections`) now
+  measures a standard of known composition and inverts the shipped
+  quantification — `σ_i ∝ I_i/a_i` — so the relative sensitivities become
+  your instrument's, measured. Only ratios are measurable and σ carries m²,
+  so the absolute scale is anchored to the reference element's model value
+  (or one you supply) and the anchor's origin is recorded, never implied.
+  Every entry keeps the model value it was compared against, so neither
+  silently stands in for the other.
+- Derived sets store as the new `sigma` kind alongside `k` and `zeta`,
+  carrying the standard's ATOMIC fraction — EELS quantifies on the atomic
+  basis where Cliff–Lorimer uses the weight basis, so the same certificate
+  converts in opposite directions. Both conversions now live in
+  `calc/composition.py`; two spellings of one conversion is how they drift.
+
+### Fixed
+- A `region` or `roi` on `POST /api/factors/derive` is now applied to the
+  sum, not merely recorded in the factor set's provenance. A specimen has a
+  matrix and inclusions, so a factor derived from the whole field was a
+  factor for the average of everything in it rather than for the phase the
+  certificate describes.
+
 ## [0.5.0] - 2026-09-07
 
 ### Added

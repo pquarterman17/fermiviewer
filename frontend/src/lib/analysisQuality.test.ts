@@ -5,7 +5,7 @@ import { assessGrainQuality, assessLayerQuality } from "./analysisQuality";
 
 function layers(overrides: Partial<LayersResult> = {}): LayersResult {
   return {
-    axis: "y", layers_horizontal: true, tilt_deg: 0, coherence: 0.8,
+    axis: "y", layers_horizontal: true, tilt_deg: 0, applied_tilt_deg: null, sampled_fraction: 1, coherence: 0.8,
     pixel_size: 1, unit: "px", depth_pos: Array.from({ length: 100 }, (_, i) => i),
     depth_profile: [], interfaces: [
       { position: 30, sigma_erf: 1, r_squared: 0.95, sigma_w: null, trace: null, roughness: null },

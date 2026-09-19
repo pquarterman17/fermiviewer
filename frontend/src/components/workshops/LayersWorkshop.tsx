@@ -33,6 +33,7 @@ import LayersMultiCompare from "./LayersMultiCompare";
 import { LayerStack, exportCsv } from "./layers/LayerStack";
 import { LayersControls } from "./layers/LayersControls";
 import { LayersMode } from "./layers/LayersMode";
+import { useLayersStageEdits } from "./layers/useLayersStageEdits";
 
 export { LayerStack } from "./layers/LayerStack";
 
@@ -45,7 +46,6 @@ export default function LayersWorkshop() {
   const setActive = useViewer((s) => s.setActive);
   const layersEdit = useViewer((s) => s.layersEdit);
   const setLayersEdit = useViewer((s) => s.setLayersEdit);
-  const layersEditReq = useViewer((s) => s.layersEditReq);
   const setLayersEditReq = useViewer((s) => s.setLayersEditReq);
 
   const [axis, setAxis] = useState<"auto" | "y" | "x">("auto");
@@ -60,6 +60,12 @@ export default function LayersWorkshop() {
   const [busy, setBusy] = useState(false);
   const [addPos, setAddPos] = useState("");
   const [mode, setMode] = useState<"single" | "compare">("single");
+  const [saveResult, setSaveResult] = useState(false);
+  // The tilt the profile is collapsed along. Held here rather than read off
+  // the last result because it is an INPUT: `result.tilt_deg` is what the
+  // orientation detector measured, which is a different number and must not
+  // silently become the correction.
+  const [tiltDeg, setTiltDeg] = useState<number | null>(null);
   const layersFocusReq = useViewer((s) => s.layersFocusReq);
   const setLayersFocusReq = useViewer((s) => s.setLayersFocusReq);
   const images = useViewer((s) => s.images);
@@ -90,10 +96,14 @@ export default function LayersWorkshop() {
         r.interfaces.map((i) => i.position),
         r.interfaces.map((i) => i.trace),
         roi,
+        r.applied_tilt_deg == null
+          ? null
+          : { tiltDeg: r.applied_tilt_deg, nDepth: r.depth_pos.length },
       );
       setLayersOverlay({
         imageId,
         axis: r.axis,
+        tiltDeg: r.applied_tilt_deg ?? 0,
         ...overlay,
       });
       useCrossSection.getState().setLayers({
@@ -138,11 +148,19 @@ export default function LayersWorkshop() {
     if (!activeId || !result) return;
     setBusy(true);
     editLayers(activeId, positions, {
+      // the SAME tilt this result was collapsed along: the positions are
+      // depths in that profile, so re-measuring under another angle would
+      // read them against a different frame and move every one of them
+      tiltDeg: result.applied_tilt_deg ?? null,
       roi: analysisRoi.roi,
       axis: result.axis === "x" ? "x" : "y",
       waviness,
       reduce: decurtain ? "median" : "mean",
       destripe: decurtain,
+      // An edited run saves as its own record when saving is on, rather
+      // than replacing the detected one: the distance between the two is
+      // the finding (see routes/_layers_result.py).
+      record: saveResult,
     })
       .then(applyResult)
       .catch((e: Error) => setStatus(`Layers edit: ${e.message}`))
@@ -175,19 +193,21 @@ export default function LayersWorkshop() {
     [setLayersOverlay, setLayersEdit, setLayersEditReq],
   );
 
-  // a stage edit (drag / add / remove) published a new interface list → recompute
-  useEffect(() => {
-    if (layersEditReq && result) {
-      recompute(roiLocalDepths(result.axis, layersEditReq, analysisRoi.roi));
-      setLayersEditReq(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layersEditReq]);
+  useLayersStageEdits({
+    ready: result !== null,
+    onPositions: (p) =>
+      result && recompute(roiLocalDepths(result.axis, p, analysisRoi.roi)),
+    onTilt: (deg) => {
+      setTiltDeg(deg);
+      run(deg);
+    },
+  });
 
-  const run = () => {
+  const run = (tilt: number | null = tiltDeg) => {
     if (!activeId) return;
     setBusy(true);
     analyzeLayers(activeId, {
+      tiltDeg: tilt,
       roi: analysisRoi.roi,
       axis,
       modality,
@@ -196,6 +216,7 @@ export default function LayersWorkshop() {
       waviness,
       reduce: decurtain ? "median" : "mean",
       destripe: decurtain,
+      record: saveResult,
     })
       .then(applyResult)
       .catch((e: Error) => setStatus(`Layers: ${e.message}`))
@@ -460,6 +481,17 @@ export default function LayersWorkshop() {
           <button className="fvd-btn" disabled={!canUseResult} onClick={() => exportCsv(result)} title="Export layers + interfaces as CSV">
             Export CSV
           </button>
+          <label
+            className="fvd-check"
+            title="Keep this run, its settings, the layer table and the depth profile it was measured from in Results & Methods"
+          >
+            <input
+              type="checkbox"
+              checked={saveResult}
+              onChange={(e) => setSaveResult(e.target.checked)}
+            />
+            Save result
+          </label>
         </div>
       )}
 

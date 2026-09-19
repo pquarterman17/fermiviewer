@@ -207,6 +207,17 @@ export type UndoEntry =
       beforeHoles?: Measure["holes"];
       afterHoles?: Measure["holes"];
     }
+  // Dragging a box profile's long edge. A separate entry from
+  // `measure-move` because width is not a point: that case restores `pts`
+  // and would leave the width where the drag put it, so Ctrl+Z after a
+  // width drag popped an unrelated earlier edit instead.
+  | {
+      t: "measure-width";
+      imageId: string;
+      measureId: string;
+      before: number;
+      after: number;
+    }
   // Draw-a-hole (plan item 4): converting a top-level polygon/lasso ring
   // into a subtracted hole of `hostId`, or the reverse. `child` is the
   // FULL ring measure — carried whole (not just its pts) so undo restores
@@ -224,6 +235,8 @@ export function undoLabel(e: UndoEntry): string {
       return `delete ${e.measure.kind}`;
     case "measure-move":
       return "move measure";
+    case "measure-width":
+      return "resize box width";
     case "hole-add":
       return "mark as hole";
     case "hole-remove":
@@ -294,6 +307,11 @@ export interface LayersOverlayState {
   axis: "y" | "x";
   interfaces: number[];              // depth positions (image pixels)
   traces: (number[] | null)[];
+  /** Off-axis tilt the profile was collapsed along, degrees. ONE angle for
+      the whole stack: layers in a film stack are parallel, so a per-interface
+      angle would let two of them cross and leave "depth" with no single
+      meaning to measure a thickness along. */
+  tiltDeg?: number;
   lateralOffset?: number;
   lateralRange?: [number, number];
   depthRange?: [number, number];

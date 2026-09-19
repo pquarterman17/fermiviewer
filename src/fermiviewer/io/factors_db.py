@@ -56,8 +56,16 @@ FACTOR_SCHEMA = 1
 
 #: "k" is dimensionless and defined up to its reference element; "zeta"
 #: is absolute, in kg/m², and specific to the detector geometry that
-#: measured it. They are not interchangeable and the kind is stored.
-FACTOR_KINDS = ("k", "zeta")
+#: measured it; "sigma" is an EELS partial cross-section in m², absolute
+#: but with its scale ANCHORED to a reference element (see
+#: `calc.eels_factors`) and specific to the beam energy, collection
+#: angle and integration window it was measured over. They are not
+#: interchangeable and the kind is stored.
+FACTOR_KINDS = ("k", "zeta", "sigma")
+
+#: kinds whose values are defined relative to one element, so a stored
+#: set is meaningless without naming it
+_REFERENCED_KINDS = ("k", "sigma")
 
 
 class FactorSetError(ValueError):
@@ -75,6 +83,14 @@ class FactorEntry:
     intensity_sigma: float | None = None
     weight_fraction: float | None = None
     weight_fraction_sigma: float | None = None
+    #: "sigma" sets carry the standard's ATOMIC fraction instead — EELS
+    #: quantifies on the atomic basis, and recording the wrong one would
+    #: make the echoed provenance fail to reproduce the value
+    atomic_fraction: float | None = None
+    atomic_fraction_sigma: float | None = None
+    #: "sigma" sets: the model value the derived one was compared
+    #: against, kept so neither silently stands in for the other
+    model_value: float | None = None
 
 
 @dataclass(frozen=True)
@@ -163,6 +179,9 @@ def _entry_from(symbol: str, raw: Any) -> FactorEntry:
         intensity_sigma=_opt("intensity_sigma"),
         weight_fraction=_opt("weight_fraction"),
         weight_fraction_sigma=_opt("weight_fraction_sigma"),
+        atomic_fraction=_opt("atomic_fraction"),
+        atomic_fraction_sigma=_opt("atomic_fraction_sigma"),
+        model_value=_opt("model_value"),
     )
 
 
@@ -180,9 +199,9 @@ def factor_set_from_json(raw: Mapping[str, Any]) -> FactorSet:
         raise FactorSetError("a factor set needs at least one factor")
     factors = {str(sym): _entry_from(str(sym), val) for sym, val in factors_raw.items()}
     ref = str(raw.get("reference_element", "") or "")
-    if kind == "k":
+    if kind in _REFERENCED_KINDS:
         if not ref:
-            raise FactorSetError("a k factor set must name its reference element")
+            raise FactorSetError(f"a {kind} factor set must name its reference element")
         if ref not in factors:
             raise FactorSetError(
                 f"reference element {ref!r} is not among the set's factors"
@@ -233,6 +252,17 @@ def factor_set_to_json(fs: FactorSet) -> dict[str, Any]:
                     if e.weight_fraction_sigma is not None
                     else {}
                 ),
+                **(
+                    {"atomic_fraction": e.atomic_fraction}
+                    if e.atomic_fraction is not None
+                    else {}
+                ),
+                **(
+                    {"atomic_fraction_sigma": e.atomic_fraction_sigma}
+                    if e.atomic_fraction_sigma is not None
+                    else {}
+                ),
+                **({"model_value": e.model_value} if e.model_value is not None else {}),
             }
             for sym, e in fs.factors.items()
         },

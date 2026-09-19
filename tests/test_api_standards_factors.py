@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from fermiviewer.calc.eds import line_energy
 from fermiviewer.calc.eds_calib import fano_sigma_kev
+from fermiviewer.ops._region_param import REGION_PARAM
 from fermiviewer.server import create_app
 from fermiviewer.session import store
 from fixtures.minidm4 import write_mini_dm4
@@ -399,23 +400,83 @@ def test_provenance_records_the_image_actually_measured(client, cube_id) -> None
     assert r.json()["factor_set"]["derived_from"]["image_id"] == cube_id
 
 
-def test_a_region_that_would_not_be_applied_is_refused(client, cube_id) -> None:
-    """The fit uses the whole summed spectrum. Accepting a roi and
-    recording it in provenance anyway would put a region in the factor
-    set's history that had no effect on its numbers — a false record,
-    worse than the missing feature."""
+def test_a_region_restricts_which_pixels_are_fitted(client, tmp_path) -> None:
+    """The point of a reference region: a specimen has a matrix and
+    inclusions, and a factor derived from the WHOLE field is a factor for
+    the average of everything in it, not for the phase whose composition
+    the certificate states.
+
+    The cube is deliberately inhomogeneous — the left column carries a
+    different Fe:Cr ratio from the right — so a factor derived from one
+    column differs from the whole-field one. If the region were recorded
+    but not applied (the earlier behaviour), the two would be identical.
+    """
+    left = _peak(21000.0, FE) + _peak(6000.0, CR)
+    right = _peak(6000.0, FE) + _peak(21000.0, CR)
+    arr = np.empty((NE, NY, NX))
+    for y in range(NY):
+        arr[:, y, 0] = left
+        for x in range(1, NX):
+            arr[:, y, x] = right
+    f = write_mini_dm4(
+        tmp_path / "split.dm4",
+        dims=[NX, NY, NE],
+        data=arr.ravel().astype(np.float32),
+        data_type=2,
+        cal=[
+            {"scale": 1, "origin": 0, "units": "nm"},
+            {"scale": 1, "origin": 0, "units": "nm"},
+            {"scale": SCALE, "origin": 0, "units": "keV"},
+        ],
+    )
+    img = client.post("/api/session/open", json={"paths": [str(f)]}).json()[0]["id"]
+    std = _standard(client)
+
+    whole = _derive(client, std["id"], img)
+    # column 1 only, in the frozen 1-based inclusive "r1,c1,r2,c2" string
+    scoped = _derive(client, std["id"], img, roi=f"1,1,{NY},1")
+
+    assert scoped["factors"]["Cr"]["value"] != pytest.approx(
+        whole["factors"]["Cr"]["value"], rel=1e-3
+    )
+    # and the left column alone has the 70/30-matching 21000:6000 ratio,
+    # so its k_Cr is the hand-worked 1.5
+    assert scoped["factors"]["Cr"]["value"] == pytest.approx(1.5, rel=0.02)
+
+
+def test_the_scope_records_what_it_selected(client, tmp_path, cube_id) -> None:
+    """Provenance says how many pixels the factor came from, not merely
+    which string asked for them."""
+    std = _standard(client)
+    body = _derive(client, std["id"], cube_id, roi=f"1,1,{NY},1", store=True)
+    scope = body["factor_set"]["derived_from"]["scope"]
+    assert scope["scoped"] is True
+    assert scope["pixel_count"] == NY
+    assert scope["rect"] == [1, 1, NY, 1]
+
+
+def test_a_region_needs_a_cube(client, tmp_path) -> None:
+    """A 1D spectrum has no pixels to select."""
+    f = write_mini_dm4(
+        tmp_path / "spec.dm4",
+        dims=[NE],
+        data=PIXEL.astype(np.float32),
+        data_type=2,
+        cal=[{"scale": SCALE, "origin": 0, "units": "keV"}],
+    )
+    img = client.post("/api/session/open", json={"paths": [str(f)]}).json()[0]["id"]
     std = _standard(client)
     r = client.post(
         "/api/factors/derive",
         json={
             "standard_id": std["id"],
-            "image_id": cube_id,
+            "image_id": img,
             "elements": ["Fe", "Cr"],
             "roi": "1,1,2,2",
         },
     )
     assert r.status_code == 422
-    assert "not implemented" in r.json()["detail"]
+    assert "no pixels" in r.json()["detail"]
 
 
 def test_agreement_is_unknown_rather_than_false_without_a_sigma(
@@ -482,3 +543,60 @@ def test_quantify_reports_an_element_below_its_detection_limit(
     # pass without the detection-limit rule ever being wired.
     assert "below_detection_limit" in findings, sorted(findings)
     assert "Ni" in findings["below_detection_limit"]["elements"]
+
+
+def test_zeta_does_not_change_when_the_region_shrinks(client, cube_id) -> None:
+    """ζ is ABSOLUTE, so it must not depend on how much of the map was summed.
+
+    `live_time_s` describes the whole acquisition. Summing a region's counts
+    while dividing by the whole map's dose made ζ scale with the region's
+    pixel count — 2x for half a cube, 4x for a quarter — and nothing in the
+    response said so. The region change introduced that; this pins it.
+    """
+    def _zeta(roi: str | None) -> float:
+        body = {
+            "composition": {"Fe": 70, "Cr": 30}, "basis": "wt",
+            "image_id": cube_id, "kind": "zeta",
+            "mass_thickness_kg_m2": 1e-5,
+            "probe_current_na": 1.0, "live_time_s": 100.0,
+        }
+        if roi:
+            body["roi"] = roi
+        r = client.post("/api/factors/derive", json=body)
+        assert r.status_code == 200, r.text
+        return r.json()["factors"]["Fe"]["value"]
+
+    whole = _zeta(None)
+    # 2 of the cube's 4 pixels — enough to show the 2x inflation
+    half = _zeta(f"1,1,{NY},1")
+    assert half == pytest.approx(whole, rel=1e-6)
+
+
+def test_the_op_scales_the_dose_with_the_region_too(client, cube_id) -> None:
+    """Route and recipe must not disagree about one specimen."""
+    from fermiviewer.ops import run
+    from fermiviewer.session import store as session_store
+
+    ds = session_store.get(cube_id)
+    params = {
+        "elements": "Fe,Cr", "composition": "Fe:70,Cr:30", "basis": "wt",
+        "kind": "zeta", "reference_element": "", "beam_kv": 200.0,
+        "background": "linear", "e0_kev": 0.0,
+        "mass_thickness_kg_m2": 1e-5,
+        "probe_current_na": 1.0, "live_time_s": 100.0,
+    }
+    whole = run("eds_derive_factors", ds, dict(params))
+    scoped = run(
+        "eds_derive_factors",
+        ds,
+        {**params, "region": REGION_PARAM.coerce(
+            "region", [{"kind": "rect", "bounds": [[1, 1, NY, 1]]}]
+        )},
+    )
+
+    def _fe(result) -> float:
+        table = result.value["outputs"][0]["data"]
+        col = table["columns"].index("factor")
+        return next(row[col] for row in table["rows"] if row[0] == "Fe")
+
+    assert _fe(scoped) == pytest.approx(_fe(whole), rel=1e-6)

@@ -20,7 +20,7 @@ const image: ImageMeta = {
 };
 
 const result: LayersResult = {
-  axis: "y", layers_horizontal: true, tilt_deg: 0, coherence: 0.1,
+  axis: "y", layers_horizontal: true, tilt_deg: 0, applied_tilt_deg: null, sampled_fraction: 1, coherence: 0.1,
   pixel_size: 1, unit: "px", depth_pos: [], depth_profile: [],
   interfaces: [{
     position: 20, sigma_erf: 1, r_squared: 0.9, sigma_w: null,

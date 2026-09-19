@@ -262,6 +262,10 @@ class InterfaceRequest(BaseModel):
     model: str = "erf"
 
 
+def _none_if_nan(value: float) -> float | None:
+    return None if not np.isfinite(value) else float(value)
+
+
 @router.post("/analyze/interface-width")
 def analyze_interface(req: InterfaceRequest) -> dict:
     try:
@@ -277,6 +281,10 @@ def analyze_interface(req: InterfaceRequest) -> dict:
         "amplitude": fit.amplitude,
         "offset": fit.offset,
         "r_squared": fit.r_squared,
+        # NaN is not valid JSON, and an absent uncertainty must read as
+        # absent rather than as 0 (ADR 0004 §3)
+        "center_sigma": _none_if_nan(fit.center_sigma),
+        "width_sigma": _none_if_nan(fit.width_sigma),
         "x_fit": fit.x_fit.tolist(),
         "y_fit": fit.y_fit.tolist(),
         "model": fit.model,

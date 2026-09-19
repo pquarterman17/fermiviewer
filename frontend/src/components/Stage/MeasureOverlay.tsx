@@ -15,6 +15,7 @@ import {
 import { ClosedShapeGlyph, closedShapeLabelAnchor } from "./closedShapeGlyph";
 import MeasureCtxMenu from "./MeasureCtxMenu";
 import { measureLabel } from "./measureGlyphs";
+import ProfileBoxOutline from "./ProfileBoxOutline";
 import { useVertexEditing, VertexHandles } from "./MeasureVertexLayer";
 import { useMeasureRefresh } from "./useMeasureRefresh";
 
@@ -65,6 +66,8 @@ export default function MeasureOverlay({
   } | null>(null);
   const pushUndo = useViewer((s) => s.pushUndo);
   const setMeasureStyle = useViewer((s) => s.setMeasureStyle);
+  const setMeasureWidth = useViewer((s) => s.setMeasureWidth);
+
   const selectedMulti = useViewer((s) => s.selectedMulti);
   const [ctxMenu, setCtxMenu] = useState<{
     mid: string;
@@ -287,23 +290,33 @@ export default function MeasureOverlay({
       // box profiles (m.width set): show the averaging BOX, with the
       // dashed centerline marking where the profile runs (user request
       // 2026-06-09 — a bare line after drawing a box was confusing)
-      let outline = null;
-      if (m.kind === "profile" && m.width != null) {
-        // screen px per image px (uniform zoom)
-        const o = imageToScreen(0, 0, view, img, vp);
-        const u = imageToScreen(1, 0, view, img, vp);
-        const pxScale = Math.hypot(u.x - o.x, u.y - o.y);
-        const ang = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
-        const half = (m.width / 2) * pxScale;
-        const ox = -Math.sin(ang) * half;
-        const oy = Math.cos(ang) * half;
-        outline = (
-          <polygon
-            points={`${pts[0].x + ox},${pts[0].y + oy} ${pts[1].x + ox},${pts[1].y + oy} ${pts[1].x - ox},${pts[1].y - oy} ${pts[0].x - ox},${pts[0].y - oy}`}
-            {...common}
+      const outline =
+        m.kind === "profile" && m.width != null ? (
+          <ProfileBoxOutline
+            measure={m}
+            width={m.width}
+            pts={pts}
+            view={view}
+            img={img}
+            vp={vp}
+            imageId={imageId}
+            color={color}
+            selected={sel}
+            common={common}
+            svgRef={svgRef}
+            setSelected={setSelected}
+            setMeasureWidth={setMeasureWidth}
+            onWidthCommitted={(before) => {
+              const after = (measures.find((x) => x.id === m.id)?.width) ?? before;
+              if (after !== before) {
+                pushUndo({
+                  t: "measure-width", imageId, measureId: m.id, before, after,
+                });
+              }
+              refresh(m);
+            }}
           />
-        );
-      }
+        ) : null;
       shape = (
         <>
           {outline}

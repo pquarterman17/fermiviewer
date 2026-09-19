@@ -32,7 +32,7 @@ const result: InterfaceWidthResult = {
   width_10_90: 3.08,
   amplitude: 20,
   offset: 4,
-  r_squared: 0.992,
+  r_squared: 0.992, center_sigma: null, width_sigma: null,
   x_fit: [0, 2.5, 5, 7.5, 10],
   y_fit: [4, 5, 14, 23, 24],
   model: "erf",

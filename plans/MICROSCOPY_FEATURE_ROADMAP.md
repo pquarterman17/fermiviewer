@@ -1090,8 +1090,13 @@ EELS/dose/spatial/reciprocal calibration using the same persistence rules.
       ADR 0011: `k_i ∝ w_i/I_i` and `ζ_i = C_i·ρt·D_e/I_i`, both taken from
       the shipped quantifiers' own conventions and verified by round trip
       through them. Factor sets are IMMUTABLE — a measurement, not a
-      description — and record the conditions they are a factor for. The
-      EELS half is not started.)*
+      description — and record the conditions they are a factor for. EELS
+      half shipped 2026-09-09: `σ_i ∝ I_i/a_i`, the inversion of
+      `eels_quant.quantify`, on the ATOMIC basis — the opposite of the
+      weight basis Cliff–Lorimer uses, which is why both conversions now
+      live in one module. Only ratios are measurable and σ carries m², so
+      the absolute scale is anchored to the reference element's hydrogenic
+      σ (or a supplied one) and that fact is recorded rather than hidden.)*
 - [x] Compare measured and built-in factors without silently replacing either.
       *(2026-09-07. `GET /factors/{id}/compare` rebases the built-in table
       onto the derived set's reference element and reports both with their

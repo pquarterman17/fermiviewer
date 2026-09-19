@@ -22,14 +22,13 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from fermiviewer.calc.calibration import growth_axis_scales
+from fermiviewer.calc.layers_collapse import collapse, tilted_scales
 from fermiviewer.calc.layers_detect import (
     detect_interfaces,
     detect_interfaces_scale_space,
 )
 from fermiviewer.calc.layers_profile import (
     OrientationResult,
-    _roi_subimage,
     cross_section_profile,
     destripe,
     detect_growth_orientation,
@@ -39,6 +38,7 @@ from fermiviewer.calc.trace_roughness import (
     robust_sigma,
     robust_sigma_w,
     trace_interface,
+    window_limited_fraction,
 )
 
 __all__ = [
@@ -75,6 +75,12 @@ class Interface:
     r_squared: float
     sigma_w: float = float("nan")          # geometric waviness, calibrated (Tier 2)
     trace: np.ndarray | None = None        # per-lateral-column edge depths (px)
+    #: fraction of the trace pinned against the +/-trace_window search
+    #: bound. Above ~0.05 the interface wanders further than the window
+    #: allows and `sigma_w` is a LOWER BOUND -- distinct from the trace's
+    #: `quality`, which says every column was traced even when they were
+    #: all traced to the same wrong place.
+    window_limited: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -105,6 +111,14 @@ class LayerResult:
     #: extent along the interface (the other axis); NaN when unknown, in
     #: which case consumers fall back to `pixel_size`.
     lateral_size: float = float("nan")
+    #: the off-axis tilt the collapse was CORRECTED for, or None when the
+    #: profile was taken along the image axes. Distinct from `tilt_deg`,
+    #: which is what the orientation detector measured: a reader has to be
+    #: able to tell a tilt that was reported from one that was applied.
+    applied_tilt_deg: float | None = None
+    #: linear extent kept after shrinking the box to fit the rotation, 0-1;
+    #: 1.0 when no tilt was applied
+    sampled_fraction: float = 1.0
 
 
 def _refine_interface(
@@ -127,9 +141,14 @@ def _refine_interface(
         fit = fit_interface_width(depth_pos[lo:hi], sign * seg, model="erf")
     except (ValueError, RuntimeError):
         return float(depth_pos[idx]), float("nan"), 0.0
-    # a center that escaped the window means a failed fit — keep the peak
+    # A centre that escaped the window means a failed fit — keep the peak.
+    # r² goes to 0 with it, matching the too-narrow-window branch above:
+    # it described the fit that was just REJECTED, and reporting it beside a
+    # NaN σ said "perfect fit, no measurable width" — a contradiction that
+    # `assessLayerQuality` reads as a good interface, because it grades on
+    # r² alone. A rejected fit has no quality to report.
     if not (depth_pos[lo] <= fit.center <= depth_pos[hi - 1]):
-        return float(depth_pos[idx]), float("nan"), float(fit.r_squared)
+        return float(depth_pos[idx]), float("nan"), 0.0
     return float(fit.center), float(fit.sigma), float(fit.r_squared)
 
 
@@ -170,6 +189,7 @@ def _interfaces_and_layers(
             depth_pos, profile, int(idx), max(3, min(fit_window, half_gap))
         )
         sigma_w = float("nan")
+        window_limited = 0.0
         trace: np.ndarray | None = None
         if sub is not None:
             win = max(3, min(trace_window, half_gap))
@@ -177,6 +197,7 @@ def _interfaces_and_layers(
             # detrended + outlier-robust + noise-floor-corrected (item #8);
             # the raw std conflated tilt/bow + hot columns with roughness
             sigma_w = robust_sigma_w(trace) * pixel_size
+            window_limited = window_limited_fraction(trace, center, win)
         interfaces.append(
             Interface(
                 position=center,
@@ -184,6 +205,7 @@ def _interfaces_and_layers(
                 r_squared=r2,
                 sigma_w=sigma_w,
                 trace=trace,
+                window_limited=window_limited,
             )
         )
     interfaces.sort(key=lambda it: it.position)
@@ -224,6 +246,7 @@ def _refuse_traced_mask(mask: np.ndarray | None, waviness: bool) -> None:
         )
 
 
+
 def analyze_layers(
     img: np.ndarray,
     *,
@@ -244,6 +267,7 @@ def analyze_layers(
     destripe_strength: float = 1.0,
     destripe_cutoff: float = 4.0,
     spacing: tuple[float, float] | None = None,
+    tilt_deg: float | None = None,
 ) -> LayerResult:
     """Full cross-section layer analysis (thickness + σ_erf; optional σ_w).
 
@@ -265,13 +289,24 @@ def analyze_layers(
     ``destripe_fib`` removes FIB curtaining (:func:`destripe`) from the working
     image before profiling/tracing — pair with ``reduce="median"`` on heavily
     streaked specimens. Orientation/tilt are still read from the raw image.
+
+    ``tilt_deg`` collapses along an axis rotated by that many degrees
+    (:mod:`calc.tilted_profile`) instead of along the image axes. ``None``
+    means no correction, which is the behaviour every existing caller gets;
+    pass the detected ``OrientationResult.tilt_deg`` to level a stack that
+    is merely mounted off-square. Correcting matters because averaging a
+    tilted interface along image rows convolves it with a box as wide as
+    its lateral run, and the resulting width is indistinguishable from a
+    genuinely graded interface.
     """
     arr = np.asarray(img, dtype=np.float64)
     orient = detect_growth_orientation(arr, orient_sigma)
     use_axis = orient.axis if axis == "auto" else axis
     if use_axis not in ("x", "y"):
         raise ValueError("axis must be 'auto', 'x', or 'y'")
-    depth_size, lateral_size = growth_axis_scales(use_axis, pixel_size, spacing)
+    depth_size, lateral_size = tilted_scales(
+        use_axis, tilt_deg, pixel_size, spacing
+    )
 
     work = (
         destripe(arr, use_axis, cutoff=destripe_cutoff, strength=destripe_strength)
@@ -279,7 +314,8 @@ def analyze_layers(
         else arr
     )
     _refuse_traced_mask(mask, waviness)
-    depth_pos, profile = cross_section_profile(work, roi, use_axis, reduce, mask)
+    col = collapse(work, roi, use_axis, reduce, mask, tilt_deg, waviness)
+    depth_pos, profile = col.depth_pos, col.profile
     preset = _MODALITY_PRESETS.get(modality.lower(), _MODALITY_PRESETS["haadf"])
     if preset["scale_space"]:
         scales = preset.get("scales", (2.0, 4.0, 8.0))
@@ -289,10 +325,9 @@ def analyze_layers(
     else:
         peaks = detect_interfaces(profile, sensitivity, n_layers)
 
-    # the ROI sub-image (clamped like box_integrate) for column-by-column tracing
-    sub = _roi_subimage(work, roi) if waviness else None
     interfaces, layers = _interfaces_and_layers(
-        depth_pos, profile, peaks, sub, use_axis, depth_size, fit_window, trace_window
+        depth_pos, profile, peaks, col.sub, col.trace_axis, depth_size,
+        fit_window, trace_window,
     )
 
     return LayerResult(
@@ -307,6 +342,8 @@ def analyze_layers(
         pixel_size=depth_size,
         unit=unit,
         lateral_size=lateral_size,
+        applied_tilt_deg=col.applied_tilt_deg,
+        sampled_fraction=col.sampled_fraction,
     )
 
 
@@ -327,6 +364,7 @@ def recompute_layers(
     destripe_strength: float = 1.0,
     destripe_cutoff: float = 4.0,
     spacing: tuple[float, float] | None = None,
+    tilt_deg: float | None = None,
 ) -> LayerResult:
     """Re-measure layers from a user-edited interface list (Tier 3 #6).
 
@@ -334,16 +372,19 @@ def recompute_layers(
     is erf-refined and the layers between consecutive interfaces are
     recomputed. ``axis`` is explicit (editing assumes a known orientation).
     Out-of-range positions are dropped; duplicates within a pixel collapse.
-    ``destripe_fib``/``reduce="median"`` and ``spacing`` mirror
-    :func:`analyze_layers` so an edited result stays consistent with how
-    it was first measured.
+    ``destripe_fib``/``reduce="median"``, ``spacing`` and ``tilt_deg``
+    mirror :func:`analyze_layers` so an edited result stays consistent with
+    how it was first measured. ``tilt_deg`` in particular MUST match: the
+    supplied positions are depths in the collapsed profile, so re-measuring
+    with a different tilt would read them against a different frame and
+    move every interface the user placed.
     """
     arr = np.asarray(img, dtype=np.float64)
     if arr.ndim != 2:
         raise ValueError("layer analysis needs a 2-D image")
     if axis not in ("x", "y"):
         raise ValueError("axis must be 'x' or 'y'")
-    depth_size, lateral_size = growth_axis_scales(axis, pixel_size, spacing)
+    depth_size, lateral_size = tilted_scales(axis, tilt_deg, pixel_size, spacing)
 
     work = (
         destripe(arr, axis, cutoff=destripe_cutoff, strength=destripe_strength)
@@ -351,14 +392,15 @@ def recompute_layers(
         else arr
     )
     _refuse_traced_mask(mask, waviness)
-    depth_pos, profile = cross_section_profile(work, roi, axis, reduce, mask)
+    col = collapse(work, roi, axis, reduce, mask, tilt_deg, waviness)
+    depth_pos, profile = col.depth_pos, col.profile
     n = profile.size
     idxs = np.array(
         sorted({int(round(p)) for p in positions if 0 <= round(p) < n}), dtype=int
     )
-    sub = _roi_subimage(work, roi) if waviness else None
     interfaces, layers = _interfaces_and_layers(
-        depth_pos, profile, idxs, sub, axis, depth_size, fit_window, trace_window
+        depth_pos, profile, idxs, col.sub, col.trace_axis, depth_size,
+        fit_window, trace_window,
     )
     orient = detect_growth_orientation(arr)
     return LayerResult(
@@ -373,4 +415,6 @@ def recompute_layers(
         pixel_size=depth_size,
         unit=unit,
         lateral_size=lateral_size,
+        applied_tilt_deg=col.applied_tilt_deg,
+        sampled_fraction=col.sampled_fraction,
     )

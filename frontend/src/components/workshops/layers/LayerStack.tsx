@@ -5,6 +5,8 @@
 import { Fragment } from "react";
 
 import { type LayersResult } from "../../../lib/api";
+import { layersCsvText } from "../../../lib/layersCsv";
+import { downloadCsv } from "../../../lib/resultsExport";
 
 // Per-band band colors — data colors (like false-color overlays), not chrome.
 // Mirrors the design system's layer-stack palette (WS5b).
@@ -85,43 +87,6 @@ export function LayerStack({ r }: { r: LayersResult }) {
   );
 }
 
-export function exportCsv(r: LayersResult) {
-  const rows: (string | number)[][] = [
-    ["layer", "top_px", "bottom_px", `thickness_${r.unit}`, `thickness_std_${r.unit}`],
-    ...r.layers.map((l) => [
-      l.index,
-      l.top.toFixed(3),
-      l.bottom.toFixed(3),
-      l.thickness.toFixed(4),
-      l.thickness_std == null ? "" : l.thickness_std.toFixed(4),
-    ]),
-    [],
-    [
-      "interface", "position_px", `sigma_erf_${r.unit}`, `sigma_w_${r.unit}`,
-      "r_squared", `sigma_w_ci_lo_${r.unit}`, `sigma_w_ci_hi_${r.unit}`,
-      "trace_quality", `noise_floor_${r.unit}`, `xi_${r.unit}`, "hurst",
-      `sigma_chem_${r.unit}`,
-    ],
-    ...r.interfaces.map((i, k) => [
-      k,
-      i.position.toFixed(3),
-      i.sigma_erf == null ? "" : i.sigma_erf.toFixed(4),
-      i.sigma_w == null ? "" : i.sigma_w.toFixed(4),
-      i.r_squared.toFixed(4),
-      i.roughness?.sigma_ci == null ? "" : i.roughness.sigma_ci[0].toFixed(4),
-      i.roughness?.sigma_ci == null ? "" : i.roughness.sigma_ci[1].toFixed(4),
-      i.roughness == null ? "" : i.roughness.quality.toFixed(3),
-      i.roughness?.noise_floor == null ? "" : i.roughness.noise_floor.toFixed(4),
-      i.roughness?.xi == null ? "" : i.roughness.xi.toFixed(2),
-      i.roughness?.hurst == null ? "" : i.roughness.hurst.toFixed(3),
-      i.roughness?.sigma_chem == null ? "" : i.roughness.sigma_chem.toFixed(4),
-    ]),
-  ];
-  const csv = rows.map((row) => row.join(",")).join("\n");
-  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "layers.csv";
-  a.click();
-  URL.revokeObjectURL(url);
+export function exportCsv(r: LayersResult, baseName = "layers") {
+  downloadCsv(`${baseName}.csv`, layersCsvText(r));
 }

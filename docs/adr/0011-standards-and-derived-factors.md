@@ -43,9 +43,14 @@ certificate quoting 61.5% means different things under each. `basis` is
 required — there is no default, because a default here is a guess that
 costs exactly the accuracy the standard was brought in to provide.
 
-Conversion happens once, in `eds_factors.weight_fractions`, because both
-derivations need weight fractions and doing it at two call sites is how
-two spellings drift.
+Both conversions live in `calc.composition`, in one module, because the
+two derivations need OPPOSITE bases: Cliff-Lorimer and ζ are relations
+between weight fractions, while EELS quantification is a relation between
+atomic ones. So the same certificate converts in different directions
+depending on which factor is being derived, and getting that backwards is
+an error of tens of percent for any pair with dissimilar masses — exactly
+the size of effect a standard is brought in to pin down. Two spellings of
+one conversion is how they come to disagree.
 
 A certificate that lists only the majors is normalised rather than
 rejected: the ratios a derivation uses must not depend on whether the
@@ -55,6 +60,8 @@ balance was quoted.
 
 * `k_i ∝ w_i/I_i` — from `calc.eds.cliff_lorimer`'s own `w_i ∝ k_i·I_i`.
 * `ζ_i = C_i·ρt·D_e/I_i` — from `calc.eds_zeta`'s `C_i·ρt = ζ_i·I_i/D_e`.
+* `σ_i ∝ I_i/a_i` — from `calc.eels_quant.quantify`'s `N_X ∝ I_X/σ_X`,
+  on the ATOMIC basis (§2).
 
 Both conventions are taken from those functions rather than from a
 textbook that might spell them differently, and both are verified by
@@ -73,6 +80,22 @@ the smallest relative counting error and so contaminates the set least.
 ζ needs the standard's certified mass-thickness. A standard without one
 cannot yield ζ, and that is a refusal rather than a fallback — there is no
 way to guess ρt that does not simply invent the answer.
+
+σ has the same relative-only freedom as k, but cannot resolve it the same
+way. `k_ref ≡ 1` works because k is dimensionless; σ carries m² and
+`quantify` DIVIDES by it, so a derived set needs a real absolute scale.
+That scale is ASSERTED: the reference element's hydrogenic σ from
+`eels_quant.cross_section`, or a value the caller supplies for a reference
+whose cross-section is independently known. A derived σ set is therefore
+honest about what it improved — the relative sensitivities are now this
+instrument's, measured; the absolute scale is still whatever the anchor
+was — and the reference entry's σ is the anchor's alone, 0 by default,
+the same "definition, not measurement" `k_ref` carries.
+
+Because σ is integrated over the signal window, the windows are stored in
+the set's `conditions`: they are part of what the numbers ARE, not merely
+how they were obtained, and a set derived with one window is not a set for
+another.
 
 ### 4. Factor sets are immutable
 
@@ -160,12 +183,19 @@ assigned to a shipped wave it had no part in.
   means "no interference between the lines being integrated", which is
   the question a caller can act on, and is weaker than "no interference".
   Pinned as a test so the limit is not mistaken for coverage.
-* **Derivation fits the whole summed spectrum.** A `region`/`roi` on the
-  request is recorded in the factor set's provenance but does not yet
-  restrict which pixels are summed; that needs the region contract wired
-  through the spectral path, which is its own change.
 * **No absolute ζ table ships**, so a derived ζ set can only be compared
   against another derived set.
+* **A derived σ set is only as absolute as its anchor.** The relative
+  sensitivities are measured; the scale is asserted (§3). Two sets derived
+  from different standards with different references are comparable in
+  shape but not necessarily on scale, and nothing in the response can tell
+  a caller otherwise — the anchor's origin is recorded in `derived_from`
+  so it is at least visible.
+* **No quant route consumes a stored set yet.** k, ζ and σ sets can be
+  derived, stored and compared, but `/eds/quantify` and `/eels/quantify`
+  still use their built-in tables and models. Wiring a stored set in is
+  the next consumer, and it is a separate change with its own precedence
+  question (a stored set vs. an explicitly requested factor).
 
 ## Verification
 
@@ -177,4 +207,14 @@ assigned to a shipped wave it had no part in.
   versioned edits keeping history, reference regions surviving a closed
   session and failing at derivation, a hand-worked k value
   (`k_Cr = (0.30/6000)/(0.70/21000) = 1.5`), comparison leaving the
-  stored set untouched, and QC findings on `/eds/quantify`.
+  stored set untouched, QC findings on `/eds/quantify`, and a
+  region-scoped derivation on an inhomogeneous cube whose per-region
+  factors differ — which fails if the region is recorded but not applied.
+- `tests/test_eels_factors.py` — the σ derivation against a hand-worked
+  Fe2O3 (40/60 at%, the same solid as 69.94/30.06 wt%), the closure that
+  a derived set reproduces its own standard's composition, its negative
+  control that the MODEL values do not, and the basis mix-up landing
+  2.44x off rather than merely rescaled.
+- `tests/test_api_eels_factors.py` — `/factors/derive-eels` through the
+  API and the `eels_derive_cross_sections` op, including the store
+  round trip for the `sigma` kind.

@@ -22,6 +22,28 @@ const image = {
   stage_tilt_deg: null, meta: {},
 } satisfies ImageMeta;
 
+const layersResult = {
+  axis: "y", layers_horizontal: true, tilt_deg: 0, applied_tilt_deg: null, sampled_fraction: 1, coherence: 0.9,
+  pixel_size: 0.5, unit: "nm", depth_pos: [0, 1, 2], depth_profile: [10, 20, 30],
+  interfaces: [], layers: [],
+} as LayersResult;
+
+const layersSnapshot = (accepted: boolean) => ({
+  sourceId: "src", regionLabel: "Whole image", roi: null,
+  result: layersResult, qualityAccepted: accepted,
+});
+
+const grainsSnapshot = (accepted: boolean) => ({
+  sourceId: "src", regionLabel: "Whole image", roi: null, minArea: 25,
+  result: {
+    n_grains: 2, method: "gradient", mean_diameter_px: 20,
+    astm_grain_size: null, boundary_network_px: 10,
+    n_triple_junctions: 0, areas_px: [1000, 1000],
+    perimeters_px: [100, 100], eccentricity: [0.2, 0.3],
+  } as GrainResult,
+  qualityAccepted: accepted,
+});
+
 afterEach(() => {
   useCrossSection.getState().clear();
   useViewer.setState({ images: {}, order: [], activeId: null, selected: [] });
@@ -44,7 +66,7 @@ describe("CrossSectionGuide", () => {
       layers: {
         sourceId: "src", regionLabel: "Whole image", roi: null,
         result: {
-          axis: "y", layers_horizontal: true, tilt_deg: 0, coherence: 0.9,
+          axis: "y", layers_horizontal: true, tilt_deg: 0, applied_tilt_deg: null, sampled_fraction: 1, coherence: 0.9,
           pixel_size: 0.5, unit: "nm", depth_pos: [], depth_profile: [],
           interfaces: [], layers: [],
         } as LayersResult,
@@ -71,5 +93,51 @@ describe("CrossSectionGuide", () => {
     fireEvent.click(screen.getByRole("button", { name: /Report/ }));
     expect(screen.getByText("Export combined JSON report")).not.toBeDisabled();
     expect(screen.getByText("2", { selector: ".fvd-metric .v" })).toBeInTheDocument();
+  });
+  // The shipped bug: with layers and grains both run but the OPTIONAL
+  // per-layer grain step skipped, the export button was disabled -- and a
+  // disabled button swallows the click, so the user saw nothing happen at
+  // all. The existing walkthrough test above always set `perLayer`, which is
+  // why it never caught this. `buildCrossSectionReport` handles a null
+  // perLayer by design, so there was never a format reason to block.
+  it("exports with the optional per-layer step skipped", () => {
+    useViewer.getState().ingest([image]);
+    render(<CrossSectionGuide />);
+    act(() => useCrossSection.setState({
+      layers: layersSnapshot(true),
+      grains: grainsSnapshot(true),
+      perLayer: null,
+    }));
+    fireEvent.click(screen.getByRole("button", { name: /Report/ }));
+    expect(screen.getByText("Export combined JSON report")).not.toBeDisabled();
+    // and the user is told what is missing rather than left guessing
+    expect(screen.getByText(/No per-layer grain measurement yet/)).toBeInTheDocument();
+  });
+
+  // The gate that must SURVIVE the fix: a poor result still has to be
+  // acknowledged in its own step. Removing perLayerPending must not have
+  // taken this with it.
+  it("still blocks export on an unacknowledged poor result", () => {
+    useViewer.getState().ingest([image]);
+    render(<CrossSectionGuide />);
+    act(() => useCrossSection.setState({
+      // zero interfaces rates "poor" in assessLayerQuality
+      layers: layersSnapshot(false),
+      grains: grainsSnapshot(true),
+      perLayer: null,
+    }));
+    fireEvent.click(screen.getByRole("button", { name: /Report/ }));
+    expect(screen.getByText("Export combined JSON report")).toBeDisabled();
+  });
+
+  it("offers the layer table and the profile it was measured from", () => {
+    useViewer.getState().ingest([image]);
+    render(<CrossSectionGuide />);
+    act(() => useCrossSection.setState({
+      layers: layersSnapshot(true), grains: null, perLayer: null,
+    }));
+    fireEvent.click(screen.getByRole("button", { name: /Report/ }));
+    expect(screen.getByText("Export layers CSV")).not.toBeDisabled();
+    expect(screen.getByText("Export profile CSV")).not.toBeDisabled();
   });
 });

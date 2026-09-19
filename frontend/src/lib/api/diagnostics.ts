@@ -8,6 +8,11 @@ export interface InterfaceWidthResult {
   amplitude: number;
   offset: number;
   r_squared: number;
+  /** 1σ on the fitted centre and on the 10-90% width, from the residual
+      scatter. null — never 0 — when the fit is exactly determined or the
+      covariance could not be formed: an absent uncertainty is absent. */
+  center_sigma: number | null;
+  width_sigma: number | null;
   x_fit: number[];
   y_fit: number[];
   model: "erf" | "sigmoid";

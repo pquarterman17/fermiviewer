@@ -112,6 +112,13 @@ def layer_result_to_dict(res: LayerResult) -> dict:
         "axis": res.axis,
         "layers_horizontal": res.layers_horizontal,
         "tilt_deg": _nan_none(res.tilt_deg),
+        # what was MEASURED vs what was APPLIED: `tilt_deg` is the
+        # orientation detector's reading, `applied_tilt_deg` is the angle
+        # the collapse was actually corrected for (null when it was not).
+        # A reader has to be able to tell those apart -- one is a
+        # description of the specimen, the other changes every number below.
+        "applied_tilt_deg": res.applied_tilt_deg,
+        "sampled_fraction": res.sampled_fraction,
         "coherence": _nan_none(res.coherence),
         "pixel_size": res.pixel_size,
         # the other axis: what a consumer converts lateral (trace) positions
@@ -126,6 +133,11 @@ def layer_result_to_dict(res: LayerResult) -> dict:
                 "sigma_erf": _nan_none(i.sigma_erf),
                 "r_squared": i.r_squared,
                 "sigma_w": _nan_none(i.sigma_w),
+                # above ~0.05 the trace hit its search bound and sigma_w is a
+                # lower bound, not a measurement -- a distinct signal from
+                # the trace's `quality`, which can read 1.0 while every
+                # column was traced to the same clipped place
+                "window_limited": i.window_limited,
                 "trace": i.trace.tolist() if i.trace is not None else None,
                 "roughness": rough[k],
             }

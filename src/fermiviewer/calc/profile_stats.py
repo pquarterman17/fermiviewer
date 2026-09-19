@@ -10,6 +10,7 @@ the diffraction module and the wire protocol).
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
@@ -276,6 +277,64 @@ class InterfaceFit:
     x_fit: np.ndarray
     y_fit: np.ndarray
     model: str
+    #: 1σ on the fitted centre and on the 10-90% width, from the residual
+    #: scatter (see `_parameter_sigmas`). NaN — never 0 — when the fit is
+    #: exactly determined or the covariance cannot be formed: an absent
+    #: uncertainty is absent (ADR 0004 §3), and a 0 here would claim a
+    #: perfectly known edge position.
+    center_sigma: float = float("nan")
+    width_sigma: float = float("nan")
+
+
+def _parameter_sigmas(
+    model_fn: Callable[[np.ndarray, np.ndarray], np.ndarray],
+    p: np.ndarray,
+    xv: np.ndarray,
+    yv: np.ndarray,
+) -> np.ndarray:
+    """1σ per fitted parameter, from the linearised covariance at the optimum.
+
+    ``Nelder-Mead`` returns no covariance — it never forms a Jacobian — so
+    one is built here by finite differences and combined with the residual
+    variance in the usual way::
+
+        cov = s² (JᵀJ)⁻¹,   s² = SSR / (n − p)
+
+    This is the standard asymptotic estimate. It assumes the residuals are
+    independent and roughly equal-variance and that the model is locally
+    linear in its parameters, which is why it is reported as a 1σ rather
+    than a confidence interval: on a well-sampled edge with ordinary noise
+    it is close, and on a badly-conditioned fit it comes back NaN instead
+    of a number that would look authoritative.
+
+    NaN, not 0, whenever it cannot be formed — too few points to have any
+    residual freedom, a singular `JᵀJ`, or a non-finite step. A zero would
+    say the edge position is known exactly.
+    """
+    n, k = xv.size, p.size
+    if n <= k:
+        return np.full(k, np.nan)
+    resid = yv - model_fn(p, xv)
+    ssr = float((resid**2).sum())
+    if not np.isfinite(ssr):
+        return np.full(k, np.nan)
+    jac = np.empty((n, k), dtype=np.float64)
+    for j in range(k):
+        # step scaled to the parameter, with a floor so a parameter that
+        # optimised to exactly 0 still gets a usable difference
+        step = 1e-6 * max(abs(float(p[j])), 1.0)
+        up, dn = p.astype(np.float64).copy(), p.astype(np.float64).copy()
+        up[j] += step
+        dn[j] -= step
+        jac[:, j] = (model_fn(up, xv) - model_fn(dn, xv)) / (2 * step)
+    if not np.all(np.isfinite(jac)):
+        return np.full(k, np.nan)
+    try:
+        cov = (ssr / (n - k)) * np.linalg.inv(jac.T @ jac)
+    except np.linalg.LinAlgError:
+        return np.full(k, np.nan)
+    var = np.diag(cov)
+    return np.where(var >= 0, np.sqrt(np.abs(var)), np.nan)
 
 
 def fit_interface_width(
@@ -347,6 +406,11 @@ def fit_interface_width(
     ss_tot = float(((yv - yv.mean()) ** 2).sum())
     r_sq = 1.0 if ss_tot == 0 else 1 - float(((yv - y_hat) ** 2).sum()) / ss_tot
 
+    psig = _parameter_sigmas(model_fn, p, xv, yv)
+    # width = k·σ with k a constant of the model, so its uncertainty is the
+    # same constant times σ's — no extra assumption enters here
+    width_scale = width / sigma if sigma > 0 else float("nan")
+
     x_fit = np.linspace(xv.min(), xv.max(), 500)
     return InterfaceFit(
         center=float(p[0]),
@@ -358,4 +422,6 @@ def fit_interface_width(
         x_fit=x_fit,
         y_fit=model_fn(p, x_fit),
         model=model,
+        center_sigma=float(psig[0]),
+        width_sigma=float(abs(psig[1] * width_scale)),
     )

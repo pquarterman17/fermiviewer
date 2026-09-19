@@ -46,6 +46,7 @@ __all__ = [
     "cliff_lorimer_uncertainty",
     "default_k_factors",
     "eels_atomic_sigma",
+    "eels_intensity_sigma",
     "fraction_variance",
     "integral_variance",
     "poisson_sigma",
@@ -161,6 +162,33 @@ def atomic_fraction_sigma(
 # ── EELS: Poisson error on window-integration at% ────────────────────
 
 
+def eels_intensity_sigma(
+    energy: np.ndarray,
+    spectrum: np.ndarray,
+    signal_windows: Sequence[tuple[float, float]],
+) -> np.ndarray:
+    """Poisson 1σ on each edge's integrated intensity (counts·eV).
+
+    The variance is taken from the **gross** spectrum over the signal
+    window — the background subtraction removes a mean, not the counting
+    noise that produced it. A window with fewer than two channels gives
+    NaN rather than 0: an absent uncertainty is absent (ADR 0004 §3).
+
+    Split out of `eels_atomic_sigma` when the cross-section derivation
+    needed the same number one step earlier, so the two cannot come to
+    disagree about the error on one measurement.
+    """
+    energy = np.asarray(energy, dtype=np.float64).ravel()
+    spectrum = np.asarray(spectrum, dtype=np.float64).ravel()
+    out = np.empty(len(signal_windows), dtype=np.float64)
+    for k, (lo, hi) in enumerate(signal_windows):
+        mask = (energy >= lo) & (energy <= hi)
+        out[k] = (
+            np.nan if mask.sum() < 2 else integral_variance(spectrum[mask], energy[mask])
+        )
+    return np.asarray(np.sqrt(out), dtype=np.float64)
+
+
 def eels_atomic_sigma(
     energy: np.ndarray,
     spectrum: np.ndarray,
@@ -190,13 +218,7 @@ def eels_atomic_sigma(
     if not (len(signal_windows) == areal.size == xsec.size):
         raise ValueError("signal_windows, areal_ratio, sigma length mismatch")
 
-    var_i = np.empty(areal.size, dtype=np.float64)
-    for k, (lo, hi) in enumerate(signal_windows):
-        mask = (energy >= lo) & (energy <= hi)
-        if mask.sum() < 2:
-            var_i[k] = np.nan
-        else:
-            var_i[k] = integral_variance(spectrum[mask], energy[mask])
+    var_i = eels_intensity_sigma(energy, spectrum, signal_windows) ** 2
 
     # r = I/σ  ⇒  var(r) = var(I)/σ²   (σ is a fixed cross-section)
     safe = xsec > 0
