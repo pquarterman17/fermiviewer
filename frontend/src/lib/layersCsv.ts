@@ -59,9 +59,23 @@ export function layersCsvText(r: LayersResult): string {
  * can check where an interface was placed against the data that placed it.
  */
 export function profileCsvText(r: LayersResult): string {
-  const header = [`depth_${r.unit ?? "px"}`, "intensity"].join(",");
+  // `depth_pos` is in PROFILE PIXELS — the backend returns a plain index
+  // range — so labelling that column with the calibrated unit made the
+  // export read as nanometres while holding pixels, off by the pixel size.
+  // Both columns ship: the pixel index is what the interface positions in
+  // the layer table are quoted in, and the calibrated depth is what a
+  // reader wants to plot against.
+  const calibrated = Number.isFinite(r.pixel_size)
+    && r.pixel_size > 0
+    && r.unit
+    && r.unit !== "px";
+  const header = calibrated
+    ? ["depth_px", `depth_${r.unit}`, "intensity"].join(",")
+    : ["depth_px", "intensity"].join(",");
   const n = Math.min(r.depth_pos.length, r.depth_profile.length);
   const rows = Array.from({ length: n }, (_, i) =>
-    `${r.depth_pos[i]},${r.depth_profile[i]}`);
+    calibrated
+      ? `${r.depth_pos[i]},${r.depth_pos[i] * r.pixel_size},${r.depth_profile[i]}`
+      : `${r.depth_pos[i]},${r.depth_profile[i]}`);
   return [header, ...rows].join("\n");
 }

@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { useViewer } from "../../store/viewer";
@@ -54,8 +54,12 @@ describe("LayersOverlay tilt", () => {
     // ONE angle for the stack: parallel layers cannot converge, and a
     // per-interface angle would let two of them cross
     expect(rise(drawn[0])).toBeCloseTo(rise(drawn[1]), 6);
-    // 10 deg across a 200 px span is 200·tan(10°) ≈ 35.3 px of rise
-    expect(rise(drawn[0])).toBeCloseTo(200 * Math.tan(Math.PI / 18), 3);
+    // A positive tilt makes the interface RISE to the right, matching
+    // `calc/tilted_profile`'s sampler, where a constant-depth line is
+    // `row = centre - lateral·sin θ`. The sign is load-bearing: the handle
+    // publishes this angle straight to `/analyze/layers`, and the negation
+    // of it turns one interface into seven.
+    expect(rise(drawn[0])).toBeCloseTo(-200 * Math.tan(Math.PI / 18), 3);
 
     // pivoting about the midpoint keeps each line's own depth at the centre,
     // so raising the tilt does not sweep the stack off the region
@@ -74,6 +78,21 @@ describe("LayersOverlay tilt", () => {
     rerender(<LayersOverlay imageId="img" view={VIEW} img={IMG} vp={VP} />);
     // a visible dot plus the larger invisible hit target beneath it
     expect(container.querySelectorAll("circle")).toHaveLength(2);
+  });
+
+  it("publishes the sign the backend integrates along", () => {
+    // Drag the handle DOWNWARD: the line must follow the pointer, and the
+    // angle sent out must be NEGATIVE, because a stack whose interface
+    // falls to the right is a negative tilt in the sampler's convention.
+    useViewer.setState({ layersOverlay: overlayState(0), layersEdit: true });
+    const { container } = draw();
+    const hit = container.querySelectorAll("circle")[1];
+    fireEvent.pointerDown(hit);
+    fireEvent.pointerMove(hit, { clientX: 200, clientY: 130 });
+    fireEvent.pointerUp(hit);
+    const published = useViewer.getState().layersTiltReq;
+    expect(published).not.toBeNull();
+    expect(published!).toBeLessThan(0);
   });
 
   it("draws nothing for another image's overlay", () => {

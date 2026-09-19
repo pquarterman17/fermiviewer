@@ -33,6 +33,7 @@ from fermiviewer.calc.eds_qc import (
 )
 from fermiviewer.calc.eds_zeta import dose_electrons
 from fermiviewer.calc.energy_units import to_kev
+from fermiviewer.datastruct import DataKind
 from fermiviewer.io.factors_db import (
     FactorSetError,
     create_factor_set,
@@ -150,6 +151,21 @@ def _measure(
     return pf, ds, cal, elements, image_id, scope
 
 
+def _dose_fraction(ds: Any, scope: dict[str, Any]) -> float:
+    """Share of the acquisition's dose that landed on the summed pixels.
+
+    1.0 for an unscoped sum (and for a 1-D spectrum, which has no pixels to
+    take a share of), so an existing whole-cube derivation is unchanged.
+    """
+    if not scope.get("scoped") or ds.kind is not DataKind.SPECTRUM_IMAGE:
+        return 1.0
+    total = int(ds.data.shape[0]) * int(ds.data.shape[1])
+    counted = int(scope.get("pixel_count") or 0)
+    if total <= 0 or counted <= 0:
+        return 1.0
+    return counted / total
+
+
 def _factor_json(f: DerivedFactor) -> dict[str, Any]:
     return {
         "value": f.value,
@@ -191,7 +207,15 @@ def factors_derive(req: FactorDeriveRequest) -> dict[str, Any]:
                     "ζ needs the standard's certified mass-thickness; there is no way "
                     "to infer it that does not invent the answer",
                 )
-            dose = dose_electrons(cal["probe_current_na"].value, cal["live_time_s"].value)
+            # The dose that produced THESE counts. `live_time_s` describes
+            # the whole acquisition, so a region-scoped sum -- which uses
+            # only some of its pixels' counts -- must divide by only that
+            # share of the dose. Without this, zeta (an ABSOLUTE quantity)
+            # scaled with the region's pixel count: 2x for half a cube, 4x
+            # for a quarter, silently.
+            dose = dose_electrons(
+                cal["probe_current_na"].value, cal["live_time_s"].value
+            ) * _dose_fraction(ds, scope)
             derived = derive_zeta_factors(
                 elements,
                 net,

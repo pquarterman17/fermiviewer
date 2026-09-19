@@ -96,6 +96,9 @@ export default function LayersWorkshop() {
         r.interfaces.map((i) => i.position),
         r.interfaces.map((i) => i.trace),
         roi,
+        r.applied_tilt_deg == null
+          ? null
+          : { tiltDeg: r.applied_tilt_deg, nDepth: r.depth_pos.length },
       );
       setLayersOverlay({
         imageId,

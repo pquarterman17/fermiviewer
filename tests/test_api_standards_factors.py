@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from fermiviewer.calc.eds import line_energy
 from fermiviewer.calc.eds_calib import fano_sigma_kev
+from fermiviewer.ops._region_param import REGION_PARAM
 from fermiviewer.server import create_app
 from fermiviewer.session import store
 from fixtures.minidm4 import write_mini_dm4
@@ -542,3 +543,60 @@ def test_quantify_reports_an_element_below_its_detection_limit(
     # pass without the detection-limit rule ever being wired.
     assert "below_detection_limit" in findings, sorted(findings)
     assert "Ni" in findings["below_detection_limit"]["elements"]
+
+
+def test_zeta_does_not_change_when_the_region_shrinks(client, cube_id) -> None:
+    """ζ is ABSOLUTE, so it must not depend on how much of the map was summed.
+
+    `live_time_s` describes the whole acquisition. Summing a region's counts
+    while dividing by the whole map's dose made ζ scale with the region's
+    pixel count — 2x for half a cube, 4x for a quarter — and nothing in the
+    response said so. The region change introduced that; this pins it.
+    """
+    def _zeta(roi: str | None) -> float:
+        body = {
+            "composition": {"Fe": 70, "Cr": 30}, "basis": "wt",
+            "image_id": cube_id, "kind": "zeta",
+            "mass_thickness_kg_m2": 1e-5,
+            "probe_current_na": 1.0, "live_time_s": 100.0,
+        }
+        if roi:
+            body["roi"] = roi
+        r = client.post("/api/factors/derive", json=body)
+        assert r.status_code == 200, r.text
+        return r.json()["factors"]["Fe"]["value"]
+
+    whole = _zeta(None)
+    # 2 of the cube's 4 pixels — enough to show the 2x inflation
+    half = _zeta(f"1,1,{NY},1")
+    assert half == pytest.approx(whole, rel=1e-6)
+
+
+def test_the_op_scales_the_dose_with_the_region_too(client, cube_id) -> None:
+    """Route and recipe must not disagree about one specimen."""
+    from fermiviewer.ops import run
+    from fermiviewer.session import store as session_store
+
+    ds = session_store.get(cube_id)
+    params = {
+        "elements": "Fe,Cr", "composition": "Fe:70,Cr:30", "basis": "wt",
+        "kind": "zeta", "reference_element": "", "beam_kv": 200.0,
+        "background": "linear", "e0_kev": 0.0,
+        "mass_thickness_kg_m2": 1e-5,
+        "probe_current_na": 1.0, "live_time_s": 100.0,
+    }
+    whole = run("eds_derive_factors", ds, dict(params))
+    scoped = run(
+        "eds_derive_factors",
+        ds,
+        {**params, "region": REGION_PARAM.coerce(
+            "region", [{"kind": "rect", "bounds": [[1, 1, NY, 1]]}]
+        )},
+    )
+
+    def _fe(result) -> float:
+        table = result.value["outputs"][0]["data"]
+        col = table["columns"].index("factor")
+        return next(row[col] for row in table["rows"] if row[0] == "Fe")
+
+    assert _fe(scoped) == pytest.approx(_fe(whole), rel=1e-6)

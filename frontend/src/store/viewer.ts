@@ -27,8 +27,8 @@ import { createMeasureActions } from "./viewerMeasureActions";
 import { createProjectActions } from "./viewerProjectActions";
 import { createRegionActions } from "./viewerRegionActions";
 import type { ViewerState } from "./viewerState";
+import { applyUndoEntry } from "./viewerUndo";
 import {
-  applyUndoEntry,
   clientState,
   ingestImages,
   initialTheme,

@@ -42,9 +42,10 @@ export interface ProfileBoxOutlineProps {
   svgRef: React.RefObject<SVGSVGElement | null>;
   setSelected: (id: string) => void;
   setMeasureWidth: (imageId: string, measureId: string, width: number) => void;
-  /** re-run the analysis: a new width is new numbers, the same reason a
-      moved endpoint refreshes on release */
-  onWidthCommitted: () => void;
+  /** re-run the analysis and record the undo step: a new width is new
+      numbers, the same reason a moved endpoint refreshes on release.
+      Receives the width the drag started from. */
+  onWidthCommitted: (before: number) => void;
 }
 
 export default function ProfileBoxOutline({
@@ -63,7 +64,10 @@ export default function ProfileBoxOutline({
   setMeasureWidth,
   onWidthCommitted,
 }: ProfileBoxOutlineProps) {
-  const dragging = useRef(false);
+  // the width the drag started from, or null when no drag is in flight.
+  // Doubles as the in-flight flag, so there is one piece of state to get
+  // wrong instead of two.
+  const dragFrom = useRef<number | null>(null);
 
   // screen px per image px (uniform zoom)
   const o = imageToScreen(0, 0, view, img, vp);
@@ -99,18 +103,25 @@ export default function ProfileBoxOutline({
         // in every environment implements pointer capture, and losing the
         // capture degrades the drag rather than breaking the handler
         (e.target as Element).setPointerCapture?.(e.pointerId);
-        dragging.current = true;
+        dragFrom.current = width;
         setSelected(measure.id);
       }}
       onPointerMove={(e) => {
-        if (!dragging.current) return;
+        if (dragFrom.current == null) return;
         setMeasureWidth(imageId, measure.id, widthFromPointer(e));
       }}
       onPointerUp={(e) => {
-        if (!dragging.current) return;
-        dragging.current = false;
+        const before = dragFrom.current;
+        if (before == null) return;
+        dragFrom.current = null;
         (e.target as Element).releasePointerCapture?.(e.pointerId);
-        onWidthCommitted();
+        onWidthCommitted(before);
+      }}
+      // Without pointer capture a drag can end off the element and never
+      // see pointerup, which would leave the flag set and make the next
+      // hover resize the box. Cancel clears it.
+      onPointerCancel={() => {
+        dragFrom.current = null;
       }}
     >
       {/* fat transparent edge: the grab target is the whole long side, not

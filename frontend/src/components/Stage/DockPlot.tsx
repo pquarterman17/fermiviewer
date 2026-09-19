@@ -32,6 +32,15 @@ export default function DockPlot() {
   const [fit, setFit] = useState<InterfaceWidthResult | null>(null);
   const [fitError, setFitError] = useState<string | null>(null);
 
+  // Clear the measurement when the profile changes. A span and an edge fit
+  // belong to the curve they were taken from; leaving them up under a new
+  // profile shows one measurement labelled as another's.
+  useEffect(() => {
+    setSpan(null);
+    setFit(null);
+    setFitError(null);
+  }, [profile?.measureId, profile?.dist, profile?.intensity]);
+
   const exportProfile = () => {
     const s = useViewer.getState();
     const id = s.activeId;

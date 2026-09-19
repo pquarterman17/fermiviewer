@@ -84,7 +84,7 @@ describe("ProfileBoxOutline", () => {
     expect(setMeasureWidth).toHaveBeenCalledWith("img", "m1", 60);
   });
 
-  it("re-runs the profile on release, because a new width is new numbers", () => {
+  it("re-runs the profile on release, reporting the width it started from", () => {
     const { container, onWidthCommitted } = draw();
     const grip = container.querySelectorAll("g")[0];
     const target = grip.querySelector("line")!;
@@ -92,7 +92,22 @@ describe("ProfileBoxOutline", () => {
     fireEvent.pointerMove(target, { clientX: 100, clientY: 130 });
     expect(onWidthCommitted).not.toHaveBeenCalled();
     fireEvent.pointerUp(target);
-    expect(onWidthCommitted).toHaveBeenCalledTimes(1);
+    // the pre-drag width, so the caller can record an undo step; without
+    // it Ctrl+Z after a width drag popped an unrelated earlier edit
+    expect(onWidthCommitted).toHaveBeenCalledWith(20);
+  });
+
+  it("stops dragging when the gesture is cancelled", () => {
+    // Without pointer capture a drag can end off the element and never see
+    // pointerup. If the in-flight flag stuck, the next hover would resize
+    // the box with no button held.
+    const { container, setMeasureWidth } = draw();
+    const grip = container.querySelectorAll("g")[0];
+    const target = grip.querySelector("line")!;
+    fireEvent.pointerDown(target);
+    fireEvent.pointerCancel(target);
+    fireEvent.pointerMove(target, { clientX: 100, clientY: 130 });
+    expect(setMeasureWidth).not.toHaveBeenCalled();
   });
 
   it("ignores a move that did not start on a grip", () => {

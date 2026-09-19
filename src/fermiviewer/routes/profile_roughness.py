@@ -25,7 +25,7 @@ import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from fermiviewer.calc.calibration import growth_axis_scales
+from fermiviewer.calc.calibration import line_axis_scales
 from fermiviewer.calc.profile_stats import fit_interface_width
 from fermiviewer.calc.tilted_profile import line_box_block
 from fermiviewer.calc.trace_roughness import (
@@ -109,8 +109,15 @@ def profile_roughness(req: ProfileRoughnessRequest) -> dict[str, Any]:
         )
 
     px = ds.pixel_size
-    depth_size, lateral_size = growth_axis_scales(
-        "y", px if np.isfinite(px) and px > 0 else 1.0, ds.pixel_spacing
+    # The box's depth runs along the DRAWN LINE, so on anisotropic pixels
+    # neither the row nor the column extent is the right scale — it is a
+    # mix of the two. Hardcoding the row extent put sigma_w and the
+    # correlation length in the wrong units for any line off the axes.
+    depth_size, lateral_size = line_axis_scales(
+        req.b[0] - req.a[0],
+        req.b[1] - req.a[1],
+        px if np.isfinite(px) and px > 0 else 1.0,
+        ds.pixel_spacing,
     )
     trace = trace_interface(block, "y", pos, req.trace_window)
     rough = analyze_trace(trace, depth_size, lateral_size=lateral_size)

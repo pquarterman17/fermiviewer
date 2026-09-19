@@ -15,7 +15,7 @@ from typing import Any
 
 import numpy as np
 
-from fermiviewer.calc.calibration import growth_axis_scales
+from fermiviewer.calc.calibration import line_axis_scales
 from fermiviewer.calc.profile_stats import fit_interface_width
 from fermiviewer.calc.tilted_profile import line_box_block
 from fermiviewer.calc.trace_roughness import (
@@ -56,8 +56,12 @@ def _profile_roughness(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         raise ValueError(f"interface_pos {pos:g} is outside the box")
 
     px = ds.pixel_size
-    depth_size, lateral_size = growth_axis_scales(
-        "y", px if np.isfinite(px) and px > 0 else 1.0, ds.pixel_spacing
+    # depth runs along the drawn line, not down the rows (see the route)
+    depth_size, lateral_size = line_axis_scales(
+        params["row2"] - params["row1"],
+        params["col2"] - params["col1"],
+        px if np.isfinite(px) and px > 0 else 1.0,
+        ds.pixel_spacing,
     )
     window = int(params["trace_window"])
     trace = trace_interface(block, "y", pos, window)

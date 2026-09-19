@@ -144,6 +144,38 @@ def growth_axis_scales(
     return (s_row, s_col) if axis == "y" else (s_col, s_row)
 
 
+def line_axis_scales(
+    d_row: float, d_col: float, pixel_size: float,
+    spacing: tuple[float, float] | None,
+) -> tuple[float, float]:
+    """``(along, across)`` pixel extents for a box drawn along a free line.
+
+    `growth_axis_scales` answers this for a stack aligned to the image axes,
+    where depth is rows or columns. A box profile is drawn at whatever angle
+    the user chose, so its depth axis is a MIX of the two extents and
+    neither of that function's answers is right: on 4 nm rows and 1 nm
+    columns, a 45-degree line steps about 2.9 nm per sample, not 4 and not 1.
+
+    One pixel step along the line's direction ``(d_row, d_col)`` covers
+    ``|(d_row·s_row, d_col·s_col)|`` physically once normalised; the across
+    direction is its perpendicular. Isotropic pixels (or no usable spacing)
+    give ``pixel_size`` for both, so an uncalibrated or square-pixel image
+    is unaffected.
+    """
+    sp = usable_spacing(spacing)
+    if sp is None:
+        return float(pixel_size), float(pixel_size)
+    s_row, s_col = sp
+    norm = float(math.hypot(d_row, d_col))
+    if norm == 0:
+        return float(s_row), float(s_col)
+    ur, uc = d_row / norm, d_col / norm
+    along = float(math.hypot(ur * s_row, uc * s_col))
+    # perpendicular in pixel space: (-uc, ur)
+    across = float(math.hypot(uc * s_row, ur * s_col))
+    return along, across
+
+
 def physical_length(
     d_col: float, d_row: float, spacing: tuple[float, float]
 ) -> float:

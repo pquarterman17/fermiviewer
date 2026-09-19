@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
+
 from fermiviewer.calc.eds_continuum import background_component
 from fermiviewer.calc.eds_factors import derive_k_factors, derive_zeta_factors, weight_fractions
 from fermiviewer.calc.eds_peakfit import fit_peaks
@@ -88,6 +90,22 @@ def _eds_derive_factors(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         if scoped is None
         else masked_sum_spectrum(ds.data, scoped.rect, scoped.mask)
     )
+    # Share of the acquisition's dose that landed on the summed pixels. ζ is
+    # ABSOLUTE, so dividing a region's counts by the whole map's dose scales
+    # it with the region's pixel count -- the same mismatch the route fixes.
+    # 1.0 unscoped, so a whole-cube derivation is unchanged.
+    dose_fraction = 1.0
+    if scoped is not None and ds.kind is DataKind.SPECTRUM_IMAGE:
+        rect, mask = scoped
+        r1, c1, r2, c2 = rect
+        counted = (
+            int(np.count_nonzero(mask))
+            if mask is not None
+            else (r2 - r1 + 1) * (c2 - c1 + 1)
+        )
+        total = int(ds.data.shape[0]) * int(ds.data.shape[1])
+        if total > 0 and counted > 0:
+            dose_fraction = counted / total
     pf = fit_peaks(
         energy,
         spectrum,
@@ -103,7 +121,10 @@ def _eds_derive_factors(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         rho_t = float(params["mass_thickness_kg_m2"])
         if not rho_t > 0:
             raise ValueError("ζ needs a positive certified mass-thickness")
-        dose = dose_electrons(params["probe_current_na"], params["live_time_s"])
+        dose = (
+            dose_electrons(params["probe_current_na"], params["live_time_s"])
+            * dose_fraction
+        )
         derived = derive_zeta_factors(
             elements,
             net,

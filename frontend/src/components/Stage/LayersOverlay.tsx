@@ -66,7 +66,9 @@ export default function LayersOverlay({
   const onLineDown = (e: React.PointerEvent, k: number) => {
     if (!edit) return;
     e.stopPropagation();
-    (e.target as Element).setPointerCapture(e.pointerId);
+    // optional-call, matching the guarded release: an element that
+    // cannot capture should degrade the drag, not throw out of the handler
+    (e.target as Element).setPointerCapture?.(e.pointerId);
     setDrag({ index: k, pos: positions[k] });
   };
   const onMove = (e: React.PointerEvent) => {
@@ -107,12 +109,17 @@ export default function LayersOverlay({
     // atan of rise-over-run from the pivot, clamped: past ~60 deg the
     // inscribed sampling box has almost nothing left, and the backend
     // refuses rather than returning a one-pixel-wide "average".
-    const deg = (Math.atan2(depth - anchor, halfSpan) * 180) / Math.PI;
+    // negated for the same convention as the drawing above, so dragging the
+    // handle DOWN still moves the line down under the pointer while
+    // publishing the sign the backend integrates along
+    const deg = (-Math.atan2(depth - anchor, halfSpan) * 180) / Math.PI;
     return Math.max(-60, Math.min(60, deg));
   };
   const onTiltDown = (e: React.PointerEvent) => {
     e.stopPropagation();
-    (e.target as Element).setPointerCapture(e.pointerId);
+    // optional-call, matching the guarded release: an element that
+    // cannot capture should degrade the drag, not throw out of the handler
+    (e.target as Element).setPointerCapture?.(e.pointerId);
     setTiltDrag(tilt);
   };
   const onTiltMove = (e: React.PointerEvent) => {
@@ -160,8 +167,14 @@ export default function LayersOverlay({
         const lateral1 = lateralHi;
         // Rotate each line about the lateral midpoint so raising the tilt
         // pivots the stack in place rather than sweeping it off the region.
+        // MINUS, matching `calc/tilted_profile`'s sampler: a constant-depth
+        // line there is `row = centre - lateral·sin θ`, so a positive tilt
+        // makes the interface RISE to the right. Drawing it the other way
+        // published the negation of what the backend wanted — handing the
+        // backend +10° for a stack that needed -10° turned one interface
+        // with σ_erf 5.8 into seven with σ_erf ~7.
         const depthAtLateral = (lateral: number) =>
-          pos + (lateral - (lateralLo + lateralHi) / 2) * Math.tan(theta);
+          pos - (lateral - (lateralLo + lateralHi) / 2) * Math.tan(theta);
         const a = horizontal
           ? imageToScreen(lateral0, depthAtLateral(lateral0), view, img, vp)
           : imageToScreen(depthAtLateral(lateral0), lateral0, view, img, vp);
@@ -227,7 +240,7 @@ export default function LayersOverlay({
       })}
       {edit && positions.length > 0 && (() => {
         const anchor = lineFor(0);
-        const end = anchor + halfSpan * Math.tan(theta);
+        const end = anchor - halfSpan * Math.tan(theta);
         const p = horizontal
           ? imageToScreen(lateralHi, end, view, img, vp)
           : imageToScreen(end, lateralHi, view, img, vp);

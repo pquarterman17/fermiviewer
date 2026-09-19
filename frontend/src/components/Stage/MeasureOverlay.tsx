@@ -306,7 +306,15 @@ export default function MeasureOverlay({
             svgRef={svgRef}
             setSelected={setSelected}
             setMeasureWidth={setMeasureWidth}
-            onWidthCommitted={() => refresh(m)}
+            onWidthCommitted={(before) => {
+              const after = (measures.find((x) => x.id === m.id)?.width) ?? before;
+              if (after !== before) {
+                pushUndo({
+                  t: "measure-width", imageId, measureId: m.id, before, after,
+                });
+              }
+              refresh(m);
+            }}
           />
         ) : null;
       shape = (
