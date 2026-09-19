@@ -128,7 +128,7 @@ class Annotation:
     line for distance, dashed line for profile, polyline for angle
     (vertex = pts[1]), rect for roi; same label text and offsets."""
 
-    kind: str                                  # distance|profile|angle|roi
+    kind: str                                  # distance|profile|angle|roi|line
     points: tuple[tuple[float, float], ...]    # (x, y) output px
     label: str
     label_xy: tuple[float, float]
@@ -248,7 +248,16 @@ def measure_annotations(
                                   (opts[0][0] + 6, opts[0][1] - 6),
                                   end_symbol=end_symbol))
             continue
-        if kind == "arrow":
+        if kind in ("arrow", "line"):
+            # `line` is `arrow` without the head: a plain segment captioned
+            # with the text GIVEN. Needed for annotations that mark WHERE
+            # something is rather than point AT it — a cross-section
+            # interface is not a vector, and an arrowhead on one reads as a
+            # direction the measurement does not have. It carries its own
+            # text because `distance`/`profile` would overwrite the caption
+            # with the segment's own length, which for an interface line is
+            # the lateral span of the field of view: a true number, and not
+            # the one the figure is about.
             out.append(Annotation(kind, opts[:2], text,
                                   (opts[0][0] + 8, opts[0][1] - 8),
                                   end_symbol=end_symbol))

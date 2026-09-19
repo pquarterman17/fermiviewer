@@ -13,6 +13,29 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **The cross-section as a figure.** "Export figure" in the Cross-section
+  workshop renders the micrograph itself with the interfaces where the
+  operator left them, the analysed region and the layer thicknesses burned
+  in. The CSV exports say what was measured; this says *where*, which is the
+  part a reader of a paper cannot check from a table. It goes through the
+  ordinary `/api/export` measurement path, so the figure inherits the display
+  window, colormap and scale bar already on screen and cannot drift from them,
+  and it renders the image the stack was measured on rather than whatever is
+  active now.
+- **`line` measure kind for export annotations.** A plain segment captioned
+  with the text given: no arrowhead (which `arrow` draws, and which reads as
+  a direction an interface does not have) and no computed length (which
+  `distance` writes over the caption, and which for an interface line is the
+  width of the field of view).
+- **Detected-vs-edited interfaces on the stage.** An edited run draws the
+  detector's own positions underneath the live ones — thinner, faded, and
+  never interactive — but only where the two actually differ, so the display
+  says "disagreement" exactly where there is one. That gap is the finding: it
+  marks where the automatic method could not be trusted on this specimen.
+
 ## [0.6.0] - 2026-09-18
 
 ### Added

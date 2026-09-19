@@ -1157,3 +1157,50 @@ def test_grain_label_colorbar_suppressed(client, tmp_path) -> None:
     })
     assert r.status_code == 200
     assert Image.open(io.BytesIO(r.content)).width == 4  # no +81 gutter
+
+
+def test_line_annotation_is_a_plain_captioned_segment(client, img_id) -> None:
+    """`line` marks WHERE something is: no arrowhead, no computed label.
+
+    The two things it must not do are exactly what the neighbouring kinds
+    do — `arrow` adds a head that reads as a direction, and `distance`
+    overwrites the caption with the segment's own length. A cross-section
+    interface line has neither a direction nor a length worth quoting (its
+    length is the width of the field of view), so both would be wrong.
+    """
+    pts = [{"x": 0.0, "y": 0.4}, {"x": 1.0, "y": 0.4}]
+    svg = client.post("/api/export", json={
+        "image_id": img_id, "format": "svg", "scale": 2,
+        "include": ["measurements"],
+        "measures": [{"kind": "line", "pts": pts, "text": "12.5 nm"}],
+    }).content.decode()
+    assert "<line" in svg
+    assert ">12.5 nm</text>" in svg
+    assert "<polyline" not in svg           # no arrowhead
+
+    # the same segment as an arrow gets a head; as a distance it loses the
+    # caption to a length — the two behaviours `line` exists to avoid
+    arrow = client.post("/api/export", json={
+        "image_id": img_id, "format": "svg", "scale": 2,
+        "include": ["measurements"],
+        "measures": [{"kind": "arrow", "pts": pts, "text": "12.5 nm"}],
+    }).content.decode()
+    assert "<polyline" in arrow
+
+    dist = client.post("/api/export", json={
+        "image_id": img_id, "format": "svg", "scale": 2,
+        "include": ["measurements"],
+        "measures": [{"kind": "distance", "pts": pts, "text": "12.5 nm"}],
+    }).content.decode()
+    assert ">12.5 nm</text>" not in dist
+
+    # and it bakes into a raster without error
+    base = client.post("/api/export", json={
+        "image_id": img_id, "format": "png", "scale": 4,
+    }).content
+    baked = client.post("/api/export", json={
+        "image_id": img_id, "format": "png", "scale": 4,
+        "include": ["measurements"],
+        "measures": [{"kind": "line", "pts": pts, "text": "12.5 nm"}],
+    }).content
+    assert baked != base

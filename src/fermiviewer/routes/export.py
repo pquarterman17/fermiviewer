@@ -56,7 +56,7 @@ class WirePoint(BaseModel):
 
 class WireMeasure(BaseModel):
     kind: str                  # distance|profile|angle|roi|polyline|
-    pts: list[WirePoint]       #   text|arrow|box
+    pts: list[WirePoint]       #   text|arrow|line|box
     text: str | None = None    # annotation caption
     # circle|cross|square|none|bar — wire key is camelCase (mirrors the
     # frontend Measure.endSymbol); model_dump() emits end_symbol,

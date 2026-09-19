@@ -29,9 +29,10 @@ import AnalysisRegionSelect from "./AnalysisRegionSelect";
 import DepthPlot from "./LayersDepthPlot";
 import LayersRoughnessDetail from "./LayersRoughnessDetail";
 import LayersMultiCompare from "./LayersMultiCompare";
-import { LayerStack, exportCsv } from "./layers/LayerStack";
+import { LayerStack } from "./layers/LayerStack";
 import { LayersControls } from "./layers/LayersControls";
 import { LayersEditRow } from "./layers/LayersEditRow";
+import { LayersExportRow } from "./layers/LayersExportRow";
 import { LayersMode } from "./layers/LayersMode";
 import {
   layersOverlayState,
@@ -473,22 +474,14 @@ export default function LayersWorkshop() {
         </details>
       )}
       {result && result.layers.length > 0 && (
-        <div className="fvd-ws-row">
-          <button className="fvd-btn" disabled={!canUseResult} onClick={() => exportCsv(result)} title="Export layers + interfaces as CSV">
-            Export CSV
-          </button>
-          <label
-            className="fvd-check"
-            title="Keep this run, its settings, the layer table and the depth profile it was measured from in Results & Methods"
-          >
-            <input
-              type="checkbox"
-              checked={saveResult}
-              onChange={(e) => setSaveResult(e.target.checked)}
-            />
-            Save result
-          </label>
-        </div>
+        <LayersExportRow
+          result={result}
+          roi={analysisRoi.roi}
+          disabled={!canUseResult}
+          saveResult={saveResult}
+          onSaveResult={setSaveResult}
+          onError={(m) => setStatus(`Figure export failed: ${m}`)}
+        />
       )}
 
     </div>
