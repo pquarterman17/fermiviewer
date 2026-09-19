@@ -13,7 +13,7 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.6.0] - 2026-09-18
 
 ### Added
 - **Interfacial roughness from the box, not from the averaged profile
@@ -40,19 +40,6 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   parallel layers cannot converge.
 - Layers analyses now persist as result records, so a cross-section survives
   the project save instead of living only in the browser tab.
-
-### Fixed
-- **A rough interface could be under-measured several-fold in silence.** The
-  per-column trace searches only ±`trace_window` around the interface; one
-  that wanders further is clipped, and `sigma_w` came back a lower bound
-  while the trace's `quality` still read 1.00 — every column WAS traced, just
-  all to the same wrong place. Both the layers result and the new endpoint
-  now report `window_limited`, and the endpoint says in words that the number
-  is a lower bound.
-- **A rejected erf fit reported a perfect fit quality.** When the fitted
-  centre escapes its window the fit is discarded and σ becomes NaN, but its
-  r² was still returned — and `assessLayerQuality` grades on r² alone, so an
-  interface with no measurable width rated good.
 - **EELS cross-sections derived from a standard, and factor derivation
   restricted to a region (ADR 0011, roadmap 5b).** The hydrogenic model in
   `eels_quant.cross_section` knows nothing about your spectrometer, and
@@ -72,11 +59,30 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/).
   `calc/composition.py`; two spellings of one conversion is how they drift.
 
 ### Fixed
+- **A rough interface could be under-measured several-fold in silence.** The
+  per-column trace searches only ±`trace_window` around the interface; one
+  that wanders further is clipped, and `sigma_w` came back a lower bound
+  while the trace's `quality` still read 1.00 — every column WAS traced, just
+  all to the same wrong place. Both the layers result and the new endpoint
+  now report `window_limited`, and the endpoint says in words that the number
+  is a lower bound.
+- **A rejected erf fit reported a perfect fit quality.** When the fitted
+  centre escapes its window the fit is discarded and σ becomes NaN, but its
+  r² was still returned — and `assessLayerQuality` grades on r² alone, so an
+  interface with no measurable width rated good.
 - A `region` or `roi` on `POST /api/factors/derive` is now applied to the
   sum, not merely recorded in the factor set's provenance. A specimen has a
   matrix and inclusions, so a factor derived from the whole field was a
   factor for the average of everything in it rather than for the phase the
   certificate describes.
+- **The cross-section Report export was disabled with no way to tell why.**
+  The button gated on a per-layer grain measurement the report format does
+  not require — `buildCrossSectionReport` already emits `per_layer_grains:
+  null` and records the gap as a limitation — and the gate re-armed itself
+  whenever an interface moved, killing an export that had worked minutes
+  earlier. A disabled button swallows the click, so the symptom was a control
+  that did nothing. The per-layer condition is now an advisory note, and every
+  export button carries a `title` naming whatever is still blocking it.
 
 ## [0.5.0] - 2026-09-07
 
