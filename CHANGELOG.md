@@ -13,6 +13,26 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [0.6.1] - 2026-09-20
+
+### Security
+- Updated AnyIO from 4.13.0 to 4.14.2, fixing CVE-2026-63374 (Unicode host
+  names could be matched against TLS certificates using IDNA 2003 instead of
+  IDNA 2008) and CVE-2026-64847 (a process-pool worker could block when its
+  undrained stderr pipe filled).
+
+### Changed
+- Refreshed the supported React, React DOM, jsdom, Vite, and Vitest versions,
+  together with their lockfile dependencies.
+- Refreshed the Python development and packaging toolchain, including Ruff,
+  PyInstaller, and its hook collection.
+
+### Documentation
+- Added a Calibration & Standards wiki guide and updated the README and wiki
+  for per-axis calibration, instrument profiles, known standards, measured
+  EDS/EELS factors, quantitative QC, profile fitting, and cross-section
+  roughness workflows.
+
 ## [0.6.0] - 2026-09-18
 
 ### Added
