@@ -216,6 +216,7 @@ Feature walkthroughs, screenshots, and how-tos live in the
 - **[Viewing &amp; Display](https://github.com/pquarterman17/fermiviewer/wiki/Viewing-and-Display)** — colormaps, the calibrated color scale, scale bar
 - **[Measurements](https://github.com/pquarterman17/fermiviewer/wiki/Measurements)** — line/box profiles, distances, ROIs, annotations
 - **[Analysis Workshops](https://github.com/pquarterman17/fermiviewer/wiki/Analysis-Workshops)** — Elemental Analysis (EELS+EDS), diffraction, 4D-STEM
+- **[Calibration &amp; Standards](https://github.com/pquarterman17/fermiviewer/wiki/Calibration-and-Standards)** — per-axis calibration, instrument profiles, known standards, measured k/ζ/σ factors, and QC
 - **[Structure &amp; Grains](https://github.com/pquarterman17/fermiviewer/wiki/Structure-and-Grains)** — grain segmentation (incl. paint-to-train), cross-section layer &amp; interface-roughness analysis
 - **[4D-STEM](https://github.com/pquarterman17/fermiviewer/wiki/4D-STEM)** — pixelated-detector datasets, probing, virtual-detector imaging
 - **[Scripting &amp; Automation](https://github.com/pquarterman17/fermiviewer/wiki/Scripting-and-Automation)** — Python API, headless `fv --script`, batch/watch/macro
@@ -237,7 +238,7 @@ Feature walkthroughs, screenshots, and how-tos live in the
 
 Every **registered operation** is also a headless Python surface —
 `fermiviewer.api` — the same engine the server and a notebook both use,
-with no FastAPI/browser dependency. Registered-op coverage is **72 of 80
+with no FastAPI/browser dependency. Registered-op coverage is **75 of 83
 analysis endpoints**; the eight remaining endpoints are 4D-STEM/tomography
 work parked behind roadmap items 8 and 9. The generated audit of exactly
 what is reachable headlessly is
