@@ -268,6 +268,24 @@ export const OVERLAY_FONT_PX: Record<OverlayStyle["size"], number> = {
   XXL: 64,
 };
 
+const END_SYMBOLS: EndSymbol[] = ["bar", "circle", "cross", "square", "none"];
+
+/** Field-by-field validation of an overlay style read from storage or a
+ *  saved project: an unknown size would make OVERLAY_FONT_PX[size]
+ *  undefined (NaN label font), so bad fields fall back to `base`. */
+export function sanitizeOverlay(raw: unknown, base: OverlayStyle): OverlayStyle {
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  return {
+    size: typeof o.size === "string" && o.size in OVERLAY_FONT_PX
+      ? (o.size as OverlayStyle["size"]) : base.size,
+    color: typeof o.color === "string" ? o.color : base.color,
+    lineWidth: typeof o.lineWidth === "number" && Number.isFinite(o.lineWidth) && o.lineWidth > 0
+      ? o.lineWidth : base.lineWidth,
+    endSymbol: END_SYMBOLS.includes(o.endSymbol as EndSymbol)
+      ? (o.endSymbol as EndSymbol) : base.endSymbol,
+  };
+}
+
 /** Per-image scale bar display overrides.
  *  x/y are fractional positions 0–1 relative to the stage viewport
  *  (default bottom-left ≈ 0.02, 0.92).

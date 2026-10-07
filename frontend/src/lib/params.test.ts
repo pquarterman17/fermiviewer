@@ -56,3 +56,13 @@ describe("coerceParams", () => {
     ).toEqual({ op: "close", save: true, name: "frame" });
   });
 });
+
+describe("coerceParams bounds", () => {
+  const f = [{ key: "g", label: "g", type: "number" as const, default: 4, min: 0, max: 64, int: true }];
+  it("clamps and rounds typed strings and numbers", () => {
+    expect(coerceParams({ g: "100" }, f).g).toBe(64);
+    expect(coerceParams({ g: -3 }, f).g).toBe(0);
+    expect(coerceParams({ g: "2.6" }, f).g).toBe(3);
+    expect(coerceParams({ g: "abc" }, f).g).toBe(4);
+  });
+});

@@ -15,7 +15,8 @@ export const num = (
   label: string,
   dflt: number,
   hint?: string,
-): ParamField => ({ key, label, type: "number", default: dflt, hint });
+  bounds?: Pick<ParamField, "min" | "max" | "int">,
+): ParamField => ({ key, label, type: "number", default: dflt, hint, ...bounds });
 
 // narrow selector: only the fields the menu STRUCTURE reads (labels,
 // disabled state, submenu content) + the stable action refs every

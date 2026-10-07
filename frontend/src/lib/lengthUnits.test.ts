@@ -146,3 +146,9 @@ describe("displayLength — fixed unit choices", () => {
     expect(displayLength(1500, "um", "mm")).toEqual({ value: 1.5, unit: "mm" });
   });
 });
+
+describe("linearUnitToNm pm", () => {
+  it("knows picometres (offered by Calibrate Pixel Size)", () => {
+    expect(linearUnitToNm("pm")).toBe(1e-3);
+  });
+});

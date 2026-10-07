@@ -153,7 +153,7 @@ export function buildAnalysisMenu(ctx: MenuCtx): Entry[] {
                   default: "ramp",
                   options: ["ramp", "shepp-logan", "hamming", "none"],
                 },
-                num("output_size", "Output size (0 = auto)", 0),
+                num("output_size", "Output size (0 = auto)", 0, undefined, { min: 0, max: 8192, int: true }),
               ]);
               const id = store.activeId;
               if (!v || !id) return;

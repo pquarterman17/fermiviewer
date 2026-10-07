@@ -36,6 +36,14 @@ import { AnalysisQualityCard, GrainMetrics } from "../AnalysisQualityCard";
 import Preview from "../StructurePreview";
 import { TrainedGrainControls } from "./TrainedGrainControls";
 
+/** A stored result's method can carry an edit suffix ("gradient+merge" from
+ *  /grains/edit) or come from an older build — map it back to a method
+ *  this panel knows, so the knob/when lookups below can't come back empty. */
+function baseGrainMethod(m: unknown): GrainMethod {
+  const base = String(m ?? "").split("+")[0];
+  return GRAIN_METHODS.some((g) => g.value === base) ? (base as GrainMethod) : "gradient";
+}
+
 // method → the one tuning knob it exposes; higher coarseness / merge / K
 // is fewer, larger grains. Classic k-means is the ported MATLAB path.
 export const GRAIN_METHODS: {
@@ -87,7 +95,7 @@ export function GrainsMode({ id }: { id: string }) {
   const roiKey = analysisRoi.roi?.join(":") ?? "whole";
   const latestGrains = useCrossSection((s) => s.grains);
   const savedGrains = matchesCrossSectionRegion(latestGrains, sourceId, analysisRoi.roi) ? latestGrains : null;
-  const [method, setMethod] = useState<GrainMethod>((savedGrains?.result.method as GrainMethod) ?? "gradient");
+  const [method, setMethod] = useState<GrainMethod>(baseGrainMethod(savedGrains?.result.method));
   const [k, setK] = useState("3");
   const [coarseness, setCoarseness] = useState("0.05");
   const [mergeThr, setMergeThr] = useState("0.08");
@@ -121,7 +129,7 @@ export function GrainsMode({ id }: { id: string }) {
     const restored = saved?.sourceId === sourceId && (saved.roi?.join(":") ?? "whole") === roiKey ? saved : null;
     setLabelsId(restored?.result.labels.id ?? null);
     setGrainResult(restored?.result ?? null);
-    setMethod((restored?.result.method as GrainMethod) ?? "gradient");
+    setMethod(baseGrainMethod(restored?.result.method));
     setMinArea(String(restored?.minArea ?? 25));
     setNote("");
     setPreview(null);
@@ -152,7 +160,7 @@ export function GrainsMode({ id }: { id: string }) {
     return () => scribbleEnd();
   }, [method, sourceId, sourceIsGrainMap, scribbleBegin, scribbleEnd]);
 
-  const knob = GRAIN_METHODS.find((m) => m.value === method)!.knob;
+  const knob = GRAIN_METHODS.find((m) => m.value === method)?.knob ?? "";
   const knobValue =
     method === "kmeans" ? k : method === "rag" ? mergeThr : coarseness;
   const setKnob =
@@ -346,7 +354,7 @@ export function GrainsMode({ id }: { id: string }) {
         </select>
       </div>
       <div className="fvd-ws-note">
-        {GRAIN_METHODS.find((m) => m.value === method)!.when}
+        {GRAIN_METHODS.find((m) => m.value === method)?.when ?? ""}
       </div>
       {method === "trained" ? (
         <TrainedGrainControls

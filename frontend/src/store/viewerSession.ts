@@ -26,6 +26,7 @@ import { useBrowseScale } from "./browseScale";
 import type { ViewerState } from "./viewerState";
 import {
   DEFAULT_DISPLAY,
+  sanitizeOverlay,
   type Display,
   type HistoryStep,
   type Measure,
@@ -384,7 +385,7 @@ export function sessionSlice(
     views: (cs.views as Record<string, View>) ?? {},
     display: (cs.display as Record<string, Display>) ?? {},
     measures,
-    overlay: (cs.overlay as OverlayStyle) ?? fallbackOverlay,
+    overlay: sanitizeOverlay(cs.overlay, fallbackOverlay),
     savedRois: (cs.savedRois as Record<string, SavedRoi[]>) ?? {},
     // a load is a fresh session: drop undo history + per-image state that
     // isn't part of the saved payload so it doesn't bleed across loads

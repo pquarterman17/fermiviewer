@@ -44,8 +44,8 @@ import {
 import {
   DEFAULT_DISPLAY,
   describePatch,
+  sanitizeOverlay,
   UNDO_CAP,
-  type OverlayStyle,
   type View,
 } from "./viewerTypes";
 
@@ -105,13 +105,12 @@ export const useViewer = create<ViewerState>((set, get) => ({
   // perpendicular ticks at measurement line ends
   // merge defaults UNDER the persisted value so fields added later
   // (lineWidth) are present even on overlays saved before they existed
-  overlay: {
-    size: "L" as const,
+  overlay: sanitizeOverlay(loadJson<unknown>(OVERLAY_KEY, {}), {
+    size: "L",
     color: "#ffffff",
     lineWidth: 2.5,
-    endSymbol: "bar" as const,
-    ...loadJson<Partial<OverlayStyle>>(OVERLAY_KEY, {}),
-  },
+    endSymbol: "bar",
+  }),
   scaleBars: {},
   tilts: {},
   stackFrames: {},

@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import App from "./App";
+import AppErrorBoundary from "./components/AppErrorBoundary";
 import { connectLifecycle } from "./lib/lifecycle";
 import { useScribble } from "./store/scribble";
 import { useViewer } from "./store/viewer";
@@ -22,6 +23,8 @@ if (import.meta.env.DEV) {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <AppErrorBoundary>
+      <App />
+    </AppErrorBoundary>
   </StrictMode>,
 );
