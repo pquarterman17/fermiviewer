@@ -4,6 +4,8 @@
 // loadPrefs() backfills from the older single-purpose keys (fv_theme,
 // fv_tools_layout, fv_overlay) so existing users keep their settings.
 
+import { COLORMAP_NAMES } from "./colormaps";
+
 export type ThemeChoice = "dark" | "light" | "system";
 /** Swappable accent scheme (Preferences → Appearance → Color scheme). */
 export type Accent = "violet" | "teal" | "ocean" | "amber" | "rose";
@@ -164,7 +166,62 @@ export function loadPrefs(): Prefs {
     /* corrupt prefs → defaults */
   }
   // precedence: explicit stored value > legacy key > built-in default
-  return { ...DEFAULTS, ...legacyBackfill(), ...stored };
+  return sanitizePrefs({ ...legacyBackfill(), ...stored });
+}
+
+const ENUMS: { [K in keyof Prefs]?: readonly Prefs[K][] } = {
+  theme: ["dark", "light", "system"],
+  accent: ["violet", "teal", "ocean", "amber", "rose"],
+  density: ["compact", "regular", "comfy"],
+  defaultCmap: COLORMAP_NAMES,
+  defaultTransform: ["linear", "log", "equalize"],
+  toolsLayout: ["cards", "unified"],
+  overlaySize: ["XS", "S", "M", "L", "XL", "XXL"],
+  overlayEndSymbol: ["bar", "none", "circle", "square", "cross"],
+  profileReduce: ["mean", "sum"],
+  exportFormat: ["png", "tiff16", "jpeg", "svg", "pdf"],
+  colorbarSide: ["left", "right", "bottom"],
+  tiltGeometry: ["cross-section", "surface"],
+};
+
+const RANGES: { [K in keyof Prefs]?: [number, number] } = {
+  autoLoPct: [0, 49.9],
+  autoHiPct: [0.1, 100],
+  inspectorGrid: [3, 15],
+  overlayLineWidth: [0.5, 20],
+  profileWidth: [1, 99],
+  scaleBarFontSize: [8, 120],
+  exportScale: [1, 4],
+  fixedZoomW: [1, 8192],
+  fixedZoomH: [1, 8192],
+};
+
+/** Coerce a possibly stale/corrupt stored blob into a valid Prefs: wrong
+ *  types, unknown enum values (e.g. a colormap this build doesn't ship)
+ *  and out-of-range numbers fall back to the default / nearest bound, so
+ *  a bad stored value can never take the app down on the next launch. */
+export function sanitizePrefs(raw: Partial<Prefs>): Prefs {
+  const out = { ...DEFAULTS } as Record<string, unknown>;
+  for (const k of Object.keys(DEFAULTS) as (keyof Prefs)[]) {
+    const v = (raw as Record<string, unknown>)[k];
+    const d = DEFAULTS[k];
+    if (v === undefined || typeof v !== typeof d) continue;
+    if (typeof v === "number") {
+      if (!Number.isFinite(v)) continue;
+      const r = RANGES[k];
+      out[k] = r ? Math.min(r[1], Math.max(r[0], v)) : v;
+      continue;
+    }
+    const allowed = ENUMS[k] as readonly unknown[] | undefined;
+    if (allowed && !allowed.includes(v)) continue;
+    out[k] = v;
+  }
+  const p = out as unknown as Prefs;
+  if (p.autoHiPct <= p.autoLoPct) {
+    p.autoLoPct = DEFAULTS.autoLoPct;
+    p.autoHiPct = DEFAULTS.autoHiPct;
+  }
+  return p;
 }
 
 export function savePrefs(p: Prefs): void {

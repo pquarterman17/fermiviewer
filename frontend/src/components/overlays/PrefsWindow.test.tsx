@@ -30,6 +30,7 @@ vi.mock("../../store/viewer", () => ({
 
 vi.mock("../../lib/colormaps", () => ({
   setCustomColormap: vi.fn(() => true),
+  COLORMAP_NAMES: ["gray", "invert", "viridis", "inferno", "fire", "ice", "redblue", "custom"],
 }));
 
 import PrefsWindow from "./PrefsWindow";

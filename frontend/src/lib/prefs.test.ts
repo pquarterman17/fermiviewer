@@ -95,3 +95,43 @@ describe("prefs", () => {
     expect(loadPrefs().copyIncludesAnnotations).toBe(true);
   });
 });
+
+describe("prefs sanitizing (crash on bad default colormap)", () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(() => localStorage.clear());
+
+  it("drops a colormap the renderer doesn't ship", () => {
+    localStorage.setItem("fv_prefs", JSON.stringify({ defaultCmap: "magma" }));
+    expect(loadPrefs().defaultCmap).toBe("gray");
+  });
+
+  it("keeps a valid colormap", () => {
+    localStorage.setItem("fv_prefs", JSON.stringify({ defaultCmap: "viridis" }));
+    expect(loadPrefs().defaultCmap).toBe("viridis");
+  });
+
+  it("rejects wrong types, bad enums and clamps numbers", () => {
+    localStorage.setItem(
+      "fv_prefs",
+      JSON.stringify({
+        theme: "neon",
+        overlaySize: "XXXL",
+        minimap: "yes",
+        scaleBarFontSize: 9999,
+        exportScale: 0,
+        fixedZoomW: null,
+        autoLoPct: 60,
+        autoHiPct: 40,
+      }),
+    );
+    const p = loadPrefs();
+    expect(p.theme).toBe(DEFAULTS.theme);
+    expect(p.overlaySize).toBe(DEFAULTS.overlaySize);
+    expect(p.minimap).toBe(DEFAULTS.minimap);
+    expect(p.scaleBarFontSize).toBe(120);
+    expect(p.exportScale).toBe(1);
+    expect(p.fixedZoomW).toBe(DEFAULTS.fixedZoomW);
+    expect(p.autoLoPct).toBe(DEFAULTS.autoLoPct);
+    expect(p.autoHiPct).toBe(DEFAULTS.autoHiPct);
+  });
+});
