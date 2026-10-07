@@ -348,7 +348,10 @@ def measure_distance_tilted(req: TiltedDistanceRequest) -> dict:
         ds = store.get(req.image_id)
     except UnknownImageError:
         raise HTTPException(404, f"unknown image id: {req.image_id}") from None
-    px = ds.pixel_size
+    try:
+        px = ds.pixel_size
+    except ValueError as e:  # 1-D spectra have no spatial axes
+        raise HTTPException(400, str(e)) from None
     pu = ds.pixel_unit or "px"
     try:
         result = measure_distance(

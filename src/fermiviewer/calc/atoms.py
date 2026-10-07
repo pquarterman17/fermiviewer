@@ -269,6 +269,8 @@ def fit_gaussian_2d(
         z = work[r_lo - 1 : r_hi, c_lo - 1 : c_hi]
         xv, yv, zv = xx.ravel(), yy.ravel(), z.ravel()
 
+        if not np.all(np.isfinite(zv)):
+            continue  # NaN/inf in the window: the Gaussian model can't fit it
         bg0 = zv.min()
         amp0 = zv.max() - bg0
         if amp0 <= 0:

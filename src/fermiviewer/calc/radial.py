@@ -190,6 +190,8 @@ def azimuthal_integrate(
     cx, cy = center if center is not None else ((w + 1) / 2, (h + 1) / 2)
     if n_bins <= 0:
         n_bins = min(h, w) // 2
+    if n_bins < 1:
+        raise ValueError(f"image too small for azimuthal integration ({h}×{w})")
 
     sp = usable_spacing(spacing)
     if sp is None:
