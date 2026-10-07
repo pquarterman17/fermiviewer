@@ -450,7 +450,7 @@ export default function AdjustPanel() {
           <div className="fvd-zscale-row">
             <span className="k">Tick font</span>
             <NumField
-              title="Colorbar tick-label font size (px; default 11)"
+              title="Colorbar tick-label font size (px; default 40)"
               value={
                 display.tickFontSize && display.tickFontSize > 0
                   ? display.tickFontSize
@@ -458,7 +458,7 @@ export default function AdjustPanel() {
               }
               onCommit={(v) =>
                 setDisplay(activeId, {
-                  tickFontSize: Math.min(48, Math.max(6, Math.round(v))),
+                  tickFontSize: Math.min(120, Math.max(6, Math.round(v))),
                 })
               }
             />

@@ -260,12 +260,12 @@ export interface OverlayStyle {
  *  MeasureOverlay renderer AND the export pipeline so burned-in labels
  *  match what's on the stage. */
 export const OVERLAY_FONT_PX: Record<OverlayStyle["size"], number> = {
-  XS: 10,
-  S: 13,
-  M: 16,
-  L: 20,
-  XL: 26,
-  XXL: 34,
+  XS: 20,
+  S: 26,
+  M: 32,
+  L: 40,
+  XL: 52,
+  XXL: 64,
 };
 
 /** Per-image scale bar display overrides.

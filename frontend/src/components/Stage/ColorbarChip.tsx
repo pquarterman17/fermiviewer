@@ -15,7 +15,7 @@ import { DEFAULT_DISPLAY, useViewer } from "../../store/viewer";
 
 const W = 14; // gradient internal width (px); CSS stretches height to full
 const LUT_H = 256;
-const DEFAULT_TICK_FONT = 11; // px — matches the original SVG export font-size
+const DEFAULT_TICK_FONT = 40; // px
 
 function fmt(v: number): string {
   const a = Math.abs(v);

@@ -74,7 +74,7 @@ class MontageCompareRequest(BaseModel):
     cols: int | None = None          # None -> ceil(sqrt(n)); mirrors auto mode
     gap: int = Field(default=4, ge=0, le=64)
     bg: float = 0.0
-    font_size: int = Field(default=14, ge=6, le=48)
+    font_size: int = Field(default=40, ge=6, le=200)
     bar_color: str = "#ffffff"
 
 

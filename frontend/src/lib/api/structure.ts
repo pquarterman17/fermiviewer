@@ -181,7 +181,7 @@ export function analyzeMontage(
     gap: opts.gap ?? 4,
     bg: opts.bg ?? 0,
     overlap: opts.overlap ?? 0,
-    font_size: opts.font_size ?? 14,
+    font_size: opts.font_size ?? 40,
   });
 }
 

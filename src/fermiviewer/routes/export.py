@@ -233,9 +233,9 @@ def export_image(req: ExportRequest) -> Response:
         )
 
     cbar = ("colorbar" in req.include and req.cmap != "label", lo, hi)
-    # font size: on-screen value (default 20) × effective scale so labels
+    # font size: on-screen value (default 40) × effective scale so labels
     # grow proportionally with the image (item #48; float in physical mode)
-    font_size = round((req.scale_bar_font_size or 20) * eff_scale)
+    font_size = round((req.scale_bar_font_size or 40) * eff_scale)
 
     # measurement overlay styling × effective scale (mirrors on-screen size +
     # line width); None → backend legacy default (2 px line, 12 px label)

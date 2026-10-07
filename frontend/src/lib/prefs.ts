@@ -113,7 +113,7 @@ export const DEFAULTS: Prefs = {
   profileReduce: "mean",
   lassoCloseSimplifyPx: 2,
   scaleBarVisible: true,
-  scaleBarFontSize: 20,
+  scaleBarFontSize: 40,
   exportFormat: "png",
   exportScale: 1,
   exportScaleBar: true,

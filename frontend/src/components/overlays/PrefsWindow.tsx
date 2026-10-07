@@ -143,7 +143,7 @@ export default function PrefsWindow() {
       inspectorGrid: Math.min(15, Math.max(3, Math.round(p.inspectorGrid))) | 1,
       profileWidth: Math.min(99, Math.max(1, Math.round(p.profileWidth))),
       lassoCloseSimplifyPx: Math.min(5, Math.max(0.5, p.lassoCloseSimplifyPx)),
-      scaleBarFontSize: Math.min(48, Math.max(8, Math.round(p.scaleBarFontSize))),
+      scaleBarFontSize: Math.min(120, Math.max(8, Math.round(p.scaleBarFontSize) || 40)),
       exportScale: Math.min(4, Math.max(1, Math.round(p.exportScale))),
       fixedZoomW: Math.max(1, Math.round(p.fixedZoomW)),
       fixedZoomH: Math.max(1, Math.round(p.fixedZoomH)),
@@ -309,7 +309,7 @@ export default function PrefsWindow() {
                   <Toggle checked={p.scaleBarVisible} onChange={(v) => set("scaleBarVisible", v)} />
                 </Row>
                 <Row label="Scale-bar font size (px)">
-                  <Num value={p.scaleBarFontSize} min={8} max={48} step={1} onChange={(v) => set("scaleBarFontSize", v)} />
+                  <Num value={p.scaleBarFontSize} min={8} max={120} step={1} onChange={(v) => set("scaleBarFontSize", v)} />
                 </Row>
                 <Row label="Default tilt geometry" hint="seeded onto newly opened images">
                   <Seg value={p.tiltGeometry} options={GEOM_OPTS} onChange={(v) => set("tiltGeometry", v)} />

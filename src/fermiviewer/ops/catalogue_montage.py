@@ -153,7 +153,7 @@ register(
                 doc="fractional tile overlap [0, 1) — the route's "
                 "Field(ge=0.0, lt=1.0)",
             ),
-            "font_size": OpParam(int, 14, minimum=6, maximum=48),
+            "font_size": OpParam(int, 40, minimum=6, maximum=200),
         },
         inputs={
             "others": OpInput(
@@ -299,7 +299,7 @@ register(
             "cols": _COLS_PARAM,
             "gap": OpParam(int, 4, minimum=0, maximum=64),
             "bg": OpParam(float, 0.0, doc="background fill value"),
-            "font_size": OpParam(int, 14, minimum=6, maximum=48),
+            "font_size": OpParam(int, 40, minimum=6, maximum=200),
             "bar_color": OpParam(
                 str,
                 "#ffffff",

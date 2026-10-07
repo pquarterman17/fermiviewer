@@ -122,11 +122,13 @@ function buildExportRequest(
           scale_bar_norm_y: sb.y,
           scale_bar_length_phys: sb.lengthPhys,
           scale_bar_thickness: sb.thickness,
-          scale_bar_font_size: sb.fontSize,
+          scale_bar_font_size: sb.fontSize ?? loadPrefs().scaleBarFontSize,
           scale_bar_color: sb.color ?? null,          // audit #10
           scale_bar_unit_override: sb.unitOverride ?? null, // audit #10
         }
-      : {}),
+      : wantBar
+        ? { scale_bar_font_size: loadPrefs().scaleBarFontSize }
+        : {}),
   };
   return { id, options };
 }

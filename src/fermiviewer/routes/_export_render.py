@@ -22,7 +22,7 @@ from fermiviewer.calc.export import Annotation, ScaleBar, colorbar_strip
 
 # ── font loading (item #48) ──────────────────────────────────────────
 
-_DEFAULT_FONT_SIZE = 20  # matches ScaleBarCard default
+_DEFAULT_FONT_SIZE = 40  # matches ScaleBarCard default
 
 def _load_font(size: int) -> FreeTypeFont | None:
     """Load JetBrains Mono Regular at `size` px via vendored TTF.
