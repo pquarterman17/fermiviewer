@@ -214,8 +214,12 @@ export function buildFileMenu(ctx: MenuCtx): Entry[] {
               default: "frame",
             },
           ]);
-          if (!v || !v["prefix"]) return;
-          const prefix = v["prefix"] as string;
+          if (!v) return;
+          const prefix = String(v["prefix"] ?? "").trim();
+          if (!prefix) {
+            store.setStatus("batch rename: enter a prefix");
+            return;
+          }
           let n = 0;
           for (const id of store.selected) {
             n++;

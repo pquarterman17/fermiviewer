@@ -313,6 +313,13 @@ def virtual_dark_field(
         raise ValueError("mask_shape must be 'circle' or 'annulus'")
     d = np.asarray(img, dtype=np.float64)
     h, w = d.shape
+    r0, c0 = mask_center
+    if not (1 <= r0 <= h and 1 <= c0 <= w):
+        raise ValueError(f"VDF centre ({r0:g}, {c0:g}) is outside the {h}×{w} image")
+    if mask_radius <= 0:
+        raise ValueError("VDF mask radius must be greater than 0")
+    if mask_shape == "annulus" and not 0 <= inner_radius < mask_radius:
+        raise ValueError("VDF inner radius must be ≥ 0 and smaller than the radius")
     f = np.fft.fftshift(np.fft.fft2(d))
 
     rr = np.arange(1, h + 1, dtype=np.float64)[:, None]

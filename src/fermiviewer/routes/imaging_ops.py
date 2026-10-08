@@ -111,16 +111,6 @@ class VdfRequest(BaseModel):
 @router.post("/analyze/vdf")
 def analyze_vdf(req: VdfRequest) -> dict:
     ds, raster = _raster(req.image_id)
-    h, w = raster.shape[:2]
-    r0, c0 = req.center
-    if not (1 <= r0 <= h and 1 <= c0 <= w):
-        raise HTTPException(
-            422, f"VDF centre ({r0:g}, {c0:g}) is outside the {h}×{w} image")
-    if req.radius <= 0:
-        raise HTTPException(422, "VDF mask radius must be greater than 0")
-    if not 0 <= req.inner_radius < req.radius:
-        raise HTTPException(
-            422, "VDF inner radius must be ≥ 0 and smaller than the radius")
     try:
         out = virtual_dark_field(
             raster, req.center, mask_radius=req.radius,

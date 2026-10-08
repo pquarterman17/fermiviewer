@@ -97,6 +97,10 @@ export default function ElementalWorkshop() {
   };
 
   const visible = TABS.filter((t) => !t.eelsOnly || isEels);
+  // Maps identify elements from a spectrum-image cube's sum spectrum; on a
+  // 2-D image or single spectrum they can only fail, and used to post that
+  // failure to the status bar on every image switch while the window was open.
+  const mapsNeedsCube = tab === "maps" && meta?.kind !== "spectrum_image";
 
   return (
     <div className="fvd-ws fvd-eds-workspace">
@@ -135,7 +139,12 @@ export default function ElementalWorkshop() {
         </label>
       </div>
 
-      {isEels ? (
+      {mapsNeedsCube ? (
+        <div className="fvd-ws-note">
+          Maps need a spectrum-image cube. Select one in the library, or use
+          Explore / Quantify for a single spectrum.
+        </div>
+      ) : isEels ? (
         tab === "maps" ? (
           <EelsMapsTab />
         ) : (

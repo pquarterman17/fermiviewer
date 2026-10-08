@@ -56,6 +56,16 @@ describe("macro record/replay", () => {
     expect(macro[1].kind).toBe("legacy");
   });
 
+  it("an empty recording keeps the previously saved macro", () => {
+    startRecording();
+    record("/api/filter", { image_id: "a", kind: "gaussian", params: { sigma: 2 } });
+    stopRecording();
+    startRecording();
+    const r = stopRecording();
+    expect(r.total).toBe(0);
+    expect(loadMacro()).toHaveLength(1);
+  });
+
   it("ignores POSTs outside the recordable path set", () => {
     startRecording();
     record("/api/session/open", { paths: ["a"] });

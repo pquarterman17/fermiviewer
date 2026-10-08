@@ -8,12 +8,12 @@ import zipfile
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
-from fixtures.minidm4 import write_mini_dm4
 
 from fermiviewer.calc.render import histogram
 from fermiviewer.routes.export_batch import _archive_stem
 from fermiviewer.server import create_app
 from fermiviewer.session import store
+from fixtures.minidm4 import write_mini_dm4
 
 
 @pytest.fixture(autouse=True)
@@ -69,7 +69,7 @@ def test_vdf_rejects_bad_params(client, tmp_path) -> None:
     iid = _open(client, tmp_path, np.random.default_rng(0).random((32, 32)))
     for body in ({"center": [16, 16], "radius": 0},
                  {"center": [-5, 99999], "radius": 5},
-                 {"center": [16, 16], "radius": 5, "inner_radius": 6}):
+                 {"center": [16, 16], "radius": 5, "inner_radius": 6, "shape": "annulus"}):
         r = client.post("/api/analyze/vdf", json={"image_id": iid, **body})
         assert r.status_code == 422, (body, r.text)
 

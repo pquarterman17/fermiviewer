@@ -330,7 +330,12 @@ def register_final_image(
             "recipe_inputs": dict(recipe_inputs or {}),
         },
     )
-    name = f"batch({source_name})"
+    # name it after what ran ("gaussian(x)", "crop→fft(x)") rather than a
+    # generic "batch(x)" — a replayed macro reads like the ops it replayed
+    ops = [str(s.get("op", "")) for s in steps if s.get("op")]
+    label = ("→".join(ops) if len(ops) <= 3
+             else f"{ops[0]}→…→{ops[-1]}") if ops else "batch"
+    name = f"{label}({source_name})"
     derived_id = store.add_derived(derived, name, image_id)
     return ImageMeta.from_datastruct(
         derived_id, name, derived,

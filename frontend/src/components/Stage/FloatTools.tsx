@@ -36,7 +36,7 @@ export function FloatTools() {
   const tools: [IconName, string, string, boolean, () => void][] = [
     ["hand", "Hand tool  H", "Drag the image without changing pixels.", panTool, () => setPanTool(!panTool)],
     ["box-zoom", "Box zoom  Z", "Drag a rectangle to magnify that region.", captureMode === "zoom", mode("zoom")],
-    ["fixed-zoom", "Fixed Size Zoom  F", "Capture a region using the dimensions in Preferences.", captureMode === "fixed-zoom", mode("fixed-zoom")],
+    ["fixed-zoom", "Fixed Size Zoom  X", "Capture a region using the dimensions in Preferences.", captureMode === "fixed-zoom", mode("fixed-zoom")],
     ["distance", "Distance  D", "Drag between two points to measure calibrated length.", captureMode === "distance", mode("distance")],
     ["profile", "Line profile  L", "Sample intensity along a line you place on the image.", captureMode === "profile", mode("profile")],
     ["box-profile", "Box profile (integrated)  B", "Integrate intensity across a rectangular selection.", captureMode === "box-profile", mode("box-profile")],

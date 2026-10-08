@@ -108,7 +108,10 @@ export function buildImageMenu(ctx: MenuCtx): Entry[] {
             bId,
             v["op"] as "subtract" | "divide" | "ratio" | "add",
           )
-            .then((r) => store.ingestDerived([r.image]))
+            .then((r) => {
+              store.ingestDerived([r.image]);
+              store.setStatus(`image math (${v["op"] as string}) → ${r.image.name}`);
+            })
             .catch((e: Error) => store.setStatus(`math: ${e.message}`));
         })();
       },
@@ -155,7 +158,10 @@ export function buildImageMenu(ctx: MenuCtx): Entry[] {
       disabled: store.selected.length < 2,
       action: () => {
         analyzeMip(store.selected)
-          .then((r) => store.ingestDerived([r.image]))
+          .then((r) => {
+            store.ingestDerived([r.image]);
+            store.setStatus(`MIP of ${store.selected.length} images → ${r.image.name}`);
+          })
           .catch((e: Error) => store.setStatus(`mip: ${e.message}`));
       },
     },
@@ -253,7 +259,9 @@ export function buildImageMenu(ctx: MenuCtx): Entry[] {
           const { total, legacy, persisted } = stopRecording();
           setMacroRec(false);
           store.setStatus(
-            persisted
+            total === 0
+              ? "nothing recorded — previous macro kept"
+              : persisted
               ? `macro saved: ${total} step${total === 1 ? "" : "s"}` +
                   (legacy ? ` (${legacy} not batchable)` : "")
               : "macro recording stopped, but could not be saved " +
