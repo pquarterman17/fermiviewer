@@ -20,7 +20,12 @@ import {
   downloadGrainsOverlayPng,
   grainsToCsv,
 } from "../../../lib/grainsCsv";
-import { buildClassicGrainParams, grainSourceId } from "../../../lib/grainWorkflow";
+import {
+  buildClassicGrainParams,
+  grainParamError,
+  grainResultsTable,
+  grainSourceId,
+} from "../../../lib/grainWorkflow";
 import { assessGrainQuality } from "../../../lib/analysisQuality";
 import { pickSizeValues } from "../../../lib/populationHistogram";
 import { useAnalysisRoi } from "../../../hooks/useAnalysisRoi";
@@ -255,16 +260,7 @@ export function GrainsMode({ id }: { id: string }) {
         recordCrossSectionGrains(sourceId, analysisRoi.label, analysisRoi.roi, Number(minArea) || 25, r);
         setStatus(`trained grains: ${r.n_grains} grains`);
         setNote("click a grain then another to merge · right-click to split");
-        useResults.getState().show({
-          title: `Grains (${r.n_grains}) · trained`,
-          columns: ["#", "area (px)", "perim (px)", "ecc."],
-          rows: r.areas_px.map((a, i) => [
-            i + 1,
-            Math.round(a),
-            Math.round(r.perimeters_px[i] ?? 0),
-            (r.eccentricity[i] ?? 0).toFixed(2),
-          ]),
-        });
+        useResults.getState().show(grainResultsTable(r, "trained"));
       })
       .catch((e: Error) => setStatus(`trained grains: ${e.message}`))
       .finally(() => {
@@ -274,6 +270,15 @@ export function GrainsMode({ id }: { id: string }) {
   };
 
   const run = () => {
+    const invalid = grainParamError(
+      method as Exclude<GrainMethod, "trained">,
+      knobValue,
+      denoise,
+    );
+    if (invalid) {
+      setStatus(`grains: ${invalid}`);
+      return;
+    }
     setBusy(true);
     setProgress("starting…");
     const abort = new AbortController();
@@ -308,16 +313,7 @@ export function GrainsMode({ id }: { id: string }) {
         bits.push(`${r.n_triple_junctions} junctions`);
         setStatus(`grains: ${bits.join(" · ")}`);
         setNote("");
-        useResults.getState().show({
-          title: `Grains (${r.n_grains}) · ${r.method}`,
-          columns: ["#", "area (px)", "perim (px)", "ecc."],
-          rows: r.areas_px.map((a, i) => [
-            i + 1,
-            Math.round(a),
-            Math.round(r.perimeters_px[i] ?? 0),
-            (r.eccentricity[i] ?? 0).toFixed(2),
-          ]),
-        });
+        useResults.getState().show(grainResultsTable(r, r.method));
       })
       .catch((e: Error) => setStatus(`grains: ${e.message}`))
       .finally(() => {
