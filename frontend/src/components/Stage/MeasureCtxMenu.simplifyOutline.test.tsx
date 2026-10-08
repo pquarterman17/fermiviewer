@@ -280,9 +280,10 @@ describe("MeasureCtxMenu — Simplify outline (lasso-editing plan, item C)", () 
     // Mutation tried: swap the epsilon expression from
     // `loadPrefs().lassoCloseSimplifyPx / view.z` to
     // `loadPrefs().lassoCloseSimplifyPx * view.z` (division -> multiplication)
-    // -> at lassoCloseSimplifyPx=6, z=4 the spy sees 24 instead of 1.5, RED.
+    // -> at lassoCloseSimplifyPx=2, z=4 the spy sees 8 instead of 0.5, RED.
+    // (2, not 6: loadPrefs() now clamps this pref to the UI's 0.5–5 range.)
     // Restoring the division fixes it, GREEN.
-    localStorage.setItem("fv_prefs", JSON.stringify({ lassoCloseSimplifyPx: 6 }));
+    localStorage.setItem("fv_prefs", JSON.stringify({ lassoCloseSimplifyPx: 2 }));
     seed([{ id: "m1", kind: "polygon", pts: SPARSE_PENTAGON }]);
     const { container, getByText } = renderOverlay();
 
@@ -291,6 +292,6 @@ describe("MeasureCtxMenu — Simplify outline (lasso-editing plan, item C)", () 
 
     expect(simplifyRing).toHaveBeenCalledTimes(1);
     const [, epsilon] = vi.mocked(simplifyRing).mock.calls[0];
-    expect(epsilon).toBe(6 / 4); // lassoCloseSimplifyPx / view.z, z=4 at this fitView
+    expect(epsilon).toBe(2 / 4); // lassoCloseSimplifyPx / view.z, z=4 at this fitView
   });
 });

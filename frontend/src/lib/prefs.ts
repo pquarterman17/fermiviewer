@@ -190,11 +190,18 @@ const RANGES: { [K in keyof Prefs]?: [number, number] } = {
   inspectorGrid: [3, 15],
   overlayLineWidth: [0.5, 20],
   profileWidth: [1, 99],
+  lassoCloseSimplifyPx: [0.5, 5],
   scaleBarFontSize: [8, 120],
   exportScale: [1, 4],
   fixedZoomW: [1, 8192],
   fixedZoomH: [1, 8192],
 };
+
+/** Whole-number fields (pixel counts, grid sizes, multipliers). */
+const INTEGERS = new Set<keyof Prefs>([
+  "inspectorGrid", "profileWidth", "scaleBarFontSize", "exportScale",
+  "fixedZoomW", "fixedZoomH",
+]);
 
 /** Coerce a possibly stale/corrupt stored blob into a valid Prefs: wrong
  *  types, unknown enum values (e.g. a colormap this build doesn't ship)
@@ -209,7 +216,11 @@ export function sanitizePrefs(raw: Partial<Prefs>): Prefs {
     if (typeof v === "number") {
       if (!Number.isFinite(v)) continue;
       const r = RANGES[k];
-      out[k] = r ? Math.min(r[1], Math.max(r[0], v)) : v;
+      let n = INTEGERS.has(k) ? Math.round(v) : v;
+      if (r) n = Math.min(r[1], Math.max(r[0], n));
+      // the pixel-inspector grid is centred on the cursor: odd N only
+      if (k === "inspectorGrid") n = Math.min(r ? r[1] : n, n | 1);
+      out[k] = n;
       continue;
     }
     const allowed = ENUMS[k] as readonly unknown[] | undefined;
