@@ -1,5 +1,6 @@
 // Measure menu builder, split out of MenuBar.tsx (repo-health #33). Entries
 // moved verbatim; only `store`/helper references now come from ctx.
+import { MEASUREMENT_KINDS } from "../../../lib/measureKinds";
 import type { Entry, MenuCtx } from "./menuTypes";
 
 export function buildMeasureMenu(ctx: MenuCtx): Entry[] {
@@ -68,7 +69,11 @@ export function buildMeasureMenu(ctx: MenuCtx): Entry[] {
       disabled: !store.activeId,
       action: () => {
         const id = store.activeId;
-        if (id) store.clearMeasures(id, null);
+        if (!id) return;
+        // measurements only — annotations (text/arrow/box…) have their
+        // own Edit ▸ Clear Annotations, same as Edit ▸ Clear Measurements
+        store.clearMeasures(id, [...MEASUREMENT_KINDS]);
+        store.setStatus("measurements cleared (undoable)");
       },
     },
   ];

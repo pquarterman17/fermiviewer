@@ -366,9 +366,21 @@ export default function MenuBar({
   // actually causes, not on every store write (pan/zoom no longer counts).
   useEffect(() => {
     const flat: Action[] = [];
+    const seen = new Set<string>();
     const publish = (group: string, e: Entry) => {
-      if (e.kind || !e.action || !e.label) return; // skip sections/seps
+      if (e.kind || !e.label) return; // skip sections/seps
+      // a greyed-out menu item must not be runnable from the palette either
+      if (e.disabled) return;
+      // submenu rows have no action of their own — publish their children
+      if (e.submenu) {
+        e.submenu.forEach((se) => publish(group, se));
+        return;
+      }
+      if (!e.action) return;
       if (e.label === "Command Palette") return; // self-referential
+      // the same command reachable from two menus is listed once
+      if (seen.has(e.label)) return;
+      seen.add(e.label);
       // sentinel tags like "WINDOW" are not real key hints
       const sc =
         e.shortcut && !/^[A-Z]{3,}$/.test(e.shortcut) ? e.shortcut : undefined;
@@ -381,11 +393,7 @@ export default function MenuBar({
       });
     };
     for (const [group, entries] of Object.entries(menus)) {
-      for (const e of entries) {
-        // submenu rows have no action of their own — publish their children
-        if (e.submenu) e.submenu.forEach((se) => publish(group, se));
-        else publish(group, e);
-      }
+      for (const e of entries) publish(group, e);
     }
     useCommands.getState().setMenuCommands(flat);
   });
