@@ -72,6 +72,9 @@ describe("LayersWorkshop ROI", () => {
       "src",
       expect.objectContaining({ roi: [21, 21, 80, 180] }),
     ));
+    // The click event must not leak into the tilt argument (it used to,
+    // and JSON-serialising the event aborted every run).
+    expect(vi.mocked(analyzeLayers).mock.calls[0][1].tiltDeg).toBeNull();
     expect(screen.getByText("Export CSV")).toBeDisabled();
     fireEvent.click(screen.getByText("Use anyway"));
     expect(screen.getByText("Export CSV")).not.toBeDisabled();

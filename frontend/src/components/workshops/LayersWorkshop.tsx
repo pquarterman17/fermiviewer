@@ -276,7 +276,7 @@ export default function LayersWorkshop() {
         onNLayersChange={setNLayers}
         busy={busy}
         activeId={activeId}
-        onRun={run}
+        onRun={() => run()}
         waviness={waviness}
         onWavinessChange={setWaviness}
         decurtain={decurtain}
