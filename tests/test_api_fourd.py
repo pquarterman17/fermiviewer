@@ -387,7 +387,8 @@ def test_shutdown_deletes_upload_copies_but_keeps_opened_files(tmp_path: Path) -
     assert src.is_file() and fourd_store.source_path(opened[0]["id"]) == str(src)
 
 
-def test_startup_sweeps_only_stale_upload_dirs(tmp_path, monkeypatch) -> None:
+def test_sweep_removes_unlocked_legacy_dirs_only_by_age(tmp_path, monkeypatch) -> None:
+    """Dirs with no owner lock (older builds) go once they are a day old."""
     import os
     import tempfile
 
@@ -476,3 +477,41 @@ def test_concurrent_pattern_and_virtual_detector_requests_do_not_crash(
     for t in threads:
         t.join()
     assert not errors
+
+
+def test_sweep_keeps_a_live_instances_upload_dir_however_old(tmp_path, monkeypatch) -> None:
+    import os
+    import tempfile
+
+    from fermiviewer.session_fourd import UploadDir, sweep_stale_upload_dirs
+
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    live = UploadDir()                       # still locked by its owner
+    dead = UploadDir()
+    dead._lock.close()                       # owner gone: lock released
+    dead._lock = None
+    old = 1_000_000_000
+    for d in (live.path, dead.path):
+        os.utime(d, (old, old))
+    assert sweep_stale_upload_dirs() == 1
+    assert live.path.exists() and not dead.path.exists()
+    live.release()
+    assert not live.path.exists()
+
+
+def test_upload_copies_are_released_even_if_shutdown_fails(tmp_path, monkeypatch) -> None:
+    import fermiviewer.jobs as jobs_mod
+
+    src = _write_minimal_mib(tmp_path / "local.mib")
+
+    def boom() -> None:
+        raise RuntimeError("shutdown failed")
+
+    monkeypatch.setattr(jobs_mod.jobs, "shutdown", boom)
+    with pytest.raises(RuntimeError), TestClient(create_app()) as c:
+        with src.open("rb") as f:
+            up = c.post("/api/session/upload",
+                        files=[("files", ("up.mib", f, "application/octet-stream"))])
+        kept = Path(fourd_store.source_path(up.json()[0]["id"]) or "")
+        assert kept.is_file()
+    assert not kept.parent.exists()

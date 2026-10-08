@@ -172,9 +172,11 @@ def test_index_spots_fft_mode_reads_both_extents() -> None:
     assert aware.score == 1.0
     assert sorted(np.round(aware.matched_d, 3).tolist()) == [1.92] * 4 + [2.715] * 4
     # the defect: the two (200) spots along rows, read on the column
-    # scale, measure 1.81 Å and match nothing; six of eight spots survive
+    # scale, measure 1.81 Å and match nothing; six of eight spots survive,
+    # and the distorted grid fits no Silicon zone
     naive = _si(index_spots(pos, (h, w), **kw))
-    assert naive.score == 0.75
+    assert naive.n_matched == 6 and naive.method == "d-spacing"
+    assert naive.score < aware.score
 
 
 def test_index_spots_roi_passes_spacing_through() -> None:

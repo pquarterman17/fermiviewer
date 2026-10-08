@@ -175,6 +175,7 @@ def test_candidates_table_cells_are_scalars(client, diff_image_id) -> None:
         "zone_u",
         "zone_v",
         "zone_w",
+        "method",
     ]
     assert len(table["data"]["rows"]) == len(body["candidates"])
     for row, cand in zip(table["data"]["rows"], body["candidates"], strict=True):
@@ -185,7 +186,8 @@ def test_candidates_table_cells_are_scalars(client, diff_image_id) -> None:
         assert row[3] == cand["n_matched"]
         # NaN zone-axis components scrub to null for strict JSON, so compare
         # only the components the live response reports as finite
-        for stored, live in zip(row[4:], cand["zone_axis"], strict=True):
+        assert row[7] == cand["method"]
+        for stored, live in zip(row[4:7], cand["zone_axis"], strict=True):
             assert stored == pytest.approx(live) if live is not None else stored is None
 
 

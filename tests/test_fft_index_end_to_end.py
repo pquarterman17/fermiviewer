@@ -222,7 +222,8 @@ def test_a_local_fft_takes_its_rect_size_into_the_axes(client) -> None:
 def test_an_uncalibrated_fft_still_reads_the_grid_as_square(client) -> None:
     """The defect this closes, kept as the reference: the same magnitude
     registered without axes reads the two row spots at 1.81 Å, which
-    match no Silicon plane, and Silicon scores 6 of 8."""
+    match no Silicon plane: Silicon matches 6 of 8 by spacing and fits no
+    zone (the grid is distorted)."""
     mag, _ = compute_fft(_silicon_001().data)
     bare = DataStruct(
         data=np.ascontiguousarray(mag), kind=DataKind.IMAGE,
@@ -231,7 +232,9 @@ def test_an_uncalibrated_fft_still_reads_the_grid_as_square(client) -> None:
     fft_id = store.add_parsed(bare, "bare-fft")
     spots = _detect(client, fft_id)
     assert len(spots) == 8
-    assert _silicon(_index(client, fft_id, spots)["candidates"])["score"] == 0.75
+    si = _silicon(_index(client, fft_id, spots)["candidates"])
+    assert si["n_matched"] == 6 and si["method"] == "d-spacing"
+    assert si["score"] < 1.0
 
 
 def test_image_meta_uses_null_for_unusable_spacing(client) -> None:

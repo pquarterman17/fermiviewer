@@ -6,9 +6,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from fermiviewer.calc.crystal import electron_wavelength, find_phase
+from fermiviewer.calc.crystal import electron_wavelength, find_phase, lattice_bases
 from fermiviewer.calc.diffraction import index_spots, simulate
-from fermiviewer.calc.diffraction_zone import reciprocal_vectors
 
 KW = dict(pixel_size=0.05, camera_length=200, acc_voltage=200)
 
@@ -39,8 +38,7 @@ def test_hexagonal_off_axis_zone_indexes_consistently() -> None:
     uvw = np.array(ti.zone_axis)
     assert all(np.dot(h, uvw) == 0 for h in ti.matched_hkl.tolist())
     # each signed hkl reproduces its spot's d-spacing
-    _, _, direct = reciprocal_vectors(find_phase("Titanium (HCP)"), 1)
-    recip = np.linalg.inv(direct).T
+    _, recip = lattice_bases(find_phase("Titanium (HCP)"))
     d = 1 / np.linalg.norm(ti.matched_hkl @ recip, axis=1)
     np.testing.assert_allclose(d, ti.ref_d, rtol=1e-9)
 
@@ -56,3 +54,37 @@ def test_ring_like_spots_fall_back_to_d_spacing() -> None:
     cands = index_spots(pos, (512, 512), **KW)
     assert all(c.method == "d-spacing" for c in cands)
     assert cands[0].score == 1.0
+
+
+def _si_001() -> np.ndarray:
+    sim = simulate("Silicon", zone_axis=(0, 0, 1), scattering_model="z")
+    return np.array([[s.pixel_row, s.pixel_col] for s in sim.spots[1:]])
+
+
+def test_one_sided_pattern_is_not_penalised_for_spots_it_cannot_show() -> None:
+    """Only the right-hand half of Si [001] (an ROI, a one-sided pick): the
+    Friedel mates on the left are outside the observed region, so Silicon
+    still explains every spot and leads."""
+    pos = _si_001()
+    right = pos[pos[:, 1] > 257]
+    cands = index_spots(right, (512, 512), **KW)
+    assert cands[0].phase_name == "Silicon" and cands[0].score == 1.0
+    assert sorted(map(abs, cands[0].zone_axis)) == [0.0, 0.0, 1.0]
+
+
+def test_a_high_index_zone_never_outranks_an_equal_low_index_fit() -> None:
+    """CuO [1 -5 -2] can reproduce the Si [001] square grid to within the
+    tolerance; with equal scores the low-index explanation must win."""
+    cands = index_spots(_si_001(), (512, 512), top_n=99, **KW)
+    names = [c.phase_name for c in cands]
+    assert names.index("Silicon") < names.index("CuO (tenorite)")
+    zoned = [c for c in cands if c.method == "zone" and c.score == 1.0]
+    low = [c for c in zoned if sum(map(abs, c.zone_axis)) == 1]
+    assert zoned[: len(low)] == low
+
+
+def test_spot_mode_scores_are_ranked_and_comparable() -> None:
+    cands = index_spots(_si_001(), (512, 512), top_n=99, **KW)
+    scores = [c.score for c in cands]
+    assert scores == sorted(scores, reverse=True)
+    assert all(c.score == 0.0 for c in cands if c.method == "d-spacing")

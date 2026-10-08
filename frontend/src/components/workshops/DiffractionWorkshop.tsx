@@ -341,6 +341,7 @@ export default function DiffractionWorkshop() {
           phase: c.phase,
           formula: c.formula,
           zone_axis: `[${c.zone_axis.join(" ")}]`,
+          ...(c.method ? { indexed_by: c.method === "zone" ? "spacings + angles (zone fit)" : "spacings only" } : {}),
           score: c.score,
           n_matched: c.n_matched,
           pixel_size: Number(pixelSize) || 1,

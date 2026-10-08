@@ -396,7 +396,7 @@ def index_spots(
     weights = ((1 / (img_size[0] * s_row), 1 / (img_size[1] * s_col))
                if np.isnan(camera_length) else (s_row, s_col))
     zoned = rerank_by_zone(cands, db, positions, center, d_meas, valid,
-                           weights, tolerance, max_hkl)
+                           weights, tolerance)
     if zoned is not cands:
         return zoned[: min(top_n, len(zoned))]
     cands.sort(

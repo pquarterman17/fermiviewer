@@ -10,7 +10,6 @@ calibration auto-apply — without either endpoint reimplementing the other.
 from __future__ import annotations
 
 import shutil
-import tempfile
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -23,7 +22,7 @@ from fermiviewer.io.registry import (
 )
 from fermiviewer.models import FourDMeta, ImageMeta
 from fermiviewer.session import store
-from fermiviewer.session_fourd import UPLOAD_DIR_PREFIX, fourd_store
+from fermiviewer.session_fourd import UploadDir, fourd_store
 
 __all__ = ["open_paths_as_metas", "open_uploaded_file"]
 
@@ -88,19 +87,19 @@ def open_uploaded_file(staged: Path, name: str) -> ImageMeta | FourDMeta:
     FourD store owns that dir and deletes it when the dataset is closed.
     """
     if is_fourd_path(staged):
-        keep_dir = Path(tempfile.mkdtemp(prefix=UPLOAD_DIR_PREFIX))
-        kept = keep_dir / name
+        keep = UploadDir()
+        kept = keep.path / name
         shutil.move(staged, kept)
         try:
             ds4 = load_fourd_auto(kept)
         except Exception as e:
-            shutil.rmtree(keep_dir, ignore_errors=True)
+            keep.release()
             if isinstance(e, UnsupportedFormatError):
                 raise HTTPException(415, str(e)) from None
             if isinstance(e, ValueError):
                 raise HTTPException(422, f"{name}: {e}") from None
             raise
-        fourd_id = fourd_store.add(ds4, name, source_path=kept, owned_dir=keep_dir)
+        fourd_id = fourd_store.add(ds4, name, source_path=kept, owned_dir=keep)
         return FourDMeta.from_dataset(fourd_id, name, ds4)
     try:
         ds = load_auto(staged)

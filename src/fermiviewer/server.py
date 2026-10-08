@@ -144,13 +144,17 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     from fermiviewer.session_fourd import fourd_store, sweep_stale_upload_dirs
 
     sweep_stale_upload_dirs()
-    yield
-    from fermiviewer.jobs import jobs
-    from fermiviewer.routes.watch import shutdown_watch
+    try:
+        yield
+    finally:
+        from fermiviewer.jobs import jobs
+        from fermiviewer.routes.watch import shutdown_watch
 
-    shutdown_watch()
-    jobs.shutdown()
-    fourd_store.close_uploads()
+        try:
+            shutdown_watch()
+            jobs.shutdown()
+        finally:                    # upload copies go even if a step fails
+            fourd_store.close_uploads()
 
 
 def create_app() -> FastAPI:

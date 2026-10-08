@@ -418,9 +418,11 @@ def _index(ds: DataStruct, params: dict[str, Any]) -> OpResult:
             "table",
             "candidates",
             {
-                "columns": ["phase", "formula", "score", "n_matched", "zone_axis"],
+                "columns": ["phase", "formula", "score", "n_matched", "zone_axis",
+                            "method"],
                 "rows": [
-                    [c.phase_name, c.formula, c.score, c.n_matched, list(c.zone_axis)]
+                    [c.phase_name, c.formula, c.score, c.n_matched, list(c.zone_axis),
+                     c.method]
                     for c in pattern.candidates
                 ],
             },
