@@ -63,3 +63,22 @@ describe("Inspector Elemental launcher", () => {
     expect(screen.queryByRole("button", { name: "EELS" })).toBeNull();
   });
 });
+
+describe("Inspector unified tools layout", () => {
+  it("keeps profile options, overlay style and tilt correction available", () => {
+    const img: ImageMeta = { ...cube, id: "img", kind: "image", shape: [8, 8], n_channels: null };
+    useViewer.setState({
+      images: { img },
+      order: ["img"],
+      activeId: "img",
+      toolsLayout: "unified",
+    });
+    render(<Inspector />);
+    // the unified ToolsBrowser replaces the Measure tool list...
+    expect(screen.queryByPlaceholderText("Filter measure tools…")).toBeNull();
+    // ...but the cards that only MeasurePanel renders must survive
+    expect(screen.getAllByText("Profile options").length).toBeGreaterThan(0);
+    expect(screen.getByText("Overlay style")).toBeInTheDocument();
+    expect(screen.getAllByText(/Tilt correction/i).length).toBeGreaterThan(0);
+  });
+});

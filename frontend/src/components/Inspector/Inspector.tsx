@@ -238,7 +238,7 @@ export default function Inspector() {
         )}
       </Suspense>
       {tab === "Image" && unified && <ToolsBrowser />}
-      {tab === "Image" && !unified && <MeasurePanel />}
+      {tab === "Image" && <MeasurePanel toolList={!unified} />}
       {tab === "Image" && meta.kind !== "spectrum" && <RegionWorkspaceCard />}
       {tab === "Image" && meta.kind !== "spectrum" && <RoiManagerCard />}
       {tab === "Image" && meta.kind !== "spectrum" && <RegionsCard />}

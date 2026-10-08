@@ -36,7 +36,9 @@ import {
 import TiltCorrectionCard from "./TiltCorrectionCard";
 import { useCollapsedGroups } from "./useCollapsedGroups";
 
-export default function MeasurePanel() {
+/** `toolList` false (Unified layout): ToolsBrowser arms the tools; the
+ *  profile options, measurements, overlay style + tilt still render here. */
+export default function MeasurePanel({ toolList = true }: { toolList?: boolean }) {
   const activeId = useViewer((s) => s.activeId);
   const meta = useViewer((s) =>
     s.activeId ? (s.images[s.activeId] ?? null) : null,
@@ -160,93 +162,103 @@ export default function MeasurePanel() {
     ? MEASURE_TOOLS.filter((t) => fuzzy(q, t.label) !== null)
     : MEASURE_TOOLS;
 
+  const profileOpts = (
+    <div className="fvd-profile-opts">
+      <span className="fvd-profile-opts-label">Profile options</span>
+      <div className="fvd-slider-row">
+        <span className="k">Width (px)</span>
+        <input
+          type="number"
+          min={1}
+          max={99}
+          value={profileWidth}
+          style={{ width: 52 }}
+          title="Perpendicular averaging width for profile captures"
+          onChange={(e) => setProfileWidth(Number(e.target.value) || 1)}
+        />
+      </div>
+      <div className="fvd-slider-row">
+        <span className="k">Reduce</span>
+        <div className="fvd-seg">
+          {(["mean", "sum"] as ProfileReduce[]).map((r) => (
+            <button
+              key={r}
+              className={`fvd-seg-btn${profileReduce === r ? " active" : ""}`}
+              title={
+                r === "mean"
+                  ? "Average intensity across box width (default)"
+                  : "Sum counts across box width — for quantitative integration"
+              }
+              onClick={() => setProfileReduce(r)}
+            >
+              {r === "mean" ? "Mean" : "Sum"}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <>
-      <Card title="Measure" defaultOpen={false}>
-        <div className="fvd-cmd-search">
-          <span className="ico">⌕</span>
-          <input
-            value={toolQuery}
-            placeholder="Filter measure tools…"
-            onChange={(e) => setToolQuery(e.target.value)}
-          />
-        </div>
-        <div className="fvd-cmd-list">
-          {MEASURE_GROUPS.map((group) => {
-            const tools = visibleTools.filter((t) => t.group === group);
-            if (tools.length === 0) return null;
-            // a search query forces every group open so matches aren't hidden
-            const open = q !== "" || !collapsed.has(group);
-            return (
-              <Fragment key={group}>
-                <button
-                  className="fvd-cmd-group"
-                  onClick={() => toggle(group)}
-                  title={open ? "Collapse group" : "Expand group"}
-                >
-                  <span className="lbl">
-                    <span className="chev">{open ? "▾" : "▸"}</span>
-                    {group}
-                  </span>
-                  <span className="count">{tools.length}</span>
-                </button>
-                {open &&
-                  tools.map((t) => (
-                    <button
-                      key={t.kind}
-                      className={`fvd-cmd-row${captureMode === t.kind ? " active" : ""}`}
-                      onClick={() =>
-                        setCaptureMode(captureMode === t.kind ? "none" : t.kind)
-                      }
-                      title={`Arm the ${t.label} tool — drag on the image to place it (click again to disarm)`}
-                    >
-                      <span className="glyph">{t.glyph}</span>
-                      <span className="label">{t.label}</span>
-                      {captureMode === t.kind && <span className="dot" />}
-                    </button>
-                  ))}
-              </Fragment>
-            );
-          })}
-          {visibleTools.length === 0 && (
-            <div className="fvd-cmd-empty">No tools match “{q}”.</div>
-          )}
-        </div>
-        <div className="fvd-profile-opts">
-          <span className="fvd-profile-opts-label">Profile options</span>
-          <div className="fvd-slider-row">
-            <span className="k">Width (px)</span>
+      {toolList ? (
+        <Card title="Measure" defaultOpen={false}>
+          <div className="fvd-cmd-search">
+            <span className="ico">⌕</span>
             <input
-              type="number"
-              min={1}
-              max={99}
-              value={profileWidth}
-              style={{ width: 52 }}
-              title="Perpendicular averaging width for profile captures"
-              onChange={(e) => setProfileWidth(Number(e.target.value) || 1)}
+              value={toolQuery}
+              placeholder="Filter measure tools…"
+              onChange={(e) => setToolQuery(e.target.value)}
             />
           </div>
-          <div className="fvd-slider-row">
-            <span className="k">Reduce</span>
-            <div className="fvd-seg">
-              {(["mean", "sum"] as ProfileReduce[]).map((r) => (
-                <button
-                  key={r}
-                  className={`fvd-seg-btn${profileReduce === r ? " active" : ""}`}
-                  title={
-                    r === "mean"
-                      ? "Average intensity across box width (default)"
-                      : "Sum counts across box width — for quantitative integration"
-                  }
-                  onClick={() => setProfileReduce(r)}
-                >
-                  {r === "mean" ? "Mean" : "Sum"}
-                </button>
-              ))}
-            </div>
+          <div className="fvd-cmd-list">
+            {MEASURE_GROUPS.map((group) => {
+              const tools = visibleTools.filter((t) => t.group === group);
+              if (tools.length === 0) return null;
+              // a search query forces every group open so matches aren't hidden
+              const open = q !== "" || !collapsed.has(group);
+              return (
+                <Fragment key={group}>
+                  <button
+                    className="fvd-cmd-group"
+                    onClick={() => toggle(group)}
+                    title={open ? "Collapse group" : "Expand group"}
+                  >
+                    <span className="lbl">
+                      <span className="chev">{open ? "▾" : "▸"}</span>
+                      {group}
+                    </span>
+                    <span className="count">{tools.length}</span>
+                  </button>
+                  {open &&
+                    tools.map((t) => (
+                      <button
+                        key={t.kind}
+                        className={`fvd-cmd-row${captureMode === t.kind ? " active" : ""}`}
+                        onClick={() =>
+                          setCaptureMode(captureMode === t.kind ? "none" : t.kind)
+                        }
+                        title={`Arm the ${t.label} tool — drag on the image to place it (click again to disarm)`}
+                      >
+                        <span className="glyph">{t.glyph}</span>
+                        <span className="label">{t.label}</span>
+                        {captureMode === t.kind && <span className="dot" />}
+                      </button>
+                    ))}
+                </Fragment>
+              );
+            })}
+            {visibleTools.length === 0 && (
+              <div className="fvd-cmd-empty">No tools match “{q}”.</div>
+            )}
           </div>
-        </div>
-      </Card>
+          {profileOpts}
+        </Card>
+      ) : (
+        <Card title="Profile options" defaultOpen={false}>
+          {profileOpts}
+        </Card>
+      )}
       {measures.length > 0 && (
         <Card title="Measurements" count={measures.length} defaultOpen={false}>
           <div className="fvd-ws-row">
