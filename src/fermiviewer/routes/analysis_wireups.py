@@ -34,6 +34,7 @@ from fermiviewer.calc.uncertainty import default_k_factors
 from fermiviewer.datastruct import DataKind
 from fermiviewer.models import ImageMeta
 from fermiviewer.routes.analysis import _cube, _get, _register_map, _spectral
+from fermiviewer.session import store
 
 router = APIRouter(prefix="/api")
 
@@ -298,7 +299,15 @@ def analyze_simulate(req: SimulateRequest) -> dict:
         za = req.zone_axis
         label = f"Sim {req.phase_name} [{za[0]}{za[1]}{za[2]}]"
         meta = _register_map(result.image, label, parent_ds, req.parent_image_id)
-        img_meta = meta.model_dump()
+        # Carry the calibration the pattern was drawn with, so indexing it
+        # defaults to the geometry that produced it rather than px = 1.
+        sim_ds = store.get(meta.id)
+        sim_ds.metadata.update({
+            "camera_length_mm": req.camera_length,
+            "detector_pixel_size_mm": req.pixel_size,
+            "beam_kv": req.acc_voltage,
+        })
+        img_meta = ImageMeta.from_datastruct(meta.id, label, sim_ds).model_dump()
 
     return {
         "phase": result.phase_name,
