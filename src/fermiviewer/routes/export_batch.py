@@ -5,6 +5,7 @@ ceiling; reuses its renderers."""
 from __future__ import annotations
 
 import io
+import re
 import zipfile
 
 from fastapi import APIRouter, HTTPException, Response
@@ -15,6 +16,19 @@ from fermiviewer.routes.export import _raster, _window_bounds
 from fermiviewer.session import UnknownImageError, store
 
 router = APIRouter(prefix="/api")
+
+_FILE_EXT = re.compile(r"\.[A-Za-z][A-Za-z0-9]{0,4}$")
+_UNSAFE = re.compile(r"[^\w.()+\- ]")
+
+
+def _archive_stem(name: str) -> str:
+    """A safe ZIP entry stem from a display name: drop any path part and a
+    real file extension (``x.dm3`` → ``x``; ``FFT(x.dm3)`` stays whole),
+    replace path/odd characters, and never start with a dot (``../`` etc.)."""
+    base = name.replace("\\", "/").rsplit("/", 1)[-1]
+    base = _FILE_EXT.sub("", base)
+    base = _UNSAFE.sub("_", base).lstrip(". ").strip()
+    return base
 
 
 class BatchExportRequest(BaseModel):
@@ -47,7 +61,7 @@ def export_batch(req: BatchExportRequest) -> Response:
                     404, f"unknown image id: {iid}") from None
             raster = _raster(ds)
             lo, hi = _window_bounds(raster, req.lo, req.hi)
-            stem = store.name(iid).rsplit(".", 1)[0] or iid
+            stem = _archive_stem(store.name(iid)) or iid
             # de-dupe names inside the archive
             base = stem
             n = 1

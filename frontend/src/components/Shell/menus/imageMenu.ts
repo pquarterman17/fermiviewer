@@ -216,9 +216,12 @@ export function buildImageMenu(ctx: MenuCtx): Entry[] {
           const h = meta?.shape[0] ?? 0;
           const w = meta?.shape[1] ?? 0;
           const v = await askParams("Virtual Dark Field", [
-            num("row", "Centre row (FFT px)", Math.round(h / 2)),
-            num("col", "Centre col (FFT px)", Math.round(w / 2)),
-            num("radius", "Mask radius (px)", 10),
+            num("row", "Centre row (FFT px)", Math.round(h / 2), undefined,
+                { min: 1, max: Math.max(1, h) }),
+            num("col", "Centre col (FFT px)", Math.round(w / 2), undefined,
+                { min: 1, max: Math.max(1, w) }),
+            num("radius", "Mask radius (px)", 10, undefined,
+                { min: 0.5, max: Math.max(1, h, w) }),
           ]);
           if (!v) return;
           derived("VDF", (id) =>
