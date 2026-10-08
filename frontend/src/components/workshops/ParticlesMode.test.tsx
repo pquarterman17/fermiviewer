@@ -218,17 +218,21 @@ describe("ParticlesMode", () => {
     await waitFor(() => expect(useResults.getState().table).not.toBeNull());
 
     const table = useResults.getState().table!;
+    // calibrated sizes with their unit — the title used to say "nm" over
+    // columns that were all pixels
+    expect(table.title).toBe("Particles (4)");
     expect(table.columns).toEqual([
       "id",
-      "area",
-      "equiv ⌀",
+      "area (nm²)",
+      "equiv ⌀ (nm)",
       "mean I",
-      "cx",
-      "cy",
+      "x (px)",
+      "y (px)",
       "circ.",
       "AR",
       "class",
     ]);
+    expect(table.rows[0].slice(1, 3)).toEqual([10, 1.128]);
     // row 1: circularity 2dp, aspect ratio 2dp, class verbatim
     expect(table.rows[0].slice(-3)).toEqual([0.91, 1.1, "sphere-like"]);
     // row 3: null aspect ratio renders as null, not 0 or a string

@@ -32,7 +32,11 @@ import { useViewer } from "../../../store/viewer";
 import { useResults } from "../../overlays/ResultsWindow";
 import PopulationHistogram from "../../analysis/PopulationHistogram";
 import AnalysisRegionSelect from "../AnalysisRegionSelect";
-import { AnalysisQualityCard, GrainMetrics } from "../AnalysisQualityCard";
+import {
+  AnalysisQualityCard,
+  GrainMetrics,
+  grainMeanDiameter,
+} from "../AnalysisQualityCard";
 import Preview from "../StructurePreview";
 import { TrainedGrainControls } from "./TrainedGrainControls";
 
@@ -297,7 +301,7 @@ export function GrainsMode({ id }: { id: string }) {
         // one-line summary
         const bits = [
           `${r.n_grains} grains`,
-          `mean ⌀ ${r.mean_diameter_px.toFixed(1)} px`,
+          `mean ⌀ ${grainMeanDiameter(r)}`,
         ];
         if (r.astm_grain_size != null)
           bits.push(`ASTM G ${r.astm_grain_size.toFixed(1)}`);
