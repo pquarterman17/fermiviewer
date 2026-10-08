@@ -7,6 +7,26 @@
 // unlike the thin line kinds this needs no separate fat-stroke hit twin.
 
 import { polygonStats } from "../../lib/geometry";
+import type { Measure } from "../../store/viewer";
+
+const REGION_KINDS = new Set<Measure["kind"]>([
+  "roi", "ellipse", "box", "circle", "polygon", "lasso",
+]);
+
+/** Measures in SVG paint order: closed regions largest-first (bbox area),
+ *  then everything else in creation order. A region drawn inside another
+ *  is therefore painted ON TOP of it, so a click / right-click inside the
+ *  inner one targets it rather than the outer ("Mark as hole" flow), no
+ *  matter which of the two was drawn first. */
+export function byPaintOrder(measures: Measure[]): Measure[] {
+  const size = (m: Measure) => {
+    if (!REGION_KINDS.has(m.kind) || m.pts.length < 2) return -1;
+    const xs = m.pts.map((p) => p.x);
+    const ys = m.pts.map((p) => p.y);
+    return (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys));
+  };
+  return [...measures].sort((a, b) => size(b) - size(a));
+}
 
 /** Screen-space anchor for the area label — reuses the shoelace centroid
  *  (item 12): degenerate/zero-area input falls back to the plain vertex
@@ -31,6 +51,9 @@ export interface ClosedShapeGlyphProps {
   onHandleMove?: (e: React.PointerEvent) => void;
   onHandleUp?: (e: React.PointerEvent) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
+  /** A capture tool is armed: the interior stops catching pointers (only
+   *  the outline stays clickable) so drawing inside the shape draws. */
+  armed?: boolean;
   /** Discoverability hint for the alt-drag-to-insert gesture (lasso-editing
    *  plan, item D step 3) — omitted while pending, same as the handlers. */
   title?: string;
@@ -54,13 +77,17 @@ export function ClosedShapeGlyph({
   onHandleUp,
   onContextMenu,
   title,
+  armed = false,
 }: ClosedShapeGlyphProps) {
   const shared = {
     stroke,
     strokeWidth,
     strokeDasharray: isPending ? "6 4" : undefined,
     fillOpacity: isPending ? undefined : 0.18,
-    pointerEvents: (isPending ? "none" : "all") as "none" | "all",
+    pointerEvents: (isPending ? "none" : armed ? "stroke" : "all") as
+      | "none"
+      | "stroke"
+      | "all",
     style: { cursor: isPending ? "default" : "move" },
     onPointerDown: isPending ? undefined : onBodyDown,
     onPointerMove: isPending ? undefined : onHandleMove,
