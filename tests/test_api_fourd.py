@@ -358,6 +358,54 @@ def test_session_upload_routes_mib_to_fourd_store(
     assert client.get(f"/api/fourd/{fourd_id}/mean-pattern").status_code == 200
 
 
+def test_closing_an_uploaded_4d_dataset_deletes_its_upload_copy(
+    client: TestClient, tmp_path: Path
+) -> None:
+    mib_path = _write_minimal_mib(tmp_path / "up.mib")
+    with mib_path.open("rb") as f:
+        r = client.post(
+            "/api/session/upload",
+            files=[("files", ("up.mib", f, "application/octet-stream"))],
+        )
+    fourd_id = r.json()[0]["id"]
+    kept = Path(fourd_store.source_path(fourd_id) or "")
+    assert kept.is_file() and kept.parent.name.startswith("fv_upload4d_")
+    assert client.delete(f"/api/fourd/{fourd_id}").status_code in (200, 204)
+    assert not kept.parent.exists()
+
+
+def test_shutdown_deletes_upload_copies_but_keeps_opened_files(tmp_path: Path) -> None:
+    src = _write_minimal_mib(tmp_path / "local.mib")
+    with TestClient(create_app()) as c:
+        with src.open("rb") as f:
+            up = c.post("/api/session/upload",
+                        files=[("files", ("up.mib", f, "application/octet-stream"))])
+        kept = Path(fourd_store.source_path(up.json()[0]["id"]) or "")
+        opened = c.post("/api/session/open", json={"paths": [str(src)]}).json()
+        assert kept.is_file()
+    assert not kept.parent.exists()
+    assert src.is_file() and fourd_store.source_path(opened[0]["id"]) == str(src)
+
+
+def test_startup_sweeps_only_stale_upload_dirs(tmp_path, monkeypatch) -> None:
+    import os
+    import tempfile
+
+    from fermiviewer.session_fourd import sweep_stale_upload_dirs
+
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+    stale, fresh, other = (tmp_path / n for n in
+                           ("fv_upload4d_old", "fv_upload4d_new", "keep_me"))
+    for d in (stale, fresh, other):
+        d.mkdir()
+        (d / "x.mib").write_bytes(b"0")
+    old = 1_000_000_000
+    os.utime(stale, (old, old))
+    os.utime(other, (old, old))
+    assert sweep_stale_upload_dirs() == 1
+    assert not stale.exists() and fresh.exists() and other.exists()
+
+
 def test_session_open_mixed_normal_and_fourd(client: TestClient, tmp_path: Path) -> None:
     from fixtures.minidm4 import write_mini_dm4
 

@@ -23,7 +23,7 @@ from fermiviewer.io.registry import (
 )
 from fermiviewer.models import FourDMeta, ImageMeta
 from fermiviewer.session import store
-from fermiviewer.session_fourd import fourd_store
+from fermiviewer.session_fourd import UPLOAD_DIR_PREFIX, fourd_store
 
 __all__ = ["open_paths_as_metas", "open_uploaded_file"]
 
@@ -84,10 +84,11 @@ def open_uploaded_file(staged: Path, name: str) -> ImageMeta | FourDMeta:
 
     The 4D loaders are lazy (an open ``h5py.File`` / ``np.memmap``) and a
     Merlin reshape re-opens the file by path, so a 4D upload is moved out
-    of the request's throw-away staging dir into one that outlives it.
+    of the request's throw-away staging dir into one that outlives it. The
+    FourD store owns that dir and deletes it when the dataset is closed.
     """
     if is_fourd_path(staged):
-        keep_dir = Path(tempfile.mkdtemp(prefix="fv_upload4d_"))
+        keep_dir = Path(tempfile.mkdtemp(prefix=UPLOAD_DIR_PREFIX))
         kept = keep_dir / name
         shutil.move(staged, kept)
         try:
@@ -99,7 +100,7 @@ def open_uploaded_file(staged: Path, name: str) -> ImageMeta | FourDMeta:
             if isinstance(e, ValueError):
                 raise HTTPException(422, f"{name}: {e}") from None
             raise
-        fourd_id = fourd_store.add(ds4, name, source_path=kept)
+        fourd_id = fourd_store.add(ds4, name, source_path=kept, owned_dir=keep_dir)
         return FourDMeta.from_dataset(fourd_id, name, ds4)
     try:
         ds = load_auto(staged)
