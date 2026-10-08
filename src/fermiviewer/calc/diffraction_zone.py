@@ -53,6 +53,19 @@ _VISIBLE = 0.01
 #: residual added per doubling of the zone's real-space repeat |uvw·[a b c]|
 #: over the cell's mean edge V^(1/3): decides between otherwise equal fits
 _ZONE_PRIOR = 0.003
+#: per basis, count missing reflections for at most this many of the
+#: best-ranked assignments (a short-g pattern can match thousands of
+#: reflection pairs; the right one has a small residual and comes early)
+_MAX_EVAL = 64
+#: a basis spot must be a low-order reflection (d >= 0.67 Å): every zone
+#: of every phase has its two shortest independent reflections well inside
+#: this, and seeding the lattice on far-out spots matches thousands of
+#: reflection pairs for nothing
+_MAX_BASIS_G = 1.5
+#: per basis, keep at most this many (gi, gj) pairs, the best matches in
+#: length and angle first: far out in reciprocal space the table is dense
+#: and tens of thousands of pairs can fall inside the tolerance
+_MAX_PAIRS = 2000
 #: never enumerate indices beyond this, however large the cell
 _MAX_INDEX = 30
 #: and never more reflections than this per phase (hkl grid points)
@@ -173,8 +186,9 @@ def _basis_pairs(m: np.ndarray, valid: np.ndarray) -> list[tuple[int, int]]:
     """Distinct short, well-separated spot pairs to anchor the lattice on:
     shortest spot first, partnered with the shortest spot 20°–160° away from
     it. (i, j) and (j, i) are the same basis, so only one is kept."""
-    idx = [int(i) for i in np.argsort(np.hypot(m[:, 0], m[:, 1])) if valid[i]]
-    unit = m / np.hypot(m[:, 0], m[:, 1])[:, None]
+    m_len = np.hypot(m[:, 0], m[:, 1])
+    idx = [int(i) for i in np.argsort(m_len) if valid[i] and m_len[i] <= _MAX_BASIS_G]
+    unit = m / m_len[:, None]
     pairs: list[tuple[int, int]] = []
     seen: set[frozenset[int]] = set()
     for i in idx:
@@ -219,11 +233,14 @@ def fit_zone(
     others = np.nonzero(valid)[0]
     if others.size < 2:
         return None
+    bases = _basis_pairs(m, valid)
+    if not bases:
+        return None
     t = _tables(ph, _span_for(ph, float(m_len[others].max()) * (1 + tolerance)))
     regions: dict[bytes, Delaunay | None] = {}   # hull per matched-spot set
     members: dict[bytes, np.ndarray] = {}         # visible reflections per zone
     best: ZoneFit | None = None
-    for i, j in _basis_pairs(m, valid):
+    for i, j in bases:
         best = _fit_basis(t, m, m_len, others, i, j, tolerance, best,
                           regions, members)
     return best
@@ -247,6 +264,11 @@ def _fit_basis(
     pa, pb = np.nonzero(ang_all < np.radians(ANGLE_TOL_DEG))
     if pa.size == 0:
         return best
+    if pa.size > _MAX_PAIRS:
+        len_err = (np.abs(t.g_len[cand_i[pa]] - m_len[i]) / m_len[i]
+                   + np.abs(t.g_len[cand_j[pb]] - m_len[j]) / m_len[j])
+        keep = np.argsort(len_err + ang_all[pa, pb], kind="stable")[:_MAX_PAIRS]
+        pa, pb = pa[keep], pb[keep]
     gi, gj = gi_all[pa], gj_all[pb]                       # (P, 3)
     ang_err = ang_all[pa, pb]
     n_valid = int(others.size)
@@ -277,7 +299,7 @@ def _fit_basis(
     upper = n / n_valid                     # score if nothing is missing
     # best-first: once a pair cannot beat `best` even with nothing
     # missing, no later one can (missing spots only lower the score)
-    for q in np.lexsort((resid, -upper)):
+    for q in np.lexsort((resid, -upper))[:_MAX_EVAL]:
         if n[q] < 2 or (best is not None
                         and (upper[q], -resid[q]) <= (best.score, -best.residual)):
             break
