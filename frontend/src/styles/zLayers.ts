@@ -10,6 +10,7 @@
 //
 //   2 – 60      stage / inspector chrome        (02-05 theme-web/*.css)
 //   200 – 290   floating tool/workshop windows   (TOOL_WINDOW_BASE, this file)
+//   290         results table (grains/particles) (RESULTS_WINDOW, this file)
 //   295         menubar + its dropdowns          (MENUBAR, this file; mirrored
 //               in 01-shell-library.css — the bar is the dropdowns' stacking
 //               context, so it must sit above tool windows or an open menu
@@ -38,6 +39,11 @@ export const TOOL_WINDOW_SPAN = 90;
 
 /** Highest possible tool-window z-index; MODAL_BACKDROP must exceed this. */
 export const TOOL_WINDOW_MAX = TOOL_WINDOW_BASE + TOOL_WINDOW_SPAN;
+
+/** The floating results table: the top of the tool-window layer (it pops up
+ *  over the workshop that produced it) but under the menubar, which it
+ *  used to cover at 400. */
+export const RESULTS_WINDOW = TOOL_WINDOW_MAX;
 
 /** Menubar layer: above every tool window, below modal dialogs. */
 export const MENUBAR = 295;
