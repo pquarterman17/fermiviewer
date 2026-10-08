@@ -269,7 +269,7 @@ def measure_annotations(
             mid = ((opts[0][0] + opts[1][0]) / 2 + 8,
                    (opts[0][1] + opts[1][1]) / 2 - 8)
             out.extend(_box_outline(m, kind, ipts, opts, scale))
-            out.append(Annotation(kind, opts[:2], label, mid,
+            out.append(Annotation(kind, opts[:2], _captioned(text, label), mid,
                                   dashed=kind == "profile",
                                   end_symbol=end_symbol))
         elif kind == "polyline" and len(ipts) >= 2:
@@ -282,7 +282,7 @@ def measure_annotations(
             label = (f"{_fmt(total)} {pixel_unit}"
                      if pixel_size else f"{_fmt(total)} px")
             last = opts[-1]
-            out.append(Annotation(kind, opts, label,
+            out.append(Annotation(kind, opts, _captioned(text, label),
                                   (last[0] + 10, last[1] - 10), dashed=True,
                                   end_symbol=end_symbol))
         elif kind == "angle" and len(ipts) >= 3:
@@ -295,7 +295,8 @@ def measure_annotations(
             deg = abs(a1 - a2) * 180.0 / np.pi
             if deg > 180.0:
                 deg = 360.0 - deg
-            out.append(Annotation(kind, opts[:3], f"{deg:.1f}°",
+            out.append(Annotation(kind, opts[:3],
+                                  _captioned(text, f"{deg:.1f}°"),
                                   (opts[1][0] + 10, opts[1][1] - 10),
                                   end_symbol=end_symbol))
         elif kind in ("roi", "ellipse"):
@@ -312,9 +313,17 @@ def measure_annotations(
                 label = f"{_fmt(w_px)} × {_fmt(h_px)} px"
             lx = min(opts[0][0], opts[1][0])
             ly = min(opts[0][1], opts[1][1]) - 6
-            out.append(Annotation(kind, opts[:2], label, (lx, ly),
-                                  end_symbol=end_symbol))
+            out.append(Annotation(kind, opts[:2], _captioned(text, label),
+                                  (lx, ly), end_symbol=end_symbol))
     return out
+
+
+def _captioned(caption: str, value: str) -> str:
+    """A measured value with the user's "Edit caption…" text in front —
+    the same "caption · value" the stage label and Measurements list show
+    (frontend lib/measureCaption.ts)."""
+    caption = caption.strip()
+    return f"{caption} · {value}" if caption else value
 
 
 def _roi_sigma(sel: np.ndarray) -> float:

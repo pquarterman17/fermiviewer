@@ -11,6 +11,7 @@ import {
   type TiltSettings,
 } from "../../lib/geometry";
 import { displayArea, displayLength } from "../../lib/lengthUnits";
+import { withCaption } from "../../lib/measureCaption";
 import { useStageInfo } from "../../store/stage";
 import {
   useViewer,
@@ -111,6 +112,20 @@ export function distanceValues(
  *  fix 5 (polyline): this kind had no branch at all — the row rendered
  *  "" while the stage already showed the total length. */
 export function measureRowValue(
+  m: Measure,
+  img: { w: number; h: number },
+  meta: MetaLike,
+  roiStats: Record<string, { mean: number; std: number }>,
+  tilt: TiltSettings | null,
+): string {
+  const value = rowValue(m, img, meta, roiStats, tilt);
+  // annotation kinds already show their caption as the value
+  const own =
+    m.kind === "text" || m.kind === "arrow" || m.kind === "box" || m.kind === "circle";
+  return own ? value : withCaption(m, value);
+}
+
+function rowValue(
   m: Measure,
   img: { w: number; h: number },
   meta: MetaLike,

@@ -311,6 +311,26 @@ def test_annotation_labels() -> None:
     assert annos_px[0].points[1] == (32.0, 0.0)         # 2× output coords
 
 
+def test_annotation_labels_carry_edit_caption() -> None:
+    """"Edit caption…" on a value measure (distance/profile/polyline/angle/
+    ROI/ellipse) was stored but never exported — the caption now leads the
+    measured value, as on the stage."""
+    from fermiviewer.calc.export import measure_annotations
+
+    captioned = [{**m, "text": f"cap-{m['kind']}"} for m in MEASURES]
+    annos = measure_annotations(
+        captioned, 12, 16, pixel_size=0.5, pixel_unit="nm",
+        scale=1, raster=np.full((12, 16), 7.0),
+    )
+    by_kind = {a.kind: a for a in annos}
+    assert by_kind["distance"].label == "cap-distance · 8 nm"
+    assert by_kind["angle"].label == "cap-angle · 143.1°"
+    assert by_kind["roi"].label == "cap-roi · μ 7 · σ 0"
+    # a blank caption leaves the bare value
+    blank = [{**MEASURES[0], "text": "  "}]
+    assert measure_annotations(blank, 12, 16, 0.5, "nm", 1)[0].label == "8 nm"
+
+
 def test_annotation_labels_tilt_corrected() -> None:
     """#34: tilt correction scales the in-axis component of distance/
     profile/polyline LABELS (1/sin θ cross-section, 1/cos θ surface);

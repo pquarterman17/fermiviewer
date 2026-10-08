@@ -15,6 +15,7 @@ import {
   type TiltSettings,
 } from "../../lib/geometry";
 import { displayArea, displayLength } from "../../lib/lengthUnits";
+import { withCaption } from "../../lib/measureCaption";
 import type { EndSymbol, Measure } from "../../store/viewer";
 
 export const HANDLE_R = 5;
@@ -115,8 +116,17 @@ export interface MeasureLabelCtx {
   roiStats: Record<string, RoiStats>;
 }
 
-/** Per-kind display label ("12.3 nm", "μ 4.1 · σ 0.2", …). */
+/** Per-kind display label ("12.3 nm", "μ 4.1 · σ 0.2", …), led by the
+ *  user's "Edit caption…" text on value kinds ("grain A · 12.3 nm"). */
 export function measureLabel(m: Measure, ctx: MeasureLabelCtx): string {
+  const value = measureValue(m, ctx);
+  return CAPTION_KINDS.has(m.kind) ? value : withCaption(m, value);
+}
+
+/** Kinds whose label IS the caption (no measured value to lead). */
+const CAPTION_KINDS = new Set<Measure["kind"]>(["text", "arrow", "box", "circle"]);
+
+function measureValue(m: Measure, ctx: MeasureLabelCtx): string {
   const { img, pixelSize, pixelUnit, tilt, roiStats } = ctx;
   const spacing = ctx.pixelSpacing ?? null;
   const px = toImagePx(m, img);
