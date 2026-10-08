@@ -5,7 +5,7 @@
 // discrete 4-corner snap picker (free drag is preserved).
 // Shown in the Image tab when the active image is calibrated (pixel_size != null).
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { unitToNm } from "../../lib/geometry";
 import { loadPrefs } from "../../lib/prefs";
@@ -60,10 +60,18 @@ export default function ScaleBarCard() {
 
   const [valStr, setValStr] = useState("");
   const [selUnit, setSelUnit] = useState<Unit>("nm");
+  // why the typed length was refused (≤ 0, not a number, wider than the
+  // image) — shown under the field instead of silently ignoring it
+  const [lengthErr, setLengthErr] = useState<string | null>(null);
+  // the length this card itself just stored: its echo must not re-seed
+  // (and re-unit) the field the user is still typing in
+  const appliedRef = useRef<number | null>(null);
 
   // Re-seed the input when the image or its stored length changes:
   // auto → empty box; custom → value converted into a readable unit.
   useEffect(() => {
+    if (current != null && current === appliedRef.current) return;
+    setLengthErr(null);
     if (current == null || imgFactor == null) {
       setValStr("");
       if (imgFactor != null) {
@@ -87,11 +95,29 @@ export default function ScaleBarCard() {
   const color = sbState?.color ?? null; // null = default white
   const unitOverride = sbState?.unitOverride ?? null; // null = auto
 
+  // a bar can't usefully be longer than the image's field of view
+  const fov = (meta.shape[1] ?? meta.shape[0]) * meta.pixel_size;
+  /** Store a typed length (already in image calibration units), or explain
+   *  why not. Empty clears the error and leaves the stored length alone. */
+  const store = (str: string, phys: number) => {
+    if (str.trim() === "") return setLengthErr(null);
+    if (!Number.isFinite(phys) || phys <= 0) {
+      return setLengthErr("Length must be a number greater than 0");
+    }
+    if (phys > fov) {
+      return setLengthErr(
+        `Length must be at most the image width (${Number(fov.toPrecision(4))} ${pixelUnit})`,
+      );
+    }
+    setLengthErr(null);
+    appliedRef.current = phys;
+    setScaleBar(activeId, { lengthPhys: phys });
+  };
+
   const apply = (str: string, u: Unit) => {
-    const v = Number(str);
-    if (!Number.isFinite(v) || v <= 0 || imgFactor == null) return;
+    if (imgFactor == null) return;
     // typed value in u → image calibration units
-    setScaleBar(activeId, { lengthPhys: (v * unitToNm(u)!) / imgFactor });
+    store(str, (Number(str) * unitToNm(u)!) / imgFactor);
   };
 
   const reset = () => {
@@ -154,6 +180,7 @@ export default function ScaleBarCard() {
               title="Nice-number length chosen from the current zoom"
               onClick={() => {
                 setValStr("");
+                setLengthErr(null);
                 setScaleBar(activeId, { lengthPhys: null });
               }}
             >
@@ -173,10 +200,7 @@ export default function ScaleBarCard() {
               value={valStr}
               onChange={(e) => {
                 setValStr(e.target.value);
-                const v = Number(e.target.value);
-                if (Number.isFinite(v) && v > 0) {
-                  setScaleBar(activeId, { lengthPhys: v });
-                }
+                store(e.target.value, Number(e.target.value));
               }}
             />
             <span className="k">{pixelUnit}</span>
@@ -185,6 +209,7 @@ export default function ScaleBarCard() {
               title="Auto-pick a scale-bar length from the current zoom"
               onClick={() => {
                 setValStr("");
+                setLengthErr(null);
                 setScaleBar(activeId, { lengthPhys: null });
               }}
             >
@@ -193,6 +218,12 @@ export default function ScaleBarCard() {
           </div>
         )}
       </div>
+
+      {lengthErr && (
+        <div className="fvd-callout warn" role="alert">
+          {lengthErr}
+        </div>
+      )}
 
       {/* Unit override dropdown (audit #10) */}
       <div className="fvd-meta-row">
