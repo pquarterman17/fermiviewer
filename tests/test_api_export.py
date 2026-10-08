@@ -206,7 +206,7 @@ def test_svg_vector_export(client, img_id) -> None:
     assert svg.startswith("<svg")
     assert "data:image/png;base64," in svg     # embedded raster
     assert svg.count("<line") == 2             # distance + profile
-    assert 'stroke-dasharray="6 4"' in svg     # profile dashed
+    assert 'stroke-dasharray="12 8"' in svg    # profile dashed (×2)
     assert "<polyline" in svg                  # angle
     assert svg.count("<rect") == 2             # roi + scale bar
     assert "°" in svg                          # angle label
@@ -626,10 +626,43 @@ def test_end_symbol_baking_svg(client, img_id) -> None:
     # the measure is horizontal → bar ticks are vertical (x1 == x2)
     import re
     ticks = re.findall(
-        r'<line x1="([\d.]+)" y1="[\d.]+" x2="([\d.]+)" y2="[\d.]+"', svg,
+        r'<line x1="([\d.]+)" y1="-?[\d.]+" x2="([\d.]+)" y2="-?[\d.]+"', svg,
     )
     vertical = [t for t in ticks if t[0] == t[1]]
     assert len(vertical) == 2
+
+
+def test_end_glyphs_and_halo_scale_with_export(client, img_id) -> None:
+    """At 4× the endpoint glyphs, their stroke and the label halo grow with
+    the lines instead of staying at their 1× size (QA: 14 px glyph / 3 px
+    halo on a 4× figure)."""
+    def svg_at(scale: int) -> str:
+        return client.post("/api/export", json={
+            "image_id": img_id, "format": "svg", "scale": scale,
+            "include": ["measurements"], "overlay_line_width": 2,
+            "measures": [{"kind": "distance", "endSymbol": "circle",
+                          "pts": [{"x": 0.2, "y": 0.5},
+                                  {"x": 0.8, "y": 0.5}]}],
+        }).content.decode()
+
+    one, four = svg_at(1), svg_at(4)
+    assert 'r="5" fill="none" stroke="#35e0c2" stroke-width="2"' in one
+    assert 'r="20" fill="none" stroke="#35e0c2" stroke-width="8"' in four
+    assert 'stroke-width="12"' in four  # label halo 3 × 4
+
+    def glyph_rows(scale: int) -> int:
+        arr = np.asarray(Image.open(io.BytesIO(client.post("/api/export", json={
+            "image_id": img_id, "format": "png", "scale": scale,
+            "include": ["measurements"], "overlay_color": "#ff0000",
+            "measures": [{"kind": "distance", "endSymbol": "circle",
+                          "pts": [{"x": 0.2, "y": 0.5},
+                                  {"x": 0.8, "y": 0.5}]}],
+        }).content)))
+        red = (arr[..., 0] == 255) & (arr[..., 1] == 0)
+        col = red[:, round(0.2 * arr.shape[1])]
+        return int(col.sum())
+
+    assert glyph_rows(4) > 2.5 * glyph_rows(1)
 
 
 def test_end_symbol_none_unchanged(client, img_id) -> None:

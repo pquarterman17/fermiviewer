@@ -28,31 +28,35 @@ _DEFAULT_FONT_SIZE = 20  # matches ScaleBarCard default; mirrors _export_render.
 
 
 def _svg_end_glyph(cx: float, cy: float, sym: str, color: str,
-                   r: float = 5.0, ang: float = 0.0) -> list[str]:
-    """SVG elements for an endpoint glyph. Mirrors _draw_end_glyph()."""
+                   r: float = 5.0, ang: float = 0.0,
+                   gs: float = 1.0) -> list[str]:
+    """SVG elements for an endpoint glyph. Mirrors _draw_end_glyph(); `gs`
+    (export scale) grows the glyph + stroke with the image."""
+    r = r * gs
+    sw = f"{2 * gs:g}"
     if sym == "bar":
-        bl = r + 2
+        bl = r + 2 * gs
         ux, uy = -math.sin(ang), math.cos(ang)
         return [
             f'<line x1="{cx + bl * ux:.1f}" y1="{cy + bl * uy:.1f}" '
             f'x2="{cx - bl * ux:.1f}" y2="{cy - bl * uy:.1f}" '
-            f'stroke="{color}" stroke-width="2"/>',
+            f'stroke="{color}" stroke-width="{sw}"/>',
         ]
     if sym == "circle":
-        return [f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{r}" '
-                f'fill="none" stroke="{color}" stroke-width="2"/>']
+        return [f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{r:g}" '
+                f'fill="none" stroke="{color}" stroke-width="{sw}"/>']
     if sym == "square":
         return [f'<rect x="{cx - r:.1f}" y="{cy - r:.1f}" '
                 f'width="{r * 2:.1f}" height="{r * 2:.1f}" '
-                f'fill="none" stroke="{color}" stroke-width="2"/>']
+                f'fill="none" stroke="{color}" stroke-width="{sw}"/>']
     if sym == "cross":
         return [
             f'<line x1="{cx - r:.1f}" y1="{cy - r:.1f}" '
             f'x2="{cx + r:.1f}" y2="{cy + r:.1f}" '
-            f'stroke="{color}" stroke-width="2"/>',
+            f'stroke="{color}" stroke-width="{sw}"/>',
             f'<line x1="{cx + r:.1f}" y1="{cy - r:.1f}" '
             f'x2="{cx - r:.1f}" y2="{cy + r:.1f}" '
-            f'stroke="{color}" stroke-width="2"/>',
+            f'stroke="{color}" stroke-width="{sw}"/>',
         ]
     return []  # "none"
 
@@ -99,7 +103,8 @@ def _svg_caption_parts(img: Image.Image, total_w: int, band_h: int,
 
 
 def _svg_annotation_parts(an: Annotation, color: str,
-                          text_attrs: str, line_width: int = 2) -> list[str]:
+                          text_attrs: str, line_width: int = 2,
+                          gs: float = 1.0) -> list[str]:
     """SVG vector elements (+ label) for one measurement annotation.
     Mirrors draw_annotations() on the raster side."""
     from fermiviewer.routes._export_render import _seg_angle
@@ -136,7 +141,7 @@ def _svg_annotation_parts(an: Annotation, color: str,
     elif an.kind == "arrow":
         a, b = p[0], p[1]
         ang = math.atan2(b[1] - a[1], b[0] - a[0])
-        head = 9.0
+        head = 9.0 * gs
         wings = " ".join(
             f"{b[0] - head * math.cos(ang + da):.1f},"
             f"{b[1] - head * math.sin(ang + da):.1f}"
@@ -152,19 +157,21 @@ def _svg_annotation_parts(an: Annotation, color: str,
             f'{wings[1]}" fill="none" stroke="{color}" stroke-width="{lw}"/>'
         )
         out.extend(_svg_end_glyph(p[0][0], p[0][1], sym, color,
-                                  ang=_seg_angle(p, 0)))
+                                  ang=_seg_angle(p, 0), gs=gs))
     elif an.kind in ("angle", "polyline"):
         pts_str = " ".join(f"{x:.1f},{y:.1f}" for x, y in p)
-        dash = ' stroke-dasharray="6 4"' if an.dashed else ""
+        dash = (f' stroke-dasharray="{6 * gs:g} {4 * gs:g}"'
+                if an.dashed else "")
         out.append(
             f'<polyline points="{pts_str}" fill="none" '
             f'stroke="{color}" stroke-width="{lw}"{dash}/>'
         )
         for i, pt in enumerate(p):
             out.extend(_svg_end_glyph(pt[0], pt[1], sym, color,
-                                      ang=_seg_angle(p, i)))
+                                      ang=_seg_angle(p, i), gs=gs))
     else:
-        dash = ' stroke-dasharray="6 4"' if an.dashed else ""
+        dash = (f' stroke-dasharray="{6 * gs:g} {4 * gs:g}"'
+                if an.dashed else "")
         out.append(
             f'<line x1="{p[0][0]:.1f}" y1="{p[0][1]:.1f}" '
             f'x2="{p[1][0]:.1f}" y2="{p[1][1]:.1f}" '
@@ -172,7 +179,7 @@ def _svg_annotation_parts(an: Annotation, color: str,
         )
         for i, pt in enumerate(p[:2]):
             out.extend(_svg_end_glyph(pt[0], pt[1], sym, color,
-                                      ang=_seg_angle(p, i)))
+                                      ang=_seg_angle(p, i), gs=gs))
     out.append(
         f'<text x="{an.label_xy[0]:.1f}" y="{an.label_xy[1]:.1f}" '
         f'fill="{color}" {text_attrs}>{escape(an.label)}</text>'
@@ -186,13 +193,15 @@ def build_svg(img: Image.Image, bar: ScaleBar | None,
               cmap: str = "gray",
               font_size: int = _DEFAULT_FONT_SIZE,
               measure_font_size: int = 12, measure_line_width: int = 2,
-              caption: str | None = None) -> str:
+              caption: str | None = None, glyph_scale: float = 1.0) -> str:
     """Full-res PNG embedded as <image> + vector overlay elements.
 
     `font_size` sets the scale-bar label font size (already scaled by the
     export scale factor). `measure_font_size` / `measure_line_width` style the
     measurement labels + strokes to match the on-screen overlay. `caption`, if
     given, is rendered as a dark band of <text> lines below the figure.
+    `glyph_scale` (the export scale) grows endpoint glyphs, arrow heads, dash
+    pattern and the label halo with the image.
     """
     buf = io.BytesIO()
     img.save(buf, format="PNG")
@@ -217,11 +226,13 @@ def build_svg(img: Image.Image, bar: ScaleBar | None,
     # measurement labels: size matches the on-screen overlay (default 12)
     text_attrs = (f'font-family="\'JetBrains Mono\', monospace" '
                   f'font-size="{measure_font_size}" paint-order="stroke" '
-                  'stroke="rgba(0,0,0,0.75)" stroke-width="3"')
+                  'stroke="rgba(0,0,0,0.75)" '
+                  f'stroke-width="{3 * glyph_scale:g}"')
     # scale-bar label: user-controlled font size + same family
     sb_font_attrs = (
         f'font-family="\'JetBrains Mono\', monospace" font-size="{font_size}" '
-        f'paint-order="stroke" stroke="rgba(0,0,0,0.75)" stroke-width="3"'
+        f'paint-order="stroke" stroke="rgba(0,0,0,0.75)" '
+        f'stroke-width="{3 * glyph_scale:g}"'
     )
 
     if bar is not None:
@@ -238,7 +249,7 @@ def build_svg(img: Image.Image, bar: ScaleBar | None,
 
     for an in annos:
         parts.extend(_svg_annotation_parts(an, color, text_attrs,
-                                            measure_line_width))
+                                            measure_line_width, glyph_scale))
 
     if cap_lines:
         parts.extend(_svg_caption_parts(img, total_w, band_h, cap_lines,

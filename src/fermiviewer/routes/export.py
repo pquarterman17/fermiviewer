@@ -276,12 +276,14 @@ def export_image(req: ExportRequest) -> Response:
         svg = build_svg(img, bar, annos, req.overlay_color,
                         cbar=cbar, cmap=req.cmap, font_size=font_size,
                         measure_font_size=m_font or 12, measure_line_width=m_lw,
-                        caption=req.caption if want_caption else None)
+                        caption=req.caption if want_caption else None,
+                        glyph_scale=eff_scale)
         return _file_response(svg.encode(), f"{stem}.svg", "svg")
 
     img = _bake_raster_overlays(img, bar, annos, cbar, req, font_size,
                                 want_caption, m_lw, m_font,
-                                caption_scale=max(1, round(eff_scale)))
+                                caption_scale=max(1, round(eff_scale)),
+                                glyph_scale=eff_scale)
     return _encode_raster(img, req.format, stem, save_dpi)
 
 
@@ -296,6 +298,7 @@ def _bake_raster_overlays(
     anno_line_width: int = 2,
     anno_font_size: int | None = None,
     caption_scale: int = 1,
+    glyph_scale: float = 1.0,
 ) -> Image.Image:
     """Bake scale bar, annotations, colorbar gutter, then caption band (in
     that order) onto the rendered RGB image; returns the final image."""
@@ -304,7 +307,8 @@ def _bake_raster_overlays(
     if annos:
         draw_annotations(img, annos, _hex_rgb(req.overlay_color),
                          line_width=anno_line_width,
-                         label_font_size=anno_font_size)
+                         label_font_size=anno_font_size,
+                         glyph_scale=glyph_scale)
     if cbar[0]:
         img = composite_colorbar(img, req.cmap, cbar[1], cbar[2])
     if want_caption:

@@ -93,24 +93,27 @@ def _dashed_line(draw: ImageDraw.ImageDraw, a: tuple[float, float],
 
 
 def _draw_end_glyph(draw: ImageDraw.ImageDraw, cx: float, cy: float,
-                    sym: str, color: tuple[int, int, int], r: int = 5,
-                    ang: float = 0.0) -> None:
+                    sym: str, color: tuple[int, int, int], r: float = 5,
+                    ang: float = 0.0, gs: float = 1.0) -> None:
     """Draw a measurement endpoint glyph (bar / circle / square / cross)
     at (cx, cy). Mirrors the SVG EndpointGlyph in MeasureOverlay.tsx.
     `ang` is the adjacent-segment direction (radians) — the "bar" glyph
-    is a dimension-style tick drawn perpendicular to it."""
+    is a dimension-style tick drawn perpendicular to it. `gs` is the export
+    scale: glyph size + stroke grow with the image like the lines do."""
+    r = r * gs
+    w = max(1, round(2 * gs))
     if sym == "bar":
-        bl = r + 2
+        bl = r + 2 * gs
         ux, uy = -math.sin(ang), math.cos(ang)
         draw.line([(cx + bl * ux, cy + bl * uy),
-                   (cx - bl * ux, cy - bl * uy)], fill=color, width=2)
+                   (cx - bl * ux, cy - bl * uy)], fill=color, width=w)
     elif sym == "circle":
-        draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=color, width=2)
+        draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=color, width=w)
     elif sym == "square":
-        draw.rectangle([cx - r, cy - r, cx + r, cy + r], outline=color, width=2)
+        draw.rectangle([cx - r, cy - r, cx + r, cy + r], outline=color, width=w)
     elif sym == "cross":
-        draw.line([(cx - r, cy - r), (cx + r, cy + r)], fill=color, width=2)
-        draw.line([(cx + r, cy - r), (cx - r, cy + r)], fill=color, width=2)
+        draw.line([(cx - r, cy - r), (cx + r, cy + r)], fill=color, width=w)
+        draw.line([(cx + r, cy - r), (cx - r, cy + r)], fill=color, width=w)
     # "none" → no glyph
 
 
@@ -124,10 +127,10 @@ def _seg_angle(pts: Sequence[tuple[float, float]], i: int) -> float:
 
 def _draw_glyphs(draw: ImageDraw.ImageDraw,
                  pts: Sequence[tuple[float, float]], sym: str,
-                 color: tuple[int, int, int]) -> None:
+                 color: tuple[int, int, int], gs: float = 1.0) -> None:
     for i, pt in enumerate(pts):
         _draw_end_glyph(draw, pt[0], pt[1], sym, color,
-                        ang=_seg_angle(pts, i))
+                        ang=_seg_angle(pts, i), gs=gs)
 
 
 def _draw_box_kind(draw: ImageDraw.ImageDraw, an: Annotation,
@@ -144,11 +147,12 @@ def _draw_box_kind(draw: ImageDraw.ImageDraw, an: Annotation,
 
 
 def _draw_arrow_kind(draw: ImageDraw.ImageDraw, an: Annotation,
-                     color: tuple[int, int, int], lw: int = 2) -> None:
+                     color: tuple[int, int, int], lw: int = 2,
+                     gs: float = 1.0) -> None:
     a, b = an.points[0], an.points[1]
     draw.line([a, b], fill=color, width=lw)
     ang = float(np.arctan2(b[1] - a[1], b[0] - a[0]))
-    head = 9.0
+    head = 9.0 * gs
     for da in (-0.45, 0.45):
         draw.line(
             [b, (b[0] - head * np.cos(ang + da),
@@ -156,14 +160,19 @@ def _draw_arrow_kind(draw: ImageDraw.ImageDraw, an: Annotation,
             fill=color, width=lw,
         )
     _draw_end_glyph(draw, a[0], a[1], an.end_symbol, color,
-                    ang=math.atan2(b[1] - a[1], b[0] - a[0]))
+                    ang=math.atan2(b[1] - a[1], b[0] - a[0]), gs=gs)
 
 
 def draw_annotations(img: Image.Image, annos: list[Annotation],
                      color: tuple[int, int, int], line_width: int = 2,
-                     label_font_size: int | None = None) -> None:
+                     label_font_size: int | None = None,
+                     glyph_scale: float = 1.0) -> None:
+    """Bake measurement overlays. `glyph_scale` (the export scale) grows the
+    endpoint glyphs, arrow heads, dash pattern and label halo with the image,
+    matching the already-scaled `line_width` / `label_font_size`."""
     draw = ImageDraw.Draw(img)
     lw = line_width
+    gs = glyph_scale
     font = _load_font(label_font_size) if label_font_size else None
     for an in annos:
         p = an.points
@@ -177,22 +186,24 @@ def draw_annotations(img: Image.Image, annos: list[Annotation],
         elif an.kind == "text":
             pass  # caption only — drawn below
         elif an.kind == "arrow":
-            _draw_arrow_kind(draw, an, color, lw)
+            _draw_arrow_kind(draw, an, color, lw, gs)
         elif an.kind == "angle":
             draw.line([p[0], p[1], p[2]], fill=color, width=lw)
-            _draw_glyphs(draw, p, sym, color)
+            _draw_glyphs(draw, p, sym, color, gs)
         elif an.kind == "polyline":
             for i in range(len(p) - 1):
-                _dashed_line(draw, p[i], p[i + 1], color, lw)
-            _draw_glyphs(draw, p, sym, color)
+                _dashed_line(draw, p[i], p[i + 1], color, lw,
+                             dash=6.0 * gs, gap=4.0 * gs)
+            _draw_glyphs(draw, p, sym, color, gs)
         elif an.dashed:
-            _dashed_line(draw, p[0], p[1], color, lw)
-            _draw_glyphs(draw, p[:2], sym, color)
+            _dashed_line(draw, p[0], p[1], color, lw,
+                         dash=6.0 * gs, gap=4.0 * gs)
+            _draw_glyphs(draw, p[:2], sym, color, gs)
         else:
             draw.line([p[0], p[1]], fill=color, width=lw)
-            _draw_glyphs(draw, p[:2], sym, color)
+            _draw_glyphs(draw, p[:2], sym, color, gs)
         draw.text(an.label_xy, an.label, fill=color, font=font,
-                  stroke_width=2, stroke_fill=(0, 0, 0))
+                  stroke_width=max(1, round(2 * gs)), stroke_fill=(0, 0, 0))
 
 
 def fmt_tick(v: float) -> str:
