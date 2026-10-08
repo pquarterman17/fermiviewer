@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { coerceParams, type ParamField } from "./params";
+import { coerceParams, validateParams, type ParamField } from "./params";
 
 const numField = (key: string, dflt: number): ParamField => ({
   key,
@@ -64,5 +64,24 @@ describe("coerceParams bounds", () => {
     expect(coerceParams({ g: -3 }, f).g).toBe(0);
     expect(coerceParams({ g: "2.6" }, f).g).toBe(3);
     expect(coerceParams({ g: "abc" }, f).g).toBe(4);
+  });
+});
+
+describe("validateParams", () => {
+  const len = { key: "len", label: "Length", type: "number" as const, default: 1, positive: true, max: 1e9 };
+  const gap = { key: "g", label: "Gap", type: "number" as const, default: 4, min: 0, max: 64, int: true };
+  it("refuses non-numbers instead of substituting the default", () => {
+    expect(validateParams({ len: "abc" }, [len])).toMatch(/enter a number/);
+    expect(validateParams({ len: "" }, [len])).toMatch(/enter a number/);
+  });
+  it("checks positive, range and whole-number bounds", () => {
+    expect(validateParams({ len: 0 }, [len])).toMatch(/greater than 0/);
+    expect(validateParams({ len: "1e300" }, [len])).toMatch(/at most/);
+    expect(validateParams({ g: 2.5 }, [gap])).toMatch(/whole number/);
+    expect(validateParams({ g: -1 }, [gap])).toMatch(/at least 0/);
+  });
+  it("accepts valid input and untouched defaults", () => {
+    expect(validateParams({ len: "343.8", g: 4 }, [len, gap])).toBeNull();
+    expect(validateParams({}, [len, gap])).toBeNull();
   });
 });

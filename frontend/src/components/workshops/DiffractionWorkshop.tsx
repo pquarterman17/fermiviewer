@@ -109,6 +109,16 @@ export default function DiffractionWorkshop() {
     setCommittedRoi(null);
     setRoiDraw({ mode: "none", p1: null, p2: null });
     setRoiMode("none");
+    // a simulated pattern states the geometry it was drawn with — default
+    // Index to it instead of px = 1 (which ranked other phases above it)
+    const m = activeId ? useViewer.getState().images[activeId]?.meta : undefined;
+    const num = (v: unknown) => (typeof v === "number" ? String(v) : null);
+    const cal = [num(m?.detector_pixel_size_mm), num(m?.camera_length_mm), num(m?.beam_kv)];
+    if (cal[0] && cal[1]) {
+      setPixelSize(cal[0]);
+      setCameraLen(cal[1]);
+      if (cal[2]) setAccKv(cal[2]);
+    }
   }, [activeId]);
 
   useEffect(() => {
@@ -186,6 +196,7 @@ export default function DiffractionWorkshop() {
         setIndexResult(r);
         setCandidates(r.candidates);
         setSelectedCandIdx(0);
+        if (r.warnings?.length) setStatus(`index: ${r.warnings[0]}`);
         if (r.result) void refreshPersistedResults();
       })
       .catch((e: Error) => setStatus(`index: ${e.message}`))
@@ -330,6 +341,7 @@ export default function DiffractionWorkshop() {
           phase: c.phase,
           formula: c.formula,
           zone_axis: `[${c.zone_axis.join(" ")}]`,
+          ...(c.method ? { indexed_by: c.method === "zone" ? "spacings + angles (zone fit)" : "spacings only" } : {}),
           score: c.score,
           n_matched: c.n_matched,
           pixel_size: Number(pixelSize) || 1,
@@ -463,6 +475,9 @@ export default function DiffractionWorkshop() {
           saveResult={saveResult} setSaveResult={setSaveResult}
         />
       )}
+      {tab === "index" && indexResult?.warnings?.map((w) => (
+        <div key={w} className="fvd-ws-note" role="alert">{w}</div>
+      ))}
       {tab === "calibrate" && (
         <DiffractionCalibrationPanel calKnownD={calKnownD} setCalKnownD={setCalKnownD}
           busy={busy} activeId={activeId} calibrate={calibrate} calib={calib} />

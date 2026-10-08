@@ -15,6 +15,9 @@ import {
 import { loadPrefs } from "../../lib/prefs";
 import { useViewer, type View } from "../../store/viewer";
 
+/** Viewport px kept clear at the bottom for the zoom chip (+ margin). */
+const ZOOM_CHIP_CLEAR = 44;
+
 export default function ScaleBarOverlay({
   imageId,
   pixelSize,
@@ -42,7 +45,9 @@ export default function ScaleBarOverlay({
   // vendor databar, null when the whole array is image
   const contentRows = useViewer((s) => s.images[imageId]?.content_rows ?? null);
   const setScaleBar = useViewer((s) => s.setScaleBar);
-  const dragRef = useRef<{ startX: number; startY: number; x0: number; y0: number } | null>(null);
+  const dragRef = useRef<{
+    startX: number; startY: number; x0: number; y0: number; w: number; h: number;
+  } | null>(null);
 
   if (!visible) return null;
 
@@ -78,13 +83,6 @@ export default function ScaleBarOverlay({
       : visW > 0
         ? visL + 0.02 * visW
         : 0.02 * vp.w;
-  const topPx =
-    sbState?.y != null
-      ? sbState.y * vp.h
-      : visH > 0
-        ? visT + 0.92 * visH
-        : 0.92 * vp.h;
-
   // size
   const autoPhys = niceScaleLength((120 * pixelSize) / z);
   const phys = sbState?.lengthPhys ?? autoPhys;
@@ -93,6 +91,21 @@ export default function ScaleBarOverlay({
   // per-image override wins; else the Preferences default (20 by default,
   // user request 2026-06-09 — readable at presentation size)
   const fontSize = sbState?.fontSize ?? loadPrefs().scaleBarFontSize;
+  // rule + 3 px gap + label line: the element's height, drawn downward
+  const barH = thickness + 3 + Math.ceil(fontSize * 1.25);
+
+  // the default sits above the bottom-left zoom chip (bottom: 10px, ~26 px
+  // tall) instead of underneath it on a short stage
+  const topPx =
+    sbState?.y != null
+      ? sbState.y * vp.h
+      : Math.max(
+          visH > 0 ? visT : 0,
+          Math.min(
+            visH > 0 ? visT + 0.92 * visH : 0.92 * vp.h,
+            vp.h - ZOOM_CHIP_CLEAR - barH,
+          ),
+        );
   // unit override: convert phys (in pixel_unit) to the forced unit
   const unitOverride = sbState?.unitOverride ?? null;
   const label = (() => {
@@ -120,6 +133,8 @@ export default function ScaleBarOverlay({
       startY: e.clientY,
       x0: leftPx / vp.w,
       y0: topPx / vp.h,
+      w: (e.currentTarget as HTMLElement).offsetWidth || widthPx,
+      h: (e.currentTarget as HTMLElement).offsetHeight || barH,
     };
     (e.target as Element).setPointerCapture(e.pointerId);
   };
@@ -127,8 +142,11 @@ export default function ScaleBarOverlay({
     if (!dragRef.current || vp.w === 0 || vp.h === 0) return;
     const dx = (e.clientX - dragRef.current.startX) / vp.w;
     const dy = (e.clientY - dragRef.current.startY) / vp.h;
-    const nx = Math.min(0.98, Math.max(0, dragRef.current.x0 + dx));
-    const ny = Math.min(0.98, Math.max(0, dragRef.current.y0 + dy));
+    // keep the whole bar + label on the stage (it used to stop only at
+    // 98% of the viewport, so most of it could be dragged off-stage)
+    const { w, h } = dragRef.current;
+    const nx = Math.min(Math.max(0, 1 - w / vp.w), Math.max(0, dragRef.current.x0 + dx));
+    const ny = Math.min(Math.max(0, 1 - h / vp.h), Math.max(0, dragRef.current.y0 + dy));
     setScaleBar(imageId, { x: nx, y: ny });
   };
   const onPointerUp = (e: React.PointerEvent) => {

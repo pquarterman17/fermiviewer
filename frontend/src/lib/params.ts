@@ -20,6 +20,8 @@ export interface ParamField {
   min?: number;
   max?: number;
   int?: boolean;
+  /** number fields: must be strictly greater than 0. */
+  positive?: boolean;
 }
 
 function boundNumber(n: number, f: ParamField): number {
@@ -30,6 +32,30 @@ function boundNumber(n: number, f: ParamField): number {
 }
 
 export type ParamValues = Record<string, number | string | boolean>;
+
+/** First problem with the entered numbers, phrased for the user, or null.
+ *  Run is refused on a problem instead of silently substituting the
+ *  default ("abc" used to calibrate as 1) or clamping (0 → minimum). */
+export function validateParams(
+  values: ParamValues,
+  fields: ParamField[],
+): string | null {
+  for (const f of fields) {
+    if (f.type !== "number") continue;
+    const raw = values[f.key];
+    if (raw === undefined) continue; // untouched → default
+    const text = typeof raw === "string" ? raw.trim() : String(raw);
+    const n = Number(text);
+    if (text === "" || !Number.isFinite(n)) {
+      return `${f.label}: enter a number`;
+    }
+    if (f.int && !Number.isInteger(n)) return `${f.label}: enter a whole number`;
+    if (f.positive && n <= 0) return `${f.label} must be greater than 0`;
+    if (f.min !== undefined && n < f.min) return `${f.label} must be at least ${f.min}`;
+    if (f.max !== undefined && n > f.max) return `${f.label} must be at most ${f.max}`;
+  }
+  return null;
+}
 
 /** Coerce in-progress number strings to numbers (falling back to the field
  *  default) before a command consumes the values. Mirrors the coercion the

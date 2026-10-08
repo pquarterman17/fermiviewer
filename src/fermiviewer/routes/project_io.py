@@ -27,6 +27,8 @@ never a 500.
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -62,7 +64,10 @@ class SaveProjectRequest(BaseModel):
 @router.post("/project/save")
 def project_save(req: SaveProjectRequest) -> dict[str, Any]:
     """Write the session to a `.fvp`. The suffix is applied if absent."""
+    _require_absolute(req.path)
     path = checked_data_path(req.path, where="path")
+    if not Path(path).parent.is_dir():
+        raise HTTPException(422, f"folder does not exist: {Path(path).parent}")
     try:
         return save_current(
             path,
@@ -77,6 +82,17 @@ def project_save(req: SaveProjectRequest) -> dict[str, Any]:
         raise HTTPException(422, str(e)) from None
     except OSError as e:
         raise HTTPException(422, f"cannot write project: {e}") from None
+
+
+def _require_absolute(raw: str) -> None:
+    """A save target must be a full path. A relative one would resolve
+    against the server's working directory (the install folder) — somewhere
+    the user never chose. Pure string check: the path itself is only touched
+    after `checked_data_path` has vetted it (and a missing parent folder is
+    then refused rather than created silently)."""
+    if not os.path.isabs(os.path.expanduser(raw)):
+        raise HTTPException(
+            422, f"use a full path for the project (got {raw!r})")
 
 
 class LoadProjectRequest(BaseModel):

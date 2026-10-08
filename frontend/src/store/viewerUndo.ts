@@ -21,6 +21,12 @@ export function applyUndoEntry(
 ): void {
   const inverse = dir === "undo";
   switch (e.t) {
+    case "group": {
+      // undo in reverse order, redo in original order
+      const steps = inverse ? [...e.entries].reverse() : e.entries;
+      for (const step of steps) applyUndoEntry(set, step, dir);
+      return;
+    }
     case "measure-add":
     case "measure-del": {
       const doRemove = (e.t === "measure-add") === inverse;

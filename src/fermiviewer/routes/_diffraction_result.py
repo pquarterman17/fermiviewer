@@ -39,9 +39,11 @@ __all__ = ["capture_index", "capture_index_failure"]
 ANALYSIS = "diffraction.index"
 
 #: Inline candidate table. `zone_axis` is a 3-vector, and a table cell must
-#: be a scalar, so it becomes three columns.
-_CANDIDATE_COLUMNS = ("phase", "formula", "score", "n_matched", "zone_u", "zone_v", "zone_w")
-_CANDIDATE_UNITS = ("", "", "", "", "", "", "")
+#: be a scalar, so it becomes three columns. `method` says how the row was
+#: scored: "zone" (spacings and angles fit one zone) or "d-spacing".
+_CANDIDATE_COLUMNS = ("phase", "formula", "score", "n_matched",
+                      "zone_u", "zone_v", "zone_w", "method")
+_CANDIDATE_UNITS = ("", "", "", "", "", "", "", "")
 
 #: Member-backed, one row per matched spot per candidate.
 _REFLECTION_COLUMNS = (
@@ -193,6 +195,7 @@ def _outputs(req: IndexRequest, pattern: IndexedPattern) -> list[ResultOutput]:
                         float(c.score),
                         int(c.n_matched),
                         *(float(v) for v in c.zone_axis),
+                        c.method,
                     ]
                     for c in pattern.candidates
                 ],

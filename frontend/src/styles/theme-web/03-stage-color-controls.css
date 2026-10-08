@@ -148,6 +148,10 @@
   font-size: var(--font-size-sm);
   padding: 2px 5px;
 }
+/* a typed value the panel refused (title carries the reason) */
+.fvd-numfield.invalid {
+  border-color: var(--danger);
+}
 .fvd-zscale-row .fvd-seg {
   margin-left: auto;
 }

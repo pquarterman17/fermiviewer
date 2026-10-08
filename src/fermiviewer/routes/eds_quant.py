@@ -149,12 +149,16 @@ def _quantify(req: EdsQuantifyRequest, ds: DataStruct) -> dict:
         "take_off_angle_deg": resolve_eds_param(
             ds.metadata, "take_off_angle_deg", req.take_off_angle_deg
         ),
-        "beam_kv": resolve_beam_kv(ds.metadata, req.beam_kv),
+        "beam_kv": resolve_beam_kv(ds.metadata, req.beam_kv, from_file=True),
     }
     # half_window_kev and the line library are keV; the axis may be in eV.
     energy_kev = to_kev(ds.energy_axis, ds.energy_cal.units)
+    # The beam voltage picks each element's line, as Maps does: without it
+    # the K line was taken unconditionally, so Ag at 20 kV integrated an
+    # empty 22 keV window and quantified to 0 at%.
     entries = extract_element_maps(
-        ds.data, energy_kev, req.elements, half_window=req.half_window_kev
+        ds.data, energy_kev, req.elements, half_window=req.half_window_kev,
+        beam_kv=cal["beam_kv"].value,
     )
     if not entries:
         raise HTTPException(422, "no usable element lines in the energy range")

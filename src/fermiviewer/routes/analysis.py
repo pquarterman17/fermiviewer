@@ -16,7 +16,11 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from fermiviewer.calc import diffraction as diff
-from fermiviewer.calc.diffraction_index import index_spots_roi, pattern_spacing
+from fermiviewer.calc.diffraction_index import (
+    index_spots_roi,
+    pattern_spacing,
+    uncalibrated_warning,
+)
 from fermiviewer.calc.eels import background, extract_map, thickness_map
 from fermiviewer.calc.eels_advanced import (
     align_zlp,
@@ -435,14 +439,9 @@ def diffraction_index(req: IndexRequest) -> dict:
     ds = _get(req.image_id)
     cam = req.camera_length_mm if req.camera_length_mm is not None else float("nan")
     # One composition, shared with the `diffraction_index` op: ROI
-    # validation and the full-image overlay/indexing geometry all live in
-    # calc/diffraction_index.py (ADR 0005 §1). A degenerate or out-of-image
-    # ROI is a 422; a non-degenerate one gates the request but does not
-    # rescale anything — spots and the reciprocal grid / DC centre always
-    # resolve against the FULL image, so a measured d is the same with or
-    # without an ROI (see `index_spots_roi`'s docstring for the bug this
-    # replaced: re-framing into the ROI's own smaller size used to silently
-    # rescale every measured d).
+    # validation and the full-image geometry live in calc/diffraction_index.py
+    # (ADR 0005 §1). A bad ROI is a 422; a good one gates the request but
+    # never rescales anything (see `index_spots_roi` for the bug that was).
     # The 422 that conversion raises is a COMPUTATION failure (the inputs
     # already resolved), so a requested capture must record it, not lose it.
     try:
@@ -489,9 +488,11 @@ def diffraction_index(req: IndexRequest) -> dict:
                 # indexing report can map a match back to its (row, col))
                 "matched_idx": c.matched_idx.tolist(),
                 "zone_axis": list(c.zone_axis),
+                "method": c.method,  # "zone" (d + angles) or "d-spacing"
             }
             for c in cands
         ],
+        "warnings": [w for w in [uncalibrated_warning(ds.pixel_unit, req.pixel_size_mm, cam)] if w],
     }
     if req.record:
         body["result"] = capture_index(req, pattern)

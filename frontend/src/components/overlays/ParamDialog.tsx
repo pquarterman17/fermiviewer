@@ -9,6 +9,7 @@ import { useState } from "react";
 
 import {
   coerceParams,
+  validateParams,
   type ParamValues,
 } from "../../lib/params";
 import { useParamDialog } from "../../store/params";
@@ -22,6 +23,7 @@ export default function ParamDialog() {
   const active = useParamDialog((s) => s.queue[0]);
   const submit = useParamDialog((s) => s.submit);
   const [values, setValues] = useState<ParamValues>({});
+  const [error, setError] = useState<string | null>(null);
 
   // Reset `values` to the active request's field defaults SYNCHRONOUSLY,
   // during render, rather than in a useEffect (react.dev "adjusting state
@@ -50,6 +52,7 @@ export default function ParamDialog() {
     const init: ParamValues = {};
     for (const f of active.fields) init[f.key] = f.default;
     setValues(init);
+    setError(null);
     setInitializedId(active.id);
   }
 
@@ -61,10 +64,19 @@ export default function ParamDialog() {
     submit(v);
   };
 
+  const run = () => {
+    const problem = validateParams(values, fields);
+    if (problem) {
+      setError(problem);
+      return;
+    }
+    finish(coerceParams(values, fields));
+  };
+
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      finish(coerceParams(values, fields));
+      run();
     }
     if (e.key === "Escape") {
       e.preventDefault();
@@ -87,9 +99,17 @@ export default function ParamDialog() {
             field={f}
             value={values[f.key]}
             autoFocus={i === 0}
-            onChange={(v) => setValues({ ...values, [f.key]: v })}
+            onChange={(v) => {
+              setValues({ ...values, [f.key]: v });
+              setError(null);
+            }}
           />
         ))}
+        {error && (
+          <div className="fvd-ws-note fvd-param-error" role="alert">
+            {error}
+          </div>
+        )}
         <div className="fvd-btn-row">
           <button
             className="fvd-btn"
@@ -100,7 +120,7 @@ export default function ParamDialog() {
           </button>
           <button
             className="fvd-btn primary"
-            onClick={() => finish(coerceParams(values, fields))}
+            onClick={run}
             title="Run the operation with these parameters (Enter)"
           >
             Run

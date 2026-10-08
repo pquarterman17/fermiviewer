@@ -108,7 +108,10 @@ export function buildImageMenu(ctx: MenuCtx): Entry[] {
             bId,
             v["op"] as "subtract" | "divide" | "ratio" | "add",
           )
-            .then((r) => store.ingestDerived([r.image]))
+            .then((r) => {
+              store.ingestDerived([r.image]);
+              store.setStatus(`image math (${v["op"] as string}) → ${r.image.name}`);
+            })
             .catch((e: Error) => store.setStatus(`math: ${e.message}`));
         })();
       },
@@ -155,7 +158,10 @@ export function buildImageMenu(ctx: MenuCtx): Entry[] {
       disabled: store.selected.length < 2,
       action: () => {
         analyzeMip(store.selected)
-          .then((r) => store.ingestDerived([r.image]))
+          .then((r) => {
+            store.ingestDerived([r.image]);
+            store.setStatus(`MIP of ${store.selected.length} images → ${r.image.name}`);
+          })
           .catch((e: Error) => store.setStatus(`mip: ${e.message}`));
       },
     },
@@ -216,9 +222,12 @@ export function buildImageMenu(ctx: MenuCtx): Entry[] {
           const h = meta?.shape[0] ?? 0;
           const w = meta?.shape[1] ?? 0;
           const v = await askParams("Virtual Dark Field", [
-            num("row", "Centre row (FFT px)", Math.round(h / 2)),
-            num("col", "Centre col (FFT px)", Math.round(w / 2)),
-            num("radius", "Mask radius (px)", 10),
+            num("row", "Centre row (FFT px)", Math.round(h / 2), undefined,
+                { min: 1, max: Math.max(1, h) }),
+            num("col", "Centre col (FFT px)", Math.round(w / 2), undefined,
+                { min: 1, max: Math.max(1, w) }),
+            num("radius", "Mask radius (px)", 10, undefined,
+                { min: 0.5, max: Math.max(1, h, w) }),
           ]);
           if (!v) return;
           derived("VDF", (id) =>
@@ -250,7 +259,9 @@ export function buildImageMenu(ctx: MenuCtx): Entry[] {
           const { total, legacy, persisted } = stopRecording();
           setMacroRec(false);
           store.setStatus(
-            persisted
+            total === 0
+              ? "nothing recorded — previous macro kept"
+              : persisted
               ? `macro saved: ${total} step${total === 1 ? "" : "s"}` +
                   (legacy ? ` (${legacy} not batchable)` : "")
               : "macro recording stopped, but could not be saved " +
@@ -285,7 +296,8 @@ export function buildImageMenu(ctx: MenuCtx): Entry[] {
       action: () => {
         void (async () => {
           const v = await askParams("Calibrate Pixel Size", [
-            num("px", "Pixel size", 1),
+            num("px", "Pixel size", 1, undefined,
+                { positive: true, max: 1e9 }),
             {
               key: "unit",
               label: "Unit",

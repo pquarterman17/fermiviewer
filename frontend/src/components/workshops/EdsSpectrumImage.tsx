@@ -343,6 +343,7 @@ export default function EdsSpectrumImage() {
           <EdsWindowControls
             eLo={eLo}
             eHi={eHi}
+            range={displaySpectrum ? bounds : null}
             onWindow={energyWindow.commit}
             onZoomToWindow={() =>
               setXRange(frameWindow(eLo, eHi, bounds, minSpan))

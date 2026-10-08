@@ -48,8 +48,19 @@ export function createCompareActions(
   | "removeGroupMember"
 > {
   return {
-    startCompare: (ids) => {
-      if (ids.length < 2) return;
+    startCompare: (requested) => {
+      // A 1-D spectrum has no raster to compare; including one used to fail
+      // the whole compare with "data16 failed: 400". Leave it out and say so.
+      const images = get().images;
+      const ids = requested.filter((id) => images[id]?.kind !== "spectrum");
+      const skipped = requested.length - ids.length;
+      const note = skipped
+        ? `${skipped} spectrum${skipped === 1 ? "" : "s"} left out (no image to compare)`
+        : "";
+      if (ids.length < 2) {
+        if (skipped) set({ status: `compare: needs 2 images — ${note}` });
+        return;
+      }
       // reset to the linked "split" mode so a fresh multi-image compare never
       // lands in a stale "sidebyside" left over from a prior session
       set({
@@ -58,6 +69,7 @@ export function createCompareActions(
         captureMode: "none",
         selectedMeasure: null,
         compareAB: null,
+        ...(skipped ? { status: `compare: ${note}` } : {}),
       });
     },
 

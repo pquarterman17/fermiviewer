@@ -45,6 +45,7 @@ import {
 import {
   DEFAULT_DISPLAY,
   describePatch,
+  groupUndo,
   sanitizeOverlay,
   UNDO_CAP,
   type View,
@@ -180,11 +181,15 @@ export const useViewer = create<ViewerState>((set, get) => ({
       derivedTick: s.derivedTick + 1, // lineage signal (Live FFT, #7)
       undoStack: [
         ...s.undoStack.slice(-UNDO_CAP),
-        ...metas.map((m) => ({
-          t: "derived" as const,
-          meta: m,
-          parentId: String(m.meta["derived_from"] ?? ""),
-        })),
+        // a batch (N images from one command) is one undo step
+        ...groupUndo(
+          `${metas.length} images`,
+          metas.map((m) => ({
+            t: "derived" as const,
+            meta: m,
+            parentId: String(m.meta["derived_from"] ?? ""),
+          })),
+        ),
       ],
       redoStack: [],
     }));

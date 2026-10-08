@@ -3,11 +3,12 @@
 // their OWN scale bar — into the bottom of the pixel array, and the 92 %
 // default landed on top of it: two scale bars overlapping, both unreadable.
 
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import { createRef, type RefObject } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import type { ImageMeta } from "../../lib/api";
+import { DEFAULTS, savePrefs } from "../../lib/prefs";
 import type { ScaleBarState } from "../../store/viewerTypes";
 import { useViewer } from "../../store/viewer";
 import ScaleBarOverlay from "./ScaleBarOverlay";
@@ -80,6 +81,9 @@ function barGeom(contentRows: number | null): { top: number; thickness: number }
 
 beforeEach(() => {
   useViewer.setState({ scaleBars: {}, scaleBarVisible: true });
+  // a small label keeps the databar cases below clear of the zoom-chip
+  // clearance, which is pinned separately at the end
+  savePrefs({ ...DEFAULTS, scaleBarFontSize: 8 });
 });
 
 describe("ScaleBarOverlay default position", () => {
@@ -128,5 +132,45 @@ describe("ScaleBarOverlay default position", () => {
     );
     const el = container.querySelector<HTMLElement>(".fvd-scalebar");
     expect(parseFloat(el!.style.top)).toBeCloseTo(0.97 * IMG.h, 5);
+  });
+
+  it("keeps the default bar + label above the bottom-left zoom chip", () => {
+    // a 40 px label at 92 % ran down over the zoom chip (bottom: 10px)
+    savePrefs({ ...DEFAULTS, scaleBarFontSize: 40 });
+    const { top, thickness } = barGeom(IMG.h);
+    const bottom = top + thickness + 3 + Math.ceil(40 * 1.25);
+    expect(bottom).toBeLessThanOrEqual(IMG.h - 44);
+  });
+});
+
+describe("ScaleBarOverlay drag", () => {
+  it("cannot be dragged off the stage", () => {
+    useViewer.setState({
+      activeId: "a",
+      images: { a: image(null) },
+      scaleBars: {},
+      scaleBarVisible: true,
+    });
+    const { container } = render(
+      <ScaleBarOverlay
+        imageId="a"
+        pixelSize={3.4}
+        unit="nm"
+        view={{ z: 1, px: 0.5, py: 0.5 }}
+        img={IMG}
+        vp={{ w: IMG.w, h: IMG.h }}
+        barRef={barRef()}
+      />,
+    );
+    const el = container.querySelector<HTMLElement>(".fvd-scalebar")!;
+    el.setPointerCapture = () => {};
+    el.releasePointerCapture = () => {};
+    fireEvent.pointerDown(el, { clientX: 0, clientY: 0, pointerId: 1 });
+    fireEvent.pointerMove(el, { clientX: 99999, clientY: 99999, pointerId: 1 });
+    const sb = useViewer.getState().scaleBars.a!;
+    const widthPx = parseFloat((el.querySelector(".bar") as HTMLElement).style.width);
+    // the whole bar stays inside the viewport (used to stop at x = 0.98)
+    expect(sb.x * IMG.w + widthPx).toBeLessThanOrEqual(IMG.w + 1e-6);
+    expect(sb.y).toBeLessThan(1);
   });
 });

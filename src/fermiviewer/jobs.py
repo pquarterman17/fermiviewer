@@ -7,7 +7,9 @@ adapt, mirroring the session-store layering.
 
 Lifecycle: jobs are born ``queued``, flip to ``running`` when a worker
 picks them up, and end ``done`` or ``error``. Cancellation reports as
-``error`` so pollers always reach a terminal state. Admission is
+``error`` so pollers always reach a terminal state; a running job is
+cancelled cooperatively — its next progress report raises
+:class:`JobCancelledError`, freeing the worker. Admission is
 bounded — ``submit`` raises :class:`JobQueueFullError` once
 ``max_pending`` jobs are queued — and :meth:`JobStore.shutdown`
 (wired to the FastAPI lifespan) cancels still-queued work so quitting
@@ -23,7 +25,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
 
-__all__ = ["Job", "JobQueueFullError", "JobStore", "jobs"]
+__all__ = ["Job", "JobCancelledError", "JobQueueFullError", "JobStore", "jobs"]
 
 ProgressFn = Callable[[float, str], None]
 
@@ -33,6 +35,10 @@ MAX_PENDING = 32
 
 class JobQueueFullError(RuntimeError):
     """Raised by submit() when the pending-job bound is reached."""
+
+
+class JobCancelledError(RuntimeError):
+    """Raised inside a running job's progress callback once it is cancelled."""
 
 
 @dataclass
@@ -45,9 +51,12 @@ class Job:
     error: str = ""
     _lock: threading.Lock = field(default_factory=threading.Lock)
     _future: Future[None] | None = None
+    _cancelled: bool = False
 
     def report(self, fraction: float, message: str = "") -> None:
         with self._lock:
+            if self._cancelled:
+                raise JobCancelledError("cancelled")
             self.progress = max(0.0, min(1.0, fraction))
             if message:
                 self.message = message
@@ -94,11 +103,15 @@ class JobStore:
             try:
                 result = fn(job.report)
                 with job._lock:
+                    if job._cancelled:  # finished after a cancel: discard
+                        return
                     job.result = result
                     job.progress = 1.0
                     job.status = "done"
             except Exception as e:  # noqa: BLE001 — surfaced to the client
                 with job._lock:
+                    if job._cancelled:
+                        return
                     job.error = str(e)
                     job.status = "error"
 
@@ -132,12 +145,20 @@ class JobStore:
         return job.id
 
     def cancel(self, job_id: str) -> bool:
-        """Cancel a still-queued job. Running/finished jobs return False
-        (a worker thread can't be interrupted mid-computation)."""
+        """Cancel a queued or running job; finished jobs return False.
+
+        A queued job never starts. A running one reports ``error`` at once
+        and stops at its next progress checkpoint (a worker thread can't be
+        interrupted mid-computation), so the pool slot frees as soon as the
+        computation reaches a stage boundary."""
         job = self._jobs.get(job_id)
-        if job is None or job._future is None or not job._future.cancel():
+        if job is None or job._future is None:
             return False
+        job._future.cancel()  # no-op once running
         with job._lock:
+            if job.status not in ("queued", "running"):
+                return False
+            job._cancelled = True
             job.status = "error"
             job.error = "cancelled"
         return True

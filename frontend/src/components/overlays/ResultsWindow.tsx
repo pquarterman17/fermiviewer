@@ -12,6 +12,7 @@ import {
   tableToJson,
   type ResultMeta,
 } from "../../lib/resultsExport";
+import { RESULTS_WINDOW } from "../../styles/zLayers";
 
 export interface ResultsTable {
   title: string;
@@ -65,7 +66,7 @@ export default function ResultsWindow() {
   return (
     <div
       className="fvd-glass fvd-tool-window fvd-results"
-      style={{ left: pos.x, top: pos.y, zIndex: 400 }}
+      style={{ left: pos.x, top: pos.y, zIndex: RESULTS_WINDOW }}
     >
       <div
         className="fvd-tool-title"

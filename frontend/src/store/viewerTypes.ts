@@ -225,7 +225,16 @@ export type UndoEntry =
   // measure-add/measure-del round-trip the whole Measure.
   | { t: "hole-add"; imageId: string; hostId: string; child: Measure }
   | { t: "hole-remove"; imageId: string; hostId: string; child: Measure }
-  | { t: "derived"; meta: ImageMeta; parentId: string };
+  | { t: "derived"; meta: ImageMeta; parentId: string }
+  // One user action that changed several things (Clear Measurements, a
+  // batch op over N images): undone/redone as a single history step.
+  | { t: "group"; label: string; entries: UndoEntry[] };
+
+/** Wrap several entries from one action into a single history step (a
+ *  lone entry is returned as-is). */
+export function groupUndo(label: string, entries: UndoEntry[]): UndoEntry[] {
+  return entries.length > 1 ? [{ t: "group", label, entries }] : entries;
+}
 
 export function undoLabel(e: UndoEntry): string {
   switch (e.t) {
@@ -243,6 +252,8 @@ export function undoLabel(e: UndoEntry): string {
       return "remove hole";
     case "derived":
       return e.meta.name;
+    case "group":
+      return e.label;
   }
 }
 

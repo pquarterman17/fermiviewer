@@ -66,6 +66,40 @@ describe("MeasureCtxMenu — draw a hole (plan item 4)", () => {
     expect(getByText("Mark as hole")).toBeTruthy();
   });
 
+  it("paints the inner ring on top even when it was drawn FIRST, so right-click targets it", () => {
+    const host: Measure = { id: "host", kind: "polygon", pts: OUTER };
+    const ring: Measure = { id: "ring", kind: "polygon", pts: INNER };
+    seed([ring, host]); // inner first → used to be buried under the host
+    const { container, getByText } = renderOverlay();
+    const shapes = container.querySelectorAll("polygon");
+    // topmost (last-painted) closed shape is the smaller, inner ring
+    fireEvent.contextMenu(shapes[shapes.length - 1]);
+    expect(useViewer.getState().selectedMeasure).toBe("ring");
+    expect(getByText("Mark as hole")).toBeTruthy();
+  });
+
+  it("an armed tool draws inside shapes: interiors stop catching pointers", () => {
+    const host: Measure = { id: "host", kind: "polygon", pts: OUTER };
+    const ell: Measure = { id: "e", kind: "ellipse", pts: [INNER[0], INNER[2]] };
+    const box: Measure = { id: "b", kind: "box", pts: [INNER[0], INNER[2]] };
+    seed([host, ell, box]);
+    useViewer.setState({ captureMode: "polygon" });
+    const { container } = renderOverlay();
+    const interiors = [
+      ...container.querySelectorAll("polygon"),
+      ...container.querySelectorAll("ellipse[fill='transparent']"),
+      ...container.querySelectorAll("rect[fill='transparent']"),
+    ];
+    expect(interiors).toHaveLength(3);
+    for (const el of interiors) {
+      expect(el.getAttribute("pointer-events")).toBe("stroke");
+    }
+    // disarmed: the interiors are body-drag targets again
+    useViewer.setState({ captureMode: "none" });
+    const again = renderOverlay().container.querySelector("polygon");
+    expect(again?.getAttribute("pointer-events")).toBe("all");
+  });
+
   it('does not offer "Mark as hole" when nothing contains the ring (handles the no-host case)', () => {
     const a: Measure = {
       id: "a",

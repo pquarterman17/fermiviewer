@@ -35,6 +35,8 @@ export default function ColorbarChip() {
   );
   const raster = useStageInfo((s) => s.raster);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // the canvas only mounts once a raster exists — redraw when it appears
+  const hasRaster = raster != null;
 
   useEffect(() => {
     const cv = canvasRef.current;
@@ -42,12 +44,18 @@ export default function ColorbarChip() {
     const ctx = cv.getContext("2d");
     if (!ctx) return;
     const lut = buildLut(display.cmap as Parameters<typeof buildLut>[0]);
-    const img = ctx.createImageData(W, LUT_H);
-    for (let y = 0; y < LUT_H; y++) {
-      // y=0 is the top → highest value → LUT max
-      const o4 = Math.round(((LUT_H - 1 - y) / (LUT_H - 1)) * 255) * 4;
-      for (let x = 0; x < W; x++) {
-        const o = (y * W + x) * 4;
+    // the bottom strip's canvas is LUT_H × W (left = lo); it used to get
+    // the vertical W × LUT_H gradient, which filled only a 14 px sliver
+    const horiz = side === "bottom";
+    const cw = horiz ? LUT_H : W;
+    const ch = horiz ? W : LUT_H;
+    const img = ctx.createImageData(cw, ch);
+    for (let y = 0; y < ch; y++) {
+      for (let x = 0; x < cw; x++) {
+        // vertical: y=0 is the top → highest value → LUT max
+        const t = horiz ? x / (LUT_H - 1) : (LUT_H - 1 - y) / (LUT_H - 1);
+        const o4 = Math.round(t * 255) * 4;
+        const o = (y * cw + x) * 4;
         img.data[o] = lut[o4];
         img.data[o + 1] = lut[o4 + 1];
         img.data[o + 2] = lut[o4 + 2];
@@ -55,7 +63,7 @@ export default function ColorbarChip() {
       }
     }
     ctx.putImageData(img, 0, 0);
-  }, [show, display.cmap]);
+  }, [show, display.cmap, side, hasRaster]);
 
   if (!show || !raster) return null;
   // a discrete grain/label map has no continuous value scale → no colorbar
@@ -84,15 +92,23 @@ export default function ColorbarChip() {
     ticks = colorbarTicks(lo, hi, step);
   }
 
+  // The tick labels are absolutely positioned, so they add no width of their
+  // own: reserve room for the widest one (monospace ≈ 0.62 em per glyph,
+  // + the 5 px tick line and 3 px gap) and half a label of padding at the
+  // ends, or a large font runs past the stage edge / onto the filmstrip.
+  const maxChars = Math.max(1, ...ticks.map((v) => fmt(v).length));
+  const labelW = Math.ceil(maxChars * 0.62 * tickFontSize) + 10;
+  const labelH = Math.ceil(tickFontSize * 1.25);
+
   // bottom placement: horizontal gradient strip at the bottom of the viewport
   if (side === "bottom") {
     const posPct = (v: number) => ((v - lo) / (hi - lo)) * 100; // left=lo, right=hi
     return (
       <div className="fvd-colorbar side-bottom">
         {unit && <span className="u">{unit}</span>}
-        <div className="body body-h">
+        <div className="body body-h" style={{ padding: `0 ${labelW / 2}px` }}>
           <canvas className="bar bar-h" ref={canvasRef} width={LUT_H} height={W} />
-          <div className="ticks ticks-h">
+          <div className="ticks ticks-h" style={{ height: labelH + 5 }}>
             {ticks.map((v) => (
               <span
                 className="tk tk-h"
@@ -114,9 +130,9 @@ export default function ColorbarChip() {
   return (
     <div className={`fvd-colorbar side-${side}`}>
       {unit && <span className="u">{unit}</span>}
-      <div className="body">
+      <div className="body" style={{ padding: `${labelH / 2}px 0` }}>
         <canvas className="bar" ref={canvasRef} width={W} height={LUT_H} />
-        <div className="ticks">
+        <div className="ticks" style={{ width: labelW }}>
           {ticks.map((v) => (
             <span className="tk" key={v} style={{ top: `${posPct(v)}%`, fontSize: tickFontSize }}>
               <i className="ln" />

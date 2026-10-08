@@ -79,6 +79,22 @@ describe("clickCaptureAction", () => {
     });
   });
 
+  it("measures the angle at the FIRST click (banner: vertex → ray 1 → ray 2)", () => {
+    // vertex at the origin, rays along +x and +y: 90° only if the vertex is
+    // the first click; stored as [ray1, vertex, ray2] like every angle
+    const v = { x: 0, y: 0 };
+    const r1 = { x: 10, y: 0 };
+    const r2 = { x: 0, y: 10 };
+    const a1 = clickCaptureAction("angle", null, v, false, 1);
+    if (a1.kind !== "pending") throw new Error("expected pending");
+    const a2 = clickCaptureAction("angle", a1.pending, r1, false, 1);
+    if (a2.kind !== "pending") throw new Error("expected pending");
+    // the preview already draws ray1–vertex–cursor
+    expect(a2.pending.pts.slice(0, 2)).toEqual([r1, v]);
+    const a3 = clickCaptureAction("angle", a2.pending, r2, false, 1);
+    expect(a3).toEqual({ kind: "measure", measure: "angle", pts: [r1, v, r2] });
+  });
+
   it("previews a calibration line as a plain distance measure, then finalizes as a calibration", () => {
     const first = clickCaptureAction("calibrate", null, { x: 0, y: 0 }, false, 1);
     // the preview kind is what the overlay draws — NOT "calibrate"

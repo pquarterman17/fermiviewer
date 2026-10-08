@@ -108,7 +108,14 @@ export function clickCaptureAction(
     return { kind: "measure", measure: "polygon", pts: verts };
   }
   // replace the live cursor point with the committed click
-  const committed = pending ? [...verts, ip] : [ip];
+  let committed = pending ? [...verts, ip] : [ip];
+  // angle: the user clicks vertex → ray 1 → ray 2 (CaptureBanner steps),
+  // but a stored angle is [ray1, vertex, ray2] everywhere it is measured
+  // (glyph label, Measurements list, stats, backend export) — reorder once
+  // the second click lands so the preview and the commit share that layout
+  if (mode === "angle" && committed.length === 2) {
+    committed = [committed[1], committed[0]];
+  }
   if (committed.length >= need) {
     return mode === "calibrate"
       ? { kind: "calibration", pts: committed }

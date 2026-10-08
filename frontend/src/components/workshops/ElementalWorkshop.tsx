@@ -17,9 +17,10 @@ import type { EdsQuantResult } from "../../lib/api";
 import {
   resolveSpectralModality,
   saveSpectralModality,
+  useSpectralModalityVersion,
   type SpectralModality,
 } from "../../lib/spectralModality";
-import { edsSettingsOf, useSpecies } from "../../store/species";
+import { edsSettingsOf, quantElementsOf, useSpecies } from "../../store/species";
 import { useViewer } from "../../store/viewer";
 import { useResultWorkflow } from "../../store/resultWorkflow";
 import EelsMapsTab from "../elemental/EelsMapsTab";
@@ -53,8 +54,22 @@ export default function ElementalWorkshop() {
     s.activeId ? (s.images[s.activeId] ?? null) : null,
   );
   const [tab, setTab] = useState<Tab>("maps");
-  const [elements, setElements] = useState("Fe, O");
-  const [quant, setQuant] = useState<EdsQuantResult | null>(null);
+  // Per image, defaulting to the identified species (store/species.ts) —
+  // it used to be component state seeded with "Fe, O", so Model fit always
+  // fitted Fe and O and reopening the workspace forgot the user's list.
+  const elements = useSpecies((s) =>
+    quantElementsOf(s, meta?.id ?? null, meta?.meta.elements),
+  );
+  const setElements = (text: string) => {
+    if (meta) useSpecies.getState().setQuantElements(meta.id, text);
+  };
+  // Scoped to the image it was computed on, so switching image never shows
+  // (or colours the Maps legend with) another cube's composition.
+  const [quant, setQuant] = useState<{
+    imageId: string;
+    result: EdsQuantResult;
+  } | null>(null);
+  useSpectralModalityVersion(); // re-render when the EDS/EELS choice changes
   const workflow = useResultWorkflow((s) => s.request);
 
   useEffect(() => {
@@ -86,9 +101,10 @@ export default function ElementalWorkshop() {
 
   // Once Quantify has run, the Maps legend can carry at% instead of raw net
   // counts — the same elements, now with numbers a reader can compare.
-  const quantBySymbol = quant
+  const quantHere = quant && quant.imageId === meta?.id ? quant.result : null;
+  const quantBySymbol = quantHere
     ? Object.fromEntries(
-        quant.elements.map((el, i) => [el, quant.mean_atomic_pct[i]]),
+        quantHere.elements.map((el, i) => [el, quantHere.mean_atomic_pct[i]]),
       )
     : undefined;
 
@@ -97,6 +113,10 @@ export default function ElementalWorkshop() {
   };
 
   const visible = TABS.filter((t) => !t.eelsOnly || isEels);
+  // Maps identify elements from a spectrum-image cube's sum spectrum; on a
+  // 2-D image or single spectrum they can only fail, and used to post that
+  // failure to the status bar on every image switch while the window was open.
+  const mapsNeedsCube = tab === "maps" && meta?.kind !== "spectrum_image";
 
   return (
     <div className="fvd-ws fvd-eds-workspace">
@@ -135,7 +155,12 @@ export default function ElementalWorkshop() {
         </label>
       </div>
 
-      {isEels ? (
+      {mapsNeedsCube ? (
+        <div className="fvd-ws-note">
+          Maps need a spectrum-image cube. Select one in the library, or use
+          Explore / Quantify for a single spectrum.
+        </div>
+      ) : isEels ? (
         tab === "maps" ? (
           <EelsMapsTab />
         ) : (
@@ -153,13 +178,21 @@ export default function ElementalWorkshop() {
           {tab === "explore" && <EdsSpectrumImage />}
           {tab === "quantify" && (
             <EdsQuantifyPanel
+              key={meta?.id ?? ""}
               elements={elements}
               onElements={setElements}
-              onResult={setQuant}
+              onResult={(r) =>
+                setQuant(r && meta ? { imageId: meta.id, result: r } : null)
+              }
             />
           )}
           {tab === "model" && meta && (
-            <EdsModelFit activeId={meta.id} elements={elements} />
+            <EdsModelFit
+              key={meta.id}
+              activeId={meta.id}
+              elements={elements}
+              onElements={setElements}
+            />
           )}
         </>
       )}

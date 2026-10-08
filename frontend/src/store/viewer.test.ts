@@ -860,6 +860,18 @@ describe("compare flicker rate + A/B pair (audit #15)", () => {
     expect(useViewer.getState().compareAB).toBeNull();
   });
 
+  it("startCompare leaves out 1-D spectra and says so", () => {
+    const s = useViewer.getState();
+    s.ingest([meta("a"), meta("b"), meta("sp", { kind: "spectrum" })]);
+    s.startCompare(["a", "sp", "b"]);
+    expect(useViewer.getState().compareSet).toEqual(["a", "b"]);
+    expect(useViewer.getState().status).toMatch(/1 spectrum left out/);
+    useViewer.getState().exitCompare();
+    s.startCompare(["a", "sp"]);
+    expect(useViewer.getState().compareSet).toBeNull();
+    expect(useViewer.getState().status).toMatch(/needs 2 images/);
+  });
+
   it("exitCompare clears both compareSet and compareAB", () => {
     const s = useViewer.getState();
     s.ingest([meta("a"), meta("b")]);
@@ -1472,5 +1484,34 @@ describe("restore preserves every field of persisted types", () => {
     const m = useViewer.getState().measures.x?.[0];
     expect(m).toEqual(FULL_MEASURE);
     expect(Object.keys(m!).sort()).toEqual(Object.keys(FULL_MEASURE).sort());
+  });
+});
+
+describe("one action = one undo step (menu QA sweep)", () => {
+  beforeEach(() => useViewer.setState(useViewer.getInitialState()));
+
+  it("clearMeasures over several items undoes and redoes in one step", () => {
+    const s0 = useViewer.getState();
+    for (const kind of ["distance", "distance", "arrow"] as const) {
+      s0.addMeasure("img", { kind, pts: [{ x: 0, y: 0 }, { x: 1, y: 1 }] });
+    }
+    useViewer.getState().clearMeasures("img", null);
+    expect(useViewer.getState().measures["img"]).toHaveLength(0);
+    useViewer.getState().undo();
+    expect(useViewer.getState().measures["img"]).toHaveLength(3);
+    useViewer.getState().redo();
+    expect(useViewer.getState().measures["img"]).toHaveLength(0);
+  });
+
+  it("a batch ingestDerived is removed by a single undo", () => {
+    useViewer.getState().ingest([meta("a")]);
+    useViewer.getState().ingestDerived([
+      meta("c1", { meta: { derived_from: "a" } }),
+      meta("c2", { meta: { derived_from: "a" } }),
+      meta("c3", { meta: { derived_from: "a" } }),
+    ]);
+    expect(useViewer.getState().order).toEqual(["a", "c1", "c2", "c3"]);
+    useViewer.getState().undo();
+    expect(useViewer.getState().order).toEqual(["a"]);
   });
 });

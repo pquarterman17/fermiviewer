@@ -61,4 +61,16 @@ describe("DiffractionWorkshop navigation", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Calibrate" }));
     expect(screen.getByDisplayValue("2.35")).toBeVisible();
   });
+
+  it("defaults Index to a simulated pattern's own calibration", () => {
+    useViewer.getState().ingest([{
+      ...patternMeta(),
+      meta: { camera_length_mm: 200, detector_pixel_size_mm: 0.07, beam_kv: 300 },
+    }]);
+    useViewer.getState().setActive("pattern");
+    render(<DiffractionWorkshop />);
+    expect(screen.getByDisplayValue("0.07")).toBeVisible();
+    expect(screen.getByDisplayValue("200")).toBeVisible();
+    expect(screen.getByDisplayValue("300")).toBeVisible();
+  });
 });

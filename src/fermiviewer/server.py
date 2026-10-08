@@ -139,13 +139,22 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     waits behind a queue backlog (running jobs finish on their thread), and
     stop any active folder watch so its poll thread is always joined
     cleanly (never left to an atexit hook — see jobs.py's shutdown
-    docstring for why that ordering matters)."""
-    yield
-    from fermiviewer.jobs import jobs
-    from fermiviewer.routes.watch import shutdown_watch
+    docstring for why that ordering matters). Uploaded 4D files are
+    deleted on stop, and ones a crashed run left behind on start."""
+    from fermiviewer.session_fourd import fourd_store, sweep_stale_upload_dirs
 
-    shutdown_watch()
-    jobs.shutdown()
+    sweep_stale_upload_dirs()
+    try:
+        yield
+    finally:
+        from fermiviewer.jobs import jobs
+        from fermiviewer.routes.watch import shutdown_watch
+
+        try:
+            shutdown_watch()
+            jobs.shutdown()
+        finally:                    # upload copies go even if a step fails
+            fourd_store.close_uploads()
 
 
 def create_app() -> FastAPI:

@@ -9,6 +9,7 @@ calibration auto-apply — without either endpoint reimplementing the other.
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -16,13 +17,14 @@ from fastapi import HTTPException
 from fermiviewer.io.registry import (
     UnsupportedFormatError,
     is_fourd_path,
+    load_auto,
     load_fourd_auto,
 )
 from fermiviewer.models import FourDMeta, ImageMeta
 from fermiviewer.session import store
-from fermiviewer.session_fourd import fourd_store
+from fermiviewer.session_fourd import UploadDir, fourd_store
 
-__all__ = ["open_paths_as_metas"]
+__all__ = ["open_paths_as_metas", "open_uploaded_file"]
 
 
 def open_paths_as_metas(paths: list[str]) -> list[ImageMeta | FourDMeta]:
@@ -72,3 +74,43 @@ def open_paths_as_metas(paths: list[str]) -> list[ImageMeta | FourDMeta]:
         for i, _ in opened
     ]
     return [*image_metas, *fourd_metas]
+
+
+def open_uploaded_file(staged: Path, name: str) -> ImageMeta | FourDMeta:
+    """Open one browser-uploaded file staged at `staged` (original `name`),
+    routed exactly like `open_paths_as_metas`: 4D-STEM files go to the FourD
+    store, everything else through `load_auto` + calibration auto-apply.
+
+    The 4D loaders are lazy (an open ``h5py.File`` / ``np.memmap``) and a
+    Merlin reshape re-opens the file by path, so a 4D upload is moved out
+    of the request's throw-away staging dir into one that outlives it. The
+    FourD store owns that dir and deletes it when the dataset is closed.
+    """
+    if is_fourd_path(staged):
+        keep = UploadDir()
+        kept = keep.path / name
+        shutil.move(staged, kept)
+        try:
+            ds4 = load_fourd_auto(kept)
+        except Exception as e:
+            keep.release()
+            if isinstance(e, UnsupportedFormatError):
+                raise HTTPException(415, str(e)) from None
+            if isinstance(e, ValueError):
+                raise HTTPException(422, f"{name}: {e}") from None
+            raise
+        fourd_id = fourd_store.add(ds4, name, source_path=kept, owned_dir=keep)
+        return FourDMeta.from_dataset(fourd_id, name, ds4)
+    try:
+        ds = load_auto(staged)
+    except UnsupportedFormatError as e:
+        raise HTTPException(415, str(e)) from None
+    except ValueError as e:
+        raise HTTPException(422, f"{name}: {e}") from None
+    # don't leak the vanishing temp path as the source
+    ds.metadata["source"] = name
+    img_id = store.add_parsed(ds, name)
+    from fermiviewer.routes.calibration import auto_apply_calibration
+
+    auto_apply_calibration(img_id, ds)
+    return ImageMeta.from_datastruct(img_id, name, store.get(img_id))

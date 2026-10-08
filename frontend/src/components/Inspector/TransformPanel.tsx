@@ -6,7 +6,7 @@
 import { Fragment, useState } from "react";
 
 import { fuzzy } from "../../lib/fuzzy";
-import { coerceParams, type ParamValues } from "../../lib/params";
+import { coerceParams, validateParams, type ParamValues } from "../../lib/params";
 import { runTransform } from "../../lib/transforms";
 import {
   TRANSFORM_GROUPS,
@@ -49,6 +49,11 @@ export default function TransformPanel() {
   };
 
   const apply = (tool: TransformTool) => {
+    const problem = validateParams(values, tool.fields ?? []);
+    if (problem) {
+      useViewer.getState().setStatus(problem);
+      return;
+    }
     runTransform(tool, coerceParams(values, tool.fields ?? []));
     setOpenKind(null);
   };

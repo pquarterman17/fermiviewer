@@ -7,6 +7,7 @@ import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ImageMeta } from "../../lib/api";
+import { useStageInfo } from "../../store/stage";
 import { useViewer } from "../../store/viewer";
 import AdjustPanel from "./AdjustPanel";
 
@@ -77,5 +78,39 @@ describe("AdjustPanel reset corrections (WS5a)", () => {
     expect(s.display["a"].gamma).toBe(1);
     expect(s.display["a"].invert).toBe(false);
     expect(btn).toBeDisabled(); // back at Opened
+  });
+});
+
+describe("AdjustPanel colour-range + tick validation", () => {
+  beforeEach(() => {
+    useStageInfo.setState({
+      raster: { data: new Uint16Array(4), vmin: 0, vmax: 100 } as never,
+    });
+  });
+
+  const field = (title: RegExp) => screen.getByTitle(title) as HTMLInputElement;
+
+  it("refuses min > max instead of storing a window the slider disagrees with", () => {
+    render(<AdjustPanel />);
+    const before = useViewer.getState().display["a"];
+    fireEvent.focus(field(/Minimum/));
+    fireEvent.change(field(/Minimum/), { target: { value: "150" } });
+    const min = screen.getByDisplayValue("150");
+    expect(min).toHaveAttribute("aria-invalid", "true");
+    expect(min.title).toMatch(/below the maximum/);
+    expect(useViewer.getState().display["a"]?.lo).toBe(before?.lo);
+  });
+
+  it.each([
+    [/tick interval/, "-1", "tickStep"],
+    [/Number of colorbar ticks/, "100000", "tickCount"],
+    [/tick-label font/, "-10", "tickFontSize"],
+    [/tick-label font/, "1000", "tickFontSize"],
+  ] as const)("refuses %s = %s", (title, value, key) => {
+    render(<AdjustPanel />);
+    fireEvent.focus(field(title));
+    fireEvent.change(field(title), { target: { value } });
+    expect(screen.getByDisplayValue(value)).toHaveAttribute("aria-invalid", "true");
+    expect(useViewer.getState().display["a"]?.[key]).toBeFalsy();
   });
 });

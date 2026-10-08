@@ -8,6 +8,7 @@ import type { StateCreator } from "zustand";
 import { nextMeasureId } from "./viewerSession";
 import type { ViewerState } from "./viewerState";
 import {
+  groupUndo,
   UNDO_CAP,
   UNIT_DISPLAY_KINDS,
   type Measure,
@@ -290,11 +291,14 @@ export function createMeasureActions(
             : s.selectedMeasure,
           undoStack: [
             ...s.undoStack.slice(-UNDO_CAP),
-            ...victims.map((measure) => ({
-              t: "measure-del" as const,
-              imageId,
-              measure,
-            })),
+            ...groupUndo(
+              `clear ${victims.length} items`,
+              victims.map((measure) => ({
+                t: "measure-del" as const,
+                imageId,
+                measure,
+              })),
+            ),
           ],
           redoStack: [],
         };

@@ -1,3 +1,5 @@
+import { useSyncExternalStore } from "react";
+
 import type { ImageMeta } from "./api";
 
 export type SpectralModality = "eels" | "eds";
@@ -8,6 +10,25 @@ export type SpectralClassification = {
 
 const STORAGE_KEY = "fv_spectral_modalities";
 
+// A saved choice used to live ONLY in localStorage, so nothing re-rendered
+// when it changed (the workspace's EDS/EELS dropdown appeared not to work).
+// Choices are mirrored in memory (read only when storage throws) and every
+// save bumps a version that `useSpectralModalityVersion` subscribers
+// re-render on.
+const sessionChoices: Record<string, SpectralModality> = {};
+let version = 0;
+const listeners = new Set<() => void>();
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+/** Re-render the caller whenever a saved modality choice changes. */
+export function useSpectralModalityVersion(): number {
+  return useSyncExternalStore(subscribe, () => version);
+}
+
 function storedChoices(): Record<string, SpectralModality> {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
@@ -15,7 +36,7 @@ function storedChoices(): Record<string, SpectralModality> {
       ? (parsed as Record<string, SpectralModality>)
       : {};
   } catch {
-    return {};
+    return { ...sessionChoices };
   }
 }
 
@@ -42,6 +63,9 @@ export function saveSpectralModality(
   meta: ImageMeta,
   modality: SpectralModality,
 ): void {
+  sessionChoices[spectralDatasetKey(meta)] = modality;
+  version += 1;
+  listeners.forEach((l) => l());
   try {
     localStorage.setItem(
       STORAGE_KEY,

@@ -75,7 +75,9 @@ body {
   border-bottom: 1px solid var(--border-soft);
   padding: 0 var(--pad);
   position: relative;
-  z-index: 30;
+  /* MENUBAR in styles/zLayers.ts: above tool windows (200–290), below
+     modals (300) — dropdowns inherit this stacking context */
+  z-index: 295;
 }
 
 .fvd-desktop-menus {

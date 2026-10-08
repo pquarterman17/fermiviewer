@@ -7,6 +7,7 @@ import type { ImageMeta } from "../../lib/api";
 import {
   resolveSpectralModality,
   saveSpectralModality,
+  useSpectralModalityVersion,
   type SpectralModality,
 } from "../../lib/spectralModality";
 import { useViewer } from "../../store/viewer";
@@ -94,6 +95,7 @@ function ElementalWorkspaceLauncher({ meta }: { meta: ImageMeta }) {
   const openTool = useViewer((s) => s.openTool);
   const spectral =
     meta.kind === "spectrum_image" || meta.kind === "spectrum";
+  useSpectralModalityVersion(); // follow the workspace's EDS/EELS switch
   const { modality, reason } = resolveSpectralModality(meta);
   const label = modality ? modality.toUpperCase() : "unclassified";
   return (
@@ -105,9 +107,8 @@ function ElementalWorkspaceLauncher({ meta }: { meta: ImageMeta }) {
         </span>
       </div>
       <p className="fvd-ws-note">
-        Spectra, element maps, overlays and quantification share one resizable
-        workspace so they do not compete inside the inspector. Mounting a full
-        workshop here duplicated every map and spectrum request.
+        Spectra, element maps, overlays and quantification open together in
+        the Elemental Analysis window.
       </p>
       <button
         className="fvd-btn"
@@ -238,7 +239,7 @@ export default function Inspector() {
         )}
       </Suspense>
       {tab === "Image" && unified && <ToolsBrowser />}
-      {tab === "Image" && !unified && <MeasurePanel />}
+      {tab === "Image" && <MeasurePanel toolList={!unified} />}
       {tab === "Image" && meta.kind !== "spectrum" && <RegionWorkspaceCard />}
       {tab === "Image" && meta.kind !== "spectrum" && <RoiManagerCard />}
       {tab === "Image" && meta.kind !== "spectrum" && <RegionsCard />}

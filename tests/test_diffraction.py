@@ -44,36 +44,34 @@ def test_simulate_si_001_geometry() -> None:
     assert sim.image.shape == (512, 512) and sim.image.max() <= 1.0
 
 
-def test_index_round_trip_matlab_parity() -> None:
-    """Pin the MATLAB result (fermi-viewer@84fd9ef, 2026-06-06 run).
+def test_index_round_trip_finds_silicon_001() -> None:
+    """A simulated Si [001] pattern indexes back to Silicon on the [001] zone.
 
-    NOTE: d-spacing-only indexing has no angular information, and the
-    intentional simulate/index 0.5 px centre offset gives ~0.5% d errors,
-    so dense-d-grid phases (SrRuO3) outrank Silicon on the mean-error
-    tie-break. MATLAB behaves identically — this is parity, not a bug:
-      1: SrRuO3  score=1.0 n=12 meanErr=0.00232132
-      2: Silicon score=1.0 n=12 meanErr=0.00565878
-      3: LaNiO3  score=1.0 n=12 meanErr=0.00581723
+    Spot patterns are indexed by d-spacing AND inter-spot angle
+    (`diffraction_zone`): every spot gets a signed hkl on one reciprocal
+    plane, so phases with similar plane spacings no longer tie. (The
+    MATLAB prototype matched d only, ranked SrRuO3 first here and reported
+    Silicon's zone as [-100]; exact parity is not a goal.)
     """
-    # Pin the legacy Z-proxy ("z") model: the MATLAB result was frozen
-    # with Z-as-scattering-factor, so this parity check uses the same.
     sim = simulate("Silicon", zone_axis=(0, 0, 1), scattering_model="z")
     pos = np.array([[s.pixel_row, s.pixel_col] for s in sim.spots[1:]])
     cands = index_spots(pos, (512, 512), pixel_size=0.05,
                         camera_length=200, acc_voltage=200)
-
-    def mean_err(c):
-        return float(np.mean(np.abs(c.matched_d - c.ref_d) / c.ref_d))
-
-    assert [c.phase_name for c in cands[:3]] == ["SrRuO3", "Silicon", "LaNiO3"]
-    assert all(c.score == 1.0 and c.n_matched == 12 for c in cands[:3])
-    assert mean_err(cands[0]) == pytest.approx(0.00232132, rel=1e-4)
-    assert mean_err(cands[1]) == pytest.approx(0.00565878, rel=1e-4)
-    assert mean_err(cands[2]) == pytest.approx(0.00581723, rel=1e-4)
-    # zone axis comes from FAMILY-REPRESENTATIVE hkls (mostly (0,k,l)
-    # after the sortrows tie-break), so the recovered axis is (-1,0,0),
-    # not the physical (0,0,1) — MATLAB's findZoneAxis loop is identical.
-    assert cands[1].zone_axis == (-1.0, 0.0, 0.0)
+    si = cands[0]
+    assert si.phase_name == "Silicon" and si.method == "zone"
+    assert si.score == 1.0 and si.n_matched == 12
+    assert sorted(map(abs, si.zone_axis)) == [0.0, 0.0, 1.0]   # a <100> zone
+    # signed hkls, all on that zone's plane (Weiss zone law h·uvw = 0)
+    uvw = np.array(si.zone_axis)
+    assert all(np.dot(h, uvw) == 0 for h in si.matched_hkl.tolist())
+    assert {tuple(sorted(map(abs, h))) for h in si.matched_hkl.tolist()} <= {
+        (0, 2, 2), (0, 0, 4), (0, 4, 4)}
+    # Ge / GaAs share the lattice but their 200 spots are allowed (not
+    # extinct) and absent here, so they score below Silicon
+    every = index_spots(pos, (512, 512), pixel_size=0.05, camera_length=200,
+                        acc_voltage=200, top_n=99)
+    ge = next(c for c in every if c.phase_name == "Ge")
+    assert ge.score < si.score
 
 
 def test_index_no_match_scores_zero() -> None:
@@ -90,7 +88,8 @@ def test_index_matched_idx_maps_to_input_spots() -> None:
     pos = np.array([[s.pixel_row, s.pixel_col] for s in sim.spots[1:]])
     cands = index_spots(pos, (512, 512), pixel_size=0.05,
                         camera_length=200, acc_voltage=200)
-    c = cands[1]  # Silicon (see parity test for the ordering rationale)
+    c = cands[0]
+    assert c.phase_name == "Silicon"
     assert c.matched_idx.shape[0] == c.n_matched == c.matched_d.shape[0]
     # every index is a valid row of the input spot list
     assert c.matched_idx.min() >= 0 and c.matched_idx.max() < pos.shape[0]
@@ -140,3 +139,18 @@ class TestGolden:
             pytest.skip("no indexRoundTrip in golden")
         # the MATLAB result exposes candidates/measuredD/measuredR/center
         assert "candidates" in g["fields"]
+
+
+def test_index_ties_prefer_a_consistent_zone_axis() -> None:
+    """Simulated Gold [001] at the simulator's own calibration: many phases
+    tie at 1.0, and one whose hkls fit no zone ("[ ]") must not lead."""
+    sim = simulate("Gold", zone_axis=(0, 0, 1))
+    pos = np.array([[s.pixel_row, s.pixel_col] for s in sim.spots[1:]])
+    cands = index_spots(pos, (512, 512), pixel_size=0.05,
+                        camera_length=200, acc_voltage=200, top_n=10)
+    assert cands[0].phase_name == "Gold"
+    # a <100> zone (cubic: [001], [010] and [100] are the same pattern)
+    assert cands[0].method == "zone"
+    assert sorted(map(abs, cands[0].zone_axis)) == [0.0, 0.0, 1.0]
+    zoned = [not np.isnan(c.zone_axis[0]) for c in cands if c.score == 1.0]
+    assert zoned == sorted(zoned, reverse=True)  # every zoned tie first

@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from fermiviewer.calc.crystal import Phase, electron_wavelength, find_phase
+from fermiviewer.calc.crystal import Phase, electron_wavelength, find_phase, lattice_bases
 from fermiviewer.calc.scattering_factors import (
     build_basis_model,
     reflection_intensity,
@@ -62,20 +62,6 @@ def _simulate_extinct(h: int, k: int, l: int, centering: str) -> bool:  # noqa: 
             return (-h + k + l) % 3 != 0
         case _:
             return False
-
-
-def _lattice_vectors(p: Phase) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    al, be, ga = np.deg2rad([p.alpha, p.beta, p.gamma])
-    a_vec = p.a * np.array([1.0, 0.0, 0.0])
-    b_vec = p.b * np.array([np.cos(ga), np.sin(ga), 0.0])
-    cx = p.c * np.cos(be)
-    cy = p.c * (np.cos(al) - np.cos(be) * np.cos(ga)) / np.sin(ga)
-    cz = np.sqrt(max(p.c**2 - cx**2 - cy**2, 0.0))
-    c_vec = np.array([cx, cy, cz])
-    vol = float(np.dot(a_vec, np.cross(b_vec, c_vec)))
-    return (np.cross(b_vec, c_vec) / vol,
-            np.cross(c_vec, a_vec) / vol,
-            np.cross(a_vec, b_vec) / vol)
 
 
 def _add_blob(img: np.ndarray, row_c: float, col_c: float,
@@ -143,15 +129,21 @@ def simulate(
     # otherwise resolve the name against the built-in database
     phase = phase if phase is not None else find_phase(phase_name)
     lam = float(electron_wavelength(acc_voltage))
-    a_star, b_star, c_star = _lattice_vectors(phase)
+    direct, recip = lattice_bases(phase)
+    a_star, b_star, c_star = recip
 
     uvw = np.asarray(zone_axis, dtype=np.float64)
+    # the beam runs along the REAL-SPACE direction u·a + v·b + w·c; the
+    # pattern plane is perpendicular to it. (Treating [uvw] as Cartesian is
+    # only right for cubic cells — it skewed e.g. hexagonal [111] patterns.)
+    beam = uvw @ direct
+    beam /= np.linalg.norm(beam)
     ref = np.array([1.0, 0, 0]) if (
-        abs(uvw[0]) <= abs(uvw[1]) and abs(uvw[0]) <= abs(uvw[2])
+        abs(beam[0]) <= abs(beam[1]) and abs(beam[0]) <= abs(beam[2])
     ) else np.array([0.0, 1, 0])
-    e1 = np.cross(uvw, ref)
+    e1 = np.cross(beam, ref)
     e1 /= np.linalg.norm(e1)
-    e2 = np.cross(uvw, e1)
+    e2 = np.cross(beam, e1)
     e2 /= np.linalg.norm(e2)
 
     basis = phase.basis

@@ -123,8 +123,11 @@ export async function devSampleFiles(): Promise<string[]> {
   return json(await fetch("/api/dev/sample-files"));
 }
 
-/** Open files picked with the browser's native dialog (multipart). */
-export async function uploadFiles(files: FileList | File[]): Promise<ImageMeta[]> {
+/** Open files picked with the browser's native dialog (multipart). 4D-STEM
+ *  files come back as `FourDMeta`, exactly like `openSession`. */
+export async function uploadFiles(
+  files: FileList | File[],
+): Promise<(ImageMeta | FourDMeta)[]> {
   const form = new FormData();
   for (const f of Array.from(files)) form.append("files", f, f.name);
   return json(

@@ -90,5 +90,12 @@ def histogram(data: np.ndarray, bins: int = 256) -> tuple[np.ndarray, np.ndarray
     if d.size == 0:
         edges = np.linspace(0, 1, bins + 1)
         return (edges[:-1] + edges[1:]) / 2, np.zeros(bins)
-    counts, edges = np.histogram(d, bins=bins)
+    lo, hi = float(d.min()), float(d.max())
+    try:
+        counts, edges = np.histogram(d, bins=bins)
+    except ValueError:
+        # near-constant data (span below float resolution for `bins` edges,
+        # e.g. a radius-0 virtual dark field): widen the range around it
+        pad = max(abs(lo), abs(hi), 1.0) * 1e-6
+        counts, edges = np.histogram(d, bins=bins, range=(lo - pad, hi + pad))
     return (edges[:-1] + edges[1:]) / 2, counts.astype(np.float64)

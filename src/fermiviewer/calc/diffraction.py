@@ -235,6 +235,9 @@ class IndexCandidate:
     # index into the input `positions` for each matched spot, so callers can
     # map a match back to its (row, col) for overlay labels / a report (#37)
     matched_idx: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=int))
+    #: "zone": spots indexed consistently in one zone (d + angles);
+    #: "d-spacing": each spot matched to its nearest ring on its own
+    method: str = "d-spacing"
 
 
 def _zone_axis(hkl: np.ndarray) -> tuple[float, float, float]:
@@ -380,7 +383,25 @@ def index_spots(
             return np.inf
         return float(np.mean(np.abs(c.matched_d - c.ref_d) / c.ref_d))
 
-    cands.sort(key=lambda c: (-c.score, mean_err(c)))
+    # Ties are common (each spot matches its nearest ring independently, so
+    # several phases reach 1.0): among equal scores a candidate whose matches
+    # share a zone axis outranks one whose hkls fit no single zone (shown
+    # as an empty "[ ]"), then the smaller mean d-error wins.
+    # Single-crystal patterns: re-rank by zone-axis consistency (d AND the
+    # angles between spots); ring patterns keep the d-only order below.
+    from fermiviewer.calc.diffraction_zone import rerank_by_zone
+
+    sp = usable_spacing(spacing)
+    s_row, s_col = sp if sp is not None else (pixel_size, pixel_size)
+    weights = ((1 / (img_size[0] * s_row), 1 / (img_size[1] * s_col))
+               if np.isnan(camera_length) else (s_row, s_col))
+    zoned = rerank_by_zone(cands, db, positions, center, d_meas, valid,
+                           weights, tolerance)
+    if zoned is not cands:
+        return zoned[: min(top_n, len(zoned))]
+    cands.sort(
+        key=lambda c: (-c.score, bool(np.isnan(c.zone_axis[0])), mean_err(c))
+    )
     return cands[: min(top_n, len(cands))]
 
 

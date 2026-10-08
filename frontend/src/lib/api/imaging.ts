@@ -224,14 +224,21 @@ export interface JobStatus {
   error?: string;
 }
 
-/** Start an async job; poll until done; reports progress via callback. */
+/** Start an async job; poll until done; reports progress via callback.
+ *  Aborting `signal` cancels the server job (a running one stops at its
+ *  next progress checkpoint) and rejects with "cancelled". */
 export async function runJob<T>(
   start: () => Promise<{ job_id: string }>,
   onProgress: (fraction: number, message: string) => void,
   pollMs = 400,
+  signal?: AbortSignal,
 ): Promise<T> {
   const { job_id } = await start();
   for (;;) {
+    if (signal?.aborted) {
+      await fetch(`/api/jobs/${job_id}`, { method: "DELETE" }).catch(() => {});
+      throw new Error("cancelled");
+    }
     const s = await json<JobStatus>(await fetch(`/api/jobs/${job_id}`));
     if (s.status === "done") return s.result as T;
     if (s.status === "error") throw new Error(s.error ?? "job failed");

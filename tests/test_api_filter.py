@@ -141,6 +141,35 @@ def test_clahe_zero_tile_size_is_422_not_500(client, img_id) -> None:
     assert r.status_code == 422, r.text
 
 
+@pytest.mark.parametrize(
+    ("kind", "params", "message"),
+    [
+        # huge values used to 500 from numpy's allocator (_ArrayMemoryError)
+        ("gaussian", {"sigma": 1e9}, "sigma (px) must be at most 16"),
+        ("unsharp", {"sigma": 1e9}, "sigma (px) must be at most 16"),
+        ("clahe", {"num_bins": 1e9}, "bins must be at most 65536"),
+        ("morph", {"radius": 1e9}, "radius (px) must be at most 100"),
+        # non-positive values used to be accepted or leak numpy messages
+        ("gaussian", {"sigma": 0}, "sigma (px) must be greater than 0"),
+        ("gaussian", {"sigma": -1}, "sigma (px) must be greater than 0"),
+        ("bin", {"bin_size": 0}, "bin size must be at least 1"),
+        ("bin", {"bin_size": -1}, "bin size must be at least 1"),
+        ("bin", {"bin_size": 1.5}, "bin size must be a whole number"),
+        ("clahe", {"num_bins": 0}, "bins must be at least 2"),
+        ("clahe", {"clip_limit": -1}, "clip limit must be at least 0"),
+        ("morph", {"radius": -1}, "radius (px) must be at least 1"),
+        ("gaussian", {"sigma": "abc"}, "sigma (px) must be a number (got 'abc')"),
+        ("butterworth", {"order": 1e9}, "order must be at most 10"),
+    ],
+)
+def test_out_of_range_params_are_clear_422s(client, img_id, kind, params,
+                                            message) -> None:
+    r = client.post("/api/filter",
+                    json={"image_id": img_id, "kind": kind, "params": params})
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"] == message
+
+
 # ── geometric ops (stage toolbar) ────────────────────────────────────
 
 def test_rotate_and_flip(client, img_id) -> None:
@@ -175,6 +204,27 @@ def test_rotate_and_flip(client, img_id) -> None:
                     json={"image_id": img_id, "kind": "flipv"})
     np.testing.assert_array_equal(
         store.get(r.json()["id"]).data, src[::-1, :])
+
+
+def test_rotate_keeps_column_only_calibration(client, tmp_path) -> None:
+    """A DM image whose row axis is unitless (only the column axis is
+    calibrated, like openNCEM_nonSquare.dm4) is shown at 1 nm/px; a 90°
+    rotation used to swap the unitless axis into the pixel_cal slot and
+    come out "Uncalibrated". Flips always kept it."""
+    w, h = 8, 4
+    f = write_mini_dm4(
+        tmp_path / "ns.dm4", dims=[w, h], data=np.arange(w * h),
+        cal=[{"scale": 1.0, "origin": 0, "units": "nm"},
+             {"scale": 2.0, "origin": 0, "units": ""}],
+    )
+    src = client.post("/api/session/open",
+                      json={"paths": [str(f)]}).json()[0]
+    assert src["pixel_size"] == pytest.approx(1.0)
+    for kind in ("rotate90", "rotate270", "fliph"):
+        meta = client.post("/api/filter",
+                           json={"image_id": src["id"], "kind": kind}).json()
+        assert meta["pixel_size"] == pytest.approx(1.0), kind
+        assert meta["pixel_unit"] == "nm", kind
 
 
 def test_rotate_round_trip_identity(client, img_id) -> None:

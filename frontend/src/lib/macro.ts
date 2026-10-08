@@ -60,6 +60,9 @@ export function startRecording(): void {
  *  tell the user rather than let this throw out of a menu action). */
 export function stopRecording(): { total: number; legacy: number; persisted: boolean } {
   recording = false;
+  // an empty recording (Record → Stop with nothing run) must not overwrite
+  // the macro the user saved before
+  if (steps.length === 0) return { total: 0, legacy: 0, persisted: false };
   const persisted = trySetItem(KEY, JSON.stringify(steps));
   return {
     total: steps.length,

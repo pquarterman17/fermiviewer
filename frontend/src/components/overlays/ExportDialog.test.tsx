@@ -78,4 +78,18 @@ describe("ExportDialog caption (WS4c)", () => {
     render(<ExportDialog />);
     await waitFor(() => expect(previewActive).toHaveBeenCalled());
   });
+
+  it("disables Export and warns when the output exceeds the size limit", () => {
+    render(<ExportDialog />);
+    fireEvent.click(screen.getByRole("button", { name: "Physical" }));
+    fireEvent.change(screen.getByDisplayValue("89"), {
+      target: { value: "2000" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "600" }));
+    expect(screen.getByRole("alert").textContent).toMatch(/Too large/);
+    expect(
+      (screen.getByRole("button", { name: "Export" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
 });

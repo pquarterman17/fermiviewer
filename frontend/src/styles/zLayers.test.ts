@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { MODAL_BACKDROP, TOOL_WINDOW_BASE, toolWindowZIndex } from "./zLayers";
+import {
+  MENUBAR,
+  MODAL_BACKDROP,
+  TOOL_WINDOW_BASE,
+  TOOL_WINDOW_MAX,
+  toolWindowZIndex,
+} from "./zLayers";
 
 describe("zLayers", () => {
   it("places a freshly-opened tool window below the modal layer", () => {
@@ -15,6 +21,11 @@ describe("zLayers", () => {
     for (const z of [0, 5, 50, 90, 91, 500, 100_000]) {
       expect(toolWindowZIndex(z)).toBeLessThan(MODAL_BACKDROP);
     }
+  });
+
+  it("keeps the menubar (and its dropdowns) above tool windows, below modals", () => {
+    expect(MENUBAR).toBeGreaterThan(TOOL_WINDOW_MAX);
+    expect(MENUBAR).toBeLessThan(MODAL_BACKDROP);
   });
 
   it("never returns a value below TOOL_WINDOW_BASE for negative input", () => {

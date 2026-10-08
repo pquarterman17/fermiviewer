@@ -81,6 +81,13 @@ export function useAppHotkeys(ctx: AppHotkeysCtx): void {
         s.toggleRight();
         return;
       }
+      if (mod && e.key.toLowerCase() === "w") {
+        // File ▸ Close Image advertises ⌘W (a browser tab may still claim
+        // Ctrl+W first; the desktop shell delivers it here)
+        e.preventDefault();
+        if (s.activeId) void s.closeImage(s.activeId);
+        return;
+      }
       if (mod) return; // leave other ⌘/Ctrl chords to the browser
       if (s.cmdk) return; // palette owns the keyboard while open
 
@@ -214,6 +221,18 @@ export function useAppHotkeys(ctx: AppHotkeysCtx): void {
               : s.activeId
                 ? [s.activeId]
                 : [];
+            // closing can't be undone and drops the image's measurements,
+            // so a stray Del with nothing selected asks first
+            if (
+              ids.length === 0 ||
+              !window.confirm(
+                ids.length === 1
+                  ? "Close this image? Its measurements are discarded (can't be undone)."
+                  : `Close ${ids.length} images? Their measurements are discarded (can't be undone).`,
+              )
+            ) {
+              break;
+            }
             // serialize: closeImage is async; closing sequentially avoids the
             // activeId flicker / double-close races of parallel dispatch
             void (async () => {

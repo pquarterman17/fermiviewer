@@ -124,6 +124,26 @@ describe("RegionWorkspaceCard", () => {
     expect(apiReplaceRegionSets).not.toHaveBeenCalled();
   });
 
+  it("refuses a second class with an existing name (add or rename)", async () => {
+    useViewer.setState({
+      regions: {
+        ...loaded,
+        classes: [...loaded.classes, { id: "pore", label: "Pore", color: "#000000", note: null }],
+      },
+    });
+    render(<RegionWorkspaceCard />);
+    await userEvent.type(screen.getByPlaceholderText("New class name"), "grain{Enter}");
+    expect(apiReplaceRegionSets).not.toHaveBeenCalled();
+    expect(useViewer.getState().status).toMatch(/already exists/);
+
+    const pore = screen.getByDisplayValue("Pore");
+    await userEvent.clear(pore);
+    await userEvent.type(pore, "Grain");
+    pore.blur();
+    expect(apiReplaceRegionSets).not.toHaveBeenCalled();
+    expect(pore).toHaveValue("Pore"); // reverted
+  });
+
   it("duplicates a region through the atomic server path", async () => {
     useViewer.setState({ regions: loaded });
     render(<RegionWorkspaceCard />);

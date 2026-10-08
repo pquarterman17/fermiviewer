@@ -9,9 +9,12 @@
 // Full ladder, low → high:
 //
 //   2 – 60      stage / inspector chrome        (02-05 theme-web/*.css)
-//   30          menubar                         (01-shell-library.css)
-//   40 / 41     menu dropdown / submenu          (01-shell-library.css)
 //   200 – 290   floating tool/workshop windows   (TOOL_WINDOW_BASE, this file)
+//   290         results table (grains/particles) (RESULTS_WINDOW, this file)
+//   295         menubar + its dropdowns          (MENUBAR, this file; mirrored
+//               in 01-shell-library.css — the bar is the dropdowns' stacking
+//               context, so it must sit above tool windows or an open menu
+//               renders under them and clicks land on the window)
 //   300         modal dialog backdrop            (MODAL_BACKDROP, this file;
 //               mirrored in 06-overlays-export.css's .fvd-overlay-backdrop)
 //   400 / 401   context-menu backdrop / menu     (02-stage.css)
@@ -36,6 +39,14 @@ export const TOOL_WINDOW_SPAN = 90;
 
 /** Highest possible tool-window z-index; MODAL_BACKDROP must exceed this. */
 export const TOOL_WINDOW_MAX = TOOL_WINDOW_BASE + TOOL_WINDOW_SPAN;
+
+/** The floating results table: the top of the tool-window layer (it pops up
+ *  over the workshop that produced it) but under the menubar, which it
+ *  used to cover at 400. */
+export const RESULTS_WINDOW = TOOL_WINDOW_MAX;
+
+/** Menubar layer: above every tool window, below modal dialogs. */
+export const MENUBAR = 295;
 
 /** z-index for the modal overlay backdrop (ModalDialog.tsx and friends). */
 export const MODAL_BACKDROP = 300;

@@ -211,12 +211,11 @@ def test_job_lifecycle_states_bound_and_cancel() -> None:
         with pytest.raises(JobQueueFullError):
             store_.submit(lambda p: "never")
 
-        # queued jobs cancel; running/finished/unknown ones don't
+        # queued jobs cancel; unknown ones don't
         assert store_.cancel(extra) is True
         snap = store_.get(extra).snapshot()
         assert snap["status"] == "error"
         assert snap["error"] == "cancelled"
-        assert store_.cancel(running) is False
         assert store_.cancel("nope") is False
     finally:
         release.set()
@@ -224,6 +223,37 @@ def test_job_lifecycle_states_bound_and_cancel() -> None:
     _wait_status(store_, running, "done")
     _wait_status(store_, queued, "done")
     assert store_.get(running).snapshot()["result"] == "ok"
+    assert store_.cancel(running) is False  # finished
+
+
+def test_running_job_cancels_at_next_checkpoint_and_frees_worker() -> None:
+    """A long job no longer starves the queue: cancelling it reports at
+    once and its worker exits at the next progress report."""
+    store_ = JobStore(max_workers=1)
+    started = threading.Event()
+    release = threading.Event()
+    reached_checkpoint = threading.Event()
+
+    def long_job(progress) -> str:
+        started.set()
+        release.wait(timeout=30)
+        try:
+            progress(0.5, "stage 2")
+        except Exception:
+            reached_checkpoint.set()
+            raise
+        return "should not be reported"
+
+    running = store_.submit(long_job)
+    assert started.wait(timeout=30)
+    small = store_.submit(lambda p: "small")
+    assert store_.cancel(running) is True
+    snap = store_.get(running).snapshot()
+    assert (snap["status"], snap["error"]) == ("error", "cancelled")
+    release.set()
+    assert reached_checkpoint.wait(timeout=30)
+    _wait_status(store_, small, "done")
+    assert store_.get(running).snapshot()["status"] == "error"
 
 
 def test_job_shutdown_cancels_queued_then_restarts() -> None:
@@ -304,12 +334,12 @@ def test_job_cancel_endpoint(client) -> None:
         assert r.json() == {"cancelled": queued}
         assert client.get(f"/api/jobs/{queued}").json()["status"] == "error"
 
-        # a job that already started (or finished) can't be cancelled
-        assert client.delete(f"/api/jobs/{blockers[0]}").status_code == 409
     finally:
         release.set()
     for jid in blockers:
         _wait_status(jobs, jid, "done")
+    # a finished job can't be cancelled
+    assert client.delete(f"/api/jobs/{blockers[0]}").status_code == 409
 
 
 def test_submit_serializes_with_shutdown() -> None:

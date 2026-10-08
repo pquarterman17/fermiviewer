@@ -12,7 +12,7 @@ import {
   type Measure,
   type View,
 } from "../../store/viewer";
-import { ClosedShapeGlyph, closedShapeLabelAnchor } from "./closedShapeGlyph";
+import { byPaintOrder, ClosedShapeGlyph, closedShapeLabelAnchor } from "./closedShapeGlyph";
 import MeasureCtxMenu from "./MeasureCtxMenu";
 import { measureLabel } from "./measureGlyphs";
 import ProfileBoxOutline from "./ProfileBoxOutline";
@@ -56,6 +56,7 @@ export default function MeasureOverlay({
   const setRoiStats = useViewer((s) => s.setRoiStats);
   const setProfile = useStageInfo((s) => s.setProfile);
   const setStatus = useViewer((s) => s.setStatus);
+  const armed = useViewer((s) => s.captureMode !== "none"); // tool draws over shapes
 
   const labelDragRef = useRef<{
     mid: string;
@@ -141,6 +142,7 @@ export default function MeasureOverlay({
     const bodyDown = isPending
       ? undefined
       : (e: React.PointerEvent) => onBodyDown(e, m, pts);
+    const bodyPe = isPending ? "none" : armed ? "stroke" : "all";
     const common = {
       stroke,
       strokeWidth: sw,
@@ -201,7 +203,7 @@ export default function MeasureOverlay({
           height={Math.abs(pts[1].y - pts[0].y)}
           {...common}
           fill="transparent"
-          pointerEvents={isPending ? "none" : "all"}
+          pointerEvents={bodyPe}
           style={{ cursor: isPending ? "default" : "move" }}
           onPointerDown={bodyDown}
           onPointerMove={onHandleMove}
@@ -223,7 +225,7 @@ export default function MeasureOverlay({
           ry={Math.abs(pts[1].y - pts[0].y) / 2}
           {...common}
           fill="transparent"
-          pointerEvents={isPending ? "none" : "all"}
+          pointerEvents={bodyPe}
           style={{ cursor: isPending ? "default" : "move" }}
           onPointerDown={bodyDown}
           onPointerMove={onHandleMove}
@@ -283,6 +285,7 @@ export default function MeasureOverlay({
           onHandleUp={onHandleUp}
           title="alt-drag an edge to add a point"
           onContextMenu={common.onContextMenu}
+          armed={armed}
         />
       );
       labelAt = isPending ? pts[pts.length - 1] : closedShapeLabelAnchor(pts);
@@ -466,7 +469,7 @@ export default function MeasureOverlay({
         width={vp.w}
         height={vp.h}
       >
-        {measures.map((m) => renderMeasure(m))}
+        {byPaintOrder(measures).map((m) => renderMeasure(m))}
         {pending &&
           pending.pts.length >= 2 &&
           renderMeasure(

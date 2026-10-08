@@ -9,11 +9,12 @@ R-centering OBVERSE rule (−h+k+l ≡ 0 mod 3) — calibrated, do not "fix".
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import lru_cache
 
 import numpy as np
 
 __all__ = ["PHASES", "Phase", "Reflections", "d_spacing", "electron_wavelength",
-           "plane_spacings"]
+           "lattice_bases", "plane_spacings"]
 
 Basis = tuple[tuple[str, float, float, float], ...]
 
@@ -194,6 +195,26 @@ def find_phase(name: str) -> Phase:
     raise KeyError(f"no phase matching '{name}'")
 
 
+# ── lattice geometry ─────────────────────────────────────────────────
+
+def lattice_bases(p: Phase) -> tuple[np.ndarray, np.ndarray]:
+    """``(direct, recip)``, each 3x3 with one Cartesian vector per row:
+    a, b, c (Å) and a*, b*, c* (Å⁻¹, no 2π) so that ``a_i · b_j* = δ_ij``.
+    a lies along x and b in the xy-plane. A reflection's vector is
+    ``hkl @ recip`` and a zone axis's real-space direction ``uvw @ direct``;
+    the one place this convention lives, shared by the simulator and the
+    zone-axis indexer so the two can never disagree."""
+    al, be, ga = np.deg2rad([p.alpha, p.beta, p.gamma])
+    cx = p.c * np.cos(be)
+    cy = p.c * (np.cos(al) - np.cos(be) * np.cos(ga)) / np.sin(ga)
+    direct = np.array([
+        [p.a, 0.0, 0.0],
+        [p.b * np.cos(ga), p.b * np.sin(ga), 0.0],
+        [cx, cy, np.sqrt(max(p.c**2 - cx**2 - cy**2, 0.0))],
+    ])
+    return direct, np.linalg.inv(direct).T
+
+
 # ── d-spacing (general triclinic formula, port of dSpacing.m) ────────
 
 def d_spacing(
@@ -257,8 +278,24 @@ def plane_spacings(
     centering: str = "P",
     min_d: float = 0.0,
 ) -> Reflections:
-    """Allowed reflections grouped by d (port of planeSpacings.m)."""
-    centering = centering.upper()
+    """Allowed reflections grouped by d (port of planeSpacings.m).
+
+    Cached (indexing asks for every phase on every ROI drag); the returned
+    arrays are read-only for that reason."""
+    return _plane_spacings(float(a), None if b is None else float(b),
+                           None if c is None else float(c), float(alpha),
+                           float(beta), float(gamma), int(max_hkl),
+                           None if np.isnan(lam) else float(lam),  # NaN != NaN: no cache hit
+                           centering.upper(), float(min_d))
+
+
+@lru_cache(maxsize=1024)
+def _plane_spacings(
+    a: float, b: float | None, c: float | None,
+    alpha: float, beta: float, gamma: float,
+    max_hkl: int, lam_or_none: float | None, centering: str, min_d: float,
+) -> Reflections:
+    lam = float("nan") if lam_or_none is None else lam_or_none
     hkl_list: list[tuple[int, int, int]] = []
     d_list: list[float] = []
     rng = range(-max_hkl, max_hkl + 1)
@@ -309,4 +346,6 @@ def plane_spacings(
         two_theta = 2 * np.degrees(np.arcsin(np.minimum(sin_t, 1.0)))
         two_theta[sin_t > 1] = np.nan
 
+    for arr in (hkl_out, d_out, two_theta, mult_out):
+        arr.setflags(write=False)
     return Reflections(hkl_out, d_out, two_theta, mult_out, centering)

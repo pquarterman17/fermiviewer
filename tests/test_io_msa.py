@@ -141,3 +141,20 @@ def test_missing_xperchan_defaults_with_non_ev_units(tmp_path) -> None:
     assert ds.energy_cal.units == "keV"
     assert ds.energy_cal.scale == pytest.approx(1.0)
     assert np.allclose(ds.energy_axis, [0.0, 1.0, 2.0])
+
+
+@pytest.mark.parametrize(
+    ("declared", "expected"), [("EDS", "EDS"), ("ELS", "EELS"), ("WDS", None)]
+)
+def test_signaltype_surfaces_for_the_modality_classifier(
+    tmp_path, declared: str, expected: str | None
+) -> None:
+    """#SIGNALTYPE must reach the client-visible metadata: an EDS spectrum
+    over 200-990 eV otherwise classifies as EELS from its energy range."""
+    fp = tmp_path / "typed.msa"
+    fp.write_text(
+        "#FORMAT : EMSA/MAS SPECTRAL DATA STANDARD\n#XPERCHAN : 10.\n"
+        f"#OFFSET : 200.\n#SIGNALTYPE : {declared}\n#SPECTRUM :\n1, 2, 3\n"
+        "#ENDOFDATA :\n"
+    )
+    assert load_msa(fp).metadata.get("signal_type") == expected

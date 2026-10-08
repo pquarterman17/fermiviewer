@@ -133,6 +133,16 @@ def test_window_override_is_honoured_not_recomputed(client, two_element_cube):
     assert shifted["line"] == "K"
 
 
+def test_window_override_reports_the_line_it_covers(client, two_element_cube):
+    """An Fe Lα window must be captioned L, not the principal K line."""
+    fe_l, _ = line_energy("Fe", line="L")
+    row = _post(client, image_id=two_element_cube, elements=[
+        {"symbol": "Fe", "e_lo": fe_l - 0.08, "e_hi": fe_l + 0.08},
+    ])["maps"][0]
+    assert row["line"] == "L"
+    assert row["energy_kev"] == pytest.approx(fe_l)
+
+
 def test_half_specified_override_is_rejected_per_row(client, two_element_cube):
     body = _post(client, image_id=two_element_cube,
                  elements=[{"symbol": "Fe", "e_lo": 3.0}])

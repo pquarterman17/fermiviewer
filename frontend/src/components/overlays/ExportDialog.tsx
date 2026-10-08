@@ -6,6 +6,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { type ExportOptions } from "../../lib/api";
 import { exportActive, previewActive } from "../../lib/export";
+import {
+  exportOutputSize,
+  exportTooLarge,
+  MAX_EXPORT_PIXELS,
+  MAX_EXPORT_SIDE,
+} from "../../lib/exportSize";
 import { loadPrefs } from "../../lib/prefs";
 import { useViewer, type Measure } from "../../store/viewer";
 import ModalDialog from "./ModalDialog";
@@ -190,11 +196,20 @@ export default function ExportDialog() {
     w = meta.shape[1] * scale;
     h = meta.shape[0] * scale;
   }
-  const bytesPerPx = format === "tiff16" ? 2 : 3;
-  const estBytes = w * h * bytesPerPx * SIZE_FACTOR[format];
   const canBar = format !== "tiff16" && meta.pixel_size !== null;
   const canMeasure = format !== "tiff16" && measures.length > 0;
   const canCaption = format !== "tiff16";
+  // the backend refuses figures past its memory ceiling (routes/export.py)
+  const tooLarge = exportTooLarge(w, h);
+  // final file size incl. the colorbar gutter + caption band appended below
+  const out = exportOutputSize(w, h, {
+    format,
+    scale: effPhysical ? w / meta.shape[1] : scale,
+    colorbar: canCaption && colorbar,
+    caption: canCaption ? caption : "",
+  });
+  const bytesPerPx = format === "tiff16" ? 2 : 3;
+  const estBytes = out.w * out.h * bytesPerPx * SIZE_FACTOR[format];
 
   const included: string[] = [];
   if (canBar && scaleBar) included.push("scale bar");
@@ -436,13 +451,20 @@ export default function ExportDialog() {
         </div>
 
         <div className="fvd-export-info">
-          {w} × {h} px
+          {out.w} × {out.h} px
           {effPhysical && ` · ${fmtNum(widthMm)} mm @ ${dpi} dpi`} · ~
           {fmtBytes(estBytes)} · includes: {summary}
           {format === "tiff16" && " · 16-bit grayscale (no overlays)"}
           {format === "svg" && " · vector overlays + embedded PNG"}
           {format === "pdf" && " · single-page raster PDF"}
         </div>
+        {tooLarge && (
+          <div className="fvd-export-info" role="alert" style={{ color: "var(--warn)" }}>
+            Too large to export — the limit is {MAX_EXPORT_SIDE.toLocaleString()} px
+            per side and {Math.round(MAX_EXPORT_PIXELS / 1e6)} MP total. Reduce the
+            {effPhysical ? " width or DPI" : " resolution"}.
+          </div>
+        )}
 
         <div className="fvd-btn-row">
           <button
@@ -455,8 +477,12 @@ export default function ExportDialog() {
           <button
             className="fvd-btn primary"
             onClick={run}
-            disabled={busy}
-            title="Export the image with these settings"
+            disabled={busy || tooLarge}
+            title={
+              tooLarge
+                ? "Output exceeds the export size limit"
+                : "Export the image with these settings"
+            }
           >
             {busy ? "Exporting…" : "Export"}
           </button>
