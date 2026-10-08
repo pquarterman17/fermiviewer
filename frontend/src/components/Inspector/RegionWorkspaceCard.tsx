@@ -113,6 +113,10 @@ export default function RegionWorkspaceCard() {
   const addClass = () => {
     const label = classLabel.trim();
     if (!label) return;
+    if (labelTaken(regions.classes, label)) {
+      setStatus(`a region class named “${label}” already exists`);
+      return;
+    }
     const id = nextRegionId(label, regions.classes.map((entry) => entry.id));
     void commit({
       ...regions,
@@ -277,6 +281,8 @@ export default function RegionWorkspaceCard() {
               key={entry.id}
               entry={entry}
               disabled={pending}
+              taken={(label) => labelTaken(regions.classes, label, entry.id)}
+              onDuplicate={(label) => setStatus(`a region class named “${label}” already exists`)}
               onChange={(updated) => void commit({
                 ...regions,
                 classes: regions.classes.map((item) => item.id === entry.id ? updated : item),
@@ -377,16 +383,33 @@ function RegionRow(props: RegionRowProps) {
   );
 }
 
-function ClassRow({ entry, disabled, onChange, onDelete }: {
+/** Another class (not `exceptId`) already uses `label`, ignoring case. */
+function labelTaken(classes: ProjectRegionClass[], label: string, exceptId?: string): boolean {
+  const key = label.trim().toLowerCase();
+  return classes.some((c) => c.id !== exceptId && (c.label ?? "").trim().toLowerCase() === key);
+}
+
+function ClassRow({ entry, disabled, taken, onDuplicate, onChange, onDelete }: {
   entry: ProjectRegionClass;
   disabled: boolean;
+  /** label already used by another class → rename refused + reverted */
+  taken: (label: string) => boolean;
+  onDuplicate: (label: string) => void;
   onChange: (entry: ProjectRegionClass) => void;
   onDelete: () => void;
 }) {
   return (
     <div className="fvd-region-class-row">
       <input type="color" aria-label={`${entry.label ?? entry.id} color`} defaultValue={entry.color ?? DEFAULT_CLASS_COLOR} disabled={disabled} onBlur={(event) => { if (event.target.value !== entry.color) onChange({ ...entry, color: event.target.value }); }} />
-      <input aria-label="Class label" defaultValue={entry.label ?? ""} disabled={disabled} onBlur={(event) => { const label = event.target.value.trim() || null; if (label !== entry.label) onChange({ ...entry, label }); }} />
+      <input aria-label="Class label" defaultValue={entry.label ?? ""} disabled={disabled} onBlur={(event) => {
+        const label = event.target.value.trim() || null;
+        if (label === entry.label) return;
+        if (label && taken(label)) {
+          event.target.value = entry.label ?? "";
+          return onDuplicate(label);
+        }
+        onChange({ ...entry, label });
+      }} />
       <button className="fvd-icon-btn fvd-region-danger" aria-label={`Delete class ${entry.label ?? entry.id}`} title="Delete class and unclassify its regions" disabled={disabled} onClick={onDelete}>✕</button>
     </div>
   );
