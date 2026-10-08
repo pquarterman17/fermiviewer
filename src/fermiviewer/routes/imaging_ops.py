@@ -244,7 +244,8 @@ def analyze_roughness(req: RoughnessRequest) -> dict:
     return {
         "Ra": r.ra, "Rq": r.rq, "Rz": r.rz, "Rsk": r.rsk, "Rku": r.rku,
         "Rp": r.rp, "Rv": r.rv, "SAR": r.sar,
-        "unit": ds.pixel_unit or "px",
+        # heights are pixel VALUES: the value unit, never the lateral pixel unit
+        "unit": str(ds.metadata.get("value_unit") or "") or "a.u.",
         "n_pixels": r.n_pixels,
         "level": r.level,
         "roi": list(req.roi) if req.roi is not None else None,

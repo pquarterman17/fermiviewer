@@ -27,7 +27,12 @@ from fermiviewer.calc.diffraction import (
     roi_selects_pixels,
 )
 
-__all__ = ["IndexedPattern", "index_spots_roi", "pattern_spacing"]
+__all__ = [
+    "IndexedPattern",
+    "index_spots_roi",
+    "pattern_spacing",
+    "uncalibrated_warning",
+]
 
 
 def pattern_spacing(
@@ -160,3 +165,26 @@ def index_spots_roi(
         else []
     )
     return IndexedPattern(full_center, measured_r, candidates)
+
+
+def uncalibrated_warning(
+    pixel_unit: str, pixel_size: float, camera_length: float
+) -> str | None:
+    """Why an indexing ranking cannot be trusted, or None.
+
+    Camera mode is calibrated by the typed camera length and detector pixel;
+    FFT mode by the pattern's own reciprocal calibration or a typed source
+    pixel size. With none of those (FFT mode, an uncalibrated pattern and
+    the default pixel size of 1) every measured d is in arbitrary units, yet
+    the candidates still come back with confident-looking scores.
+    """
+    if not np.isnan(camera_length) or is_reciprocal_unit(pixel_unit):
+        return None
+    if pixel_size != 1.0:
+        return None
+    return (
+        "The pattern is uncalibrated (no camera length, no reciprocal-space "
+        "calibration, pixel size left at 1), so the d-spacings and this "
+        "ranking are not physically meaningful. Enter the camera length and "
+        "detector pixel size, or calibrate the pattern first."
+    )

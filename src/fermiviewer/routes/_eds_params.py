@@ -156,8 +156,19 @@ def _in_bounds(name: str, spec: ParamSpec, resolved: Resolved) -> Resolved:
     return resolved
 
 
-def resolve_beam_kv(metadata: Mapping[str, Any], requested: float | None) -> Resolved:
+def resolve_beam_kv(
+    metadata: Mapping[str, Any],
+    requested: float | None,
+    *,
+    from_file: bool = False,
+) -> Resolved:
     """Beam voltage in kV, from a microscope or an acquisition profile.
+
+    With ``from_file`` the voltage the file's own metadata states (Bruker
+    ``voltage_kV``, JEOL ``beam_kv``, ...) is used before the 200 kV
+    default, with origin ``"file"`` -- for callers that choose an
+    excitable LINE from it, where assuming 200 kV on a 20 kV SEM map
+    picks a K line the beam never excited.
 
     Two sources, and they are not the same quantity. `microscope.
     accelerating_voltage` IS a voltage (kV) and converts directly.
@@ -198,6 +209,14 @@ def resolve_beam_kv(metadata: Mapping[str, Any], requested: float | None) -> Res
             field=volts.field,
             sigma=volts.sigma,
         )
+    if from_file:
+        from fermiviewer.io.profiles_db import image_conditions
+
+        stated = image_conditions(metadata).get("beam_energy_kev")
+        if stated is not None:
+            return Resolved(
+                value=stated, unit="kV", origin="file", source="file metadata"
+            )
     return Resolved(value=200.0, unit="kV", origin="default")
 
 

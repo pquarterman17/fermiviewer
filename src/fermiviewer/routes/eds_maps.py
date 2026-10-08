@@ -122,6 +122,19 @@ def _window_for(
             f"[{e_min:.3f}, {e_max:.3f}] keV"
         )
     e, used = line_energy(spec.symbol.strip(), line=spec.line, beam_kv=beam_kv)
+    if spec.line.upper() not in ("K", "L", "M"):
+        # Label the line the window actually covers (Ag Lα window → "L",
+        # not the principal "K"); only when none is inside it does the row
+        # keep the line the symbol would have used.
+        centre = (lo + hi) / 2
+        inside = [
+            (abs(le - centre), float(le), name)
+            for name in ("K", "L", "M")
+            for le, _ in [line_energy(spec.symbol.strip(), line=name)]
+            if np.isfinite(le) and lo <= le <= hi
+        ]
+        if inside:
+            _, e, used = min(inside)
     return (float(e), used, (lo, hi)), None
 
 

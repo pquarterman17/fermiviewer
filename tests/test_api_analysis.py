@@ -231,3 +231,36 @@ def test_analysis_errors(client, pattern_id) -> None:
     assert client.post("/api/eels/map", json={
         "image_id": pattern_id, "signal_window": [1, 2],
     }).status_code == 400
+
+
+def test_eds_quantify_picks_the_line_the_file_beam_excites(client, tmp_path) -> None:
+    """A 20 kV SEM map: Ag K (22.1 keV) is not excited, so Quantify must use
+    Ag L like Maps does. It took the K line unconditionally and reported a
+    strong Ag peak as 0 at%."""
+    ny, nx, ne = 3, 4, 2048
+    e = np.arange(ne) * 0.02                     # 0–40.9 keV: K and L in range
+    peaks = sum(
+        a * np.exp(-((e - c) ** 2) / (2 * 0.05**2))
+        for a, c in ((80, 1.4865), (60, 2.9843))  # Al Kα, Ag Lα
+    )
+    spec = (1.0 + peaks).astype(np.float32)
+    f = write_mini_dm4(
+        tmp_path / "sem.dm4", dims=[nx, ny, ne],
+        data=np.repeat(spec, ny * nx), data_type=2,
+        cal=[
+            {"scale": 1, "origin": 0, "units": "nm"},
+            {"scale": 1, "origin": 0, "units": "nm"},
+            {"scale": 0.02, "origin": 0, "units": "keV"},
+        ],
+    )
+    cube_id = _open(client, f)
+    store.get(cube_id).metadata["sem_params"] = {"voltage_kV": 20.0}
+    r = client.post("/api/eds/quantify", json={
+        "image_id": cube_id, "elements": ["Al", "Ag"],
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["lines"] == ["K", "L"]
+    assert body["mean_atomic_pct"][1] > 10
+    assert body["calibration"]["beam_kv"]["origin"] == "file"
+    assert body["calibration"]["beam_kv"]["value"] == 20.0

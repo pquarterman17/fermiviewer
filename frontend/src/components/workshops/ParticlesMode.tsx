@@ -17,6 +17,7 @@ import {
   pickParticleMetricValues,
   type ParticleMetric,
 } from "../../lib/populationHistogram";
+import { particlesTable } from "../../lib/particlesTable";
 import { refreshPersistedResults } from "../../lib/persistedResultActions";
 import { useViewer } from "../../store/viewer";
 import { useResultWorkflow } from "../../store/resultWorkflow";
@@ -190,31 +191,7 @@ export default function ParticlesMode({ id }: { id: string }) {
         setUnit(res.unit);
         setRunParams(params);
         if (res.result) void refreshPersistedResults();
-        useResults.getState().show({
-          title: `Particles (${res.n_particles}) — ${res.unit}`,
-          columns: [
-            "id",
-            "area",
-            "equiv ⌀",
-            "mean I",
-            "cx",
-            "cy",
-            "circ.",
-            "AR",
-            "class",
-          ],
-          rows: res.particles.map((p) => [
-            p.id,
-            p.area,
-            Number(p.equiv_diameter.toPrecision(4)),
-            Number(p.mean_intensity.toPrecision(4)),
-            Number(p.centroid[0].toFixed(1)),
-            Number(p.centroid[1].toFixed(1)),
-            Number(p.circularity.toFixed(2)),
-            p.aspect_ratio == null ? null : Number(p.aspect_ratio.toFixed(2)),
-            p.shape_class,
-          ]),
-        });
+        useResults.getState().show(particlesTable(res.particles, res.unit));
       })
       .catch((e: Error) => setStatus(`particles: ${e.message}`))
       .finally(() => setBusy(false));

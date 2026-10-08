@@ -74,6 +74,10 @@ def _is_number(tok: str) -> bool:
         return False
 
 
+#: EMSA #SIGNALTYPE values with a FermiViewer modality
+_SIGNAL_TYPES = {"EDS": "EDS", "ELS": "EELS", "EELS": "EELS"}
+
+
 def _header_float(header: dict[str, str], key: str) -> float:
     try:
         return float(header[key])
@@ -119,6 +123,12 @@ def load_msa(path: str | Path) -> DataStruct:
         "y_units": header.get("YUNITS", ""),
         "msa_header": header,
     }
+    # #SIGNALTYPE is the file's own statement of the spectroscopy; the nested
+    # msa_header never reaches the client, so surface it where the modality
+    # classifier looks (EMSA spells EELS "ELS").
+    signal = _SIGNAL_TYPES.get(header.get("SIGNALTYPE", "").strip().upper())
+    if signal:
+        metadata["signal_type"] = signal
     return DataStruct(
         data=counts, kind=DataKind.SPECTRUM, axes=(cal,), metadata=metadata
     )

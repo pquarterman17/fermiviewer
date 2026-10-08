@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { MENUBAR, TOOL_WINDOW_BASE } from "../../styles/zLayers";
 import ResultsWindow, { RESULTS_PAGE_SIZE, useResults } from "./ResultsWindow";
 
 afterEach(() => useResults.getState().close());
@@ -30,5 +31,15 @@ describe("ResultsWindow pagination", () => {
     useResults.getState().show({ title: "Empty", columns: ["id"], rows: [] });
     render(<ResultsWindow />);
     expect(screen.getByText("0 rows · showing 0–0")).toBeInTheDocument();
+  });
+});
+
+describe("ResultsWindow stacking", () => {
+  it("stays in the tool-window layer, under the menubar", () => {
+    useResults.getState().show({ title: "Grains", columns: ["id"], rows: [] });
+    const { container } = render(<ResultsWindow />);
+    const z = Number((container.firstChild as HTMLElement).style.zIndex);
+    expect(z).toBeGreaterThanOrEqual(TOOL_WINDOW_BASE);
+    expect(z).toBeLessThan(MENUBAR);
   });
 });

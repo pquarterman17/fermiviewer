@@ -255,6 +255,26 @@ class TestSimulate:
         assert body["image"]["kind"] == "image"
         sim_id = body["image"]["id"]
         assert client.get(f"/api/image/{sim_id}/render").status_code == 200
+        # it carries the geometry it was simulated with, for Index to default to
+        meta = body["image"]["meta"]
+        assert meta["camera_length_mm"] == 200.0
+        assert meta["detector_pixel_size_mm"] == 0.05
+        assert meta["beam_kv"] == 200.0
+
+    def test_index_warns_on_an_uncalibrated_pattern(self, client, tmp_path):
+        """No camera length, no reciprocal calibration, pixel size 1: the
+        ranking is meaningless and must say so; a calibrated run must not."""
+        dp_id = _open_image(client, tmp_path, np.zeros((64, 64), dtype=np.float32))
+        spots = [[33.0, 45.0], [45.0, 33.0]]
+        bare = client.post("/api/diffraction/index", json={
+            "image_id": dp_id, "spots": spots,
+        }).json()
+        assert len(bare["warnings"]) == 1 and "uncalibrated" in bare["warnings"][0]
+        calibrated = client.post("/api/diffraction/index", json={
+            "image_id": dp_id, "spots": spots,
+            "pixel_size_mm": 0.05, "camera_length_mm": 200.0,
+        }).json()
+        assert calibrated["warnings"] == []
 
     def test_unknown_phase_422(self, client):
         r = client.post("/api/analyze/simulate", json={

@@ -18,9 +18,9 @@ from fermiviewer.calc.raster import (
 from fermiviewer.calc.render import histogram, to_display, to_uint16_norm
 from fermiviewer.calc.thumbnail import display_png
 from fermiviewer.datastruct import SPECTRAL_KINDS, DataKind, DataStruct
-from fermiviewer.io.registry import UnsupportedFormatError, load_auto, supported_extensions
+from fermiviewer.io.registry import supported_extensions
 from fermiviewer.models import FourDMeta, ImageMeta, OpenRequest
-from fermiviewer.routes._open_paths import open_paths_as_metas
+from fermiviewer.routes._open_paths import open_paths_as_metas, open_uploaded_file
 from fermiviewer.routes._paths import checked_data_path, checked_data_paths
 from fermiviewer.routes._spectrum_scope import scoped_spectrum
 from fermiviewer.session import UnknownImageError, store
@@ -65,17 +65,20 @@ def session_open(req: OpenRequest) -> list[ImageMeta | FourDMeta]:
 
 
 @router.post("/session/upload")
-async def session_upload(files: list[UploadFile]) -> list[ImageMeta]:
+async def session_upload(
+    files: list[UploadFile],
+) -> list[ImageMeta | FourDMeta]:
     """Open files sent by the browser's native picker.
 
     The SPA can't hand the server a filesystem path, so the picker
     uploads bytes (a memcpy on localhost); each file is staged to a
     temp file under its original name so extension dispatch and
-    content sniffers behave exactly like /session/open.
+    content sniffers behave exactly like /session/open — including the
+    4D-STEM split (`_open_paths.open_uploaded_file`).
     """
     if not files:
         raise HTTPException(422, "no files in upload")
-    metas: list[ImageMeta] = []
+    metas: list[ImageMeta | FourDMeta] = []
     with tempfile.TemporaryDirectory(prefix="fv_upload_") as tmp:
         for up in files:
             name = Path(up.filename or "upload").name  # strip any path
@@ -96,23 +99,7 @@ async def session_upload(files: list[UploadFile]) -> list[ImageMeta]:
                             f"{_MAX_UPLOAD_BYTES >> 30} GiB upload limit",
                         )
                     out.write(chunk)
-            try:
-                ds = load_auto(staged)
-            except UnsupportedFormatError as e:
-                raise HTTPException(415, str(e)) from None
-            except ValueError as e:
-                raise HTTPException(422, f"{name}: {e}") from None
-            # don't leak the vanishing temp path as the source
-            ds.metadata["source"] = name
-            img_id = store.add_parsed(ds, name)
-            from fermiviewer.routes.calibration import (
-                auto_apply_calibration,
-            )
-
-            auto_apply_calibration(img_id, ds)
-            metas.append(
-                ImageMeta.from_datastruct(img_id, name, store.get(img_id))
-            )
+            metas.append(open_uploaded_file(staged, name))
     return metas
 
 

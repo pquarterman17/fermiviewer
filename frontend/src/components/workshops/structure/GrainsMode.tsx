@@ -2,7 +2,7 @@
 // StructureWorkshop.tsx (repo-health #33). Moved verbatim; only imports now
 // point one directory up.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   analyzeGrainsAsync,
@@ -20,7 +20,12 @@ import {
   downloadGrainsOverlayPng,
   grainsToCsv,
 } from "../../../lib/grainsCsv";
-import { buildClassicGrainParams, grainSourceId } from "../../../lib/grainWorkflow";
+import {
+  buildClassicGrainParams,
+  grainParamError,
+  grainResultsTable,
+  grainSourceId,
+} from "../../../lib/grainWorkflow";
 import { assessGrainQuality } from "../../../lib/analysisQuality";
 import { pickSizeValues } from "../../../lib/populationHistogram";
 import { useAnalysisRoi } from "../../../hooks/useAnalysisRoi";
@@ -32,7 +37,11 @@ import { useViewer } from "../../../store/viewer";
 import { useResults } from "../../overlays/ResultsWindow";
 import PopulationHistogram from "../../analysis/PopulationHistogram";
 import AnalysisRegionSelect from "../AnalysisRegionSelect";
-import { AnalysisQualityCard, GrainMetrics } from "../AnalysisQualityCard";
+import {
+  AnalysisQualityCard,
+  GrainMetrics,
+  grainMeanDiameter,
+} from "../AnalysisQualityCard";
 import Preview from "../StructurePreview";
 import { TrainedGrainControls } from "./TrainedGrainControls";
 
@@ -105,6 +114,7 @@ export function GrainsMode({ id }: { id: string }) {
   const [classifier, setClassifier] = useState<"softmax" | "forest">("forest");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
+  const abortRef = useRef<AbortController | null>(null);
   const [labelsId, setLabelsId] = useState<string | null>(savedGrains?.result.labels.id ?? null);
   const [grainResult, setGrainResult] = useState<GrainResult | null>(savedGrains?.result ?? null);
   const [note, setNote] = useState("");
@@ -250,16 +260,7 @@ export function GrainsMode({ id }: { id: string }) {
         recordCrossSectionGrains(sourceId, analysisRoi.label, analysisRoi.roi, Number(minArea) || 25, r);
         setStatus(`trained grains: ${r.n_grains} grains`);
         setNote("click a grain then another to merge · right-click to split");
-        useResults.getState().show({
-          title: `Grains (${r.n_grains}) · trained`,
-          columns: ["#", "area (px)", "perim (px)", "ecc."],
-          rows: r.areas_px.map((a, i) => [
-            i + 1,
-            Math.round(a),
-            Math.round(r.perimeters_px[i] ?? 0),
-            (r.eccentricity[i] ?? 0).toFixed(2),
-          ]),
-        });
+        useResults.getState().show(grainResultsTable(r, "trained"));
       })
       .catch((e: Error) => setStatus(`trained grains: ${e.message}`))
       .finally(() => {
@@ -269,8 +270,19 @@ export function GrainsMode({ id }: { id: string }) {
   };
 
   const run = () => {
+    const invalid = grainParamError(
+      method as Exclude<GrainMethod, "trained">,
+      knobValue,
+      denoise,
+    );
+    if (invalid) {
+      setStatus(`grains: ${invalid}`);
+      return;
+    }
     setBusy(true);
     setProgress("starting…");
+    const abort = new AbortController();
+    abortRef.current = abort;
     const params = buildClassicGrainParams(
       method as Exclude<GrainMethod, "trained">,
       analysisRoi.roi,
@@ -281,6 +293,8 @@ export function GrainsMode({ id }: { id: string }) {
     runJob<GrainResult>(
       () => analyzeGrainsAsync(sourceId, params),
       (f, msg) => setProgress(`${Math.round(f * 100)}% ${msg}`),
+      400,
+      abort.signal,
     )
       .then((r) => {
         ingestDerived([r.labels]);
@@ -292,26 +306,18 @@ export function GrainsMode({ id }: { id: string }) {
         // one-line summary
         const bits = [
           `${r.n_grains} grains`,
-          `mean ⌀ ${r.mean_diameter_px.toFixed(1)} px`,
+          `mean ⌀ ${grainMeanDiameter(r)}`,
         ];
         if (r.astm_grain_size != null)
           bits.push(`ASTM G ${r.astm_grain_size.toFixed(1)}`);
         bits.push(`${r.n_triple_junctions} junctions`);
         setStatus(`grains: ${bits.join(" · ")}`);
         setNote("");
-        useResults.getState().show({
-          title: `Grains (${r.n_grains}) · ${r.method}`,
-          columns: ["#", "area (px)", "perim (px)", "ecc."],
-          rows: r.areas_px.map((a, i) => [
-            i + 1,
-            Math.round(a),
-            Math.round(r.perimeters_px[i] ?? 0),
-            (r.eccentricity[i] ?? 0).toFixed(2),
-          ]),
-        });
+        useResults.getState().show(grainResultsTable(r, r.method));
       })
       .catch((e: Error) => setStatus(`grains: ${e.message}`))
       .finally(() => {
+        abortRef.current = null;
         setBusy(false);
         setProgress("");
       });
@@ -409,6 +415,11 @@ export function GrainsMode({ id }: { id: string }) {
           >
             {busy ? progress || "Segmenting…" : "Identify grains"}
           </button>
+          {busy && abortRef.current && (
+            <button className="fvd-btn" onClick={() => abortRef.current?.abort()}>
+              Cancel
+            </button>
+          )}
         </div>
       )}
       {grainResult && <GrainMetrics r={grainResult} />}

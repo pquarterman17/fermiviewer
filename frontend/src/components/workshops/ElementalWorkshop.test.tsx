@@ -1,12 +1,21 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ImageMeta } from "../../lib/api";
+import type { EdsQuantResult, ImageMeta } from "../../lib/api";
+import type { Species } from "../../lib/spectrum/species";
+import { useSpecies } from "../../store/species";
 import { useViewer } from "../../store/viewer";
 import ElementalWorkshop from "./ElementalWorkshop";
 
 vi.mock("../elemental/MapsTab", () => ({
-  default: () => <div>Maps surface</div>,
+  default: ({ quantBySymbol }: { quantBySymbol?: Record<string, number> }) => (
+    <>
+      <div>Maps surface</div>
+      <span data-testid="maps-quant">
+        {Object.keys(quantBySymbol ?? {}).join(",")}
+      </span>
+    </>
+  ),
 }));
 vi.mock("../elemental/EelsMapsTab", () => ({
   default: () => <div>EELS maps surface</div>,
@@ -15,10 +24,42 @@ vi.mock("./EdsSpectrumImage", () => ({
   default: () => <div>EDS explore surface</div>,
 }));
 vi.mock("./EdsModelFit", () => ({
-  default: () => <div>EDS model-fit surface</div>,
+  default: ({ elements }: { elements: string }) => (
+    <>
+      <div>EDS model-fit surface</div>
+      <span data-testid="model-elements">{elements}</span>
+    </>
+  ),
 }));
 vi.mock("./EdsQuantifyPanel", () => ({
-  default: () => <div>EDS quantify surface</div>,
+  default: ({
+    elements,
+    onElements,
+    onResult,
+  }: {
+    elements: string;
+    onElements: (v: string) => void;
+    onResult: (r: EdsQuantResult | null) => void;
+  }) => (
+    <>
+      <div>EDS quantify surface</div>
+      <input
+        aria-label="quant elements"
+        value={elements}
+        onChange={(e) => onElements(e.target.value)}
+      />
+      <button
+        onClick={() =>
+          onResult({
+            elements: ["Ag"],
+            mean_atomic_pct: [100],
+          } as unknown as EdsQuantResult)
+        }
+      >
+        fake quantify
+      </button>
+    </>
+  ),
 }));
 vi.mock("./EelsWorkshop", () => ({
   default: ({ tab }: { tab: string }) => <div>EELS surface: {tab}</div>,
@@ -50,6 +91,7 @@ function open(meta: ImageMeta) {
 
 beforeEach(() => {
   localStorage.clear();
+  useSpecies.setState({ byImage: {}, quantElementsByImage: {} });
   open(cube());
 });
 
@@ -105,5 +147,57 @@ describe("ElementalWorkshop", () => {
     fireEvent.change(badge, { target: { value: "eels" } });
     // the choice persists against the dataset, not the session
     expect(localStorage.getItem("fv_spectral_modalities")).toContain("eels");
+  });
+
+  it("switches the workspace when the modality dropdown changes", () => {
+    render(<ElementalWorkshop />);
+    expect(screen.getByText("Maps surface")).toBeVisible();
+    fireEvent.change(screen.getByDisplayValue("EDS"), {
+      target: { value: "eels" },
+    });
+    // it used to write localStorage only and leave the EDS surface on screen
+    expect(screen.getByText("EELS maps surface")).toBeVisible();
+    expect(screen.getByDisplayValue("EELS")).toBeVisible();
+  });
+
+  it("fits the identified species, not a hardcoded Fe/O, and keeps edits per image", () => {
+    useSpecies.setState({
+      byImage: {
+        cube: [
+          { id: "a", symbol: "Al" },
+          { id: "b", symbol: "Ag" },
+          { id: "c", symbol: "Ag" },
+        ] as unknown as Species[],
+      },
+    });
+    const first = render(<ElementalWorkshop />);
+    fireEvent.click(screen.getByRole("tab", { name: "Model fit" }));
+    expect(screen.getByTestId("model-elements")).toHaveTextContent(/^Al, Ag$/);
+    fireEvent.click(screen.getByRole("tab", { name: "Quantify" }));
+    fireEvent.change(screen.getByLabelText("quant elements"), {
+      target: { value: "Al, Ag, O" },
+    });
+    first.unmount();
+    // closing and reopening the workspace keeps the list
+    render(<ElementalWorkshop />);
+    fireEvent.click(screen.getByRole("tab", { name: "Model fit" }));
+    expect(screen.getByTestId("model-elements")).toHaveTextContent("Al, Ag, O");
+  });
+
+  it("does not carry a Quantify result over to another image", () => {
+    render(<ElementalWorkshop />);
+    fireEvent.click(screen.getByRole("tab", { name: "Quantify" }));
+    fireEvent.click(screen.getByText("fake quantify"));
+    fireEvent.click(screen.getByRole("tab", { name: "Maps" }));
+    expect(screen.getByTestId("maps-quant")).toHaveTextContent("Ag");
+    act(() => {
+      const other = cube({ id: "other", name: "other.bcf" });
+      useViewer.setState((s) => ({
+        images: { ...s.images, other },
+        order: [...s.order, "other"],
+        activeId: "other",
+      }));
+    });
+    expect(screen.getByTestId("maps-quant")).toHaveTextContent(/^$/);
   });
 });

@@ -380,7 +380,13 @@ def index_spots(
             return np.inf
         return float(np.mean(np.abs(c.matched_d - c.ref_d) / c.ref_d))
 
-    cands.sort(key=lambda c: (-c.score, mean_err(c)))
+    # Ties are common (each spot matches its nearest ring independently, so
+    # several phases reach 1.0): among equal scores a candidate whose matches
+    # share a zone axis outranks one whose hkls fit no single zone (shown
+    # as an empty "[ ]"), then the smaller mean d-error wins.
+    cands.sort(
+        key=lambda c: (-c.score, bool(np.isnan(c.zone_axis[0])), mean_err(c))
+    )
     return cands[: min(top_n, len(cands))]
 
 

@@ -105,8 +105,13 @@ def test_roughness_lattice_interface(client, lattice_id) -> None:
         json={"image_id": lattice_id, "level": "quadratic"},
     )
     body = r.json()
-    assert body["Ra"] > 0 and body["unit"] == "nm"
+    # heights are intensities here: the lateral "nm" must not label them
+    assert body["Ra"] > 0 and body["unit"] == "a.u."
     assert body["level"] == "quadratic"
+    store.get(lattice_id).metadata["value_unit"] = "nm"  # a height map
+    assert client.post(
+        "/api/analyze/roughness", json={"image_id": lattice_id},
+    ).json()["unit"] == "nm"
     assert body["roi"] is None
     assert len(body["bearing_fraction"]) == len(body["bearing_heights"])
     assert 1 < len(body["bearing_fraction"]) <= 512

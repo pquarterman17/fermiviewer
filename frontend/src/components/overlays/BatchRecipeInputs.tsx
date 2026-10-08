@@ -14,10 +14,25 @@ export interface RecipeStep extends BatchRecipeStep {
   inputSchemas: BatchInputSchema[];
 }
 
+/** How to type a list-shaped param, e.g. "list of [row, col] rows, as
+ *  [[12, 40], [30, 8]]" — the field used to open pre-filled with a bare
+ *  "[]" and the hint "JSON list", which told a user nothing. */
+function listHint(shape: NonNullable<BatchOperation["params"][number]["shape"]>): string {
+  if (shape.kind === "records") {
+    const names = shape.fields.map((f) => f.name).join(", ");
+    return `list of {${names}} entries as JSON; leave empty for none`;
+  }
+  const cols = shape.columns.length ? shape.columns.join(", ") : "values";
+  const example = shape.columns.length
+    ? `[[${shape.columns.map((_, i) => i + 1).join(", ")}]]`
+    : "[[1, 2]]";
+  return `list of [${cols}] rows, e.g. ${example}; leave empty for none`;
+}
+
 export function paramFields(operation: BatchOperation): ParamField[] {
   return operation.params.map((param) => {
     const fallback = param.shape
-      ? []
+      ? ""
       : param.default ?? (param.type === "bool" ? false : param.type === "str" ? "" : 0);
     if (param.choices) {
       return {
@@ -39,10 +54,10 @@ export function paramFields(operation: BatchOperation): ParamField[] {
           : param.type === "str"
             ? "text"
             : "number",
-      default: (param.shape ? JSON.stringify(fallback) : fallback) as number | string | boolean,
+      default: fallback as number | string | boolean,
       hint: [
         param.doc,
-        param.shape ? "JSON list" : "",
+        param.shape ? listHint(param.shape) : "",
         param.minimum != null ? `min ${param.minimum}` : "",
         param.maximum != null ? `max ${param.maximum}` : "",
       ].filter(Boolean).join(" · "),
@@ -57,6 +72,10 @@ export function parsedParams(
   const result = { ...values };
   for (const schema of operation.params) {
     if (!schema.shape || typeof result[schema.name] !== "string") continue;
+    if ((result[schema.name] as string).trim() === "") {
+      result[schema.name] = [];
+      continue;
+    }
     try {
       const parsed: unknown = JSON.parse(result[schema.name] as string);
       if (!Array.isArray(parsed)) throw new Error();

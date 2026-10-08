@@ -214,12 +214,45 @@ describe("EdsSpectrumImage", () => {
     // being re-centred on the species' anchor (see the locked-commit test).
     fireEvent.click(screen.getByRole("checkbox", { name: /Lock to line/ }));
     const loInput = screen.getByTitle(/Energy window low/);
+    const windowOf = () =>
+      useSpecies.getState().byImage[meta.id]!.find((s) => s.id === fe.id)!
+        .windows.signal;
+    const before = windowOf();
+    // a draft: intermediate keystrokes ("6.", "6.2") neither reformat the
+    // field nor touch the window until the edit is committed
+    fireEvent.focus(loInput);
+    fireEvent.change(loInput, { target: { value: "6." } });
+    expect(windowOf()).toEqual(before);
     fireEvent.change(loInput, { target: { value: "6.2" } });
+    fireEvent.keyDown(loInput, { key: "Enter" });
 
-    const after = useSpecies
-      .getState()
-      .byImage[meta.id]!.find((s) => s.id === fe.id)!.windows.signal;
-    expect(after.lo).toBeCloseTo(6.2, 6);
+    expect(windowOf().lo).toBeCloseTo(6.2, 6);
+  });
+
+  it("clamps a typed window to the spectrum's energy range", async () => {
+    const meta = openCube();
+    const fe = edsSpecies("Fe", "K", 6.404);
+    useSpecies.getState().addSpecies(meta.id, fe);
+    useSpecies.getState().selectSpecies(meta.id, fe.id);
+
+    render(<EdsSpectrumImage />);
+    await screen.findByTestId("spectrum-plot");
+    fireEvent.click(screen.getByRole("checkbox", { name: /Lock to line/ }));
+
+    const hiInput = screen.getByTitle(/Energy window high/);
+    fireEvent.focus(hiInput);
+    fireEvent.change(hiInput, { target: { value: "190000000" } });
+    fireEvent.blur(hiInput);
+    const loInput = screen.getByTitle(/Energy window low/);
+    fireEvent.focus(loInput);
+    fireEvent.change(loInput, { target: { value: "-190000000" } });
+    fireEvent.blur(loInput);
+
+    const w = useSpecies.getState().byImage[meta.id]!.find((s) => s.id === fe.id)!
+      .windows.signal;
+    expect(w.lo).toBeGreaterThanOrEqual(0);
+    expect(w.hi).toBeLessThan(1000);
+    expect(w.lo).toBeLessThan(w.hi);
   });
 
   it("a width preset commits through the store", async () => {
