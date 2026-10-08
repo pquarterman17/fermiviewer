@@ -35,6 +35,8 @@ export default function ColorbarChip() {
   );
   const raster = useStageInfo((s) => s.raster);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // the canvas only mounts once a raster exists — redraw when it appears
+  const hasRaster = raster != null;
 
   useEffect(() => {
     const cv = canvasRef.current;
@@ -42,12 +44,18 @@ export default function ColorbarChip() {
     const ctx = cv.getContext("2d");
     if (!ctx) return;
     const lut = buildLut(display.cmap as Parameters<typeof buildLut>[0]);
-    const img = ctx.createImageData(W, LUT_H);
-    for (let y = 0; y < LUT_H; y++) {
-      // y=0 is the top → highest value → LUT max
-      const o4 = Math.round(((LUT_H - 1 - y) / (LUT_H - 1)) * 255) * 4;
-      for (let x = 0; x < W; x++) {
-        const o = (y * W + x) * 4;
+    // the bottom strip's canvas is LUT_H × W (left = lo); it used to get
+    // the vertical W × LUT_H gradient, which filled only a 14 px sliver
+    const horiz = side === "bottom";
+    const cw = horiz ? LUT_H : W;
+    const ch = horiz ? W : LUT_H;
+    const img = ctx.createImageData(cw, ch);
+    for (let y = 0; y < ch; y++) {
+      for (let x = 0; x < cw; x++) {
+        // vertical: y=0 is the top → highest value → LUT max
+        const t = horiz ? x / (LUT_H - 1) : (LUT_H - 1 - y) / (LUT_H - 1);
+        const o4 = Math.round(t * 255) * 4;
+        const o = (y * cw + x) * 4;
         img.data[o] = lut[o4];
         img.data[o + 1] = lut[o4 + 1];
         img.data[o + 2] = lut[o4 + 2];
@@ -55,7 +63,7 @@ export default function ColorbarChip() {
       }
     }
     ctx.putImageData(img, 0, 0);
-  }, [show, display.cmap]);
+  }, [show, display.cmap, side, hasRaster]);
 
   if (!show || !raster) return null;
   // a discrete grain/label map has no continuous value scale → no colorbar
