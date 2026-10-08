@@ -25,7 +25,7 @@ import {
   type FolderRootInfo,
   type ImportSummary,
 } from "./folderImport";
-import { supportedExtensions, uploadFiles, type ImageMeta } from "./api";
+import { supportedExtensions, uploadFiles, type FourDMeta, type ImageMeta } from "./api";
 import type { FolderGroupResult } from "./api/folders";
 
 // Mirrors io/folder_scan.py's `_MAX_FILES`. Nothing to literally share
@@ -224,7 +224,7 @@ async function walkDroppedFolders(
  *  so a running offset by group size is enough. */
 function rechunk(
   groups: WalkedGroup[],
-  metas: ImageMeta[],
+  metas: (ImageMeta | FourDMeta)[],
 ): FolderGroupResult[] {
   const out: FolderGroupResult[] = [];
   let i = 0;

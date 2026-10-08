@@ -338,6 +338,26 @@ def test_session_open_routes_mib_to_fourd_store(client: TestClient, tmp_path: Pa
     assert len(client.get("/api/fourd").json()) == 1
 
 
+def test_session_upload_routes_mib_to_fourd_store(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """File > Open uploads bytes; a 4D file must take the same FourD route
+    as /session/open (it used to 422 out of the 3D pipeline) and stay
+    readable after the request's staging dir is gone."""
+    mib_path = _write_minimal_mib(tmp_path / "up.mib")
+    with mib_path.open("rb") as f:
+        r = client.post(
+            "/api/session/upload",
+            files=[("files", ("up.mib", f, "application/octet-stream"))],
+        )
+    assert r.status_code == 200, r.text
+    metas = r.json()
+    assert len(metas) == 1 and metas[0]["is_fourd"] is True
+    assert client.get("/api/session/images").json() == []
+    fourd_id = metas[0]["id"]
+    assert client.get(f"/api/fourd/{fourd_id}/mean-pattern").status_code == 200
+
+
 def test_session_open_mixed_normal_and_fourd(client: TestClient, tmp_path: Path) -> None:
     from fixtures.minidm4 import write_mini_dm4
 
