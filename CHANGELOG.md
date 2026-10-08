@@ -13,6 +13,50 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-10-08
+
+### Changed
+- **Labels default to 40 px.** Measurement label sizes are rescaled to XS 20 /
+  S 26 / M 32 / L 40 / XL 52 / XXL 64, with L still the default. The
+  scale-bar label, montage tile labels and colorbar tick labels also default
+  to 40 px.
+- **Font limits.** The scale-bar font is capped at 120 px (Scale Bar card,
+  Preferences and export), and montage label fonts now accept 6–200 px.
+- **Export matches the screen.** When an image has no override of its own,
+  export uses the scale-bar font size from Preferences.
+- **Large spectrum images no longer run out of memory.** ZLP alignment,
+  sub-pixel alignment and SVD run in bounded memory on large cubes; they
+  used to fail with MemoryError or get the backend killed. Above about
+  512 MB they process the cube in blocks: slower, and the SVD-denoised
+  result is stored in 32-bit floats. Smaller cubes give exactly the same
+  results as before. The thickness map no longer copies the whole cube.
+
+### Fixed
+- **Preferences crash.** Choosing magma, plasma or cividis as the default
+  colormap blanked the whole app on the next image open; those colormaps
+  were never implemented. All saved preferences are now checked when
+  loaded, so a stale or corrupt value falls back to a safe default instead
+  of crashing.
+- **Error screen instead of a blank window.** An error while drawing the
+  interface now shows a message with Try again / Reload.
+- **Grains panel** no longer crashes when reopened after merging or
+  splitting grains.
+- **Grains "Superpixel" method** no longer fails on noisy images.
+- **ROI statistics** no longer fail on integer images (e.g. int32 DM3).
+- **Edge cases that used to fail with a server error:**
+  - azimuthal integration on images 1 px wide
+  - atom fitting near NaN or infinite pixels
+  - CLAHE and defect counting on images with blank pixels
+  - tilted distance measured on a spectrum
+- **Readable errors.** Export errors now show the actual reason instead of
+  "[object Object]".
+- **Bad saved settings and values.** Measurement overlay settings and
+  scale-bar fonts from older sessions are validated, and menu number fields
+  (figure panel, montage, GIF, sinogram, export width) stay within the
+  ranges the server accepts.
+- **Picometre calibration** now works with measurement unit conversion.
+- **GIF export** only offers colormaps the server supports.
+
 ## [0.6.1] - 2026-09-20
 
 ### Security
