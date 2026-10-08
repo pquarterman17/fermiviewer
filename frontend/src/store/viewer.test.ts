@@ -860,6 +860,18 @@ describe("compare flicker rate + A/B pair (audit #15)", () => {
     expect(useViewer.getState().compareAB).toBeNull();
   });
 
+  it("startCompare leaves out 1-D spectra and says so", () => {
+    const s = useViewer.getState();
+    s.ingest([meta("a"), meta("b"), meta("sp", { kind: "spectrum" })]);
+    s.startCompare(["a", "sp", "b"]);
+    expect(useViewer.getState().compareSet).toEqual(["a", "b"]);
+    expect(useViewer.getState().status).toMatch(/1 spectrum left out/);
+    useViewer.getState().exitCompare();
+    s.startCompare(["a", "sp"]);
+    expect(useViewer.getState().compareSet).toBeNull();
+    expect(useViewer.getState().status).toMatch(/needs 2 images/);
+  });
+
   it("exitCompare clears both compareSet and compareAB", () => {
     const s = useViewer.getState();
     s.ingest([meta("a"), meta("b")]);
