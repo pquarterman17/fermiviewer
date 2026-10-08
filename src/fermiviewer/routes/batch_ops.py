@@ -23,6 +23,7 @@ from fermiviewer.recipe_regions import (
     substitute_region_refs,
 )
 from fermiviewer.region_resolve import _resolve_reference
+from fermiviewer.routes._user_text import user_doc, user_summary
 from fermiviewer.session import UnknownImageError, store
 
 router = APIRouter(prefix="/api")
@@ -99,7 +100,7 @@ def _param_schema(name: str, param: ops.OpParam) -> dict[str, Any]:
         "exclusive_minimum": param.exclusive_minimum,
         "exclusive_maximum": param.exclusive_maximum,
         "choices": list(param.choices) if param.choices is not None else None,
-        "doc": param.doc,
+        "doc": user_doc(param.doc),
     }
     # A list-shaped param (ADR 0005 §9) carries its row/record structure so a
     # palette can build the right editor instead of guessing from "list".
@@ -145,7 +146,7 @@ def _input_schema(name: str, spec: ops.OpInput) -> dict[str, Any]:
         "min_count": spec.min_count if spec.variadic else None,
         "max_count": spec.max_count if spec.variadic else None,
         "kinds": [k.value for k in spec.kinds] if spec.kinds is not None else None,
-        "doc": spec.doc,
+        "doc": user_doc(spec.doc),
     }
 
 
@@ -158,7 +159,7 @@ def batch_operations() -> dict[str, Any]:
             {
                 "name": spec.name,
                 "category": spec.category,
-                "summary": spec.summary,
+                "summary": user_summary(spec.summary),
                 "produces": "analysis"
                 if ops.produces_value_result(spec)
                 else "image",
