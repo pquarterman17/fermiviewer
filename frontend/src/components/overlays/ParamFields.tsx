@@ -28,8 +28,11 @@ export function ParamFieldRow({
           value={String(value ?? "")}
           onChange={(e) => onChange(e.target.value)}
           onBlur={(e) => {
-            const n = Number(e.target.value);
-            onChange(Number.isFinite(n) ? n : (f.default as number));
+            // normalise a valid number; leave anything else as typed so the
+            // caller's validation can say what's wrong (no silent default)
+            const t = e.target.value.trim();
+            const n = Number(t);
+            if (t !== "" && Number.isFinite(n)) onChange(n);
           }}
         />
       )}

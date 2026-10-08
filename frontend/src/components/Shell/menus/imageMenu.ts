@@ -288,7 +288,8 @@ export function buildImageMenu(ctx: MenuCtx): Entry[] {
       action: () => {
         void (async () => {
           const v = await askParams("Calibrate Pixel Size", [
-            num("px", "Pixel size", 1),
+            num("px", "Pixel size", 1, undefined,
+                { positive: true, max: 1e9 }),
             {
               key: "unit",
               label: "Unit",

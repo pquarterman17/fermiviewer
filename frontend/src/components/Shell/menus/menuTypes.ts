@@ -15,7 +15,7 @@ export const num = (
   label: string,
   dflt: number,
   hint?: string,
-  bounds?: Pick<ParamField, "min" | "max" | "int">,
+  bounds?: Pick<ParamField, "min" | "max" | "int" | "positive">,
 ): ParamField => ({ key, label, type: "number", default: dflt, hint, ...bounds });
 
 // narrow selector: only the fields the menu STRUCTURE reads (labels,

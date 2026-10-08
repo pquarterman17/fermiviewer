@@ -129,7 +129,8 @@ export default function MenuBar({
         return;
       }
       const v = await askParams(`Calibrate (measured ${lenPx.toFixed(1)} px)`, [
-        num("len", "Known physical length", 1),
+        num("len", "Known physical length", 1, undefined,
+            { positive: true, max: 1e9 }),
         {
           key: "unit",
           label: "Unit",
