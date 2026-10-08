@@ -42,6 +42,102 @@ def _scaled_axes(ds: DataStruct, factor_r: float, factor_c: float) -> tuple:
     return (scaled(ds.axes[0], factor_r), scaled(ds.axes[1], factor_c))
 
 
+# Upper bounds for filter params that size an allocation. Beyond these the
+# result is meaningless anyway (a blur wider than the image is flat; a
+# structuring element past ~100 px makes binary morphology take minutes), and
+# huge values (1e9) used to surface as a 500 from numpy's allocator.
+_MAX_MORPH_RADIUS = 100
+_MAX_CLAHE_BINS = 65536
+_MAX_BUTTERWORTH_ORDER = 10
+
+
+def _num(p: dict[str, Any], key: str, default: float, label: str, *,
+         lo: float | None = None, hi: float | None = None,
+         positive: bool = False, integer: bool = False) -> float:
+    """Read a numeric filter param, raising ValueError (→ 422) with a
+    user-facing message instead of letting numpy fail on it."""
+    raw = p.get(key, default)
+    try:
+        v = float(raw)
+    except (TypeError, ValueError):
+        raise ValueError(f"{label} must be a number (got {raw!r})") from None
+    if not np.isfinite(v):
+        raise ValueError(f"{label} must be a finite number")
+    if integer and v != int(v):
+        raise ValueError(f"{label} must be a whole number")
+    if positive and v <= 0:
+        raise ValueError(f"{label} must be greater than 0")
+    if lo is not None and v < lo:
+        raise ValueError(f"{label} must be at least {lo:g}")
+    if hi is not None and v > hi:
+        raise ValueError(f"{label} must be at most {hi:g}")
+    return v
+
+
+def _sigma(d: np.ndarray, p: dict[str, Any], default: float) -> float:
+    """Blur sigma: > 0 and no wider than the image."""
+    return _num(p, "sigma", default, "sigma (px)", positive=True,
+                hi=float(max(d.shape)))
+
+
+def _gaussian(d: np.ndarray, p: dict[str, Any]) -> np.ndarray:
+    return filters.apply_gaussian(d, sigma=_sigma(d, p, 1.0))
+
+
+def _unsharp(d: np.ndarray, p: dict[str, Any]) -> np.ndarray:
+    return filters.unsharp_mask(
+        d, sigma=_sigma(d, p, 2.0),
+        amount=_num(p, "amount", 1.0, "amount", lo=0.0),
+    )
+
+
+def _butterworth(d: np.ndarray, p: dict[str, Any]) -> np.ndarray:
+    return filters.butterworth_filter(
+        d,
+        low_cutoff=_num(p, "low_cutoff", 0.0, "low cutoff"),
+        high_cutoff=_num(p, "high_cutoff", 0.5, "high cutoff"),
+        order=int(_num(p, "order", 2, "order", integer=True, lo=1,
+                       hi=_MAX_BUTTERWORTH_ORDER)),
+    )
+
+
+def _clahe(d: np.ndarray, p: dict[str, Any]) -> np.ndarray:
+    tiles = p.get("tile_size", (8, 8))
+    if not isinstance(tiles, (list, tuple)) or len(tiles) != 2:
+        raise ValueError("tile size must be a pair of whole numbers")
+    tile_size = tuple(
+        int(_num({"t": t}, "t", 8, "tile count", integer=True, lo=1, hi=float(n)))
+        for t, n in zip(tiles, d.shape, strict=True)
+    )
+    return filters.clahe(
+        d,
+        tile_size=tile_size,  # type: ignore[arg-type]
+        clip_limit=_num(p, "clip_limit", 0.01, "clip limit", lo=0.0, hi=1.0),
+        num_bins=int(_num(p, "num_bins", 256, "bins", integer=True, lo=2,
+                          hi=_MAX_CLAHE_BINS)),
+    )
+
+
+def _bin(d: np.ndarray, p: dict[str, Any]) -> np.ndarray:
+    return filters.bin_image(
+        d,
+        bin_size=int(_num(p, "bin_size", 2, "bin size", integer=True, lo=1,
+                          hi=float(min(d.shape)))),
+        mode=str(p.get("mode", "average")),
+    )
+
+
+def _morph(d: np.ndarray, p: dict[str, Any]) -> np.ndarray:
+    radius = int(_num(p, "radius", 1, "radius (px)", integer=True, lo=1,
+                      hi=_MAX_MORPH_RADIUS))
+    return morph_op(
+        d > d.mean(),
+        operation=str(p.get("operation", "open")),
+        radius=radius,
+        shape=str(p.get("shape", "square")),
+    ).astype(float)
+
+
 def _crop(d: np.ndarray, p: dict[str, Any]) -> np.ndarray:
     """Crop to a 1-based inclusive (row0, col0)–(row1, col1) rect
     (MATLAB convention, matching the measure endpoints)."""
@@ -61,7 +157,7 @@ def _rotate_arbitrary(d: np.ndarray, p: dict[str, Any]) -> np.ndarray:
     the calibration scale is unchanged."""
     from scipy.ndimage import rotate as _ndrot
 
-    angle = float(p.get("angle", 0.0))
+    angle = _num(p, "angle", 0.0, "angle")
     out: np.ndarray = _ndrot(d, angle, reshape=False, order=1, mode="nearest")
     return out
 
@@ -69,26 +165,12 @@ def _rotate_arbitrary(d: np.ndarray, p: dict[str, Any]) -> np.ndarray:
 # kind → (callable, resamples?) — dispatch table, never eval
 _FILTERS: dict[str, Callable[[np.ndarray, dict[str, Any]], np.ndarray]] = {
     "rotate": _rotate_arbitrary,
-    "gaussian": lambda d, p: filters.apply_gaussian(d, sigma=float(p.get("sigma", 1.0))),
+    "gaussian": _gaussian,
     "median": lambda d, p: filters.apply_median(d, window_size=int(p.get("window_size", 3))),
-    "unsharp": lambda d, p: filters.unsharp_mask(
-        d, sigma=float(p.get("sigma", 2.0)), amount=float(p.get("amount", 1.0))
-    ),
-    "butterworth": lambda d, p: filters.butterworth_filter(
-        d,
-        low_cutoff=float(p.get("low_cutoff", 0.0)),
-        high_cutoff=float(p.get("high_cutoff", 0.5)),
-        order=int(p.get("order", 2)),
-    ),
-    "clahe": lambda d, p: filters.clahe(
-        d,
-        tile_size=tuple(p.get("tile_size", (8, 8))),
-        clip_limit=float(p.get("clip_limit", 0.01)),
-        num_bins=int(p.get("num_bins", 256)),
-    ),
-    "bin": lambda d, p: filters.bin_image(
-        d, bin_size=int(p.get("bin_size", 2)), mode=str(p.get("mode", "average"))
-    ),
+    "unsharp": _unsharp,
+    "butterworth": _butterworth,
+    "clahe": _clahe,
+    "bin": _bin,
     "plane_level": lambda d, p: filters.plane_level(d, order=int(p.get("order", 1))).leveled,
     # geometric ops (stage toolbar): np.rot90 k>0 is CCW, so CW = k=-1
     "rotate90": lambda d, p: np.rot90(d, k=-1),  # 90° clockwise
@@ -100,12 +182,7 @@ _FILTERS: dict[str, Callable[[np.ndarray, dict[str, Any]], np.ndarray]] = {
     # segmentation dialogs (checklist K): morphology thresholds at the
     # image mean first (binary op on grayscale input); multi-Otsu
     # returns the class-label map for visualization
-    "morph": lambda d, p: morph_op(
-        d > d.mean(),
-        operation=str(p.get("operation", "open")),
-        radius=int(p.get("radius", 1)),
-        shape=str(p.get("shape", "square")),
-    ).astype(float),
+    "morph": _morph,
     "multiotsu": lambda d, p: multi_otsu(d, n_classes=int(p.get("n_classes", 3))).label_map.astype(
         float
     ),
@@ -143,7 +220,7 @@ def apply_filter(req: FilterRequest) -> ImageMeta:
     if req.kind in _RESAMPLING:
         axes = _scaled_axes(ds, raster.shape[0] / out.shape[0], raster.shape[1] / out.shape[1])
     elif req.kind in _SWAPS_AXES:
-        axes = (ds.axes[1], ds.axes[0])
+        axes = ds.transposed_spatial_axes()
     else:
         axes = (ds.axes[0], ds.axes[1])
 

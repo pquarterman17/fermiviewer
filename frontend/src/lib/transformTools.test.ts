@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 
 import { fuzzy } from "./fuzzy";
+import { validateParams } from "./params";
 import {
   BATCH_FILTERS,
   TRANSFORM_GROUPS,
@@ -78,5 +79,23 @@ describe("BATCH_FILTERS", () => {
     expect(kinds).not.toContain("crop");
     expect(kinds).not.toContain("rotate180");
     expect(kinds).not.toContain("rotate270");
+  });
+});
+
+describe("filter field bounds", () => {
+  const fields = (kind: string) =>
+    TRANSFORM_TOOLS.find((t) => t.kind === kind)?.fields ?? [];
+
+  it("refuses out-of-range values before they reach the backend", () => {
+    expect(validateParams({ sigma: "1e9" }, fields("gaussian"))).toMatch(/at most/);
+    expect(validateParams({ sigma: "0" }, fields("gaussian"))).toMatch(/greater than 0/);
+    expect(validateParams({ sigma: "-1" }, fields("unsharp"))).toMatch(/greater than 0/);
+    expect(validateParams({ num_bins: "1e9" }, fields("clahe"))).toMatch(/at most/);
+    expect(validateParams({ num_bins: "0" }, fields("clahe"))).toMatch(/at least/);
+    expect(validateParams({ bin_size: "0" }, fields("bin"))).toMatch(/at least/);
+    expect(validateParams({ bin_size: "-1" }, fields("bin"))).toMatch(/at least/);
+    expect(validateParams({ radius: "1e9" }, fields("morph"))).toMatch(/at most/);
+    expect(validateParams({ radius: "-1" }, fields("morph"))).toMatch(/at least/);
+    expect(validateParams({ sigma: "2" }, fields("gaussian"))).toBeNull();
   });
 });

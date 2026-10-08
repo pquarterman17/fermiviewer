@@ -64,7 +64,7 @@ def _image_op(
                 ds, raster.shape[0] / out.shape[0], raster.shape[1] / out.shape[1]
             )
         elif swaps_axes:
-            axes = (ds.axes[1], ds.axes[0])
+            axes = ds.transposed_spatial_axes()
         else:
             axes = (ds.axes[0], ds.axes[1])
         derived = DataStruct(

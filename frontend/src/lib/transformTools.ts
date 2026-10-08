@@ -34,15 +34,20 @@ const num = (
   key: string,
   label: string,
   dflt: number,
-  hint?: string,
-): ParamField => ({ key, label, type: "number", default: dflt, hint });
+  bounds: Pick<ParamField, "min" | "max" | "int" | "positive"> = {},
+): ParamField => ({ key, label, type: "number", default: dflt, ...bounds });
+
+// Bounds mirror routes/filter.py's validation (which additionally caps
+// sigma / bin size by the image dimensions) so a typo like 1e9 is refused
+// in the panel instead of failing server-side.
+const SIGMA = { positive: true, max: 1000 };
 
 export const TRANSFORM_TOOLS: TransformTool[] = [
   // — Filters —
   {
     label: "Gaussian Blur", glyph: "◍", group: "Filters",
     kind: "gaussian", via: "filter", batch: true,
-    fields: [num("sigma", "Sigma (px)", 2)],
+    fields: [num("sigma", "Sigma (px)", 2, SIGMA)],
   },
   {
     label: "Median Filter", glyph: "▦", group: "Filters",
@@ -55,27 +60,33 @@ export const TRANSFORM_TOOLS: TransformTool[] = [
   {
     label: "Unsharp Mask", glyph: "◆", group: "Filters",
     kind: "unsharp", via: "filter", batch: true,
-    fields: [num("sigma", "Sigma (px)", 2), num("amount", "Amount", 1)],
+    fields: [
+      num("sigma", "Sigma (px)", 2, SIGMA),
+      num("amount", "Amount", 1, { min: 0, max: 100 }),
+    ],
   },
   {
     label: "Butterworth", glyph: "≈", group: "Filters",
     kind: "butterworth", via: "filter", batch: true,
     fields: [
-      num("low_cutoff", "Low cutoff (0=off)", 0.05),
-      num("high_cutoff", "High cutoff (0–1]", 0.5),
-      num("order", "Order", 2),
+      num("low_cutoff", "Low cutoff (0=off)", 0.05, { min: 0, max: 1 }),
+      num("high_cutoff", "High cutoff (0–1]", 0.5, { positive: true, max: 1 }),
+      num("order", "Order", 2, { int: true, min: 1, max: 10 }),
     ],
   },
   {
     label: "CLAHE", glyph: "◑", group: "Filters",
     kind: "clahe", via: "filter", batch: true,
-    fields: [num("clip_limit", "Clip limit", 0.01), num("num_bins", "Bins", 256)],
+    fields: [
+      num("clip_limit", "Clip limit", 0.01, { min: 0, max: 1 }),
+      num("num_bins", "Bins", 256, { int: true, min: 2, max: 65536 }),
+    ],
   },
   {
     label: "Bin", glyph: "⊞", group: "Filters",
     kind: "bin", via: "filter", batch: true,
     fields: [
-      num("bin_size", "Bin size", 2),
+      num("bin_size", "Bin size", 2, { int: true, min: 1, max: 1024 }),
       // audit #13: sum vs average mode (MATLAB +imaging/binImage.m).
       // "average" = existing default — output is byte-identical when mode
       // is absent or "average"; "sum" accumulates counts per super-pixel.
@@ -119,7 +130,7 @@ export const TRANSFORM_TOOLS: TransformTool[] = [
     fields: [
       { key: "operation", label: "Operation", type: "select",
         default: "open", options: ["erode", "dilate", "open", "close"] },
-      num("radius", "Radius (px)", 1),
+      num("radius", "Radius (px)", 1, { int: true, min: 1, max: 100 }),
       { key: "shape", label: "Element", type: "select",
         default: "square", options: ["square", "disk"] },
     ],

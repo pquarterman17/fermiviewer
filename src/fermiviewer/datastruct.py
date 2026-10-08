@@ -249,3 +249,19 @@ class DataStruct:
         if rows.units != cols.units:
             return (float("nan"), float("nan"))
         return (float(abs(rows.scale)), float(abs(cols.scale)))
+
+    def transposed_spatial_axes(self) -> tuple[AxisCal, AxisCal]:
+        """(row, column) calibration after a 90° rotation / transpose.
+
+        `pixel_cal` reads the COLUMN axis and assumes square pixels, so an
+        image whose only calibrated axis is the column one (DM files often
+        write a unitless row axis, e.g. openNCEM_nonSquare.dm4) displays as
+        calibrated on both. A bare swap would move that calibration onto the
+        row axis and leave the rotated image "Uncalibrated"; instead the
+        source's effective (square) calibration is carried to both axes.
+        Two calibrated axes swap as-is, so anisotropic pixels stay correct.
+        """
+        row, col = self.axes[0], self.axes[1]
+        if col.calibrated and not row.calibrated:
+            row = col
+        return (col, row)
