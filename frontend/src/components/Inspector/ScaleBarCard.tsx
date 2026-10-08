@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 
 import { unitToNm } from "../../lib/geometry";
 import { loadPrefs } from "../../lib/prefs";
+import { SCALE_BAR_FONT_MAX } from "../../lib/scaleBarFont";
 import { useViewer } from "../../store/viewer";
 import Card from "./Card";
 
@@ -267,7 +268,7 @@ export default function ScaleBarCard() {
             title="Larger label font (+1 px)"
             onClick={() =>
               setScaleBar(activeId, {
-                fontSize: Math.min(120, (fontSize ?? autoFont) + 1),
+                fontSize: Math.min(SCALE_BAR_FONT_MAX, (fontSize ?? autoFont) + 1),
               })
             }
           >

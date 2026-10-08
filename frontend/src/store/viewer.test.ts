@@ -741,6 +741,14 @@ describe("setScaleBar color + unitOverride (audit #10)", () => {
     expect(sb.color).toBeNull();
     expect(sb.unitOverride).toBeNull();
   });
+  it("clamps fontSize to the exportable range, null stays auto", () => {
+    useViewer.getState().setScaleBar("img1", { fontSize: 999 });
+    expect(useViewer.getState().scaleBars["img1"].fontSize).toBe(120);
+    useViewer.getState().setScaleBar("img1", { fontSize: 3 });
+    expect(useViewer.getState().scaleBars["img1"].fontSize).toBe(8);
+    useViewer.getState().setScaleBar("img1", { fontSize: null });
+    expect(useViewer.getState().scaleBars["img1"].fontSize).toBeNull();
+  });
 });
 
 describe("setMeasureFontSize (audit #12)", () => {

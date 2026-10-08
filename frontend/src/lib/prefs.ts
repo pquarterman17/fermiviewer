@@ -5,6 +5,7 @@
 // fv_tools_layout, fv_overlay) so existing users keep their settings.
 
 import { COLORMAP_NAMES } from "./colormaps";
+import { SCALE_BAR_FONT_MAX, SCALE_BAR_FONT_MIN } from "./scaleBarFont";
 
 export type ThemeChoice = "dark" | "light" | "system";
 /** Swappable accent scheme (Preferences → Appearance → Color scheme). */
@@ -191,7 +192,7 @@ const RANGES: { [K in keyof Prefs]?: [number, number] } = {
   overlayLineWidth: [0.5, 20],
   profileWidth: [1, 99],
   lassoCloseSimplifyPx: [0.5, 5],
-  scaleBarFontSize: [8, 120],
+  scaleBarFontSize: [SCALE_BAR_FONT_MIN, SCALE_BAR_FONT_MAX],
   exportScale: [1, 4],
   fixedZoomW: [1, 8192],
   fixedZoomH: [1, 8192],

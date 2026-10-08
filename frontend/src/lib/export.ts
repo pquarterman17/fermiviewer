@@ -6,6 +6,7 @@
 
 import { exportImage, type ExportOptions } from "./api";
 import { loadPrefs } from "./prefs";
+import { clampScaleBarFont } from "./scaleBarFont";
 import { DEFAULT_DISPLAY, OVERLAY_FONT_PX, useViewer } from "../store/viewer";
 
 export interface ExportNowOpts {
@@ -122,7 +123,10 @@ function buildExportRequest(
           scale_bar_norm_y: sb.y,
           scale_bar_length_phys: sb.lengthPhys,
           scale_bar_thickness: sb.thickness,
-          scale_bar_font_size: sb.fontSize ?? loadPrefs().scaleBarFontSize,
+          // clamp again here: a value set before the store clamped it (or by
+          // any future writer) must not turn into a backend 422
+          scale_bar_font_size:
+            clampScaleBarFont(sb.fontSize) ?? loadPrefs().scaleBarFontSize,
           scale_bar_color: sb.color ?? null,          // audit #10
           scale_bar_unit_override: sb.unitOverride ?? null, // audit #10
         }

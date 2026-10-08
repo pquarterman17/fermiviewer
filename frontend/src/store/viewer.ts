@@ -20,6 +20,7 @@ import {
   uploadFiles,
 } from "../lib/api";
 import { logStatus } from "../lib/errlog";
+import { clampScaleBarFont } from "../lib/scaleBarFont";
 import { createChromeActions, initialChrome } from "./viewerChromeActions";
 import { createCloseAction } from "./viewerCloseImage";
 import { createCompareActions } from "./viewerCompareActions";
@@ -396,7 +397,10 @@ export const useViewer = create<ViewerState>((set, get) => ({
         x: 0.02, y: 0.92, lengthPhys: null, thickness: null, fontSize: null,
         color: null, unitOverride: null,
       };
-      return { scaleBars: { ...s.scaleBars, [imageId]: { ...prev, ...patch } } };
+      const next = { ...prev, ...patch };
+      // every writer goes through here: keep the label font exportable
+      if ("fontSize" in patch) next.fontSize = clampScaleBarFont(patch.fontSize);
+      return { scaleBars: { ...s.scaleBars, [imageId]: next } };
     }),
 
   setStackFrame: (imageId, frame) =>
