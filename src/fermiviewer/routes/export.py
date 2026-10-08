@@ -49,6 +49,27 @@ _MEDIA = {
 }
 
 
+# Output-size ceiling. The largest "normal" export is a 4096² camera frame at
+# the 4× maximum integer scale (16384² ≈ 268 MP, ~0.8 GB of RGB); a
+# double-column figure at 1200 dpi is only ~8.6k px wide. Anything beyond
+# this (e.g. 2000 mm @ 600 dpi = 47244² px) would allocate many GB in
+# PIL/numpy and get the server OOM-killed, so it is refused up front with a
+# clear 422. Mirrored in frontend/src/components/overlays/ExportDialog.tsx.
+MAX_EXPORT_SIDE = 20_000
+MAX_EXPORT_PIXELS = 16_384 * 16_384
+
+
+def _check_output_size(w: int, h: int) -> None:
+    """422 when a w×h output would exceed the export ceiling."""
+    if max(w, h) > MAX_EXPORT_SIDE or w * h > MAX_EXPORT_PIXELS:
+        raise HTTPException(
+            422,
+            f"export too large: {w} × {h} px (limit {MAX_EXPORT_SIDE} px "
+            f"per side and {MAX_EXPORT_PIXELS / 1e6:.0f} MP total) — "
+            "reduce the scale, width or dpi",
+        )
+
+
 class WirePoint(BaseModel):
     x: float
     y: float
@@ -171,13 +192,20 @@ def export_image(req: ExportRequest) -> Response:
     name = store.name(req.image_id)
     stem = name.rsplit(".", 1)[0] or name
 
+    src_h, src_w = raster.shape
     if req.format == "tiff16":
+        _check_output_size(src_w * req.scale, src_h * req.scale)
         return _export_tiff16(raster, lo, hi, req, stem)
 
     # physical sizing (Quick-Wins #3): width_mm + dpi → float upscale factor;
     # otherwise the integer `scale` path (byte-identical to before).
     phys_mode = req.width_mm is not None and req.dpi is not None
-    src_h, src_w = raster.shape
+    if phys_mode:
+        target_w = max(1, round(req.width_mm / 25.4 * req.dpi))  # type: ignore[operator]
+        out_h = max(1, round(src_h * target_w / src_w))
+        _check_output_size(target_w, out_h)
+    else:
+        _check_output_size(src_w * req.scale, src_h * req.scale)
 
     try:
         rgb = render_rgb(
@@ -190,9 +218,7 @@ def export_image(req: ExportRequest) -> Response:
     img = Image.fromarray(rgb, mode="RGB")
 
     if phys_mode:
-        target_w = max(1, round(req.width_mm / 25.4 * req.dpi))  # type: ignore[operator]
         eff_scale = target_w / src_w
-        out_h = max(1, round(src_h * eff_scale))
         # nearest keeps EM pixels crisp when enlarging (matches the stage);
         # lanczos avoids aliasing when the figure is smaller than the raster
         resample = (

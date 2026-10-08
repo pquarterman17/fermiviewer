@@ -1099,6 +1099,23 @@ def test_tiff16_ignores_physical_sizing(client, img_id) -> None:
     assert arr.shape == (24, 32)  # 2× integer scale, NOT the 1051 px figure
 
 
+def test_oversized_physical_export_is_422_not_oom(client, img_id) -> None:
+    # 2000 mm @ 600 dpi = 47244 px wide — used to allocate ~13 GB and get the
+    # server OOM-killed; now refused before any rendering
+    r = client.post(
+        "/api/export",
+        json={"image_id": img_id, "format": "png", "width_mm": 2000,
+              "dpi": 600},
+    )
+    assert r.status_code == 422
+    assert "export too large" in r.json()["detail"]
+    # a normal publication figure (183 mm @ 1200 dpi ≈ 8.6k px) still works
+    from fermiviewer.routes.export import MAX_EXPORT_PIXELS, MAX_EXPORT_SIDE
+
+    assert round(183 / 25.4 * 1200) < MAX_EXPORT_SIDE
+    assert 16384 * 16384 <= MAX_EXPORT_PIXELS  # 4096² frame at 4×
+
+
 # ── Quick-Wins #1 export half: discrete grain-label palette ──────────
 
 def _open_labels(client, tmp_path) -> str:
