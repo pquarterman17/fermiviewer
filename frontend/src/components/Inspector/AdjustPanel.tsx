@@ -20,9 +20,12 @@ function NumField(props: {
   onCommit: (v: number) => void;
   step?: number;
   title?: string;
+  /** problem with a typed value (not committed, field flagged), or null */
+  validate?: (v: number) => string | null;
 }) {
-  const { value, onCommit, step, title } = props;
+  const { value, onCommit, step, title, validate } = props;
   const [text, setText] = useState("");
+  const [err, setErr] = useState<string | null>(null);
   const focused = useRef(false);
   useEffect(() => {
     if (!focused.current) setText(value == null ? "" : String(value));
@@ -30,19 +33,24 @@ function NumField(props: {
   return (
     <input
       type="number"
-      className="fvd-numfield"
-      title={title}
+      className={`fvd-numfield${err ? " invalid" : ""}`}
+      title={err ?? title}
+      aria-invalid={err ? true : undefined}
       step={step}
       value={text}
       onFocus={() => (focused.current = true)}
       onBlur={() => {
         focused.current = false;
+        setErr(null);
         setText(value == null ? "" : String(value));
       }}
       onChange={(e) => {
         setText(e.target.value);
         const v = Number(e.target.value);
-        if (e.target.value !== "" && Number.isFinite(v)) onCommit(v);
+        if (e.target.value === "" || !Number.isFinite(v)) return setErr(null);
+        const problem = validate?.(v) ?? null;
+        setErr(problem);
+        if (!problem) onCommit(v);
       }}
     />
   );
@@ -371,6 +379,9 @@ export default function AdjustPanel() {
             <NumField
               title="Minimum (black point)"
               value={Number(toReal(display.lo, raster).toPrecision(6))}
+              validate={(v) =>
+                v < toReal(display.hi, raster) ? null : "Minimum must be below the maximum"
+              }
               onCommit={(v) =>
                 setDisplay(activeId, {
                   lo: Math.min(toNorm(v, raster), display.hi - 1 / 255),
@@ -381,6 +392,9 @@ export default function AdjustPanel() {
             <NumField
               title="Maximum (white point)"
               value={Number(toReal(display.hi, raster).toPrecision(6))}
+              validate={(v) =>
+                v > toReal(display.lo, raster) ? null : "Maximum must be above the minimum"
+              }
               onCommit={(v) =>
                 setDisplay(activeId, {
                   hi: Math.max(toNorm(v, raster), display.lo + 1 / 255),
@@ -398,9 +412,8 @@ export default function AdjustPanel() {
                   ? display.tickStep
                   : null
               }
-              onCommit={(v) =>
-                setDisplay(activeId, { tickStep: Math.max(0, v) })
-              }
+              validate={(v) => (v >= 0 ? null : "Tick step must be 0 (auto) or more")}
+              onCommit={(v) => setDisplay(activeId, { tickStep: v })}
             />
             <span className="unit">{unit}</span>
             <div className="fvd-seg" title="Colorbar side (L / R / bottom)">
@@ -434,9 +447,13 @@ export default function AdjustPanel() {
                   ? display.tickCount
                   : null
               }
-              onCommit={(v) =>
-                setDisplay(activeId, { tickCount: Math.max(0, Math.round(v)) })
+              // colorbarTicks draws at most 16 (lib/display.ts)
+              validate={(v) =>
+                Number.isInteger(v) && v >= 0 && v <= 16
+                  ? null
+                  : "Tick count must be a whole number from 0 (use step) to 16"
               }
+              onCommit={(v) => setDisplay(activeId, { tickCount: v })}
             />
             <button
               className="fvd-icon-btn"
@@ -456,11 +473,10 @@ export default function AdjustPanel() {
                   ? display.tickFontSize
                   : null
               }
-              onCommit={(v) =>
-                setDisplay(activeId, {
-                  tickFontSize: Math.min(120, Math.max(6, Math.round(v))),
-                })
+              validate={(v) =>
+                v >= 6 && v <= 120 ? null : "Tick font must be 6–120 px"
               }
+              onCommit={(v) => setDisplay(activeId, { tickFontSize: Math.round(v) })}
             />
             <span className="unit">px</span>
             {display.tickFontSize && (
