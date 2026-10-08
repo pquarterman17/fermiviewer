@@ -1,6 +1,6 @@
 // Extracted from lib/api.ts; public imports remain stable via the barrel.
 import type { ImageMeta } from "./core";
-import { json, post } from "./transport";
+import { formatApiDetail, json, post } from "./transport";
 
 // ── user-configurable metadata (custom fields + filename auto-fill) ──────
 
@@ -47,7 +47,7 @@ export async function downloadUserMetaSidecar(
   if (!res.ok) {
     let detail = res.statusText;
     try {
-      detail = ((await res.json()) as { detail?: string }).detail ?? detail;
+      detail = formatApiDetail(((await res.json()) as { detail?: unknown }).detail, detail);
     } catch {
       /* binary or empty error body */
     }
@@ -185,7 +185,7 @@ export async function exportFigure(
   if (!res.ok) {
     let detail = res.statusText;
     try {
-      detail = ((await res.json()) as { detail?: string }).detail ?? detail;
+      detail = formatApiDetail(((await res.json()) as { detail?: unknown }).detail, detail);
     } catch {
       /* binary error body */
     }
@@ -233,7 +233,7 @@ export async function exportBatch(
   if (!res.ok) {
     let detail = res.statusText;
     try {
-      detail = ((await res.json()) as { detail?: string }).detail ?? detail;
+      detail = formatApiDetail(((await res.json()) as { detail?: unknown }).detail, detail);
     } catch {
       /* binary error body */
     }
@@ -260,7 +260,7 @@ export async function exportGif(
   if (!res.ok) {
     let detail = res.statusText;
     try {
-      detail = ((await res.json()) as { detail?: string }).detail ?? detail;
+      detail = formatApiDetail(((await res.json()) as { detail?: unknown }).detail, detail);
     } catch {
       /* binary or empty error body */
     }

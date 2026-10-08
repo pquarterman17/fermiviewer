@@ -367,7 +367,7 @@ export default function ExportDialog() {
                     value={widthMm}
                     style={{ width: 64 }}
                     onChange={(e) =>
-                      setWidthMm(Math.max(1, Number(e.target.value) || 1))
+                      setWidthMm(Math.min(2000, Math.max(1, Number(e.target.value) || 1)))
                     }
                   />
                   <div className="fvd-seg">

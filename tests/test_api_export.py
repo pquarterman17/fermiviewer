@@ -953,7 +953,7 @@ def test_scale_bar_font_size_changes_pixels(client, img_id) -> None:
 
 def test_scale_bar_font_default_unchanged(client, img_id) -> None:
     """Omitting scale_bar_font_size and sending null both produce the
-    same bytes as explicitly sending the default size 20 — backward
+    same bytes as explicitly sending the default size 40 — backward
     compatibility is preserved."""
     common = {
         "image_id": img_id,
@@ -964,10 +964,10 @@ def test_scale_bar_font_default_unchanged(client, img_id) -> None:
     omitted = client.post("/api/export", json=common).content
     null_sent = client.post("/api/export", json={**common,
                                                   "scale_bar_font_size": None}).content
-    explicit_20 = client.post("/api/export", json={**common,
-                                                    "scale_bar_font_size": 20}).content
+    explicit_40 = client.post("/api/export", json={**common,
+                                                    "scale_bar_font_size": 40}).content
     assert omitted == null_sent
-    assert omitted == explicit_20
+    assert omitted == explicit_40
 
 
 def test_scale_bar_font_size_bounds(client, img_id) -> None:

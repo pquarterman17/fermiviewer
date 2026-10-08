@@ -1,6 +1,6 @@
 // Scale Bar inspector card (item #33): typed length + unit dropdown
 // (Å / nm / µm — user request 2026-06-09, replacing preset boxes),
-// thickness, font size (default 20), position reset.
+// thickness, font size (default from Preferences), position reset.
 // Audit #10 additions: bar/label colour picker, unit-override dropdown,
 // discrete 4-corner snap picker (free drag is preserved).
 // Shown in the Image tab when the active image is calibrated (pixel_size != null).
@@ -8,6 +8,8 @@
 import { useEffect, useState } from "react";
 
 import { unitToNm } from "../../lib/geometry";
+import { loadPrefs } from "../../lib/prefs";
+import { SCALE_BAR_FONT_MAX } from "../../lib/scaleBarFont";
 import { useViewer } from "../../store/viewer";
 import Card from "./Card";
 
@@ -80,6 +82,8 @@ export default function ScaleBarCard() {
 
   const thickness = sbState?.thickness ?? null;
   const fontSize = sbState?.fontSize ?? null;
+  // the stage falls back to the Preferences size when unset — match it
+  const autoFont = loadPrefs().scaleBarFontSize;
   const color = sbState?.color ?? null; // null = default white
   const unitOverride = sbState?.unitOverride ?? null; // null = auto
 
@@ -252,18 +256,20 @@ export default function ScaleBarCard() {
             title="Smaller label font (−1 px)"
             onClick={() =>
               setScaleBar(activeId, {
-                fontSize: Math.max(8, (fontSize ?? 20) - 1),
+                fontSize: Math.max(8, (fontSize ?? autoFont) - 1),
               })
             }
           >
             −
           </button>
-          <span>{fontSize ?? "auto (20)"}</span>
+          <span>{fontSize ?? `auto (${autoFont})`}</span>
           <button
             className="fvd-icon-btn"
             title="Larger label font (+1 px)"
             onClick={() =>
-              setScaleBar(activeId, { fontSize: (fontSize ?? 20) + 1 })
+              setScaleBar(activeId, {
+                fontSize: Math.min(SCALE_BAR_FONT_MAX, (fontSize ?? autoFont) + 1),
+              })
             }
           >
             +

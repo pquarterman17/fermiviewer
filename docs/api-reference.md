@@ -1090,7 +1090,7 @@ The registered operation catalogue: name, category, summary, params.
 | `gap` | `int` | 4 | no |  | [0, 64] | px between tiles; ignored when overlap > 0 |
 | `bg` | `float` | 0.0 | no |  |  | background fill value |
 | `overlap` | `float` | 0.0 | no |  | [0.0, 1.0) | fractional tile overlap [0, 1) — the route's Field(ge=0.0, lt=1.0) |
-| `font_size` | `int` | 14 | no |  | [6, 48] |  |
+| `font_size` | `int` | 40 | no |  | [6, 200] |  |
 
 #### `montage_compare` — Comparison montage: every tile resampled to ONE common physical scale (the coarsest input's) with ONE shared scale bar baked in (calc/montage_physical.montage_physical_scale). Tiles are ordered by tile_meta[].param_value first; an uncalibrated tile is refused, as in the route. The bar geometry rides the derived image's metadata
 
@@ -1110,7 +1110,7 @@ The registered operation catalogue: name, category, summary, params.
 | `cols` | `float` | nan | no |  |  | grid columns; NaN (the default) is the route's null -> ceil(sqrt(n)) |
 | `gap` | `int` | 4 | no |  | [0, 64] |  |
 | `bg` | `float` | 0.0 | no |  |  | background fill value |
-| `font_size` | `int` | 14 | no |  | [6, 48] |  |
+| `font_size` | `int` | 40 | no |  | [6, 200] |  |
 | `bar_color` | `str` | #ffffff | no |  |  | baked as an intensity — the canvas is single-channel |
 
 #### `morph` — Binary morphology at image mean

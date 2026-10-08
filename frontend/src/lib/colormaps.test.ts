@@ -86,3 +86,10 @@ describe("buildLabelLut / labelColor (discrete grain palette)", () => {
     expect([lut[0], lut[1], lut[2]]).toEqual([0, 0, 0]); // background black
   });
 });
+
+describe("buildLut unknown name", () => {
+  it("falls back to gray instead of throwing", () => {
+    expect(() => buildLut("magma" as never)).not.toThrow();
+    expect(buildLut("magma" as never)).toEqual(buildLut("gray"));
+  });
+});

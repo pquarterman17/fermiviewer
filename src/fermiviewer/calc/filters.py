@@ -133,6 +133,14 @@ def clahe(
     d = np.asarray(img, dtype=np.float64)
     h, w = d.shape
 
+    finite = np.isfinite(d)
+    if not finite.all():
+        # NaN/inf (masked pixels) would cast to negative bins and break
+        # bincount — park them at the data minimum instead
+        if not finite.any():
+            return np.zeros((h, w))
+        d = np.where(finite, d, d[finite].min())
+
     d_min = d.min()
     d_max = d.max()
     if d_max <= d_min:

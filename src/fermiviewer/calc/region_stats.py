@@ -125,12 +125,22 @@ def region_stats(
     return {
         "mean": mean,
         "std": _masked_std(view, usable, mean, n_finite, ddof),
-        "min": float(np.min(view, where=usable, initial=np.inf)),
-        "max": float(np.max(view, where=usable, initial=-np.inf)),
+        "min": float(np.min(view, where=usable, initial=_extreme(view.dtype, hi=True))),
+        "max": float(np.max(view, where=usable, initial=_extreme(view.dtype, hi=False))),
         "n_pixels": float(n_pixels),
         "n_finite": float(n_finite),
         "area": area,
     }
+
+
+def _extreme(dtype: np.dtype, *, hi: bool) -> float | int:
+    """Identity for a masked min/max reduction in `dtype`. ±inf cannot be
+    cast to an integer dtype (OverflowError on int rasters), so integer
+    data uses the dtype's own limits instead."""
+    if np.issubdtype(dtype, np.integer):
+        info = np.iinfo(dtype)
+        return int(info.max if hi else info.min)
+    return np.inf if hi else -np.inf
 
 
 def _rect_view(array: np.ndarray, rect: tuple[int, int, int, int]) -> np.ndarray:

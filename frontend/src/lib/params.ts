@@ -14,6 +14,19 @@ export interface ParamField {
   default: number | string | boolean;
   options?: string[]; // for select
   hint?: string;
+  /** number fields: clamp bounds and whole-number rounding, applied by
+   *  coerceParams so a typed value can't fall outside what the backend
+   *  accepts (a 422 the user only sees as a failed command). */
+  min?: number;
+  max?: number;
+  int?: boolean;
+}
+
+function boundNumber(n: number, f: ParamField): number {
+  let v = f.int ? Math.round(n) : n;
+  if (f.min !== undefined) v = Math.max(f.min, v);
+  if (f.max !== undefined) v = Math.min(f.max, v);
+  return v;
 }
 
 export type ParamValues = Record<string, number | string | boolean>;
@@ -48,7 +61,9 @@ export function coerceParams(
       // 0 (e.g. Butterworth low-cutoff = 0 to disable) to the default,
       // since 0 is falsy. Mirror ParamFields' on-blur Number.isFinite check.
       const n = Number(v);
-      out[f.key] = Number.isFinite(n) ? n : (f.default as number);
+      out[f.key] = boundNumber(Number.isFinite(n) ? n : (f.default as number), f);
+    } else if (f.type === "number" && typeof v === "number") {
+      out[f.key] = boundNumber(Number.isFinite(v) ? v : (f.default as number), f);
     } else {
       out[f.key] = v;
     }

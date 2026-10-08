@@ -7,8 +7,8 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 
-import { setCustomColormap } from "../../lib/colormaps";
-import { DEFAULTS, loadPrefs, savePrefs, type Prefs } from "../../lib/prefs";
+import { COLORMAP_NAMES, setCustomColormap } from "../../lib/colormaps";
+import { DEFAULTS, loadPrefs, sanitizePrefs, savePrefs, type Prefs } from "../../lib/prefs";
 import { useViewer } from "../../store/viewer";
 import { AccentSwatches } from "./AppearanceControls";
 import ModalDialog from "./ModalDialog";
@@ -22,7 +22,9 @@ const SECTIONS = [
 ] as const;
 type Section = (typeof SECTIONS)[number];
 
-const CMAPS = ["gray", "viridis", "inferno", "magma", "plasma", "cividis", "custom"];
+// only colormaps the renderer actually ships (magma/plasma/cividis used to
+// be listed here with no LUT behind them — picking one crashed the app)
+const CMAPS = COLORMAP_NAMES;
 
 // typed option tables — keep generic inference from widening to string
 const THEME_OPTS: [Prefs["theme"], string][] = [
@@ -137,13 +139,13 @@ export default function PrefsWindow() {
     const lo = Math.min(Math.max(p.autoLoPct, 0), 49.9);
     const hi = Math.max(Math.min(p.autoHiPct, 100), lo + 0.1);
     const clean: Prefs = {
-      ...p,
+      ...sanitizePrefs(p),
       autoLoPct: lo,
       autoHiPct: hi,
       inspectorGrid: Math.min(15, Math.max(3, Math.round(p.inspectorGrid))) | 1,
       profileWidth: Math.min(99, Math.max(1, Math.round(p.profileWidth))),
       lassoCloseSimplifyPx: Math.min(5, Math.max(0.5, p.lassoCloseSimplifyPx)),
-      scaleBarFontSize: Math.min(48, Math.max(8, Math.round(p.scaleBarFontSize))),
+      scaleBarFontSize: Math.min(120, Math.max(8, Math.round(p.scaleBarFontSize) || 40)),
       exportScale: Math.min(4, Math.max(1, Math.round(p.exportScale))),
       fixedZoomW: Math.max(1, Math.round(p.fixedZoomW)),
       fixedZoomH: Math.max(1, Math.round(p.fixedZoomH)),
@@ -309,7 +311,7 @@ export default function PrefsWindow() {
                   <Toggle checked={p.scaleBarVisible} onChange={(v) => set("scaleBarVisible", v)} />
                 </Row>
                 <Row label="Scale-bar font size (px)">
-                  <Num value={p.scaleBarFontSize} min={8} max={48} step={1} onChange={(v) => set("scaleBarFontSize", v)} />
+                  <Num value={p.scaleBarFontSize} min={8} max={120} step={1} onChange={(v) => set("scaleBarFontSize", v)} />
                 </Row>
                 <Row label="Default tilt geometry" hint="seeded onto newly opened images">
                   <Seg value={p.tiltGeometry} options={GEOM_OPTS} onChange={(v) => set("tiltGeometry", v)} />

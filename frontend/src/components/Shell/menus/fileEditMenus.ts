@@ -170,8 +170,8 @@ export function buildFileMenu(ctx: MenuCtx): Entry[] {
       action: () => {
         void (async () => {
           const v = await askParams("Figure panel (labeled grid)", [
-            num("cols", "Columns (0 = auto)", 0),
-            num("gap", "Gap (px)", 4),
+            num("cols", "Columns (0 = auto)", 0, undefined, { min: 0, max: 8, int: true }),
+            num("gap", "Gap (px)", 4, undefined, { min: 0, max: 64, int: true }),
             {
               key: "scale",
               label: "Resolution",
@@ -266,7 +266,7 @@ export function buildFileMenu(ctx: MenuCtx): Entry[] {
       action: () => {
         void (async () => {
           const v = await askParams("Export GIF", [
-            num("fps", "Frames per second", 4),
+            num("fps", "Frames per second", 4, undefined, { min: 0.1, max: 60 }),
             {
               key: "scale",
               label: "Resolution",
@@ -279,7 +279,7 @@ export function buildFileMenu(ctx: MenuCtx): Entry[] {
               label: "Colormap",
               type: "select",
               default: "gray",
-              options: ["gray", "viridis", "inferno", "magma", "plasma"],
+              options: ["gray", "invert", "viridis", "inferno", "fire", "ice", "redblue"],
             },
           ]);
           if (!v) return;

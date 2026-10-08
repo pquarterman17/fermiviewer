@@ -168,20 +168,20 @@ export function buildImageMenu(ctx: MenuCtx): Entry[] {
           const v = await askParams("Montage", [
             num("cols", "Columns (0 = auto)", 0,
                 "0 → ceil(√n); frames go left-to-right, top-to-bottom"),
-            num("gap", "Gap (px)", 4, "Inter-tile gap in pixels"),
-            num("font_size", "Label font (px)", 14,
+            num("gap", "Gap (px)", 4, "Inter-tile gap in pixels", { min: 0, max: 64, int: true }),
+            num("font_size", "Label font (px)", 40,
                 "0 to disable labels"),
           ]);
           if (!v) return;
           const cols = Math.round(v.cols as number);
-          const gap = Math.max(0, Math.round(v.gap as number));
-          const font_size = Math.max(0, Math.round(v.font_size as number));
+          const gap = Math.min(64, Math.max(0, Math.round(v.gap as number)));
+          const font_size = Math.min(200, Math.max(0, Math.round(v.font_size as number) || 0));
           store.setStatus("building montage…");
           analyzeMontage(store.selected, {
             cols: cols > 0 ? cols : null,
             labels: font_size > 0,
             gap,
-            font_size: font_size > 0 ? font_size : 14,
+            font_size: font_size > 0 ? Math.max(6, font_size) : 40,
           })
             .then((r) => {
               store.ingestDerived([r.image]);

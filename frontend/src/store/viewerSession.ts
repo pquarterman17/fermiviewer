@@ -14,6 +14,7 @@ import {
   type UnavailableImage,
 } from "../lib/api";
 import type { TiltSettings } from "../lib/geometry";
+import { loadPrefs } from "../lib/prefs";
 import {
   pruneGroups,
   resizePanes,
@@ -25,6 +26,7 @@ import { useBrowseScale } from "./browseScale";
 import type { ViewerState } from "./viewerState";
 import {
   DEFAULT_DISPLAY,
+  sanitizeOverlay,
   type Display,
   type HistoryStep,
   type Measure,
@@ -65,10 +67,7 @@ export function loadJson<T>(key: string, fallback: T): T {
  *  the dialog; this avoids an import cycle at store-init time). */
 export function pref<T>(key: string, fallback: T): T {
   try {
-    const p = JSON.parse(localStorage.getItem("fv_prefs") ?? "{}") as Record<
-      string,
-      T
-    >;
+    const p = loadPrefs() as unknown as Record<string, T>;
     return p[key] ?? fallback;
   } catch {
     return fallback;
@@ -154,16 +153,12 @@ export function ingestImages(
   let prefInvert = false;
   let prefTiltGeom: "cross-section" | "surface" = "cross-section";
   try {
-    const p = JSON.parse(localStorage.getItem("fv_prefs") ?? "{}") as {
-      defaultCmap?: string;
-      defaultTransform?: Display["transform"];
-      defaultInvert?: boolean;
-      tiltGeometry?: "cross-section" | "surface";
-    };
-    prefCmap = p.defaultCmap ?? "gray";
-    prefTransform = p.defaultTransform ?? "linear";
-    prefInvert = p.defaultInvert ?? false;
-    prefTiltGeom = p.tiltGeometry ?? "cross-section";
+    // loadPrefs() validates — an unknown stored colormap falls back to gray
+    const p = loadPrefs();
+    prefCmap = p.defaultCmap;
+    prefTransform = p.defaultTransform;
+    prefInvert = p.defaultInvert;
+    prefTiltGeom = p.tiltGeometry;
   } catch {
     /* defaults */
   }
@@ -390,7 +385,7 @@ export function sessionSlice(
     views: (cs.views as Record<string, View>) ?? {},
     display: (cs.display as Record<string, Display>) ?? {},
     measures,
-    overlay: (cs.overlay as OverlayStyle) ?? fallbackOverlay,
+    overlay: sanitizeOverlay(cs.overlay, fallbackOverlay),
     savedRois: (cs.savedRois as Record<string, SavedRoi[]>) ?? {},
     // a load is a fresh session: drop undo history + per-image state that
     // isn't part of the saved payload so it doesn't bleed across loads

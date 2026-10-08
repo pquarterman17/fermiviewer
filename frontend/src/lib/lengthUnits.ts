@@ -74,6 +74,8 @@ export function linearUnitToNm(unit: string): number | null {
       return FIXED_UNIT_TO_NM.um;
     case "mm":
       return FIXED_UNIT_TO_NM.mm;
+    case "pm": // offered by the Calibrate Pixel Size dialogs
+      return 1e-3;
     default:
       // covers "px", "1/nm" and anything else not explicitly listed above
       return null;

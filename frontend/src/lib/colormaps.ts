@@ -186,7 +186,7 @@ export function buildLut(name: ColormapName): Uint8Array {
   // "label" needs the per-image count; this generic path uses a default cycle
   // (used by code that calls buildLut(display.cmap) without the label count)
   if (name === "label") return buildLabelLut(24);
-  const stops = name === "custom" ? customStops() : STOPS[name];
+  const stops = name === "custom" ? customStops() : (STOPS[name] ?? STOPS.gray);
   const out = new Uint8Array(256 * 4);
   const n = stops.length - 1;
   for (let i = 0; i < 256; i++) {

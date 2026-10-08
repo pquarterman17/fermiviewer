@@ -20,6 +20,7 @@ import {
   uploadFiles,
 } from "../lib/api";
 import { logStatus } from "../lib/errlog";
+import { clampScaleBarFont } from "../lib/scaleBarFont";
 import { createChromeActions, initialChrome } from "./viewerChromeActions";
 import { createCloseAction } from "./viewerCloseImage";
 import { createCompareActions } from "./viewerCompareActions";
@@ -44,8 +45,8 @@ import {
 import {
   DEFAULT_DISPLAY,
   describePatch,
+  sanitizeOverlay,
   UNDO_CAP,
-  type OverlayStyle,
   type View,
 } from "./viewerTypes";
 
@@ -105,13 +106,12 @@ export const useViewer = create<ViewerState>((set, get) => ({
   // perpendicular ticks at measurement line ends
   // merge defaults UNDER the persisted value so fields added later
   // (lineWidth) are present even on overlays saved before they existed
-  overlay: {
-    size: "L" as const,
+  overlay: sanitizeOverlay(loadJson<unknown>(OVERLAY_KEY, {}), {
+    size: "L",
     color: "#ffffff",
     lineWidth: 2.5,
-    endSymbol: "bar" as const,
-    ...loadJson<Partial<OverlayStyle>>(OVERLAY_KEY, {}),
-  },
+    endSymbol: "bar",
+  }),
   scaleBars: {},
   tilts: {},
   stackFrames: {},
@@ -397,7 +397,10 @@ export const useViewer = create<ViewerState>((set, get) => ({
         x: 0.02, y: 0.92, lengthPhys: null, thickness: null, fontSize: null,
         color: null, unitOverride: null,
       };
-      return { scaleBars: { ...s.scaleBars, [imageId]: { ...prev, ...patch } } };
+      const next = { ...prev, ...patch };
+      // every writer goes through here: keep the label font exportable
+      if ("fontSize" in patch) next.fontSize = clampScaleBarFont(patch.fontSize);
+      return { scaleBars: { ...s.scaleBars, [imageId]: next } };
     }),
 
   setStackFrame: (imageId, frame) =>

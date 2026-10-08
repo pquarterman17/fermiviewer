@@ -95,3 +95,90 @@ describe("prefs", () => {
     expect(loadPrefs().copyIncludesAnnotations).toBe(true);
   });
 });
+
+describe("prefs sanitizing (crash on bad default colormap)", () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(() => localStorage.clear());
+
+  it("drops a colormap the renderer doesn't ship", () => {
+    localStorage.setItem("fv_prefs", JSON.stringify({ defaultCmap: "magma" }));
+    expect(loadPrefs().defaultCmap).toBe("gray");
+  });
+
+  it("keeps a valid colormap", () => {
+    localStorage.setItem("fv_prefs", JSON.stringify({ defaultCmap: "viridis" }));
+    expect(loadPrefs().defaultCmap).toBe("viridis");
+  });
+
+  it("rejects wrong types, bad enums and clamps numbers", () => {
+    localStorage.setItem(
+      "fv_prefs",
+      JSON.stringify({
+        theme: "neon",
+        overlaySize: "XXXL",
+        minimap: "yes",
+        scaleBarFontSize: 9999,
+        exportScale: 0,
+        fixedZoomW: null,
+        autoLoPct: 60,
+        autoHiPct: 40,
+      }),
+    );
+    const p = loadPrefs();
+    expect(p.theme).toBe(DEFAULTS.theme);
+    expect(p.overlaySize).toBe(DEFAULTS.overlaySize);
+    expect(p.minimap).toBe(DEFAULTS.minimap);
+    expect(p.scaleBarFontSize).toBe(120);
+    expect(p.exportScale).toBe(1);
+    expect(p.fixedZoomW).toBe(DEFAULTS.fixedZoomW);
+    expect(p.autoLoPct).toBe(DEFAULTS.autoLoPct);
+    expect(p.autoHiPct).toBe(DEFAULTS.autoHiPct);
+  });
+});
+
+describe("prefs sanitizing — numeric invariants", () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(() => localStorage.clear());
+
+  const load = (stored: Record<string, unknown>) => {
+    localStorage.setItem("fv_prefs", JSON.stringify(stored));
+    return loadPrefs();
+  };
+
+  it("clamps lassoCloseSimplifyPx to the UI range", () => {
+    expect(load({ lassoCloseSimplifyPx: 100000 }).lassoCloseSimplifyPx).toBe(5);
+    expect(load({ lassoCloseSimplifyPx: 0 }).lassoCloseSimplifyPx).toBe(0.5);
+    expect(load({ lassoCloseSimplifyPx: 2.5 }).lassoCloseSimplifyPx).toBe(2.5);
+  });
+
+  it("keeps inspectorGrid an odd integer in 3–15", () => {
+    expect(load({ inspectorGrid: 8 }).inspectorGrid).toBe(9);
+    expect(load({ inspectorGrid: 6.6 }).inspectorGrid).toBe(7);
+    expect(load({ inspectorGrid: 16 }).inspectorGrid).toBe(15);
+    expect(load({ inspectorGrid: 1 }).inspectorGrid).toBe(3);
+    expect(load({ inspectorGrid: 14 }).inspectorGrid).toBe(15);
+  });
+
+  it("rounds integer fields", () => {
+    const p = load({
+      profileWidth: 3.7,
+      scaleBarFontSize: 40.4,
+      exportScale: 2.6,
+      fixedZoomW: 100.2,
+      fixedZoomH: 0.2,
+    });
+    expect(p.profileWidth).toBe(4);
+    expect(p.scaleBarFontSize).toBe(40);
+    expect(p.exportScale).toBe(3);
+    expect(p.fixedZoomW).toBe(100);
+    expect(p.fixedZoomH).toBe(1);
+  });
+
+  it("rejects non-finite numbers", () => {
+    // JSON can't hold NaN/Infinity, so a corrupt blob shows up as null/strings
+    const p = load({ profileWidth: null, inspectorGrid: "7", overlayLineWidth: "NaN" });
+    expect(p.profileWidth).toBe(DEFAULTS.profileWidth);
+    expect(p.inspectorGrid).toBe(DEFAULTS.inspectorGrid);
+    expect(p.overlayLineWidth).toBe(DEFAULTS.overlayLineWidth);
+  });
+});

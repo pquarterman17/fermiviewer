@@ -79,6 +79,17 @@ describe("exportActive", () => {
     expect(opts.overlay_line_width).toBe(2.5);
   });
 
+  it("clamps a legacy oversized per-image scale-bar font (backend caps at 200)", async () => {
+    const sb = state.scaleBars.img1 as { fontSize: number | null };
+    sb.fontSize = 500;
+    try {
+      await exportActive({ format: "png", scale: 1 });
+      expect(lastOpts().scale_bar_font_size).toBe(120);
+    } finally {
+      sb.fontSize = null;
+    }
+  });
+
   it("omits scale bar + measurements for tiff16 (data export)", async () => {
     await exportActive({ format: "tiff16", scale: 1 });
     const [, opts] = (exportImage as unknown as { mock: { calls: unknown[][] } })

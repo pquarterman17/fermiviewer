@@ -260,6 +260,17 @@ def segment_watershed(
             d, n_segments=max(2, n_superpixels), compactness=0.1,
             channel_axis=None, start_label=1,
         )
+        if np.unique(seg).size < 2:
+            # noisy fields can collapse to ONE superpixel at this
+            # compactness (connectivity enforcement merges every fragment);
+            # a one-node RAG has no edges and rag_mean_color then raises
+            # KeyError. Retry with a stiffer grid before giving up.
+            seg = segmentation.slic(
+                d, n_segments=max(2, n_superpixels), compactness=1.0,
+                channel_axis=None, start_label=1,
+            )
+        if np.unique(seg).size < 2:
+            raise ValueError("superpixel method found no structure — try Gradient")
         rag = graph.rag_mean_color(d, seg)
         raw = graph.cut_threshold(seg, rag, merge_threshold)
         knob = merge_threshold

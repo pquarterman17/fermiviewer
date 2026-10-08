@@ -55,6 +55,9 @@ def _oriented_kernel(
 
 def _otsu_threshold(response: np.ndarray, n_bins: int = 256) -> float:
     """Inline Otsu (the countDefectLines variant — bin-centre threshold)."""
+    response = response[np.isfinite(response)]  # NaN pixels can't be binned
+    if response.size == 0:
+        return 0.0
     r_min = response.min()
     r_max = response.max()
     rng = r_max - r_min

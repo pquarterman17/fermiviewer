@@ -564,3 +564,13 @@ def test_a_star_import_from_calc_regions_carries_the_moved_names() -> None:
     exec("from fermiviewer.calc.regions import *", namespace)  # noqa: S102
     for name in ("rasterize", "bounding_box", "to_rect_roi", "rect", "Region"):
         assert name in namespace, name
+
+
+@pytest.mark.parametrize("dtype", [np.int32, np.uint16, np.uint8, np.int64])
+def test_integer_raster_min_max(dtype) -> None:
+    """Integer rasters (e.g. int32 DM3) must not overflow on the ±inf
+    reduction identity — this used to 500 the ROI stats route."""
+    arr = np.arange(12, dtype=dtype).reshape(3, 4)
+    s = region_stats(arr)
+    assert s["min"] == 0.0
+    assert s["max"] == 11.0

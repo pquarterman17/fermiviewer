@@ -1,6 +1,6 @@
 // Extracted from lib/api.ts; public imports remain stable via the barrel.
 import type { CapturedResultRef } from "./project";
-import { post } from "./transport";
+import { formatApiDetail, post } from "./transport";
 
 export interface DetectResult {
   spots: [number, number][]; // 1-based (row, col)
@@ -129,7 +129,7 @@ export interface ExportOptions {
   tilt_angle_deg?: number;
   tilt_axis?: "X" | "Y";
   tilt_geometry?: "cross-section" | "surface";
-  // scale-bar label font size in screen px (#48); null → 20 (default)
+  // scale-bar label font size in screen px (#48); null → 40 (default)
   scale_bar_font_size?: number | null;
   // scale-bar bar + label colour (audit #10); null → "#ffffff" (white)
   scale_bar_color?: string | null;
@@ -150,7 +150,7 @@ export async function exportImage(
   if (!res.ok) {
     let detail = res.statusText;
     try {
-      detail = ((await res.json()) as { detail?: string }).detail ?? detail;
+      detail = formatApiDetail(((await res.json()) as { detail?: unknown }).detail, detail);
     } catch {
       /* binary or empty error body */
     }

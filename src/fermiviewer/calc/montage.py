@@ -46,7 +46,7 @@ __all__ = ["montage"]
 
 _DEFAULT_GAP = 4        # pixels of solid-bg gap between tiles (no overlap)
 _DEFAULT_BG = 0.0       # float background fill (same units as input data)
-_DEFAULT_FONT_SIZE = 14  # label font size in pixels
+_DEFAULT_FONT_SIZE = 40  # label font size in pixels
 
 
 def _load_font(size: int) -> FreeTypeFont | None:
@@ -146,7 +146,7 @@ def montage(
         Fractional overlap [0, 1) between tiles, matching the executeMontage.m
         *overlap* argument.  0 means no overlap.
     font_size:
-        Label font size in pixels (default 14).
+        Label font size in pixels (default 40).
 
     Returns
     -------

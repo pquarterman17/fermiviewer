@@ -188,7 +188,8 @@ def thickness_map(
 
     Returns (t_over_lambda [Ny,Nx] with NaN where invalid, valid_mask).
     """
-    cube = np.asarray(cube, dtype=np.float64)
+    # no whole-cube float64 copy: accumulate in float64 from the native dtype
+    cube = np.asarray(cube)
     energy = np.asarray(energy, dtype=np.float64).ravel()
     ny, nx, ne = cube.shape
     if energy.size != ne:
@@ -197,8 +198,8 @@ def thickness_map(
     if not zlp_mask.any():
         raise ValueError("ZLP window contains no channels")
 
-    i_total = cube.sum(axis=2)
-    i_zlp = cube[:, :, zlp_mask].sum(axis=2)
+    i_total = cube.sum(axis=2, dtype=np.float64)
+    i_zlp = cube[:, :, zlp_mask].sum(axis=2, dtype=np.float64)
     valid = (i_total >= min_counts) & (i_zlp > 0) & (i_total > i_zlp)
 
     t = np.full((ny, nx), np.nan)
