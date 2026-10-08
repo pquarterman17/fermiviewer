@@ -2,7 +2,7 @@
 // StructureWorkshop.tsx (repo-health #33). Moved verbatim; only imports now
 // point one directory up.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   analyzeGrainsAsync,
@@ -105,6 +105,7 @@ export function GrainsMode({ id }: { id: string }) {
   const [classifier, setClassifier] = useState<"softmax" | "forest">("forest");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
+  const abortRef = useRef<AbortController | null>(null);
   const [labelsId, setLabelsId] = useState<string | null>(savedGrains?.result.labels.id ?? null);
   const [grainResult, setGrainResult] = useState<GrainResult | null>(savedGrains?.result ?? null);
   const [note, setNote] = useState("");
@@ -271,6 +272,8 @@ export function GrainsMode({ id }: { id: string }) {
   const run = () => {
     setBusy(true);
     setProgress("starting…");
+    const abort = new AbortController();
+    abortRef.current = abort;
     const params = buildClassicGrainParams(
       method as Exclude<GrainMethod, "trained">,
       analysisRoi.roi,
@@ -281,6 +284,8 @@ export function GrainsMode({ id }: { id: string }) {
     runJob<GrainResult>(
       () => analyzeGrainsAsync(sourceId, params),
       (f, msg) => setProgress(`${Math.round(f * 100)}% ${msg}`),
+      400,
+      abort.signal,
     )
       .then((r) => {
         ingestDerived([r.labels]);
@@ -312,6 +317,7 @@ export function GrainsMode({ id }: { id: string }) {
       })
       .catch((e: Error) => setStatus(`grains: ${e.message}`))
       .finally(() => {
+        abortRef.current = null;
         setBusy(false);
         setProgress("");
       });
@@ -409,6 +415,11 @@ export function GrainsMode({ id }: { id: string }) {
           >
             {busy ? progress || "Segmenting…" : "Identify grains"}
           </button>
+          {busy && abortRef.current && (
+            <button className="fvd-btn" onClick={() => abortRef.current?.abort()}>
+              Cancel
+            </button>
+          )}
         </div>
       )}
       {grainResult && <GrainMetrics r={grainResult} />}

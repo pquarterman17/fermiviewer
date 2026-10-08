@@ -23,7 +23,7 @@ from fermiviewer.calc.normalize import normalize01 as _normalize01
 from fermiviewer.calc.normalize import robust_normalize01 as _robust_normalize01
 from fermiviewer.calc.normalize import sanitize as _sanitize
 from fermiviewer.calc.particles import RegionStats, region_stats, resolve_pixel_area
-from fermiviewer.calc.segment import label_components
+from fermiviewer.calc.segment import label_components, split_labels_connected
 from fermiviewer.calc.texture import structure_tensor
 
 __all__ = [
@@ -120,18 +120,9 @@ def segment_auto(
 
     if progress:
         progress(0.8, "labelling grains")
-    labels = np.zeros((h, w), dtype=np.int64)
-    g = 0
-    for c in range(1, info.k + 1):
-        mask = cluster_map == c
-        if not mask.any():
-            continue
-        lc, nc = label_components(mask, connectivity)
-        for j in range(1, nc + 1):
-            comp = lc == j
-            if comp.sum() >= min_area:
-                g += 1
-                labels[comp] = g
+    # clusters are 1..k (0 = none), so this matches a per-cluster
+    # component loop without one full-image pass per component
+    labels, g = _relabel_connected(cluster_map, min_area, connectivity)
 
     return GrainSegmentation(
         labels=labels,
@@ -146,19 +137,8 @@ def _relabel_connected(
     labels: np.ndarray, min_area: int, connectivity: int = 8
 ) -> tuple[np.ndarray, int]:
     """Split each label into its connected components, drop those below
-    min_area, and renumber 1..N (raster order)."""
-    out = np.zeros(labels.shape, dtype=np.int64)
-    g = 0
-    for lab in np.unique(labels):
-        if lab == 0:
-            continue
-        cc, ncc = label_components(labels == lab, connectivity)
-        for j in range(1, ncc + 1):
-            comp = cc == j
-            if comp.sum() >= min_area:
-                g += 1
-                out[comp] = g
-    return out, g
+    min_area, and renumber 1..N (by label, then raster order)."""
+    return split_labels_connected(labels, min_area, connectivity)
 
 
 @dataclass(frozen=True)

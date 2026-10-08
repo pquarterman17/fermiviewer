@@ -19,6 +19,7 @@ __all__ = [
     "MultiOtsuResult",
     "distance_transform",
     "label_components",
+    "split_labels_connected",
     "slic",
     "morph_op",
     "multi_otsu",
@@ -258,6 +259,40 @@ def label_components(
     )
     labels, n = ndimage.label(np.asarray(bw) > 0, structure=structure)
     return labels, int(n)
+
+
+def split_labels_connected(
+    labels: np.ndarray, min_area: int, connectivity: int = 8
+) -> tuple[np.ndarray, int]:
+    """Split every non-zero label into its connected components, drop those
+    below min_area and renumber 1..N — ordered by source label value, then
+    raster first-encounter within each label.
+
+    Each label is component-labelled inside its own bounding box
+    (ndimage.find_objects), so the cost is the sum of bounding-box areas
+    rather than one full-image pass per label (≈N² on a fine watershed).
+    """
+    lab = np.asarray(labels)
+    out = np.zeros(lab.shape, dtype=np.int64)
+    if lab.size == 0:
+        return out, 0
+    vals, inv = np.unique(lab, return_inverse=True)
+    dense = inv.reshape(lab.shape).astype(np.int64) + 1  # 1..len(vals)
+    g = 0
+    for idx, sl in enumerate(ndimage.find_objects(dense)):
+        if sl is None or vals[idx] == 0:
+            continue
+        sub = dense[sl] == idx + 1
+        cc, ncc = label_components(sub, connectivity)
+        keep = np.bincount(cc.ravel(), minlength=ncc + 1)[1:] >= min_area
+        n_keep = int(keep.sum())
+        if n_keep == 0:
+            continue
+        remap = np.zeros(ncc + 1, dtype=np.int64)
+        remap[1:][keep] = np.arange(g + 1, g + n_keep + 1)
+        out[sl][sub] = remap[cc[sub]]
+        g += n_keep
+    return out, g
 
 
 # ── distance transform ───────────────────────────────────────────────

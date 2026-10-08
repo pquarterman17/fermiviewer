@@ -16,6 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+from scipy import ndimage
 
 from fermiviewer.calc.segment import (
     distance_transform,
@@ -244,12 +245,21 @@ def region_stats(
     pixel_area = resolve_pixel_area(pixel_area, pixel_size)
     out: list[RegionStats] = []
     n = int(lab.max())
-    for k in range(1, n + 1):
-        sel = lab == k
+    # Each region is measured inside its own bounding box (find_objects),
+    # not with a full-image mask per label — that was O(labels × pixels)
+    # and took minutes on a finely over-segmented 1024² grain map. The
+    # pixels visited (and their order) are the same, so the sums are too.
+    remap = np.zeros(max(n, 0) + 1, dtype=np.int64)
+    for k, sl in enumerate(ndimage.find_objects(np.maximum(lab, 0)), start=1):
+        if sl is None:
+            continue
+        sel = lab[sl] == k
         area = int(sel.sum())
         if area < min_area or area == 0:
             continue
         rs, cs = np.nonzero(sel)
+        rs = rs + sl[0].start
+        cs = cs + sl[1].start
         eq_d = float(np.sqrt(4 * area / np.pi))
         out.append(
             RegionStats(
@@ -263,7 +273,7 @@ def region_stats(
                     int(cs.max()) + 1,
                 ),
                 equiv_diameter=eq_d,
-                mean_intensity=float(d[sel].mean()),
+                mean_intensity=float(d[sl][sel].mean()),
                 # Both from the true pixel AREA. An equivalent diameter
                 # is the diameter of a circle of the same area, so it is
                 # well defined whatever the pixel shape -- 2*sqrt(A/pi),
@@ -281,19 +291,12 @@ def region_stats(
                 ),
             )
         )
+        remap[k] = len(out)
 
     if len(out) < n:
-        renumbered = np.zeros_like(lab)
-        # recover original ids in kept order: re-walk labels
-        kept = 0
-        for k in range(1, n + 1):
-            sel = lab == k
-            area = int(sel.sum())
-            if area < min_area or area == 0:
-                continue
-            kept += 1
-            renumbered[sel] = kept
-        return out, renumbered, len(out)
+        # kept regions renumbered 1..len(out) in original id order
+        renumbered = np.where(lab > 0, remap[np.clip(lab, 0, max(n, 0))], 0)
+        return out, renumbered.astype(lab.dtype), len(out)
     return out, lab, len(out)
 
 
