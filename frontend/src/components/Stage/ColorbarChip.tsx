@@ -84,15 +84,23 @@ export default function ColorbarChip() {
     ticks = colorbarTicks(lo, hi, step);
   }
 
+  // The tick labels are absolutely positioned, so they add no width of their
+  // own: reserve room for the widest one (monospace ≈ 0.62 em per glyph,
+  // + the 5 px tick line and 3 px gap) and half a label of padding at the
+  // ends, or a large font runs past the stage edge / onto the filmstrip.
+  const maxChars = Math.max(1, ...ticks.map((v) => fmt(v).length));
+  const labelW = Math.ceil(maxChars * 0.62 * tickFontSize) + 10;
+  const labelH = Math.ceil(tickFontSize * 1.25);
+
   // bottom placement: horizontal gradient strip at the bottom of the viewport
   if (side === "bottom") {
     const posPct = (v: number) => ((v - lo) / (hi - lo)) * 100; // left=lo, right=hi
     return (
       <div className="fvd-colorbar side-bottom">
         {unit && <span className="u">{unit}</span>}
-        <div className="body body-h">
+        <div className="body body-h" style={{ padding: `0 ${labelW / 2}px` }}>
           <canvas className="bar bar-h" ref={canvasRef} width={LUT_H} height={W} />
-          <div className="ticks ticks-h">
+          <div className="ticks ticks-h" style={{ height: labelH + 5 }}>
             {ticks.map((v) => (
               <span
                 className="tk tk-h"
@@ -114,9 +122,9 @@ export default function ColorbarChip() {
   return (
     <div className={`fvd-colorbar side-${side}`}>
       {unit && <span className="u">{unit}</span>}
-      <div className="body">
+      <div className="body" style={{ padding: `${labelH / 2}px 0` }}>
         <canvas className="bar" ref={canvasRef} width={W} height={LUT_H} />
-        <div className="ticks">
+        <div className="ticks" style={{ width: labelW }}>
           {ticks.map((v) => (
             <span className="tk" key={v} style={{ top: `${posPct(v)}%`, fontSize: tickFontSize }}>
               <i className="ln" />
