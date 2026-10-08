@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from fermiviewer.calc.eels_bigcube import align_zlp_chunked, is_big, svd_chunked
+
 __all__ = [
     "KKResult", "SVDResult", "align_zlp", "fourier_log", "fourier_ratio",
     "kramers_kronig", "richardson_lucy", "svd", "zlp_psf",
@@ -47,6 +49,14 @@ def _fractional_shift(cube_d: np.ndarray, shift: np.ndarray) -> np.ndarray:
     return shifted.reshape(ny, nx, ne)
 
 
+def _custom_ref(reference: np.ndarray, win_mask: np.ndarray) -> np.ndarray:
+    ref_full = np.asarray(reference, dtype=np.float64).ravel()
+    if ref_full.size != win_mask.size:
+        raise ValueError("custom reference must match channel count")
+    out: np.ndarray = ref_full[win_mask]
+    return out
+
+
 # ════════════════════════════════════════════════════════════════════
 def align_zlp(
     cube: np.ndarray,
@@ -63,9 +73,8 @@ def align_zlp(
     float array. The default integer path is byte-identical to the port
     (goldens unchanged)."""
     cube_in = np.asarray(cube)
-    cube_d = cube_in.astype(np.float64)
     energy = np.asarray(energy, dtype=np.float64).ravel()
-    ny, nx, ne = cube_d.shape
+    ny, nx, ne = cube_in.shape
     if energy.size != ne:
         raise ValueError("energy length must match cube channels")
 
@@ -73,6 +82,14 @@ def align_zlp(
     n_win = int(win_mask.sum())
     if n_win < 3:
         raise ValueError("alignment window spans fewer than 3 channels")
+
+    if is_big(cube_in):  # whole-cube float64/complex temporaries won't fit
+        ref_custom = None if isinstance(reference, str) else _custom_ref(reference, win_mask)
+        return align_zlp_chunked(cube_in, win_mask, ref_custom,
+                                 reference if isinstance(reference, str) else "custom",
+                                 subpixel, _parabolic_offset)
+
+    cube_d = cube_in.astype(np.float64)
 
     flat = cube_d.reshape(ny * nx, ne).T          # [nE, Np]
     zlp = flat[win_mask]                          # [nWin, Np]
@@ -85,10 +102,7 @@ def align_zlp(
         else:
             raise ValueError("reference must be 'mean', 'max', or a vector")
     else:
-        ref_full = np.asarray(reference, dtype=np.float64).ravel()
-        if ref_full.size != ne:
-            raise ValueError("custom reference must match channel count")
-        ref = ref_full[win_mask]
+        ref = _custom_ref(reference, win_mask)
 
     nfft = 2 * n_win - 1
     ref_f = np.conj(np.fft.fft(ref, nfft))
@@ -278,7 +292,7 @@ def svd(
     center: bool = True,
 ) -> SVDResult:
     """Multivariate decomposition of an SI cube (port of eelsSVD.m)."""
-    cube = np.asarray(cube, dtype=np.float64)
+    cube = np.asarray(cube)
     energy = np.asarray(energy, dtype=np.float64).ravel()
     ny, nx, ne = cube.shape
     n_px = ny * nx
@@ -286,6 +300,22 @@ def svd(
         raise ValueError("energy length must match cube channels")
     if n_px < 2:
         raise ValueError("need at least 2 spatial pixels")
+
+    if is_big(cube):  # covariance route: never holds the cube in float64
+        v_k, scores, sv_k, total_var, mean_spec, denoised = svd_chunked(
+            cube, n_components, denoise, center)
+        explained = 100 * sv_k**2 / total_var if total_var > 0 else np.zeros_like(sv_k)
+        return SVDResult(
+            eigenspectra=v_k,
+            score_maps=scores.reshape(ny, nx, -1),
+            singular_values=sv_k,
+            explained=explained,
+            cumulative=np.cumsum(explained),
+            mean_spectrum=mean_spec,
+            denoised_cube=denoised,
+        )
+
+    cube = cube.astype(np.float64)
 
     a = cube.reshape(n_px, ne)
     mean_spec = a.mean(axis=0) if center else np.zeros(ne)
