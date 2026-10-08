@@ -184,7 +184,7 @@ class Resolved:
 
     value: float
     unit: str
-    #: "request" | "profile" | "default"
+    #: "request" | "profile" | "file" | "default"
     origin: str
     #: ``profile:<id>@<version>`` and the field, when origin is "profile"
     source: str | None = None
