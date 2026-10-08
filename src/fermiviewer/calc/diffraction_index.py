@@ -117,6 +117,20 @@ def index_spots_roi(
     """
     if roi is not None and not roi_selects_pixels(img_shape, roi):
         raise ValueError("roi selects no pixels of the image")
+    # physical inputs: a non-positive value used to index "successfully"
+    # (L = 0 → every d infinite → 0 matches, kV < 0 → imaginary λ)
+    if not (np.isfinite(pixel_size) and pixel_size > 0):
+        raise ValueError("pixel size must be greater than 0 mm")
+    if not (np.isfinite(acc_voltage) and acc_voltage > 0):
+        raise ValueError("accelerating voltage must be greater than 0 kV")
+    if not np.isnan(camera_length) and not (
+        np.isfinite(camera_length) and camera_length > 0
+    ):
+        raise ValueError("camera length must be greater than 0 mm")
+    if not (np.isfinite(tolerance) and tolerance > 0):
+        raise ValueError("tolerance must be greater than 0")
+    if top_n < 1:
+        raise ValueError("top N must be at least 1")
     spots = np.asarray(spots, dtype=np.float64)
     if spots.ndim != 2 or (spots.size and spots.shape[1] != 2):
         raise ValueError("spots must be an (N, 2) array of 1-based (row, col)")

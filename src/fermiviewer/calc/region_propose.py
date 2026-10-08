@@ -80,7 +80,7 @@ def _seed_point(
     else:
         raise ValueError("need either seed or rect")
     if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0):
-        raise ValueError("seed must be within the image (normalized 0-1)")
+        raise ValueError("seed must lie inside the image (0–100 % of width and height)")
     return x, y
 
 

@@ -203,6 +203,23 @@ def test_diffraction_detect_and_index(client, pattern_id) -> None:
     assert all(set(c) >= {"phase", "score", "n_matched"} for c in cands)
 
 
+@pytest.mark.parametrize(("field", "value", "message"), [
+    ("pixel_size_mm", -1, "pixel size must be greater than 0 mm"),
+    ("acc_voltage_kv", -200, "accelerating voltage must be greater than 0 kV"),
+    # L = 0 used to "succeed" with every candidate at 0 matches
+    ("camera_length_mm", 0, "camera length must be greater than 0 mm"),
+])
+def test_diffraction_index_rejects_nonphysical_inputs(
+    client, pattern_id, field, value, message,
+) -> None:
+    body = {"image_id": pattern_id, "spots": [[65, 95], [65, 35]],
+            "pixel_size_mm": 0.05, "camera_length_mm": 200,
+            "acc_voltage_kv": 200, field: value}
+    r = client.post("/api/diffraction/index", json=body)
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"] == message
+
+
 def test_analysis_errors(client, pattern_id) -> None:
     assert client.post("/api/eels/background", json={
         "image_id": "nope", "fit_window": [1, 2],
