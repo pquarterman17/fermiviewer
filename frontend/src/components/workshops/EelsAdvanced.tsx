@@ -188,7 +188,13 @@ export default function EelsAdvanced({
         denoise,
       }).then((r) => {
         const metas = [...r.score_maps, ...(r.denoised ? [r.denoised] : [])];
-        if (metas.length) ingestDerived(metas);
+        if (metas.length) {
+          ingestDerived(metas);
+          // ingest activates the last score map, which is not an SI cube, so
+          // this tab and the explained-variance note vanished; keep the
+          // source cube active — the maps are in the library.
+          useViewer.getState().setActive(activeId);
+        }
         const top = r.explained
           .slice(0, 4)
           .map((v, i) => `PC${i + 1} ${v.toFixed(1)}%`)
