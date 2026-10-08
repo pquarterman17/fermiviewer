@@ -34,6 +34,9 @@ export interface PhaseCandidate {
   ref_d: number[];       // reference d-spacings for each matched spot (Å)
   matched_idx: number[]; // index into the input spots[] for each matched spot
   zone_axis: number[];
+  /** "zone": spacings and inter-spot angles fit one zone axis; "d-spacing":
+   *  each spot matched to a ring on its own (ring patterns, poor fits). */
+  method?: "zone" | "d-spacing";
 }
 
 export interface IndexResult {

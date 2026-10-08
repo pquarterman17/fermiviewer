@@ -146,12 +146,18 @@ def simulate(
     a_star, b_star, c_star = _lattice_vectors(phase)
 
     uvw = np.asarray(zone_axis, dtype=np.float64)
+    # the beam runs along the REAL-SPACE direction u·a + v·b + w·c; the
+    # pattern plane is perpendicular to it. (Treating [uvw] as Cartesian is
+    # only right for cubic cells — it skewed e.g. hexagonal [111] patterns.)
+    beam = np.cross(b_star, c_star) * uvw[0] + np.cross(c_star, a_star) * uvw[1] \
+        + np.cross(a_star, b_star) * uvw[2]
+    beam /= np.linalg.norm(beam)
     ref = np.array([1.0, 0, 0]) if (
-        abs(uvw[0]) <= abs(uvw[1]) and abs(uvw[0]) <= abs(uvw[2])
+        abs(beam[0]) <= abs(beam[1]) and abs(beam[0]) <= abs(beam[2])
     ) else np.array([0.0, 1, 0])
-    e1 = np.cross(uvw, ref)
+    e1 = np.cross(beam, ref)
     e1 /= np.linalg.norm(e1)
-    e2 = np.cross(uvw, e1)
+    e2 = np.cross(beam, e1)
     e2 /= np.linalg.norm(e2)
 
     basis = phase.basis

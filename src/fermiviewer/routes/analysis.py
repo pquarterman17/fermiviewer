@@ -488,6 +488,7 @@ def diffraction_index(req: IndexRequest) -> dict:
                 # indexing report can map a match back to its (row, col))
                 "matched_idx": c.matched_idx.tolist(),
                 "zone_axis": list(c.zone_axis),
+                "method": c.method,  # "zone" (d + angles) or "d-spacing"
             }
             for c in cands
         ],
