@@ -50,7 +50,7 @@ describe("Inspector Elemental launcher", () => {
       expect.objectContaining({ kind: "eds" }),
     ]);
     expect(
-      screen.getByText(/share one resizable\s+workspace/),
+      screen.getByText(/open together in\s+the Elemental Analysis window/),
     ).toBeVisible();
   });
 

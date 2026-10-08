@@ -72,6 +72,13 @@ interface SpeciesState {
   selectedByImage: Record<string, string | null>;
   selectSpecies: (imageId: string, speciesId: string | null) => void;
 
+  /** Per-image element list typed for Quantify / Model fit ("Al, Ag").
+   *  Absent means "not edited yet": `quantElementsOf` then derives it from
+   *  the image's species. Kept here so closing and reopening the workspace
+   *  no longer resets it to a hardcoded list. */
+  quantElementsByImage: Record<string, string>;
+  setQuantElements: (imageId: string, text: string) => void;
+
   /** Per-image EDS map background/beam-energy — see EdsMapSettings. */
   edsSettingsByImage: Record<string, EdsMapSettings>;
   setEdsSettings: (
@@ -118,6 +125,12 @@ export const useSpecies = create<SpeciesState>((set) => ({
   byImage: {},
   selectedByImage: {},
   edsSettingsByImage: {},
+  quantElementsByImage: {},
+
+  setQuantElements: (imageId, text) =>
+    set((state) => ({
+      quantElementsByImage: { ...state.quantElementsByImage, [imageId]: text },
+    })),
 
   setSpecies: (imageId, species) =>
     set((state) => ({
@@ -185,7 +198,16 @@ export const useSpecies = create<SpeciesState>((set) => ({
       for (const [id, settings] of Object.entries(state.edsSettingsByImage)) {
         if (keep.has(id)) edsSettingsByImage[id] = settings;
       }
-      return { byImage, selectedByImage, edsSettingsByImage };
+      const quantElementsByImage: Record<string, string> = {};
+      for (const [id, text] of Object.entries(state.quantElementsByImage)) {
+        if (keep.has(id)) quantElementsByImage[id] = text;
+      }
+      return {
+        byImage,
+        selectedByImage,
+        edsSettingsByImage,
+        quantElementsByImage,
+      };
     }),
 
   selectSpecies: (imageId, speciesId) =>
@@ -242,4 +264,24 @@ export function edsSettingsOf(
 ): Readonly<EdsMapSettings> {
   if (!imageId) return DEFAULT_EDS_SETTINGS;
   return edsSettingsByImage[imageId] ?? DEFAULT_EDS_SETTINGS;
+}
+
+/** The element list Quantify / Model fit run on: what the user typed for
+ *  this image, else the image's identified/selected species (unique
+ *  symbols, list order), else the elements the acquisition declares. */
+export function quantElementsOf(
+  state: Pick<SpeciesState, "byImage" | "quantElementsByImage">,
+  imageId: string | null,
+  declared?: unknown,
+): string {
+  if (!imageId) return "";
+  const typed = state.quantElementsByImage[imageId];
+  if (typed !== undefined) return typed;
+  const symbols = [
+    ...new Set((state.byImage[imageId] ?? NO_SPECIES).map((s) => s.symbol)),
+  ];
+  if (symbols.length > 0) return symbols.join(", ");
+  return Array.isArray(declared)
+    ? declared.filter((x): x is string => typeof x === "string").join(", ")
+    : "";
 }

@@ -33,9 +33,12 @@ type QuantMethod = "cl" | "zeta";
 export default function EdsModelFit({
   activeId,
   elements,
+  onElements,
 }: {
   activeId: string | null;
   elements: string;
+  /** Same per-image list Quantify edits — see store/species.ts. */
+  onElements: (value: string) => void;
 }) {
   const setStatus = useViewer((s) => s.setStatus);
   const imageName = useViewer((s) =>
@@ -171,6 +174,17 @@ export default function EdsModelFit({
 
   return (
     <div>
+      <div className="fvd-ws-row">
+        <span className="k">Elements</span>
+        <input
+          aria-label="Model-fit elements"
+          value={elements}
+          style={{ flex: 1 }}
+          placeholder="Fe, O, Si"
+          title="Elements whose peaks the model fits (shared with Quantify)"
+          onChange={(e) => onElements(e.target.value)}
+        />
+      </div>
       <div className="fvd-ws-row">
         <span className="k">E₀ (keV)</span>
         <input

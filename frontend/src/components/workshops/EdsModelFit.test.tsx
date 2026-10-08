@@ -73,7 +73,7 @@ afterEach(() => {
 describe("EdsModelFit", () => {
   it("renders the χ²ᵣ / R² readout from a peakfit response", async () => {
     vi.mocked(edsPeakfit).mockResolvedValue(RESULT);
-    render(<EdsModelFit activeId="img1" elements="Fe" />);
+    render(<EdsModelFit activeId="img1" elements="Fe" onElements={() => {}} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Deconvolve peaks" }));
     await waitFor(() => expect(edsPeakfit).toHaveBeenCalled());
@@ -84,7 +84,7 @@ describe("EdsModelFit", () => {
 
   it("flags a non-converged fit in the same readout", async () => {
     vi.mocked(edsPeakfit).mockResolvedValue({ ...RESULT, success: false });
-    render(<EdsModelFit activeId="img1" elements="Fe" />);
+    render(<EdsModelFit activeId="img1" elements="Fe" onElements={() => {}} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Deconvolve peaks" }));
     await waitFor(() => expect(edsPeakfit).toHaveBeenCalled());
@@ -93,7 +93,7 @@ describe("EdsModelFit", () => {
   });
 
   it("has no fit-report export button before a fit is run", () => {
-    render(<EdsModelFit activeId="img1" elements="Fe" />);
+    render(<EdsModelFit activeId="img1" elements="Fe" onElements={() => {}} />);
     expect(
       screen.queryByRole("button", { name: "Export fit report (CSV)" }),
     ).not.toBeInTheDocument();
@@ -101,7 +101,7 @@ describe("EdsModelFit", () => {
 
   it("downloads a fit report CSV after a peakfit (#7)", async () => {
     vi.mocked(edsPeakfit).mockResolvedValue(RESULT);
-    render(<EdsModelFit activeId="img1" elements="Fe" />);
+    render(<EdsModelFit activeId="img1" elements="Fe" onElements={() => {}} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Deconvolve peaks" }));
     await waitFor(() => expect(edsPeakfit).toHaveBeenCalled());
