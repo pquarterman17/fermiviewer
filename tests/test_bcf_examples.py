@@ -82,13 +82,20 @@ def test_example_bcf_stage_raster_defaults_to_sum(
 def test_example_bcf_quantify_skips_absent_elements(
     client: TestClient, bcf_examples: Path
 ) -> None:
-    """Bug B on real data: Cu/Al/O are present (maps kept); Au/Pb are not
-    (maps skipped → null), with `maps` staying aligned to `elements`."""
+    """Bug B on real data: Cu/Al/O are present (maps kept); Ni/Zn are not
+    (maps skipped → null), with `maps` staying aligned to `elements`.
+
+    The file is a 15 kV acquisition, so each element is quantified on the
+    line that beam actually excites (Au/Pb on M, not an unexcited L/K
+    window). Au/Pb were the "absent" pair while every element was forced
+    onto its K/L line, whose high-energy windows were empty; their M lines
+    sit in the busy 2-2.4 keV region (Pb Mα overlaps S Kα), so they are no
+    longer usable as absent markers — Ni/Zn K windows are genuinely empty."""
     img = _open(client, bcf_examples / HITACHI)
+    els = ["Cu", "Al", "O", "Ni", "Zn", "Pb"]
     with pytest.warns(UserWarning, match="no built-in k-factor for 'Pb'"):
         r = client.post(
-            "/api/eds/quantify",
-            json={"image_id": img, "elements": ["Cu", "Al", "O", "Au", "Pb"]},
+            "/api/eds/quantify", json={"image_id": img, "elements": els},
         )
     assert r.status_code == 200
     body = r.json()
@@ -96,5 +103,7 @@ def test_example_bcf_quantify_skips_absent_elements(
     by_el = dict(zip(body["elements"], body["maps"], strict=True))
     for present in ("Cu", "Al", "O"):
         assert by_el.get(present) is not None, f"{present} should be kept"
-    for absent in ("Au", "Pb"):
+    for absent in ("Ni", "Zn"):
         assert by_el.get(absent) is None, f"{absent} should be skipped as blank"
+    lines = dict(zip(body["elements"], body["lines"], strict=True))
+    assert lines["Pb"] == "M", "15 kV beam: Pb is quantified on its M line"
