@@ -244,9 +244,7 @@ def analyze_roughness(req: RoughnessRequest) -> dict:
     return {
         "Ra": r.ra, "Rq": r.rq, "Rz": r.rz, "Rsk": r.rsk, "Rku": r.rku,
         "Rp": r.rp, "Rv": r.rv, "SAR": r.sar,
-        # Heights are pixel VALUES, so their unit is the value unit (an AFM
-        # height map's "nm"), never the lateral pixel unit: a calibrated
-        # HAADF image used to report raw intensity as "Ra 111.7 nm".
+        # heights are pixel VALUES: the value unit, never the lateral pixel unit
         "unit": str(ds.metadata.get("value_unit") or "") or "a.u.",
         "n_pixels": r.n_pixels,
         "level": r.level,
