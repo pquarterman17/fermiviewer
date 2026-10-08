@@ -12,7 +12,7 @@ import {
 import { computeMeasureStats } from "../../lib/measureStats";
 import { fuzzy } from "../../lib/fuzzy";
 import { refreshPersistedResults } from "../../lib/persistedResultActions";
-import { MEASURE_GROUPS, MEASURE_TOOLS } from "../../lib/measureTools";
+import { MEASURE_GROUPS, MEASURE_TOOLS, measureToolTitle } from "../../lib/measureTools";
 import {
   boxProfileToCsv,
   csvBaseName,
@@ -238,7 +238,7 @@ export default function MeasurePanel({ toolList = true }: { toolList?: boolean }
                         onClick={() =>
                           setCaptureMode(captureMode === t.kind ? "none" : t.kind)
                         }
-                        title={`Arm the ${t.label} tool — drag on the image to place it (click again to disarm)`}
+                        title={measureToolTitle(t)}
                       >
                         <span className="glyph">{t.glyph}</span>
                         <span className="label">{t.label}</span>

@@ -6,7 +6,7 @@
 import { Fragment, useState } from "react";
 
 import { fuzzy } from "../../lib/fuzzy";
-import { MEASURE_GROUPS, MEASURE_TOOLS } from "../../lib/measureTools";
+import { MEASURE_GROUPS, MEASURE_TOOLS, measureToolTitle } from "../../lib/measureTools";
 import { coerceParams, validateParams, type ParamValues } from "../../lib/params";
 import { defaultParams, runTransform } from "../../lib/transforms";
 import {
@@ -132,7 +132,7 @@ export default function ToolsBrowser() {
                       onClick={() =>
                         setCaptureMode(captureMode === t.kind ? "none" : t.kind)
                       }
-                      title={`Arm the ${t.label} capture tool (click again to disarm)`}
+                      title={measureToolTitle(t)}
                     >
                       <span className="glyph">{t.glyph}</span>
                       <span className="label">{t.label}</span>

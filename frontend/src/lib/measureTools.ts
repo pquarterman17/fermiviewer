@@ -37,3 +37,24 @@ export const MEASURE_TOOLS: MeasureTool[] = [
   { label: "Box", glyph: "□", kind: "box", group: "Annotations" },
   { label: "Circle", glyph: "◌", kind: "circle", group: "Annotations" },
 ];
+
+/** How each tool is placed on the image — the arming tooltip used to say
+ *  "drag on the image" for every tool, which was untrue for the click-
+ *  driven ones (angle, polyline, polygon, text). */
+const PLACE_HINT: Partial<Record<CaptureMode, string>> = {
+  profile: "drag along the line, or click start then end",
+  distance: "drag between the points, or click one then the other",
+  arrow: "drag from tail to head, or click tail then head",
+  box: "drag corner to corner, or click two opposite corners",
+  circle: "drag from centre to edge, or click centre then edge",
+  angle: "click the vertex, then a point on each ray",
+  polyline: "click each vertex, double-click to finish",
+  polygon: "click each vertex, click the first again or double-click to close",
+  text: "click where the text goes",
+};
+
+/** Tooltip for arming a measure tool. */
+export function measureToolTitle(t: MeasureTool): string {
+  const how = PLACE_HINT[t.kind] ?? "drag on the image to place it";
+  return `Arm the ${t.label} tool — ${how} (click again to disarm)`;
+}

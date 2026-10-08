@@ -49,6 +49,10 @@ import { runFitAndReseed } from "./stageScaleLock";
 import { buildCtxTarget, type CtxTarget } from "./StageCtxMenu";
 import { CLICKS, type Pt } from "./stageUtils";
 
+/** Screen px a two-point tool's first press must travel before its release
+ *  counts as the second point (a drag) rather than a click in place. */
+const DRAG_PLACE_PX = 4;
+
 /** Release pointer capture, tolerating a capture the browser has already
  *  dropped — the guarded form every early return in onPointerUp needs. */
 function releaseCapture(e: React.PointerEvent) {
@@ -148,6 +152,10 @@ export function useStagePointers(ctx: StagePointersCtx) {
   // lasso: local capture accumulator (regionCapture.ts) — no ctx ref needed
   // since only this hook's own pointer handlers touch it.
   const lassoRef = useRef<LassoCapture | null>(null);
+  // two-point tools (distance, profile, arrow, box, circle, calibrate)
+  // place by click-click OR by a drag: the screen point of a FIRST click,
+  // so a release far enough away commits the second point there.
+  const twoPointDownRef = useRef<Pt | null>(null);
 
   // ── pointer: pan / marquee / capture / readout ──
   const local = (e: React.PointerEvent | React.MouseEvent): Pt => {
@@ -255,6 +263,10 @@ export function useStagePointers(ctx: StagePointersCtx) {
       e.currentTarget.setPointerCapture(e.pointerId);
     } else if (captureMode in CLICKS) {
       const ip = toImage(p);
+      if (CLICKS[captureMode] === 2 && !pending) {
+        twoPointDownRef.current = p;
+        e.currentTarget.setPointerCapture(e.pointerId);
+      }
       runCaptureAction(
         clickCaptureAction(captureMode, pending, ip, e.shiftKey, view.z),
       );
@@ -326,6 +338,19 @@ export function useStagePointers(ctx: StagePointersCtx) {
     }
     if (fourdnavRef.current) {
       fourdnavRef.current = false;
+      releaseCapture(e);
+      return;
+    }
+    const downAt = twoPointDownRef.current;
+    twoPointDownRef.current = null;
+    if (downAt && pending && view && imgSize && captureMode in CLICKS) {
+      const p = local(e);
+      // a drag (not a click in place) finishes the two-point capture here
+      if (Math.hypot(p.x - downAt.x, p.y - downAt.y) > DRAG_PLACE_PX) {
+        runCaptureAction(
+          clickCaptureAction(captureMode, pending, toImage(p), e.shiftKey, view.z),
+        );
+      }
       releaseCapture(e);
       return;
     }
