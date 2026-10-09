@@ -172,9 +172,10 @@ def load_auto(path: str | Path) -> DataStruct:
     if loader is None:
         # WSxM saves each channel with its own extension (.ch1, .f.dy.top,
         # …): recognise its images by content rather than list them all
-        with open(p, "rb") as fh:
-            if is_wsxm(fh.read(200)):
-                return load_wsxm(p)
+        if p.is_file():                      # unknown extension stays a 415, not a 404
+            with open(p, "rb") as fh:
+                if is_wsxm(fh.read(200)):
+                    return load_wsxm(p)
         raise UnsupportedFormatError(
             f"no parser for '{p.suffix}' (supported: {', '.join(supported_extensions())})"
         )
