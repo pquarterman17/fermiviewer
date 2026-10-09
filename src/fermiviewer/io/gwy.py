@@ -1,4 +1,4 @@
-"""Gwyddion native files (.gwy, "GWYP" serialization).
+"""Gwyddion native files (.gwy, "GWYP" serialization; Gwyddion 1.x "GWYO").
 
 A .gwy file is the magic ``GWYP`` followed by one serialized object, a
 ``GwyContainer``. An object is its type name (NUL-terminated), a uint32
@@ -32,7 +32,7 @@ from fermiviewer.io.spm_common import (
     unique_labels,
 )
 
-__all__ = ["GwyError", "load_gwy", "load_gwy_all", "read_gwy_container"]
+__all__ = ["GwyError", "load_gsf", "load_gwy", "load_gwy_all", "read_gwy_container"]
 
 _MAGIC = b"GWYP"
 _SCALAR = {"b": ("<?", 1), "c": ("<c", 1), "i": ("<i", 4), "q": ("<q", 8), "d": ("<d", 8)}
@@ -52,7 +52,11 @@ class _Reader:
         end = self.buf.find(b"\0", self.pos)
         if end < 0:
             raise GwyError("truncated string")
-        s = self.buf[self.pos:end].decode("utf-8", "replace")
+        raw = self.buf[self.pos:end]
+        try:
+            s = raw.decode("utf-8")
+        except UnicodeDecodeError:                  # Gwyddion 1.x wrote Latin-1 (µm)
+            s = raw.decode("latin-1")
         self.pos = end + 1
         return s
 
@@ -104,13 +108,41 @@ class _Reader:
 def read_gwy_container(path: str | Path) -> dict[str, Any]:
     """The top-level ``GwyContainer`` as nested dicts (arrays as numpy)."""
     buf = Path(path).read_bytes()
-    if buf[:4] != _MAGIC:
-        if buf[:4] == b"GWYO":
-            raise GwyError("Gwyddion 1.x files are not supported — re-save in Gwyddion 2")
-        raise GwyError("not a Gwyddion .gwy file")
     r = _Reader(buf)
     r.pos = 4
-    return r.obj()
+    if buf[:4] == _MAGIC:
+        return r.obj()
+    if buf[:4] == b"GWYO":
+        return _old_container(r)
+    raise GwyError("not a Gwyddion .gwy file")
+
+
+# Gwyddion 1.x ("GWYO") containers store each item as its GType code, key
+# and value; the objects inside serialize as in Gwyddion 2.
+_OLD_TYPES = {20: ("<I", 4), 12: ("<b", 1), 16: ("<B", 1), 24: ("<i", 4), 28: ("<I", 4),
+              40: ("<q", 8), 44: ("<Q", 8), 60: ("<d", 8)}
+_G_STRING, _G_OBJECT = 64, 80
+
+
+def _old_container(r: _Reader) -> dict[str, Any]:
+    name = r.cstring()
+    if name != "GwyContainer":
+        raise GwyError("Gwyddion 1.x file without a container")
+    size = r.take("<I", 4)
+    end = r.pos + size
+    out: dict[str, Any] = {"__type__": name}
+    while r.pos < end:
+        gtype = r.take("<I", 4)
+        key = r.cstring()
+        if gtype == _G_STRING:
+            out[key] = r.cstring()
+        elif gtype == _G_OBJECT:
+            out[key] = r.obj()
+        elif gtype in _OLD_TYPES:
+            out[key] = r.take(*_OLD_TYPES[gtype])
+        else:
+            raise GwyError(f"Gwyddion 1.x item {key!r} has unknown type {gtype}")
+    return out
 
 
 def _unit(field: dict[str, Any], key: str) -> str:
@@ -150,3 +182,39 @@ def load_gwy_all(path: str | Path) -> list[DataStruct]:
 def load_gwy(path: str | Path) -> DataStruct:
     """The topography channel (or the first one)."""
     return primary_channel(load_gwy_all(path))
+
+
+_GSF_MAGIC = b"Gwyddion Simple Field 1.0\n"
+
+
+def load_gsf(path: str | Path) -> DataStruct:
+    """Gwyddion Simple Field (.gsf): ``Key = value`` text lines after the
+    magic line, NUL padding to a multiple of 4 bytes, then XRes × YRes
+    little-endian float32 values, top row first, in ZUnits."""
+    buf = Path(path).read_bytes()
+    if not buf.startswith(_GSF_MAGIC):
+        raise GwyError("not a Gwyddion Simple Field file")
+    end = buf.find(b"\0")
+    if end < 0:
+        raise GwyError("GSF header is not NUL-terminated")
+    meta: dict[str, str] = {}
+    for line in buf[len(_GSF_MAGIC):end].decode("utf-8", "replace").splitlines():
+        key, sep, val = line.partition("=")
+        if sep:
+            meta[key.strip()] = val.strip()
+    try:
+        xres, yres = int(meta["XRes"]), int(meta["YRes"])
+    except (KeyError, ValueError):
+        raise GwyError("GSF header lacks XRes/YRes") from None
+    start = (end // 4 + 1) * 4                         # padding: 1–4 NULs
+    if start + 4 * xres * yres > len(buf):
+        raise GwyError("GSF data runs past the end of the file")
+    data = np.frombuffer(buf, dtype="<f4", count=xres * yres, offset=start)
+    lat = length_to_nm_factor(meta.get("XYUnits", "m")) or float("nan")
+    title = meta.get("Title", "") or Path(path).stem
+    return spm_channel(
+        data.reshape(yres, xres), parser="gwyddion", channel=title, label=title,
+        value_unit=meta.get("ZUnits", ""),
+        dy_nm=float(meta.get("YReal", "nan")) * lat / yres,
+        dx_nm=float(meta.get("XReal", "nan")) * lat / xres,
+    )

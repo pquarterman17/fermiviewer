@@ -16,18 +16,19 @@ from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 
 __all__ = ["length_to_nm_factor", "primary_channel", "spm_channel", "to_nm", "unique_labels"]
 
+# case-sensitive on purpose: "A" is an ampere, never an ångström
 _TO_NM = {
     "m": 1e9, "mm": 1e6, "um": 1e3, "µm": 1e3, "μm": 1e3, "nm": 1.0,
-    "a": 0.1, "å": 0.1, "ang": 0.1, "pm": 1e-3,
+    "Å": 0.1, "Ang": 0.1, "ang": 0.1, "angstrom": 0.1, "pm": 1e-3,
 }
 
 # the channel a plain open shows: topography first, in this order
-_PRIMARY = ("height", "topography", "zsensor", "z sensor", "z-sensor", "z")
+_PRIMARY = ("height", "topography", "z-axis", "zsensor", "z sensor", "z-sensor", "z")
 
 
 def length_to_nm_factor(unit: str) -> float | None:
     """Factor to nm for a length unit, None for anything else."""
-    return _TO_NM.get(unit.strip().lower())
+    return _TO_NM.get(unit.strip())
 
 
 def to_nm(values: np.ndarray, unit: str) -> tuple[np.ndarray, str]:

@@ -129,3 +129,100 @@ def write_wsxm(path: Path, stored: np.ndarray, kind: str, zamp: str,
     dt = {"short": "<i2", "double": "<f8"}[kind]
     path.write_bytes(head.format(size=size).encode("latin-1") + stored.astype(dt).tobytes())
     return path
+
+
+# ── Gwyddion simple field / Gwyddion 1.x ─────────────────────────────
+
+
+def write_gsf(path: Path, data: np.ndarray, size_m: float, title: str = "Height") -> Path:
+    yres, xres = data.shape
+    head = (f"Gwyddion Simple Field 1.0\nXRes = {xres}\nYRes = {yres}\nXReal = {size_m}\n"
+            f"YReal = {size_m}\nXYUnits = m\nZUnits = m\nTitle = {title}\n").encode()
+    pad = 4 - len(head) % 4
+    path.write_bytes(head + b"\0" * pad + data.astype("<f4").tobytes())
+    return path
+
+
+def write_gwyo(path: Path, data: np.ndarray, size_m: float) -> Path:
+    """Gwyddion 1.x: the container items carry a GType code (string 64,
+    object 80); the data field inside serializes as in Gwyddion 2."""
+    field = _gwy_field(data, size_m, size_m, "m")
+    items = (struct.pack("<I", 64) + b"/0/base/palette\0Gray\0"
+             + struct.pack("<I", 80) + b"/0/data\0" + field)
+    path.write_bytes(b"GWYO" + b"GwyContainer\0" + struct.pack("<I", len(items)) + items)
+    return path
+
+
+# ── Nanosurf NID ─────────────────────────────────────────────────────
+
+
+def write_nid(path: Path, channels: list[tuple[str, str, np.ndarray]], range_m: float,
+              zmin: float, zrange: float) -> Path:
+    """channels: (name, unit, int32 lines bottom-up) — all in group 0."""
+    ny, nx = channels[0][2].shape
+    head = ["[DataSet]", "Version=2", "GroupCount=1", "Gr0-Name=Scan forward",
+            f"Gr0-Count={len(channels)}"]
+    head += [f"Gr0-Ch{i}=DataSet-0:{i}" for i in range(len(channels))]
+    for i, (name, unit, _) in enumerate(channels):
+        head += ["", f"[DataSet-0:{i}]", f"Points={nx}", f"Lines={ny}",
+                 "Dim0Unit=m", f"Dim0Range={range_m}", "Dim1Unit=m", f"Dim1Range={range_m}",
+                 f"Dim2Name={name}", f"Dim2Unit={unit}", f"Dim2Min={zmin}",
+                 f"Dim2Range={zrange}", "SaveBits=32", "SaveSign=Signed"]
+    data = b"".join(c[2].astype("<i4").tobytes() for c in channels)
+    path.write_bytes("\r\n".join(head).encode() + b"\r\n#!" + data)
+    return path
+
+
+# ── NT-MDT ───────────────────────────────────────────────────────────
+
+
+def _mdt_frame(ftype: int, var: bytes, body: bytes) -> bytes:
+    size = 22 + len(var) + len(body)
+    return struct.pack("<IHH6HH", size, ftype, 0, 2024, 1, 1, 0, 0, 0, len(var)) + var + body
+
+
+def _mda_cal(name: str, unit: str, bias: float, scale: float, n: int, dtype: int) -> bytes:
+    nb, ub = name.encode(), unit.encode()
+    body = struct.pack("<IIIQd8xddQQiI", len(nb), 0, len(ub), 0, 0.0, bias, scale, 0, n - 1,
+                       dtype, 0)
+    return struct.pack("<II", 8 + len(body) + len(nb) + len(ub), len(body)) + body + nb + ub
+
+
+def write_mdt(path: Path, scanned: np.ndarray, mda: np.ndarray, step_nm: float) -> Path:
+    """One classic scanned frame (int16, unit codes) and one MDA frame
+    (int32, unit strings); both stored bottom line first."""
+    ny, nx = scanned.shape
+    axes = struct.pack("<ffhffhffh", 0, step_nm, -1, 0, step_nm, -1, 5.0, 0.5, -1)  # nm
+    title = b"Topography"
+    frame0 = _mdt_frame(0, axes, struct.pack("<4H", 0, nx, ny, 0)
+                        + scanned.astype("<i2").tobytes() + struct.pack("<I", len(title)) + title)
+    my, mx = mda.shape
+    name = b"Phase"
+    head = struct.pack("<II36x8I", 76, 0, len(name), 0, 0, 0, 0, 0, 0, 0)
+    arr = struct.pack("<QIII", mx * my, 4, 2, 1)
+    cals = (_mda_cal("X", "um", 0.0, step_nm / 1000, mx, -4)
+            + _mda_cal("Y", "um", 0.0, step_nm / 1000, my, -4)
+            + _mda_cal("Phase", "deg", 1.0, 0.25, mx * my, -4))
+    rec = head + name + struct.pack("<II", 0, len(arr)) + arr + cals + mda.astype("<i4").tobytes()
+    frame1 = _mdt_frame(106, b"", rec)
+    frames = frame0 + frame1
+    hdr = b"\x01\xb0\x93\xff" + struct.pack("<II", len(frames), 0) + struct.pack("<H", 1)
+    path.write_bytes(hdr + bytes(18) + b"\0" + frames)
+    return path
+
+
+# ── Nanonis SXM ──────────────────────────────────────────────────────
+
+
+def write_sxm(path: Path, fwd: np.ndarray, bwd: np.ndarray, range_m: float,
+              direction: str = "up") -> Path:
+    """One channel 'Z' (m) recorded in both directions, as stored."""
+    ny, nx = fwd.shape
+    head = (f":NANONIS_VERSION:\n2\n:SCAN_PIXELS:\n       {nx}       {ny}\n"
+            f":SCAN_RANGE:\n           {range_m}           {range_m}\n"
+            f":SCAN_DIR:\n{direction}\n:BIAS:\n0.1\n"
+            ":DATA_INFO:\n\tChannel\tName\tUnit\tDirection\tCalibration\tOffset\n"
+            "\t14\tZ\tm\tboth\t-1.0E-7\t0.0E+0\n\n:SCANIT_END:\n\n\n")
+    path.write_bytes(head.encode() + b"\x1a\x04" + fwd.astype(">f4").tobytes()
+                     + bwd.astype(">f4").tobytes())
+    return path

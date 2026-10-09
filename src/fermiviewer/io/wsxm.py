@@ -1,4 +1,4 @@
-"""WSxM / Nanotec images (.top, .stp, and other WSxM channel files).
+"""WSxM / Nanotec images (.top, .stp, .adh and other WSxM channel files).
 
 A WSxM image is an ASCII header — it starts ``WSxM file copyright`` and
 states ``Image header size: N`` near the top — followed by rows × columns
@@ -36,7 +36,9 @@ class WsxmError(ValueError):
 
 
 def is_wsxm(head: bytes) -> bool:
-    return head.startswith(b"WSxM file copyright")
+    """A WSxM *image* (curves and force-volume files share the copyright
+    line but not the "SxM Image file" kind)."""
+    return head.startswith(b"WSxM file copyright") and b"SxM Image file" in head[:120]
 
 
 def _header(buf: bytes) -> dict[str, str]:
@@ -69,6 +71,9 @@ def load_wsxm_all(path: str | Path) -> list[DataStruct]:
     """The file's one channel, as a list like the other SPM readers."""
     buf = Path(path).read_bytes()
     if not is_wsxm(buf):
+        if buf.startswith(b"WSxM file copyright"):
+            what = buf[:120].decode("latin-1").splitlines()[1:2]
+            raise WsxmError(f"WSxM {what[0].strip() if what else 'file'} is not an image")
         raise WsxmError("not a WSxM image")
     h = _header(buf)
     try:

@@ -17,20 +17,23 @@ from fermiviewer.io.dm import load_dm
 from fermiviewer.io.dm5 import load_dm5
 from fermiviewer.io.emd import load_emd
 from fermiviewer.io.fourd.mib import load_mib
-from fermiviewer.io.gwy import load_gwy
+from fermiviewer.io.gwy import load_gsf, load_gwy
 from fermiviewer.io.hspy import load_hspy
 from fermiviewer.io.ibw import load_ibw
 from fermiviewer.io.images import load_image, load_tiff
 from fermiviewer.io.jeol import load_jeol_img, load_jeol_map, load_jeol_pts
 from fermiviewer.io.jpk import load_jpk
+from fermiviewer.io.mdt import load_mdt
 from fermiviewer.io.mrc import load_mrc
 from fermiviewer.io.msa import load_msa
 from fermiviewer.io.nanoscope import is_nanoscope, load_nanoscope
 from fermiviewer.io.nexus import load_hdf5_auto
+from fermiviewer.io.nid import load_nid
 from fermiviewer.io.rpl import load_rpl
 from fermiviewer.io.ser import load_ser
 from fermiviewer.io.spc_edax import load_spc_edax
-from fermiviewer.io.wsxm import load_wsxm
+from fermiviewer.io.sxm import load_sxm
+from fermiviewer.io.wsxm import is_wsxm, load_wsxm
 
 __all__ = [
     "UnsupportedFormatError",
@@ -76,6 +79,11 @@ _LOADERS: dict[str, Callable[[Path], DataStruct]] = {
     ".jpk-qi-image": load_jpk,  # JPK QI map rendered as images
     ".top": load_wsxm,  # WSxM / Nanotec topography
     ".stp": load_wsxm,  # WSxM double-precision image
+    ".adh": load_wsxm,  # WSxM adhesion channel (other WSxM channels: sniffed)
+    ".gsf": load_gsf,  # Gwyddion Simple Field
+    ".nid": load_nid,  # Nanosurf (Easyscan 2, Flex/Core/DriveAFM)
+    ".mdt": load_mdt,  # NT-MDT / Spectrum Instruments Nova
+    ".sxm": load_sxm,  # Nanonis scan (STM/AFM)
     ".png": load_image,
     ".jpg": load_image,
     ".jpeg": load_image,
@@ -162,6 +170,11 @@ def load_auto(path: str | Path) -> DataStruct:
         )
     loader = _LOADERS.get(ext)
     if loader is None:
+        # WSxM saves each channel with its own extension (.ch1, .f.dy.top,
+        # …): recognise its images by content rather than list them all
+        with open(p, "rb") as fh:
+            if is_wsxm(fh.read(200)):
+                return load_wsxm(p)
         raise UnsupportedFormatError(
             f"no parser for '{p.suffix}' (supported: {', '.join(supported_extensions())})"
         )

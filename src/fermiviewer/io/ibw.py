@@ -99,6 +99,8 @@ def load_ibw_all(path: str | Path) -> list[DataStruct]:
     n_dim = [d for d in wave[7:11]]
     sf_a = wave[11:15]
     dim_units = [wave[20][i * 4:(i + 1) * 4].split(b"\0")[0].decode("latin-1") for i in range(4)]
+    data_unit = wave[19].split(b"\0")[0].decode("latin-1")
+    wave_name = wave[6].split(b"\0")[0].decode("latin-1")
     if wtype & 1:
         raise IbwError("complex waves are not images")
     dtype = _TYPES.get(wtype & ~1)
@@ -106,6 +108,12 @@ def load_ibw_all(path: str | Path) -> list[DataStruct]:
         raise IbwError(f"unsupported Igor number type {wtype:#x}")
     if n_dim[0] < 2 or n_dim[1] < 2:
         raise IbwError("not an image wave (fewer than two dimensions)")
+    if any(u and not length_to_nm_factor(u) for u in dim_units[:2]):
+        # e.g. a force curve: time × (deflection, Z, …) columns
+        raise IbwError("not an image wave (its axes are not lengths — a curve?)")
+    if n_dim[2] > 1 and dim_units[2]:
+        # a calibrated third axis (V, s, …) is a spectroscopy grid, not channels
+        raise IbwError(f"spectroscopy grid ({n_dim[2]} points in {dim_units[2]}), not an image")
     n_layers = max(n_dim[2], 1)
     count = n_dim[0] * n_dim[1] * n_layers
     if count != npnts:
@@ -136,13 +144,14 @@ def load_ibw_all(path: str | Path) -> list[DataStruct]:
     dy_nm = abs(sf_a[1]) * lat if sf_a[1] else float("nan")
     out = []
     for k in range(n_layers):
-        name = labels[k] if k < len(labels) and labels[k] else f"Channel {k + 1}"
+        name = labels[k] if k < len(labels) and labels[k] else (
+            wave_name if n_layers == 1 and wave_name else f"Channel {k + 1}")
         base, direction = _direction(name)
         image = np.flipud(cube[:, :, k].T)            # lines bottom-up → top row first
         out.append(spm_channel(
             image, parser="asylum", channel=base,
             label=f"{base} ({direction})" if direction else base,
-            value_unit=_unit_of(base, note), dy_nm=dy_nm, dx_nm=dx_nm,
+            value_unit=_unit_of(base, note) or data_unit, dy_nm=dy_nm, dx_nm=dx_nm,
             line_direction=direction or None,
             scan_rate_hz=_float(note.get("ScanRate")),
             imaging_mode=note.get("ImagingMode") or None,

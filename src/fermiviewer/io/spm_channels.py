@@ -11,19 +11,29 @@ from collections.abc import Callable
 from pathlib import Path
 
 from fermiviewer.datastruct import DataStruct
-from fermiviewer.io.gwy import load_gwy_all
+from fermiviewer.io.gwy import load_gsf, load_gwy_all
 from fermiviewer.io.ibw import load_ibw_all
 from fermiviewer.io.jpk import load_jpk_all
+from fermiviewer.io.mdt import is_mdt, load_mdt_all
 from fermiviewer.io.nanoscope import is_nanoscope, load_nanoscope_all
-from fermiviewer.io.wsxm import load_wsxm_all
+from fermiviewer.io.nid import load_nid_all
+from fermiviewer.io.sxm import is_sxm, load_sxm_all
+from fermiviewer.io.wsxm import is_wsxm, load_wsxm_all
 
 __all__ = ["SPM_PARSERS", "load_spm_channels"]
 
 #: the `parser` metadata of images whose files hold several channels
-SPM_PARSERS = frozenset({"nanoscope", "gwyddion", "asylum", "jpk", "wsxm"})
+SPM_PARSERS = frozenset({
+    "nanoscope", "gwyddion", "asylum", "jpk", "wsxm", "nanosurf", "ntmdt", "nanonis",
+})
 
 _BY_EXT: dict[str, Callable[[Path], list[DataStruct]]] = {
     ".gwy": load_gwy_all,
+    ".gsf": lambda p: [load_gsf(p)],
+    ".nid": load_nid_all,
+    ".mdt": load_mdt_all,
+    ".sxm": load_sxm_all,
+    ".adh": load_wsxm_all,
     ".ibw": load_ibw_all,
     ".jpk": load_jpk_all,
     ".jpk-qi-image": load_jpk_all,
@@ -39,7 +49,13 @@ def load_spm_channels(path: str | Path) -> list[DataStruct]:
     if loader is not None:
         return loader(p)
     with open(p, "rb") as fh:
-        head = fh.read(20)
+        head = fh.read(200)
     if is_nanoscope(head):
         return load_nanoscope_all(p)
+    if is_wsxm(head):                       # WSxM channels use many extensions
+        return load_wsxm_all(p)
+    if is_mdt(head):
+        return load_mdt_all(p)
+    if is_sxm(head):
+        return load_sxm_all(p)
     raise ValueError(f"'{p.name}' is not a multi-channel SPM file")
