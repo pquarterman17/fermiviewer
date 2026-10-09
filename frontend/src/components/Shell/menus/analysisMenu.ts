@@ -6,6 +6,7 @@ import {
   openCrossSectionGuide,
   openStructureWorkshop,
 } from "../../../store/workshopNavigation";
+import { buildAfmMenu } from "./afmMenu";
 import type { Entry, MenuCtx } from "./menuTypes";
 import { num } from "./menuTypes";
 
@@ -39,6 +40,7 @@ export function buildAnalysisMenu(ctx: MenuCtx): Entry[] {
         },
       ],
     },
+    buildAfmMenu(ctx),
     {
       label: "Structure & Defects",
       submenu: [

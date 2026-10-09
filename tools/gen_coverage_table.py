@@ -1036,6 +1036,7 @@ INFRASTRUCTURE: tuple[tuple[str, str], ...] = (
     ("POST", "/api/session/open-raw"),
     ("GET", "/api/session/supported-extensions"),
     ("POST", "/api/session/upload"),
+    ("POST", "/api/afm/{image_id}/channels"),  # opens a scan's other channels
     ("POST", "/api/usermeta/batch-autofill"),
     ("POST", "/api/watch/start"),
     ("GET", "/api/watch/status"),

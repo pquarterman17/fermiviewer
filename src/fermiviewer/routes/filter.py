@@ -16,6 +16,7 @@ from fermiviewer.calc.segment import morph_op, multi_otsu
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.io.metadata import databar_content_rows, databar_stripped_metadata
 from fermiviewer.models import ImageMeta
+from fermiviewer.routes._afm_filters import AFM_FILTERS
 from fermiviewer.session import UnknownImageError, store
 
 router = APIRouter(prefix="/api")
@@ -171,7 +172,6 @@ _FILTERS: dict[str, Callable[[np.ndarray, dict[str, Any]], np.ndarray]] = {
     "butterworth": _butterworth,
     "clahe": _clahe,
     "bin": _bin,
-    "plane_level": lambda d, p: filters.plane_level(d, order=int(p.get("order", 1))).leveled,
     # geometric ops (stage toolbar): np.rot90 k>0 is CCW, so CW = k=-1
     "rotate90": lambda d, p: np.rot90(d, k=-1),  # 90° clockwise
     "rotate180": lambda d, p: np.rot90(d, k=2),
@@ -188,8 +188,23 @@ _FILTERS: dict[str, Callable[[np.ndarray, dict[str, Any]], np.ndarray]] = {
     ),
 }
 
+# AFM/SPM levelling (plane_level is NaN-safe, order 1–3, base-only fit)
+_FILTERS.update(AFM_FILTERS(_num))
+
 _RESAMPLING = {"bin"}
+# outputs that are no longer the input's physical quantity (labels, a
+# binary mask, contrast-equalised 0–1): every other kind keeps its value
+# unit, so a levelled AFM height map stays in nm
+_UNITLESS = {"morph", "multiotsu", "clahe"}
 _SWAPS_AXES = {"rotate90", "rotate270"}  # row/col cal swap
+
+
+def _carried_units(ds: DataStruct, kind: str) -> dict[str, Any]:
+    """Value unit and channel of the source, unless the filter changes
+    what the pixel values mean."""
+    if kind in _UNITLESS:
+        return {}
+    return {k: ds.metadata[k] for k in ("value_unit", "channel") if k in ds.metadata}
 
 
 @router.post("/filter")
@@ -233,6 +248,7 @@ def apply_filter(req: FilterRequest) -> ImageMeta:
             "source": f"{req.kind} of {name}",
             "parser": "derived",
             "filter_kind": req.kind,
+            **_carried_units(ds, req.kind),
         },
     )
     new_id = store.add_derived(derived, f"{req.kind}({name})", req.image_id)

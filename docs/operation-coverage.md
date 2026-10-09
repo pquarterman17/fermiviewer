@@ -9,8 +9,8 @@ Route and op inventories are read live from the app and registry at generation t
 
 ## Summary
 
-- **180** HTTP endpoints; **83** perform analysis, 3 are physics-table lookups, and 94 are allowlisted infrastructure.
-- **75 of 83** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **91** ops in total.
+- **181** HTTP endpoints; **83** perform analysis, 3 are physics-table lookups, and 95 are allowlisted infrastructure.
+- **75 of 83** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **94** ops in total.
 - Registered-op reach IS headless reach: batch recipes, folder watch, `fv --script`, and the Python API all resolve steps through the same registry and cannot call anything else.
 - Remaining item-3 work: wave A (0), wave B (0), wave C (0), wave D (0) endpoints; 8 are parked behind the item-8/9 activation gates. Item 3 does not close while any analysis row lacks a wave or a named gate — every endpoint is assigned, none is silently deferred.
 
@@ -149,6 +149,9 @@ Route and op inventories are read live from the app and registry at generation t
 Reachable from batch/Python but absent from the GUI's own wiring.
 
 - `image_stats` — Raster mean/std/min/max (reaches the GUI only via `/api/export/table`)
+- `row_level` — Level each scan line (AFM line-by-line flatten)
+- `scar_removal` — Repair scan-line scars (feedback jumps)
+- `zero_level` — Shift heights so the min / mean / median is zero
 - `savgol` — Savitzky-Golay smoothing of a spectrum (a SPECTRUM_IMAGE cube is spatially summed first, like eels_quantify)
 - `savgol_derivative` — Savitzky-Golay derivative of a spectrum; delta is the energy axis's calibrated scale when calibrated, else 1.0/channel. Output y-units are d(counts)/d(energy unit), unlike the input's raw counts -- see the module docstring's units note
 
@@ -164,6 +167,7 @@ Physics tables, no data reduction — no op is owed.
 
 Session, project, render, export, jobs, calibration-store and dataset plumbing — outside the parity audit's scope. An explicit allowlist: a new route that is not added here (or classified as analysis/reference) fails the generator.
 
+- `POST /api/afm/{image_id}/channels`
 - `GET /api/batch/operations`
 - `POST /api/batch/run`
 - `GET /api/calibration`

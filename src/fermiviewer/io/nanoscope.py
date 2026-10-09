@@ -228,6 +228,19 @@ def _channel_name(image: _Section) -> str:
     return "Image"
 
 
+def _channel_label(image: _Section) -> str:
+    """Human channel name — the quoted one when present ("Height Sensor",
+    "DMTModulus"), else the bracketed id — plus the scan direction."""
+    name = "Image"
+    for body in image.raw:
+        m = _IMAGE_DATA.match(body)
+        if m:
+            name = (m.group(2) or m.group(1) or "Image").strip()
+            break
+    direction = image.kv.get("Line Direction", "").strip()
+    return f"{name} ({direction.lower()})" if direction else name
+
+
 def _read_channel(
     buf: bytes, image: _Section, scan: _Section, sens: dict[str, tuple[float, str]]
 ) -> DataStruct:
@@ -262,6 +275,8 @@ def _read_channel(
         metadata={
             "parser": "nanoscope",
             "channel": channel,
+            "channel_label": _channel_label(image),
+            "line_direction": image.kv.get("Line Direction", "").strip() or None,
             "value_unit": z_unit,  # surfaced on the z-colorbar
             "z_scale_per_lsb": z_scale,
             "scan_size_nm": [round(x_nm, 6), round(y_nm, 6)],

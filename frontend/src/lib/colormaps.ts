@@ -10,6 +10,7 @@ export type ColormapName =
   | "fire"
   | "ice"
   | "redblue"
+  | "afmhot"
   | "label"
   | "custom";
 
@@ -23,6 +24,7 @@ export const COLORMAP_NAMES: ColormapName[] = [
   "fire",
   "ice",
   "redblue",
+  "afmhot",
   "custom",
 ];
 
@@ -85,6 +87,19 @@ const STOPS: Record<ColormapName, Stop[]> = {
     [245, 245, 245],
     [230, 120, 100],
     [180, 25, 35],
+  ],
+  // matplotlib "afmhot" — the customary AFM height palette; keep in sync
+  // with calc/colormaps.py
+  afmhot: [
+    [0, 0, 0],
+    [64, 0, 0],
+    [128, 0, 0],
+    [191, 64, 0],
+    [255, 128, 0],
+    [255, 191, 64],
+    [255, 255, 128],
+    [255, 255, 191],
+    [255, 255, 255],
   ],
   custom: [
     [0, 0, 0],

@@ -39,6 +39,12 @@ _STOPS: dict[str, list[tuple[int, int, int]]] = {
         (25, 60, 180), (120, 160, 230), (245, 245, 245),
         (230, 120, 100), (180, 25, 35),
     ],
+    # matplotlib "afmhot" (black → red → orange → white), the customary
+    # AFM height palette; exact at these 9 stops (piecewise linear)
+    "afmhot": [
+        (0, 0, 0), (64, 0, 0), (128, 0, 0), (191, 64, 0), (255, 128, 0),
+        (255, 191, 64), (255, 255, 128), (255, 255, 191), (255, 255, 255),
+    ],
 }
 
 COLORMAP_NAMES = tuple(_STOPS)
