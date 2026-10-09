@@ -1,0 +1,131 @@
+"""Tiny synthetic SPM files (Gwyddion, Asylum IBW, JPK, WSxM) written to
+each format's layout, so the readers are exercised in CI without the
+instrument corpus."""
+
+from __future__ import annotations
+
+import struct
+from pathlib import Path
+
+import numpy as np
+
+# ── Gwyddion ─────────────────────────────────────────────────────────
+
+
+def _gwy_obj(name: str, comps: list[bytes]) -> bytes:
+    body = b"".join(comps)
+    return name.encode() + b"\0" + struct.pack("<I", len(body)) + body
+
+
+def _gwy_comp(key: str, t: str, payload: bytes) -> bytes:
+    return key.encode() + b"\0" + t.encode() + payload
+
+
+def _gwy_unit(u: str) -> bytes:
+    return _gwy_obj("GwySIUnit", [_gwy_comp("unitstr", "s", u.encode() + b"\0")])
+
+
+def _gwy_field(data: np.ndarray, xreal: float, yreal: float, zunit: str) -> bytes:
+    yres, xres = data.shape
+    return _gwy_obj("GwyDataField", [
+        _gwy_comp("xres", "i", struct.pack("<i", xres)),
+        _gwy_comp("yres", "i", struct.pack("<i", yres)),
+        _gwy_comp("xreal", "d", struct.pack("<d", xreal)),
+        _gwy_comp("yreal", "d", struct.pack("<d", yreal)),
+        _gwy_comp("si_unit_xy", "o", _gwy_unit("m")),
+        _gwy_comp("si_unit_z", "o", _gwy_unit(zunit)),
+        _gwy_comp("data", "D", struct.pack("<I", data.size) + data.astype("<f8").tobytes()),
+    ])
+
+
+def write_gwy(path: Path, channels: list[tuple[str, np.ndarray, str]],
+              size_m: float = 1e-6) -> Path:
+    """channels: (title, data in base SI units, z unit)."""
+    comps = []
+    for i, (title, data, zunit) in enumerate(channels):
+        comps.append(_gwy_comp(f"/{i}/data", "o", _gwy_field(data, size_m, size_m, zunit)))
+        comps.append(_gwy_comp(f"/{i}/data/title", "s", title.encode() + b"\0"))
+    comps.append(_gwy_comp("/0/show", "b", b"\x01"))          # non-data component
+    path.write_bytes(b"GWYP" + _gwy_obj("GwyContainer", comps))
+    return path
+
+
+# ── Asylum IBW (Igor binary wave v5) ─────────────────────────────────
+
+
+def write_ibw(path: Path, layers: dict[str, np.ndarray], dx_m: float,
+              note: str = "ScanRate: 1\rImagingMode: 1\r") -> Path:
+    """layers: label → (lines × points) image, top row first."""
+    names = list(layers)
+    ny, nx = layers[names[0]].shape
+    # Asylum: points fastest, lines bottom-up, then channels (Fortran order)
+    cube = np.stack([np.flipud(layers[n]).T for n in names], axis=2).astype("<f4")
+    data = cube.ravel(order="F").tobytes()
+    note_b = note.encode("latin-1")
+    labels = b"".join(n.encode().ljust(32, b"\0") for n in ["", *names])
+    bin5 = struct.pack("<hhiiii4i4iiii", 5, 0, 320 + len(data), 0, len(note_b), 0,
+                       0, 0, 0, 0, 0, 0, len(labels), 0, 0, 0, 0)
+    wave = struct.pack(
+        "<4xIIihh6xh32s4x4x4i4d4d4s16shhdd4x16x16x4x64xhhhbb4xihh4x4x",
+        0, 0, cube.size, 2, 0, 1, b"scan", nx, ny, len(names), 0,
+        dx_m, dx_m, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, b"",
+        b"m\0\0\0m\0\0\0\0\0\0\0\0\0\0\0", 0, 0, 0.0, 0.0, 0, 0, 0, 0, 0, 0, 0, 0)
+    path.write_bytes(bin5 + wave + data + note_b + labels)
+    return path
+
+
+# ── JPK (TIFF with private tags) ─────────────────────────────────────
+
+
+def _jpk_tags(name: str, retrace: bool, mult: float, off: float, unit: str,
+              size_m: float, n: int) -> list[tuple]:
+    slot = 32912
+    return [
+        (32834, "d", 1, size_m, True), (32835, "d", 1, size_m, True),
+        (32838, "i", 1, n, True), (32839, "i", 1, n, True),
+        (32848, "s", 0, name, True), (32849, "i", 1, int(retrace), True),
+        (32850, "s", 0, name.capitalize(), True),
+        (32896, "i", 1, 2, True), (32897, "s", 0, "calibrated", True),
+        (slot, "s", 0, "raw", True), (slot + 19, "s", 0, "NullScaling", True),
+        (slot + 48, "s", 0, "calibrated", True), (slot + 48 + 18, "s", 0, unit, True),
+        (slot + 48 + 19, "s", 0, "LinearScaling", True),
+        (slot + 48 + 20, "d", 1, mult, True), (slot + 48 + 21, "d", 1, off, True),
+    ]
+
+
+def write_jpk(path: Path, raw: dict[tuple[str, bool], np.ndarray], mult: float,
+              off: float, size_m: float) -> Path:
+    """raw: (channel, retrace) → int32 lines bottom-up, as JPK stores them."""
+    import tifffile
+
+    n = next(iter(raw.values())).shape[0]
+    with tifffile.TiffWriter(path) as tw:
+        tw.write(np.zeros((8, 8), np.uint8),
+                 extratags=_jpk_tags("thumbnail", False, 1, 0, "", size_m, n))
+        for (name, retrace), arr in raw.items():
+            unit = "m" if name == "height" else "V"
+            tw.write(arr.astype(np.int32),
+                     extratags=_jpk_tags(name, retrace, mult, off, unit, size_m, n))
+    return path
+
+
+# ── WSxM ─────────────────────────────────────────────────────────────
+
+
+def write_wsxm(path: Path, stored: np.ndarray, kind: str, zamp: str,
+               amp: str = "500 nm") -> Path:
+    """`stored` is written as-is (WSxM keeps pixels last-first)."""
+    rows, cols = stored.shape
+    body = (
+        "SxM Image file\r\nImage header size: {size:05d}\r\n\r\n[Control]\r\n\r\n"
+        f"    X Amplitude: {amp}\r\n    Y Amplitude: {amp}\r\n\r\n[General Info]\r\n\r\n"
+        "    Acquisition channel: Topography\r\n"
+        f"    Image Data Type: {kind}\r\n    Number of columns: {cols}\r\n"
+        f"    Number of rows: {rows}\r\n    X scanning direction: Backward\r\n"
+        f"    Z Amplitude: {zamp}\r\n\r\n[Header end]\r\n"
+    )
+    head = ("WSxM file copyright UAM\r\n" + body)
+    size = len(head.format(size=0).encode("latin-1"))     # fixed-width size field
+    dt = {"short": "<i2", "double": "<f8"}[kind]
+    path.write_bytes(head.format(size=size).encode("latin-1") + stored.astype(dt).tobytes())
+    return path

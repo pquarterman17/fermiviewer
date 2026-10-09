@@ -110,7 +110,9 @@ def open_uploaded_file(staged: Path, name: str) -> ImageMeta | FourDMeta:
     # don't leak the vanishing temp path as the source
     ds.metadata["source"] = name
     img_id = store.add_parsed(ds, name)
-    if ds.metadata.get("parser") == "nanoscope":
+    from fermiviewer.io.spm_channels import SPM_PARSERS
+
+    if ds.metadata.get("parser") in SPM_PARSERS:
         from fermiviewer.routes.afm import stash_upload_channels
 
         stash_upload_channels(img_id, staged)  # file is gone after the request
