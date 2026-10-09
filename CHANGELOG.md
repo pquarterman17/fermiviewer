@@ -13,6 +13,65 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [0.7.1] - 2026-10-09
+
+### Changed
+- **Diffraction spot patterns are indexed by zone axis.** Indexing now uses
+  the angles between spots as well as their spacings: every spot gets a
+  signed hkl on one reciprocal-lattice plane and the zone axis follows from
+  them. Phases with similar spacings no longer tie, and Si [001] reads as
+  Silicon [001]. Partial or one-sided patterns are not penalised for spots
+  outside the picked area, and equal fits go to the lower-index zone. Ring
+  patterns and phases with no consistent zone fall back to spacing-only
+  matching, marked "(d)" in the candidate table and in saved results.
+- **Faster Grains (Gradient).** About 10 s instead of 5 min on a 1024²
+  image, with identical output. Running jobs can be cancelled.
+
+### Fixed
+- **Crashes and data loss.**
+  - Very large exports (e.g. 2000 mm at 600 dpi) ran the backend out of
+    memory; they are now refused with a clear message.
+  - Save Project with a relative path wrote into the install folder, and a
+    missing folder was silently created. A full path into an existing folder
+    is now required.
+  - Recording an empty macro wiped the saved macro.
+  - Del with nothing selected unloaded the image without undo; it now asks.
+  - Server errors from a histogram of a flat image and from filters with
+    extreme values are now readable messages.
+  - Uploaded 4D datasets left multi-GB temp copies behind; they are now
+    deleted when the dataset is closed or the app quits.
+- **Broken features.**
+  - Menus opened underneath tool windows.
+  - The command palette ran greyed-out commands.
+  - One clear or batch action needed one Undo per item; it is now one step.
+  - Drawing tools could not start inside an existing shape, so Mark as hole
+    was unreachable; the Angle tool measured at the second click;
+    two-point tools only worked click-click.
+  - The Unified layout hid Measurements, Overlay Style, Tilt and Profile
+    options.
+  - Layer Analysis "Analyze" (and the Cross-section Assistant) never ran.
+  - 4D-STEM files could not be opened through File ▸ Open.
+  - The EDS modality dropdown did not switch, and EDS Explore fields could
+    not be typed into.
+  - ⌘W now closes the image.
+- **Wrong results.**
+  - EDS Quantify always used K lines (Ag came out at 0 at%); it now picks
+    lines for the actual beam voltage. Model fit always fitted Fe/O.
+    EMSA `#SIGNALTYPE` was ignored, and map captions named the wrong line.
+  - Rotate 90° lost the calibration.
+  - Roughness reported intensity as nm; particle sizes were labelled nm but
+    shown in px.
+  - Simulated diffraction patterns of non-cubic crystals off a main axis
+    (e.g. hexagonal [111]) were drawn on the wrong plane, and simulated
+    patterns had no calibration.
+  - Parameter dialogs silently replaced invalid input such as "abc" with the
+    default; they now refuse it.
+  - Measure ▸ Clear Measurements also deleted annotations.
+- **Smaller fixes.** The colorbar leaves room for its tick labels, export
+  markers scale correctly at 4×, results are named after their operation,
+  duplicate region class names are refused, and Elemental Analysis no
+  longer floods the status bar.
+
 ## [0.7.0] - 2026-10-08
 
 ### Changed
