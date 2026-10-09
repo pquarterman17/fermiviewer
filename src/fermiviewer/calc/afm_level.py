@@ -113,10 +113,12 @@ def level_rows(
         raise ValueError(f"row method must be one of {ROW_METHODS}")
     d = _as_float(img)
     # judge "base" against each line's own median, so line offsets do not
-    # decide which pixels count as features
-    with np.errstate(all="ignore"):
-        rel = d - np.nanmedian(np.where(np.isfinite(d), d, np.nan), axis=1, keepdims=True)
-    mask = base_mask(np.where(np.isfinite(d), rel, np.nan), fit_percentile)
+    # decide which pixels count as features (an all-NaN line has no median
+    # and stays NaN; np.nanmedian would warn on it)
+    finite = np.isfinite(d)
+    row_med = np.array([np.median(d[r][finite[r]]) if finite[r].any() else 0.0
+                        for r in range(d.shape[0])])
+    mask = base_mask(np.where(finite, d - row_med[:, None], np.nan), fit_percentile)
     out = d.copy()
     h, w = d.shape
     if method in ("median", "mean"):

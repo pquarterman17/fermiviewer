@@ -99,6 +99,19 @@ def test_nan_pixels_stay_nan_and_never_poison_the_fit() -> None:
         assert np.isnan(out[5, 5]) and np.isfinite(np.delete(out.ravel(), 5 * 128 + 5)).all()
 
 
+@pytest.mark.parametrize("method", ["median", "mean", "mdiff", "poly"])
+def test_a_fully_missing_scan_line_stays_nan_without_warnings(method) -> None:
+    import warnings
+
+    img, _ = _scan()
+    img[7] = np.nan
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        out = al.level_rows(img, method, fit_percentile=80)
+    assert np.isnan(out[7]).all()
+    assert np.isfinite(np.delete(out, 7, axis=0)).all()
+
+
 def test_ops_keep_the_height_unit() -> None:
     img, _ = _scan()
     ds = DataStruct(data=img, kind=DataKind.IMAGE,
@@ -122,9 +135,13 @@ def test_afmhot_is_a_known_colormap() -> None:
 
 @pytest.fixture()
 def client():
+    from fermiviewer.routes.afm import reset
+
     store.clear()
+    reset()
     yield TestClient(create_app())
     store.clear()
+    reset()
 
 
 def _height_image(client: TestClient) -> str:
@@ -195,3 +212,37 @@ def test_open_other_channels_from_disk_and_upload(client) -> None:
         up = client.post("/api/session/upload",
                          files=[("files", ("u.spm", f, "application/octet-stream"))]).json()[0]
     assert len(client.post(f"/api/afm/{up['id']}/channels").json()) == 7
+
+
+@pytest.mark.skipif(not REAL.exists(), reason="Bruker sample corpus not present")
+def test_channels_open_from_a_child_and_a_closed_one_reopens(client) -> None:
+    meta = client.post("/api/session/open", json={"paths": [str(REAL)]}).json()[0]
+    kids = client.post(f"/api/afm/{meta['id']}/channels").json()
+    child = kids[0]
+    # from a child: nothing new while everything is open
+    assert client.post(f"/api/afm/{child['id']}/channels").json() == []
+    # close one channel, then reopen it from another child
+    closed = kids[2]
+    assert client.delete(f"/api/image/{closed['id']}").status_code == 200
+    again = client.post(f"/api/afm/{child['id']}/channels").json()
+    assert [m["name"] for m in again] == [closed["name"]]
+    # the root itself can be closed and reopened from a child too
+    client.delete(f"/api/image/{meta['id']}")
+    back = client.post(f"/api/afm/{child['id']}/channels").json()
+    assert [m["name"] for m in back] == [meta["name"] + " · Height Sensor (retrace)"]
+
+
+def test_upload_channels_survive_until_the_last_family_member_closes(client) -> None:
+    if not REAL.exists():
+        pytest.skip("Bruker sample corpus not present")
+    from fermiviewer.routes import afm
+
+    with REAL.open("rb") as f:
+        up = client.post("/api/session/upload",
+                         files=[("files", ("u.spm", f, "application/octet-stream"))]).json()[0]
+    kids = client.post(f"/api/afm/{up['id']}/channels").json()
+    client.delete(f"/api/image/{up['id']}")
+    assert up["id"] in afm._families                       # children keep it alive
+    for k in kids:
+        client.delete(f"/api/image/{k['id']}")
+    assert up["id"] not in afm._families
