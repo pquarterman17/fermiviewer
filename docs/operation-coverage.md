@@ -9,10 +9,10 @@ Route and op inventories are read live from the app and registry at generation t
 
 ## Summary
 
-- **181** HTTP endpoints; **83** perform analysis, 3 are physics-table lookups, and 95 are allowlisted infrastructure.
-- **75 of 83** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **94** ops in total.
+- **184** HTTP endpoints; **86** perform analysis, 3 are physics-table lookups, and 95 are allowlisted infrastructure.
+- **77 of 86** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **96** ops in total.
 - Registered-op reach IS headless reach: batch recipes, folder watch, `fv --script`, and the Python API all resolve steps through the same registry and cannot call anything else.
-- Remaining item-3 work: wave A (0), wave B (0), wave C (0), wave D (0) endpoints; 8 are parked behind the item-8/9 activation gates. Item 3 does not close while any analysis row lacks a wave or a named gate — every endpoint is assigned, none is silently deferred.
+- Remaining item-3 work: wave A (0), wave B (0), wave C (0), wave D (0) endpoints; 9 are parked behind the item-8/9 activation gates. Item 3 does not close while any analysis row lacks a wave or a named gate — every endpoint is assigned, none is silently deferred.
 
 ## Analysis endpoints
 
@@ -29,6 +29,9 @@ Route and op inventories are read live from the app and registry at generation t
 | `POST /api/analyze/radial` | Image menu. *azimuthal sector mode has no op* | `radial_profile` | curve ×2 | shipped |
 | `POST /api/measure/profile-roughness` | — (no GUI caller). *interfacial roughness traced column-by-column across a box profile. The averaged profile's edge width mixes compositional grading with geometric waviness, so one number from it cannot separate them; the columns can. The op takes the line as four scalars so a recipe replays anywhere* | `profile_roughness` | scalar set + curve | shipped |
 | `POST /api/analyze/roughness` | Roughness workshop. *route adds bearing curve + ROI* | `roughness` | scalar set + curve (bearing) | shipped |
+| `POST /api/afm/{image_id}/surface` | AFM Surface Analysis workshop. *route adds the radial PSD, height/slope histograms + ROI* | `surface_texture` | scalar set + curve ×3 | shipped |
+| `POST /api/afm/{image_id}/map` | AFM / SPM menu. *2-D PSD / ACF as images; an op waits on a frequency-space map convention (FFT precedent)* | — | map | parked (item 8/9) |
+| `POST /api/afm/{image_id}/step-height` | AFM / SPM menu. *route adds the ROI; the op measures the whole (cropped) image* | `step_height` | scalar set | shipped |
 | `POST /api/analyze/noise` | Noise workshop. *route adds block stats + ROI* | `noise` | scalar set + fit + curve | shipped |
 | `POST /api/analyze/interface-width` | Interface Width workshop. *no image subject — op ignores `ds`, profile travels as x/y CSV (`distribution_fit` precedent, blessed in ADR 0005's wave-A addendum)* | `interface_width` | fit | shipped |
 | `POST /api/analyze/lattice` | Lattice mode. *op flattens the two FFT spot picks to four required floats; unset pixel_size (NaN) falls back to the image calibration* | `lattice` | scalar set | shipped |

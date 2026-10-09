@@ -61,6 +61,11 @@ export function GrainMetrics({ r }: { r: GrainResult }) {
     tiles.push({ v: `G ${r.astm_grain_size.toFixed(1)}`, k: "ASTM" });
   }
   tiles.push({ v: String(r.n_triple_junctions), k: "junctions" });
+  const hs = (r.height_above_base ?? []).filter((h): h is number => h != null);
+  if (hs.length && r.height_unit) {
+    const mean = hs.reduce((a, b) => a + b, 0) / hs.length;
+    tiles.push({ v: `${mean.toPrecision(3)} ${r.height_unit}`, k: "mean height" });
+  }
   return (
     <div className="fvd-metrics">
       {tiles.map((tile) => (

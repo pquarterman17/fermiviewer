@@ -18,7 +18,13 @@ const sig4 = (v: number) => Number(v.toPrecision(4));
 export function particlesTable(
   particles: ParticleRow[],
   unit: string,
+  heights?: { height_unit?: string; volume_unit?: string },
 ): ParticlesTableData {
+  // AFM height maps add each particle's height above its substrate and volume
+  const hu = heights?.height_unit;
+  const vu = heights?.volume_unit;
+  const withHeights = !!hu && !!vu;
+  const num = (v: number | null | undefined) => (v == null ? null : sig4(v));
   const calibrated =
     particles.length > 0 &&
     unit !== "px" &&
@@ -38,6 +44,7 @@ export function particlesTable(
       "circ.",
       "AR",
       "class",
+      ...(withHeights ? [`height (${hu})`, `volume (${vu})`] : []),
     ],
     rows: particles.map((p) => [
       p.id,
@@ -49,6 +56,7 @@ export function particlesTable(
       Number(p.circularity.toFixed(2)),
       p.aspect_ratio == null ? null : Number(p.aspect_ratio.toFixed(2)),
       p.shape_class,
+      ...(withHeights ? [num(p.height_above_base), num(p.volume)] : []),
     ]),
   };
 }

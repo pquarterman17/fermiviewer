@@ -129,6 +129,12 @@ export interface ParticleRow {
    *  pixel calibration — same serialization as `diameter_calibrated`. */
   feret_max_calibrated: number | null;
   shape_class: ShapeClass;
+  /** AFM height maps only (the image's value unit is a length): the
+   *  particle's top, its height above the local substrate (the lowest
+   *  height on the ring just outside it) and its volume above that. */
+  max_height?: number | null;
+  height_above_base?: number | null;
+  volume?: number | null;
 }
 
 export function analyzeParticles(
@@ -148,6 +154,9 @@ export function analyzeParticles(
   labels: ImageMeta;
   particles: ParticleRow[];
   unit: string;
+  /** present with the per-row heights, for height maps only */
+  height_unit?: string;
+  volume_unit?: string;
   result?: CapturedResultRef;
 }> {
   return post("/api/analyze/particles", {
@@ -292,6 +301,13 @@ export interface GrainResult {
    *  image has no pixel calibration. */
   diameter_calibrated: (number | null)[];
   unit: string;
+  /** AFM height maps only (value unit is a length): per grain, its top,
+   *  height above the local base and volume above that base. */
+  max_height?: (number | null)[];
+  height_above_base?: (number | null)[];
+  volume?: (number | null)[];
+  height_unit?: string;
+  volume_unit?: string;
 }
 
 export function analyzeGrainsAsync(

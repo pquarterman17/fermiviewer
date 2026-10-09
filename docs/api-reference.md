@@ -283,7 +283,7 @@ The registered operation catalogue: name, category, summary, params.
 
 ## Operation catalogue
 
-94 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
+96 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
 
 ### analysis
 
@@ -499,6 +499,22 @@ The registered operation catalogue: name, category, summary, params.
 *category: `analysis` · produces: value*
 
 *(no parameters)*
+
+#### `step_height` — Height of the step between two terraces (crop to the step first)
+
+*category: `analysis` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `edge` | `int` | 2 | no |  | [0, 20] | pixels left out on each side of the step edge |
+
+#### `surface_texture` — ISO 25178 areal parameters (Sa…Sz, Sdq, Sdr, Sal, Str, Std)
+
+*category: `analysis` · produces: value*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `level` | `str` | plane | no | 'none', 'plane', 'quadratic' |  |  |
 
 #### `tilted_distance` — Tilt-corrected Euclidean distance between two points (calc/profile_stats.measure_distance, the measureDistance.m port). x is the column axis, y the row axis, 1-based; the calibrated scalars are absent on an uncalibrated image
 

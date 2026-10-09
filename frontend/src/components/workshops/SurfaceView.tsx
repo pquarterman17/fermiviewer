@@ -13,6 +13,7 @@ import {
   dragToOrbit,
   normaliseAz,
   project,
+  trueAspectRelief,
 } from "../../lib/surface3d";
 import { useStageInfo } from "../../store/stage";
 import { DEFAULT_DISPLAY, useViewer } from "../../store/viewer";
@@ -52,6 +53,15 @@ export default function SurfaceView() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [zScale, setZScale] = useState(0.6);
+  // true aspect: heights drawn to the same scale as the lateral extent
+  // (AFM height maps — real slopes, no exaggeration); null when the units
+  // are not both lengths
+  const [trueAspect, setTrueAspect] = useState(false);
+  const aspectRelief = useMemo(
+    () => (meta && raster ? trueAspectRelief(meta, raster.vmin ?? 0, raster.vmax ?? 1) : null),
+    [meta, raster],
+  );
+  const relief = trueAspect && aspectRelief !== null ? aspectRelief : zScale;
   const [az, setAz] = useState(DEFAULT_AZ);
   const [el, setEl] = useState(DEFAULT_EL);
 
@@ -91,7 +101,7 @@ export default function SurfaceView() {
     if (!ctx) return;
 
     const { gw, gh, z } = grid;
-    const zh = zScale; // relative height exaggeration within the unit cube
+    const zh = relief; // height within the unit cube (exaggerated, or true aspect)
 
     // Map grid coords to unit cube [0,1]³
     const unitZ = (gx: number, gy: number): number =>
@@ -210,7 +220,7 @@ export default function SurfaceView() {
       ctx.fillText(unit, 0, 0);
       ctx.restore();
     }
-  }, [grid, lut, az, el, zScale, raster, meta]);
+  }, [grid, lut, az, el, relief, raster, meta]);
 
   useEffect(() => {
     draw();
@@ -264,8 +274,23 @@ export default function SurfaceView() {
           step={0.05}
           value={zScale}
           style={{ flex: 1 }}
+          disabled={trueAspect && aspectRelief !== null}
           onChange={(e) => setZScale(Number(e.target.value))}
         />
+        <label
+          className="k"
+          title={aspectRelief === null
+            ? "needs heights and pixel size in length units"
+            : `heights at the lateral scale (relief ${aspectRelief.toPrecision(2)})`}
+        >
+          <input
+            type="checkbox"
+            checked={trueAspect && aspectRelief !== null}
+            disabled={aspectRelief === null}
+            onChange={(e) => setTrueAspect(e.target.checked)}
+          />{" "}
+          true aspect
+        </label>
         <button
           style={{ marginLeft: 6, fontSize: 10, padding: "1px 5px" }}
           onClick={() => { setAz(DEFAULT_AZ); setEl(DEFAULT_EL); }}

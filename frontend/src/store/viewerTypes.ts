@@ -354,7 +354,7 @@ export type ToolKind =
   | "pixels"
   | "structure"
   | "overlay"
-  | "surface" | "roughness"
+  | "surface" | "roughness" | "afmsurface"
   | "layers" | "crosssection" | "noise" | "interface-width" | "defects"
   | "fourd" | "projectcompare" | "results";
 

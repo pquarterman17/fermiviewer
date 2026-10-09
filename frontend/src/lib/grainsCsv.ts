@@ -44,11 +44,18 @@ export function grainsToCsv(r: GrainResult, ctx: GrainsCsvContext): string {
   if (r.astm_grain_size != null) {
     lines.push(`# astm_grain_size: ${num(r.astm_grain_size)}`);
   }
-  lines.push("grain_id,area_px,perimeter_crofton_px,eccentricity");
+  // AFM height maps add per-grain height above the local base and volume
+  const heights = r.height_above_base && r.volume && r.height_unit && r.volume_unit;
+  const opt = (v: number | null | undefined) => (v == null ? "" : num(v));
+  lines.push(
+    "grain_id,area_px,perimeter_crofton_px,eccentricity" +
+      (heights ? `,height_${r.height_unit},volume_${r.volume_unit}` : ""),
+  );
   const n = r.areas_px.length;
   for (let i = 0; i < n; i++) {
     lines.push(
-      `${i + 1},${num(r.areas_px[i])},${num(r.perimeters_px[i] ?? 0)},${num(r.eccentricity[i] ?? 0)}`,
+      `${i + 1},${num(r.areas_px[i])},${num(r.perimeters_px[i] ?? 0)},${num(r.eccentricity[i] ?? 0)}` +
+        (heights ? `,${opt(r.height_above_base![i])},${opt(r.volume![i])}` : ""),
     );
   }
   return lines.join("\n") + "\n";

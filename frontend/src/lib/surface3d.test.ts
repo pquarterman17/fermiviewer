@@ -7,6 +7,7 @@ import {
   dragToOrbit,
   normaliseAz,
   project,
+  trueAspectRelief,
 } from "./surface3d";
 
 describe("normaliseAz", () => {
@@ -84,5 +85,25 @@ describe("project", () => {
     const hi = project(0.5, 0.5, 1, DEFAULT_AZ, 70, W, H, 10);
     // At higher elevation the top of the surface appears higher on screen (smaller sy)
     expect(hi.sy).toBeLessThan(lo.sy);
+  });
+});
+
+describe("trueAspectRelief", () => {
+  const meta = (value_unit: string, pixel_unit = "nm") => ({
+    pixel_size: 2, pixel_spacing: [2, 2] as [number, number], pixel_unit, value_unit,
+    shape: [100, 200],
+  });
+
+  it("scales the height range to the larger lateral extent", () => {
+    // 40 nm of relief over a 400 nm wide scan
+    expect(trueAspectRelief(meta("nm"), 0, 40)).toBeCloseTo(0.1);
+    // heights in µm over an nm grid convert
+    expect(trueAspectRelief(meta("µm"), 0, 0.04)).toBeCloseTo(0.1);
+  });
+
+  it("is null without length units or a height range", () => {
+    expect(trueAspectRelief(meta("V"), 0, 1)).toBeNull();
+    expect(trueAspectRelief(meta("nm", ""), 0, 1)).toBeNull();
+    expect(trueAspectRelief(meta("nm"), 5, 5)).toBeNull();
   });
 });

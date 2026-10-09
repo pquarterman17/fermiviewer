@@ -45,11 +45,12 @@ def test_every_op_runs_on_a_synthetic_image() -> None:
             "particles", "efd_similarity", "propose_region",
             "grains", "layers", "layers_edit",
             "diffraction_calibrate",
-            "strip_databar",
+            "strip_databar", "step_height",
         ):
             # these ops need real structure in the image or its metadata
             # (a seed for propose_region, detectable interfaces for layers,
-            # vendor databar metadata for strip_databar, a ring with
+            # vendor databar metadata for strip_databar, two terraces for
+            # step_height (test_afm_surface.py), a ring with
             # ≥5 detectable points for diffraction_calibrate) that this
             # synthetic ramp can't provide — covered by their own fixtures
             # in test_ops_structure.py / test_ops_wave_c.py. An explicit

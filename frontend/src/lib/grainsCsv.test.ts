@@ -90,3 +90,26 @@ describe("grainsToCsv", () => {
     expect(csv.endsWith("\n")).toBe(true);
   });
 });
+
+describe("grainsToCsv on an AFM height map", () => {
+  it("adds height and volume columns, blank where a grain has none", () => {
+    const csv = grainsToCsv(
+      makeResult({
+        height_above_base: [4, null, 2.5],
+        volume: [1600, null, 900],
+        height_unit: "nm",
+        volume_unit: "nm³",
+      }),
+      { imageName: "scan.spm", method: "gradient" },
+    );
+    const rows = csv.trim().split("\n").filter((l) => !l.startsWith("#"));
+    expect(rows[0]).toBe("grain_id,area_px,perimeter_crofton_px,eccentricity,height_nm,volume_nm³");
+    expect(rows[1].endsWith(",4,1600")).toBe(true);
+    expect(rows[2].endsWith(",,")).toBe(true);
+  });
+
+  it("leaves an EM grain table unchanged", () => {
+    const csv = grainsToCsv(makeResult(), { imageName: "a", method: "gradient" });
+    expect(csv).toContain("grain_id,area_px,perimeter_crofton_px,eccentricity\n");
+  });
+});
