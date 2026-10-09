@@ -11,6 +11,7 @@ const LayersWorkshop = lazy(() => import("../workshops/LayersWorkshop"));
 const StructureWorkshop = lazy(() => import("../workshops/StructureWorkshop"));
 const SurfaceView = lazy(() => import("../workshops/SurfaceView"));
 const RoughnessWorkshop = lazy(() => import("../workshops/RoughnessWorkshop"));
+const AfmSurfaceWorkshop = lazy(() => import("../workshops/AfmSurfaceWorkshop"));
 const ElementalWorkshop = lazy(
   () => import("../workshops/ElementalWorkshop"),
 );
@@ -34,6 +35,7 @@ const titles: Record<ToolKind, string> = {
   overlay: "Color Overlay",
   surface: "Surface Plot",
   roughness: "Surface Roughness",
+  afmsurface: "Surface Analysis (ISO 25178)",
   layers: "Cross-section Layers",
   crosssection: "Cross-section Assistant",
   noise: "Noise Analysis",
@@ -54,6 +56,7 @@ const defaultWidths: Partial<Record<ToolKind, number>> = {
   fftmask: 332,
   pixels: 300,
   roughness: 620,
+  afmsurface: 620,
   noise: 620,
   "interface-width": 620,
   defects: 620,
@@ -110,6 +113,8 @@ function Workshop({ kind }: { kind: ToolKind }) {
       return <SurfaceView />;
     case "roughness":
       return <RoughnessWorkshop />;
+    case "afmsurface":
+      return <AfmSurfaceWorkshop />;
     case "layers":
       return <LayersWorkshop />;
     case "crosssection":

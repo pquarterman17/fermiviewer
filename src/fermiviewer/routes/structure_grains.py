@@ -23,6 +23,7 @@ from fermiviewer.calc.grains import (
 from fermiviewer.calc.roi import embed_rect_roi, extract_rect_roi, parse_rect_roi
 from fermiviewer.datastruct import DataStruct
 from fermiviewer.jobs import JobQueueFullError, jobs
+from fermiviewer.ops.catalogue_afm import height_columns
 from fermiviewer.routes._arrays import value_error_as_422
 from fermiviewer.routes.structure import _nan_none, _raster, _register
 from fermiviewer.session import UnknownImageError, store
@@ -101,6 +102,8 @@ def _grains_payload(
         "equiv_diameter_px": report.equiv_diameter_px.tolist(),
         "diameter_calibrated": [_nan_none(d) for d in report.diameter_calibrated],
         "unit": report.unit,
+        # AFM height maps only: per-grain max height, height and volume
+        **height_columns(ds, report.labels, raster),
     }
 
 

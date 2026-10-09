@@ -96,3 +96,30 @@ export function dragToOrbit(
 /** MATLAB default initial view angles for surf(). */
 export const DEFAULT_AZ = 45;
 export const DEFAULT_EL = 30;
+
+const LENGTH_NM: Record<string, number> = {
+  pm: 1e-3, "å": 0.1, a: 0.1, nm: 1, "µm": 1e3, um: 1e3, mm: 1e6, cm: 1e7, m: 1e9,
+};
+
+function toNm(unit: string): number | null {
+  const f = LENGTH_NM[unit.trim().toLowerCase().replace("μ", "µ")];
+  return f === undefined ? null : f;
+}
+
+/** The relief factor that draws a height map at its TRUE aspect: the
+ *  height range as a fraction of the larger lateral extent (both mapped to
+ *  the unit cube). Null unless heights and pixel size are known lengths. */
+export function trueAspectRelief(
+  meta: { pixel_size: number | null; pixel_spacing?: [number, number] | null;
+          pixel_unit: string; value_unit: string; shape: number[] },
+  vmin: number,
+  vmax: number,
+): number | null {
+  const zf = toNm(meta.value_unit ?? "");
+  const lf = toNm(meta.pixel_unit ?? "");
+  const [dy, dx] = meta.pixel_spacing ?? [meta.pixel_size, meta.pixel_size];
+  if (zf === null || lf === null || !dy || !dx || !(vmax > vmin)) return null;
+  const [h, w] = meta.shape;
+  const extent = Math.max(h * dy, w * dx) * lf;
+  return extent > 0 ? ((vmax - vmin) * zf) / extent : null;
+}

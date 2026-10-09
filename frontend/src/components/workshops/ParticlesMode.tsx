@@ -191,7 +191,7 @@ export default function ParticlesMode({ id }: { id: string }) {
         setUnit(res.unit);
         setRunParams(params);
         if (res.result) void refreshPersistedResults();
-        useResults.getState().show(particlesTable(res.particles, res.unit));
+        useResults.getState().show(particlesTable(res.particles, res.unit, res));
       })
       .catch((e: Error) => setStatus(`particles: ${e.message}`))
       .finally(() => setBusy(false));

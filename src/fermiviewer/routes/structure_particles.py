@@ -8,6 +8,7 @@ route-module convention rather than imported across route boundaries."""
 from __future__ import annotations
 
 import dataclasses
+from typing import Any
 
 import numpy as np
 from fastapi import APIRouter, HTTPException
@@ -22,6 +23,7 @@ from fermiviewer.calc.shape_metrics import (
 )
 from fermiviewer.datastruct import DataKind, DataStruct
 from fermiviewer.models import ImageMeta
+from fermiviewer.ops.catalogue_afm import height_columns
 from fermiviewer.routes._arrays import value_error_as_422
 from fermiviewer.session import UnknownImageError, store
 
@@ -141,32 +143,41 @@ def _analyze_particles(req: ParticleRequest, ds, raster) -> dict:
         ds,
         req.image_id,
     )
-    body = {
+    rows: list[dict[str, Any]] = [
+        {
+            "id": p.id,
+            "area": p.area,
+            "centroid": list(p.centroid),
+            "equiv_diameter": p.equiv_diameter,
+            "mean_intensity": p.mean_intensity,
+            "area_calibrated": _nan_none(p.area_calibrated),
+            "diameter_calibrated": _nan_none(p.diameter_calibrated),
+            "circularity": float(desc.circularity[i]),
+            "aspect_ratio": _nan_none(float(desc.aspect_ratio[i])),
+            "eccentricity": float(desc.eccentricity[i]),
+            "orientation_rad": float(desc.orientation_rad[i]),
+            "solidity": float(desc.solidity[i]),
+            "feret_max": float(desc.feret_max_px[i]),
+            "feret_max_calibrated": _nan_none(float(feret_calibrated[i])),
+            "shape_class": shape_classes[i],
+        }
+        for i, p in enumerate(res.particles)
+    ]
+    body: dict[str, Any] = {
         "n_particles": res.n_particles,
         "threshold": res.threshold,
         "labels": labels_meta,
-        "particles": [
-            {
-                "id": p.id,
-                "area": p.area,
-                "centroid": list(p.centroid),
-                "equiv_diameter": p.equiv_diameter,
-                "mean_intensity": p.mean_intensity,
-                "area_calibrated": _nan_none(p.area_calibrated),
-                "diameter_calibrated": _nan_none(p.diameter_calibrated),
-                "circularity": float(desc.circularity[i]),
-                "aspect_ratio": _nan_none(float(desc.aspect_ratio[i])),
-                "eccentricity": float(desc.eccentricity[i]),
-                "orientation_rad": float(desc.orientation_rad[i]),
-                "solidity": float(desc.solidity[i]),
-                "feret_max": float(desc.feret_max_px[i]),
-                "feret_max_calibrated": _nan_none(float(feret_calibrated[i])),
-                "shape_class": shape_classes[i],
-            }
-            for i, p in enumerate(res.particles)
-        ],
+        "particles": rows,
         "unit": ds.pixel_unit or "px",
     }
+    # AFM height maps only: per-particle max height, height and volume
+    heights = height_columns(ds, res.labels, raster)
+    if heights:
+        for i, row in enumerate(rows):
+            for key in ("max_height", "height_above_base", "volume"):
+                row[key] = heights[key][i]
+        body["height_unit"] = heights["height_unit"]
+        body["volume_unit"] = heights["volume_unit"]
     if req.record:
         body["result"] = _capture_particles(req, body, labels_meta)
     return body
