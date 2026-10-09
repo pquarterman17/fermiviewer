@@ -3,6 +3,7 @@ opening a NanoScope scan's other channels."""
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -248,31 +249,135 @@ def test_upload_channels_survive_until_the_last_family_member_closes(client) -> 
     assert up["id"] not in afm._families
 
 
-@pytest.mark.skipif(not REAL.exists(), reason="Bruker sample corpus not present")
-def test_overlapping_opens_register_each_channel_once(client, monkeypatch) -> None:
-    """Two requests at once (a double-click, or two siblings) must not both
-    see a channel as missing and each register it."""
-    import threading
-    import time
+# ── channel-family races, without the sample corpus ─────────────────
+
+_LABELS = ["Height (retrace)", "Phase (retrace)", "Adhesion (retrace)"]
+
+
+def _channel(label: str) -> DataStruct:
+    return DataStruct(data=np.zeros((4, 4)), kind=DataKind.IMAGE,
+                      axes=(AxisCal(), AxisCal()),
+                      metadata={"parser": "nanoscope", "channel_label": label})
+
+
+@pytest.fixture()
+def fake_scan(client, monkeypatch):
+    """An 'uploaded' 3-channel scan whose channel read can be held open:
+    `gate.entered` is set once a read starts, which then waits on `gate.go`."""
+    from types import SimpleNamespace
 
     from fermiviewer.routes import afm
 
-    meta = client.post("/api/session/open", json={"paths": [str(REAL)]}).json()[0]
+    channels = [_channel(lab) for lab in _LABELS]
+    monkeypatch.setattr(afm, "load_nanoscope_all", lambda _p: channels)
+    root = store.add_parsed(channels[0], "scan.spm")
+    afm.stash_upload_channels(root, Path("scan.spm"))
+    gate = SimpleNamespace(entered=threading.Event(), go=threading.Event())
     real_read = afm._read
 
-    def slow_read(source):
-        time.sleep(0.2)                       # widen the race window
+    def held_read(source):
+        gate.entered.set()
+        assert gate.go.wait(5)
         return real_read(source)
 
-    monkeypatch.setattr(afm, "_read", slow_read)
-    results: list[int] = []
-    threads = [threading.Thread(
-        target=lambda: results.append(len(afm.open_other_channels(meta["id"]))))
-        for _ in range(2)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-    assert sorted(results) == [0, 7]
+    monkeypatch.setattr(afm, "_read", held_read)
+    return root, gate
+
+
+def _in_thread(fn, *args):
+    out: dict = {}
+
+    def run():
+        try:
+            out["value"] = fn(*args)
+        except Exception as e:                      # noqa: BLE001 — reported below
+            out["error"] = e
+
+    t = threading.Thread(target=run)
+    t.start()
+    return t, out
+
+
+class _WatchedLock:
+    """A lock that reports when a second thread starts waiting on it."""
+
+    def __init__(self, waiting: threading.Event) -> None:
+        self._lock, self._waiting, self._owner = threading.Lock(), waiting, None
+
+    def __enter__(self):
+        if self._owner is not None and self._owner != threading.get_ident():
+            self._waiting.set()
+        self._lock.acquire()
+        self._owner = threading.get_ident()
+        return self
+
+    def __exit__(self, *exc):
+        self._owner = None
+        self._lock.release()
+
+
+def test_overlapping_opens_register_each_channel_once(fake_scan) -> None:
+    """Two requests at once (a double-click, or two siblings) must not both
+    see a channel as missing and each register it."""
+    from fermiviewer.routes import afm
+
+    root, gate = fake_scan
+    waiting = threading.Event()
+    afm._families[root].opening = _WatchedLock(waiting)
+    a, out_a = _in_thread(afm.open_other_channels, root)
+    assert gate.entered.wait(5)                     # A is reading, holding the lock
+    b, out_b = _in_thread(afm.open_other_channels, root)
+    assert waiting.wait(5)                          # B is queued behind A
+    gate.go.set()
+    a.join(5)
+    b.join(5)
+    assert sorted([len(out_a["value"]), len(out_b["value"])]) == [0, 2]
     names = [store.name(i) for i in store.ids()]
-    assert len(names) == len(set(names)) == 8
+    assert len(names) == len(set(names)) == 3
+
+
+def test_closing_the_last_member_during_a_read_reattaches_the_family(
+        client, fake_scan) -> None:
+    """The family is dropped while channels are read; the new channels must
+    still belong to a live family, so opening from them works (no 500)."""
+    from fermiviewer.routes import afm
+
+    root, gate = fake_scan
+    t, out = _in_thread(afm.open_other_channels, root)
+    assert gate.entered.wait(5)
+    assert client.delete(f"/api/image/{root}").status_code == 200
+    assert root not in afm._families                # forget dropped it mid-read
+    gate.go.set()
+    t.join(5)
+    kids = out["value"]                             # the closed root comes back too
+    assert [m.name for m in kids] == [f"scan.spm · {lab}" for lab in _LABELS]
+    assert all(afm._member_of[m.id] == root for m in kids)
+    # a child's open goes through the reattached family: all open, no 500
+    r = client.post(f"/api/afm/{kids[1].id}/channels")
+    assert r.status_code == 200 and r.json() == [], r.text
+
+
+def test_a_session_reset_during_a_read_aborts_the_open(fake_scan) -> None:
+    from fastapi import HTTPException
+
+    from fermiviewer.routes import afm
+
+    root, gate = fake_scan
+    t, out = _in_thread(afm.open_other_channels, root)
+    assert gate.entered.wait(5)
+    afm.reset()
+    gate.go.set()
+    t.join(5)
+    assert isinstance(out["error"], HTTPException) and out["error"].status_code == 409
+    assert store.ids() == [root] and not afm._families and not afm._member_of
+
+
+def test_a_stale_membership_is_not_a_500(fake_scan) -> None:
+    from fermiviewer.routes import afm
+
+    root, _ = fake_scan
+    child = store.add_parsed(_channel("Phase (retrace)"), "scan.spm · Phase (retrace)")
+    afm._member_of[child] = "gone"                  # family no longer exists
+    with pytest.raises(Exception, match="no file"):
+        afm._family(child)
+    assert child not in afm._member_of

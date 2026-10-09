@@ -45,6 +45,7 @@ class _Family:
 _lock = threading.Lock()
 _families: dict[str, _Family] = {}           # family key → family
 _member_of: dict[str, str] = {}              # image id → family key
+_generation = 0                              # bumped by reset()
 
 
 def _label(ds: DataStruct) -> str:
@@ -74,8 +75,9 @@ def _family(img_id: str) -> tuple[str, _Family]:
     """The family `img_id` belongs to, creating one for a disk-opened scan."""
     with _lock:
         key = _member_of.get(img_id)
-        if key is not None:
+        if key is not None and key in _families:
             return key, _families[key]
+        _member_of.pop(img_id, None)                 # stale: its family is gone
         path = store.source_path(img_id)
         if path is None:
             raise HTTPException(
@@ -107,20 +109,29 @@ def open_other_channels(image_id: str) -> list[ImageMeta]:
         raise HTTPException(404, f"unknown image id: {image_id}") from None
     if src.metadata.get("parser") != "nanoscope":
         raise HTTPException(422, "only Bruker NanoScope scans have extra channels")
+    with _lock:
+        generation = _generation
     key, fam = _family(image_id)
     base = Path(store.name(image_id)).name.split(" · ")[0]   # a child is "<file> · <label>"
     metas = []
     with fam.opening:
         channels = _read(fam.source)
-        live = set(store.ids())
+        # The read ran outside _lock, so the family may have changed under
+        # it: its last member closed (forget dropped it) or the session was
+        # replaced (reset). Check and register in one critical section.
         with _lock:
-            open_now = {lab for lab, iid in fam.members.items() if iid in live}
-        for ch in (c for c in channels if _label(c) not in open_now):
-            new_id = store.add_parsed(ch, f"{base} · {_label(ch)}")
-            with _lock:
+            if _generation != generation or _families.get(key, fam) is not fam:
+                raise HTTPException(409, "the session changed while the channels "
+                                         "were being read — try again")
+            _families[key] = fam                     # reattach if forget dropped it
+            live = set(store.ids())
+            for ch in channels:
+                if fam.members.get(_label(ch)) in live:
+                    continue
+                new_id = store.add_parsed(ch, f"{base} · {_label(ch)}")
                 fam.members[_label(ch)] = new_id
                 _member_of[new_id] = key
-            metas.append(ImageMeta.from_datastruct(new_id, store.name(new_id), ch))
+                metas.append(ImageMeta.from_datastruct(new_id, store.name(new_id), ch))
     return metas
 
 
@@ -139,7 +150,10 @@ def forget(img_id: str) -> None:
 
 def reset() -> None:
     """Drop every family (the session store was cleared, e.g. a project
-    replaced it — restored images keep their ids, so stale entries must go)."""
+    replaced it — restored images keep their ids, so stale entries must go).
+    An open already reading channels sees the new generation and aborts."""
+    global _generation
     with _lock:
+        _generation += 1
         _families.clear()
         _member_of.clear()
