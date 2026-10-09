@@ -11,6 +11,22 @@ import { askParams } from "../../../store/params";
 import { openStructureWorkshop } from "../../../store/workshopNavigation";
 import type { Entry, MenuCtx } from "./menuTypes";
 
+/** The pixel (row, col) containing a normalized 0–1 point, clamped to
+ *  [0, n-1]: a point stored on the far edge (x or y === 1 — pointer capture
+ *  and vertex drags clamp to [0, 1]) is the last pixel, not one past it. */
+export function pixelIndex(t: number, n: number): number {
+  return Math.min(n - 1, Math.max(0, Math.floor(t * n)));
+}
+
+/** Three normalized measure points → [row, col] pixel indices. */
+export function threePointPixels(
+  pts: { x: number; y: number }[],
+  shape: number[],
+): [number, number][] {
+  const [h, w] = shape;
+  return pts.map((p) => [pixelIndex(p.y, h), pixelIndex(p.x, w)]);
+}
+
 /** Ask for a Level & Correct tool's params, then run it. */
 async function levelWith(kind: string): Promise<void> {
   const tool = TRANSFORM_TOOLS.find((t) => t.kind === kind);
@@ -34,8 +50,7 @@ export function buildAfmMenu(ctx: MenuCtx): Entry {
       .filter((x) => (x.kind === "angle" || x.kind === "polygon") && x.pts.length === 3)
       .at(-1);
     if (!meta || !m) return null;
-    const [h, w] = meta.shape;
-    return m.pts.map((p) => [p.y * h - 0.5, p.x * w - 0.5]);
+    return threePointPixels(m.pts, meta.shape);
   };
 
   return {

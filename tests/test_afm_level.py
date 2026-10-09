@@ -149,6 +149,15 @@ def test_filter_kinds_keep_nm(client, kind, params) -> None:
     assert r.json()["value_unit"] == "nm"
 
 
+def test_three_point_level_accepts_the_bottom_right_edge_pixels(client) -> None:
+    """Points on the last row/column (what the menu sends for a click stored
+    at normalized x or y = 1) are inside a 64×128 image."""
+    r = client.post("/api/filter", json={
+        "image_id": _height_image(client), "kind": "three_point_level",
+        "params": {"points": [[63, 127], [63, 0], [0, 127]]}})
+    assert r.status_code == 200, r.text
+
+
 @pytest.mark.parametrize("kind,params,msg", [
     ("row_level", {"method": "sideways"}, "method"),
     ("plane_level", {"order": 4}, "order"),
