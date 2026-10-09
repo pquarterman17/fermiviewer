@@ -33,6 +33,14 @@ class StepHeight:
     upper_fraction: float
 
 
+def _shrink(mask: np.ndarray, edge: int) -> np.ndarray:
+    """`mask` eroded by `edge` pixels. Edge 0 must mean no erosion: SciPy
+    reads iterations=0 as "erode until nothing changes", which empties it."""
+    if edge <= 0:
+        return mask
+    return np.asarray(ndimage.binary_erosion(mask, iterations=edge, border_value=1))
+
+
 def _fit_step(
     d: np.ndarray, finite: np.ndarray, upper: np.ndarray, edge: int, n_iter: int,
 ) -> tuple[StepHeight, float] | None:
@@ -42,9 +50,8 @@ def _fit_step(
     cx = cy = c0 = h = 0.0
     used_lo = used_hi = finite
     for _ in range(n_iter):
-        used_hi = finite & ndimage.binary_erosion(upper, iterations=edge, border_value=1)
-        used_lo = finite & ndimage.binary_erosion(finite & ~upper, iterations=edge,
-                                                  border_value=1)
+        used_hi = finite & _shrink(upper, edge)
+        used_lo = finite & _shrink(finite & ~upper, edge)
         if used_lo.sum() < 4 or used_hi.sum() < 4:
             return None
         used = used_lo | used_hi

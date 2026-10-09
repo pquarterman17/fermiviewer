@@ -72,20 +72,38 @@ export default function AfmSurfaceWorkshop() {
   const [result, setResult] = useState<AfmSurfaceResult | null>(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => setResult(null), [activeId]);
+  // Each run gets a number; switching image or closing the panel bumps it,
+  // so a request still in flight for the previous image is ignored when it
+  // lands instead of filling the panel with that image's numbers.
+  const request = useRef(0);
+  useEffect(() => {
+    request.current += 1;
+    setResult(null);
+    setBusy(false);
+  }, [activeId]);
+  useEffect(() => () => {
+    request.current += 1;
+  }, []);
 
   const run = () => {
     if (!activeId) return;
+    const token = ++request.current;
+    const current = () => token === request.current;
     setBusy(true);
     setStatus("surface analysis…");
     afmSurface(activeId, { level, roi: region.roi })
       .then((next) => {
+        if (!current()) return;
         setResult(next);
         setStatus(`surface: Sa ${formatParam(next.params.Sa, next.z_unit)} · ` +
           `Sq ${formatParam(next.params.Sq, next.z_unit)}`);
       })
-      .catch((e: Error) => setStatus(`surface analysis: ${e.message}`))
-      .finally(() => setBusy(false));
+      .catch((e: Error) => {
+        if (current()) setStatus(`surface analysis: ${e.message}`);
+      })
+      .finally(() => {
+        if (current()) setBusy(false);
+      });
   };
 
   const exportResult = (format: "csv" | "json") => {

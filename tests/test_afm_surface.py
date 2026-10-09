@@ -112,6 +112,15 @@ def test_step_height_is_independent_of_tilt(z, expect) -> None:
     assert s.lower_std == pytest.approx(0.1, rel=0.1) and s.upper_std == pytest.approx(0.1, rel=0.1)
 
 
+@pytest.mark.parametrize("edge", [0, 1, 5])
+def test_step_height_with_any_edge_exclusion(edge) -> None:
+    """edge=0 keeps every pixel (SciPy's iterations=0 would erode them all)."""
+    s = feat.step_height(0.05 * XX + 3 * (YY > 60), edge=edge)
+    assert s.height == pytest.approx(3.0, abs=1e-6)
+    if edge == 0:
+        assert s.n_lower + s.n_upper == XX.size
+
+
 def test_step_height_refuses_a_flat_region() -> None:
     with pytest.raises(ValueError, match="flat"):
         feat.step_height(np.zeros((20, 20)))
@@ -172,6 +181,8 @@ def test_step_route(client) -> None:
     img = store.add_parsed(_ds(0.05 * XX + 3 * (YY > 60)), "s.spm")
     r = client.post(f"/api/afm/{img}/step-height", json={"roi": [40, 1, 80, 256]})
     assert r.status_code == 200, r.text
+    r0 = client.post(f"/api/afm/{img}/step-height", json={"roi": [40, 1, 80, 256], "edge": 0})
+    assert r0.status_code == 200 and r0.json()["height"] == pytest.approx(3.0, abs=0.01)
     assert r.json()["height"] == pytest.approx(3.0, abs=0.01) and r.json()["unit"] == "nm"
     flat = store.add_parsed(_ds(np.zeros((20, 20))), "f.spm")
     assert client.post(f"/api/afm/{flat}/step-height", json={}).status_code == 422
