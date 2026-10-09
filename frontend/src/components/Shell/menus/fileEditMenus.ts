@@ -283,7 +283,7 @@ export function buildFileMenu(ctx: MenuCtx): Entry[] {
               label: "Colormap",
               type: "select",
               default: "gray",
-              options: ["gray", "invert", "viridis", "inferno", "fire", "ice", "redblue"],
+              options: ["gray", "invert", "viridis", "inferno", "fire", "ice", "redblue", "afmhot"],
             },
           ]);
           if (!v) return;

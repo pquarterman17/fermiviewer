@@ -250,6 +250,9 @@ def close_image(img_id: str) -> dict[str, str]:
     _get(img_id)
     store.close(img_id)
     evict_level_cache(img_id)
+    from fermiviewer.routes.afm import forget
+
+    forget(img_id)
     return {"status": "closed"}
 
 

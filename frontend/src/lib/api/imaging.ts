@@ -408,3 +408,11 @@ export function grainsTrainPreview(
     classifier: opts.classifier ?? "softmax",
   });
 }
+
+// ── AFM / SPM ────────────────────────────────────────────────────────
+
+/** Open a Bruker NanoScope scan's other channels (phase, amplitude,
+ *  modulus, …) as new images; [] when they are all open already. */
+export function openAfmChannels(id: string): Promise<ImageMeta[]> {
+  return post(`/api/afm/${encodeURIComponent(id)}/channels`, {});
+}

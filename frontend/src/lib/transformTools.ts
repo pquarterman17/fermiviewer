@@ -5,7 +5,7 @@
 
 import type { ParamField } from "./params";
 
-export type TransformGroup = "Filters" | "Transform Image" | "Segment";
+export type TransformGroup = "Filters" | "Level & Correct" | "Transform Image" | "Segment";
 
 /** How a tool runs: a POST /filter kind, a parameterless geometry op
  *  (via stageOps.applyGeometry), or crop-to-ROI (via stageOps.cropToRoi). */
@@ -26,6 +26,7 @@ export interface TransformTool {
 
 export const TRANSFORM_GROUPS: TransformGroup[] = [
   "Filters",
+  "Level & Correct",
   "Transform Image",
   "Segment",
 ];
@@ -41,6 +42,13 @@ const num = (
 // sigma / bin size by the image dimensions) so a typo like 1e9 is refused
 // in the panel instead of failing server-side.
 const SIGMA = { positive: true, max: 1000 };
+
+// Levelling fits only the base surface: pixels at or below this height
+// percentile (100 = all), so particles and islands do not tilt the fit.
+const FIT_PCT: ParamField = {
+  key: "fit_percentile", label: "Fit pixels ≤ percentile", type: "number",
+  default: 100, min: 1, max: 100,
+};
 
 export const TRANSFORM_TOOLS: TransformTool[] = [
   // — Filters —
@@ -94,9 +102,43 @@ export const TRANSFORM_TOOLS: TransformTool[] = [
         default: "average", options: ["average", "sum"] },
     ],
   },
+  // — Level & Correct (AFM/SPM height maps; calc/afm_level.py) —
   {
-    label: "Plane Level", glyph: "▱", group: "Filters",
+    label: "Plane Level", glyph: "▱", group: "Level & Correct",
     kind: "plane_level", via: "filter", batch: true,
+    fields: [
+      { key: "order", label: "Order", type: "select",
+        default: "1", options: ["1", "2", "3"] },
+      FIT_PCT,
+    ],
+  },
+  {
+    label: "Level Rows", glyph: "☰", group: "Level & Correct",
+    kind: "row_level", via: "filter", batch: true,
+    fields: [
+      { key: "method", label: "Method", type: "select",
+        default: "median", options: ["median", "mean", "mdiff", "poly"] },
+      { key: "order", label: "Poly order", type: "select",
+        default: "1", options: ["1", "2", "3"] },
+      FIT_PCT,
+    ],
+  },
+  {
+    label: "Remove Scars", glyph: "≋", group: "Level & Correct",
+    kind: "scar_removal", via: "filter", batch: true,
+    fields: [
+      num("threshold", "Threshold (σ)", 3, { positive: true, max: 100 }),
+      num("max_width", "Max width (lines)", 2, { int: true, min: 1, max: 16 }),
+      num("min_length", "Min length (px)", 8, { int: true, min: 1 }),
+    ],
+  },
+  {
+    label: "Fix Zero", glyph: "⊥", group: "Level & Correct",
+    kind: "zero_level", via: "filter", batch: true,
+    fields: [
+      { key: "mode", label: "Zero at", type: "select",
+        default: "min", options: ["min", "mean", "median"] },
+    ],
   },
   // — Transform Image —
   {

@@ -199,7 +199,8 @@ export default function SurfaceView() {
     }
 
     // unit label rotated vertically
-    const unit = meta?.pixel_unit ?? "";
+    // colorbar = heights: the value unit (nm on an AFM map), not the lateral one
+    const unit = meta?.value_unit ?? "";
     if (unit) {
       ctx.save();
       ctx.translate(cbX + CB_W + 30, cbY + cbH / 2);

@@ -283,7 +283,7 @@ The registered operation catalogue: name, category, summary, params.
 
 ## Operation catalogue
 
-91 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
+94 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
 
 ### analysis
 
@@ -1131,13 +1131,34 @@ The registered operation catalogue: name, category, summary, params.
 |---|---|---|---|---|---|---|
 | `n_classes` | `int` | 3 | no |  | [2, 5] |  |
 
-#### `plane_level` — Remove a fitted plane
+#### `plane_level` — Remove a fitted plane / polynomial background
 
 *category: `filter` · produces: derived image*
 
 | Param | Type | Default | Required | Choices | Bounds | Description |
 |---|---|---|---|---|---|---|
-| `order` | `int` | 1 | no |  | [1, 2] |  |
+| `order` | `int` | 1 | no |  | [1, 3] |  |
+| `fit_percentile` | `float` | 100.0 | no |  | [1.0, 100.0] | fit only pixels at or below this height percentile (100 = all) |
+
+#### `row_level` — Level each scan line (AFM line-by-line flatten)
+
+*category: `filter` · produces: derived image*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `method` | `str` | median | no | 'median', 'mean', 'mdiff', 'poly' |  |  |
+| `order` | `int` | 1 | no |  | [1, 3] | for method=poly |
+| `fit_percentile` | `float` | 100.0 | no |  | [1.0, 100.0] | fit only pixels at or below this height percentile (100 = all) |
+
+#### `scar_removal` — Repair scan-line scars (feedback jumps)
+
+*category: `filter` · produces: derived image*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `threshold` | `float` | 3.0 | no |  | [0.1, ] | × robust line-difference σ |
+| `max_width` | `int` | 2 | no |  | [1, 16] | scan lines |
+| `min_length` | `int` | 8 | no |  | [1, ] | pixels along the line |
 
 #### `stitch` — Panoramic stitch of equal-size tiles: pairwise FFT cross-correlation offsets, ramp-blended onto one mosaic (calc/stitch.stitch_images). The subject is tile 1 (the offset origin); the resolved layout and the per-tile offsets ride the mosaic's metadata
 
@@ -1181,6 +1202,14 @@ The registered operation catalogue: name, category, summary, params.
 | `radius` | `float` | 10.0 | no |  |  | aperture radius (FFT px) |
 | `shape` | `str` | circle | no | 'circle', 'annulus' |  |  |
 | `inner_radius` | `float` | 0.0 | no |  | [0.0, ] | annulus inner radius (FFT px) |
+
+#### `zero_level` — Shift heights so the min / mean / median is zero
+
+*category: `filter` · produces: derived image*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `mode` | `str` | min | no | 'min', 'mean', 'median' |  |  |
 
 ### geometry
 

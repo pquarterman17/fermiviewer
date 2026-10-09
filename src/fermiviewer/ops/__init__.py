@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from fermiviewer.ops import (
     catalogue,  # noqa: F401  (import registers ops)
+    catalogue_afm,  # noqa: F401  (AFM levelling: plane/row/scars/zero)
     catalogue_analysis,  # noqa: F401  (model-fit + distribution ops)
     catalogue_atoms_defects,  # noqa: F401  (wave B: atoms/template/defect ops)
     catalogue_diffraction,  # noqa: F401  (wave C: detect/calibrate/simulate ops)

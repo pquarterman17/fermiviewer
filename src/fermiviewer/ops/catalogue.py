@@ -37,6 +37,12 @@ from fermiviewer.ops.registry import register
 __all__ = ["raster_of"]
 
 
+def carried_units(ds: DataStruct) -> dict[str, Any]:
+    """The source's value unit and channel, for a derived image whose pixels
+    still mean the same physical quantity."""
+    return {k: ds.metadata[k] for k in ("value_unit", "channel") if k in ds.metadata}
+
+
 def _scaled_axes(ds: DataStruct, fr: float, fc: float) -> tuple[AxisCal, AxisCal]:
     def scaled(cal: AxisCal, f: float) -> AxisCal:
         if not cal.calibrated:
@@ -52,9 +58,12 @@ def _image_op(
     *,
     resamples: bool = False,
     swaps_axes: bool = False,
+    keeps_unit: bool = True,
 ) -> Callable[[DataStruct, dict[str, Any]], OpResult]:
     """Build an op fn that applies `apply` to the raster and returns a derived
-    IMAGE DataStruct with calibration carried through."""
+    IMAGE DataStruct with calibration carried through — and, unless
+    `keeps_unit` is False (labels, masks, equalised contrast), the value
+    unit, so a levelled AFM height map stays in nm."""
 
     def fn(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         raster = raster_of(ds)
@@ -71,7 +80,8 @@ def _image_op(
             data=out,
             kind=DataKind.IMAGE,
             axes=axes,
-            metadata={"parser": "derived", "filter_kind": kind, "source": kind},
+            metadata={"parser": "derived", "filter_kind": kind, "source": kind,
+                      **(carried_units(ds) if keeps_unit else {})},
         )
         return OpResult(op=kind, params=params, label=kind, derived=derived)
 
@@ -124,6 +134,7 @@ register(OpSpec(
     fn=_image_op(
         "clahe",
         lambda d, p: filters.clahe(d, clip_limit=p["clip_limit"], num_bins=p["num_bins"]),
+        keeps_unit=False,
     ),
 ))
 register(OpSpec(
@@ -136,14 +147,6 @@ register(OpSpec(
         "bin",
         lambda d, p: filters.bin_image(d, bin_size=p["bin_size"], mode=p["mode"]),
         resamples=True,
-    ),
-))
-register(OpSpec(
-    name="plane_level", category="filter", summary="Remove a fitted plane",
-    params={"order": OpParam(int, 1, minimum=1, maximum=2)},
-    fn=_image_op(
-        "plane_level",
-        lambda d, p: filters.plane_level(d, order=p["order"]).leveled,
     ),
 ))
 register(OpSpec(
@@ -163,6 +166,7 @@ register(OpSpec(
             radius=p["radius"],
             shape=p["shape"],
         ).astype(float),
+        keeps_unit=False,
     ),
 ))
 register(OpSpec(
@@ -171,6 +175,7 @@ register(OpSpec(
     fn=_image_op(
         "multiotsu",
         lambda d, p: multi_otsu(d, n_classes=p["n_classes"]).label_map.astype(float),
+        keeps_unit=False,
     ),
 ))
 
@@ -294,7 +299,8 @@ def _roughness(ds: DataStruct, params: dict[str, Any]) -> OpResult:
         "Rv": result.rv,
         "SAR": result.sar,
         "n_pixels": result.n_pixels,
-        "unit": ds.pixel_unit or "px",
+        # heights are in the value unit (nm for AFM), not the lateral one
+        "unit": ds.metadata.get("value_unit") or "",
     }
     return OpResult(
         op="roughness", params=params, label="surface roughness", value=value,
