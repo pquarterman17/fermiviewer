@@ -246,3 +246,33 @@ def test_upload_channels_survive_until_the_last_family_member_closes(client) -> 
     for k in kids:
         client.delete(f"/api/image/{k['id']}")
     assert up["id"] not in afm._families
+
+
+@pytest.mark.skipif(not REAL.exists(), reason="Bruker sample corpus not present")
+def test_overlapping_opens_register_each_channel_once(client, monkeypatch) -> None:
+    """Two requests at once (a double-click, or two siblings) must not both
+    see a channel as missing and each register it."""
+    import threading
+    import time
+
+    from fermiviewer.routes import afm
+
+    meta = client.post("/api/session/open", json={"paths": [str(REAL)]}).json()[0]
+    real_read = afm._read
+
+    def slow_read(source):
+        time.sleep(0.2)                       # widen the race window
+        return real_read(source)
+
+    monkeypatch.setattr(afm, "_read", slow_read)
+    results: list[int] = []
+    threads = [threading.Thread(
+        target=lambda: results.append(len(afm.open_other_channels(meta["id"]))))
+        for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(results) == [0, 7]
+    names = [store.name(i) for i in store.ids()]
+    assert len(names) == len(set(names)) == 8

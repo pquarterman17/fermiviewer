@@ -36,6 +36,10 @@ class _Family:
 
     source: list[DataStruct] | str          # cached upload channels, or a file path
     members: dict[str, str] = field(default_factory=dict)
+    # held for a whole open (read + register): two overlapping requests —
+    # a double-click, or two siblings — must not both see a label as
+    # missing and each register it
+    opening: threading.Lock = field(default_factory=threading.Lock)
 
 
 _lock = threading.Lock()
@@ -104,19 +108,19 @@ def open_other_channels(image_id: str) -> list[ImageMeta]:
     if src.metadata.get("parser") != "nanoscope":
         raise HTTPException(422, "only Bruker NanoScope scans have extra channels")
     key, fam = _family(image_id)
-    channels = _read(fam.source)
     base = Path(store.name(image_id)).name.split(" · ")[0]   # a child is "<file> · <label>"
-    live = set(store.ids())
-    with _lock:
-        open_now = {lab for lab, iid in fam.members.items() if iid in live}
-        todo = [c for c in channels if _label(c) not in open_now]
     metas = []
-    for ch in todo:
-        new_id = store.add_parsed(ch, f"{base} · {_label(ch)}")
+    with fam.opening:
+        channels = _read(fam.source)
+        live = set(store.ids())
         with _lock:
-            fam.members[_label(ch)] = new_id
-            _member_of[new_id] = key
-        metas.append(ImageMeta.from_datastruct(new_id, store.name(new_id), ch))
+            open_now = {lab for lab, iid in fam.members.items() if iid in live}
+        for ch in (c for c in channels if _label(c) not in open_now):
+            new_id = store.add_parsed(ch, f"{base} · {_label(ch)}")
+            with _lock:
+                fam.members[_label(ch)] = new_id
+                _member_of[new_id] = key
+            metas.append(ImageMeta.from_datastruct(new_id, store.name(new_id), ch))
     return metas
 
 
