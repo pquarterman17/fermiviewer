@@ -13,6 +13,38 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] - 2026-10-10
+
+AFM / SPM becomes a full feature area, with its own menu (Analysis ▸ AFM / SPM).
+
+### Added
+- **Levelling and repair.** Plane and polynomial levelling, per-scan-line
+  levelling, three-point levelling from a measured triangle, Fix Zero, and
+  scan-line scar repair. All of them can also run from scripts and batch.
+- **All channels of a scan.** Open Other Channels brings in every channel of
+  a multi-channel AFM file (height, phase, adhesion, modulus …), forward and
+  backward.
+- **Surface Analysis (ISO 25178).** Height, hybrid, spatial and functional
+  parameters (Sa … Sz, Sdq, Sdr, Sal, Str, Std, Sk, Spk, Svk, Smr1/2, Vmp,
+  Vmc, Vvc, Vvv), with the radial power spectrum and the height and slope
+  distributions, on the whole image or a region. Exports to CSV/JSON and
+  runs from scripts.
+- **2-D power spectrum and autocorrelation maps**, the step height between
+  two terraces, and heights and volumes in the Particles and Grains tables
+  of height maps.
+- **More AFM file formats.** Gwyddion (.gwy, including 1.x files, and .gsf),
+  Asylum Research .ibw, JPK .jpk, WSxM, Nanosurf .nid, NT-MDT .mdt and
+  Nanonis .sxm, alongside Bruker NanoScope.
+- **Force curves.** Bruker, Asylum and Nanosurf force curves and Nanosurf
+  force maps open with File ▸ Open into a new Force Curves workshop:
+  - Young's modulus from a Hertz (sphere), Sneddon (cone), pyramid or
+    flat-punch fit, with the contact point fitted too;
+  - adhesion, work of adhesion and snap-in;
+  - spring constant and InvOLS overrides, with a suggested InvOLS when a
+    curve on a rigid sample shows the deflection sensitivity is off;
+  - modulus, adhesion and contact-height images from a force map, and CSV
+    export.
+
 ## [0.7.1] - 2026-10-09
 
 ### Changed
