@@ -99,7 +99,7 @@ async def session_upload(
                             f"{_MAX_UPLOAD_BYTES >> 30} GiB upload limit",
                         )
                     out.write(chunk)
-            metas.extend(open_uploaded_file(staged, name))
+            metas.append(open_uploaded_file(staged, name))
     return metas
 
 

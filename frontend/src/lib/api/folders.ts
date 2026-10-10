@@ -6,7 +6,7 @@
 // ImageGroups in the store (or one merged group, per the import dialog's
 // checkbox).
 
-import type { FourDMeta, ImageMeta } from "./core";
+import type { OpenedMeta } from "./core";
 import { post } from "./transport";
 
 /** One candidate group the backend already computed from a folder scan
@@ -15,7 +15,7 @@ import { post } from "./transport";
  *  never emits a group with an empty `images` array. */
 export interface FolderGroupResult {
   name: string;
-  images: (ImageMeta | FourDMeta)[];
+  images: OpenedMeta[];
 }
 
 /** One requested path's own name and how many of `groups` it produced, in

@@ -218,3 +218,16 @@ def test_upload_routes_force_files(client, tmp_path: Path) -> None:
     assert r.status_code == 200, r.text
     (meta,) = r.json()
     assert meta["is_force"] and meta["parser"] == "nanoscope"
+
+
+def test_upload_of_a_force_map_returns_its_image(client, tmp_path: Path) -> None:
+    z, d = _hertz_like()
+    f = write_nid_force(tmp_path / "m.nid", [(z, d)] * 4, k=1.0, grid=(2, 2),
+                        image=np.zeros((3, 3)))
+    with f.open("rb") as fh:
+        r = client.post("/api/session/upload",
+                        files=[("files", ("m.nid", fh, "application/octet-stream"))])
+    (meta,) = r.json()                     # one meta per uploaded file
+    assert "is_force" not in meta
+    (force,) = client.get("/api/afm/force").json()
+    assert force["grid"] == [2, 2] and force["name"] == "m.nid"

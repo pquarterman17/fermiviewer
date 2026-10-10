@@ -99,7 +99,7 @@ def open_paths_as_metas(paths: list[str]) -> list[OpenedMeta]:
     return [*image_metas, *fourd_metas, *force_metas]
 
 
-def open_uploaded_file(staged: Path, name: str) -> list[OpenedMeta]:
+def open_uploaded_file(staged: Path, name: str) -> OpenedMeta:
     """Open one browser-uploaded file staged at `staged` (original `name`),
     routed exactly like `open_paths_as_metas`: 4D-STEM files go to the FourD
     store, everything else through `load_auto` + calibration auto-apply.
@@ -108,15 +108,16 @@ def open_uploaded_file(staged: Path, name: str) -> list[OpenedMeta]:
     Merlin reshape re-opens the file by path, so a 4D upload is moved out
     of the request's throw-away staging dir into one that outlives it. The
     FourD store owns that dir and deletes it when the dataset is closed.
-    Force-curve files are read whole, so they need no kept copy; a file
-    with both curves and images yields both metas.
+    Force-curve files are read whole, so they need no kept copy. One meta
+    per uploaded file (lib/folderDrop.ts relies on it): a file with both
+    curves and images returns its image, its curves going to the force
+    store alongside (the Force Curves workshop lists them).
     """
-    force: list[OpenedMeta] = []
     fk = force_kind(staged)
-    if fk is not None:
-        force.append(_open_force(staged, name))
-        if fk == "only":
-            return force
+    if fk == "only":
+        return _open_force(staged, name)
+    if fk == "mixed":
+        _open_force(staged, name)
     if is_fourd_path(staged):
         keep = UploadDir()
         kept = keep.path / name
@@ -131,7 +132,7 @@ def open_uploaded_file(staged: Path, name: str) -> list[OpenedMeta]:
                 raise HTTPException(422, f"{name}: {e}") from None
             raise
         fourd_id = fourd_store.add(ds4, name, source_path=kept, owned_dir=keep)
-        return [FourDMeta.from_dataset(fourd_id, name, ds4)]
+        return FourDMeta.from_dataset(fourd_id, name, ds4)
     try:
         ds = load_auto(staged)
     except UnsupportedFormatError as e:
@@ -150,4 +151,4 @@ def open_uploaded_file(staged: Path, name: str) -> list[OpenedMeta]:
     from fermiviewer.routes.calibration import auto_apply_calibration
 
     auto_apply_calibration(img_id, ds)
-    return [ImageMeta.from_datastruct(img_id, name, store.get(img_id)), *force]
+    return ImageMeta.from_datastruct(img_id, name, store.get(img_id))

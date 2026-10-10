@@ -5,9 +5,9 @@
 // that save/load round-trips.
 
 import {
-  isFourDMeta,
-  type FourDMeta,
+  imageMetas,
   type ImageMeta,
+  type OpenedMeta,
   type PersistedResultRecord,
   type ProjectRegions,
   type SessionClientState,
@@ -144,9 +144,9 @@ type SetState = (
  *  there's no render/measure pipeline for them yet. */
 export function ingestImages(
   set: SetState,
-  metas: (ImageMeta | FourDMeta)[],
+  metas: OpenedMeta[],
 ): void {
-  const images2D = metas.filter((m): m is ImageMeta => !isFourDMeta(m));
+  const images2D = imageMetas(metas);
   // preferences applied to images seen for the first time
   let prefCmap = "gray";
   let prefTransform: Display["transform"] = "linear";
