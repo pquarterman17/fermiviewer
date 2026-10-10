@@ -133,14 +133,24 @@ def _fit(z: np.ndarray, d: np.ndarray, zc0: float, k: float, tip: Tip,
     zs, ds = z[sel], d[sel]
     f = k * ds
 
+    c, p = tip.prefactor()
+
     def resid(x: np.ndarray) -> np.ndarray:
         return np.asarray(f - contact_force((zs - x[1]) - ds, x[0], tip))
 
-    c, p = tip.prefactor()
+    def jac(x: np.ndarray) -> np.ndarray:
+        # r = F − c·E·δ^p with δ = (z − z_c) − d, zero out of contact
+        delta = (zs - x[1]) - ds
+        on = delta > 0
+        dp = np.where(on, np.abs(delta) ** p, 0.0)
+        dp1 = np.where(on, np.abs(delta) ** (p - 1.0), 0.0)
+        return np.column_stack([-c * dp, c * x[0] * p * dp1])
+
     delta0 = np.clip((zs - zc0) - ds, 0, None) ** p
     e0 = float(f @ delta0 / (c * (delta0 @ delta0))) if delta0.any() else 1.0
     span = float(np.ptp(zs)) or 1.0
-    res = least_squares(resid, x0=[max(e0, 1e-9), zc0], x_scale=[max(e0, 1e-6), span / 10],
+    res = least_squares(resid, x0=[max(e0, 1e-9), zc0], jac=jac,
+                        x_scale=[max(e0, 1e-6), span / 10],
                         bounds=([0.0, zs.min() - span], [np.inf, zs.max()]))
     return float(res.x[0]), float(res.x[1]), res.fun
 

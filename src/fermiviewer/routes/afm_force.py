@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from fermiviewer.calc.afm_force import ForceAnalysis, Tip, analyze_curve, contact_force
+from fermiviewer.calc.afm_force_batch import CurveArrays, analyze_curves
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.io.force_common import ForceCurve, ForceFile
 from fermiviewer.models import ForceMeta, ImageMeta
@@ -118,17 +119,23 @@ def _calibration(f: ForceFile, s: ForceSettings) -> tuple[float, float, float]:
     return k, invols, s.invols / f.invols
 
 
-def _analyze(c: ForceCurve, s: ForceSettings, k: float, scale: float) -> ForceAnalysis:
+def _options(s: ForceSettings, k: float) -> dict:
     if s.baseline_to <= s.baseline_from:
         raise HTTPException(422, "the baseline window is empty")
+    return dict(k=k, tip=Tip(s.tip, s.radius_nm, s.half_angle_deg), poisson=s.poisson,
+                baseline=(s.baseline_from, s.baseline_to), max_indent=s.max_indent_nm,
+                max_force=s.max_force_nn, fit=s.fit)
+
+
+def _arrays(c: ForceCurve, scale: float) -> CurveArrays:
     a, r = c.approach, c.retract
     assert a is not None
-    return analyze_curve(
-        a.z, a.deflection * scale, r.z if r else None, r.deflection * scale if r else None,
-        k=k, tip=Tip(s.tip, s.radius_nm, s.half_angle_deg), poisson=s.poisson,
-        baseline=(s.baseline_from, s.baseline_to), max_indent=s.max_indent_nm,
-        max_force=s.max_force_nn, fit=s.fit,
-    )
+    return (a.z, a.deflection * scale, r.z if r else None,
+            r.deflection * scale if r else None)
+
+
+def _analyze(c: ForceCurve, s: ForceSettings, k: float, scale: float) -> ForceAnalysis:
+    return analyze_curve(*_arrays(c, scale), **_options(s, k))
 
 
 _UNITS = {"youngs_modulus": "Pa", "e_r": "GPa", "contact_z": "nm", "max_force": "nN",
@@ -189,15 +196,10 @@ def force_maps(force_id: str, s: ForceSettings) -> dict:
     contact-height images (registered in the session)."""
     f = _file(force_id)
     k, _, scale = _calibration(f, s)
-    rows = []
-    failed = 0
-    for c in f.curves:
-        try:
-            r = _analyze(c, s, k, scale)
-            rows.append((r.youngs_modulus, r.adhesion, r.contact_z, r.max_force, r.fit_r2))
-        except (ValueError, np.linalg.LinAlgError):
-            rows.append((math.nan,) * 5)
-            failed += 1
+    results = analyze_curves([_arrays(c, scale) for c in f.curves], **_options(s, k))
+    failed = sum(r is None for r in results)
+    rows = [(r.youngs_modulus, r.adhesion, r.contact_z, r.max_force, r.fit_r2)
+            if r is not None else (math.nan,) * 5 for r in results]
     cols = np.array(rows, dtype=np.float64).T
     table = {name: [_num(v) for v in col] for name, col in
              zip(("youngs_modulus", "adhesion", "contact_z", "max_force", "fit_r2"), cols,
