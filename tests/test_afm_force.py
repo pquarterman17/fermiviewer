@@ -89,3 +89,20 @@ def test_bad_inputs() -> None:
         analyze_curve(z, z, None, None, k=0.0, tip=Tip())
     with pytest.raises(ValueError):
         analyze_curve(z[:2], z[:2], None, None, k=1.0, tip=Tip())
+
+
+def test_batch_parallel_matches_serial_and_marks_failures() -> None:
+    from fermiviewer.calc.afm_force_batch import analyze_curves
+
+    tip = Tip("sphere", radius_nm=20)
+    good = [_curve(tip, zc=280.0 + 5 * i, noise=0.02, seed=i) for i in range(6)]
+    bad = (np.linspace(0, 1, 2), np.zeros(2), None, None)     # too short to analyse
+    curves = [*good[:3], bad, *good[3:]]
+    serial = analyze_curves(curves, parallel=False, k=0.1, tip=tip)
+    parallel = analyze_curves(curves, parallel=True, k=0.1, tip=tip)
+    assert serial[3] is None and parallel[3] is None
+    for a, b in zip(serial, parallel, strict=True):
+        if a is not None:
+            assert b is not None and a.youngs_modulus == b.youngs_modulus
+            assert a.contact_z == b.contact_z
+    assert [round(r.contact_z) for r in serial if r] == [280, 285, 290, 295, 300, 305]
