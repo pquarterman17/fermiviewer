@@ -508,7 +508,7 @@ The registered operation catalogue: name, category, summary, params.
 |---|---|---|---|---|---|---|
 | `edge` | `int` | 2 | no |  | [0, 20] | pixels left out on each side of the step edge |
 
-#### `surface_texture` — ISO 25178 areal parameters (Sa…Sz, Sdq, Sdr, Sal, Str, Std)
+#### `surface_texture` — ISO 25178 areal parameters (height, hybrid, spatial, functional Sk/V)
 
 *category: `analysis` · produces: value*
 

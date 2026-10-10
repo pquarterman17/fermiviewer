@@ -28,6 +28,7 @@ export const ISO_GROUPS: { title: string; keys: IsoParam[] }[] = [
   { title: "Height", keys: ["Sa", "Sq", "Ssk", "Sku", "Sp", "Sv", "Sz"] },
   { title: "Hybrid", keys: ["Sdq", "Sdr"] },
   { title: "Spatial", keys: ["Sal", "Str", "Std"] },
+  { title: "Functional", keys: ["Sk", "Spk", "Svk", "Smr1", "Smr2", "Vmp", "Vmc", "Vvc", "Vvv"] },
 ];
 
 const DESCRIPTIONS: Record<IsoParam, string> = {
@@ -43,6 +44,15 @@ const DESCRIPTIONS: Record<IsoParam, string> = {
   Sal: "autocorrelation length (s = 0.2)",
   Str: "texture aspect ratio",
   Std: "texture direction (from +x, counter-clockwise)",
+  Sk: "core height",
+  Spk: "reduced peak height",
+  Svk: "reduced valley depth",
+  Smr1: "peak material ratio (top of the core)",
+  Smr2: "valley material ratio (bottom of the core)",
+  Vmp: "peak material volume (mr = 10 %), per area",
+  Vmc: "core material volume (10–80 %), per area",
+  Vvc: "core void volume (10–80 %), per area",
+  Vvv: "valley void volume (mr = 80 %), per area",
 };
 
 export function surfaceRows(result: AfmSurfaceResult): Cell[][] {

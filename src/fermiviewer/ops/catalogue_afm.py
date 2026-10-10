@@ -9,7 +9,7 @@ from typing import Any
 
 import numpy as np
 
-from fermiviewer.calc import afm_features, afm_level, afm_surface
+from fermiviewer.calc import afm_features, afm_functional, afm_level, afm_surface
 from fermiviewer.calc.raster import raster_of
 from fermiviewer.datastruct import DataStruct
 from fermiviewer.io.tiff_units import TO_NM
@@ -100,10 +100,13 @@ def areal_values(ds: DataStruct, z: np.ndarray) -> dict[str, Any]:
     """ISO 25178 parameters of `z` (a levelled raster of `ds`) with units."""
     dy, dx, lat = lateral_scale(ds)
     p = afm_surface.areal_parameters(z, dy, dx, z_to_lateral(ds))
+    f = afm_functional.functional_parameters(z)
     zu = str(ds.metadata.get("value_unit") or "")
     return {
         "Sa": p.sa, "Sq": p.sq, "Ssk": p.ssk, "Sku": p.sku, "Sp": p.sp, "Sv": p.sv,
         "Sz": p.sz, "Sdq": p.sdq, "Sdr": p.sdr, "Sal": p.sal, "Str": p.str_, "Std": p.std,
+        "Sk": f.sk, "Spk": f.spk, "Svk": f.svk, "Smr1": f.smr1, "Smr2": f.smr2,
+        "Vmp": f.vmp, "Vmc": f.vmc, "Vvc": f.vvc, "Vvv": f.vvv,
         "n_pixels": p.n_pixels, "unit": zu, "lateral_unit": lat,
     }
 
@@ -127,7 +130,7 @@ def _step_height(ds: DataStruct, params: dict[str, Any]) -> OpResult:
 
 register(OpSpec(
     name="surface_texture", category="analysis",
-    summary="ISO 25178 areal parameters (Sa…Sz, Sdq, Sdr, Sal, Str, Std)",
+    summary="ISO 25178 areal parameters (height, hybrid, spatial, functional Sk/V)",
     params={"level": _LEVEL}, fn=_surface_texture,
 ))
 register(OpSpec(

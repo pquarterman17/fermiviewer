@@ -61,7 +61,8 @@ def _num(v: float) -> float | None:
     return float(v) if np.isfinite(v) else None
 
 
-_PARAMS = ("Sa", "Sq", "Ssk", "Sku", "Sp", "Sv", "Sz", "Sdq", "Sdr", "Sal", "Str", "Std")
+_PARAMS = ("Sa", "Sq", "Ssk", "Sku", "Sp", "Sv", "Sz", "Sdq", "Sdr", "Sal", "Str", "Std",
+           "Sk", "Spk", "Svk", "Smr1", "Smr2", "Vmp", "Vmc", "Vvc", "Vvv")
 
 
 class SurfaceRequest(BaseModel):
@@ -86,7 +87,10 @@ def surface(image_id: str, req: SurfaceRequest) -> dict:
     zu = values["unit"] or "a.u."
     params = {key: values[key] for key in _PARAMS}
     units = {**{key: zu for key in ("Sa", "Sq", "Sp", "Sv", "Sz")},
-             "Ssk": "", "Sku": "", "Sdq": "", "Sdr": "%", "Sal": lat, "Str": "", "Std": "°"}
+             "Ssk": "", "Sku": "", "Sdq": "", "Sdr": "%", "Sal": lat, "Str": "", "Std": "°",
+             # volumes per unit area carry the height unit (nm³/nm² = nm)
+             **{key: zu for key in ("Sk", "Spk", "Svk", "Vmp", "Vmc", "Vvc", "Vvv")},
+             "Smr1": "%", "Smr2": "%"}
     return {
         "params": {key: _num(v) for key, v in params.items()},
         "units": units,

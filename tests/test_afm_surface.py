@@ -163,6 +163,8 @@ def test_surface_route(client) -> None:
     body = r.json()
     assert body["units"]["Sa"] == "nm" and body["units"]["Sal"] == "nm"
     assert abs(body["params"]["Std"] - 30) < 1.0 and body["slopes_calibrated"]
+    assert body["units"]["Sk"] == "nm" and body["units"]["Smr1"] == "%"
+    assert body["params"]["Sk"] > 0 and body["params"]["Vmp"] > 0
     assert len(body["psd"]["frequency"]) == len(body["psd"]["power"]) > 10
     assert sum(body["height_hist"]["percent"]) == pytest.approx(100)
     roi = client.post(f"/api/afm/{img}/surface", json={"roi": [1, 1, 64, 64]}).json()
