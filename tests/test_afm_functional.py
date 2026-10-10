@@ -53,3 +53,18 @@ def test_nan_pixels_are_ignored_and_too_few_refused() -> None:
     assert np.isfinite(h).all() and h[0] > h[-1]
     with pytest.raises(ValueError):
         functional_parameters(np.array([np.nan, 1.0]))
+
+
+def test_equivalent_line_is_the_regression_not_the_secant() -> None:
+    # a curve h(mr) = 1 − mr/100 + 0.05·sin(π·mr/40): the flattest 40 % window
+    # holds one full bump, so its endpoint secant and its regression differ
+    mr_true = np.linspace(0.0, 100.0, 200_000)
+    h_true = 1 - mr_true / 100 + 0.05 * np.sin(np.pi * mr_true / 40)
+    f = functional_parameters(h_true)
+    mr, h = material_ratio_curve(h_true)
+    w = int(round(40.0 / (mr[1] - mr[0])))
+    i = int(np.argmin(h[:-w] - h[w:]))
+    slope, hu = np.polyfit(mr[i:i + w + 1], h[i:i + w + 1], 1)
+    secant_sk = -(h[i + w] - h[i]) / 40.0 * 100.0
+    assert f.sk == pytest.approx(-slope * 100.0, rel=1e-9)
+    assert abs(f.sk - secant_sk) > 0.01

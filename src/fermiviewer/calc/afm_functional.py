@@ -4,9 +4,10 @@ The material ratio curve h(mr) gives, for each material ratio mr (0–100 %),
 the height at which that fraction of the surface is material — the heights
 sorted from highest to lowest. From it:
 
-* Sk family (ISO 25178-2 § 4.5 / ISO 13565-2): the *equivalent straight
-  line* is the secant spanning 40 % of mr with the smallest height drop;
-  extended to mr = 0 % and 100 % it gives the core limits. **Sk** is the
+* Sk family (ISO 25178-2 § 4.5 / ISO 13565-2): the 40 % of mr whose
+  secant has the smallest height drop selects the core window, and the
+  *equivalent straight line* is the least-squares line through the curve
+  inside it; extended to mr = 0 % and 100 % it gives the core limits. **Sk** is the
   core height between them, **Smr1**/**Smr2** the material ratios where
   the curve crosses those limits, and **Spk**/**Svk** the heights of the
   triangles with the same areas as the peaks above / valleys below the
@@ -73,9 +74,10 @@ def functional_parameters(z: np.ndarray, p: float = 10.0, q: float = 80.0) -> Fu
     step = mr[1] - mr[0]
     w = int(round(_SECANT / step))
     drop = h[:-w] - h[w:]                        # height lost across each 40 % window
-    i = int(np.argmin(drop))
-    slope = -drop[i] / _SECANT                   # height per % (≤ 0)
-    hu = h[i] - slope * mr[i]                    # the line at mr = 0 %
+    i = int(np.argmin(drop))                     # the flattest 40 %: selection only
+    # the equivalent straight line is the least-squares line through the
+    # curve inside that window, not its endpoint secant
+    slope, hu = np.polyfit(mr[i:i + w + 1], h[i:i + w + 1], 1)   # hu: the line at 0 %
     hl = hu + slope * 100.0                      # … and at mr = 100 %
     sk = float(hu - hl)
 
