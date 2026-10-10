@@ -222,7 +222,7 @@ Feature walkthroughs, screenshots, and how-tos live in the
 - **[Structure &amp; Grains](https://github.com/pquarterman17/fermiviewer/wiki/Structure-and-Grains)** — grain segmentation (incl. paint-to-train), cross-section layer &amp; interface-roughness analysis
 - **[4D-STEM](https://github.com/pquarterman17/fermiviewer/wiki/4D-STEM)** — pixelated-detector datasets, probing, virtual-detector imaging
 - **[Scripting &amp; Automation](https://github.com/pquarterman17/fermiviewer/wiki/Scripting-and-Automation)** — Python API, headless `fv --script`, batch/watch/macro
-- **[AFM Support](https://github.com/pquarterman17/fermiviewer/wiki/AFM-Support)** — Bruker, Gwyddion, Asylum, JPK, WSxM, Nanosurf, NT-MDT and Nanonis scans; levelling, ISO 25178 surface analysis, step height, grain heights
+- **[AFM Support](https://github.com/pquarterman17/fermiviewer/wiki/AFM-Support)** ([in-repo copy](docs/afm.md)) — Bruker, Gwyddion, Asylum, JPK, WSxM, Nanosurf, NT-MDT and Nanonis scans; levelling, ISO 25178 surface analysis, step height, grain heights; force curves and force maps
 - **[Keyboard &amp; Accessibility](https://github.com/pquarterman17/fermiviewer/wiki/Keyboard-and-Accessibility)** — working without a mouse, screen-reader support, themes &amp; density
 - **[Supported Formats](https://github.com/pquarterman17/fermiviewer/wiki/Supported-Formats)**
 
