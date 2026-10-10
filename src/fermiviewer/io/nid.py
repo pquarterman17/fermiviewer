@@ -10,8 +10,10 @@ and ``SaveBits`` (signed little-endian integers).
 
 Scaling and orientation follow Gwyddion's ``ezdfile`` module: a raw value
 r of n bits maps to ``Dim2Min + Dim2Range · (r + 2ⁿ⁻¹) / 2ⁿ``, and lines
-are stored bottom to top. One-line blocks (spectroscopy) are skipped, as
-Gwyddion does.
+are stored bottom to top. Every listed channel has a block, as Nanosurf's
+NSFopen reads them; one-line blocks (spectroscopy) are stepped over, not
+opened. (Gwyddion skips them without advancing — marked FIXME there —
+which would misread any image that follows one.)
 """
 
 from __future__ import annotations
@@ -85,15 +87,15 @@ def load_nid_all(path: str | Path) -> list[DataStruct]:
                 nx, ny, bits = int(sec["Points"]), int(sec["Lines"]), int(sec.get("SaveBits", 32))
             except (KeyError, ValueError):
                 raise NidError(f"{name}: image size missing") from None
-            if ny < 2:
-                continue                            # spectroscopy line: no image
             if bits not in (8, 16, 32):
                 raise NidError(f"{name}: unsupported {bits}-bit data")
             size = nx * ny * bits // 8
             if pos + size > len(buf):
                 raise NidError(f"{name}: data runs past the end of the file")
-            raw = np.frombuffer(buf, dtype=f"<i{bits // 8}", count=nx * ny, offset=pos)
-            pos += size
+            start, pos = pos, pos + size        # every listed channel has a block
+            if ny < 2:
+                continue                        # one-line (spectroscopy) block: no image
+            raw = np.frombuffer(buf, dtype=f"<i{bits // 8}", count=nx * ny, offset=start)
             q = 2.0 ** bits
             frac = (raw.astype(np.float64) + q / 2) / q
             data = np.flipud(frac.reshape(ny, nx) * _f(sec, "Dim2Range") + _f(sec, "Dim2Min"))

@@ -158,12 +158,13 @@ def write_gwyo(path: Path, data: np.ndarray, size_m: float) -> Path:
 
 def write_nid(path: Path, channels: list[tuple[str, str, np.ndarray]], range_m: float,
               zmin: float, zrange: float) -> Path:
-    """channels: (name, unit, int32 lines bottom-up) — all in group 0."""
-    ny, nx = channels[0][2].shape
+    """channels: (name, unit, int32 lines bottom-up) — all in group 0;
+    a one-line array is a spectroscopy block."""
     head = ["[DataSet]", "Version=2", "GroupCount=1", "Gr0-Name=Scan forward",
             f"Gr0-Count={len(channels)}"]
     head += [f"Gr0-Ch{i}=DataSet-0:{i}" for i in range(len(channels))]
-    for i, (name, unit, _) in enumerate(channels):
+    for i, (name, unit, arr) in enumerate(channels):
+        ny, nx = arr.shape
         head += ["", f"[DataSet-0:{i}]", f"Points={nx}", f"Lines={ny}",
                  "Dim0Unit=m", f"Dim0Range={range_m}", "Dim1Unit=m", f"Dim1Range={range_m}",
                  f"Dim2Name={name}", f"Dim2Unit={unit}", f"Dim2Min={zmin}",

@@ -237,6 +237,18 @@ def test_nid_scaling_and_orientation(tmp_path) -> None:
         load_nid_all(tmp_path / "x.nid")
 
 
+def test_nid_steps_over_one_line_blocks(tmp_path) -> None:
+    """A spectroscopy line listed before an image still owns its bytes:
+    the image must be read from its own block, not the line's."""
+    line = np.arange(5, dtype=np.int64).reshape(1, 5) * 1000
+    img = np.array([[1, 2], [3, 4]], dtype=np.int64) * 2**20
+    p = write_nid(tmp_path / "m.nid", [("Spec", "N", line), ("Z-Axis", "m", img)],
+                  range_m=2e-6, zmin=0.0, zrange=1e-6)
+    (z,) = load_nid_all(p)
+    frac = (img.astype(float) + 2**31) / 2**32
+    np.testing.assert_allclose(z.data, np.flipud(1000 * frac))
+
+
 def test_mdt_scanned_and_mda_frames(tmp_path) -> None:
     scanned = np.array([[0, 2, 4], [6, 8, 10]], dtype=np.int16)
     mda = np.array([[0, 4], [8, 12], [16, 20]], dtype=np.int32)
