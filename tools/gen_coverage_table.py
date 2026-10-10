@@ -201,11 +201,10 @@ DOMAINS: tuple[Domain, ...] = (
                 "POST",
                 "/api/afm/{image_id}/map",
                 "AFM / SPM menu",
-                (),
+                ("surface_map",),
                 "map",
-                "parked",
-                "2-D PSD / ACF as images; an op waits on a frequency-space "
-                "map convention (FFT precedent)",
+                "shipped",
+                "2-D PSD / ACF as images; reciprocal axes on the FFT precedent",
             ),
             Row(
                 "POST",

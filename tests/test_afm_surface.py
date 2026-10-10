@@ -177,6 +177,11 @@ def test_map_route_registers_an_image(client, kind) -> None:
     r = client.post(f"/api/afm/{img}/map", json={"kind": kind})
     assert r.status_code == 200, r.text
     assert r.json()["name"].startswith(kind.upper())
+    # the surface_map op builds the same image a script or batch gets
+    route_img = store.get(r.json()["id"])
+    res = ops.run("surface_map", store.get(img), {"kind": kind})
+    np.testing.assert_allclose(res.derived.data, route_img.data)
+    assert res.derived.axes[1].units == route_img.axes[1].units
 
 
 def test_step_route(client) -> None:

@@ -18,13 +18,16 @@ from fermiviewer.calc import afm_surface as surf
 from fermiviewer.calc.afm_features import step_height
 from fermiviewer.calc.raster import NoRasterError, raster_of
 from fermiviewer.calc.roi import extract_rect_roi
-from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
+from fermiviewer.datastruct import DataStruct
 from fermiviewer.models import ImageMeta
 from fermiviewer.ops.catalogue_afm import (
     areal_values,
     lateral_scale,
     level_for_analysis,
     z_to_lateral,
+)
+from fermiviewer.ops.catalogue_afm import (
+    surface_map as build_surface_map,
 )
 from fermiviewer.session import UnknownImageError, store
 
@@ -117,26 +120,11 @@ def surface_map(image_id: str, req: MapRequest) -> ImageMeta:
     """The 2-D PSD (log10) or autocorrelation as a new image, with
     frequency or lag axes centred on zero."""
     ds, z = _load(image_id, req.roi, req.level)
-    dy, dx, lat = lateral_scale(ds)
     try:
-        if req.kind == "psd":
-            psd, fy, fx = surf.psd_2d(z, dy, dx)
-            floor = psd[psd > 0].min() if (psd > 0).any() else 1.0
-            data = np.log10(np.maximum(psd, floor))
-            axes = (AxisCal(float(fy[1] - fy[0]), float(np.argmin(np.abs(fy))), f"1/{lat}"),
-                    AxisCal(float(fx[1] - fx[0]), float(np.argmin(np.abs(fx))), f"1/{lat}"))
-            label, value_unit = "PSD", "log10"
-        else:
-            data = surf.acf_2d(z)
-            n, w = data.shape
-            axes = (AxisCal(dy, (n - 1) / 2, lat), AxisCal(dx, (w - 1) / 2, lat))
-            label, value_unit = "ACF", ""
+        derived = build_surface_map(ds, z, req.kind)
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
-    derived = DataStruct(
-        data=np.ascontiguousarray(data), kind=DataKind.IMAGE, axes=axes,
-        metadata={"source": label, "parser": "derived", "value_unit": value_unit},
-    )
+    label = derived.metadata["source"]
     name = f"{label}({store.name(image_id)})"
     new_id = store.add_derived(derived, name, image_id)
     return ImageMeta.from_datastruct(new_id, name, derived)
