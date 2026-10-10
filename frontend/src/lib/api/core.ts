@@ -42,6 +42,10 @@ export interface ImageMeta {
    *  Optional: an older server does not send it. */
   profiles?: Record<string, AppliedProfileRef>;
   meta: Record<string, string | number | boolean>;
+  /** An uploaded file holding this image AND force curves (a Nanosurf
+   *  force map): the curves' force file. Uploads answer one meta per file,
+   *  so it rides on the image. */
+  force_file?: ForceMeta | null;
 }
 
 /** One entry of `ImageMeta.profiles`. */
@@ -124,6 +128,14 @@ export function isFourDMeta(m: OpenedMeta): m is FourDMeta {
 
 export function isForceMeta(m: OpenedMeta): m is ForceMeta {
   return (m as ForceMeta).is_force === true;
+}
+
+/** Every force file an open returned: entries of their own, and those
+ *  riding on an uploaded image (`force_file`). */
+export function forceMetas(metas: OpenedMeta[]): ForceMeta[] {
+  return metas.flatMap((m) =>
+    isForceMeta(m) ? [m] : !isFourDMeta(m) && m.force_file ? [m.force_file] : [],
+  );
 }
 
 /** Only the real images of an open result. */

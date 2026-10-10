@@ -20,6 +20,7 @@ vi.mock("../../lib/api", async (importActual) => {
     listForceFiles: vi.fn(),
     forceMaps: vi.fn(),
     openSession: vi.fn(),
+    uploadFiles: vi.fn(),
   };
 });
 vi.mock("uplot", () => ({
@@ -28,7 +29,7 @@ vi.mock("uplot", () => ({
   }, { join: () => [[]] }),
 }));
 
-import { analyzeForceCurve, listForceFiles, openSession } from "../../lib/api";
+import { analyzeForceCurve, listForceFiles, openSession, uploadFiles } from "../../lib/api";
 import AfmForceWorkshop, {
   calibratedInvols,
   curveLabel,
@@ -141,6 +142,20 @@ describe("opening force files", () => {
     await useViewer.getState().openPaths(["/x/topo.nid"]);
     expect(useViewer.getState().order).toEqual(["i1"]);
     expect(useAfmForce.getState().selectedId).toBe("f9");
+    expect(useViewer.getState().tools.map((t) => t.kind)).toContain("afmforce");
+  });
+
+  it("adopts the force file riding on an uploaded force map's image", async () => {
+    const img: ImageMeta = {
+      id: "i2", name: "map.nid", kind: "image", shape: [4, 4], dtype: "float32",
+      pixel_size: 1, pixel_unit: "nm", value_unit: "nm", n_channels: null,
+      energy_first: null, energy_last: null, energy_units: "", stage_tilt_deg: null, meta: {},
+      force_file: force("f7", { n_curves: 4, grid: [2, 2] }),
+    };
+    vi.mocked(uploadFiles).mockResolvedValue([img]);
+    await useViewer.getState().openFiles([new File(["x"], "map.nid")]);
+    expect(useViewer.getState().order).toEqual(["i2"]);
+    expect(useAfmForce.getState().selectedId).toBe("f7");
     expect(useViewer.getState().tools.map((t) => t.kind)).toContain("afmforce");
   });
 });

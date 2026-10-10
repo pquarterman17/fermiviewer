@@ -231,3 +231,4 @@ def test_upload_of_a_force_map_returns_its_image(client, tmp_path: Path) -> None
     assert "is_force" not in meta
     (force,) = client.get("/api/afm/force").json()
     assert force["grid"] == [2, 2] and force["name"] == "m.nid"
+    assert meta["force_file"] == force     # the curves ride on the image

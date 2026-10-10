@@ -112,6 +112,10 @@ class ImageMeta(BaseModel):
     #: applicability} (ADR 0009 §5). Empty when none.
     profiles: dict[str, dict[str, Any]] = {}
     meta: dict[str, Any] = {}
+    #: An uploaded file that held both this image and force curves (a
+    #: Nanosurf force map): the curves' entry in the force store. Uploads
+    #: answer one meta per file, so the force file rides on its image.
+    force_file: ForceMeta | None = None
 
     @classmethod
     def from_datastruct(cls, img_id: str, name: str, ds: DataStruct) -> ImageMeta:
@@ -262,3 +266,6 @@ class ForceMeta(BaseModel):
             spring_constant=fin(f.spring_constant), invols=fin(f.invols),
             deflection_unit=f.deflection_unit, z_source=f.z_source,
         )
+
+
+ImageMeta.model_rebuild()

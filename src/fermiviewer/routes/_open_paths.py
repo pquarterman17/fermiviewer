@@ -111,13 +111,12 @@ def open_uploaded_file(staged: Path, name: str) -> OpenedMeta:
     Force-curve files are read whole, so they need no kept copy. One meta
     per uploaded file (lib/folderDrop.ts relies on it): a file with both
     curves and images returns its image, its curves going to the force
-    store alongside (the Force Curves workshop lists them).
+    store and their `ForceMeta` riding on the image as `force_file`.
     """
     fk = force_kind(staged)
     if fk == "only":
         return _open_force(staged, name)
-    if fk == "mixed":
-        _open_force(staged, name)
+    force = _open_force(staged, name) if fk == "mixed" else None
     if is_fourd_path(staged):
         keep = UploadDir()
         kept = keep.path / name
@@ -151,4 +150,6 @@ def open_uploaded_file(staged: Path, name: str) -> OpenedMeta:
     from fermiviewer.routes.calibration import auto_apply_calibration
 
     auto_apply_calibration(img_id, ds)
-    return ImageMeta.from_datastruct(img_id, name, store.get(img_id))
+    meta = ImageMeta.from_datastruct(img_id, name, store.get(img_id))
+    meta.force_file = force
+    return meta

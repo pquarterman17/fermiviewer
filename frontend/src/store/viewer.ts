@@ -14,7 +14,7 @@
 import { create } from "zustand";
 
 import {
-  isForceMeta,
+  forceMetas,
   loadWorkspaceNamed as apiLoadWorkspaceNamed,
   openSession,
   saveWorkspaceNamed as apiSaveWorkspaceNamed,
@@ -68,7 +68,7 @@ function adoptOpened(
   metas: OpenedMeta[],
 ): void {
   ingestImages(set, metas);
-  const force = metas.filter(isForceMeta);
+  const force = forceMetas(metas);
   if (force.length) {
     useAfmForce.getState().adopt(force);
     get().openTool("afmforce");
