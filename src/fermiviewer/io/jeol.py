@@ -207,8 +207,10 @@ def _parse_top_level_records(buf: bytes, start: int) -> list[dict[str, Any]]:
 
 
 def _pick_image_record(records: list[dict[str, Any]]) -> dict[str, Any]:
+    rec: dict[str, Any]  # mypy 2.4 otherwise infers Any from the narrowing below
     for rec in reversed(records):  # the full copy (with Bits) comes last
-        if isinstance(rec.get("Image"), dict) and "Bits" in rec["Image"]:
+        image = rec.get("Image")
+        if isinstance(image, dict) and "Bits" in image:
             return rec
     for rec in records:
         if isinstance(rec.get("Image"), dict):
