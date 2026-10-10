@@ -19,8 +19,10 @@ Ground-up port of [fermi-viewer](https://github.com/pquarterman17/fermi-viewer)
 MRC, HDF5 family (.hspy, NeXus .nxs/.nx5, generic .h5/.hdf5), MSA/EMSA spectra,
 JEOL Analysis Station (.img/.map/.pts), EDAX .spc, Lispix .rpl/.raw, TIFF
 (pixel size and stage tilt read from Thermo Fisher/FEI SEM-FIB, Zeiss SmartSEM
-and ImageJ tags), PNG/JPEG/BMP/GIF, headerless RAW, Bruker Nanoscope AFM
-(.spm/.000), 4D-STEM (Merlin .mib, 4D HyperSpy).
+and ImageJ tags), PNG/JPEG/BMP/GIF, headerless RAW, AFM/SPM (Bruker
+Nanoscope .spm/.000, Gwyddion .gwy/.gsf, Asylum .ibw, JPK .jpk, WSxM .top/.stp,
+Nanosurf .nid, NT-MDT .mdt, Nanonis .sxm),
+4D-STEM (Merlin .mib, 4D HyperSpy).
 **Analysis:** EELS (background, maps, quantification ± σ, thickness,
 Kramers–Kronig, Fourier-log, model-based peak fitting, SVD), EDS
 (Cliff–Lorimer / ZAF / ζ-factor composition with mass-thickness ± σ, maps,
@@ -220,7 +222,7 @@ Feature walkthroughs, screenshots, and how-tos live in the
 - **[Structure &amp; Grains](https://github.com/pquarterman17/fermiviewer/wiki/Structure-and-Grains)** — grain segmentation (incl. paint-to-train), cross-section layer &amp; interface-roughness analysis
 - **[4D-STEM](https://github.com/pquarterman17/fermiviewer/wiki/4D-STEM)** — pixelated-detector datasets, probing, virtual-detector imaging
 - **[Scripting &amp; Automation](https://github.com/pquarterman17/fermiviewer/wiki/Scripting-and-Automation)** — Python API, headless `fv --script`, batch/watch/macro
-- **[AFM Support](https://github.com/pquarterman17/fermiviewer/wiki/AFM-Support)** — Bruker Nanoscope height maps + Z-scale color bar
+- **[AFM Support](https://github.com/pquarterman17/fermiviewer/wiki/AFM-Support)** — Bruker, Gwyddion, Asylum, JPK, WSxM, Nanosurf, NT-MDT and Nanonis scans; levelling, ISO 25178 surface analysis, step height, grain heights
 - **[Keyboard &amp; Accessibility](https://github.com/pquarterman17/fermiviewer/wiki/Keyboard-and-Accessibility)** — working without a mouse, screen-reader support, themes &amp; density
 - **[Supported Formats](https://github.com/pquarterman17/fermiviewer/wiki/Supported-Formats)**
 

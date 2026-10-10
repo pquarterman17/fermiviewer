@@ -269,7 +269,7 @@ def fake_scan(client, monkeypatch):
     from fermiviewer.routes import afm
 
     channels = [_channel(lab) for lab in _LABELS]
-    monkeypatch.setattr(afm, "load_nanoscope_all", lambda _p: channels)
+    monkeypatch.setattr(afm, "load_spm_channels", lambda _p: channels)
     root = store.add_parsed(channels[0], "scan.spm")
     afm.stash_upload_channels(root, Path("scan.spm"))
     gate = SimpleNamespace(entered=threading.Event(), go=threading.Event())
