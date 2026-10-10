@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import struct
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 
@@ -31,7 +32,7 @@ from fermiviewer.io.spm_common import (
     unique_labels,
 )
 
-__all__ = ["IbwError", "load_ibw", "load_ibw_all"]
+__all__ = ["IbwError", "IgorWave", "load_ibw", "load_ibw_all", "read_wave"]
 
 _BIN5 = "h h i i i i 4i 4i i i i"            # 64 bytes
 _WAVE5 = ("4x I I i h h 6x h 32s 4x 4x 4i 4d 4d 4s 16s h h d d "
@@ -85,8 +86,22 @@ def _direction(name: str) -> tuple[str, str]:
     return name, ""
 
 
-def load_ibw_all(path: str | Path) -> list[DataStruct]:
-    """Every channel (layer) of an Asylum scan as a calibrated image."""
+class IgorWave(NamedTuple):
+    """One parsed v5 wave: data in Fortran order, shaped by ``n_dim``."""
+
+    data: np.ndarray            # shape (n0, n1[, n2]) — trailing zero dims dropped
+    n_dim: tuple[int, ...]
+    sf_a: tuple[float, ...]     # per-dimension step
+    sf_b: tuple[float, ...]     # per-dimension start
+    dim_units: list[str]
+    data_unit: str
+    name: str
+    note: dict[str, str]
+    labels: list[list[str]]     # per dimension: the labels after the dimension's own
+
+
+def read_wave(path: str | Path) -> IgorWave:
+    """Parse an Igor binary wave (version 5) of real numbers."""
     buf = Path(path).read_bytes()
     if len(buf) < 384:
         raise IbwError("file too short for an Igor wave")
@@ -96,16 +111,42 @@ def load_ibw_all(path: str | Path) -> list[DataStruct]:
     dim_eunits_size, dim_labels_size = rest[0:4], rest[4:8]
     wave = struct.unpack_from(o + _WAVE5.replace(" ", ""), buf, 64)
     npnts, wtype = wave[2], wave[3]
-    n_dim = [d for d in wave[7:11]]
-    sf_a = wave[11:15]
+    n_dim = tuple(d for d in wave[7:11])
     dim_units = [wave[20][i * 4:(i + 1) * 4].split(b"\0")[0].decode("latin-1") for i in range(4)]
-    data_unit = wave[19].split(b"\0")[0].decode("latin-1")
-    wave_name = wave[6].split(b"\0")[0].decode("latin-1")
     if wtype & 1:
-        raise IbwError("complex waves are not images")
+        raise IbwError("complex waves are not supported")
     dtype = _TYPES.get(wtype & ~1)
     if dtype is None:
         raise IbwError(f"unsupported Igor number type {wtype:#x}")
+    shape = tuple(d for d in n_dim if d > 0) or (npnts,)
+    if int(np.prod(shape)) != npnts:
+        raise IbwError("wave point count does not match its dimensions")
+    dt = np.dtype(o + dtype)
+    start = 64 + 320
+    end = start + npnts * dt.itemsize
+    if end > len(buf):
+        raise IbwError("wave data runs past the end of the file")
+    data = np.frombuffer(buf, dtype=dt, count=npnts, offset=start).reshape(shape, order="F")
+
+    pos = end + formula_size
+    note = _note(buf[pos:pos + note_size])
+    pos += note_size + data_eunits_size + sum(dim_eunits_size)
+    labels: list[list[str]] = []
+    for d in range(4):
+        raw = buf[pos:pos + dim_labels_size[d]]
+        # label 0 names the dimension itself; then one per index
+        labels.append([raw[i:i + _LABEL].split(b"\0")[0].decode("latin-1")
+                       for i in range(_LABEL, len(raw), _LABEL)])
+        pos += dim_labels_size[d]
+    return IgorWave(data, n_dim, tuple(wave[11:15]), tuple(wave[15:19]), dim_units,
+                    wave[19].split(b"\0")[0].decode("latin-1"),
+                    wave[6].split(b"\0")[0].decode("latin-1"), note, labels)
+
+
+def load_ibw_all(path: str | Path) -> list[DataStruct]:
+    """Every channel (layer) of an Asylum scan as a calibrated image."""
+    w = read_wave(path)
+    n_dim, dim_units, note = w.n_dim, w.dim_units, w.note
     if n_dim[0] < 2 or n_dim[1] < 2:
         raise IbwError("not an image wave (fewer than two dimensions)")
     if any(u and not length_to_nm_factor(u) for u in dim_units[:2]):
@@ -114,30 +155,11 @@ def load_ibw_all(path: str | Path) -> list[DataStruct]:
     if n_dim[2] > 1 and dim_units[2]:
         # a calibrated third axis (V, s, …) is a spectroscopy grid, not channels
         raise IbwError(f"spectroscopy grid ({n_dim[2]} points in {dim_units[2]}), not an image")
+    if n_dim[3] > 0:
+        raise IbwError("4-D waves are not images")
     n_layers = max(n_dim[2], 1)
-    count = n_dim[0] * n_dim[1] * n_layers
-    if count != npnts:
-        raise IbwError("wave point count does not match its dimensions")
-    dt = np.dtype(o + dtype)
-    start = 64 + 320
-    end = start + count * dt.itemsize
-    if end > len(buf):
-        raise IbwError("wave data runs past the end of the file")
-    data = np.frombuffer(buf, dtype=dt, count=count, offset=start)
-    cube = data.reshape((n_dim[0], n_dim[1], n_layers), order="F")
-
-    pos = end + formula_size
-    note = _note(buf[pos:pos + note_size])
-    pos += note_size + data_eunits_size + sum(dim_eunits_size)
-    labels: list[str] = []
-    for d in range(4):
-        size = dim_labels_size[d]
-        if d == 2 and size:
-            raw = buf[pos:pos + size]
-            # label 0 names the dimension itself; then one per layer
-            labels = [raw[i:i + _LABEL].split(b"\0")[0].decode("latin-1")
-                      for i in range(_LABEL, size, _LABEL)]
-        pos += size
+    cube = w.data.reshape((n_dim[0], n_dim[1], n_layers), order="F")
+    labels, sf_a, data_unit, wave_name = w.labels[2], w.sf_a, w.data_unit, w.name
 
     lat = length_to_nm_factor(dim_units[0]) or length_to_nm_factor("m") or 1.0
     dx_nm = abs(sf_a[0]) * lat if sf_a[0] else float("nan")

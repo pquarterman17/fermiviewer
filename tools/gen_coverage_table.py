@@ -914,6 +914,30 @@ DOMAINS: tuple[Domain, ...] = (
         ),
     ),
     Domain(
+        "AFM force curves",
+        (
+            Row(
+                "POST",
+                "/api/afm/force/{force_id}/curve/{index}/analyze",
+                "AFM Force Curves workshop",
+                (),
+                "scalar set + curve ×3",
+                "parked",
+                "a force curve is not a DataStruct (session_force.py); an op "
+                "waits on a curve-subject convention, as 4D does",
+            ),
+            Row(
+                "POST",
+                "/api/afm/force/{force_id}/maps",
+                "AFM Force Curves workshop",
+                (),
+                "map ×3 + table",
+                "parked",
+                "modulus / adhesion / contact-height images of a force map",
+            ),
+        ),
+    ),
+    Domain(
         "4D-STEM",
         (
             Row("GET", "/api/fourd/{fourd_id}/nav", "4D workshop", (), "map", "parked"),
@@ -1002,6 +1026,10 @@ INFRASTRUCTURE: tuple[tuple[str, str], ...] = (
     ("POST", "/api/export/figure"),
     ("POST", "/api/export/gif"),
     ("POST", "/api/export/table"),
+    ("GET", "/api/afm/force"),
+    ("GET", "/api/afm/force/{force_id}"),
+    ("DELETE", "/api/afm/force/{force_id}"),
+    ("GET", "/api/afm/force/{force_id}/curve/{index}"),
     ("GET", "/api/fourd"),
     ("DELETE", "/api/fourd/{fourd_id}"),
     ("GET", "/api/fourd/{fourd_id}/meta"),

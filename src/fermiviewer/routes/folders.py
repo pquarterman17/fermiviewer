@@ -16,7 +16,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from fermiviewer.io.folder_scan import scan_folders
-from fermiviewer.models import FourDMeta, ImageMeta
+from fermiviewer.models import ForceMeta, FourDMeta, ImageMeta
 from fermiviewer.routes._open_paths import open_paths_as_metas
 from fermiviewer.routes._paths import checked_data_paths
 
@@ -29,7 +29,7 @@ class OpenFolderRequest(BaseModel):
 
 class FolderGroupResult(BaseModel):
     name: str
-    images: list[ImageMeta | FourDMeta]
+    images: list[ImageMeta | FourDMeta | ForceMeta]
 
 
 class FolderRootResult(BaseModel):
