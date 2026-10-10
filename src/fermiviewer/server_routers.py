@@ -20,6 +20,7 @@ def include_all_routers(app: FastAPI) -> None:
     here as they land (W5)."""
     from fermiviewer.routes.afm import router as afm_router
     from fermiviewer.routes.afm_analysis import router as afm_analysis_router
+    from fermiviewer.routes.afm_force import router as afm_force_router
     from fermiviewer.routes.analysis import router as analysis_router
     from fermiviewer.routes.analysis_wireups import router as wireups_router
     from fermiviewer.routes.batch_ops import router as batch_ops_router
@@ -87,6 +88,6 @@ def include_all_routers(app: FastAPI) -> None:
         layers_router, watch_router,
         fourd_router, fourd_com_router, folders_router, regions_router, montage_compare_router,
         project_io_router, region_sets_api_router, distributions_router,
-        shape_id_router, results_router, afm_router, afm_analysis_router,
+        shape_id_router, results_router, afm_router, afm_analysis_router, afm_force_router,
     ):
         app.include_router(_router)

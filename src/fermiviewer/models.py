@@ -18,6 +18,7 @@ from fermiviewer.io.profiles_applied import applied_profiles, snapshot_version
 
 if TYPE_CHECKING:
     from fermiviewer.calc.fourd.dataset import FourDDataset
+    from fermiviewer.io.force_common import ForceFile
 
 __all__ = ["AxisCalOut", "FourDMeta", "ImageMeta", "OpenRequest"]
 
@@ -111,6 +112,10 @@ class ImageMeta(BaseModel):
     #: applicability} (ADR 0009 §5). Empty when none.
     profiles: dict[str, dict[str, Any]] = {}
     meta: dict[str, Any] = {}
+    #: An uploaded file that held both this image and force curves (a
+    #: Nanosurf force map): the curves' entry in the force store. Uploads
+    #: answer one meta per file, so the force file rides on its image.
+    force_file: ForceMeta | None = None
 
     @classmethod
     def from_datastruct(cls, img_id: str, name: str, ds: DataStruct) -> ImageMeta:
@@ -230,3 +235,37 @@ class FourDMeta(BaseModel):
                 else [list(p) for p in scan_shape_candidates(rows * cols)]
             ),
         )
+
+
+class ForceMeta(BaseModel):
+    """An opened force-curve file (io/force.py) — like `FourDMeta`, not an
+    image: the `is_force` discriminator lets a client keep it out of the
+    image library. Its curves live in session_force.py's store."""
+
+    id: str
+    name: str
+    is_force: Literal[True] = True
+    parser: str
+    n_curves: int
+    grid: list[int] | None = None               # [rows, cols] of a force map
+    map_pitch_nm: list[float] | None = None     # [dy, dx]
+    spring_constant: float | None = None        # N/m, from the file
+    invols: float | None = None                 # nm/V, from the file
+    deflection_unit: str = "nm"
+    z_source: str = ""
+
+    @classmethod
+    def from_file(cls, force_id: str, name: str, f: ForceFile) -> ForceMeta:
+        def fin(v: float) -> float | None:
+            return float(v) if math.isfinite(v) else None
+
+        return cls(
+            id=force_id, name=name, parser=f.parser, n_curves=len(f.curves),
+            grid=list(f.grid) if f.grid else None,
+            map_pitch_nm=list(f.map_pitch_nm) if f.map_pitch_nm else None,
+            spring_constant=fin(f.spring_constant), invols=fin(f.invols),
+            deflection_unit=f.deflection_unit, z_source=f.z_source,
+        )
+
+
+ImageMeta.model_rebuild()

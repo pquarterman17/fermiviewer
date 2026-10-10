@@ -13,13 +13,16 @@ r of n bits maps to ``Dim2Min + Dim2Range · (r + 2ⁿ⁻¹) / 2ⁿ``, and lines
 are stored bottom to top. Every listed channel has a block, as Nanosurf's
 NSFopen reads them; one-line blocks (spectroscopy) are stepped over, not
 opened. (Gwyddion skips them without advancing — marked FIXME there —
-which would misread any image that follows one.)
+which would misread any image that follows one.) Spectroscopy blocks —
+one force curve per line, its length in ``LineDim<n>Points`` — are left
+to io/force_nid.py.
 """
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 
@@ -31,7 +34,7 @@ from fermiviewer.io.spm_common import (
     unique_labels,
 )
 
-__all__ = ["NidError", "load_nid", "load_nid_all"]
+__all__ = ["NidBlock", "NidError", "load_nid", "load_nid_all", "read_nid"]
 
 _MAGIC = b"#!"
 
@@ -60,8 +63,25 @@ def _f(sec: dict[str, str], key: str) -> float:
         return float("nan")
 
 
-def load_nid_all(path: str | Path) -> list[DataStruct]:
-    """Every image channel of every group (forward/backward scan)."""
+class NidBlock(NamedTuple):
+    group: str                  # e.g. "Scan forward", "Spec backward"
+    section: dict[str, str]     # the channel's header section
+    raw: np.ndarray             # Lines × Points raw integers, file order
+
+    def scaled(self) -> np.ndarray:
+        """Raw → value: ``Dim2Min + Dim2Range · (r + 2ⁿ⁻¹) / 2ⁿ``."""
+        q = 2.0 ** (self.raw.dtype.itemsize * 8)
+        frac = (self.raw.astype(np.float64) + q / 2) / q
+        return frac * _f(self.section, "Dim2Range") + _f(self.section, "Dim2Min")
+
+    @property
+    def is_spectroscopy(self) -> bool:
+        """Spectroscopy blocks: one curve per line (``LineDim<n>Points``)."""
+        return "LineDim0Points" in self.section or self.raw.shape[0] < 2
+
+
+def read_nid(path: str | Path) -> tuple[dict[str, dict[str, str]], list[NidBlock]]:
+    """The header sections and every listed channel block, in file order."""
     buf = Path(path).read_bytes()
     start = buf.find(_MAGIC)
     if start < 0 or b"[DataSet]" not in buf[:start]:
@@ -73,10 +93,9 @@ def load_nid_all(path: str | Path) -> list[DataStruct]:
     except (KeyError, ValueError):
         raise NidError("[DataSet] has no GroupCount") from None
     pos = start + len(_MAGIC)
-    out = []
+    blocks = []
     for g in range(n_groups):
         group = ds.get(f"Gr{g}-Name", f"Group {g}")
-        direction = {"scan forward": "trace", "scan backward": "retrace"}.get(group.lower(), "")
         keys = sorted((int(m.group(1)), v) for k, v in ds.items()
                       if (m := re.fullmatch(rf"Gr{g}-Ch(\d+)", k)))
         for _, name in keys:
@@ -92,23 +111,33 @@ def load_nid_all(path: str | Path) -> list[DataStruct]:
             size = nx * ny * bits // 8
             if pos + size > len(buf):
                 raise NidError(f"{name}: data runs past the end of the file")
-            start, pos = pos, pos + size        # every listed channel has a block
-            if ny < 2:
-                continue                        # one-line (spectroscopy) block: no image
-            raw = np.frombuffer(buf, dtype=f"<i{bits // 8}", count=nx * ny, offset=start)
-            q = 2.0 ** bits
-            frac = (raw.astype(np.float64) + q / 2) / q
-            data = np.flipud(frac.reshape(ny, nx) * _f(sec, "Dim2Range") + _f(sec, "Dim2Min"))
-            channel = sec.get("Dim2Name", name)
-            lat_x = length_to_nm_factor(sec.get("Dim0Unit", "m")) or float("nan")
-            lat_y = length_to_nm_factor(sec.get("Dim1Unit", "m")) or float("nan")
-            out.append(spm_channel(
-                data, parser="nanosurf", channel=channel,
-                label=f"{channel} ({direction})" if direction else f"{channel} ({group})",
-                value_unit=sec.get("Dim2Unit", ""),
-                dy_nm=_f(sec, "Dim1Range") * lat_y / ny, dx_nm=_f(sec, "Dim0Range") * lat_x / nx,
-                line_direction=direction or None, nid_group=group,
-            ))
+            raw = np.frombuffer(buf, dtype=f"<i{bits // 8}", count=nx * ny, offset=pos)
+            pos += size                         # every listed channel has a block
+            blocks.append(NidBlock(group, sec, raw.reshape(ny, nx)))
+    return secs, blocks
+
+
+def load_nid_all(path: str | Path) -> list[DataStruct]:
+    """Every image channel of every group (forward/backward scan)."""
+    _, blocks = read_nid(path)
+    out = []
+    for b in blocks:
+        if b.is_spectroscopy:
+            continue                            # force curves: io/force_nid.py
+        sec, group = b.section, b.group
+        ny, nx = b.raw.shape
+        direction = {"scan forward": "trace", "scan backward": "retrace"}.get(group.lower(), "")
+        data = np.flipud(b.scaled())
+        channel = sec.get("Dim2Name", "Channel")
+        lat_x = length_to_nm_factor(sec.get("Dim0Unit", "m")) or float("nan")
+        lat_y = length_to_nm_factor(sec.get("Dim1Unit", "m")) or float("nan")
+        out.append(spm_channel(
+            data, parser="nanosurf", channel=channel,
+            label=f"{channel} ({direction})" if direction else f"{channel} ({group})",
+            value_unit=sec.get("Dim2Unit", ""),
+            dy_nm=_f(sec, "Dim1Range") * lat_y / ny, dx_nm=_f(sec, "Dim0Range") * lat_x / nx,
+            line_direction=direction or None, nid_group=group,
+        ))
     if not out:
         raise NidError("the file holds no image channels (spectroscopy only?)")
     return unique_labels(out)

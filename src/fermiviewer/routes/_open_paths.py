@@ -14,20 +14,34 @@ from pathlib import Path
 
 from fastapi import HTTPException
 
+from fermiviewer.io.force import force_kind, load_force
+from fermiviewer.io.force_common import ForceError
 from fermiviewer.io.registry import (
     UnsupportedFormatError,
     is_fourd_path,
     load_auto,
     load_fourd_auto,
 )
-from fermiviewer.models import FourDMeta, ImageMeta
+from fermiviewer.models import ForceMeta, FourDMeta, ImageMeta
 from fermiviewer.session import store
+from fermiviewer.session_force import force_store
 from fermiviewer.session_fourd import UploadDir, fourd_store
 
 __all__ = ["open_paths_as_metas", "open_uploaded_file"]
 
 
-def open_paths_as_metas(paths: list[str]) -> list[ImageMeta | FourDMeta]:
+OpenedMeta = ImageMeta | FourDMeta | ForceMeta
+
+
+def _open_force(path: str | Path, name: str) -> ForceMeta:
+    try:
+        f = load_force(path)
+    except ForceError as e:
+        raise HTTPException(422, f"{name}: {e}") from None
+    return ForceMeta.from_file(force_store.add(f, name), name, f)
+
+
+def open_paths_as_metas(paths: list[str]) -> list[OpenedMeta]:
     """Open `paths` by server-side path, exactly like `/session/open`.
 
     4D-STEM files (Merlin .mib, 4D HyperSpy .hspy/.h5/.hdf5 — sniffed by
@@ -36,12 +50,21 @@ def open_paths_as_metas(paths: list[str]) -> list[ImageMeta | FourDMeta]:
     `FourDMeta` entries (the `is_fourd` discriminator marks them so a
     frontend that doesn't yet know about 4D datasets can filter them out
     instead of mis-treating one as a normal image — see store/viewer.ts's
-    `openPaths`). Everything else goes through the unchanged 2D/3D path,
-    with calibration auto-applied per image.
+    `openPaths`). AFM force-curve files go to the force store the same way
+    (`ForceMeta`, `is_force`); one that also holds images (a Nanosurf force
+    map with its topography) opens those as well. Everything else goes
+    through the unchanged 2D/3D path, with calibration auto-applied per
+    image.
     """
     fourd_metas: list[FourDMeta] = []
+    force_metas: list[ForceMeta] = []
     remaining: list[str] = []
     for raw_path in paths:
+        if (fk := force_kind(raw_path)) is not None:
+            force_metas.append(_open_force(raw_path, Path(raw_path).name))
+            if fk == "mixed":
+                remaining.append(raw_path)
+            continue
         if not is_fourd_path(raw_path):
             remaining.append(raw_path)
             continue
@@ -73,10 +96,10 @@ def open_paths_as_metas(paths: list[str]) -> list[ImageMeta | FourDMeta]:
         ImageMeta.from_datastruct(i, store.name(i), store.get(i))
         for i, _ in opened
     ]
-    return [*image_metas, *fourd_metas]
+    return [*image_metas, *fourd_metas, *force_metas]
 
 
-def open_uploaded_file(staged: Path, name: str) -> ImageMeta | FourDMeta:
+def open_uploaded_file(staged: Path, name: str) -> OpenedMeta:
     """Open one browser-uploaded file staged at `staged` (original `name`),
     routed exactly like `open_paths_as_metas`: 4D-STEM files go to the FourD
     store, everything else through `load_auto` + calibration auto-apply.
@@ -85,7 +108,15 @@ def open_uploaded_file(staged: Path, name: str) -> ImageMeta | FourDMeta:
     Merlin reshape re-opens the file by path, so a 4D upload is moved out
     of the request's throw-away staging dir into one that outlives it. The
     FourD store owns that dir and deletes it when the dataset is closed.
+    Force-curve files are read whole, so they need no kept copy. One meta
+    per uploaded file (lib/folderDrop.ts relies on it): a file with both
+    curves and images returns its image, its curves going to the force
+    store and their `ForceMeta` riding on the image as `force_file`.
     """
+    fk = force_kind(staged)
+    if fk == "only":
+        return _open_force(staged, name)
+    force = _open_force(staged, name) if fk == "mixed" else None
     if is_fourd_path(staged):
         keep = UploadDir()
         kept = keep.path / name
@@ -119,4 +150,6 @@ def open_uploaded_file(staged: Path, name: str) -> ImageMeta | FourDMeta:
     from fermiviewer.routes.calibration import auto_apply_calibration
 
     auto_apply_calibration(img_id, ds)
-    return ImageMeta.from_datastruct(img_id, name, store.get(img_id))
+    meta = ImageMeta.from_datastruct(img_id, name, store.get(img_id))
+    meta.force_file = force
+    return meta

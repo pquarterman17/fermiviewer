@@ -139,6 +139,9 @@ export function buildAfmMenu(ctx: MenuCtx): Entry {
         },
       },
       { kind: "sep" },
+      // force files open with File ▸ Open like any other; this shows them
+      { label: "Force Curves…", action: () => store.openTool("afmforce") },
+      { kind: "sep" },
       { label: "Surface Roughness", disabled: noImage, action: () => store.openTool("roughness") },
       { label: "3-D Surface", disabled: noImage, action: () => store.openTool("surface") },
       { label: "Particles…", disabled: noImage, action: () => openStructureWorkshop("Particles") },

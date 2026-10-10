@@ -7,6 +7,7 @@ export type AfmLevel = "none" | "plane" | "quadratic";
 
 export const ISO_PARAMS = [
   "Sa", "Sq", "Ssk", "Sku", "Sp", "Sv", "Sz", "Sdq", "Sdr", "Sal", "Str", "Std",
+  "Sk", "Spk", "Svk", "Smr1", "Smr2", "Vmp", "Vmc", "Vvc", "Vvv",
 ] as const;
 export type IsoParam = (typeof ISO_PARAMS)[number];
 

@@ -9,10 +9,10 @@ Route and op inventories are read live from the app and registry at generation t
 
 ## Summary
 
-- **184** HTTP endpoints; **86** perform analysis, 3 are physics-table lookups, and 95 are allowlisted infrastructure.
-- **77 of 86** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **96** ops in total.
+- **190** HTTP endpoints; **88** perform analysis, 3 are physics-table lookups, and 99 are allowlisted infrastructure.
+- **78 of 88** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **97** ops in total.
 - Registered-op reach IS headless reach: batch recipes, folder watch, `fv --script`, and the Python API all resolve steps through the same registry and cannot call anything else.
-- Remaining item-3 work: wave A (0), wave B (0), wave C (0), wave D (0) endpoints; 9 are parked behind the item-8/9 activation gates. Item 3 does not close while any analysis row lacks a wave or a named gate — every endpoint is assigned, none is silently deferred.
+- Remaining item-3 work: wave A (0), wave B (0), wave C (0), wave D (0) endpoints; 10 are parked behind the item-8/9 activation gates. Item 3 does not close while any analysis row lacks a wave or a named gate — every endpoint is assigned, none is silently deferred.
 
 ## Analysis endpoints
 
@@ -30,7 +30,7 @@ Route and op inventories are read live from the app and registry at generation t
 | `POST /api/measure/profile-roughness` | — (no GUI caller). *interfacial roughness traced column-by-column across a box profile. The averaged profile's edge width mixes compositional grading with geometric waviness, so one number from it cannot separate them; the columns can. The op takes the line as four scalars so a recipe replays anywhere* | `profile_roughness` | scalar set + curve | shipped |
 | `POST /api/analyze/roughness` | Roughness workshop. *route adds bearing curve + ROI* | `roughness` | scalar set + curve (bearing) | shipped |
 | `POST /api/afm/{image_id}/surface` | AFM Surface Analysis workshop. *route adds the radial PSD, height/slope histograms + ROI* | `surface_texture` | scalar set + curve ×3 | shipped |
-| `POST /api/afm/{image_id}/map` | AFM / SPM menu. *2-D PSD / ACF as images; an op waits on a frequency-space map convention (FFT precedent)* | — | map | parked (item 8/9) |
+| `POST /api/afm/{image_id}/map` | AFM / SPM menu. *2-D PSD / ACF as images; reciprocal axes on the FFT precedent* | `surface_map` | map | shipped |
 | `POST /api/afm/{image_id}/step-height` | AFM / SPM menu. *route adds the ROI; the op measures the whole (cropped) image* | `step_height` | scalar set | shipped |
 | `POST /api/analyze/noise` | Noise workshop. *route adds block stats + ROI* | `noise` | scalar set + fit + curve | shipped |
 | `POST /api/analyze/interface-width` | Interface Width workshop. *no image subject — op ignores `ds`, profile travels as x/y CSV (`distribution_fit` precedent, blessed in ADR 0005's wave-A addendum)* | `interface_width` | fit | shipped |
@@ -135,6 +135,13 @@ Route and op inventories are read live from the app and registry at generation t
 | `GET /api/image/{img_id}/histogram` | Histogram panel | `intensity_histogram` | curve | shipped |
 | `POST /api/calibration/detect-bar` | Calibration dialog. *zero params — the route's reused request model's other fields are dead here and not mirrored (efd_similarity precedent)* | `scalebar_detect` | scalar set | shipped |
 
+### AFM force curves
+
+| Route | GUI action | Registered op (headless reach) | Result kinds (ADR 0004) | Wave |
+|---|---|---|---|---|
+| `POST /api/afm/force/{force_id}/curve/{index}/analyze` | AFM Force Curves workshop. *a force curve is not a DataStruct (session_force.py); an op waits on a curve-subject convention, as 4D does* | — | scalar set + curve ×3 | parked (item 8/9) |
+| `POST /api/afm/force/{force_id}/maps` | AFM Force Curves workshop. *modulus / adhesion / contact-height images of a force map* | — | map ×3 + table | parked (item 8/9) |
+
 ### 4D-STEM
 
 | Route | GUI action | Registered op (headless reach) | Result kinds (ADR 0004) | Wave |
@@ -170,6 +177,10 @@ Physics tables, no data reduction — no op is owed.
 
 Session, project, render, export, jobs, calibration-store and dataset plumbing — outside the parity audit's scope. An explicit allowlist: a new route that is not added here (or classified as analysis/reference) fails the generator.
 
+- `GET /api/afm/force`
+- `DELETE /api/afm/force/{force_id}`
+- `GET /api/afm/force/{force_id}`
+- `GET /api/afm/force/{force_id}/curve/{index}`
 - `POST /api/afm/{image_id}/channels`
 - `GET /api/batch/operations`
 - `POST /api/batch/run`

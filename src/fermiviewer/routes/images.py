@@ -19,7 +19,7 @@ from fermiviewer.calc.render import histogram, to_display, to_uint16_norm
 from fermiviewer.calc.thumbnail import display_png
 from fermiviewer.datastruct import SPECTRAL_KINDS, DataKind, DataStruct
 from fermiviewer.io.registry import supported_extensions
-from fermiviewer.models import FourDMeta, ImageMeta, OpenRequest
+from fermiviewer.models import ForceMeta, FourDMeta, ImageMeta, OpenRequest
 from fermiviewer.routes._open_paths import open_paths_as_metas, open_uploaded_file
 from fermiviewer.routes._paths import checked_data_path, checked_data_paths
 from fermiviewer.routes._spectrum_scope import scoped_spectrum
@@ -49,7 +49,7 @@ def _raster(ds: DataStruct) -> np.ndarray:
 
 
 @router.post("/session/open")
-def session_open(req: OpenRequest) -> list[ImageMeta | FourDMeta]:
+def session_open(req: OpenRequest) -> list[ImageMeta | FourDMeta | ForceMeta]:
     """Open one or more files by server-side path.
 
     4D-STEM files (Merlin .mib, 4D HyperSpy .hspy/.h5/.hdf5) are split out
@@ -67,7 +67,7 @@ def session_open(req: OpenRequest) -> list[ImageMeta | FourDMeta]:
 @router.post("/session/upload")
 async def session_upload(
     files: list[UploadFile],
-) -> list[ImageMeta | FourDMeta]:
+) -> list[ImageMeta | FourDMeta | ForceMeta]:
     """Open files sent by the browser's native picker.
 
     The SPA can't hand the server a filesystem path, so the picker
@@ -78,7 +78,7 @@ async def session_upload(
     """
     if not files:
         raise HTTPException(422, "no files in upload")
-    metas: list[ImageMeta | FourDMeta] = []
+    metas: list[ImageMeta | FourDMeta | ForceMeta] = []
     with tempfile.TemporaryDirectory(prefix="fv_upload_") as tmp:
         for up in files:
             name = Path(up.filename or "upload").name  # strip any path

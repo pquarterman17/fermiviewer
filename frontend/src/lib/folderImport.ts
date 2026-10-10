@@ -15,11 +15,11 @@
 // feed into — one set of rules regardless of how the groups were found.
 
 import {
-  isFourDMeta,
+  imageMetas,
   openFolders,
   type FolderGroupResult,
-  type FourDMeta,
   type ImageMeta,
+  type OpenedMeta,
 } from "./api";
 import type { FolderRootResult } from "./api/folders";
 import { useFolderImportNotice } from "../store/folderImportNotice";
@@ -30,7 +30,7 @@ import { useViewer } from "../store/viewer";
 /** One group ready to hand to `createGroup(ids, name)`. */
 export interface GroupSpec {
   name: string;
-  images: (ImageMeta | FourDMeta)[];
+  images: OpenedMeta[];
 }
 
 export interface SeedResult {
@@ -208,8 +208,7 @@ export function summarizeImport(s: ImportSummary): string {
 
 // ── async orchestration ─────────────────────────────────────────────────
 
-const images2DOf = (images: (ImageMeta | FourDMeta)[]): ImageMeta[] =>
-  images.filter((m): m is ImageMeta => !isFourDMeta(m));
+const images2DOf = (images: OpenedMeta[]): ImageMeta[] => imageMetas(images);
 
 /** Anything shaped like an /session/open-folder response — the real one
  *  (openFolders), or lib/folderDrop.ts's client-side-walked equivalent

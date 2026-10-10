@@ -1,7 +1,7 @@
 """AFM/SPM ops: levelling (calc/afm_level.py) — the same functions the
 /filter route's AFM kinds call, so a script or batch recipe levels exactly
-like the GUI — and surface analysis (ISO 25178 texture, step height), with
-the unit helpers routes/afm_analysis.py shares."""
+like the GUI — and surface analysis (ISO 25178 texture, step height, the
+2-D PSD / ACF maps), with the helpers routes/afm_analysis.py shares."""
 
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ from typing import Any
 
 import numpy as np
 
-from fermiviewer.calc import afm_features, afm_level, afm_surface
+from fermiviewer.calc import afm_features, afm_functional, afm_level, afm_surface
 from fermiviewer.calc.raster import raster_of
-from fermiviewer.datastruct import DataStruct
+from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.io.tiff_units import TO_NM
 from fermiviewer.ops.base import OpParam, OpResult, OpSpec
 from fermiviewer.ops.catalogue import _image_op
@@ -100,10 +100,13 @@ def areal_values(ds: DataStruct, z: np.ndarray) -> dict[str, Any]:
     """ISO 25178 parameters of `z` (a levelled raster of `ds`) with units."""
     dy, dx, lat = lateral_scale(ds)
     p = afm_surface.areal_parameters(z, dy, dx, z_to_lateral(ds))
+    f = afm_functional.functional_parameters(z)
     zu = str(ds.metadata.get("value_unit") or "")
     return {
         "Sa": p.sa, "Sq": p.sq, "Ssk": p.ssk, "Sku": p.sku, "Sp": p.sp, "Sv": p.sv,
         "Sz": p.sz, "Sdq": p.sdq, "Sdr": p.sdr, "Sal": p.sal, "Str": p.str_, "Std": p.std,
+        "Sk": f.sk, "Spk": f.spk, "Svk": f.svk, "Smr1": f.smr1, "Smr2": f.smr2,
+        "Vmp": f.vmp, "Vmc": f.vmc, "Vvc": f.vvc, "Vvv": f.vvv,
         "n_pixels": p.n_pixels, "unit": zu, "lateral_unit": lat,
     }
 
@@ -127,7 +130,7 @@ def _step_height(ds: DataStruct, params: dict[str, Any]) -> OpResult:
 
 register(OpSpec(
     name="surface_texture", category="analysis",
-    summary="ISO 25178 areal parameters (Sa…Sz, Sdq, Sdr, Sal, Str, Std)",
+    summary="ISO 25178 areal parameters (height, hybrid, spatial, functional Sk/V)",
     params={"level": _LEVEL}, fn=_surface_texture,
 ))
 register(OpSpec(
@@ -136,6 +139,47 @@ register(OpSpec(
     params={"edge": OpParam(int, 2, minimum=0, maximum=20,
                             doc="pixels left out on each side of the step edge")},
     fn=_step_height,
+))
+
+
+def surface_map(ds: DataStruct, z: np.ndarray, kind: str) -> DataStruct:
+    """The 2-D PSD (log10) or autocorrelation of `z` (a levelled raster of
+    `ds`) as an image, with frequency or lag axes centred on zero — the FFT
+    precedent: reciprocal axes in 1/<pixel unit>, not the parent's."""
+    dy, dx, lat = lateral_scale(ds)
+    if kind == "psd":
+        psd, fy, fx = afm_surface.psd_2d(z, dy, dx)
+        floor = psd[psd > 0].min() if (psd > 0).any() else 1.0
+        data = np.log10(np.maximum(psd, floor))
+        axes = (AxisCal(float(fy[1] - fy[0]), float(np.argmin(np.abs(fy))), f"1/{lat}"),
+                AxisCal(float(fx[1] - fx[0]), float(np.argmin(np.abs(fx))), f"1/{lat}"))
+        label, value_unit = "PSD", "log10"
+    elif kind == "acf":
+        data = afm_surface.acf_2d(z)
+        n, w = data.shape
+        axes = (AxisCal(dy, (n - 1) / 2, lat), AxisCal(dx, (w - 1) / 2, lat))
+        label, value_unit = "ACF", ""
+    else:
+        raise ValueError(f"unknown surface map {kind!r}")
+    return DataStruct(
+        data=np.ascontiguousarray(data), kind=DataKind.IMAGE, axes=axes,
+        metadata={"source": label, "parser": "derived", "filter_kind": f"afm_{kind}",
+                  "value_unit": value_unit},
+    )
+
+
+def _surface_map(ds: DataStruct, params: dict[str, Any]) -> OpResult:
+    z = level_for_analysis(raster_of(ds), params["level"])
+    derived = surface_map(ds, z, params["kind"])
+    label = "2-D PSD (log10)" if params["kind"] == "psd" else "2-D autocorrelation"
+    return OpResult(op="surface_map", params=params, label=label, derived=derived)
+
+
+register(OpSpec(
+    name="surface_map", category="filter",
+    summary="2-D power spectral density (log10) or autocorrelation as a derived image",
+    params={"kind": OpParam(str, "psd", choices=("psd", "acf")), "level": _LEVEL},
+    fn=_surface_map,
 ))
 
 

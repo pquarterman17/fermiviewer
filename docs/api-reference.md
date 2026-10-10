@@ -283,7 +283,7 @@ The registered operation catalogue: name, category, summary, params.
 
 ## Operation catalogue
 
-96 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
+97 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
 
 ### analysis
 
@@ -508,7 +508,7 @@ The registered operation catalogue: name, category, summary, params.
 |---|---|---|---|---|---|---|
 | `edge` | `int` | 2 | no |  | [0, 20] | pixels left out on each side of the step edge |
 
-#### `surface_texture` — ISO 25178 areal parameters (Sa…Sz, Sdq, Sdr, Sal, Str, Std)
+#### `surface_texture` — ISO 25178 areal parameters (height, hybrid, spatial, functional Sk/V)
 
 *category: `analysis` · produces: value*
 
@@ -1197,6 +1197,15 @@ The registered operation catalogue: name, category, summary, params.
 *category: `filter` · produces: derived image*
 
 *(no parameters)*
+
+#### `surface_map` — 2-D power spectral density (log10) or autocorrelation as a derived image
+
+*category: `filter` · produces: derived image*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `kind` | `str` | psd | no | 'psd', 'acf' |  |  |
+| `level` | `str` | plane | no | 'none', 'plane', 'quadratic' |  |  |
 
 #### `unsharp` — Unsharp mask (sharpen)
 

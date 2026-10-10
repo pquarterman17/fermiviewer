@@ -14,13 +14,16 @@
 import { create } from "zustand";
 
 import {
+  forceMetas,
   loadWorkspaceNamed as apiLoadWorkspaceNamed,
   openSession,
   saveWorkspaceNamed as apiSaveWorkspaceNamed,
   uploadFiles,
+  type OpenedMeta,
 } from "../lib/api";
 import { logStatus } from "../lib/errlog";
 import { clampScaleBarFont } from "../lib/scaleBarFont";
+import { useAfmForce } from "./afmForce";
 import { createChromeActions, initialChrome } from "./viewerChromeActions";
 import { createCloseAction } from "./viewerCloseImage";
 import { createCompareActions } from "./viewerCompareActions";
@@ -56,6 +59,21 @@ export type { ViewerState } from "./viewerState";
 export type { TiltSettings } from "../lib/geometry";
 export type { DisplayUnit } from "../lib/lengthUnits";
 export type { ComparePane, ImageGroup } from "../lib/groups";
+
+/** An open's results: images into the library; force-curve files into
+ *  their own store, with the Force Curves workshop raised to show them. */
+function adoptOpened(
+  set: Parameters<typeof ingestImages>[0],
+  get: () => ViewerState,
+  metas: OpenedMeta[],
+): void {
+  ingestImages(set, metas);
+  const force = forceMetas(metas);
+  if (force.length) {
+    useAfmForce.getState().adopt(force);
+    get().openTool("afmforce");
+  }
+}
 
 export const useViewer = create<ViewerState>((set, get) => ({
   order: [],
@@ -153,7 +171,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   currentProject: null,
 
   openPaths: async (paths) => {
-    ingestImages(set, await openSession(paths));
+    adoptOpened(set, get, await openSession(paths));
     // recent-files list (checklist L) — successful path-opens only
     try {
       const prev = JSON.parse(
@@ -167,7 +185,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   },
 
   openFiles: async (files) => {
-    ingestImages(set, await uploadFiles(files));
+    adoptOpened(set, get, await uploadFiles(files));
   },
 
   /** Register derived/analysis result images in the library. */

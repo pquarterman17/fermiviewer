@@ -20,3 +20,4 @@ export * from "./api/distributions";
 export * from "./api/results";
 export * from "./api/profiles";
 export * from "./api/afm";
+export * from "./api/afmForce";

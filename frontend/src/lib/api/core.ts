@@ -42,6 +42,10 @@ export interface ImageMeta {
    *  Optional: an older server does not send it. */
   profiles?: Record<string, AppliedProfileRef>;
   meta: Record<string, string | number | boolean>;
+  /** An uploaded file holding this image AND force curves (a Nanosurf
+   *  force map): the curves' force file. Uploads answer one meta per file,
+   *  so it rides on the image. */
+  force_file?: ForceMeta | null;
 }
 
 /** One entry of `ImageMeta.profiles`. */
@@ -97,13 +101,49 @@ export interface FourDMeta {
   scan_shape_options: number[][];
 }
 
-export function isFourDMeta(m: ImageMeta | FourDMeta): m is FourDMeta {
+/** An opened AFM force-curve file (routes/afm_force.py) — not an image
+ *  either; `is_force` keeps it out of the image library. Its curves are
+ *  analysed in the Force Curves workshop. */
+export interface ForceMeta {
+  id: string;
+  name: string;
+  is_force: true;
+  parser: string;
+  n_curves: number;
+  /** [rows, cols] when the curves form a force map. */
+  grid: number[] | null;
+  map_pitch_nm: number[] | null;
+  spring_constant: number | null;
+  invols: number | null;
+  deflection_unit: string;
+  z_source: string;
+}
+
+/** What an open / upload returns: images, 4D datasets and force files. */
+export type OpenedMeta = ImageMeta | FourDMeta | ForceMeta;
+
+export function isFourDMeta(m: OpenedMeta): m is FourDMeta {
   return (m as FourDMeta).is_fourd === true;
 }
 
-export async function openSession(
-  paths: string[],
-): Promise<(ImageMeta | FourDMeta)[]> {
+export function isForceMeta(m: OpenedMeta): m is ForceMeta {
+  return (m as ForceMeta).is_force === true;
+}
+
+/** Every force file an open returned: entries of their own, and those
+ *  riding on an uploaded image (`force_file`). */
+export function forceMetas(metas: OpenedMeta[]): ForceMeta[] {
+  return metas.flatMap((m) =>
+    isForceMeta(m) ? [m] : !isFourDMeta(m) && m.force_file ? [m.force_file] : [],
+  );
+}
+
+/** Only the real images of an open result. */
+export function imageMetas(metas: OpenedMeta[]): ImageMeta[] {
+  return metas.filter((m): m is ImageMeta => !isFourDMeta(m) && !isForceMeta(m));
+}
+
+export async function openSession(paths: string[]): Promise<OpenedMeta[]> {
   return json(
     await fetch("/api/session/open", {
       method: "POST",
@@ -125,9 +165,7 @@ export async function devSampleFiles(): Promise<string[]> {
 
 /** Open files picked with the browser's native dialog (multipart). 4D-STEM
  *  files come back as `FourDMeta`, exactly like `openSession`. */
-export async function uploadFiles(
-  files: FileList | File[],
-): Promise<(ImageMeta | FourDMeta)[]> {
+export async function uploadFiles(files: FileList | File[]): Promise<OpenedMeta[]> {
   const form = new FormData();
   for (const f of Array.from(files)) form.append("files", f, f.name);
   return json(
