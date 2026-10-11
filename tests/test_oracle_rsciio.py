@@ -41,6 +41,15 @@ def _rsciio_load(path: Path) -> list[dict]:
     return file_reader(str(path))
 
 
+def _total(data: object) -> float:
+    """Sum in float64 without a float64 copy of the array (a 512 × 512 ×
+    4096 EDS map would need 8 GiB for one), NaN counted as 0."""
+    a = np.asarray(data)
+    if np.issubdtype(a.dtype, np.inexact):
+        return float(np.nansum(a, dtype=np.float64))
+    return float(a.sum(dtype=np.float64))
+
+
 def _corpus_files(ml_datasets: Path) -> list[Path]:
     mic = ml_datasets / "Microscopy"
     out: list[Path] = []
@@ -126,15 +135,14 @@ def test_rsciio_corpus_sums_vs_oracle(rsciio_examples: Path) -> None:
             ours = load_auto(f)
         except Exception:  # noqa: BLE001 — documented-limitation files (complex FFT, NCEM-4D)
             continue
+        our_sum = _total(ours.data)
+        del ours          # a full EDS map is GBs; never hold both readers' copies
         try:
             theirs = _oracle(f)
         except Exception as e:  # noqa: BLE001
             print(f"  oracle skip {f.name}: {e}")
             continue
-        our_sum = float(np.nan_to_num(np.asarray(ours.data, np.float64)).sum())
-        their_sums = [
-            float(np.nan_to_num(np.asarray(s["data"], np.float64)).sum()) for s in theirs
-        ]
+        their_sums = [_total(s["data"]) for s in theirs]
         assert any(
             abs(our_sum - t) <= 1e-6 * max(abs(t), 1) for t in their_sums
         ), f"{f.name}: sum {our_sum} not among oracle sums {their_sums}"
