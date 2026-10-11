@@ -11,8 +11,13 @@ export function applyFilter(
   id: string,
   kind: string,
   params: Record<string, unknown> = {},
+  options: { signal?: AbortSignal } = {},
 ): Promise<ImageMeta> {
-  return post("/api/filter", { image_id: id, kind, params });
+  return post(
+    "/api/filter",
+    { image_id: id, kind, params },
+    { signal: options.signal },
+  );
 }
 
 /** Crop a vendor-baked databar (Thermo Fisher SEM/FIB) off the bottom,

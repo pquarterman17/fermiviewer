@@ -101,6 +101,7 @@ describe("NoiseWorkshop", () => {
       expect(analyzeNoise).toHaveBeenCalledWith("source", {
         method: "mad",
         roi: null,
+        signal: expect.any(AbortSignal),
       }),
     );
     expect(await screen.findByText("2.500")).toBeVisible();
@@ -111,9 +112,12 @@ describe("NoiseWorkshop", () => {
       screen.getByRole("button", { name: "Apply recommended filter" }),
     );
     await waitFor(() =>
-      expect(applyFilter).toHaveBeenCalledWith("source", "median", {
-        window_size: 3,
-      }),
+      expect(applyFilter).toHaveBeenCalledWith(
+        "source",
+        "median",
+        { window_size: 3 },
+        { signal: expect.any(AbortSignal) },
+      ),
     );
     expect(useViewer.getState().images.denoised).toBeDefined();
 
@@ -163,5 +167,50 @@ describe("NoiseWorkshop", () => {
     expect(screen.getByText(/· Terrace ·/)).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Export JSON" }));
     expect(JSON.stringify(vi.mocked(downloadJson).mock.calls[0][1])).toContain("Terrace");
+  });
+
+  it("aborts and drops a noise result after the active image changes", async () => {
+    let resolve!: (value: NoiseResult) => void;
+    vi.mocked(analyzeNoise).mockReturnValue(
+      new Promise((next) => { resolve = next; }),
+    );
+    useViewer.getState().ingest([imageMeta("a"), imageMeta("b")]);
+    useViewer.getState().setActive("a");
+    render(<NoiseWorkshop />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Analyze" }));
+    const signal = vi.mocked(analyzeNoise).mock.calls[0]![1]!.signal!;
+    act(() => useViewer.getState().setActive("b"));
+    await act(async () => resolve(result));
+
+    expect(signal.aborted).toBe(true);
+    expect(screen.queryByText("2.500")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Export CSV" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Analyze" })).not.toBeDisabled();
+  });
+
+  it("does not ingest a recommended filter after the source changes", async () => {
+    vi.mocked(analyzeNoise).mockResolvedValue(result);
+    let resolve!: (value: ImageMeta) => void;
+    vi.mocked(applyFilter).mockReturnValue(
+      new Promise((next) => { resolve = next; }),
+    );
+    useViewer.getState().ingest([imageMeta("a"), imageMeta("b")]);
+    useViewer.getState().setActive("a");
+    render(<NoiseWorkshop />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Analyze" }));
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Apply recommended filter" }),
+    );
+    const signal = vi.mocked(applyFilter).mock.calls[0]![3]!.signal!;
+    act(() => useViewer.getState().setActive("b"));
+    await act(async () => resolve(imageMeta("denoised-a")));
+
+    expect(signal.aborted).toBe(true);
+    expect(useViewer.getState().images).not.toHaveProperty("denoised-a");
+    expect(useViewer.getState().activeId).toBe("b");
   });
 });

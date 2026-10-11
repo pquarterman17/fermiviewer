@@ -100,13 +100,18 @@ export function analyzeRoughness(
   options: {
     level?: RoughnessResult["level"];
     roi?: [number, number, number, number] | null;
+    signal?: AbortSignal;
   } = {},
 ): Promise<RoughnessResult> {
-  return post("/api/analyze/roughness", {
-    image_id: id,
-    level: options.level ?? "plane",
-    roi: options.roi ?? null,
-  });
+  return post(
+    "/api/analyze/roughness",
+    {
+      image_id: id,
+      level: options.level ?? "plane",
+      roi: options.roi ?? null,
+    },
+    { signal: options.signal },
+  );
 }
 
 export function applyCalibration(

@@ -1,6 +1,6 @@
 # Usability and reliability audit — EDS, AFM, and analysis workflows
 
-**Status:** Active — item 1 shipped; item 2 EDS half in progress
+**Status:** Active — item 1 shipped; item 2 implemented, awaiting AFM review
 
 **Owner:** Codex (lead implementation); Claude reviews each pull request
 
@@ -178,6 +178,12 @@ blind mechanical rewrite.
 
 ## Progress log
 
+- 2026-10-11 — Item 2 AFM half implemented: Roughness and Noise analysis now
+  use the shared source-scoped request lease, as does Noise's recommended-filter
+  action. Switching images aborts pending work, clears local busy/results, and
+  cannot display or export the old analysis under the new filename, ingest the
+  old derived filter, or switch the viewer back to the old source. Deferred
+  response regressions cover all three paths. Awaiting Claude review.
 - 2026-10-11 — Item 2 EDS half implemented on a focused follow-up branch:
   shared abortable latest-request ownership plus active-source checks now guard
   Quantify, auto-assign, and composition-profile success, failure, and cleanup.

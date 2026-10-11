@@ -46,10 +46,10 @@ const result: RoughnessResult = {
   bearing_heights: [3, 0, -3],
 };
 
-function imageMeta(): ImageMeta {
+function imageMeta(id = "surface"): ImageMeta {
   return {
-    id: "surface",
-    name: "surface.dm4",
+    id,
+    name: `${id}.dm4`,
     kind: "image",
     shape: [64, 64],
     dtype: "float32",
@@ -95,6 +95,7 @@ describe("RoughnessWorkshop", () => {
       expect(analyzeRoughness).toHaveBeenCalledWith("surface", {
         level: "plane",
         roi: null,
+        signal: expect.any(AbortSignal),
       }),
     );
     expect(await screen.findByText("1.250 nm")).toBeVisible();
@@ -135,5 +136,25 @@ describe("RoughnessWorkshop", () => {
     expect(screen.getByText(/· Terrace ·/)).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Export JSON" }));
     expect(JSON.stringify(vi.mocked(downloadJson).mock.calls[0][1])).toContain("Terrace");
+  });
+
+  it("aborts and drops a result after the active image changes", async () => {
+    let resolve!: (value: RoughnessResult) => void;
+    vi.mocked(analyzeRoughness).mockReturnValue(
+      new Promise((next) => { resolve = next; }),
+    );
+    useViewer.getState().ingest([imageMeta("a"), imageMeta("b")]);
+    useViewer.getState().setActive("a");
+    render(<RoughnessWorkshop />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Analyze" }));
+    const signal = vi.mocked(analyzeRoughness).mock.calls[0]![1]!.signal!;
+    act(() => useViewer.getState().setActive("b"));
+    await act(async () => resolve(result));
+
+    expect(signal.aborted).toBe(true);
+    expect(screen.queryByText("1.250 nm")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Export CSV" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Analyze" })).not.toBeDisabled();
   });
 });
