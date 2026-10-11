@@ -395,7 +395,7 @@ export default function EdsSpectrumImage() {
           imageId={activeId}
           liveActive={isCube && captureMode === "specnav"}
           livePixel={specnavPixel}
-          mapReady={!!mapResult && !mapStale}
+          mapReady={!!mapResult && !mapStale && !mapBusy}
           spectrumReady={!!displaySpectrum}
           onRegion={handleRoi}
           onToggleLive={() =>

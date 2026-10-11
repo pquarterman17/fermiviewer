@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { EdsElementMapResult, ImageMeta, Spectrum } from "../../lib/api";
@@ -323,10 +323,20 @@ describe("EdsSpectrumImage", () => {
     await new Promise((r) => setTimeout(r, 200));     // past the map debounce
     expect(edsElementMap).not.toHaveBeenCalled();
 
-    // a usable energy recomputes and clears the stale mark
+    // a usable energy recomputes; until the new map lands the old one is
+    // still shown, so neither action may use it
+    let land!: (r: EdsElementMapResult) => void;
+    vi.mocked(edsElementMap).mockReturnValueOnce(new Promise((r) => { land = r; }));
     fireEvent.change(e0Input, { target: { value: "15" } });
     fireEvent.blur(e0Input);
+    expect(screen.getByText("Updating…")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add to library" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Export map CSV" })).toBeDisabled();
+    await waitFor(() => expect(edsElementMap).toHaveBeenCalled());
+    await act(async () => land(MAP_RESULT));
     expect(await screen.findByText("10 total counts")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add to library" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Export map CSV" })).not.toBeDisabled();
     expect(edsElementMap).toHaveBeenCalledWith(
       meta.id, expect.any(Number), expect.any(Number),
       expect.objectContaining({ bg: "bremsstrahlung", e0Kev: 15 }),

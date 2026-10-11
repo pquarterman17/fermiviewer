@@ -157,7 +157,8 @@ export default function EdsElementMap({
         <div className="fvd-eds-map-actions">
           <button
             className="fvd-btn primary"
-            disabled={libraryBusy || !!stale}
+            // the shown map is the old one until a recompute lands
+            disabled={libraryBusy || busy || !!stale}
             title={
               stale
                 ? `Stale map — ${stale}`
