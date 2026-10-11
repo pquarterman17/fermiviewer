@@ -13,6 +13,40 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [0.8.1] - 2026-10-11
+
+Security updates, faster force maps, and fixes from an EDS / AFM testing audit.
+
+### Security
+- The desktop shell updates rustls to 0.23.45 and quick-xml to 0.42 (via
+  plist 1.10), closing three Dependabot advisories.
+
+### Changed
+- **Faster force maps.** The contact fit uses an analytic Jacobian, and
+  large maps (200+ curves) are analysed on all CPU cores.
+- **AFM / SPM user guide** (docs/afm.md), with a Force Curves screenshot.
+
+### Fixed
+- **Surface analysis on thin regions.** A region narrower than 3 × 3 pixels
+  is refused with a clear message instead of failing with a server error.
+- **EDS spectra.** A newer ROI, sum or live-probe request now cancels the
+  previous one, so a late response can no longer replace the newest
+  spectrum or clear its busy state.
+- **Region labels.** Roughness, Noise and Surface Analysis label results and
+  exports with the region they were measured on, not the one selected later.
+- **Force maps.** The file can't be switched or closed while maps are
+  calculated, and closing it mid-run no longer fails the run.
+- **EDS beam energy.** Clearing E₀ no longer sets it to 0. An E₀ at or below
+  the window's upper edge is flagged, and the element map on screen is marked
+  stale (Add to library and export disabled) until it is fixed.
+
+### Internal
+- CI type-checks for Windows and macOS as well as Linux.
+- A weekly workflow runs the real-instrument and rosettasciio oracle tests
+  against the private test corpus; the oracle sweep no longer runs out of
+  memory on large EDS maps.
+- Dependency updates (Python, npm and Cargo minor/patch groups).
+
 ## [0.8.0] - 2026-10-10
 
 AFM / SPM becomes a full feature area, with its own menu (Analysis ▸ AFM / SPM).

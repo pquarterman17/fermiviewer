@@ -61,7 +61,7 @@ This audit focused on broad analysis reliability, with extra attention to the ED
 
 ## P3 — Coverage gaps
 
-- [ ] Restore the missing AFM real-instrument samples under `C:\Users\patri\git\test-data`.
+- [x] Restore the missing AFM real-instrument samples under `C:\Users\patri\git\test-data`.
   - Twenty-four focused AFM tests skipped because expected Bruker, JPK, Asylum, Gwyddion, Nanonis, Nanosurf, NT-MDT, and WSxM samples were unavailable.
   - Synthetic coverage passes, but real vendor parser behavior remains under-tested on this machine.
 

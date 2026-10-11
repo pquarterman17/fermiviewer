@@ -1,0 +1,66 @@
+name: tag release
+
+# Cut a release from GitHub instead of a local `git push origin vX.Y.Z`:
+# after the `chore(release): vX.Y.Z` PR is merged, run this with the
+# version. It checks main is at that version (pyproject.toml and a
+# CHANGELOG.md section), tags main's head, and starts `release` on the tag.
+#
+# The dispatch is explicit because a tag pushed with GITHUB_TOKEN does not
+# trigger other workflows; a workflow_dispatch from it does. On the tag ref,
+# release.yml runs exactly as for a pushed tag (github.ref is refs/tags/...).
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, without the v (e.g. 0.8.1)"
+        required: true
+        type: string
+
+permissions:
+  contents: write   # push the tag
+  actions: write    # dispatch release.yml
+
+concurrency:
+  group: tag-release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Check the version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'$VERSION' is not X.Y.Z"; exit 1
+          fi
+          current=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)
+          if [ "$current" != "$VERSION" ]; then
+            echo "::error::main is at $current, not $VERSION; merge the chore(release) PR first"; exit 1
+          fi
+          if ! grep -q "^## \[$VERSION\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no ## [$VERSION] section"; exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "::error::tag v$VERSION already exists"; exit 1
+          fi
+      - name: Tag main
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$VERSION" -m "v$VERSION"
+          git push origin "v$VERSION"
+      - name: Start the release build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: gh workflow run release.yml --ref "v$VERSION"
