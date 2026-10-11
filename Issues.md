@@ -65,7 +65,7 @@ This audit focused on broad analysis reliability, with extra attention to the ED
   - Twenty-four focused AFM tests skipped because expected Bruker, JPK, Asylum, Gwyddion, Nanonis, Nanosurf, NT-MDT, and WSxM samples were unavailable.
   - Synthetic coverage passes, but real vendor parser behavior remains under-tested on this machine.
 
-- [ ] Run the optional parser-oracle dependency group periodically.
+- [x] Run the optional parser-oracle dependency group periodically.
   - Four EDS/parser oracle tests skipped because RosettaSciIO was unavailable.
   - Keep it development-only so the application continues to satisfy the no-GPL-runtime-dependency rule.
 
