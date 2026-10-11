@@ -20,6 +20,17 @@ function spectrum(): Spectrum {
   return { energy, counts, units: "keV" };
 }
 
+function flatSpectrum(peakCounts: number): Spectrum {
+  const energy: number[] = [];
+  const counts: number[] = [];
+  for (let i = 0; i < 200; i++) {
+    const e = i * 0.05;
+    energy.push(e);
+    counts.push(Math.abs(e - 5.0) <= 0.05 ? peakCounts : 100);
+  }
+  return { energy, counts, units: "keV" };
+}
+
 function auto(
   pairs: [number, string, string, number][],
 ): EdsAutoAssignResult {
@@ -74,6 +85,22 @@ describe("identifyElements", () => {
     expect(result).toHaveLength(3);
   });
 
+  it("omits a match whose measured window is below the background", () => {
+    const result = identifyElements(
+      auto([[5.0, "Fe", "K", 5.0]]),
+      flatSpectrum(10),
+    );
+    expect(result).toEqual([]);
+  });
+
+  it("omits a match with exactly zero background-subtracted signal", () => {
+    const result = identifyElements(
+      auto([[5.0, "Fe", "K", 5.0]]),
+      flatSpectrum(100),
+    );
+    expect(result).toEqual([]);
+  });
+
   it("scales the strength bar against the strongest element", () => {
     expect(result[0].relative).toBe(1);
     expect(result[1].relative).toBeLessThan(1);
@@ -109,5 +136,13 @@ describe("measureElement", () => {
     // an element the user asked for is shown even if it reads as trace
     expect(added.recommended).toBe(true);
     expect(added.relative).toBeLessThan(1);
+  });
+
+  it("keeps a manually requested element even when its net is negative", () => {
+    const added = measureElement("Fe", "K", 5.0, flatSpectrum(10), []);
+    expect(added).not.toBeNull();
+    expect(added!.net).toBeLessThan(0);
+    expect(added!.confidence).toBe("trace");
+    expect(added!.recommended).toBe(true);
   });
 });

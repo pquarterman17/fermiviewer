@@ -69,8 +69,10 @@ export interface IdentifiedElement extends Evidence {
 
 /** Counting-statistics bands. A peak at 100σ in a whole-cube sum spectrum is
  *  unambiguous; below ~10σ it is as likely to be a background fluctuation as
- *  an element, which is why trace rows arrive unticked rather than hidden —
- *  a real trace element the user is looking for must still be reachable. */
+ *  an element. Positive trace rows therefore arrive unticked rather than
+ *  hidden — a real trace element the user is looking for must remain
+ *  reachable. Non-positive integrations are not evidence for an automatic
+ *  identification and are discarded by `identifyElements`. */
 const BANDS: [number, Confidence][] = [
   [100, "strong"],
   [30, "clear"],
@@ -127,7 +129,7 @@ export function identifyElements(
     const integration = integrateWindow(spectrum, eLo, eHi, background, {
       e0Kev: opts.e0Kev,
     });
-    if (!integration) continue;
+    if (!integration || integration.net <= 0) continue;
     const significance =
       integration.sigma > 0 ? integration.net / integration.sigma : 0;
     const confidence = confidenceOf(significance);
