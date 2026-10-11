@@ -6,6 +6,7 @@ import {
   type RoughnessResult,
 } from "../../lib/api";
 import { useAnalysisRoi } from "../../hooks/useAnalysisRoi";
+import { useLatestRequest } from "../../hooks/useLatestRequest";
 import {
   downloadCsv,
   downloadJson,
@@ -41,28 +42,41 @@ export default function RoughnessWorkshop() {
   // the region the result was measured on, not the one selected now
   const [resultRegion, setResultRegion] = useState("");
   const [busy, setBusy] = useState(false);
+  const analysisRequest = useLatestRequest(activeId);
 
   useEffect(() => {
     setResult(null);
+    setBusy(false);
   }, [activeId]);
 
   const run = () => {
     if (!activeId) return;
+    const sourceId = activeId;
+    const request = analysisRequest.begin();
+    const current = () =>
+      request.isCurrent() && useViewer.getState().activeId === sourceId;
     const runRegion = region.label;
     setBusy(true);
     setStatus("surface roughness…");
-    analyzeRoughness(activeId, { level, roi: region.roi })
+    analyzeRoughness(sourceId, {
+      level,
+      roi: region.roi,
+      signal: request.signal,
+    })
       .then((next) => {
+        if (!current()) return;
         setResult(next);
         setResultRegion(runRegion);
         setStatus(
           `roughness: Ra ${next.Ra.toPrecision(4)} · Rq ${next.Rq.toPrecision(4)} ${next.unit}`,
         );
       })
-      .catch((error: Error) =>
-        setStatus(`surface roughness: ${error.message}`),
-      )
-      .finally(() => setBusy(false));
+      .catch((error: Error) => {
+        if (current()) setStatus(`surface roughness: ${error.message}`);
+      })
+      .finally(() => {
+        if (current()) setBusy(false);
+      });
   };
 
   const exportResult = (format: "csv" | "json") => {

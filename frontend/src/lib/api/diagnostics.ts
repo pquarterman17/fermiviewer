@@ -72,13 +72,18 @@ export function analyzeNoise(
   opts: {
     method?: NoiseResult["method"];
     roi?: [number, number, number, number] | null;
+    signal?: AbortSignal;
   } = {},
 ): Promise<NoiseResult> {
-  return post("/api/analyze/noise", {
-    image_id: id,
-    method: opts.method ?? "mad",
-    roi: opts.roi ?? null,
-  });
+  return post(
+    "/api/analyze/noise",
+    {
+      image_id: id,
+      method: opts.method ?? "mad",
+      roi: opts.roi ?? null,
+    },
+    { signal: opts.signal },
+  );
 }
 
 export interface DefectResult {

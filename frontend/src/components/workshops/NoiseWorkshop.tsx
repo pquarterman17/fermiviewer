@@ -7,6 +7,7 @@ import {
   type NoiseResult,
 } from "../../lib/api";
 import { useAnalysisRoi } from "../../hooks/useAnalysisRoi";
+import { useLatestRequest } from "../../hooks/useLatestRequest";
 import {
   downloadCsv,
   downloadJson,
@@ -53,19 +54,31 @@ export default function NoiseWorkshop() {
   const [resultRegion, setResultRegion] = useState("");
   const [busy, setBusy] = useState(false);
   const [stale, setStale] = useState(false);
+  const analysisRequest = useLatestRequest(activeId);
+  const filterRequest = useLatestRequest(activeId);
 
   useEffect(() => {
     setResult(null);
     setStale(false);
+    setBusy(false);
   }, [activeId]);
 
   const run = () => {
     if (!activeId) return;
+    const sourceId = activeId;
+    const request = analysisRequest.begin();
+    const current = () =>
+      request.isCurrent() && useViewer.getState().activeId === sourceId;
     const runRegion = region.label;
     setBusy(true);
     setStatus("estimating noise…");
-    analyzeNoise(activeId, { method, roi: region.roi })
+    analyzeNoise(sourceId, {
+      method,
+      roi: region.roi,
+      signal: request.signal,
+    })
       .then((next) => {
+        if (!current()) return;
         setResult(next);
         setResultRegion(runRegion);
         setStale(false);
@@ -73,27 +86,41 @@ export default function NoiseWorkshop() {
           `noise: σ ${fmt(next.sigma)} · SNR ${fmt(next.snr_db)} dB · ${next.noise_type}`,
         );
       })
-      .catch((error: Error) => setStatus(`noise: ${error.message}`))
-      .finally(() => setBusy(false));
+      .catch((error: Error) => {
+        if (current()) setStatus(`noise: ${error.message}`);
+      })
+      .finally(() => {
+        if (current()) setBusy(false);
+      });
   };
 
   const applyRecommendation = () => {
     if (!activeId || !result) return;
+    const sourceId = activeId;
+    const request = filterRequest.begin();
+    const current = () =>
+      request.isCurrent() && useViewer.getState().activeId === sourceId;
     const poisson = result.noise_type === "poisson";
     const lowSnr = result.snr_db != null && result.snr_db < 10;
     setBusy(true);
     applyFilter(
-      activeId,
+      sourceId,
       poisson ? "median" : "gaussian",
       poisson ? { window_size: lowSnr ? 5 : 3 } : { sigma: lowSnr ? 2 : 1 },
+      { signal: request.signal },
     )
       .then((derived) => {
+        if (!current()) return;
         ingestDerived([derived]);
-        setActive(activeId);
+        setActive(sourceId);
         setStatus(`created ${derived.name}`);
       })
-      .catch((error: Error) => setStatus(`denoise: ${error.message}`))
-      .finally(() => setBusy(false));
+      .catch((error: Error) => {
+        if (current()) setStatus(`denoise: ${error.message}`);
+      })
+      .finally(() => {
+        if (current()) setBusy(false);
+      });
   };
 
   const exportResult = (format: "csv" | "json") => {
