@@ -53,28 +53,61 @@ export function useEdsSpectrumSource({
   const onLoadedRef = useRef(onLoaded);
   onLoadedRef.current = onLoaded;
 
+  // One request at a time across the sum / pixel / ROI paths: a new request
+  // (or a live-probe sample, or the cached sum) aborts the one in flight, and
+  // only the newest may set the spectrum or clear `busy`. Without this, a slow
+  // older ROI could land after a newer one — or after a switch to another
+  // still-open cube — and replace it.
+  const pending = useRef<{ gen: number; abort: AbortController } | null>(null);
+  const generation = useRef(0);
+  const cancelPending = useCallback(() => {
+    generation.current += 1;
+    pending.current?.abort.abort();
+    pending.current = null;
+    setBusy(false);
+  }, []);
+  const request = useCallback(
+    (
+      id: string,
+      rect: Rect1 | null,
+      onSpectrum: (s: Spectrum) => void,
+      errorLabel: string,
+    ) => {
+      pending.current?.abort.abort();
+      const gen = ++generation.current;
+      const abort = new AbortController();
+      pending.current = { gen, abort };
+      const current = () => gen === generation.current;
+      setBusy(true);
+      fetchSpectrum(id, rect ?? undefined, { signal: abort.signal })
+        .then((s) => {
+          if (current() && isOpen(id)) onSpectrum(s);
+        })
+        .catch((e: Error) => {
+          if (current() && e.name !== "AbortError") onStatus(id, `${errorLabel}: ${e.message}`);
+        })
+        .finally(() => {
+          if (!current()) return;
+          pending.current = null;
+          setBusy(false);
+        });
+    },
+    [isOpen, onStatus],
+  );
+
   useEffect(() => {
     if (!imageId || !enabled) return;
     const id = imageId;
-    let cancelled = false;
     sumCache.current = null;
-    setBusy(true);
-    fetchSpectrum(id)
-      .then((s) => {
-        if (cancelled || !isOpen(id)) return;
-        sumCache.current = s;
-        setSpectrum(s);
-        setLabel("Sum spectrum");
-        setSource("sum");
-        onLoadedRef.current(s);
-      })
-      .catch((e: Error) => onStatus(id, `EDS spectrum: ${e.message}`))
-      .finally(() => {
-        if (!cancelled) setBusy(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+    request(id, null, (s) => {
+      sumCache.current = s;
+      setSpectrum(s);
+      setLabel("Sum spectrum");
+      setSource("sum");
+      onLoadedRef.current(s);
+    }, "EDS spectrum");
+    // switching image (or closing the panel) drops whatever is in flight
+    return cancelPending;
     // isOpen/onStatus are stable callbacks from the explorer; re-running on
     // their identity would refetch the whole cube on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -85,6 +118,7 @@ export function useEdsSpectrumSource({
     pixel: probePixel,
     enabled: enabled && probeActive,
     onSpectrum: (next, rect) => {
+      cancelPending(); // the live pixel supersedes a pending sum / ROI request
       setSpectrum(next);
       setLabel(`px [${rect[0]}, ${rect[1]}]`);
       setSource("live");
@@ -95,44 +129,33 @@ export function useEdsSpectrumSource({
   /** Show a pixel/ROI spectrum, or the whole-cube sum when `rect` is null. */
   const showRegion = useCallback(
     (rect: Rect1 | null) => {
-      const id = imageId;
-      if (!id) return;
-      setBusy(true);
-      fetchSpectrum(id, rect ?? undefined)
-        .then((s) => {
-          if (!isOpen(id)) return;
-          setSpectrum(s);
-          setLabel(regionLabel(rect));
-          setSource(rect ? "picker" : "sum");
-        })
-        .catch((e: Error) => onStatus(id, `EDS spectrum: ${e.message}`))
-        .finally(() => setBusy(false));
+      if (!imageId) return;
+      request(imageId, rect, (s) => {
+        setSpectrum(s);
+        setLabel(regionLabel(rect));
+        setSource(rect ? "picker" : "sum");
+      }, "EDS spectrum");
     },
-    [imageId, isOpen, onStatus],
+    [imageId, request],
   );
 
   /** Restore the whole-cube sum, from cache when it is already held. */
   const showSum = useCallback(() => {
-    const id = imageId;
-    if (!id) return;
+    if (!imageId) return;
     if (sumCache.current) {
+      cancelPending(); // an ROI still in flight must not replace the sum
       setSpectrum(sumCache.current);
       setLabel("Sum spectrum");
       setSource("sum");
       return;
     }
-    setBusy(true);
-    fetchSpectrum(id)
-      .then((s) => {
-        if (!isOpen(id)) return;
-        sumCache.current = s;
-        setSpectrum(s);
-        setLabel("Sum spectrum");
-        setSource("sum");
-      })
-      .catch((e: Error) => onStatus(id, `EDS sum: ${e.message}`))
-      .finally(() => setBusy(false));
-  }, [imageId, isOpen, onStatus]);
+    request(imageId, null, (s) => {
+      sumCache.current = s;
+      setSpectrum(s);
+      setLabel("Sum spectrum");
+      setSource("sum");
+    }, "EDS sum");
+  }, [imageId, request, cancelPending]);
 
   // EDS controls and line libraries work in keV; normalise here so every
   // consumer (plot, integration, CSV) sees one unit.

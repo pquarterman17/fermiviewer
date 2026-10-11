@@ -89,8 +89,18 @@ def z_to_lateral(ds: DataStruct) -> float:
     return _nm(str(ds.metadata.get("value_unit") or "")) / _nm(lat)
 
 
+MIN_SURFACE_PX = 3   # per side: slopes, spectra and plane fits need a 2-D patch
+
+
 def level_for_analysis(z: np.ndarray, level: str) -> np.ndarray:
-    """'none' | 'plane' | 'quadratic' background removal before analysis."""
+    """'none' | 'plane' | 'quadratic' background removal before analysis.
+
+    Every surface analysis passes through here, so a region too thin for
+    them (a 1-pixel-wide ROI, say) is refused once, with a clear message."""
+    ny, nx = np.shape(z)[:2]
+    if ny < MIN_SURFACE_PX or nx < MIN_SURFACE_PX:
+        raise ValueError(f"the region is {ny} × {nx} pixels; surface analysis needs "
+                         f"at least {MIN_SURFACE_PX} × {MIN_SURFACE_PX}")
     if level == "none":
         return np.asarray(z, dtype=np.float64)
     return afm_level.level_plane(z, order=1 if level == "plane" else 2)

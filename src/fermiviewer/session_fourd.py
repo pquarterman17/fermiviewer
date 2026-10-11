@@ -11,8 +11,8 @@ Thread-safe for the single-process uvicorn deployment (Tauri sidecar /
 from __future__ import annotations
 
 import itertools
-import os
 import shutil
+import sys
 import tempfile
 import threading
 import time
@@ -42,11 +42,13 @@ def _try_lock(fh: IO[bytes]) -> bool:
     """Non-blocking exclusive lock on `fh`; False when another handle — in
     any process, this one included — already holds it."""
     try:
-        if os.name == "nt":
+        # sys.platform (not os.name) so mypy checks each branch only on its
+        # own platform: msvcrt.locking is Windows-only, fcntl.flock Unix-only
+        if sys.platform == "win32":
             import msvcrt
 
             fh.seek(0)
-            msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)  # type: ignore[attr-defined]
+            msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
         else:
             import fcntl
 

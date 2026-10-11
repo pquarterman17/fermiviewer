@@ -38,6 +38,8 @@ export default function RoughnessWorkshop() {
   const region = useAnalysisRoi(activeId, meta?.shape ?? NO_SHAPE);
   const [level, setLevel] = useState<RoughnessResult["level"]>("plane");
   const [result, setResult] = useState<RoughnessResult | null>(null);
+  // the region the result was measured on, not the one selected now
+  const [resultRegion, setResultRegion] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -46,11 +48,13 @@ export default function RoughnessWorkshop() {
 
   const run = () => {
     if (!activeId) return;
+    const runRegion = region.label;
     setBusy(true);
     setStatus("surface roughness…");
     analyzeRoughness(activeId, { level, roi: region.roi })
       .then((next) => {
         setResult(next);
+        setResultRegion(runRegion);
         setStatus(
           `roughness: Ra ${next.Ra.toPrecision(4)} · Rq ${next.Rq.toPrecision(4)} ${next.unit}`,
         );
@@ -67,7 +71,7 @@ export default function RoughnessWorkshop() {
     const provenance = {
       analysis: "Surface roughness",
       imageName: meta?.name,
-      params: { level: result.level, region: region.label, roi: result.roi },
+      params: { level: result.level, region: resultRegion, roi: result.roi },
     };
     if (format === "csv") {
       downloadCsv(
@@ -131,7 +135,7 @@ export default function RoughnessWorkshop() {
             onExportCsv={() => exportResult("csv")}
           />
           <div className="fvd-ws-note">
-            {result.n_pixels.toLocaleString()} valid pixels · {region.label} ·{" "}
+            {result.n_pixels.toLocaleString()} valid pixels · {resultRegion} ·{" "}
             {result.level} leveling
           </div>
           <div className="fvd-ws-row">
