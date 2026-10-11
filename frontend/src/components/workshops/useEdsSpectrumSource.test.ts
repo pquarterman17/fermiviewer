@@ -106,4 +106,16 @@ describe("useEdsSpectrumSource", () => {
     expect(calls[0].signal?.aborted).toBe(true);
     expect(onStatus).not.toHaveBeenCalled();
   });
+
+  it("closing the source cancels its pending request", async () => {
+    let open = true;
+    const { result, unmount } = setup("a", () => open);
+    act(() => result.current.showRegion([1, 1, 2, 2]));
+    open = false; // the cube is closed while its ROI is in flight
+    await act(async () => calls[1].resolve(spec(1)));
+    expect(result.current.spectrum).toBeNull();
+    act(() => result.current.showRegion([3, 3, 4, 4]));
+    unmount(); // and the panel goes with it
+    expect(calls[2].signal?.aborted).toBe(true);
+  });
 });

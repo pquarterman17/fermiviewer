@@ -29,7 +29,14 @@ vi.mock("uplot", () => ({
   }, { join: () => [[]] }),
 }));
 
-import { analyzeForceCurve, listForceFiles, openSession, uploadFiles } from "../../lib/api";
+import {
+  analyzeForceCurve,
+  forceMaps,
+  listForceFiles,
+  openSession,
+  uploadFiles,
+  type ForceMapsResult,
+} from "../../lib/api";
 import AfmForceWorkshop, {
   calibratedInvols,
   curveLabel,
@@ -43,6 +50,14 @@ function force(id: string, extra: Partial<ForceMeta> = {}): ForceMeta {
     id, name: `${id}.ibw`, is_force: true, parser: "asylum", n_curves: 1, grid: null,
     map_pitch_nm: null, spring_constant: 0.1, invols: 50, deflection_unit: "nm",
     z_source: "Z sensor", ...extra,
+  };
+}
+
+function image(id: string): ImageMeta {
+  return {
+    id, name: `${id}.tif`, kind: "image", shape: [2, 2], dtype: "float64",
+    pixel_size: 1, pixel_unit: "nm", value_unit: "Pa", n_channels: null,
+    energy_first: null, energy_last: null, energy_units: "", stage_tilt_deg: null, meta: {},
   };
 }
 
@@ -128,6 +143,36 @@ describe("AfmForceWorkshop", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("force maps", () => {
+  it("hold the file while they run and report on the file they ran on", async () => {
+    let finish!: (r: ForceMapsResult) => void;
+    const map = force("m1", { n_curves: 4, grid: [2, 2] });
+    vi.mocked(listForceFiles).mockResolvedValue([map, force("f2")]);
+    vi.mocked(analyzeForceCurve).mockResolvedValue(analysis(2e6));
+    vi.mocked(forceMaps).mockReturnValue(new Promise((r) => { finish = r; }));
+    useAfmForce.setState({ files: [map, force("f2")], selectedId: "m1" });
+    await act(async () => {
+      render(<AfmForceWorkshop />);
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Modulus / adhesion maps" }));
+    expect(screen.getByLabelText("File")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "close force file" })).toBeDisabled();
+
+    // a file opened elsewhere meanwhile takes the selection, not the result
+    act(() => useAfmForce.getState().adopt([force("f3")]));
+    const derived = image("modulus");
+    await act(async () => finish({
+      n: 4, failed: 0, units: {}, images: [derived],
+      table: { youngs_modulus: [1e6, 2e6, 3e6, 4e6], adhesion: [], contact_z: [],
+        max_force: [], fit_r2: [] },
+    }));
+    expect(useViewer.getState().images.modulus).toBeTruthy();
+    expect(useViewer.getState().status).toMatch(/^m1\.ibw: 4\/4 curves/);
+    expect(screen.getByLabelText("File")).not.toBeDisabled();
   });
 });
 

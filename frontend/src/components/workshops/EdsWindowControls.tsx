@@ -12,7 +12,7 @@
 
 import { useState } from "react";
 
-import type { EdsMapBackground } from "../../lib/eds/background";
+import { e0Error, type EdsMapBackground } from "../../lib/eds/background";
 import WindowPresetBar from "../spectrum/WindowPresetBar";
 import type { WindowPreset } from "../../lib/spectrum/windowPresets";
 
@@ -48,11 +48,18 @@ function DraftNumber({
   onCommit,
   title,
   label,
+  digits = 3,
+  width = 78,
+  error = null,
 }: {
   value: number;
   onCommit: (v: number) => void;
   title: string;
   label: string;
+  digits?: number;
+  width?: number;
+  /** Why the committed value is unusable; marks the field invalid. */
+  error?: string | null;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const commit = () => {
@@ -64,10 +71,11 @@ function DraftNumber({
   return (
     <input
       type="number"
-      step={0.005}
+      step={10 ** -digits}
       aria-label={label}
-      value={draft ?? value.toFixed(3)}
-      style={{ width: 78 }}
+      aria-invalid={error ? true : undefined}
+      value={draft ?? value.toFixed(digits)}
+      style={error ? { width, borderColor: "var(--danger)" } : { width }}
       onFocus={(e) => setDraft(e.target.value)}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
@@ -75,7 +83,7 @@ function DraftNumber({
         if (e.key === "Enter") commit();
         if (e.key === "Escape") setDraft(null);
       }}
-      title={title}
+      title={error ?? title}
     />
   );
 }
@@ -192,13 +200,21 @@ export default function EdsWindowControls({
         {bgMode === "bremsstrahlung" && (
           <>
             <span className="k">E₀ (keV)</span>
-            <input
-              type="number"
+            <DraftNumber
+              label="Beam energy (keV)"
               value={e0Kev}
-              style={{ width: 56 }}
+              digits={1}
+              width={56}
               title="Beam energy — Duane–Hunt continuum cutoff"
-              onChange={(e) => onE0Kev(Number(e.target.value) || 0)}
+              error={e0Error(e0Kev, eHi)}
+              // an empty or non-positive entry is refused, not read as 0
+              onCommit={(v) => v > 0 && onE0Kev(v)}
             />
+            {e0Error(e0Kev, eHi) && (
+              <span className="fvd-ws-note" role="alert">
+                {e0Error(e0Kev, eHi)}
+              </span>
+            )}
           </>
         )}
         <label

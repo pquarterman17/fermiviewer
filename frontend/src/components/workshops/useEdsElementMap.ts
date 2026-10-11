@@ -5,7 +5,7 @@ import { edsElementMap, type EdsElementMapResult } from "../../lib/api";
 // #11) so store/species.ts's per-image map settings can use it without
 // reaching into components/workshops/. Every importer now reaches it there
 // directly — this file no longer re-exports it (Wave 2, #11).
-import type { EdsMapBackground } from "../../lib/eds/background";
+import { e0Error, type EdsMapBackground } from "../../lib/eds/background";
 
 export const EDS_MAP_DEBOUNCE_MS = 120;
 
@@ -53,6 +53,15 @@ export function useEdsElementMap({
       const id = imageId;
       if (!id) return;
       cancelPending();
+      // the continuum ends at E₀: a window above it has no background model,
+      // so nothing is sent and the panel marks the old map stale instead
+      const e0Problem = background === "bremsstrahlung" ? e0Error(beamEnergy, hi) : null;
+      if (e0Problem) {
+        ++generationRef.current;
+        setBusy(false);
+        onStatus(id, `EDS map: ${e0Problem}`);
+        return;
+      }
       const generation = ++generationRef.current;
       const controller = new AbortController();
       controllerRef.current = controller;

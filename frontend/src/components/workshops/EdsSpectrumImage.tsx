@@ -27,7 +27,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { type Spectrum } from "../../lib/api";
 import { useEdsPeakMarkers } from "../../hooks/useEdsPeakMarkers";
-import type { EdsMapBackground } from "../../lib/eds/background";
+import { e0Error, type EdsMapBackground } from "../../lib/eds/background";
 import { integrateWindow } from "../../lib/eds/integrate";
 import { frameWindow, type XRange } from "../../lib/spectrum/zoomRange";
 import {
@@ -229,6 +229,10 @@ export default function EdsSpectrumImage() {
     onStatus: reportEds,
   });
 
+  // a bremsstrahlung map computed before E₀ or the window moved past each
+  // other no longer describes the settings; it stays visible, marked stale
+  const mapStale = bgMode === "bremsstrahlung" ? e0Error(e0Kev, eHi) : null;
+
   const handleRoi = (rect: Rect1 | null) => showRegion(rect);
 
   const exportMapCsv = () => {
@@ -361,7 +365,7 @@ export default function EdsSpectrumImage() {
             onE0Kev={(v) => {
               if (!activeId) return;
               setEdsSettingsStore(activeId, { e0Kev: v });
-              if (v > eHi) recomputeMap(eLo, eHi, "bremsstrahlung", v);
+              recomputeMap(eLo, eHi, "bremsstrahlung", v);
             }}
             showPeaks={showPeaks}
             onShowPeaks={setShowPeaks}
@@ -374,6 +378,7 @@ export default function EdsSpectrumImage() {
               busy={mapBusy}
               libraryBusy={libraryBusy}
               onAddToLibrary={addToLibrary}
+              stale={mapStale}
             />
           )}
         </>
@@ -390,7 +395,7 @@ export default function EdsSpectrumImage() {
           imageId={activeId}
           liveActive={isCube && captureMode === "specnav"}
           livePixel={specnavPixel}
-          mapReady={!!mapResult}
+          mapReady={!!mapResult && !mapStale}
           spectrumReady={!!displaySpectrum}
           onRegion={handleRoi}
           onToggleLive={() =>

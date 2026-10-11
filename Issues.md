@@ -7,27 +7,27 @@ This audit focused on broad analysis reliability, with extra attention to the ED
 
 ## P0 — Restore the quality gate
 
-- [ ] Fix Windows mypy failures in `src/fermiviewer/session_fourd.py`.
+- [x] Fix Windows mypy failures in `src/fermiviewer/session_fourd.py`.
   - Remove or revise the obsolete `type: ignore` on `msvcrt.locking`.
   - Isolate the Unix `fcntl.flock`, `LOCK_EX`, and `LOCK_NB` implementation so Windows type checking does not evaluate unsupported platform stubs.
   - Rerun the complete backend and frontend quality gate afterward.
 
 ## P1 — Confirmed user-facing bugs
 
-- [ ] Prevent AFM surface analysis from crashing on one-pixel-wide or one-pixel-high ROIs.
+- [x] Prevent AFM surface analysis from crashing on one-pixel-wide or one-pixel-high ROIs.
   - Confirmed with a `1 × 4` input: `calc/afm_surface.py` indexes `fy[1]` and raises `IndexError`.
   - The PSD-derived surface-map path in `ops/catalogue_afm.py` makes the same assumption about both axes.
   - Either reject undersized ROIs with a clear validation response or correctly support degenerate dimensions.
   - Add calculation and API regression tests for `1 × N`, `N × 1`, `1 × 1`, and narrow cropped ROIs.
 
-- [ ] Add cancellation and request-generation tracking to EDS ROI and sum-spectrum requests.
+- [x] Add cancellation and request-generation tracking to EDS ROI and sum-spectrum requests.
   - `useEdsSpectrumSource.ts` issues unguarded `fetchSpectrum` requests for ROI and whole-cube spectra.
   - Rapid ROI changes can resolve out of order, allowing an older spectrum to replace the newest result.
   - Switching datasets is unsafe when the original dataset remains open in the library.
   - A stale request can clear the busy indicator while a newer request is still running.
   - Reuse the abort/generation pattern already used by live spectrum probing and element maps.
 
-- [ ] Fix stale AFM result labels and exported provenance after changing the analysis region.
+- [x] Fix stale AFM result labels and exported provenance after changing the analysis region.
   - AFM Surface displays and exports the current region label while retaining the previous calculation's ROI.
   - Roughness has the same mismatch.
   - Noise marks a result stale, but its footer and export metadata still adopt the newly selected label.
@@ -35,25 +35,25 @@ This audit focused on broad analysis reliability, with extra attention to the ED
 
 ## P2 — Workflow robustness
 
-- [ ] Guard AFM force-map processing against closing or switching the source file during analysis.
+- [x] Guard AFM force-map processing against closing or switching the source file during analysis.
   - `AfmForceWorkshop.tsx` has no cancellation or request-generation guard around the long-running map request.
   - A response from an old file can ingest derived maps after the user switches files.
   - Closing the source while backend registration finishes may result in an unknown-file failure.
   - Disable conflicting lifecycle controls while processing, or make the operation snapshot-safe and cancellable.
 
-- [ ] Improve EDS beam-energy validation.
+- [x] Improve EDS beam-energy validation.
   - Clearing the beam-energy input immediately converts it to zero.
   - With bremsstrahlung subtraction active, lowering beam energy below the selected energy window can leave an old, now-invalid map visible.
   - Add inline validation, disable invalid recomputation/export, and visibly mark existing results stale when parameters become invalid.
 
-- [ ] Expand EDS interaction tests.
+- [x] Expand EDS interaction tests.
   - Cover out-of-order ROI responses.
   - Cover switching between two still-open spectrum images during a request.
   - Cover Sum → ROI → live-probe transitions.
   - Verify that busy state belongs to the newest request.
   - Verify that closing a source cancels pending work.
 
-- [ ] Expand AFM interaction tests.
+- [x] Expand AFM interaction tests.
   - Change region or leveling method after an analysis.
   - Switch images during analysis.
   - Close or switch a force file while maps are being calculated.
