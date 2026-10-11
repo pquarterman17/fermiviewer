@@ -200,4 +200,17 @@ describe("ElementalWorkshop", () => {
     });
     expect(screen.getByTestId("maps-quant")).toHaveTextContent(/^$/);
   });
+
+  it("keeps the at% legend through repeated Quantify and Maps visits", () => {
+    render(<ElementalWorkshop />);
+    fireEvent.click(screen.getByRole("tab", { name: "Quantify" }));
+    fireEvent.click(screen.getByText("fake quantify"));
+    fireEvent.click(screen.getByRole("tab", { name: "Maps" }));
+    expect(screen.getByTestId("maps-quant")).toHaveTextContent("Ag");
+
+    fireEvent.click(screen.getByRole("tab", { name: "Quantify" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Maps" }));
+
+    expect(screen.getByTestId("maps-quant")).toHaveTextContent("Ag");
+  });
 });

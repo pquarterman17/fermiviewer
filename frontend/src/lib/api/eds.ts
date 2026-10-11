@@ -28,17 +28,22 @@ export function edsQuantify(
     takeOffAngleDeg?: number;
     halfWindowKev?: number;
     record?: boolean;
+    signal?: AbortSignal;
   } = {},
 ): Promise<EdsQuantResult> {
-  return post("/api/eds/quantify", {
-    image_id: id,
-    elements,
-    method: opts.method ?? "cliff-lorimer",
-    thickness_nm: opts.thicknessNm ?? 100,
-    take_off_angle_deg: opts.takeOffAngleDeg ?? 20,
-    half_window_kev: opts.halfWindowKev ?? 0.085,
-    ...(opts.record ? { record: true } : {}),
-  });
+  return post(
+    "/api/eds/quantify",
+    {
+      image_id: id,
+      elements,
+      method: opts.method ?? "cliff-lorimer",
+      thickness_nm: opts.thicknessNm ?? 100,
+      take_off_angle_deg: opts.takeOffAngleDeg ?? 20,
+      half_window_kev: opts.halfWindowKev ?? 0.085,
+      ...(opts.record ? { record: true } : {}),
+    },
+    { signal: opts.signal },
+  );
 }
 
 // ── EDS model-based fit (PLAN_SPECTRAL_QUANT #4/#5) ──────────────────

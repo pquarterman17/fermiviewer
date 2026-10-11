@@ -1,6 +1,6 @@
 # Usability and reliability audit — EDS, AFM, and analysis workflows
 
-**Status:** Active — item 1 implemented, awaiting review
+**Status:** Active — item 1 shipped; item 2 EDS half in progress
 
 **Owner:** Codex (lead implementation); Claude reviews each pull request
 
@@ -178,6 +178,14 @@ blind mechanical rewrite.
 
 ## Progress log
 
+- 2026-10-11 — Item 2 EDS half implemented on a focused follow-up branch:
+  shared abortable latest-request ownership plus active-source checks now guard
+  Quantify, auto-assign, and composition-profile success, failure, and cleanup.
+  Deferred-response regressions switch cubes before each request resolves. AFM
+  Roughness and Noise remain the second item-2 PR after this one is reviewed.
+  Claude's first review caught a tab-remount reset that could erase a valid
+  at% legend; the redundant reset was removed and both panel-mount and full
+  Quantify → Maps → Quantify → Maps regressions now preserve the result.
 - 2026-10-11 — Audit recorded. Item 1 implemented by Codex with regressions
   for negative, zero, positive-trace, and manual negative-net cases. Claude's
   review found that choosing the nearest line before measuring could hide an

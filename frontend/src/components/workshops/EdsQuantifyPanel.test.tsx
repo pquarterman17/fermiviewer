@@ -1,8 +1,13 @@
-import { render } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { CompositionProfileResult } from "../../lib/api";
+import type {
+  CompositionProfileResult,
+  EdsQuantResult,
+  ImageMeta,
+} from "../../lib/api";
 import { BAND_LEGEND_ROW_CLASS } from "../../lib/charts/sigmaBand";
+import { useViewer } from "../../store/viewer";
 
 // Mirrors EelsResults.test.tsx's uPlot mock: records what CompProfilePlot
 // passes to `new uPlot(...)` without touching jsdom's unimplemented canvas
@@ -29,8 +34,23 @@ const mock = vi.hoisted(() => {
   return { state, Plot };
 });
 vi.mock("uplot", () => ({ default: mock.Plot }));
+vi.mock("../../lib/api", async (importActual) => {
+  const actual = await importActual<typeof import("../../lib/api")>();
+  return {
+    ...actual,
+    analyzeCompositionProfile: vi.fn(),
+    edsAutoAssign: vi.fn(),
+    edsQuantify: vi.fn(),
+  };
+});
 
+import {
+  analyzeCompositionProfile,
+  edsAutoAssign,
+  edsQuantify,
+} from "../../lib/api";
 import { CompProfilePlot } from "./EdsQuantifyPanel";
+import EdsQuantifyPanel from "./EdsQuantifyPanel";
 
 const RESULT: CompositionProfileResult = {
   distance: [0, 1, 2, 3],
@@ -50,6 +70,49 @@ beforeEach(() => {
   mock.state.options = {};
   mock.state.data = undefined;
 });
+
+afterEach(() => {
+  vi.clearAllMocks();
+  useViewer.setState({
+    images: {},
+    order: [],
+    activeId: null,
+    selected: [],
+    measures: {},
+  });
+});
+
+function image(id: string, kind: ImageMeta["kind"] = "spectrum_image"): ImageMeta {
+  return {
+    id,
+    name: `${id}.bcf`,
+    kind,
+    shape: [16, 16, 64],
+    dtype: "float32",
+    pixel_size: 1,
+    pixel_unit: "nm",
+    value_unit: "counts",
+    n_channels: 64,
+    energy_first: 0,
+    energy_last: 10,
+    energy_units: "keV",
+    stage_tilt_deg: null,
+    meta: {},
+  };
+}
+
+function quantResult(): EdsQuantResult {
+  return {
+    elements: ["Fe"],
+    lines: ["K"],
+    mean_atomic_pct: [100],
+    mean_weight_pct: [100],
+    mean_atomic_pct_error: [1],
+    mean_weight_pct_error: [1],
+    k_factors: [1],
+    maps: [image("fe-map", "image")],
+  };
+}
 
 type Series = { label?: string; class?: string; show?: boolean };
 
@@ -105,5 +168,101 @@ describe("CompProfilePlot", () => {
     const series = mock.state.options.series as Series[];
     expect(series).toHaveLength(3); // x + Cu + Ni, no band pairs
     expect(mock.state.options.bands).toEqual([]);
+  });
+});
+
+describe("EdsQuantifyPanel request ownership", () => {
+  it("does not clear a valid parent result when the tab mounts", () => {
+    useViewer.getState().ingest([image("a")]);
+    useViewer.getState().setActive("a");
+    const onResult = vi.fn();
+
+    render(
+      <EdsQuantifyPanel elements="Fe" onElements={vi.fn()} onResult={onResult} />,
+    );
+
+    expect(onResult).not.toHaveBeenCalled();
+  });
+
+  it("drops a quantify response after the active cube changes", async () => {
+    let resolve!: (value: EdsQuantResult) => void;
+    vi.mocked(edsQuantify).mockReturnValue(new Promise((r) => { resolve = r; }));
+    useViewer.getState().ingest([image("a"), image("b")]);
+    useViewer.getState().setActive("a");
+    const onResult = vi.fn();
+    render(
+      <EdsQuantifyPanel elements="Fe" onElements={vi.fn()} onResult={onResult} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Quantify" }));
+    const signal = vi.mocked(edsQuantify).mock.calls[0]![2]!.signal!;
+    act(() => useViewer.getState().setActive("b"));
+    await act(async () => resolve(quantResult()));
+
+    expect(signal.aborted).toBe(true);
+    expect(onResult).not.toHaveBeenCalledWith(expect.objectContaining({ elements: ["Fe"] }));
+    expect(useViewer.getState().images).not.toHaveProperty("fe-map");
+    expect(screen.queryByText("100.00 ± 1.00")).toBeNull();
+  });
+
+  it("drops auto-assigned elements after the active cube changes", async () => {
+    let resolve!: (value: Awaited<ReturnType<typeof edsAutoAssign>>) => void;
+    vi.mocked(edsAutoAssign).mockReturnValue(new Promise((r) => { resolve = r; }));
+    useViewer.getState().ingest([image("a"), image("b")]);
+    useViewer.getState().setActive("a");
+    const onElements = vi.fn();
+    render(
+      <EdsQuantifyPanel elements="" onElements={onElements} onResult={vi.fn()} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Auto-assign" }));
+    const signal = vi.mocked(edsAutoAssign).mock.calls[0]![1]!.signal!;
+    act(() => useViewer.getState().setActive("b"));
+    await act(async () =>
+      resolve({
+        peaks_kev: [6.4],
+        assignments: [{
+          peak_kev: 6.4,
+          candidates: [{
+            symbol: "Fe", line: "K", energy_kev: 6.4, delta_kev: 0,
+          }],
+        }],
+      }),
+    );
+
+    expect(signal.aborted).toBe(true);
+    expect(onElements).not.toHaveBeenCalled();
+  });
+
+  it("drops a composition profile after the source cube changes", async () => {
+    vi.mocked(edsQuantify).mockResolvedValue(quantResult());
+    let resolve!: (value: CompositionProfileResult) => void;
+    vi.mocked(analyzeCompositionProfile).mockReturnValue(
+      new Promise((r) => { resolve = r; }),
+    );
+    useViewer.getState().ingest([image("a"), image("b")]);
+    useViewer.setState({
+      activeId: "a",
+      measures: {
+        a: [{
+          id: "line",
+          kind: "distance",
+          pts: [{ x: 0, y: 0 }, { x: 1, y: 1 }],
+        }],
+      },
+    });
+    render(
+      <EdsQuantifyPanel elements="Fe" onElements={vi.fn()} onResult={vi.fn()} />,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Quantify" }));
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Comp Profile" }));
+    const signal = vi.mocked(analyzeCompositionProfile).mock.calls[0]![5]!.signal!;
+    act(() => useViewer.getState().setActive("b"));
+    await act(async () => resolve(RESULT));
+
+    expect(signal.aborted).toBe(true);
+    expect(screen.queryByLabelText("Composition profile")).toBeNull();
   });
 });

@@ -19,6 +19,7 @@ import { sigmaBand } from "../../lib/charts/sigmaBand";
 import { refreshPersistedResults } from "../../lib/persistedResultActions";
 import { useElementColors } from "../../lib/elemental/elementColors";
 import { formatPlusMinus } from "../../lib/formatUncertainty";
+import { useLatestRequest } from "../../hooks/useLatestRequest";
 import { useViewer } from "../../store/viewer";
 import { useResultWorkflow } from "../../store/resultWorkflow";
 import PlotContextSurface from "../plots/PlotContextSurface";
@@ -141,6 +142,9 @@ export default function EdsQuantifyPanel({
   const [saveResult, setSaveResult] = useState(false);
   const workflow = useResultWorkflow((s) => s.request);
   const clearWorkflow = useResultWorkflow((s) => s.clear);
+  const quantifyRequest = useLatestRequest(activeId);
+  const autoAssignRequest = useLatestRequest(activeId);
+  const compProfileRequest = useLatestRequest(activeId);
 
   useEffect(() => {
     if (workflow?.record.analysis !== "eds.quantify") return;
@@ -160,6 +164,7 @@ export default function EdsQuantifyPanel({
 
   const runCompProfile = () => {
     if (!activeId || !meta || quantMaps.length === 0) return;
+    const sourceId = activeId;
     const s = useViewer.getState();
     const line = [...(s.measures[activeId] ?? [])]
       .reverse()
@@ -173,6 +178,9 @@ export default function EdsQuantifyPanel({
       );
       return;
     }
+    const request = compProfileRequest.begin();
+    const current = () =>
+      request.isCurrent() && useViewer.getState().activeId === sourceId;
     const w = meta.shape[1] ?? 1;
     const h = meta.shape[0] ?? 1;
     const a = { x: line.pts[0].x * w, y: line.pts[0].y * h };
@@ -184,9 +192,10 @@ export default function EdsQuantifyPanel({
       quantMaps.map((c) => c.el),
       a,
       b,
-      { width: s.profileWidth },
+      { width: s.profileWidth, signal: request.signal },
     )
       .then((r) => {
+        if (!current()) return;
         setComp(r);
         setStatus(
           `comp profile: ${r.elements.join(", ")} along ${
@@ -194,12 +203,17 @@ export default function EdsQuantifyPanel({
           } ${r.unit}`,
         );
       })
-      .catch((e: Error) => setStatus(`comp profile: ${e.message}`))
-      .finally(() => setCompBusy(false));
+      .catch((e: Error) => {
+        if (current()) setStatus(`comp profile: ${e.message}`);
+      })
+      .finally(() => {
+        if (current()) setCompBusy(false);
+      });
   };
 
   const run = () => {
     if (!activeId) return;
+    const sourceId = activeId;
     const els = elements
       .split(",")
       .map((e) => e.trim())
@@ -208,14 +222,19 @@ export default function EdsQuantifyPanel({
       setStatus("EDS: enter at least one element symbol");
       return;
     }
+    const request = quantifyRequest.begin();
+    const current = () =>
+      request.isCurrent() && useViewer.getState().activeId === sourceId;
     setBusy(true);
-    edsQuantify(activeId, els, {
+    edsQuantify(sourceId, els, {
       method,
       thicknessNm: Number(thickness) || 100,
       takeOffAngleDeg: Number(takeOff) || 20,
       record: saveResult,
+      signal: request.signal,
     })
       .then((r) => {
+        if (!current()) return;
         setResult(r);
         onResult(r);
         // blank (absent-element) maps come back null and are skipped so they
@@ -239,8 +258,12 @@ export default function EdsQuantifyPanel({
         );
         if (r.result) void refreshPersistedResults();
       })
-      .catch((e: Error) => setStatus(`EDS: ${e.message}`))
-      .finally(() => setBusy(false));
+      .catch((e: Error) => {
+        if (current()) setStatus(`EDS: ${e.message}`);
+      })
+      .finally(() => {
+        if (current()) setBusy(false);
+      });
   };
 
   return (
@@ -259,9 +282,14 @@ export default function EdsQuantifyPanel({
           disabled={autoAssignBusy || !activeId}
           onClick={() => {
             if (!activeId) return;
+            const sourceId = activeId;
+            const request = autoAssignRequest.begin();
+            const current = () =>
+              request.isCurrent() && useViewer.getState().activeId === sourceId;
             setAutoAssignBusy(true);
-            edsAutoAssign(activeId)
+            edsAutoAssign(sourceId, { signal: request.signal })
               .then((r) => {
+                if (!current()) return;
                 const unique = [
                   ...new Set(
                     r.assignments
@@ -276,8 +304,12 @@ export default function EdsQuantifyPanel({
                   setStatus("EDS auto-assign: no peaks detected above threshold");
                 }
               })
-              .catch((e: Error) => setStatus(`auto-assign: ${e.message}`))
-              .finally(() => setAutoAssignBusy(false));
+              .catch((e: Error) => {
+                if (current()) setStatus(`auto-assign: ${e.message}`);
+              })
+              .finally(() => {
+                if (current()) setAutoAssignBusy(false);
+              });
           }}
         >
           {autoAssignBusy ? "…" : "Auto-assign"}

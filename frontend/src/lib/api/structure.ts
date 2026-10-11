@@ -234,19 +234,23 @@ export function analyzeCompositionProfile(
   elements: string[],
   a: { x: number; y: number },
   b: { x: number; y: number },
-  opts: { nPoints?: number; width?: number } = {},
+  opts: { nPoints?: number; width?: number; signal?: AbortSignal } = {},
 ): Promise<CompositionProfileResult> {
-  return post("/api/analyze/composition-profile", {
-    image_id: cubeId,   // the SI cube — also used server-side to derive σ
-    map_ids: mapIds,
-    elements,
-    x1: a.x + 1,   // 0-based → 1-based
-    y1: a.y + 1,
-    x2: b.x + 1,
-    y2: b.y + 1,
-    n_points: opts.nPoints ?? 200,
-    width: opts.width ?? 1,
-  });
+  return post(
+    "/api/analyze/composition-profile",
+    {
+      image_id: cubeId,   // the SI cube — also used server-side to derive σ
+      map_ids: mapIds,
+      elements,
+      x1: a.x + 1,   // 0-based → 1-based
+      y1: a.y + 1,
+      x2: b.x + 1,
+      y2: b.y + 1,
+      n_points: opts.nPoints ?? 200,
+      width: opts.width ?? 1,
+    },
+    { signal: opts.signal },
+  );
 }
 
 // ── A5 ELNES ────────────────────────────────────────────────────────
@@ -406,13 +410,21 @@ export interface EdsAutoAssignResult {
 
 export function edsAutoAssign(
   id: string,
-  opts: { toleranceKev?: number; threshold?: number } = {},
+  opts: {
+    toleranceKev?: number;
+    threshold?: number;
+    signal?: AbortSignal;
+  } = {},
 ): Promise<EdsAutoAssignResult> {
-  return post("/api/eds/auto-assign", {
-    image_id: id,
-    tolerance_kev: opts.toleranceKev ?? 0.15,
-    threshold: opts.threshold ?? 0.05,
-  });
+  return post(
+    "/api/eds/auto-assign",
+    {
+      image_id: id,
+      tolerance_kev: opts.toleranceKev ?? 0.15,
+      threshold: opts.threshold ?? 0.05,
+    },
+    { signal: opts.signal },
+  );
 }
 
 // ── #34 Tilt-corrected distance ──────────────────────────────────────
