@@ -78,7 +78,7 @@ export default function EdsSpectrumZoomBar({
             type="button"
             className="fvd-btn"
             disabled={usefulRange === null}
-            title="Fit the view to occupied signal and acquisition limits"
+            title="Fit the view to occupied signal in the displayed spectrum"
             onClick={() => onChange(usefulRange)}
           >
             Fit signal

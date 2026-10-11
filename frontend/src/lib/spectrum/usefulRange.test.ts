@@ -36,6 +36,14 @@ describe("usefulSpectrumRange", () => {
     expect(usefulSpectrumRange(spectrum(counts, 0, 0.1), 15)![1]).toBeLessThanOrEqual(15);
   });
 
+  it("does not let a beam cap change signal detection below that cap", () => {
+    const counts = Array.from({ length: 401 }, (_, index) =>
+      index < 80 ? 30 + 500 * Math.exp(-((index - 64) ** 2) / 4) : 2,
+    );
+    const spec = spectrum(counts, 0, 0.1);
+    expect(usefulSpectrumRange(spec, 20)).toEqual(usefulSpectrumRange(spec));
+  });
+
   it("returns the complete axis when no narrower useful range is known", () => {
     expect(usefulSpectrumRange(spectrum(Array(50).fill(5), 0, 0.1))).toBeNull();
   });
@@ -45,6 +53,7 @@ describe("metadataBeamEnergyKev", () => {
   const meta = (values: ImageMeta["meta"]) => ({ meta: values } as ImageMeta);
 
   it("recognises parser metadata spellings and converts volts", () => {
+    expect(metadataBeamEnergyKev(meta({ beam_energy_kev: 15 }))).toBe(15);
     expect(metadataBeamEnergyKev(meta({ beam_kv: 20 }))).toBe(20);
     expect(metadataBeamEnergyKev(meta({ voltage_kV: 30 }))).toBe(30);
     expect(metadataBeamEnergyKev(meta({ acceleration_voltage_v: 200_000 }))).toBe(200);

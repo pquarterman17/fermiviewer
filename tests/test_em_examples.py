@@ -30,6 +30,7 @@ from fermiviewer.datastruct import DataKind
 from fermiviewer.io.dm import DMFormatError
 from fermiviewer.io.emd import EMDFormatError
 from fermiviewer.io.registry import load_auto
+from fermiviewer.models import ImageMeta
 
 pytestmark = [pytest.mark.parser, pytest.mark.realdata]
 
@@ -232,6 +233,12 @@ def test_bcf_calibration_needs_sem_dx_limitation(rsciio_examples: Path) -> None:
     assert calibrated.pixel_unit == "um"  # normal file: calibrated
     uncal = _load(rsciio_examples, "bruker/eds/rosettasciio_30x30_packed_16bit_compressed.bcf")
     assert uncal.pixel_unit == ""  # no DX tag → uncalibrated, not wrong
+
+
+def test_bcf_beam_energy_reaches_image_meta(rsciio_examples: Path) -> None:
+    ds = _load(rsciio_examples, "bruker/eds/rosettasciio_bcf_v2_50x50px.bcf")
+    meta = ImageMeta.from_datastruct("bcf", "rosettasciio_bcf_v2_50x50px.bcf", ds)
+    assert meta.meta["beam_energy_kev"] == pytest.approx(20.0)
 
 
 # ── stage tilt, across formats ───────────────────────────────────────

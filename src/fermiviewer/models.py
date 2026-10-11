@@ -143,6 +143,17 @@ class ImageMeta(BaseModel):
             # stage_tilt_deg below, applied to the energy bounds too.
             return None if value is not None and math.isnan(value) else value
 
+        public_meta = _public_meta(ds.metadata)
+        # Nested vendor trees are intentionally excluded from the wire, but
+        # beam energy is small, useful acquisition context. Reuse the same
+        # normalizer as calibration-profile applicability so vendor spellings
+        # cannot drift between backend consumers.
+        from fermiviewer.io.profiles_db import image_conditions
+
+        beam_kev = image_conditions(ds.metadata).get("beam_energy_kev")
+        if beam_kev is not None:
+            public_meta["beam_energy_kev"] = beam_kev
+
         return cls(
             id=img_id,
             name=name,
@@ -165,7 +176,7 @@ class ImageMeta(BaseModel):
                 else None
             ),
             profiles=_profile_refs(ds.metadata),
-            meta=_public_meta(ds.metadata),
+            meta=public_meta,
         )
 
 

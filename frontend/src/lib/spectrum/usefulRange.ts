@@ -12,7 +12,9 @@ function finitePositive(value: unknown): number | null {
 /** Beam energy recorded by the file parser, expressed in keV. */
 export function metadataBeamEnergyKev(meta: ImageMeta | null): number | null {
   if (!meta) return null;
-  const direct = finitePositive(meta.meta.beam_kv ?? meta.meta.voltage_kV);
+  const direct = finitePositive(
+    meta.meta.beam_energy_kev ?? meta.meta.beam_kv ?? meta.meta.voltage_kV,
+  );
   if (direct !== null) return direct;
   const volts = finitePositive(meta.meta.acceleration_voltage_v);
   return volts === null ? null : volts / 1000;
@@ -51,7 +53,7 @@ export function usefulSpectrumRange(
   const eligibleIndices: number[] = [];
   for (let i = 0; i < n; i += 1) {
     const energy = spectrum.energy[i]!;
-    if (energy < lower || energy > beamLimit) continue;
+    if (energy < lower) continue;
     eligibleIndices.push(i);
     const count = spectrum.counts[i]!;
     eligible.push(Number.isFinite(count) ? Math.max(0, count) : 0);
