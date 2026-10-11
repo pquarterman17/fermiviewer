@@ -68,6 +68,33 @@ describe("ElementList", () => {
     expect(screen.getByText("2 found · 1 shown")).toBeVisible();
   });
 
+  it("separates recommendations, possibilities, manual additions, and rejected matches", () => {
+    const added = row("Ta", -20, "trace");
+    added.evidence!.source = "manual";
+    const weak = row("Cu", 100, "trace", false);
+    weak.evidence!.source = "auto";
+    const strong = row("Si", 3000, "strong");
+    strong.evidence!.source = "auto";
+    renderList({
+      rows: [strong, weak, added],
+      groupCandidates: true,
+      rejectedCandidates: [{
+        symbol: "U", transition: "M", energy: 3.2, deltaKev: 0.01,
+        reason: "below_background", detail: "signal is at or below the estimated background",
+        net: -42,
+      }],
+    });
+
+    expect(screen.getByText("1 recommended · 1 possible · 1 rejected · 1 retained · 2 shown")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Recommended: 1" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Possible — review before mapping: 1" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Your selection: 1" })).toBeVisible();
+    fireEvent.click(screen.getByText("1 rejected match"));
+    expect(screen.getByRole("list", { name: "Rejected element matches" })).toHaveTextContent(
+      "U Mαsignal is at or below the estimated backgroundnet -42",
+    );
+  });
+
   it("ticks confident elements and leaves trace ones present but unticked", () => {
     renderList();
     expect(screen.getByLabelText("Show Si")).toBeChecked();

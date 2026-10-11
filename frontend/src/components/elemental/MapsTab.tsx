@@ -26,9 +26,10 @@ import {
 } from "../../lib/elemental/saveComposite";
 import type { LegendValue } from "../../lib/elemental/mapLegend";
 import {
-  identifyElements,
+  identifyElementCandidates,
   measureElement,
   type IdentifiedElement,
+  type RejectedElement,
 } from "../../lib/elemental/identify";
 import {
   buildRows,
@@ -79,6 +80,7 @@ export default function EdsMapsTab({
   // EVIDENCE ONLY. What the user decided lives in the species store, keyed by
   // image, so it survives switching cubes and a re-identification.
   const [evidence, setEvidence] = useState<IdentifiedElement[]>([]);
+  const [rejected, setRejected] = useState<RejectedElement[]>([]);
   const [idBusy, setIdBusy] = useState(false);
   const [view, setView] = useState<View>("both");
   const [gains, setGains] = useState<Record<string, number>>({});
@@ -125,21 +127,35 @@ export default function EdsMapsTab({
       sumSpectrum.current = raw;
       setSpectrumVersion((v) => v + 1);
       const spectrum = normalizeEdsSpectrum(raw);
-      const found = identifyElements(auto, spectrum, { background: bg, e0Kev });
-      setEvidence(found);
+      const result = identifyElementCandidates(auto, spectrum, { background: bg, e0Kev });
+      const found = result.elements;
+      setRejected(result.rejected);
+      // Re-ID refreshes automatic evidence but must not erase a measurement
+      // the user explicitly requested, including a non-positive one.
+      setEvidence((previous) => {
+        const currentSpecies = speciesOf(useSpecies.getState().byImage, id);
+        const keys = new Set(
+          currentSpecies.map((sp) => `${sp.symbol}|${sp.transition}`),
+        );
+        const manual = previous.filter(
+          (item) => item.source === "manual" && keys.has(`${item.symbol}|${item.transition}`),
+        );
+        const manualKeys = new Set(manual.map((item) => `${item.symbol}|${item.transition}`));
+        return [...found.filter((item) => !manualKeys.has(`${item.symbol}|${item.transition}`)), ...manual];
+      });
       // Seed only when this image has no species yet. On a return visit, or a
       // re-ID, the user's decisions win and only the measured numbers refresh.
       const seeded = seedEdsSpeciesFrom(found, speciesOf(useSpecies.getState().byImage, id));
       if (seeded) setSpecies(id, seeded);
       const current = seeded ?? speciesOf(useSpecies.getState().byImage, id);
       const shown = current.filter((sp) => sp.visible).length;
+      const recommended = found.filter((item) => item.recommended).length;
+      const possible = found.length - recommended;
       report(
         id,
         found.length === 0
-          ? "EDS: no elements identified — add them manually"
-          : `EDS: identified ${found.length} element${
-              found.length === 1 ? "" : "s"
-            }, ${shown} showing${seeded ? " (above trace)" : " (your list)"}`,
+          ? `EDS: no recommended elements; ${result.rejected.length} rejected match${result.rejected.length === 1 ? "" : "es"}`
+          : `EDS: ${recommended} recommended, ${possible} possible, ${shown} showing`,
       );
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -155,6 +171,7 @@ export default function EdsMapsTab({
     sumSpectrum.current = null;
     setSpectrumVersion((v) => v + 1);
     setEvidence([]);
+    setRejected([]);
     setGains({});
     setSurveyId(null);
     setSurvey(null);
@@ -322,6 +339,8 @@ export default function EdsMapsTab({
     <div className="fvd-eds-maps">
       <ElementList
         rows={rows}
+        groupCandidates
+        rejectedCandidates={rejected}
         busy={idBusy}
         quantBySymbol={quantBySymbol}
         liveNetById={liveNetById}
@@ -332,7 +351,16 @@ export default function EdsMapsTab({
         onSetAll={(visible) => activeId && setAllVisible(activeId, visible)}
         onReidentify={() => void identify()}
         onAdd={addElement}
-        onRemove={(speciesId) => activeId && removeSpecies(activeId, speciesId)}
+        onRemove={(speciesId) => {
+          if (!activeId) return;
+          const removed = species.find((item) => item.id === speciesId);
+          removeSpecies(activeId, speciesId);
+          if (removed) {
+            setEvidence((previous) => previous.filter(
+              (item) => item.symbol !== removed.symbol || item.transition !== removed.transition,
+            ));
+          }
+        }}
         onHover={(symbol) => onHoverElement?.(symbol)}
         onFocus={(row) => {
           // Clicking a row both selects it (for SpeciesChips and any other

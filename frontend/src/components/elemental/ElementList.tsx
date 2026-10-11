@@ -21,7 +21,7 @@
 import { useMemo, useState } from "react";
 
 import { setElementColor, useElementColors } from "../../lib/elemental/elementColors";
-import type { Confidence } from "../../lib/elemental/identify";
+import type { Confidence, RejectedElement } from "../../lib/elemental/identify";
 import type { SpeciesRow } from "../../lib/elemental/speciesRows";
 import {
   conflictsFor,
@@ -66,6 +66,8 @@ function RowConflictBadge({ conflicts }: { conflicts: WindowConflict[] }) {
 
 export default function ElementList({
   rows,
+  groupCandidates = false,
+  rejectedCandidates = [],
   busy,
   quantBySymbol,
   liveNetById,
@@ -79,6 +81,10 @@ export default function ElementList({
   onFocus,
 }: {
   rows: SpeciesRow[];
+  /** Separate automatic recommendations, weak possibilities and manual rows. */
+  groupCandidates?: boolean;
+  /** Auto-ID matches that were considered but not proposed as species. */
+  rejectedCandidates?: RejectedElement[];
   busy: boolean;
   /** Optional at% per symbol, shown instead of net once quantified. */
   quantBySymbol?: Record<string, number>;
@@ -107,6 +113,34 @@ export default function ElementList({
   const colors = useElementColors();
   const [adding, setAdding] = useState(false);
   const shown = rows.filter((r) => r.species.visible).length;
+  const recommendedRows = rows.filter(
+    (row) => row.evidence?.source !== "manual" && row.evidence?.recommended,
+  );
+  const possibleRows = rows.filter(
+    (row) => row.evidence?.source !== "manual" && row.evidence && !row.evidence.recommended,
+  );
+  const manualRows = rows.filter(
+    (row) => !row.evidence || row.evidence.source === "manual",
+  );
+  const summary = groupCandidates
+    ? `${recommendedRows.length} recommended · ${possibleRows.length} possible · ${rejectedCandidates.length} rejected · ${manualRows.length} retained · ${shown} shown`
+    : `${rows.length} found · ${shown} shown`;
+  type DisplayItem =
+    | { kind: "heading"; label: string; count: number }
+    | { kind: "row"; row: SpeciesRow };
+  const displayItems: DisplayItem[] = [];
+  const addSection = (label: string, sectionRows: SpeciesRow[]) => {
+    if (sectionRows.length === 0) return;
+    displayItems.push({ kind: "heading", label, count: sectionRows.length });
+    displayItems.push(...sectionRows.map((row) => ({ kind: "row" as const, row })));
+  };
+  if (groupCandidates) {
+    addSection("Recommended", recommendedRows);
+    addSection("Possible — review before mapping", possibleRows);
+    addSection("Your selection", manualRows);
+  } else {
+    displayItems.push(...rows.map((row) => ({ kind: "row" as const, row })));
+  }
   const conflicts = useMemo(
     () => detectWindowConflicts(rows.map((r) => r.species)),
     [rows],
@@ -121,9 +155,9 @@ export default function ElementList({
       <header className="fvd-eds-elements-head">
         <strong>Elements</strong>
         <span className="k">
-          {busy
-            ? "Identifying…"
-            : `${rows.length} found · ${shown} shown`}
+          <span className="fvd-eds-identify-summary" aria-live="polite">
+            {busy ? "Identifying…" : summary}
+          </span>
           {/* a conflict is always between two distinct species, so this
               count is 0 or >= 2 — never the awkward singular */}
           {conflictedCount > 0 && (
@@ -183,7 +217,22 @@ export default function ElementList({
         </div>
       ) : (
         <ul className="fvd-eds-element-rows" onMouseLeave={() => onHover(null)}>
-          {rows.map((row) => {
+          {displayItems.map((item) => {
+            if (item.kind === "heading") {
+              return (
+                <li
+                  key={`heading-${item.label}`}
+                  className="fvd-eds-candidate-heading"
+                  role="heading"
+                  aria-level={3}
+                  aria-label={`${item.label}: ${item.count}`}
+                >
+                  <span>{item.label}</span>
+                  <span>{item.count}</span>
+                </li>
+              );
+            }
+            const row = item.row;
             const { species, evidence } = row;
             const { symbol, transition, energy, visible, modality } = species;
             const color = colors(symbol);
@@ -276,6 +325,25 @@ export default function ElementList({
             );
           })}
         </ul>
+      )}
+
+      {groupCandidates && rejectedCandidates.length > 0 && (
+        <details className="fvd-eds-rejected">
+          <summary>
+            {rejectedCandidates.length} rejected match{rejectedCandidates.length === 1 ? "" : "es"}
+          </summary>
+          <ul aria-label="Rejected element matches">
+            {rejectedCandidates.map((candidate, index) => (
+              <li key={`${candidate.symbol}-${candidate.transition}-${index}`}>
+                <strong>{candidate.symbol} {candidate.transition}α</strong>
+                <span>{candidate.detail}</span>
+                {candidate.net != null && (
+                  <span className="k">net {formatCountTick(candidate.net)}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
     </section>
   );

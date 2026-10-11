@@ -1,7 +1,13 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { edsAutoAssign, edsElementMaps, fetchSpectrum, type ImageMeta } from "../../lib/api";
+import {
+  edsAutoAssign,
+  edsElementMaps,
+  edsLineEnergy,
+  fetchSpectrum,
+  type ImageMeta,
+} from "../../lib/api";
 import { useSpecies } from "../../store/species";
 import { useViewer } from "../../store/viewer";
 import MapsTab from "./MapsTab";
@@ -13,6 +19,7 @@ vi.mock("../../lib/api", async (importActual) => {
     edsAutoAssign: vi.fn(),
     fetchSpectrum: vi.fn(),
     edsElementMaps: vi.fn(),
+    edsLineEnergy: vi.fn(),
   };
 });
 
@@ -143,5 +150,29 @@ describe("MapsTab row selection", () => {
     const speciesId = useSpecies.getState().byImage.cube[0].id;
     expect(useSpecies.getState().selectedByImage.cube).toBe(speciesId);
     expect(screen.getByLabelText("Show Si").closest("li")).toHaveClass("selected");
+  });
+});
+
+describe("MapsTab candidate evidence", () => {
+  it("preserves a manual non-positive measurement across re-identification", async () => {
+    vi.mocked(edsAutoAssign).mockResolvedValue({ peaks_kev: [], assignments: [] });
+    vi.mocked(fetchSpectrum).mockResolvedValue({
+      energy: [1.6, 1.65, 1.7, 1.74, 1.78, 1.82, 1.9],
+      counts: [100, 100, 100, 10, 10, 100, 100],
+      units: "keV",
+    });
+    vi.mocked(edsLineEnergy).mockResolvedValue({ symbol: "Ta", energy_kev: 1.74, line: "L" });
+    vi.mocked(edsElementMaps).mockResolvedValue(mapsReply([]));
+
+    render(<MapsTab bg="linear" e0Kev={30} />);
+    await waitFor(() => expect(screen.getByText(/No elements identified/)).toBeVisible());
+    fireEvent.click(screen.getByRole("button", { name: "+ Add" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Ta/ }));
+    await waitFor(() => expect(screen.getByText("trace?")).toBeVisible());
+
+    fireEvent.click(screen.getByRole("button", { name: "Re-ID" }));
+    await waitFor(() => expect(edsAutoAssign).toHaveBeenCalledTimes(2));
+    expect(screen.getByText("trace?")).toBeVisible();
+    expect(screen.getByRole("heading", { name: /Your selection/ })).toBeVisible();
   });
 });

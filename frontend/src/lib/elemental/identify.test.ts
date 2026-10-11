@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { EdsAutoAssignResult, Spectrum } from "../api";
-import { confidenceOf, identifyElements, measureElement } from "./identify";
+import {
+  confidenceOf,
+  identifyElementCandidates,
+  identifyElements,
+  measureElement,
+} from "./identify";
 
 // A spectrum with a towering peak at 5 keV, a modest one at 3 keV and a
 // barely-there bump at 8 keV, all on a flat background.
@@ -152,6 +157,30 @@ describe("identifyElements", () => {
     expect(identifyElements(auto([[5, "Fe", "K", 5]]), null)).toEqual([]);
     expect(identifyElements(null, spectrum())).toEqual([]);
   });
+
+  it("explains below-background and overlapping rejected matches", () => {
+    const result = identifyElementCandidates(
+      {
+        peaks_kev: [5],
+        assignments: [{
+          peak_kev: 5,
+          candidates: [
+            { symbol: "Fe", line: "K", energy_kev: 5, delta_kev: 0 },
+            { symbol: "Mn", line: "K", energy_kev: 4.99, delta_kev: 0.01 },
+          ],
+        }],
+      },
+      flatSpectrum(10),
+    );
+    expect(result.elements).toEqual([]);
+    expect(result.rejected).toEqual(expect.arrayContaining([
+      expect.objectContaining({ symbol: "Fe", reason: "below_background" }),
+      expect.objectContaining({ symbol: "Mn", reason: "line_overlap" }),
+    ]));
+    const details = result.rejected.map((item) => item.detail).join(" ");
+    expect(details).toMatch(/background/);
+    expect(details).toMatch(/better matches/);
+  });
 });
 
 describe("measureElement", () => {
@@ -163,6 +192,7 @@ describe("measureElement", () => {
     expect(added.net).toBeGreaterThan(10_000);
     // an element the user asked for is shown even if it reads as trace
     expect(added.recommended).toBe(true);
+    expect(added.source).toBe("manual");
     expect(added.relative).toBeLessThan(1);
   });
 
