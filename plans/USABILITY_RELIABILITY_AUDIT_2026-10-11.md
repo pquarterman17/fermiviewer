@@ -1,6 +1,6 @@
 # Usability and reliability audit — EDS, AFM, and analysis workflows
 
-**Status:** Active — item 1 shipped; item 2 implemented, awaiting AFM review
+**Status:** Active — items 1–2 shipped; item 3 implemented, awaiting review
 
 **Owner:** Codex (lead implementation); Claude reviews each pull request
 

@@ -404,3 +404,9 @@ def test_image_meta_pixel_size_is_the_column_extent() -> None:
     meta = ImageMeta.from_datastruct("c", "signed", signed)
     assert meta.pixel_size == 2.0
     assert meta.pixel_spacing == pytest.approx((0.5, 2.0))
+
+
+def test_image_meta_promotes_nested_beam_energy_for_clients() -> None:
+    ds = _afm({"sem_params": {"voltage_kV": 20.0}})
+    meta = ImageMeta.from_datastruct("beam", "bruker.bcf", ds)
+    assert meta.meta["beam_energy_kev"] == pytest.approx(20.0)
