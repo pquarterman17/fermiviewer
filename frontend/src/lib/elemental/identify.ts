@@ -69,8 +69,10 @@ export interface IdentifiedElement extends Evidence {
 
 /** Counting-statistics bands. A peak at 100σ in a whole-cube sum spectrum is
  *  unambiguous; below ~10σ it is as likely to be a background fluctuation as
- *  an element, which is why trace rows arrive unticked rather than hidden —
- *  a real trace element the user is looking for must still be reachable. */
+ *  an element. Positive trace rows therefore arrive unticked rather than
+ *  hidden — a real trace element the user is looking for must remain
+ *  reachable. Non-positive integrations are not evidence for an automatic
+ *  identification and are discarded by `identifyElements`. */
 const BANDS: [number, Confidence][] = [
   [100, "strong"],
   [30, "clear"],
@@ -92,8 +94,10 @@ export interface IdentifyOptions {
 }
 
 /**
- * One row per element, strongest first. Elements matched by more than one
- * peak keep their best match — the one closest to the tabulated line.
+ * One row per element, strongest first. Every line matched to an element is
+ * measured: the most significant positive line wins, with distance to the
+ * detected peak as the tie-breaker. The element is omitted only when none of
+ * its matched lines has positive background-subtracted signal.
  */
 export function identifyElements(
   auto: EdsAutoAssignResult | null,
@@ -104,47 +108,63 @@ export function identifyElements(
   const half = opts.halfWindowKev ?? 0.085;
   const background = opts.background ?? "linear";
 
-  // best candidate per element: nearest line wins
-  const best = new Map<string, { line: string; energy: number; delta: number }>();
+  // Keep the leading candidate from every detected peak. Choosing a single
+  // line by delta before measuring can hide (for example) a strong K line
+  // when the same element's slightly closer low-energy L line is below its
+  // local background.
+  const matches = new Map<
+    string,
+    { line: string; energy: number; delta: number }[]
+  >();
   for (const assignment of auto.assignments) {
     const top = assignment.candidates[0];
     if (!top) continue;
-    const delta = Math.abs(top.delta_kev);
-    const held = best.get(top.symbol);
-    if (!held || delta < held.delta) {
-      best.set(top.symbol, {
-        line: top.line,
-        energy: top.energy_kev,
-        delta,
-      });
-    }
+    const held = matches.get(top.symbol) ?? [];
+    held.push({
+      line: top.line,
+      energy: top.energy_kev,
+      delta: Math.abs(top.delta_kev),
+    });
+    matches.set(top.symbol, held);
   }
 
   const rows: IdentifiedElement[] = [];
-  for (const [symbol, match] of best) {
-    const eLo = match.energy - half;
-    const eHi = match.energy + half;
-    const integration = integrateWindow(spectrum, eLo, eHi, background, {
-      e0Kev: opts.e0Kev,
-    });
-    if (!integration) continue;
-    const significance =
-      integration.sigma > 0 ? integration.net / integration.sigma : 0;
-    const confidence = confidenceOf(significance);
-    rows.push({
-      symbol,
-      transition: match.line,
-      energy: match.energy,
-      windowLo: eLo,
-      windowHi: eHi,
-      net: integration.net,
-      sigma: integration.sigma,
-      significance,
-      confidence,
-      deltaKev: match.delta,
-      relative: 0,
-      recommended: confidence !== "trace",
-    });
+  for (const [symbol, elementMatches] of matches) {
+    let chosen: IdentifiedElement | null = null;
+    for (const match of elementMatches) {
+      const eLo = match.energy - half;
+      const eHi = match.energy + half;
+      const integration = integrateWindow(spectrum, eLo, eHi, background, {
+        e0Kev: opts.e0Kev,
+      });
+      if (!integration || integration.net <= 0) continue;
+      const significance =
+        integration.sigma > 0 ? integration.net / integration.sigma : 0;
+      const confidence = confidenceOf(significance);
+      const measured: IdentifiedElement = {
+        symbol,
+        transition: match.line,
+        energy: match.energy,
+        windowLo: eLo,
+        windowHi: eHi,
+        net: integration.net,
+        sigma: integration.sigma,
+        significance,
+        confidence,
+        deltaKev: match.delta,
+        relative: 0,
+        recommended: confidence !== "trace",
+      };
+      if (
+        !chosen ||
+        measured.significance > chosen.significance ||
+        (measured.significance === chosen.significance &&
+          measured.deltaKev < chosen.deltaKev)
+      ) {
+        chosen = measured;
+      }
+    }
+    if (chosen) rows.push(chosen);
   }
 
   rows.sort((a, b) => b.net - a.net);
