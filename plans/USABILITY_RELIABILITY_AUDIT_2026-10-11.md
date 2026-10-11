@@ -105,6 +105,8 @@ Acceptance criteria:
 - Rejection reasons are concise and concrete (for example, "below estimated
   background" or "line overlap").
 - Counts and summary copy distinguish accepted elements from candidates.
+- Re-identifying preserves evidence for manually added species, including
+  non-positive measurements, until the user removes or re-measures them.
 - Keyboard and screen-reader users receive the same status information.
 
 ### 5. Make the elemental workspace coexist with the image
@@ -177,6 +179,9 @@ blind mechanical rewrite.
 ## Progress log
 
 - 2026-10-11 — Audit recorded. Item 1 implemented by Codex with regressions
-  for negative, zero, positive-trace, and manual negative-net cases. Full gate:
-  4,065 backend tests passed (8 skipped), Ruff and mypy passed, 2,003 frontend
-  tests passed, and the production build passed. Awaiting Claude review.
+  for negative, zero, positive-trace, and manual negative-net cases. Claude's
+  review found that choosing the nearest line before measuring could hide an
+  element whose other matched line was strongly positive; all matched lines
+  are now measured and the highest positive significance wins. Full revised
+  gate: 4,065 backend tests passed (8 skipped), Ruff and mypy passed, 2,004
+  frontend tests passed, and the production build passed. Awaiting re-review.

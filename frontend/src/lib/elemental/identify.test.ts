@@ -31,6 +31,20 @@ function flatSpectrum(peakCounts: number): Spectrum {
   return { energy, counts, units: "keV" };
 }
 
+function mixedLineSpectrum(): Spectrum {
+  const energy: number[] = [];
+  const counts: number[] = [];
+  for (let i = 0; i < 200; i++) {
+    const e = i * 0.05;
+    energy.push(e);
+    let c = 100;
+    if (Math.abs(e - 3.0) < 0.03) c += 20_000;
+    if (Math.abs(e - 5.0) <= 0.05) c = 10;
+    counts.push(c);
+  }
+  return { energy, counts, units: "keV" };
+}
+
 function auto(
   pairs: [number, string, string, number][],
 ): EdsAutoAssignResult {
@@ -118,6 +132,20 @@ describe("identifyElements", () => {
     );
     expect(merged).toHaveLength(1);
     expect(merged[0].deltaKev).toBeCloseTo(0, 10);
+  });
+
+  it("uses a positive line when a nearer line for the element is negative", () => {
+    const identified = identifyElements(
+      auto([
+        [5.0, "Fe", "L", 5.0],
+        [3.04, "Fe", "K", 3.0],
+      ]),
+      mixedLineSpectrum(),
+    );
+    expect(identified).toHaveLength(1);
+    expect(identified[0].transition).toBe("K");
+    expect(identified[0].energy).toBe(3.0);
+    expect(identified[0].net).toBeGreaterThan(0);
   });
 
   it("returns nothing without a spectrum to measure against", () => {
