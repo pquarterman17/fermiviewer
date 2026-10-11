@@ -209,6 +209,26 @@ def test_force_map_images(client, tmp_path: Path) -> None:
     assert height.metadata["value_unit"] == "nm" and height.axes[1].scale == 100.0
 
 
+def test_force_map_survives_closing_the_file_mid_run(client, tmp_path: Path,
+                                                     monkeypatch: pytest.MonkeyPatch) -> None:
+    from fermiviewer.routes import afm_force
+
+    z, _ = _hertz_like(200)
+    curves = [(z, 0.02 * np.clip(z - 100, 0, None) ** 1.5)] * 4
+    f = write_nid_force(tmp_path / "c.nid", curves, k=2.0, grid=(2, 2), image=np.zeros((3, 3)))
+    force = next(m for m in _open(client, f) if m.get("is_force"))
+    analyze = afm_force.analyze_curves
+
+    def close_meanwhile(*args, **kwargs):
+        force_store.close(force["id"])          # the user closes it while curves run
+        return analyze(*args, **kwargs)
+
+    monkeypatch.setattr(afm_force, "analyze_curves", close_meanwhile)
+    r = client.post(f"/api/afm/force/{force['id']}/maps", json={"fit": False})
+    assert r.status_code == 200, r.text
+    assert [m["name"] for m in r.json()["images"]][0] == "Young's modulus(c.nid)"
+
+
 def test_upload_routes_force_files(client, tmp_path: Path) -> None:
     z, d = _hertz_like()
     f = write_bruker_force(tmp_path / "u.001", z, d, z[::-1], d[::-1])

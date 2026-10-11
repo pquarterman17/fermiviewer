@@ -168,16 +168,19 @@ export default function AfmForceWorkshop() {
     ? calibratedInvols(result.invols, result.values.contact_slope)
     : null;
 
+  // The run is tied to this file and these settings: the result names them,
+  // and the file can be neither switched nor closed here until it finishes.
   const runMaps = () => {
+    const source = meta;
     setBusyMaps(true);
-    setStatus("analysing every curve…");
-    forceMaps(meta.id, settings)
+    setStatus(`${source.name}: analysing every curve…`);
+    forceMaps(source.id, settings)
       .then((r) => {
         if (r.images.length) ingestDerived(r.images);
         const e = r.table.youngs_modulus.filter((v): v is number => v !== null);
         const median = e.length ? [...e].sort((a, b) => a - b)[Math.floor(e.length / 2)] : null;
         setStatus(
-          `${r.n - r.failed}/${r.n} curves · median E ${formatModulus(median)}` +
+          `${source.name}: ${r.n - r.failed}/${r.n} curves · median E ${formatModulus(median)}` +
             (r.images.length ? ` → ${r.images.length} map images` : ""),
         );
         const rows: Cell[][] = r.table.youngs_modulus.map((_, i) => [
@@ -186,17 +189,17 @@ export default function AfmForceWorkshop() {
         ]);
         if (!r.images.length) {
           downloadCsv(
-            `${exportBaseName(meta.name)}_force.csv`,
+            `${exportBaseName(source.name)}_force.csv`,
             tableToCsv(
               ["curve", "youngs_modulus_Pa", "adhesion_nN", "contact_z_nm", "max_force_nN",
                 "fit_r2"],
               rows,
-              { analysis: "AFM force curves", imageName: meta.name, params: { ...settings } },
+              { analysis: "AFM force curves", imageName: source.name, params: { ...settings } },
             ),
           );
         }
       })
-      .catch((e: Error) => setStatus(`force maps: ${e.message}`))
+      .catch((e: Error) => setStatus(`${source.name}: force maps: ${e.message}`))
       .finally(() => setBusyMaps(false));
   };
 
@@ -204,7 +207,13 @@ export default function AfmForceWorkshop() {
     <div className="fvd-ws">
       <div className="fvd-ws-row">
         <label className="k" htmlFor="force-file">File</label>
-        <select id="force-file" value={meta.id} onChange={(e) => select(e.target.value)}>
+        <select
+          id="force-file"
+          value={meta.id}
+          disabled={busyMaps}
+          title={busyMaps ? "Maps are being calculated for this file" : undefined}
+          onChange={(e) => select(e.target.value)}
+        >
           {files.map((f) => (
             <option key={f.id} value={f.id}>{f.name}</option>
           ))}
@@ -212,7 +221,8 @@ export default function AfmForceWorkshop() {
         <button
           className="fvd-icon-btn"
           aria-label="close force file"
-          title="Close this force file"
+          title={busyMaps ? "Maps are being calculated for this file" : "Close this force file"}
+          disabled={busyMaps}
           onClick={() => void close(meta.id)}
         >
           ✕

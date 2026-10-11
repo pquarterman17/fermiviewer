@@ -83,7 +83,7 @@ describe("AfmSurfaceWorkshop", () => {
     expect(screen.getAllByText("3.000 nm").length).toBeGreaterThan(0);
   });
 
-  it("labels the result with the region it was measured on", async () => {
+  it("labels the result with the region and levelling it was measured with", async () => {
     vi.mocked(afmSurface).mockResolvedValue(surface(3));
     useViewer.getState().ingest([image("a")]);
     useViewer.setState({ savedRois: { a: [savedRoi] } });
@@ -95,9 +95,12 @@ describe("AfmSurfaceWorkshop", () => {
     });
     // choosing another region afterwards does not relabel the old result
     act(() => useWorkshop.getState().setAnalysisRegionChoice("a", "whole"));
+    fireEvent.change(screen.getByLabelText(/level/i), { target: { value: "none" } });
     expect(screen.getByText(/· Terrace ·/)).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Export JSON" }));
-    expect(JSON.stringify(vi.mocked(downloadJson).mock.calls[0][1])).toContain("Terrace");
+    const exported = String(vi.mocked(downloadJson).mock.calls[0][1]);
+    expect(exported).toContain("Terrace");
+    expect(exported).toMatch(/"level": "plane"/);
   });
 });
 

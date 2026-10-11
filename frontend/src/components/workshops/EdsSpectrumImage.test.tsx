@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { EdsElementMapResult, ImageMeta, Spectrum } from "../../lib/api";
@@ -287,9 +287,61 @@ describe("EdsSpectrumImage", () => {
       "bremsstrahlung",
     );
 
-    const e0Input = screen.getByTitle(/Beam energy/);
+    const e0Input = screen.getByLabelText("Beam energy (keV)");
     fireEvent.change(e0Input, { target: { value: "25" } });
+    fireEvent.blur(e0Input);
     expect(useSpecies.getState().edsSettingsByImage[meta.id]?.e0Kev).toBe(25);
+  });
+
+  it("refuses an unusable beam energy and marks the old map stale", async () => {
+    const meta = openCube();
+    const fe = edsSpecies("Fe", "K", 6.404);
+    useSpecies.getState().addSpecies(meta.id, fe);
+    useSpecies.getState().selectSpecies(meta.id, fe.id);
+    useSpecies.getState().setEdsSettings(meta.id, { bg: "bremsstrahlung", e0Kev: 20 });
+
+    render(<EdsSpectrumImage />);
+    await screen.findByTestId("spectrum-plot");
+    fireEvent.click(screen.getByRole("button", { name: "commit-drag" }));
+    await screen.findByText("10 total counts");
+    const e0Input = screen.getByLabelText("Beam energy (keV)");
+
+    // clearing the field is not a beam energy of 0
+    fireEvent.change(e0Input, { target: { value: "" } });
+    fireEvent.blur(e0Input);
+    expect(useSpecies.getState().edsSettingsByImage[meta.id]?.e0Kev).toBe(20);
+
+    // below the Fe K window: no request, the old map stays but is stale
+    vi.mocked(edsElementMap).mockClear();
+    fireEvent.change(e0Input, { target: { value: "5" } });
+    fireEvent.blur(e0Input);
+    expect(useSpecies.getState().edsSettingsByImage[meta.id]?.e0Kev).toBe(5);
+    expect(screen.getByRole("alert")).toHaveTextContent(/must exceed the window/);
+    expect(screen.getByText("Stale")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add to library" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Export map CSV" })).toBeDisabled();
+    await new Promise((r) => setTimeout(r, 200));     // past the map debounce
+    expect(edsElementMap).not.toHaveBeenCalled();
+
+    // a usable energy recomputes; until the new map lands the old one is
+    // still shown, so neither action may use it
+    let land!: (r: EdsElementMapResult) => void;
+    vi.mocked(edsElementMap).mockReturnValueOnce(new Promise((r) => { land = r; }));
+    fireEvent.change(e0Input, { target: { value: "15" } });
+    fireEvent.blur(e0Input);
+    expect(screen.getByText("Updating…")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add to library" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Export map CSV" })).toBeDisabled();
+    await waitFor(() => expect(edsElementMap).toHaveBeenCalled());
+    await act(async () => land(MAP_RESULT));
+    expect(await screen.findByText("10 total counts")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add to library" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Export map CSV" })).not.toBeDisabled();
+    expect(edsElementMap).toHaveBeenCalledWith(
+      meta.id, expect.any(Number), expect.any(Number),
+      expect.objectContaining({ bg: "bremsstrahlung", e0Kev: 15 }),
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("restores a pinned region onto its matching existing species", async () => {

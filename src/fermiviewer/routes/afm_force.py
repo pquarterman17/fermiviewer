@@ -195,6 +195,7 @@ def force_maps(force_id: str, s: ForceSettings) -> dict:
     """Every curve analysed; a force map also becomes modulus, adhesion and
     contact-height images (registered in the session)."""
     f = _file(force_id)
+    name = force_store.name(force_id)    # taken now: the file may be closed mid-run
     k, _, scale = _calibration(f, s)
     results = analyze_curves([_arrays(c, scale) for c in f.curves], **_options(s, k))
     failed = sum(r is None for r in results)
@@ -211,20 +212,21 @@ def force_maps(force_id: str, s: ForceSettings) -> dict:
         height = height - np.nanmin(height) if np.isfinite(height).any() else height
         for label, data, unit in (("Young's modulus", cols[0] / mod_div, mod_unit),
                                   ("Adhesion", cols[1], "nN"), ("Contact height", height, "nm")):
-            images.append(_register(f, force_id, label, data.reshape(f.grid), unit))
+            images.append(_register(f, force_id, name, label, data.reshape(f.grid), unit))
     return {"n": len(f.curves), "failed": failed, "table": table,
             "units": {"youngs_modulus": "Pa", "adhesion": "nN", "contact_z": "nm",
                       "max_force": "nN", "fit_r2": ""},
             "images": [m.model_dump() for m in images]}
 
 
-def _register(f: ForceFile, force_id: str, label: str, data: np.ndarray, unit: str) -> ImageMeta:
+def _register(f: ForceFile, force_id: str, source: str, label: str, data: np.ndarray,
+              unit: str) -> ImageMeta:
     dy, dx = f.map_pitch_nm or (math.nan, math.nan)
     axes = (AxisCal(dy, 0.0, "nm") if math.isfinite(dy) else AxisCal(1.0, 0.0, ""),
             AxisCal(dx, 0.0, "nm") if math.isfinite(dx) else AxisCal(1.0, 0.0, ""))
     ds = DataStruct(data=np.ascontiguousarray(data, dtype=np.float64), kind=DataKind.IMAGE,
                     axes=axes, metadata={"source": label, "parser": "derived",
                                          "value_unit": unit, "force_map": force_id})
-    name = f"{label}({force_store.name(force_id)})"
+    name = f"{label}({source})"
     img_id = store.add_parsed(ds, name)
     return ImageMeta.from_datastruct(img_id, name, ds)

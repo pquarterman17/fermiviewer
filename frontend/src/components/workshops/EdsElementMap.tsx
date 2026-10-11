@@ -63,8 +63,11 @@ export default function EdsElementMap({
   busy,
   libraryBusy,
   onAddToLibrary,
+  stale = null,
 }: {
   result: EdsElementMapResult;
+  /** Why the map no longer matches the settings; dims it and blocks adding. */
+  stale?: string | null;
   /** "(custom)" or the selected element symbol — enables the element tint. */
   element: string;
   busy: boolean;
@@ -121,7 +124,9 @@ export default function EdsElementMap({
         <span className="fvd-eds-source-chip" aria-live="polite">
           {busy
             ? "Updating…"
-            : `${result.total_counts.toFixed(0)} total counts`}
+            : stale
+              ? "Stale"
+              : `${result.total_counts.toFixed(0)} total counts`}
         </span>
       </header>
 
@@ -152,9 +157,12 @@ export default function EdsElementMap({
         <div className="fvd-eds-map-actions">
           <button
             className="fvd-btn primary"
-            disabled={libraryBusy}
+            // the shown map is the old one until a recompute lands
+            disabled={libraryBusy || busy || !!stale}
             title={
-              paint === "element"
+              stale
+                ? `Stale map — ${stale}`
+                : paint === "element"
                 ? `Add to library — the ${element} tint is written to the shared "custom" colormap slot`
                 : "Register this map as a derived library image"
             }
@@ -165,7 +173,11 @@ export default function EdsElementMap({
         </div>
       </div>
 
-      <div className="fvd-eds-map-canvas-wrap">
+      <div
+        className="fvd-eds-map-canvas-wrap"
+        style={stale ? { opacity: 0.4 } : undefined}
+        title={stale ? `Stale map — ${stale}` : undefined}
+      >
         <canvas
           ref={canvasRef}
           title={`${result.e_lo.toFixed(3)}–${result.e_hi.toFixed(3)} keV (${result.bg} background)`}
