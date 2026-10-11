@@ -219,3 +219,22 @@ def test_grains_carry_heights_for_height_maps(client) -> None:
     assert r.status_code == 200, r.text
     body = r.json()
     assert len(body["max_height"]) == body["n_grains"] and body["volume_unit"] == "nm³"
+
+
+@pytest.mark.parametrize("roi", [[1, 1, 1, 4], [1, 1, 4, 1], [1, 1, 1, 1], [5, 5, 6, 40]])
+@pytest.mark.parametrize("endpoint", ["surface", "map"])
+def test_too_thin_regions_are_refused(client, roi, endpoint) -> None:
+    img = store.add_parsed(_ds(_grooves(30, 12)), "g.spm")
+    body = {"roi": roi, "kind": "psd"} if endpoint == "map" else {"roi": roi}
+    r = client.post(f"/api/afm/{img}/{endpoint}", json=body)
+    assert r.status_code == 422, r.text
+    assert "at least 3 × 3" in r.json()["detail"]
+
+
+def test_ops_refuse_too_thin_images() -> None:
+    thin = _ds(np.random.default_rng(0).normal(size=(1, 16)))
+    for op, params in (("surface_texture", {}), ("surface_map", {"kind": "acf"})):
+        with pytest.raises(ValueError, match="at least 3"):
+            ops.run(op, thin, params)
+    assert ops.run("surface_texture", _ds(np.random.default_rng(0).normal(size=(3, 3))),
+                   {}).value["n_pixels"] == 9

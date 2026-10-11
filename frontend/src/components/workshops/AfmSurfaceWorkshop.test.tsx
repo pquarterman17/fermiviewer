@@ -5,10 +5,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ISO_PARAMS, type AfmSurfaceResult, type ImageMeta } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
+import { useWorkshop } from "../../store/workshop";
 
 vi.mock("../../lib/api", async (importActual) => {
   const actual = await importActual<typeof import("../../lib/api")>();
   return { ...actual, afmSurface: vi.fn() };
+});
+vi.mock("../../lib/resultsExport", async (importActual) => {
+  const actual = await importActual<typeof import("../../lib/resultsExport")>();
+  return { ...actual, downloadCsv: vi.fn(), downloadJson: vi.fn() };
 });
 // plots are not under test; jsdom has no canvas for uPlot
 vi.mock("uplot", () => ({
@@ -18,6 +23,7 @@ vi.mock("uplot", () => ({
 }));
 
 import { afmSurface } from "../../lib/api";
+import { downloadJson } from "../../lib/resultsExport";
 import AfmSurfaceWorkshop, { formatParam, ISO_GROUPS, surfaceRows } from "./AfmSurfaceWorkshop";
 
 function image(id: string): ImageMeta {
@@ -39,6 +45,11 @@ function surface(sa: number): AfmSurfaceResult {
     slope_hist: { angle: [], percent: [] },
   };
 }
+
+const savedRoi = {
+  id: "r1", name: "Terrace", kind: "roi" as const, createdAt: "2026-01-01T00:00:00Z",
+  pts: [{ x: 4, y: 4 }, { x: 20, y: 20 }],
+};
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -70,6 +81,23 @@ describe("AfmSurfaceWorkshop", () => {
       fireEvent.click(screen.getByRole("button", { name: "Analyze" }));
     });
     expect(screen.getAllByText("3.000 nm").length).toBeGreaterThan(0);
+  });
+
+  it("labels the result with the region it was measured on", async () => {
+    vi.mocked(afmSurface).mockResolvedValue(surface(3));
+    useViewer.getState().ingest([image("a")]);
+    useViewer.setState({ savedRois: { a: [savedRoi] } });
+    useViewer.getState().setActive("a");
+    useWorkshop.getState().setAnalysisRegionChoice("a", "saved:r1");
+    render(<AfmSurfaceWorkshop />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Analyze" }));
+    });
+    // choosing another region afterwards does not relabel the old result
+    act(() => useWorkshop.getState().setAnalysisRegionChoice("a", "whole"));
+    expect(screen.getByText(/· Terrace ·/)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Export JSON" }));
+    expect(JSON.stringify(vi.mocked(downloadJson).mock.calls[0][1])).toContain("Terrace");
   });
 });
 

@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ImageMeta, NoiseResult } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
+import { useWorkshop } from "../../store/workshop";
 
 vi.mock("uplot", () => ({
   default: class {
@@ -68,6 +69,11 @@ function imageMeta(id = "source"): ImageMeta {
     meta: {},
   };
 }
+
+const savedRoi = {
+  id: "r1", name: "Terrace", kind: "roi" as const, createdAt: "2026-01-01T00:00:00Z",
+  pts: [{ x: 4, y: 4 }, { x: 20, y: 20 }],
+};
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -140,5 +146,22 @@ describe("NoiseWorkshop", () => {
       ["regression_intercept", 0.4, ""],
       ["regression_r_squared", 0.98, ""],
     ]);
+  });
+
+  it("labels the result with the region it was measured on", async () => {
+    vi.mocked(analyzeNoise).mockResolvedValue(result);
+    useViewer.getState().ingest([imageMeta()]);
+    useViewer.setState({ savedRois: { source: [savedRoi] } });
+    useViewer.getState().setActive("source");
+    useWorkshop.getState().setAnalysisRegionChoice("source", "saved:r1");
+    render(<NoiseWorkshop />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Analyze" }));
+    });
+    // choosing another region afterwards does not relabel the old result
+    act(() => useWorkshop.getState().setAnalysisRegionChoice("source", "whole"));
+    expect(screen.getByText(/· Terrace ·/)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Export JSON" }));
+    expect(JSON.stringify(vi.mocked(downloadJson).mock.calls[0][1])).toContain("Terrace");
   });
 });

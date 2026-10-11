@@ -80,6 +80,8 @@ export default function AfmSurfaceWorkshop() {
   const region = useAnalysisRoi(activeId, meta?.shape ?? NO_SHAPE);
   const [level, setLevel] = useState<AfmLevel>("plane");
   const [result, setResult] = useState<AfmSurfaceResult | null>(null);
+  // the region the result was measured on, not the one selected now
+  const [resultRegion, setResultRegion] = useState("");
   const [busy, setBusy] = useState(false);
 
   // Each run gets a number; switching image or closing the panel bumps it,
@@ -97,6 +99,7 @@ export default function AfmSurfaceWorkshop() {
 
   const run = () => {
     if (!activeId) return;
+    const runRegion = region.label;
     const token = ++request.current;
     const current = () => token === request.current;
     setBusy(true);
@@ -105,6 +108,7 @@ export default function AfmSurfaceWorkshop() {
       .then((next) => {
         if (!current()) return;
         setResult(next);
+        setResultRegion(runRegion);
         setStatus(`surface: Sa ${formatParam(next.params.Sa, next.z_unit)} · ` +
           `Sq ${formatParam(next.params.Sq, next.z_unit)}`);
       })
@@ -123,7 +127,7 @@ export default function AfmSurfaceWorkshop() {
     const provenance = {
       analysis: "Areal surface texture (ISO 25178)",
       imageName: meta?.name,
-      params: { level: result.level, region: region.label, roi: result.roi },
+      params: { level: result.level, region: resultRegion, roi: result.roi },
     };
     if (format === "csv") {
       downloadCsv(`${base}.csv`, tableToCsv(columns, surfaceRows(result), provenance));
@@ -208,7 +212,7 @@ export default function AfmSurfaceWorkshop() {
             />
           )}
           <div className="fvd-ws-note">
-            {result.n_pixels.toLocaleString()} valid pixels · {region.label} ·{" "}
+            {result.n_pixels.toLocaleString()} valid pixels · {resultRegion} ·{" "}
             {result.level} levelling
           </div>
           <div className="fvd-ws-row">

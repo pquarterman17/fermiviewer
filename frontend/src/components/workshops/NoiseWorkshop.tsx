@@ -49,6 +49,8 @@ export default function NoiseWorkshop() {
   const region = useAnalysisRoi(activeId, meta?.shape ?? NO_SHAPE);
   const [method, setMethod] = useState<NoiseResult["method"]>("mad");
   const [result, setResult] = useState<NoiseResult | null>(null);
+  // the region the result was measured on, not the one selected now
+  const [resultRegion, setResultRegion] = useState("");
   const [busy, setBusy] = useState(false);
   const [stale, setStale] = useState(false);
 
@@ -59,11 +61,13 @@ export default function NoiseWorkshop() {
 
   const run = () => {
     if (!activeId) return;
+    const runRegion = region.label;
     setBusy(true);
     setStatus("estimating noise…");
     analyzeNoise(activeId, { method, roi: region.roi })
       .then((next) => {
         setResult(next);
+        setResultRegion(runRegion);
         setStale(false);
         setStatus(
           `noise: σ ${fmt(next.sigma)} · SNR ${fmt(next.snr_db)} dB · ${next.noise_type}`,
@@ -98,7 +102,7 @@ export default function NoiseWorkshop() {
     const provenance = {
       analysis: "Noise estimate",
       imageName: meta?.name,
-      params: { method: result.method, region: region.label, roi: result.roi },
+      params: { method: result.method, region: resultRegion, roi: result.roi },
       recommendation: result.recommendation,
     };
     const rows = noiseRows(result);
@@ -169,7 +173,7 @@ export default function NoiseWorkshop() {
             onExportCsv={() => exportResult("csv")}
           />
           <div className="fvd-ws-note">
-            {result.n_pixels.toLocaleString()} pixels · {region.label} ·{" "}
+            {result.n_pixels.toLocaleString()} pixels · {resultRegion} ·{" "}
             {result.method} · {result.n_blocks.toLocaleString()}{" "}
             {result.block_size}×{result.block_size} blocks
           </div>
