@@ -145,20 +145,6 @@ export default function EdsQuantifyPanel({
   const quantifyRequest = useLatestRequest(activeId);
   const autoAssignRequest = useLatestRequest(activeId);
   const compProfileRequest = useLatestRequest(activeId);
-  const onResultRef = useRef(onResult);
-
-  useEffect(() => {
-    onResultRef.current = onResult;
-  }, [onResult]);
-
-  useEffect(() => {
-    setResult(null);
-    setComp(null);
-    setBusy(false);
-    setAutoAssignBusy(false);
-    setCompBusy(false);
-    onResultRef.current(null);
-  }, [activeId]);
 
   useEffect(() => {
     if (workflow?.record.analysis !== "eds.quantify") return;

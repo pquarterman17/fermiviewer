@@ -172,6 +172,18 @@ describe("CompProfilePlot", () => {
 });
 
 describe("EdsQuantifyPanel request ownership", () => {
+  it("does not clear a valid parent result when the tab mounts", () => {
+    useViewer.getState().ingest([image("a")]);
+    useViewer.getState().setActive("a");
+    const onResult = vi.fn();
+
+    render(
+      <EdsQuantifyPanel elements="Fe" onElements={vi.fn()} onResult={onResult} />,
+    );
+
+    expect(onResult).not.toHaveBeenCalled();
+  });
+
   it("drops a quantify response after the active cube changes", async () => {
     let resolve!: (value: EdsQuantResult) => void;
     vi.mocked(edsQuantify).mockReturnValue(new Promise((r) => { resolve = r; }));
