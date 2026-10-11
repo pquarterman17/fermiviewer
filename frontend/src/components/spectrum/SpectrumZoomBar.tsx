@@ -14,6 +14,7 @@ export default function EdsSpectrumZoomBar({
   bounds,
   minSpan,
   unit,
+  usefulRange,
   onChange,
 }: {
   /** Current view, or null for the full spectrum. */
@@ -22,6 +23,8 @@ export default function EdsSpectrumZoomBar({
   bounds: XRange;
   minSpan: number;
   unit: string;
+  /** Signal-fitted view, or null when the full axis is already useful. */
+  usefulRange?: XRange | null;
   onChange: (range: XRange | null) => void;
 }) {
   const [lo, hi] = range ?? bounds;
@@ -70,6 +73,17 @@ export default function EdsSpectrumZoomBar({
       ))}
       <span className="k">{unit}</span>
       <div className="fvd-eds-zoom-buttons">
+        {usefulRange !== undefined && (
+          <button
+            type="button"
+            className="fvd-btn"
+            disabled={usefulRange === null}
+            title="Fit the view to occupied signal and acquisition limits"
+            onClick={() => onChange(usefulRange)}
+          >
+            Fit signal
+          </button>
+        )}
         <button
           type="button"
           className="fvd-icon-btn"
@@ -109,7 +123,7 @@ export default function EdsSpectrumZoomBar({
           type="button"
           className="fvd-btn"
           disabled={!zoomed}
-          title="Show the full energy range"
+          title="Show the complete acquired energy range"
           onClick={() => onChange(null)}
         >
           Reset

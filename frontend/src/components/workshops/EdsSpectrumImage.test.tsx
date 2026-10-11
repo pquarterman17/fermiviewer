@@ -14,6 +14,8 @@ vi.mock("../spectrum/SpectrumPlot", () => ({
   default: (props: {
     eLo: number;
     eHi: number;
+    xRange?: [number, number] | null;
+    onXRangeChange?: (range: [number, number] | null) => void;
     onDragWindowsLive?: (w: { signal: { lo: number; hi: number } }) => void;
     onDragWindowsCommit?: (w: { signal: { lo: number; hi: number } }) => void;
   }) => (
@@ -21,6 +23,8 @@ vi.mock("../spectrum/SpectrumPlot", () => ({
       <span data-testid="plot-window">
         {props.eLo.toFixed(4)}-{props.eHi.toFixed(4)}
       </span>
+      <span data-testid="plot-view">{props.xRange?.join("-") ?? "full"}</span>
+      <button onClick={() => props.onXRangeChange?.([1, 3])}>manual-zoom</button>
       <button
         onClick={() =>
           props.onDragWindowsLive?.({
@@ -118,6 +122,27 @@ afterEach(() => {
 });
 
 describe("EdsSpectrumImage", () => {
+  it("fits the initial sum spectrum but preserves a subsequent manual zoom", async () => {
+    const meta = openCube(cube({ meta: { beam_kv: 7 } }));
+    const si = edsSpecies("Si", "K", 1.74);
+    useSpecies.getState().addSpecies(meta.id, si);
+    useSpecies.getState().selectSpecies(meta.id, si.id);
+    vi.mocked(fetchSpectrum).mockResolvedValue({
+      energy: Array.from({ length: 101 }, (_, index) => -0.5 + index * 0.1),
+      counts: Array.from({ length: 101 }, (_, index) => index < 65 ? 20 : 1),
+      units: "keV",
+    });
+
+    render(<EdsSpectrumImage />);
+    await waitFor(() => expect(screen.getByTestId("plot-view")).not.toHaveTextContent("full"));
+    expect(screen.getByTestId("plot-view")).toHaveTextContent(/^0-/);
+
+    fireEvent.click(screen.getByText("manual-zoom"));
+    expect(screen.getByTestId("plot-view")).toHaveTextContent("1-3");
+    fireEvent.click(screen.getByRole("button", { name: "brems" }));
+    expect(screen.getByTestId("plot-view")).toHaveTextContent("1-3");
+  });
+
   it("shows a quiet empty state pointing at Maps when the image has no species", async () => {
     openCube();
     render(<EdsSpectrumImage />);

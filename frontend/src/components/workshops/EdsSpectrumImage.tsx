@@ -31,6 +31,11 @@ import { e0Error, type EdsMapBackground } from "../../lib/eds/background";
 import { integrateWindow } from "../../lib/eds/integrate";
 import { frameWindow, type XRange } from "../../lib/spectrum/zoomRange";
 import {
+  metadataBeamEnergyKev,
+  usefulSpectrumRange,
+} from "../../lib/spectrum/usefulRange";
+import { normalizeEdsSpectrum } from "../../lib/edsSpectrumDisplay";
+import {
   elementMapCsv,
   integrationRegionsCsv,
   spectrumCsv,
@@ -107,6 +112,7 @@ export default function EdsSpectrumImage() {
   const edsSettings = edsSettingsOf(edsSettingsByImage, activeId);
   const bgMode = edsSettings.bg;
   const e0Kev = edsSettings.e0Kev;
+  const recordedBeamKev = metadataBeamEnergyKev(meta);
 
   // spectrum display
   const [logScale, setLogScale] = useState(false);
@@ -158,11 +164,12 @@ export default function EdsSpectrumImage() {
       probeActive: captureMode === "specnav",
       isOpen: stillOpen,
       onStatus: reportEds,
-      // Window init used to happen here (anchor to the first acquisition
-      // element, or a free default). That is now the species store's job —
-      // the auto-select effect above runs independently of when the
-      // spectrum itself finishes loading.
-      onLoaded: () => {},
+      // Auto-frame only the initial whole-cube load. Pixel/ROI/background
+      // updates must leave a user's manual zoom untouched.
+      onLoaded: (spectrum) =>
+        setXRange(
+          usefulSpectrumRange(normalizeEdsSpectrum(spectrum), recordedBeamKev),
+        ),
     });
 
   const peakMarkers = useEdsPeakMarkers(
@@ -175,6 +182,13 @@ export default function EdsSpectrumImage() {
   const { bounds, minSpan } = useMemo(
     () => energyBounds(displaySpectrum),
     [displaySpectrum],
+  );
+  const usefulRange = useMemo(
+    () =>
+      displaySpectrum
+        ? usefulSpectrumRange(displaySpectrum, recordedBeamKev)
+        : null,
+    [displaySpectrum, recordedBeamKev],
   );
 
   // The integral of whatever spectrum is displayed, under the same background
@@ -307,6 +321,7 @@ export default function EdsSpectrumImage() {
               bounds={bounds}
               minSpan={minSpan}
               unit={unit}
+              usefulRange={usefulRange}
               onChange={setXRange}
             />
           </>
