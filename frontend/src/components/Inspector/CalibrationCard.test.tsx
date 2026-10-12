@@ -60,6 +60,8 @@ describe("CalibrationCard per-axis editing", () => {
 
   it("makes anisotropy visible before editing", () => {
     render(<CalibrationCard />);
+    expect(screen.getByText("Image sampling")).toBeVisible();
+    expect(screen.getByText(/independent of display zoom/)).toBeVisible();
     expect(screen.getByRole("status")).toHaveTextContent("Rows 0.5");
     expect(screen.getByRole("status")).toHaveTextContent("Columns 2");
   });

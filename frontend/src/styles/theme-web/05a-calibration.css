@@ -42,3 +42,10 @@
   grid-column: 1 / -1;
   justify-self: start;
 }
+
+.fvd-calibration-note {
+  margin: -2px 0 2px;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.35;
+}

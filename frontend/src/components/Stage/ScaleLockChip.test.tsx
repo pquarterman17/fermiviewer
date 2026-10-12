@@ -34,42 +34,52 @@ beforeEach(() => {
 describe("ScaleLockChip", () => {
   it("has an accessible name and exposes its pressed state, off by default", () => {
     render(<ScaleLockChip />);
-    const btn = screen.getByRole("button", { name: "Lock physical scale" });
+    const btn = screen.getByRole("button", { name: "Lock displayed scale" });
     expect(btn).toHaveAttribute("aria-pressed", "false");
   });
 
   it("shows the active image's current scale with its own unit, not a hardcoded µm", () => {
     render(<ScaleLockChip />);
-    expect(screen.getByText("1.7 nm/px")).toBeVisible();
+    expect(screen.getByText("Displayed scale")).toBeVisible();
+    expect(screen.getByText("1.7 nm/screen px")).toBeVisible();
   });
 
   it("updates the readout when the active image (and its unit) changes", () => {
     const { rerender } = render(<ScaleLockChip />);
-    expect(screen.getByText("1.7 nm/px")).toBeVisible();
+    expect(screen.getByText("1.7 nm/screen px")).toBeVisible();
 
     useViewer.setState({
       images: { a: image({ pixel_size: 1.76, pixel_unit: "µm" }) },
     });
     useStageInfo.setState({ zoom: 1 }); // 1.76 µm/px at z=1
     rerender(<ScaleLockChip />);
-    expect(screen.getByText("1.76 µm/px")).toBeVisible();
+    expect(screen.getByText("1.76 µm/screen px")).toBeVisible();
+  });
+
+  it("names the displayed axis when image sampling is anisotropic", () => {
+    useViewer.setState({
+      images: { a: image({ pixel_spacing: [1.2, 3.4] }) },
+    });
+    render(<ScaleLockChip />);
+    expect(screen.getByText("Displayed column scale")).toBeVisible();
+    expect(screen.getByText("1.7 nm/screen px")).toBeVisible();
   });
 
   it("toggling on then off leaves the current view unchanged (no visual jump)", () => {
     render(<ScaleLockChip />);
-    const btn = screen.getByRole("button", { name: "Lock physical scale" });
-    const before = screen.getByText("1.7 nm/px");
+    const btn = screen.getByRole("button", { name: "Lock displayed scale" });
+    const before = screen.getByText("1.7 nm/screen px");
     expect(before).toBeVisible();
 
     fireEvent.click(btn); // enable — seeds from the CURRENT physical scale
     expect(btn).toHaveAttribute("aria-pressed", "true");
     expect(useBrowseScale.getState()).toMatchObject({ locked: true, scale: 1.7 });
-    expect(screen.getByText("1.7 nm/px")).toBeVisible(); // unchanged readout
+    expect(screen.getByText("1.7 nm/screen px")).toBeVisible(); // unchanged readout
 
     fireEvent.click(btn); // disable
     expect(btn).toHaveAttribute("aria-pressed", "false");
     expect(useBrowseScale.getState()).toMatchObject({ locked: false, scale: null });
-    expect(screen.getByText("1.7 nm/px")).toBeVisible(); // still unchanged
+    expect(screen.getByText("1.7 nm/screen px")).toBeVisible(); // still unchanged
   });
 
   it("disables the toggle with a reason when the active image is uncalibrated", () => {
@@ -77,14 +87,15 @@ describe("ScaleLockChip", () => {
       images: { a: image({ pixel_size: null }) },
     });
     render(<ScaleLockChip />);
-    const btn = screen.getByRole("button", { name: "Lock physical scale" });
+    const btn = screen.getByRole("button", { name: "Lock displayed scale" });
     expect(btn).toBeDisabled();
     // disabled controls swallow pointer events — the tip must live on the
     // hoverable wrapper, mirroring FloatTools' side-by-side-compare pattern
     expect(btn).not.toHaveAttribute("data-tip");
     expect(btn.parentElement).toHaveAttribute("data-tip", "Constant scale lock");
     expect(btn.parentElement).toHaveAttribute("data-tip-detail");
-    expect(screen.getByText("—")).toBeVisible();
+    expect(screen.getByText("Displayed scale")).toBeVisible();
+    expect(screen.getByText("Unavailable")).toBeVisible();
   });
 
   it("clicking while uncalibrated does not enable the lock", () => {
@@ -92,7 +103,7 @@ describe("ScaleLockChip", () => {
       images: { a: image({ pixel_size: null }) },
     });
     render(<ScaleLockChip />);
-    const btn = screen.getByRole("button", { name: "Lock physical scale" });
+    const btn = screen.getByRole("button", { name: "Lock displayed scale" });
     fireEvent.click(btn);
     expect(useBrowseScale.getState().locked).toBe(false);
   });

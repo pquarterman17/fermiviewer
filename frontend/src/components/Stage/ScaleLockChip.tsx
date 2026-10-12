@@ -30,6 +30,9 @@ export default function ScaleLockChip() {
   const pixelUnit = useViewer((s) =>
     activeId ? (s.images[activeId]?.pixel_unit ?? "px") : "px",
   );
+  const pixelSpacing = useViewer((s) =>
+    activeId ? (s.images[activeId]?.pixel_spacing ?? null) : null,
+  );
   const zoom = useStageInfo((s) => s.zoom);
   const locked = useBrowseScale((s) => s.locked);
   const lockedScale = useBrowseScale((s) => s.scale);
@@ -53,6 +56,9 @@ export default function ScaleLockChip() {
   // currentScale right after enabling, but it's the locked value (not the
   // per-frame one) that should read out while paging a series.
   const displayScale = locked ? lockedScale : currentScale;
+  const anisotropic =
+    pixelSpacing != null && pixelSpacing[0] !== pixelSpacing[1];
+  const scaleLabel = anisotropic ? "Displayed column scale" : "Displayed scale";
 
   const toggle = () => {
     if (locked) {
@@ -78,12 +84,12 @@ export default function ScaleLockChip() {
       >
         <button
           className="fvd-icon-btn"
-          aria-label="Lock physical scale"
+          aria-label="Lock displayed scale"
           aria-pressed={locked}
-          data-tip={calibrated ? "Lock physical scale" : undefined}
+          data-tip={calibrated ? "Lock displayed scale" : undefined}
           data-tip-detail={
             calibrated
-              ? "Hold a constant on-screen scale while paging through images, instead of each frame fitting to its own size."
+              ? "Keep the physical length represented by one screen pixel constant while paging through images."
               : undefined
           }
           disabled={!calibrated}
@@ -92,10 +98,21 @@ export default function ScaleLockChip() {
           <Icon name="lock" />
         </button>
       </span>
-      <span className="fvd-scale-readout">
-        {displayScale != null
-          ? `${formatScale(displayScale)} ${pixelUnit}/px`
-          : "—"}
+      <span
+        className="fvd-scale-copy"
+        data-tip={scaleLabel}
+        data-tip-detail={
+          calibrated
+            ? "Physical length per screen pixel at the current zoom. This changes when you zoom; it is not the image's sampling calibration."
+            : "Unavailable until the image has a physical sampling calibration."
+        }
+      >
+        <span className="fvd-scale-label">{scaleLabel}</span>
+        <span className="fvd-scale-readout">
+          {displayScale != null
+            ? `${formatScale(displayScale)} ${pixelUnit}/screen px`
+            : "Unavailable"}
+        </span>
       </span>
     </div>
   );

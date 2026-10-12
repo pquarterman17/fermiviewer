@@ -201,7 +201,7 @@ export default function Inspector() {
   const channel = meta.meta.channel_label ?? meta.meta.channel;
   if (typeof channel === "string") rows.splice(1, 0, ["Channel", channel]);
   const px = fmtPixelSize(meta);
-  if (px) rows.push(["Pixel size", px]);
+  if (px) rows.push(["Image sampling", px]);
   if (meta.n_channels !== null) {
     rows.push(["Channels", String(meta.n_channels)]);
   }

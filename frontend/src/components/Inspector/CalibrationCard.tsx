@@ -167,13 +167,22 @@ export default function CalibrationCard() {
   return (
     <Card title="Calibration">
       <div className="fvd-meta-row">
-        <span className="k">Pixel size</span>
+        <span
+          className="k"
+          data-tip="Image sampling"
+          data-tip-detail="Physical length represented by one image pixel. This calibration stays fixed when the view is zoomed."
+        >
+          Image sampling
+        </span>
         <span className="v">
           {meta.pixel_size != null
             ? `${meta.pixel_size.toPrecision(4)} ${meta.pixel_unit}/px`
             : "Uncalibrated"}
         </span>
       </div>
+      <p className="fvd-calibration-note">
+        Physical length per image pixel · independent of display zoom
+      </p>
 
       {meta.pixel_spacing && meta.pixel_spacing[0] !== meta.pixel_spacing[1] && (
         <div className="fvd-calibration-extents" role="status">
