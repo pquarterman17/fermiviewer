@@ -36,6 +36,12 @@ export interface FilmCardCtx {
   dragEnd: () => void;
 }
 
+function channelIdentity(meta: ImageMeta): string | null {
+  const value = meta.meta.channel_label ?? meta.meta.channel;
+  if (typeof value !== "string" || meta.name.includes(`· ${value}`)) return null;
+  return value;
+}
+
 export default function FilmCard({
   id,
   groupId,
@@ -50,6 +56,7 @@ export default function FilmCard({
   const key = entryKey({ id, groupId });
   const pos = ctx.posOf(key);
   const isSel = ctx.selected.includes(id);
+  const channel = channelIdentity(meta);
   const cls = [
     "fvd-film-card",
     ctx.listView === "names" ? "names" : "",
@@ -65,7 +72,7 @@ export default function FilmCard({
         ctx.registerRef(pos, node);
       }}
       className={cls}
-      title={meta.name}
+      title={channel ? `${meta.name} — ${channel}` : meta.name}
       role="option"
       aria-selected={isSel}
       // activeId can be null while images remain (e.g. undoing a derived
@@ -105,6 +112,7 @@ export default function FilmCard({
           />
         ))}
       <div className="fvd-film-name">{meta.name}</div>
+      {channel && <div className="fvd-film-channel">{channel}</div>}
     </div>
   );
 }

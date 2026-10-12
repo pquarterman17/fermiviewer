@@ -22,6 +22,7 @@ import {
 import { useViewer, type SelectGesture } from "../../store/viewer";
 import Icon from "../icons/Icon";
 import { useCollapsedGroups } from "../Inspector/useCollapsedGroups";
+import AfmChannelPicker from "./AfmChannelPicker";
 import FilmCard, { type FilmCardCtx } from "./FilmCard";
 import FilmstripContextMenu, {
   type FilmstripCtxTarget,
@@ -66,6 +67,7 @@ export default function Filmstrip() {
   // a project whose data has moved can have placeholders and no open images —
   // "No images open. File → Open…" would be wrong advice there (#35)
   const hasUnavailable = Object.keys(unavailable).length > 0;
+  const activeMeta = activeId ? images[activeId] ?? null : null;
   // derived in a memo, never in a selector: these build fresh arrays, and a
   // selector that returns one re-renders forever (zustand snapshot rule)
   const tree = useMemo(
@@ -254,6 +256,8 @@ export default function Filmstrip() {
           <Icon name={listView === "thumbs" ? "list" : "grid"} />
         </button>
       </div>
+
+      <AfmChannelPicker meta={activeMeta} />
 
       {compareIds && (
         <button

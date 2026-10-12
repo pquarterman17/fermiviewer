@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from fermiviewer.datastruct import DataStruct
 from fermiviewer.io.spm_channels import SPM_PARSERS, load_spm_channels
@@ -28,6 +29,19 @@ from fermiviewer.session import UnknownImageError, store
 __all__ = ["forget", "reset", "router", "stash_upload_channels"]
 
 router = APIRouter(prefix="/api/afm")
+
+
+class ChannelInfo(BaseModel):
+    """One channel in a multi-channel SPM scan."""
+
+    label: str
+    image_id: str | None = None
+
+
+class OpenChannelsRequest(BaseModel):
+    """An omitted label list preserves the legacy open-everything action."""
+
+    labels: list[str] | None = None
 
 
 @dataclass
@@ -99,17 +113,45 @@ def _read(source: list[DataStruct] | str) -> list[DataStruct]:
         raise HTTPException(404, f"cannot read {Path(source).name}: {e}") from None
 
 
-@router.post("/{image_id}/channels")
-def open_other_channels(image_id: str) -> list[ImageMeta]:
-    """Register every channel of the scan that is not open right now — from
-    the scan or any of its channels; a closed channel can be reopened.
-    Returns their metas (empty when all are already open)."""
+def _require_spm(image_id: str) -> DataStruct:
     try:
         src = store.get(image_id)
     except UnknownImageError:
         raise HTTPException(404, f"unknown image id: {image_id}") from None
     if src.metadata.get("parser") not in SPM_PARSERS:
         raise HTTPException(422, "only AFM/SPM scans have extra channels")
+    return src
+
+
+@router.get("/{image_id}/channels")
+def list_channels(image_id: str) -> list[ChannelInfo]:
+    """List a scan's channels without registering closed channels.
+
+    ``image_id`` identifies an already-open member when a channel is open,
+    allowing the client selector to navigate without creating duplicates.
+    """
+    _require_spm(image_id)
+    _, fam = _family(image_id)
+    with fam.opening:
+        channels = _read(fam.source)
+        live = set(store.ids())
+        return [
+            ChannelInfo(
+                label=_label(ch),
+                image_id=(iid if (iid := fam.members.get(_label(ch))) in live else None),
+            )
+            for ch in channels
+        ]
+
+
+@router.post("/{image_id}/channels")
+def open_other_channels(
+    image_id: str, request: OpenChannelsRequest | None = None,
+) -> list[ImageMeta]:
+    """Register every channel of the scan that is not open right now — from
+    the scan or any of its channels; a closed channel can be reopened.
+    Returns their metas (empty when all are already open)."""
+    _require_spm(image_id)
     with _lock:
         generation = _generation
     key, fam = _family(image_id)
@@ -117,6 +159,15 @@ def open_other_channels(image_id: str) -> list[ImageMeta]:
     metas = []
     with fam.opening:
         channels = _read(fam.source)
+        available = {_label(ch) for ch in channels}
+        requested = None if request is None else request.labels
+        if requested is not None:
+            missing = set(requested) - available
+            if missing:
+                names = ", ".join(sorted(missing))
+                raise HTTPException(422, f"unknown channel label: {names}")
+            wanted = set(requested)
+            channels = [ch for ch in channels if _label(ch) in wanted]
         # The read ran outside _lock, so the family may have changed under
         # it: its last member closed (forget dropped it) or the session was
         # replaced (reset). Check and register in one critical section.

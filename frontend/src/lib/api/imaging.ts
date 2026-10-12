@@ -434,6 +434,26 @@ export function grainsTrainPreview(
 
 /** Open a Bruker NanoScope scan's other channels (phase, amplitude,
  *  modulus, …) as new images; [] when they are all open already. */
-export function openAfmChannels(id: string): Promise<ImageMeta[]> {
-  return post(`/api/afm/${encodeURIComponent(id)}/channels`, {});
+export interface AfmChannelInfo {
+  label: string;
+  image_id: string | null;
+}
+
+/** Inspect every channel in an SPM scan without opening closed channels. */
+export async function listAfmChannels(
+  id: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<AfmChannelInfo[]> {
+  return json(
+    await fetch(`/api/afm/${encodeURIComponent(id)}/channels`, {
+      signal: options.signal,
+    }),
+  );
+}
+
+export function openAfmChannels(
+  id: string,
+  labels?: string[],
+): Promise<ImageMeta[]> {
+  return post(`/api/afm/${encodeURIComponent(id)}/channels`, { labels });
 }

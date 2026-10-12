@@ -198,6 +198,8 @@ export default function Inspector() {
     ["Shape", meta.shape.join(" × ")],
     ["Dtype", meta.dtype],
   ];
+  const channel = meta.meta.channel_label ?? meta.meta.channel;
+  if (typeof channel === "string") rows.splice(1, 0, ["Channel", channel]);
   const px = fmtPixelSize(meta);
   if (px) rows.push(["Pixel size", px]);
   if (meta.n_channels !== null) {
@@ -206,7 +208,9 @@ export default function Inspector() {
   const en = fmtEnergy(meta);
   if (en) rows.push(["Energy", en]);
 
-  const extra = Object.entries(meta.meta).slice(0, 12);
+  const extra = Object.entries(meta.meta)
+    .filter(([key]) => key !== "channel" && key !== "channel_label")
+    .slice(0, 12);
   // unified browser only for raster images; spectra fall back to cards
   const unified = toolsLayout === "unified" && meta.kind !== "spectrum";
 
