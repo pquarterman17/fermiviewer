@@ -303,6 +303,28 @@ def test_targeted_open_rejects_unknown_channel(client, monkeypatch) -> None:
     assert response.json()["detail"] == "unknown channel label: Not present"
 
 
+def test_disk_channel_inventory_caches_labels(client, monkeypatch) -> None:
+    """Changing among a disk scan's channels must not decode every array on
+    each inventory GET; POST still performs the full read when opening."""
+    from fermiviewer.routes import afm
+
+    channels = [_channel(label) for label in _LABELS]
+    reads = 0
+
+    def load(_path):
+        nonlocal reads
+        reads += 1
+        return channels
+
+    root = store.add_parsed(channels[0], "scan.spm")
+    monkeypatch.setattr(store, "source_path", lambda _image_id: "scan.spm")
+    monkeypatch.setattr(afm, "load_spm_channels", load)
+
+    assert client.get(f"/api/afm/{root}/channels").status_code == 200
+    assert client.get(f"/api/afm/{root}/channels").status_code == 200
+    assert reads == 1
+
+
 @pytest.fixture()
 def fake_scan(client, monkeypatch):
     """An 'uploaded' 3-channel scan whose channel read can be held open:

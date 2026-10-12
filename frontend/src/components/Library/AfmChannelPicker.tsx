@@ -8,6 +8,8 @@ import {
 } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
 
+// Keep in sync with backend io/spm_channels.py's SPM_PARSERS. The wire meta
+// intentionally exposes parser identity rather than an AFM-specific flag.
 const SPM_PARSERS = new Set([
   "nanoscope",
   "gwyddion",
@@ -29,15 +31,21 @@ export default function AfmChannelPicker({ meta }: { meta: ImageMeta | null }) {
   const ingest = useViewer((s) => s.ingest);
   const select = useViewer((s) => s.select);
   const setStatus = useViewer((s) => s.setStatus);
+  const images = useViewer((s) => s.images);
   const [channels, setChannels] = useState<AfmChannelInfo[]>([]);
   const [busy, setBusy] = useState(false);
 
   const parser = meta?.meta.parser;
   const isSpm = typeof parser === "string" && SPM_PARSERS.has(parser);
+  const imageIds = Object.keys(images).sort().join(",");
+
+  useEffect(() => setChannels([]), [meta?.id]);
 
   useEffect(() => {
-    setChannels([]);
-    if (!meta || !isSpm) return;
+    if (!meta || !isSpm) {
+      setChannels([]);
+      return;
+    }
     const controller = new AbortController();
     void listAfmChannels(meta.id, { signal: controller.signal })
       .then(setChannels)
@@ -45,16 +53,20 @@ export default function AfmChannelPicker({ meta }: { meta: ImageMeta | null }) {
         if (error.name !== "AbortError") setStatus(`channels: ${error.message}`);
       });
     return () => controller.abort();
-  }, [isSpm, meta, setStatus]);
+  }, [imageIds, isSpm, meta, setStatus]);
 
   if (!meta || channels.length < 2) return null;
 
+  const isLive = (
+    item: AfmChannelInfo,
+  ): item is AfmChannelInfo & { image_id: string } =>
+    item.image_id !== null && item.image_id in images;
   const current = channels.find((item) => item.image_id === meta.id)?.label
     ?? channelLabel(meta);
 
   const choose = async (label: string) => {
     const known = channels.find((item) => item.label === label);
-    if (known?.image_id) {
+    if (known && isLive(known)) {
       select(known.image_id, "single");
       return;
     }
@@ -65,6 +77,12 @@ export default function AfmChannelPicker({ meta }: { meta: ImageMeta | null }) {
         ingest(opened);
         select(opened[0].id, "single");
         setStatus(`opened ${label}`);
+      } else {
+        // Another surface may have opened it since this inventory response.
+        const refreshed = await listAfmChannels(meta.id);
+        setChannels(refreshed);
+        const nowOpen = refreshed.find((item) => item.label === label);
+        if (nowOpen && isLive(nowOpen)) select(nowOpen.image_id, "single");
       }
     } catch (error) {
       setStatus(`channels: ${(error as Error).message}`);
@@ -96,7 +114,7 @@ export default function AfmChannelPicker({ meta }: { meta: ImageMeta | null }) {
     }
   };
 
-  const closed = channels.filter((item) => !item.image_id).length;
+  const closed = channels.filter((item) => !isLive(item)).length;
   return (
     <section className="fvd-afm-channels" aria-label="AFM scan channels">
       <label htmlFor="fvd-afm-channel-select">
@@ -109,7 +127,7 @@ export default function AfmChannelPicker({ meta }: { meta: ImageMeta | null }) {
         >
           {channels.map((item) => (
             <option key={item.label} value={item.label}>
-              {item.label}{item.image_id ? "" : " — closed"}
+              {item.label}{isLive(item) ? "" : " — closed"}
             </option>
           ))}
         </select>

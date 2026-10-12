@@ -51,6 +51,9 @@ class _Family:
 
     source: list[DataStruct] | str          # cached upload channels, or a file path
     members: dict[str, str] = field(default_factory=dict)
+    # Inventory GETs only need labels. Cache them separately so selecting
+    # among channels of a large disk scan does not decode every array again.
+    labels: list[str] | None = None
     # held for a whole open (read + register): two overlapping requests —
     # a double-click, or two siblings — must not both see a label as
     # missing and each register it
@@ -70,7 +73,10 @@ def _label(ds: DataStruct) -> str:
 
 def _join(img_id: str, source: list[DataStruct] | str) -> None:
     """Start a family rooted at `img_id` (caller holds the lock)."""
-    _families[img_id] = _Family(source, {_label(store.get(img_id)): img_id})
+    labels = [_label(ch) for ch in source] if isinstance(source, list) else None
+    _families[img_id] = _Family(
+        source, {_label(store.get(img_id)): img_id}, labels=labels,
+    )
     _member_of[img_id] = img_id
 
 
@@ -133,14 +139,15 @@ def list_channels(image_id: str) -> list[ChannelInfo]:
     _require_spm(image_id)
     _, fam = _family(image_id)
     with fam.opening:
-        channels = _read(fam.source)
+        if fam.labels is None:
+            fam.labels = [_label(ch) for ch in _read(fam.source)]
         live = set(store.ids())
         return [
             ChannelInfo(
-                label=_label(ch),
-                image_id=(iid if (iid := fam.members.get(_label(ch))) in live else None),
+                label=label,
+                image_id=(iid if (iid := fam.members.get(label)) in live else None),
             )
-            for ch in channels
+            for label in fam.labels
         ]
 
 
@@ -159,6 +166,8 @@ def open_other_channels(
     metas = []
     with fam.opening:
         channels = _read(fam.source)
+        if fam.labels is None:
+            fam.labels = [_label(ch) for ch in channels]
         available = {_label(ch) for ch in channels}
         requested = None if request is None else request.labels
         if requested is not None:

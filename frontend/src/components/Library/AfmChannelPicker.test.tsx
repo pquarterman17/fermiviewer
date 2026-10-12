@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -42,6 +42,8 @@ const phase: ImageMeta = {
   value_unit: "deg",
   meta: { ...root.meta, channel_label: "Phase (retrace)" },
 };
+
+const reopenedPhase: ImageMeta = { ...phase, id: "phase-reopened" };
 
 beforeEach(() => {
   vi.mocked(listAfmChannels).mockReset();
@@ -89,7 +91,7 @@ describe("AFM channel picker", () => {
         { label: "Height (retrace)", image_id: "height" },
         { label: "Phase (retrace)", image_id: null },
       ])
-      .mockResolvedValueOnce([
+      .mockResolvedValue([
         { label: "Height (retrace)", image_id: "height" },
         { label: "Phase (retrace)", image_id: "phase" },
       ]);
@@ -100,5 +102,33 @@ describe("AFM channel picker", () => {
     await waitFor(() => expect(useViewer.getState().images.phase).toEqual(phase));
     expect(openAfmChannels).toHaveBeenCalledWith("height");
     expect(useViewer.getState().activeId).toBe("height");
+  });
+
+  it("reopens a channel whose cached image id has since closed", async () => {
+    vi.mocked(listAfmChannels).mockResolvedValue([
+      { label: "Height (retrace)", image_id: "height" },
+      { label: "Phase (retrace)", image_id: "phase" },
+    ]);
+    vi.mocked(openAfmChannels).mockResolvedValue([reopenedPhase]);
+    useViewer.setState({
+      order: [root.id, phase.id],
+      images: { [root.id]: root, [phase.id]: phase },
+    });
+    render(<AfmChannelPicker meta={root} />);
+    const selector = await screen.findByRole("combobox");
+
+    act(() => {
+      useViewer.setState({ order: [root.id], images: { [root.id]: root } });
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("option", { name: /Phase.*closed/ })).toBeVisible(),
+    );
+    fireEvent.change(selector, { target: { value: "Phase (retrace)" } });
+
+    await waitFor(() => {
+      expect(openAfmChannels).toHaveBeenCalledWith("height", ["Phase (retrace)"]);
+      expect(useViewer.getState().activeId).toBe("phase-reopened");
+    });
+    expect(useViewer.getState().images["phase-reopened"]).toEqual(reopenedPhase);
   });
 });
