@@ -1,0 +1,123 @@
+/* AFM ISO 25178 result summary, grouped metrics, and plot navigation. */
+.fvd-afm-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.fvd-afm-section-head > div { display: grid; gap: 2px; }
+.fvd-afm-section-head h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-semibold);
+}
+.fvd-afm-section-head span { color: var(--text-faint); font-size: 10px; }
+.fvd-afm-count {
+  flex: none;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.fvd-afm-summary {
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border-soft));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface-2));
+}
+
+.fvd-afm-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 6px;
+}
+
+.fvd-afm-summary-metric {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.fvd-afm-summary-metric .k {
+  color: var(--accent-text);
+  font-size: 10px;
+  font-weight: var(--weight-semibold);
+}
+
+.fvd-afm-summary-metric .v,
+.fvd-afm-metric-row .v {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.fvd-afm-summary-metric .v { font-size: 13px; }
+.fvd-afm-summary-metric .d { color: var(--text-faint); font-size: 9px; line-height: 1.25; }
+.fvd-afm-groups { display: grid; gap: 5px; }
+.fvd-afm-group {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  overflow: clip;
+}
+
+.fvd-afm-group summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  color: var(--text-dim);
+  cursor: pointer;
+  list-style: none;
+}
+
+.fvd-afm-group summary::-webkit-details-marker { display: none; }
+.fvd-afm-group summary::before { content: "›"; color: var(--text-faint); font-size: 15px; }
+.fvd-afm-group[open] summary::before { transform: rotate(90deg); }
+.fvd-afm-group summary span:last-child { margin-left: auto; color: var(--text-faint); font-size: 10px; }
+.fvd-afm-metric-list { border-top: 1px solid var(--border-soft); }
+.fvd-afm-metric-row {
+  display: grid;
+  grid-template-columns: 44px minmax(120px, 1fr) auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 9px;
+  font-size: 10px;
+}
+
+.fvd-afm-metric-row + .fvd-afm-metric-row { border-top: 1px solid var(--border-soft); }
+.fvd-afm-metric-row .k { color: var(--accent-text); font-weight: var(--weight-semibold); }
+.fvd-afm-metric-row .d { color: var(--text-faint); }
+.fvd-afm-plots { min-width: 0; }
+.fvd-afm-plot-tabs { display: flex; gap: 4px; margin-bottom: 5px; }
+.fvd-afm-plot-tab {
+  flex: 1;
+  min-height: 28px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-faint);
+  font-size: var(--font-size-sm);
+}
+
+.fvd-afm-plot-tab:hover { color: var(--text); border-color: var(--border); }
+.fvd-afm-plot-tab[aria-selected="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+@media (max-width: 520px) {
+  .fvd-afm-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fvd-afm-metric-row { grid-template-columns: 38px minmax(0, 1fr); }
+  .fvd-afm-metric-row .v { grid-column: 2; }
+}

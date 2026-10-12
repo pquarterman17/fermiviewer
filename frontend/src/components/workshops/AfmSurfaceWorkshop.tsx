@@ -22,6 +22,8 @@ import AnalysisRegionSelect from "./AnalysisRegionSelect";
 import PlotContextSurface from "../plots/PlotContextSurface";
 
 const NO_SHAPE: number[] = [];
+const SUMMARY_PARAMS: IsoParam[] = ["Sa", "Sq", "Sz", "Ssk", "Sal"];
+type SurfacePlot = "psd" | "height" | "slope";
 
 /** ISO 25178-2 parameter families, in the order the standard lists them. */
 export const ISO_GROUPS: { title: string; keys: IsoParam[] }[] = [
@@ -83,6 +85,7 @@ export default function AfmSurfaceWorkshop() {
   // the region the result was measured on, not the one selected now
   const [resultRegion, setResultRegion] = useState("");
   const [busy, setBusy] = useState(false);
+  const [activePlot, setActivePlot] = useState<SurfacePlot>("psd");
 
   // Each run gets a number; switching image or closing the panel bumps it,
   // so a request still in flight for the previous image is ignored when it
@@ -107,6 +110,9 @@ export default function AfmSurfaceWorkshop() {
     afmSurface(activeId, { level, roi: region.roi })
       .then((next) => {
         if (!current()) return;
+        setActivePlot((plot) => (
+          plot === "slope" && next.slope_hist.angle.length === 0 ? "psd" : plot
+        ));
         setResult(next);
         setResultRegion(runRegion);
         setStatus(`surface: Sa ${formatParam(next.params.Sa, next.z_unit)} · ` +
@@ -169,48 +175,99 @@ export default function AfmSurfaceWorkshop() {
 
       {result && (
         <>
-          {ISO_GROUPS.map((group) => (
-            <section key={group.title}>
-              <div className="fvd-ws-note">{group.title}</div>
-              <div className="fvd-metrics">
-                {group.keys.map((key) => (
-                  <div className="fvd-metric" key={key} title={DESCRIPTIONS[key]}>
-                    <span className="v">{formatParam(result.params[key], result.units[key])}</span>
-                    <span className="k">{key}</span>
-                  </div>
-                ))}
+          <section className="fvd-afm-summary" aria-labelledby="afm-summary-title">
+            <div className="fvd-afm-section-head">
+              <div>
+                <h3 id="afm-summary-title">Surface summary</h3>
+                <span>Key height, shape, and spatial measures</span>
               </div>
-            </section>
-          ))}
+              <span className="fvd-afm-count">{result.n_pixels.toLocaleString()} px</span>
+            </div>
+            <div className="fvd-afm-summary-grid">
+              {SUMMARY_PARAMS.map((key) => (
+                <Metric key={key} name={key} result={result} featured />
+              ))}
+            </div>
+          </section>
+
+          <section aria-labelledby="afm-all-metrics-title">
+            <div className="fvd-afm-section-head">
+              <div>
+                <h3 id="afm-all-metrics-title">All ISO 25178 parameters</h3>
+                <span>Expand a family for definitions and complete values</span>
+              </div>
+              <span className="fvd-afm-count">{ISO_PARAMS.length} metrics</span>
+            </div>
+            <div className="fvd-afm-groups">
+              {ISO_GROUPS.map((group) => (
+                <details className="fvd-afm-group" key={group.title}>
+                  <summary>
+                    <span>{group.title}</span>
+                    <span>{group.keys.length} parameters</span>
+                  </summary>
+                  <div className="fvd-afm-metric-list">
+                    {group.keys.map((key) => (
+                      <Metric key={key} name={key} result={result} />
+                    ))}
+                  </div>
+                </details>
+              ))}
+            </div>
+          </section>
           {!result.slopes_calibrated && (
             <div className="fvd-ws-note">
               Sdq, Sdr and slopes need heights and pixel size in length units.
             </div>
           )}
-          <CurvePlot
-            title="Radial power spectral density"
-            x={result.psd.frequency}
-            y={result.psd.power}
-            xLabel={`spatial frequency (1/${result.lateral_unit})`}
-            yLabel={`PSD (${result.z_unit}²·${result.lateral_unit}²)`}
-            log
-          />
-          <CurvePlot
-            title="Height distribution"
-            x={result.height_hist.height}
-            y={result.height_hist.percent}
-            xLabel={`height (${result.z_unit})`}
-            yLabel="% of pixels"
-          />
-          {result.slope_hist.angle.length > 0 && (
-            <CurvePlot
-              title="Slope distribution"
-              x={result.slope_hist.angle}
-              y={result.slope_hist.percent}
-              xLabel="slope (°)"
-              yLabel="% of pixels"
-            />
-          )}
+          <section className="fvd-afm-plots" aria-labelledby="afm-plots-title">
+            <div className="fvd-afm-section-head">
+              <div>
+                <h3 id="afm-plots-title">Surface distributions</h3>
+                <span>Switch views without losing your place in the results</span>
+              </div>
+            </div>
+            <div className="fvd-afm-plot-tabs" role="tablist" aria-label="Surface plots">
+              <PlotTab plot="psd" active={activePlot} onSelect={setActivePlot}>Spectrum</PlotTab>
+              <PlotTab plot="height" active={activePlot} onSelect={setActivePlot}>Heights</PlotTab>
+              {result.slope_hist.angle.length > 0 && (
+                <PlotTab plot="slope" active={activePlot} onSelect={setActivePlot}>Slopes</PlotTab>
+              )}
+            </div>
+            {activePlot === "psd" && (
+              <CurvePlot
+                id="afm-plot-psd"
+                labelledBy="afm-tab-psd"
+                title="Radial power spectral density"
+                x={result.psd.frequency}
+                y={result.psd.power}
+                xLabel={`spatial frequency (1/${result.lateral_unit})`}
+                yLabel={`PSD (${result.z_unit}²·${result.lateral_unit}²)`}
+                log
+              />
+            )}
+            {activePlot === "height" && (
+              <CurvePlot
+                id="afm-plot-height"
+                labelledBy="afm-tab-height"
+                title="Height distribution"
+                x={result.height_hist.height}
+                y={result.height_hist.percent}
+                xLabel={`height (${result.z_unit})`}
+                yLabel="% of pixels"
+              />
+            )}
+            {activePlot === "slope" && result.slope_hist.angle.length > 0 && (
+              <CurvePlot
+                id="afm-plot-slope"
+                labelledBy="afm-tab-slope"
+                title="Slope distribution"
+                x={result.slope_hist.angle}
+                y={result.slope_hist.percent}
+                xLabel="slope (°)"
+                yLabel="% of pixels"
+              />
+            )}
+          </section>
           <div className="fvd-ws-note">
             {result.n_pixels.toLocaleString()} valid pixels · {resultRegion} ·{" "}
             {result.level} levelling
@@ -225,9 +282,74 @@ export default function AfmSurfaceWorkshop() {
   );
 }
 
-function CurvePlot({
-  title, x, y, xLabel, yLabel, log = false,
+function Metric({
+  name, result, featured = false,
 }: {
+  name: IsoParam;
+  result: AfmSurfaceResult;
+  featured?: boolean;
+}) {
+  const value = formatParam(result.params[name], result.units[name]);
+  if (featured) {
+    return (
+      <div className="fvd-afm-summary-metric" aria-label={`${name}, ${DESCRIPTIONS[name]}: ${value}`}>
+        <span className="k">{name}</span>
+        <span className="v">{value}</span>
+        <span className="d">{DESCRIPTIONS[name]}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="fvd-afm-metric-row">
+      <span className="k">{name}</span>
+      <span className="d">{DESCRIPTIONS[name]}</span>
+      <span className="v">{value}</span>
+    </div>
+  );
+}
+
+function PlotTab({
+  plot, active, onSelect, children,
+}: {
+  plot: SurfacePlot;
+  active: SurfacePlot;
+  onSelect: (plot: SurfacePlot) => void;
+  children: string;
+}) {
+  return (
+    <button
+      type="button"
+      id={`afm-tab-${plot}`}
+      role="tab"
+      aria-selected={active === plot}
+      aria-controls={`afm-plot-${plot}`}
+      tabIndex={active === plot ? 0 : -1}
+      className="fvd-afm-plot-tab"
+      onClick={() => onSelect(plot)}
+      onKeyDown={(event) => {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        const tabs = Array.from(
+          event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? [],
+        );
+        const index = tabs.indexOf(event.currentTarget);
+        const nextIndex = event.key === "Home" ? 0
+          : event.key === "End" ? tabs.length - 1
+            : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+        event.preventDefault();
+        tabs[nextIndex]?.focus();
+        tabs[nextIndex]?.click();
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function CurvePlot({
+  id, labelledBy, title, x, y, xLabel, yLabel, log = false,
+}: {
+  id: string;
+  labelledBy: string;
   title: string;
   x: number[];
   y: number[];
@@ -272,7 +394,7 @@ function CurvePlot({
 
   const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-");
   return (
-    <section>
+    <section id={id} role="tabpanel" aria-labelledby={labelledBy}>
       <div className="fvd-ws-note">{title}</div>
       <PlotContextSurface
         ref={host}

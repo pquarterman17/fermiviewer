@@ -81,6 +81,35 @@ describe("AfmSurfaceWorkshop", () => {
       fireEvent.click(screen.getByRole("button", { name: "Analyze" }));
     });
     expect(screen.getAllByText("3.000 nm").length).toBeGreaterThan(0);
+    expect(screen.getByRole("heading", { name: "Surface summary" })).toBeVisible();
+    expect(screen.getByText(`${ISO_PARAMS.length} metrics`)).toBeVisible();
+  });
+
+  it("groups complete results and shows one selected plot at a time", async () => {
+    const result = surface(3);
+    result.psd = { frequency: [1, 2], power: [3, 4] };
+    result.height_hist = { height: [1, 2], percent: [3, 4] };
+    result.slope_hist = { angle: [1, 2], percent: [3, 4] };
+    vi.mocked(afmSurface).mockResolvedValue(result);
+    useViewer.getState().ingest([image("a")]);
+    useViewer.getState().setActive("a");
+    render(<AfmSurfaceWorkshop />);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Analyze" })));
+
+    expect(screen.getAllByText("Height").length).toBeGreaterThan(0);
+    expect(screen.getByText("7 parameters")).toBeVisible();
+    expect(screen.getByRole("tab", { name: "Spectrum" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("Radial power spectral density")).toBeVisible();
+    expect(screen.queryByText("Height distribution")).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Heights" }));
+    expect(screen.getByRole("tab", { name: "Heights" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("Height distribution")).toBeVisible();
+    expect(screen.queryByText("Radial power spectral density")).toBeNull();
+
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Heights" }), { key: "ArrowRight" });
+    expect(screen.getByRole("tab", { name: "Slopes" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("Slope distribution")).toBeVisible();
   });
 
   it("labels the result with the region and levelling it was measured with", async () => {
