@@ -54,6 +54,7 @@
   display: flex;
   justify-content: space-between;
   margin-top: 5px;
+  margin-bottom: 0;
   padding: 3px 4px 2px;
   border-bottom: 1px solid var(--border-soft);
   color: var(--text-dim);
@@ -61,7 +62,7 @@
   font-weight: var(--weight-semibold);
 }
 
-.fvd-eds-candidate-heading:first-child {
+.fvd-eds-candidate-sections > section:first-child .fvd-eds-candidate-heading {
   margin-top: 0;
 }
 

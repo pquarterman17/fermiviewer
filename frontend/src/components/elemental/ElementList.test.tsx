@@ -85,14 +85,27 @@ describe("ElementList", () => {
       }],
     });
 
-    expect(screen.getByText("1 recommended · 1 possible · 1 rejected · 1 retained · 2 shown")).toBeVisible();
+    const summary = screen.getByText("1 recommended · 1 possible · 1 rejected · 1 selected by you · 2 shown");
+    expect(summary).toBeVisible();
+    expect(summary).not.toHaveAttribute("aria-live");
     expect(screen.getByRole("heading", { name: "Recommended: 1" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Possible — review before mapping: 1" })).toBeVisible();
-    expect(screen.getByRole("heading", { name: "Your selection: 1" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Selected by you: 1" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Recommended: 1" }).closest("section"))
+      .toHaveAttribute("aria-labelledby");
     fireEvent.click(screen.getByText("1 rejected match"));
     expect(screen.getByRole("list", { name: "Rejected element matches" })).toHaveTextContent(
       "U Mαsignal is at or below the estimated backgroundnet -42",
     );
+  });
+
+  it("does not append alpha to an explicit EDS sub-line", () => {
+    const explicit = row("Cu", 100, "weak");
+    explicit.species.transition = "Lβ";
+    explicit.evidence!.transition = "Lβ";
+    renderList({ rows: [explicit] });
+    expect(screen.getByText("Lβ")).toBeVisible();
+    expect(screen.queryByText("Lβα")).toBeNull();
   });
 
   it("ticks confident elements and leaves trace ones present but unticked", () => {

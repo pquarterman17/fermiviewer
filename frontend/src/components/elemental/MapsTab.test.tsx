@@ -154,7 +154,7 @@ describe("MapsTab row selection", () => {
 });
 
 describe("MapsTab candidate evidence", () => {
-  it("preserves a manual non-positive measurement across re-identification", async () => {
+  it("remeasures a retained manual candidate with the current background", async () => {
     vi.mocked(edsAutoAssign).mockResolvedValue({ peaks_kev: [], assignments: [] });
     vi.mocked(fetchSpectrum).mockResolvedValue({
       energy: [1.6, 1.65, 1.7, 1.74, 1.78, 1.82, 1.9],
@@ -164,15 +164,17 @@ describe("MapsTab candidate evidence", () => {
     vi.mocked(edsLineEnergy).mockResolvedValue({ symbol: "Ta", energy_kev: 1.74, line: "L" });
     vi.mocked(edsElementMaps).mockResolvedValue(mapsReply([]));
 
-    render(<MapsTab bg="linear" e0Kev={30} />);
+    const { rerender } = render(<MapsTab bg="linear" e0Kev={30} />);
     await waitFor(() => expect(screen.getByText(/No elements identified/)).toBeVisible());
     fireEvent.click(screen.getByRole("button", { name: "+ Add" }));
     fireEvent.click(screen.getByRole("button", { name: /^Ta/ }));
     await waitFor(() => expect(screen.getByText("trace?")).toBeVisible());
 
+    rerender(<MapsTab bg="none" e0Kev={30} />);
     fireEvent.click(screen.getByRole("button", { name: "Re-ID" }));
     await waitFor(() => expect(edsAutoAssign).toHaveBeenCalledTimes(2));
-    expect(screen.getByText("trace?")).toBeVisible();
-    expect(screen.getByRole("heading", { name: /Your selection/ })).toBeVisible();
+    await waitFor(() => expect(screen.getByText("weak")).toBeVisible());
+    expect(screen.queryByText("trace?")).toBeNull();
+    expect(screen.getByRole("heading", { name: /Selected by you/ })).toBeVisible();
   });
 });

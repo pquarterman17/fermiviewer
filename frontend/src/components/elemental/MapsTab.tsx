@@ -130,16 +130,28 @@ export default function EdsMapsTab({
       const result = identifyElementCandidates(auto, spectrum, { background: bg, e0Kev });
       const found = result.elements;
       setRejected(result.rejected);
-      // Re-ID refreshes automatic evidence but must not erase a measurement
-      // the user explicitly requested, including a non-positive one.
+      // Re-ID refreshes both automatic and retained manual evidence. Manual
+      // species remain the user's decision, but their confidence must follow
+      // the current spectrum/background/E0 rather than a stale measurement.
       setEvidence((previous) => {
         const currentSpecies = speciesOf(useSpecies.getState().byImage, id);
-        const keys = new Set(
-          currentSpecies.map((sp) => `${sp.symbol}|${sp.transition}`),
-        );
-        const manual = previous.filter(
-          (item) => item.source === "manual" && keys.has(`${item.symbol}|${item.transition}`),
-        );
+        const manual = previous.flatMap((item) => {
+          if (item.source !== "manual") return [];
+          const retained = currentSpecies.find(
+            (sp) => sp.symbol === item.symbol && sp.transition === item.transition,
+          );
+          if (!retained) return [];
+          return [
+            measureElement(
+              retained.symbol,
+              retained.transition,
+              retained.energy,
+              spectrum,
+              found,
+              { background: bg, e0Kev },
+            ) ?? item,
+          ];
+        });
         const manualKeys = new Set(manual.map((item) => `${item.symbol}|${item.transition}`));
         return [...found.filter((item) => !manualKeys.has(`${item.symbol}|${item.transition}`)), ...manual];
       });

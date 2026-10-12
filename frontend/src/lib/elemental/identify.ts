@@ -86,6 +86,14 @@ export interface IdentificationResult {
   rejected: RejectedElement[];
 }
 
+/** Add the conventional alpha sub-line only when the backend supplied a
+ * shell family. Future line tables may return an explicit sub-line already. */
+export function edsLineLabel(transition: string): string {
+  return /(?:[αβγ]|alpha|beta|gamma)$/iu.test(transition)
+    ? transition
+    : `${transition}α`;
+}
+
 /** Counting-statistics bands. A peak at 100σ in a whole-cube sum spectrum is
  *  unambiguous; below ~10σ it is as likely to be a background fluctuation as
  *  an element. Positive trace rows therefore arrive unticked rather than
@@ -153,7 +161,7 @@ export function identifyElementCandidates(
         energy: alternative.energy_kev,
         deltaKev: Math.abs(alternative.delta_kev),
         reason: "line_overlap",
-        detail: `line overlap; peak better matches ${top.symbol} ${top.line}α`,
+        detail: `line overlap; peak better matches ${top.symbol} ${edsLineLabel(top.line)}`,
         net: null,
       });
     }
