@@ -157,6 +157,11 @@
   flex: 1;
 }
 
+.fvd-film-card.names .fvd-film-channel {
+  max-width: 45%;
+  padding: 4px 7px 4px 0;
+}
+
 .fvd-film-ctx {
   position: fixed;
   z-index: 60;

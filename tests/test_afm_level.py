@@ -260,6 +260,71 @@ def _channel(label: str) -> DataStruct:
                       metadata={"parser": "nanoscope", "channel_label": label})
 
 
+def test_channel_inventory_and_targeted_open(client, monkeypatch) -> None:
+    """The import-time selector can inspect without opening, then request
+    exactly one channel; the legacy open-all request remains incremental."""
+    from fermiviewer.routes import afm
+
+    channels = [_channel(label) for label in _LABELS]
+    monkeypatch.setattr(afm, "load_spm_channels", lambda _path: channels)
+    root = store.add_parsed(channels[0], "scan.spm")
+    afm.stash_upload_channels(root, Path("scan.spm"))
+
+    inventory = client.get(f"/api/afm/{root}/channels")
+    assert inventory.status_code == 200
+    assert inventory.json() == [
+        {"label": _LABELS[0], "image_id": root},
+        {"label": _LABELS[1], "image_id": None},
+        {"label": _LABELS[2], "image_id": None},
+    ]
+
+    opened = client.post(
+        f"/api/afm/{root}/channels", json={"labels": [_LABELS[1]]},
+    )
+    assert opened.status_code == 200
+    assert [item["name"] for item in opened.json()] == [f"scan.spm · {_LABELS[1]}"]
+    assert len(store.ids()) == 2
+
+    remaining = client.post(f"/api/afm/{root}/channels", json={}).json()
+    assert [item["name"] for item in remaining] == [f"scan.spm · {_LABELS[2]}"]
+
+
+def test_targeted_open_rejects_unknown_channel(client, monkeypatch) -> None:
+    from fermiviewer.routes import afm
+
+    channels = [_channel(label) for label in _LABELS]
+    monkeypatch.setattr(afm, "load_spm_channels", lambda _path: channels)
+    root = store.add_parsed(channels[0], "scan.spm")
+    afm.stash_upload_channels(root, Path("scan.spm"))
+    response = client.post(
+        f"/api/afm/{root}/channels", json={"labels": ["Not present"]},
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"] == "unknown channel label: Not present"
+
+
+def test_disk_channel_inventory_caches_labels(client, monkeypatch) -> None:
+    """Changing among a disk scan's channels must not decode every array on
+    each inventory GET; POST still performs the full read when opening."""
+    from fermiviewer.routes import afm
+
+    channels = [_channel(label) for label in _LABELS]
+    reads = 0
+
+    def load(_path):
+        nonlocal reads
+        reads += 1
+        return channels
+
+    root = store.add_parsed(channels[0], "scan.spm")
+    monkeypatch.setattr(store, "source_path", lambda _image_id: "scan.spm")
+    monkeypatch.setattr(afm, "load_spm_channels", load)
+
+    assert client.get(f"/api/afm/{root}/channels").status_code == 200
+    assert client.get(f"/api/afm/{root}/channels").status_code == 200
+    assert reads == 1
+
+
 @pytest.fixture()
 def fake_scan(client, monkeypatch):
     """An 'uploaded' 3-channel scan whose channel read can be held open:

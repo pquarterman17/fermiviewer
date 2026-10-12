@@ -325,6 +325,51 @@ body {
   color: var(--text);
 }
 
+.fvd-film-channel {
+  padding: 0 7px 5px;
+  color: var(--accent-text);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fvd-afm-channels {
+  display: grid;
+  gap: 5px;
+  padding: 7px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.fvd-afm-channels label {
+  display: grid;
+  gap: 4px;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.fvd-afm-channels select,
+.fvd-afm-channels button {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text);
+  font: inherit;
+}
+
+.fvd-afm-channels select {
+  padding: 5px;
+}
+
+.fvd-afm-channels button {
+  padding: 4px 6px;
+  color: var(--accent-text);
+}
+
 .fvd-film-empty {
   color: var(--text-faint);
   font-size: var(--font-size-sm);

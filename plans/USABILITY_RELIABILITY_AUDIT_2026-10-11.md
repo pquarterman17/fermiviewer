@@ -1,6 +1,6 @@
 # Usability and reliability audit — EDS, AFM, and analysis workflows
 
-**Status:** Active — items 1–4 shipped; item 5 implemented, awaiting review
+**Status:** Active — items 1–5 shipped; item 6 implemented, awaiting review
 
 **Owner:** Codex (lead implementation); Claude reviews each pull request
 
@@ -177,6 +177,15 @@ blind mechanical rewrite.
 - New analysis families are out of scope for this bug/usability pass.
 
 ## Progress log
+
+- 2026-10-11 — Item 6 implemented: active multi-channel AFM/SPM imports now
+  show a compact library channel inventory and selector. Closed channels can
+  be opened individually, all remaining channels can still be opened in one
+  action, bulk opening preserves the channel currently on stage, and library
+  cards plus the Inspector identify the channel independently of the shared
+  filename. The legacy Analysis → AFM/SPM → Open Other Channels action remains
+  available. Full gate: 4,069 backend tests passed (8 skipped), Ruff and mypy
+  passed, 2,038 frontend tests passed, and the production build passed.
 
 - 2026-10-11 — Item 5 implemented: the shared Elemental Analysis window now
   remembers its preferred size across EDS/EELS, can collapse to reveal the

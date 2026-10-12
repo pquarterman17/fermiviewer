@@ -45,6 +45,23 @@ describe("Filmstrip view toggle", () => {
       screen.getByRole("button", { name: "Show thumbnails" }),
     ).toHaveAttribute("aria-pressed", "true");
   });
+
+  it("shows an AFM channel identity separately from the shared filename", () => {
+    const afm = {
+      ...meta("scan"),
+      name: "scan.spm",
+      meta: { channel_label: "Height (retrace)" },
+    };
+    useViewer.setState({
+      order: [afm.id],
+      activeId: afm.id,
+      images: { [afm.id]: afm },
+      selected: [afm.id],
+    });
+    render(<Filmstrip />);
+    expect(screen.getByText("scan.spm")).toBeVisible();
+    expect(screen.getByText("Height (retrace)")).toBeVisible();
+  });
 });
 
 describe("Filmstrip keyboard selection", () => {

@@ -64,6 +64,24 @@ describe("Inspector Elemental launcher", () => {
   });
 });
 
+describe("Inspector AFM identity", () => {
+  it("promotes the scan channel to a labelled metadata row", () => {
+    const afm: ImageMeta = {
+      ...cube,
+      id: "afm",
+      name: "scan.spm",
+      kind: "image",
+      shape: [8, 8],
+      n_channels: null,
+      meta: { parser: "nanoscope", channel_label: "Height (retrace)" },
+    };
+    useViewer.setState({ images: { afm }, order: ["afm"], activeId: "afm" });
+    render(<Inspector />);
+    expect(screen.getByText("Channel")).toBeInTheDocument();
+    expect(screen.getByText("Height (retrace)")).toBeInTheDocument();
+  });
+});
+
 describe("Inspector unified tools layout", () => {
   it("keeps profile options, overlay style and tilt correction available", () => {
     const img: ImageMeta = { ...cube, id: "img", kind: "image", shape: [8, 8], n_channels: null };
