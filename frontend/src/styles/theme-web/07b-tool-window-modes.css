@@ -1,0 +1,30 @@
+/* Optional modes for content-heavy floating workshops. Kept separate from
+   the base workshop sheet so its shared window primitives stay reviewable. */
+
+.fvd-tool-title > span {
+  min-width: 0;
+}
+
+.fvd-tool-title-actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.fvd-tool-title-actions .fvd-icon-btn {
+  width: 22px;
+  height: 22px;
+  color: var(--text-faint);
+}
+
+.fvd-tool-window.collapsed {
+  min-height: 0;
+  height: auto !important;
+}
+
+.fvd-tool-window.expanded {
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+}

@@ -50,6 +50,16 @@
   list-style: none;
 }
 
+/* Candidate growth must not push the map mode and export controls below the
+   tool window's fold. The list scrolls independently while its header and all
+   downstream map controls remain in view. */
+.fvd-eds-candidate-sections,
+.fvd-eds-element-scroll {
+  max-height: min(32vh, 260px);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
 .fvd-eds-candidate-heading {
   display: flex;
   justify-content: space-between;

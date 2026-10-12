@@ -1,6 +1,6 @@
 # Usability and reliability audit — EDS, AFM, and analysis workflows
 
-**Status:** Active — items 1–3 shipped; item 4 implemented, awaiting review
+**Status:** Active — items 1–4 shipped; item 5 implemented, awaiting review
 
 **Owner:** Codex (lead implementation); Claude reviews each pull request
 
@@ -177,6 +177,12 @@ blind mechanical rewrite.
 - New analysis families are out of scope for this bug/usability pass.
 
 ## Progress log
+
+- 2026-10-11 — Item 5 implemented: the shared Elemental Analysis window now
+  remembers its preferred size across EDS/EELS, can collapse to reveal the
+  source image or expand into a full-workspace view, and keeps long candidate
+  lists in a bounded scroll region so map mode and export controls stay
+  reachable. Awaiting Claude review.
 
 - 2026-10-11 — Item 2 AFM half implemented: Roughness and Noise analysis now
   use the shared source-scoped request lease, as does Noise's recommended-filter
