@@ -294,7 +294,10 @@ export default function ElementList({
           })}
         </div>
       ) : (
-        <ul className="fvd-eds-element-rows" onMouseLeave={() => onHover(null)}>
+        <ul
+          className="fvd-eds-element-rows fvd-eds-element-scroll"
+          onMouseLeave={() => onHover(null)}
+        >
           {renderRows(rows)}
         </ul>
       )}

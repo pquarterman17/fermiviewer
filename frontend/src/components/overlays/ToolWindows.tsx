@@ -80,6 +80,8 @@ export default function ToolWindows() {
       z={tool.z}
       width={defaultWidths[tool.kind] ?? 360}
       height={["eds", "eels", "diffraction", "fourd", "results"].includes(tool.kind) ? 620 : undefined}
+      layoutKey={["eds", "eels"].includes(tool.kind) ? "elemental" : undefined}
+      workspaceControls={["eds", "eels"].includes(tool.kind)}
     >
       <Suspense
         fallback={

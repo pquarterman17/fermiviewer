@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useViewer } from "../../store/viewer";
@@ -156,5 +156,75 @@ describe("ToolWindows", () => {
     expect(
       screen.getByRole("separator", { name: "Resize Elemental Analysis window" }),
     ).toBeVisible();
+  });
+
+  it("collapses the elemental workspace without closing it", async () => {
+    useViewer.setState({ tools: [{ kind: "eds", x: 10, y: 20, z: 1 }] });
+    render(<ToolWindows />);
+    await screen.findByText("Elemental workspace content");
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse Elemental Analysis" }));
+    expect(screen.getByText("Elemental workspace content")).not.toBeVisible();
+    expect(screen.getByText("Elemental Analysis")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand Elemental Analysis" }));
+    expect(screen.getByText("Elemental workspace content")).toBeVisible();
+  });
+
+  it("offers a reversible full-workspace elemental view", async () => {
+    useViewer.setState({ tools: [{ kind: "eds", x: 10, y: 20, z: 1 }] });
+    render(<ToolWindows />);
+    const content = await screen.findByText("Elemental workspace content");
+
+    fireEvent.click(screen.getByRole("button", { name: "Use full workspace for Elemental Analysis" }));
+    expect(content.closest(".fvd-tool-window")).toHaveClass("expanded");
+    fireEvent.click(screen.getByRole("button", { name: "Restore Elemental Analysis window" }));
+    expect(content.closest(".fvd-tool-window")).not.toHaveClass("expanded");
+  });
+
+  it("restores the preferred elemental size for either modality", async () => {
+    localStorage.setItem(
+      "fv_tool_size_elemental",
+      JSON.stringify({ width: 760, height: 700 }),
+    );
+    useViewer.setState({ tools: [{ kind: "eels", x: 10, y: 20, z: 1 }] });
+    render(<ToolWindows />);
+    const content = await screen.findByText("Elemental workspace content");
+    expect(content.closest(".fvd-tool-window")).toHaveStyle({
+      width: "760px",
+      height: "700px",
+    });
+  });
+
+  it("remembers an elemental resize when the drag ends", async () => {
+    useViewer.setState({ tools: [{ kind: "eds", x: 10, y: 20, z: 1 }] });
+    render(<ToolWindows />);
+    const content = await screen.findByText("Elemental workspace content");
+    const windowElement = content.closest(".fvd-tool-window") as HTMLElement;
+    vi.spyOn(windowElement, "getBoundingClientRect").mockReturnValue({
+      width: 680,
+      height: 620,
+      x: 10,
+      y: 20,
+      top: 20,
+      right: 690,
+      bottom: 640,
+      left: 10,
+      toJSON: () => ({}),
+    });
+    const grip = screen.getByRole("separator", {
+      name: "Resize Elemental Analysis window",
+    });
+    Object.defineProperties(grip, {
+      setPointerCapture: { value: vi.fn() },
+      releasePointerCapture: { value: vi.fn() },
+    });
+
+    fireEvent.pointerDown(grip, { pointerId: 1, clientX: 680, clientY: 620 });
+    fireEvent.pointerMove(grip, { pointerId: 1, clientX: 760, clientY: 700 });
+    fireEvent.pointerUp(grip, { pointerId: 1, clientX: 760, clientY: 700 });
+
+    expect(JSON.parse(localStorage.getItem("fv_tool_size_elemental") ?? "null"))
+      .toEqual({ width: 760, height: 700 });
   });
 });
