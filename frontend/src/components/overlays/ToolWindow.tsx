@@ -1,7 +1,7 @@
 // Floating workshop window frame (handoff §4 "Workshop window"):
 // draggable by title bar, focus-on-click z-order, close dot.
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useViewer, type ToolKind } from "../../store/viewer";
 import { toolWindowZIndex } from "../../styles/zLayers";
@@ -14,7 +14,12 @@ interface ToolSize {
   height?: number;
 }
 
-function savedSize(key: string | undefined, fallback: ToolSize): ToolSize {
+function savedSize(
+  key: string | undefined,
+  fallback: ToolSize,
+  availableWidth: number,
+  availableHeight: number,
+): ToolSize {
   if (!key) return fallback;
   try {
     const value = JSON.parse(localStorage.getItem(`fv_tool_size_${key}`) ?? "null") as
@@ -24,8 +29,10 @@ function savedSize(key: string | undefined, fallback: ToolSize): ToolSize {
     }
     const height = value.height;
     return {
-      width: value.width!,
-      height: Number.isFinite(height) && height! >= MIN_HEIGHT ? height : fallback.height,
+      width: Math.min(value.width!, Math.max(MIN_WIDTH, availableWidth)),
+      height: Number.isFinite(height) && height! >= MIN_HEIGHT
+        ? Math.min(height!, Math.max(MIN_HEIGHT, availableHeight))
+        : fallback.height,
     };
   } catch {
     return fallback;
@@ -69,9 +76,13 @@ export default function ToolWindow({
   const moveTool = useViewer((s) => s.moveTool);
   const closeTool = useViewer((s) => s.closeTool);
   const focusTool = useViewer((s) => s.focusTool);
-  const [size, setSize] = useState<ToolSize>(() =>
-    savedSize(layoutKey, { width, height }),
-  );
+  const [size, setSize] = useState<ToolSize>(() => savedSize(
+    layoutKey,
+    { width, height },
+    window.innerWidth - x - 8,
+    window.innerHeight - y - 8,
+  ));
+  const sizeRef = useRef(size);
   const [collapsed, setCollapsed] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const dragRef = useRef<{ dx: number; dy: number } | null>(null);
@@ -82,6 +93,15 @@ export default function ToolWindow({
     height: number;
   } | null>(null);
   const windowRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const restore = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setExpanded(false);
+    };
+    window.addEventListener("keydown", restore);
+    return () => window.removeEventListener("keydown", restore);
+  }, [expanded]);
 
   const onTitleDown = (e: React.PointerEvent) => {
     if (expanded) return;
@@ -110,7 +130,7 @@ export default function ToolWindow({
         expanded ? " expanded" : ""
       }`}
       style={expanded
-        ? { inset: 8, zIndex: toolWindowZIndex(z) }
+        ? { top: 42, right: 8, bottom: 32, left: 8, zIndex: toolWindowZIndex(z) }
         : { left: x, top: y, zIndex: toolWindowZIndex(z), ...size }}
       onMouseDown={() => focusTool(kind)}
     >
@@ -179,7 +199,7 @@ export default function ToolWindow({
         }}
         onPointerMove={(e) => {
           if (!resizeRef.current) return;
-          setSize({
+          const nextSize = {
             width: Math.max(
               MIN_WIDTH,
               Math.min(
@@ -194,13 +214,15 @@ export default function ToolWindow({
               resizeRef.current.height + e.clientY - resizeRef.current.y,
               ),
             ),
-          });
+          };
+          sizeRef.current = nextSize;
+          setSize(nextSize);
         }}
         onPointerUp={(e) => {
           resizeRef.current = null;
           e.currentTarget.releasePointerCapture(e.pointerId);
           if (layoutKey) {
-            rememberSize(layoutKey, size);
+            rememberSize(layoutKey, sizeRef.current);
           }
         }}
       />}

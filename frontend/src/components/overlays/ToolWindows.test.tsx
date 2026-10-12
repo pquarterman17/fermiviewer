@@ -178,6 +178,14 @@ describe("ToolWindows", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Use full workspace for Elemental Analysis" }));
     expect(content.closest(".fvd-tool-window")).toHaveClass("expanded");
+    expect(content.closest(".fvd-tool-window")).toHaveStyle({
+      top: "42px",
+      bottom: "32px",
+    });
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(content.closest(".fvd-tool-window")).not.toHaveClass("expanded");
+
+    fireEvent.click(screen.getByRole("button", { name: "Use full workspace for Elemental Analysis" }));
     fireEvent.click(screen.getByRole("button", { name: "Restore Elemental Analysis window" }));
     expect(content.closest(".fvd-tool-window")).not.toHaveClass("expanded");
   });
@@ -193,6 +201,20 @@ describe("ToolWindows", () => {
     expect(content.closest(".fvd-tool-window")).toHaveStyle({
       width: "760px",
       height: "700px",
+    });
+  });
+
+  it("clamps a large saved size to the available viewport", async () => {
+    localStorage.setItem(
+      "fv_tool_size_elemental",
+      JSON.stringify({ width: 2000, height: 1600 }),
+    );
+    useViewer.setState({ tools: [{ kind: "eds", x: 10, y: 20, z: 1 }] });
+    render(<ToolWindows />);
+    const content = await screen.findByText("Elemental workspace content");
+    expect(content.closest(".fvd-tool-window")).toHaveStyle({
+      width: `${window.innerWidth - 18}px`,
+      height: `${window.innerHeight - 28}px`,
     });
   });
 
