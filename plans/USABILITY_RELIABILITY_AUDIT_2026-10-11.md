@@ -1,6 +1,6 @@
 # Usability and reliability audit — EDS, AFM, and analysis workflows
 
-**Status:** Active — items 1–5 shipped; item 6 implemented, awaiting review
+**Status:** Active — items 1–6 shipped; item 7 implemented, awaiting review
 
 **Owner:** Codex (lead implementation); Claude reviews each pull request
 
@@ -177,6 +177,15 @@ blind mechanical rewrite.
 - New analysis families are out of scope for this bug/usability pass.
 
 ## Progress log
+
+- 2026-10-11 — Item 7 implemented: the zoom-dependent stage readout is now
+  explicitly labelled **Displayed scale** and uses physical-unit/screen-pixel
+  notation, while the fixed acquisition calibration is labelled **Image
+  sampling** with a concise explanation that it is independent of display
+  zoom. Anisotropic data calls out the displayed column scale, and
+  uncalibrated images say the value is unavailable rather than showing an
+  unexplained dash. Verified live with the real TopoStats AFM fixture; the two
+  formerly conflicting values are now clearly distinguished.
 
 - 2026-10-11 — Item 6 implemented: active multi-channel AFM/SPM imports now
   show a compact library channel inventory and selector. Closed channels can

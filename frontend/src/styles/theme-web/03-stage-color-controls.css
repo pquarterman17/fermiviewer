@@ -272,6 +272,17 @@
   color: var(--text-dim);
 }
 
+.fvd-scale-copy {
+  display: grid;
+  line-height: 1.15;
+}
+
+.fvd-scale-label {
+  color: var(--text-faint);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
 .fvd-scalebar {
   position: absolute;
   pointer-events: none;
