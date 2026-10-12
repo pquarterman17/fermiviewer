@@ -18,10 +18,14 @@
 // remove button all keep working on a conflicted row, exactly as they do on
 // any other.
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 
 import { setElementColor, useElementColors } from "../../lib/elemental/elementColors";
-import type { Confidence } from "../../lib/elemental/identify";
+import {
+  edsLineLabel,
+  type Confidence,
+  type RejectedElement,
+} from "../../lib/elemental/identify";
 import type { SpeciesRow } from "../../lib/elemental/speciesRows";
 import {
   conflictsFor,
@@ -66,6 +70,8 @@ function RowConflictBadge({ conflicts }: { conflicts: WindowConflict[] }) {
 
 export default function ElementList({
   rows,
+  groupCandidates = false,
+  rejectedCandidates = [],
   busy,
   quantBySymbol,
   liveNetById,
@@ -79,6 +85,10 @@ export default function ElementList({
   onFocus,
 }: {
   rows: SpeciesRow[];
+  /** Separate automatic recommendations, weak possibilities and manual rows. */
+  groupCandidates?: boolean;
+  /** Auto-ID matches that were considered but not proposed as species. */
+  rejectedCandidates?: RejectedElement[];
   busy: boolean;
   /** Optional at% per symbol, shown instead of net once quantified. */
   quantBySymbol?: Record<string, number>;
@@ -105,8 +115,26 @@ export default function ElementList({
   onFocus: (row: SpeciesRow) => void;
 }) {
   const colors = useElementColors();
+  const candidateHeadingPrefix = useId();
   const [adding, setAdding] = useState(false);
   const shown = rows.filter((r) => r.species.visible).length;
+  const recommendedRows = rows.filter(
+    (row) => row.evidence?.source !== "manual" && row.evidence?.recommended,
+  );
+  const possibleRows = rows.filter(
+    (row) => row.evidence?.source !== "manual" && row.evidence && !row.evidence.recommended,
+  );
+  const manualRows = rows.filter(
+    (row) => !row.evidence || row.evidence.source === "manual",
+  );
+  const summary = groupCandidates
+    ? `${recommendedRows.length} recommended · ${possibleRows.length} possible · ${rejectedCandidates.length} rejected · ${manualRows.length} selected by you · ${shown} shown`
+    : `${rows.length} found · ${shown} shown`;
+  const candidateSections = [
+    { id: "recommended", label: "Recommended", rows: recommendedRows },
+    { id: "possible", label: "Possible — review before mapping", rows: possibleRows },
+    { id: "selected", label: "Selected by you", rows: manualRows },
+  ].filter((section) => section.rows.length > 0);
   const conflicts = useMemo(
     () => detectWindowConflicts(rows.map((r) => r.species)),
     [rows],
@@ -116,14 +144,77 @@ export default function ElementList({
     [conflicts],
   );
 
+  const renderRows = (sectionRows: SpeciesRow[]) => sectionRows.map((row) => {
+    const { species, evidence } = row;
+    const { symbol, transition, energy, visible, modality } = species;
+    const color = colors(symbol);
+    const atPct = quantBySymbol?.[symbol];
+    const live = liveNetById?.[species.id];
+    // EDS displays a conventional X-ray line label; EELS already carries the
+    // complete edge name (for example L23) and uses eV rather than keV.
+    const isEels = modality === "eels";
+    const transitionLabel = isEels ? transition : edsLineLabel(transition);
+    // This is the reference line/onset energy, not the midpoint of the
+    // integration window, which can move independently when the user tunes it.
+    const energyLabel = isEels ? `${Math.round(energy)} eV` : energy.toFixed(3);
+    return (
+      <li
+        key={species.id}
+        className={`fvd-eds-element-row${visible ? " on" : ""}${
+          species.id === selectedId ? " selected" : ""
+        }`}
+        onMouseEnter={() => onHover(symbol)}
+      >
+        <input type="checkbox" checked={visible} aria-label={`Show ${symbol}`}
+          onChange={(event) => onToggle(species.id, event.target.checked)} />
+        <input type="color" className="fvd-eds-color-input" value={color}
+          aria-label={`Colour for ${symbol}`}
+          onChange={(event) => setElementColor(symbol, event.target.value)} />
+        <button type="button" className="fvd-eds-element-name" style={{ color }}
+          title={isEels
+            ? `Frame ${symbol}-${transition} edge on the spectrum`
+            : `Frame ${symbol} ${edsLineLabel(transition)} on the spectrum`}
+          onClick={() => onFocus(row)}>
+          {symbol}
+        </button>
+        <span className="k fvd-eds-element-line">{transitionLabel}</span>
+        <span className="fvd-eds-element-energy">{energyLabel}</span>
+        <RowConflictBadge conflicts={conflictsFor(conflicts, species.id)} />
+        <span className="fvd-eds-element-net">
+          {atPct != null
+            ? `${atPct.toFixed(1)} at%`
+            : live
+              ? `${formatCountTick(live.net)} ± ${formatCountTick(live.sigma)}`
+              : evidence ? formatCountTick(evidence.net) : "—"}
+        </span>
+        <span className="fvd-eds-strength"
+          title={evidence
+            ? `${evidence.significance.toFixed(0)}σ above background`
+            : "not measured by the last identification"}>
+          <span style={{
+            width: `${Math.round((evidence?.relative ?? 0) * 100)}%`,
+            background: color,
+          }} />
+        </span>
+        <span className={`fvd-eds-conf ${evidence?.confidence ?? ""}`}>
+          {evidence ? CONFIDENCE_LABEL[evidence.confidence] : "added"}
+        </span>
+        <button type="button" className="fvd-icon-btn"
+          aria-label={`Remove ${symbol}`} onClick={() => onRemove(species.id)}>
+          ✕
+        </button>
+      </li>
+    );
+  });
+
   return (
     <section className="fvd-eds-elements" aria-label="Identified elements">
       <header className="fvd-eds-elements-head">
         <strong>Elements</strong>
         <span className="k">
-          {busy
-            ? "Identifying…"
-            : `${rows.length} found · ${shown} shown`}
+          <span className="fvd-eds-identify-summary">
+            {busy ? "Identifying…" : summary}
+          </span>
           {/* a conflict is always between two distinct species, so this
               count is 0 or >= 2 — never the awkward singular */}
           {conflictedCount > 0 && (
@@ -181,101 +272,50 @@ export default function ElementList({
           manually, or <strong>Re-ID</strong> after changing the spectrum
           source.
         </div>
-      ) : (
-        <ul className="fvd-eds-element-rows" onMouseLeave={() => onHover(null)}>
-          {rows.map((row) => {
-            const { species, evidence } = row;
-            const { symbol, transition, energy, visible, modality } = species;
-            const color = colors(symbol);
-            const atPct = quantBySymbol?.[symbol];
-            const live = liveNetById?.[species.id];
-            // EDS lines are "Kα"/"Lα"; EELS edges have no such notation
-            // (the row already carries the edge — "L23", not "L23-alpha") —
-            // and the anchor is keV for EDS, eV for EELS, so the energy cell
-            // needs its own unit rather than EDS's bare decimal.
-            const isEels = modality === "eels";
-            const transitionLabel = isEels ? transition : `${transition}α`;
-            const energyLabel = isEels
-              ? `${Math.round(energy)} eV`
-              : energy.toFixed(3);
+      ) : groupCandidates ? (
+        <div className="fvd-eds-candidate-sections" onMouseLeave={() => onHover(null)}>
+          {candidateSections.map((section) => {
+            const headingId = `${candidateHeadingPrefix}-${section.id}`;
             return (
-              <li
-                key={species.id}
-                className={`fvd-eds-element-row${visible ? " on" : ""}${
-                  species.id === selectedId ? " selected" : ""
-                }`}
-                onMouseEnter={() => onHover(symbol)}
-              >
-                <input
-                  type="checkbox"
-                  checked={visible}
-                  aria-label={`Show ${symbol}`}
-                  onChange={(e) => onToggle(species.id, e.target.checked)}
-                />
-                <input
-                  type="color"
-                  className="fvd-eds-color-input"
-                  value={color}
-                  aria-label={`Colour for ${symbol}`}
-                  onChange={(e) => setElementColor(symbol, e.target.value)}
-                />
-                <button
-                  type="button"
-                  className="fvd-eds-element-name"
-                  style={{ color }}
-                  title={
-                    isEels
-                      ? `Frame ${symbol}-${transition} edge on the spectrum`
-                      : `Frame ${symbol} ${transition}α on the spectrum`
-                  }
-                  onClick={() => onFocus(row)}
+              <section key={section.id} aria-labelledby={headingId}>
+                <h3
+                  id={headingId}
+                  className="fvd-eds-candidate-heading"
+                  aria-label={`${section.label}: ${section.rows.length}`}
                 >
-                  {symbol}
-                </button>
-                <span className="k fvd-eds-element-line">{transitionLabel}</span>
-                {/* the anchor line/onset, not the window midpoint — they
-                    differ once the user tunes the window */}
-                <span className="fvd-eds-element-energy">{energyLabel}</span>
-                <RowConflictBadge conflicts={conflictsFor(conflicts, species.id)} />
-                <span className="fvd-eds-element-net">
-                  {atPct != null
-                    ? `${atPct.toFixed(1)} at%`
-                    : live
-                      ? `${formatCountTick(live.net)} ± ${formatCountTick(live.sigma)}`
-                      : evidence
-                        ? formatCountTick(evidence.net)
-                        : "—"}
-                </span>
-                <span
-                  className="fvd-eds-strength"
-                  title={
-                    evidence
-                      ? `${evidence.significance.toFixed(0)}σ above background`
-                      : "not measured by the last identification"
-                  }
-                >
-                  <span
-                    style={{
-                      width: `${Math.round((evidence?.relative ?? 0) * 100)}%`,
-                      background: color,
-                    }}
-                  />
-                </span>
-                <span className={`fvd-eds-conf ${evidence?.confidence ?? ""}`}>
-                  {evidence ? CONFIDENCE_LABEL[evidence.confidence] : "added"}
-                </span>
-                <button
-                  type="button"
-                  className="fvd-icon-btn"
-                  aria-label={`Remove ${symbol}`}
-                  onClick={() => onRemove(species.id)}
-                >
-                  ✕
-                </button>
-              </li>
+                  <span>{section.label}</span>
+                  <span>{section.rows.length}</span>
+                </h3>
+                <ul className="fvd-eds-element-rows">
+                  {renderRows(section.rows)}
+                </ul>
+              </section>
             );
           })}
+        </div>
+      ) : (
+        <ul className="fvd-eds-element-rows" onMouseLeave={() => onHover(null)}>
+          {renderRows(rows)}
         </ul>
+      )}
+
+      {groupCandidates && rejectedCandidates.length > 0 && (
+        <details className="fvd-eds-rejected">
+          <summary>
+            {rejectedCandidates.length} rejected match{rejectedCandidates.length === 1 ? "" : "es"}
+          </summary>
+          <ul aria-label="Rejected element matches">
+            {rejectedCandidates.map((candidate, index) => (
+              <li key={`${candidate.symbol}-${candidate.transition}-${index}`}>
+                <strong>{candidate.symbol} {edsLineLabel(candidate.transition)}</strong>
+                <span>{candidate.detail}</span>
+                {candidate.net != null && (
+                  <span className="k">net {formatCountTick(candidate.net)}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
     </section>
   );

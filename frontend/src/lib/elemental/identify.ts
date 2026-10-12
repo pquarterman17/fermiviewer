@@ -57,6 +57,8 @@ export interface Evidence {
    * that a re-identification cannot silently retick what the user untucked.
    */
   recommended: boolean;
+  /** Auto-ID evidence versus a measurement requested explicitly by the user. */
+  source?: "auto" | "manual";
 }
 
 export interface IdentifiedElement extends Evidence {
@@ -65,6 +67,31 @@ export interface IdentifiedElement extends Evidence {
    *  tabulated onset, there is no separate "detected peak" to compare
    *  against it. */
   deltaKev: number;
+}
+
+export type RejectionReason = "below_background" | "line_overlap" | "outside_range";
+
+export interface RejectedElement {
+  symbol: string;
+  transition: string;
+  energy: number;
+  deltaKev: number;
+  reason: RejectionReason;
+  detail: string;
+  net: number | null;
+}
+
+export interface IdentificationResult {
+  elements: IdentifiedElement[];
+  rejected: RejectedElement[];
+}
+
+/** Add the conventional alpha sub-line only when the backend supplied a
+ * shell family. Future line tables may return an explicit sub-line already. */
+export function edsLineLabel(transition: string): string {
+  return /(?:[αβγ]|alpha|beta|gamma)$/iu.test(transition)
+    ? transition
+    : `${transition}α`;
 }
 
 /** Counting-statistics bands. A peak at 100σ in a whole-cube sum spectrum is
@@ -99,12 +126,12 @@ export interface IdentifyOptions {
  * detected peak as the tie-breaker. The element is omitted only when none of
  * its matched lines has positive background-subtracted signal.
  */
-export function identifyElements(
+export function identifyElementCandidates(
   auto: EdsAutoAssignResult | null,
   spectrum: Spectrum | null,
   opts: IdentifyOptions = {},
-): IdentifiedElement[] {
-  if (!auto || !spectrum) return [];
+): IdentificationResult {
+  if (!auto || !spectrum) return { elements: [], rejected: [] };
   const half = opts.halfWindowKev ?? 0.085;
   const background = opts.background ?? "linear";
 
@@ -116,6 +143,7 @@ export function identifyElements(
     string,
     { line: string; energy: number; delta: number }[]
   >();
+  const rejected: RejectedElement[] = [];
   for (const assignment of auto.assignments) {
     const top = assignment.candidates[0];
     if (!top) continue;
@@ -126,18 +154,53 @@ export function identifyElements(
       delta: Math.abs(top.delta_kev),
     });
     matches.set(top.symbol, held);
+    for (const alternative of assignment.candidates.slice(1)) {
+      rejected.push({
+        symbol: alternative.symbol,
+        transition: alternative.line,
+        energy: alternative.energy_kev,
+        deltaKev: Math.abs(alternative.delta_kev),
+        reason: "line_overlap",
+        detail: `line overlap; peak better matches ${top.symbol} ${edsLineLabel(top.line)}`,
+        net: null,
+      });
+    }
   }
 
   const rows: IdentifiedElement[] = [];
   for (const [symbol, elementMatches] of matches) {
     let chosen: IdentifiedElement | null = null;
+    let failed: RejectedElement | null = null;
     for (const match of elementMatches) {
       const eLo = match.energy - half;
       const eHi = match.energy + half;
       const integration = integrateWindow(spectrum, eLo, eHi, background, {
         e0Kev: opts.e0Kev,
       });
-      if (!integration || integration.net <= 0) continue;
+      if (!integration) {
+        failed ??= {
+          symbol,
+          transition: match.line,
+          energy: match.energy,
+          deltaKev: match.delta,
+          reason: "outside_range",
+          detail: "measurement window is outside the acquired spectrum",
+          net: null,
+        };
+        continue;
+      }
+      if (integration.net <= 0) {
+        failed ??= {
+          symbol,
+          transition: match.line,
+          energy: match.energy,
+          deltaKev: match.delta,
+          reason: "below_background",
+          detail: "signal is at or below the estimated background",
+          net: integration.net,
+        };
+        continue;
+      }
       const significance =
         integration.sigma > 0 ? integration.net / integration.sigma : 0;
       const confidence = confidenceOf(significance);
@@ -154,6 +217,7 @@ export function identifyElements(
         deltaKev: match.delta,
         relative: 0,
         recommended: confidence !== "trace",
+        source: "auto",
       };
       if (
         !chosen ||
@@ -165,6 +229,7 @@ export function identifyElements(
       }
     }
     if (chosen) rows.push(chosen);
+    else if (failed) rejected.push(failed);
   }
 
   rows.sort((a, b) => b.net - a.net);
@@ -172,7 +237,22 @@ export function identifyElements(
   for (const row of rows) {
     row.relative = Math.max(0, Math.min(1, row.net / strongest));
   }
-  return rows;
+  const acceptedKeys = new Set(rows.map((row) => `${row.symbol}|${row.transition}`));
+  const uniqueRejected = new Map<string, RejectedElement>();
+  for (const item of rejected) {
+    if (acceptedKeys.has(`${item.symbol}|${item.transition}`)) continue;
+    const key = `${item.symbol}|${item.transition}|${item.reason}`;
+    if (!uniqueRejected.has(key)) uniqueRejected.set(key, item);
+  }
+  return { elements: rows, rejected: [...uniqueRejected.values()] };
+}
+
+export function identifyElements(
+  auto: EdsAutoAssignResult | null,
+  spectrum: Spectrum | null,
+  opts: IdentifyOptions = {},
+): IdentifiedElement[] {
+  return identifyElementCandidates(auto, spectrum, opts).elements;
 }
 
 /** Add an element the identifier missed, measured the same way so its row is
@@ -210,5 +290,6 @@ export function measureElement(
     deltaKev: 0,
     relative: Math.max(0, Math.min(1, integration.net / strongest)),
     recommended: true, // an element the user asked for is wanted by definition
+    source: "manual",
   };
 }
