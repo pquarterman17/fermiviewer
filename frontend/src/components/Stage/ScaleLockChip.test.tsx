@@ -41,7 +41,12 @@ describe("ScaleLockChip", () => {
   it("shows the active image's current scale with its own unit, not a hardcoded µm", () => {
     render(<ScaleLockChip />);
     expect(screen.getByText("Displayed scale")).toBeVisible();
-    expect(screen.getByText("1.7 nm/screen px")).toBeVisible();
+    const readout = screen.getByText("1.7 nm/screen px");
+    expect(readout).toBeVisible();
+    expect(readout.parentElement).toHaveAttribute(
+      "data-tip-detail",
+      expect.stringContaining("CSS display pixel"),
+    );
   });
 
   it("updates the readout when the active image (and its unit) changes", () => {
@@ -92,7 +97,7 @@ describe("ScaleLockChip", () => {
     // disabled controls swallow pointer events — the tip must live on the
     // hoverable wrapper, mirroring FloatTools' side-by-side-compare pattern
     expect(btn).not.toHaveAttribute("data-tip");
-    expect(btn.parentElement).toHaveAttribute("data-tip", "Constant scale lock");
+    expect(btn.parentElement).toHaveAttribute("data-tip", "Lock displayed scale");
     expect(btn.parentElement).toHaveAttribute("data-tip-detail");
     expect(screen.getByText("Displayed scale")).toBeVisible();
     expect(screen.getByText("Unavailable")).toBeVisible();

@@ -75,7 +75,7 @@ export default function ScaleLockChip() {
     >
       <span
         className="fvd-tool-wrap"
-        data-tip={calibrated ? undefined : "Constant scale lock"}
+        data-tip={calibrated ? undefined : "Lock displayed scale"}
         data-tip-detail={
           calibrated
             ? undefined
@@ -89,7 +89,7 @@ export default function ScaleLockChip() {
           data-tip={calibrated ? "Lock displayed scale" : undefined}
           data-tip-detail={
             calibrated
-              ? "Keep the physical length represented by one screen pixel constant while paging through images."
+              ? "Keep the physical length represented by one CSS display pixel constant while paging through images."
               : undefined
           }
           disabled={!calibrated}
@@ -103,7 +103,7 @@ export default function ScaleLockChip() {
         data-tip={scaleLabel}
         data-tip-detail={
           calibrated
-            ? "Physical length per screen pixel at the current zoom. This changes when you zoom; it is not the image's sampling calibration."
+            ? "Physical length per CSS display pixel at the current zoom. This changes when you zoom; it is not the image's sampling calibration or a device-pixel measurement."
             : "Unavailable until the image has a physical sampling calibration."
         }
       >
