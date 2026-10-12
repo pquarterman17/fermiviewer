@@ -150,8 +150,12 @@ export default function ElementList({
     const color = colors(symbol);
     const atPct = quantBySymbol?.[symbol];
     const live = liveNetById?.[species.id];
+    // EDS displays a conventional X-ray line label; EELS already carries the
+    // complete edge name (for example L23) and uses eV rather than keV.
     const isEels = modality === "eels";
     const transitionLabel = isEels ? transition : edsLineLabel(transition);
+    // This is the reference line/onset energy, not the midpoint of the
+    // integration window, which can move independently when the user tunes it.
     const energyLabel = isEels ? `${Math.round(energy)} eV` : energy.toFixed(3);
     return (
       <li
