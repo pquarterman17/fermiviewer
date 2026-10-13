@@ -98,6 +98,11 @@ describe("AfmSurfaceWorkshop", () => {
 
     expect(screen.getAllByText("Height").length).toBeGreaterThan(0);
     expect(screen.getByText("7 parameters")).toBeVisible();
+    expect(screen.getByText("7 parameters").closest("details")).toHaveAttribute("open");
+    expect(screen.getByText("Sdr")).toBeInTheDocument();
+    const hybridGroup = screen.getByText("2 parameters").closest("details");
+    fireEvent.click(hybridGroup!.querySelector("summary")!);
+    expect(hybridGroup).toHaveAttribute("open");
     expect(screen.getByRole("tab", { name: "Spectrum" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("Radial power spectral density")).toBeVisible();
     expect(screen.queryByText("Height distribution")).toBeNull();
@@ -110,6 +115,9 @@ describe("AfmSurfaceWorkshop", () => {
     fireEvent.keyDown(screen.getByRole("tab", { name: "Heights" }), { key: "ArrowRight" });
     expect(screen.getByRole("tab", { name: "Slopes" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("Slope distribution")).toBeVisible();
+
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Analyze" })));
+    expect(screen.getByText("2 parameters").closest("details")).toHaveAttribute("open");
   });
 
   it("labels the result with the region and levelling it was measured with", async () => {
@@ -125,7 +133,7 @@ describe("AfmSurfaceWorkshop", () => {
     // choosing another region afterwards does not relabel the old result
     act(() => useWorkshop.getState().setAnalysisRegionChoice("a", "whole"));
     fireEvent.change(screen.getByLabelText(/level/i), { target: { value: "none" } });
-    expect(screen.getByText(/· Terrace ·/)).toBeVisible();
+    expect(screen.getByText("Terrace · plane levelling")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Export JSON" }));
     const exported = String(vi.mocked(downloadJson).mock.calls[0][1]);
     expect(exported).toContain("Terrace");

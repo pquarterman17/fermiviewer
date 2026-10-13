@@ -86,6 +86,7 @@ export default function AfmSurfaceWorkshop() {
   const [resultRegion, setResultRegion] = useState("");
   const [busy, setBusy] = useState(false);
   const [activePlot, setActivePlot] = useState<SurfacePlot>("psd");
+  const [openGroups, setOpenGroups] = useState<string[]>(["Height"]);
 
   // Each run gets a number; switching image or closing the panel bumps it,
   // so a request still in flight for the previous image is ignored when it
@@ -200,7 +201,17 @@ export default function AfmSurfaceWorkshop() {
             </div>
             <div className="fvd-afm-groups">
               {ISO_GROUPS.map((group) => (
-                <details className="fvd-afm-group" key={group.title}>
+                <details
+                  className="fvd-afm-group"
+                  key={group.title}
+                  open={openGroups.includes(group.title)}
+                  onToggle={(event) => {
+                    const isOpen = event.currentTarget.open;
+                    setOpenGroups((current) => isOpen
+                      ? Array.from(new Set([...current, group.title]))
+                      : current.filter((title) => title !== group.title));
+                  }}
+                >
                   <summary>
                     <span>{group.title}</span>
                     <span>{group.keys.length} parameters</span>
@@ -269,8 +280,7 @@ export default function AfmSurfaceWorkshop() {
             )}
           </section>
           <div className="fvd-ws-note">
-            {result.n_pixels.toLocaleString()} valid pixels · {resultRegion} ·{" "}
-            {result.level} levelling
+            {resultRegion} · {result.level} levelling
           </div>
           <div className="fvd-ws-row">
             <button className="fvd-btn" onClick={() => exportResult("csv")}>Export CSV</button>
@@ -292,7 +302,7 @@ function Metric({
   const value = formatParam(result.params[name], result.units[name]);
   if (featured) {
     return (
-      <div className="fvd-afm-summary-metric" aria-label={`${name}, ${DESCRIPTIONS[name]}: ${value}`}>
+      <div className="fvd-afm-summary-metric">
         <span className="k">{name}</span>
         <span className="v">{value}</span>
         <span className="d">{DESCRIPTIONS[name]}</span>
