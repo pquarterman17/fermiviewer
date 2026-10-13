@@ -1,6 +1,6 @@
 # Usability and reliability audit — EDS, AFM, and analysis workflows
 
-**Status:** Active — items 1–7 shipped; item 8 implemented, awaiting review
+**Status:** Active — items 1–8 shipped; item 9 implemented, awaiting review
 
 **Owner:** Codex (lead implementation); Claude reviews each pull request
 
@@ -177,6 +177,17 @@ blind mechanical rewrite.
 - New analysis families are out of scope for this bug/usability pass.
 
 ## Progress log
+
+- 2026-10-12 — Item 9 implemented: frontend tests now share an intentional
+  no-context canvas default instead of emitting jsdom's repeated unimplemented
+  warnings, and unexpected `console.error`/`console.warn` output fails the test
+  that produced it. Tests can explicitly declare expected output through the
+  shared helpers. Enabling the gate exposed and corrected nine existing React
+  `act()` warnings. Full frontend suite: 253 files and 2,043 tests passed with
+  no unexpected console output. Awaiting Claude review.
+
+- 2026-10-12 — Item 8 shipped in PR #274 after review and the complete CI
+  matrix. Item 9 started on the next focused branch.
 
 - 2026-10-12 — Item 8 implemented: ISO 25178 results now open with a compact
   five-metric surface summary, keep all 21 parameters in collapsible standard

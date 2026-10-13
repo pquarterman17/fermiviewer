@@ -1,8 +1,52 @@
-// Vitest global setup: jest-dom matchers + clean storage per test.
+// Vitest global setup: DOM shims, strict console handling, and cleanup.
 
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach } from "vitest";
 import { cleanup } from "@testing-library/react";
+
+type ConsoleLevel = "error" | "warn";
+interface ExpectedConsoleMessage {
+  level: ConsoleLevel;
+  pattern: string | RegExp;
+}
+
+let expectedConsole: ExpectedConsoleMessage[] = [];
+let observedConsole: { level: ConsoleLevel; args: unknown[] }[] = [];
+const realConsole = { error: console.error, warn: console.warn };
+
+/** Declare console output that is part of the behavior under test. */
+export function expectConsoleMessage(
+  level: ConsoleLevel,
+  pattern: string | RegExp,
+): void {
+  expectedConsole.push({ level, pattern });
+}
+
+export function expectConsoleError(pattern: string | RegExp): void {
+  expectConsoleMessage("error", pattern);
+}
+
+export function expectConsoleWarning(pattern: string | RegExp): void {
+  expectConsoleMessage("warn", pattern);
+}
+
+function formatConsoleArgs(args: unknown[]): string {
+  return args.map((arg) => {
+    if (arg instanceof Error) return arg.stack ?? arg.message;
+    if (typeof arg === "string") return arg;
+    try {
+      return JSON.stringify(arg);
+    } catch {
+      return String(arg);
+    }
+  }).join(" ");
+}
+
+function matches(message: string, pattern: string | RegExp): boolean {
+  if (typeof pattern === "string") return message.includes(pattern);
+  pattern.lastIndex = 0;
+  return pattern.test(message);
+}
 
 // Node ≥26 + vitest 3.2 jsdom regression: window.localStorage /
 // sessionStorage aren't populated onto the global (works under Node 22,
@@ -80,10 +124,45 @@ if (typeof globalThis.ResizeObserver === "undefined") {
   });
 }
 
+// jsdom deliberately does not implement canvas rendering unless the optional
+// native canvas package is installed. Its default getContext() emits one noisy
+// console error per call before returning null. Most component tests only need
+// the honest "no rendering context" result; rendering-specific tests replace
+// this method with the small context surface they exercise.
+Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
+  configurable: true,
+  writable: true,
+  value: () => null,
+});
+
 beforeEach(() => {
   localStorage.clear();
+  expectedConsole = [];
+  observedConsole = [];
+  console.error = (...args: unknown[]) => observedConsole.push({ level: "error", args });
+  console.warn = (...args: unknown[]) => observedConsole.push({ level: "warn", args });
 });
 
 afterEach(() => {
   cleanup();
+  console.error = realConsole.error;
+  console.warn = realConsole.warn;
+
+  const missing = [...expectedConsole];
+  const unexpected: string[] = [];
+  for (const entry of observedConsole) {
+    const message = formatConsoleArgs(entry.args);
+    const index = missing.findIndex((expected) =>
+      expected.level === entry.level && matches(message, expected.pattern));
+    if (index >= 0) missing.splice(index, 1);
+    else unexpected.push(`${entry.level}: ${message}`);
+  }
+  if (missing.length || unexpected.length) {
+    const details = [
+      ...unexpected.map((message) => `Unexpected console.${message}`),
+      ...missing.map(({ level, pattern }) =>
+        `Expected console.${level} matching ${String(pattern)} was not observed`),
+    ];
+    throw new Error(details.join("\n"));
+  }
 });
