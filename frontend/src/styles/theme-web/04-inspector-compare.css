@@ -321,11 +321,26 @@
 }
 
 .fvd-groups-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: var(--type-label);
   color: var(--text-faint);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+.fvd-groups-sbs {
+  padding: 1px 6px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: var(--type-label);
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+.fvd-groups-sbs:hover { color: var(--text); border-color: var(--border); }
 
 .fvd-group-chip {
   display: flex;

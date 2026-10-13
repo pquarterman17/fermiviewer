@@ -1,9 +1,12 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ImageMeta } from "../../lib/api";
+import { askParams } from "../../store/params";
 import { useViewer } from "../../store/viewer";
 import Filmstrip from "./Filmstrip";
+
+vi.mock("../../store/params", () => ({ askParams: vi.fn() }));
 
 const meta = (id: string): ImageMeta => ({
   id,
@@ -128,10 +131,87 @@ describe("Filmstrip keyboard selection", () => {
     await waitFor(() => expect(show).toHaveFocus());
     expect(screen.getByRole("menuitem", { name: "Compare selected" })).toBeDisabled();
 
+    expect(
+      screen.getByRole("menuitem", { name: "Compare groups side by side" }),
+    ).toBeDisabled();
+
     fireEvent.keyDown(show, { key: "ArrowDown" });
+    expect(screen.getByRole("menuitem", { name: "Group selected…" })).toHaveFocus();
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
     expect(screen.getByRole("menuitem", { name: "Rename… F2" })).toHaveFocus();
     fireEvent.keyDown(document.activeElement!, { key: "Escape" });
     expect(screen.queryByRole("menu", { name: "Image actions" })).toBeNull();
     expect(option).toHaveFocus();
+  });
+});
+
+describe("Filmstrip grouping", () => {
+  beforeEach(() => {
+    vi.mocked(askParams).mockReset();
+    useViewer.setState({
+      order: ["a", "b", "c", "d"],
+      activeId: "a",
+      images: { a: meta("a"), b: meta("b"), c: meta("c"), d: meta("d") },
+      selected: ["a", "b"],
+    });
+  });
+
+  it("names a group of the selected images from the context menu", async () => {
+    vi.mocked(askParams).mockResolvedValue({ name: "Annealed" });
+    render(<Filmstrip />);
+    fireEvent.contextMenu(screen.getAllByRole("option")[1]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Group selected…" }));
+
+    await waitFor(() =>
+      expect(useViewer.getState().imageGroups).toEqual([
+        expect.objectContaining({ name: "Annealed", ids: ["a", "b"] }),
+      ]),
+    );
+    expect(askParams).toHaveBeenCalledWith("New group", [
+      expect.objectContaining({ key: "name", default: "Group 1" }),
+    ]);
+  });
+
+  it("creates nothing when the name dialog is cancelled", async () => {
+    vi.mocked(askParams).mockResolvedValue(null);
+    render(<Filmstrip />);
+    fireEvent.contextMenu(screen.getAllByRole("option")[0]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Group selected…" }));
+    await waitFor(() => expect(askParams).toHaveBeenCalled());
+    expect(useViewer.getState().imageGroups).toEqual([]);
+  });
+
+  it("shows each group in its own side-by-side pane", () => {
+    useViewer.setState({
+      imageGroups: [
+        { id: "g1", name: "Before", ids: ["a", "b"] },
+        { id: "g2", name: "After", ids: ["c", "d"] },
+        { id: "g3", name: "Closed", ids: ["gone"] },
+      ],
+    });
+    render(<Filmstrip />);
+    fireEvent.click(screen.getByRole("button", { name: "Side by side" }));
+
+    const s = useViewer.getState();
+    expect(s.compareMode).toBe("sidebyside");
+    expect(s.sbsPanes.map((p) => p.groupId)).toEqual(["g1", "g2"]);
+  });
+
+  it("offers group side-by-side from the context menu once two groups exist", () => {
+    useViewer.setState({
+      imageGroups: [
+        { id: "g1", name: "Before", ids: ["a", "b"] },
+        { id: "g2", name: "After", ids: ["c", "d"] },
+      ],
+    });
+    render(<Filmstrip />);
+    fireEvent.contextMenu(screen.getAllByRole("option")[0]);
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Compare groups side by side" }),
+    );
+    expect(useViewer.getState().sbsPanes.map((p) => p.groupId)).toEqual([
+      "g1",
+      "g2",
+    ]);
   });
 });

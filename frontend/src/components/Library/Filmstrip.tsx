@@ -12,6 +12,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { renameSingleImage } from "../../lib/rename";
+import { askParams } from "../../store/params";
 import {
   buildSampleTree,
   entryKey,
@@ -43,6 +44,7 @@ export default function Filmstrip() {
   const select = useViewer((s) => s.select);
   const reorder = useViewer((s) => s.reorder);
   const startCompare = useViewer((s) => s.startCompare);
+  const startSampleCompare = useViewer((s) => s.startSampleCompare);
   const closeImage = useViewer((s) => s.closeImage);
   const setBatchOpen = useViewer((s) => s.setBatchOpen);
   const imageGroups = useViewer((s) => s.imageGroups);
@@ -118,6 +120,23 @@ export default function Filmstrip() {
   };
 
   const compareIds = selected.length >= 2 ? selected : null;
+  // groups that still have an open image; each becomes one side-by-side pane
+  const comparableGroupIds = imageGroups
+    .filter((g) => g.ids.some((id) => id in images))
+    .map((g) => g.id);
+  const canCompareGroups = comparableGroupIds.length >= 2;
+
+  const groupSelected = async (ids: string[]) => {
+    const values = await askParams("New group", [
+      {
+        key: "name",
+        label: "Name",
+        type: "text",
+        default: `Group ${imageGroups.length + 1}`,
+      },
+    ]);
+    if (values) createGroup(ids, String(values.name));
+  };
 
   const focusCard = (index: number) => {
     requestAnimationFrame(() => cardRefs.current[index]?.focus());
@@ -295,6 +314,11 @@ export default function Filmstrip() {
       {imageGroups.length > 0 && (
         <GroupsBar
           groups={imageGroups}
+          onCompareGroups={
+            canCompareGroups
+              ? () => startSampleCompare(comparableGroupIds)
+              : undefined
+          }
           onRecall={(ids) => {
             // re-select the group's members so it's easy to act on / re-group
             const live = ids.filter((id) => id in images);
@@ -362,8 +386,13 @@ export default function Filmstrip() {
         <FilmstripContextMenu
           at={ctx}
           canCompare={selected.length >= 2}
+          canCompareGroups={canCompareGroups}
           onShow={() => select(ctx.id, "single")}
           onCompare={() => startCompare(selected)}
+          onGroup={() =>
+            void groupSelected(selected.includes(ctx.id) ? selected : [ctx.id])
+          }
+          onCompareGroups={() => startSampleCompare(comparableGroupIds)}
           onRename={() => void renameSingleImage(ctx.id)}
           onClose={() => {
             for (const id of selected.includes(ctx.id) ? selected : [ctx.id]) {

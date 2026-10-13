@@ -12,15 +12,29 @@ export default function GroupsBar({
   onRecall,
   onRename,
   onDelete,
+  onCompareGroups,
 }: {
   groups: ImageGroup[];
   onRecall: (ids: string[]) => void;
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
+  /** Present when at least two groups have images to compare. */
+  onCompareGroups?: () => void;
 }) {
   return (
     <div className="fvd-groups-bar">
-      <div className="fvd-groups-head">Groups</div>
+      <div className="fvd-groups-head">
+        Groups
+        {onCompareGroups && (
+          <button
+            className="fvd-groups-sbs"
+            title="Show each group in its own side-by-side pane"
+            onClick={onCompareGroups}
+          >
+            Side by side
+          </button>
+        )}
+      </div>
       {groups.map((g) => (
         <div
           key={g.id}
