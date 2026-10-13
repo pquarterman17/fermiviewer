@@ -1,8 +1,7 @@
 // TooltipLayer: delegated [data-tip] hover tooltip. Fake timers drive the
 // dwell delay; the tip is portalled to document.body so screen queries find it.
 
-import { render, screen } from "@testing-library/react";
-import { act } from "react";
+import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import TooltipLayer from "./TooltipLayer";

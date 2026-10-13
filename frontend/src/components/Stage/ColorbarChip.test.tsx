@@ -4,15 +4,11 @@
 // filmstrip (left). The tick column now reserves the widest label.
 
 import { render } from "@testing-library/react";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { useStageInfo } from "../../store/stage";
 import { DEFAULT_DISPLAY, useViewer } from "../../store/viewer";
 import ColorbarChip from "./ColorbarChip";
-
-beforeAll(() => {
-  HTMLCanvasElement.prototype.getContext = (() => null) as never;
-});
 
 beforeEach(() => {
   useViewer.setState({
