@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { comparableGroupIds, groupPickerLabels } from "./groupActions";
+import {
+  comparableGroupIds,
+  groupPickerLabels,
+  nextGroupName,
+} from "./groupActions";
 
 describe("group actions", () => {
   it("labels repeated group names so each maps to one group", () => {
@@ -24,5 +28,26 @@ describe("group actions", () => {
         { x: {}, y: {} },
       ),
     ).toEqual(["g1", "g3"]);
+  });
+
+  it("labels nested samples with their project path", () => {
+    expect(
+      groupPickerLabels([
+        { id: "p1", name: "Run 1", ids: [] },
+        { id: "p2", name: "Run 2", ids: [] },
+        { id: "s1", name: "Sample", ids: [], parent: "p1" },
+        { id: "s2", name: "Sample", ids: [], parent: "p2" },
+      ]),
+    ).toEqual(["Run 1", "Run 2", "Run 1 / Sample", "Run 2 / Sample"]);
+  });
+
+  it("suggests the first unused Group N name", () => {
+    expect(nextGroupName([])).toBe("Group 1");
+    expect(
+      nextGroupName([
+        { id: "a", name: "Group 1", ids: [] },
+        { id: "b", name: "Group 3", ids: [] },
+      ]),
+    ).toBe("Group 2");
   });
 });

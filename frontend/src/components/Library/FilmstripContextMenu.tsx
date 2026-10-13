@@ -1,5 +1,6 @@
 // Right-click menu for a filmstrip card: show in stage, compare selected,
-// group selected, add to group, compare groups side by side, rename, close — with roving keyboard focus (ARIA menu pattern).
+// group selected, add to group, compare groups side by side, rename, close —
+// with roving keyboard focus (ARIA menu pattern).
 //
 // Extracted verbatim from Filmstrip.tsx.
 

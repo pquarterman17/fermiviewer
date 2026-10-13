@@ -237,6 +237,24 @@ describe("Filmstrip grouping", () => {
       expect(useViewer.getState().imageGroups[1].ids).toEqual(["d", "a", "b"]),
     );
     expect(useViewer.getState().imageGroups[0].ids).toEqual(["c"]);
+    expect(useViewer.getState().status).toBe('added 2 to "After"');
+  });
+
+  it("does not count images that are already in the group", async () => {
+    useViewer.setState({
+      imageGroups: [{ id: "g1", name: "Before", ids: ["a", "b"] }],
+    });
+    vi.mocked(askParams).mockResolvedValue({ group: "Before" });
+    render(<Filmstrip />);
+    const card = screen
+      .getAllByRole("option")
+      .find((o) => o.textContent?.includes("a.dm4"));
+    fireEvent.contextMenu(card!);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add to group…" }));
+    await waitFor(() =>
+      expect(useViewer.getState().status).toBe('already in "Before"'),
+    );
+    expect(useViewer.getState().imageGroups[0].ids).toEqual(["a", "b"]);
   });
 
   it("names the group made from the header Group button", async () => {
