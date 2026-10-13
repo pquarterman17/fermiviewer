@@ -1220,10 +1220,12 @@ large-data/volume model.
 Requests captured here are not yet scoped or prioritised. Each gets a
 numbered item, scope and activation gate once it has been discussed.
 
-- [ ] **Jitter correction** (requested 2026-10-13). Not yet scoped: which
-      jitter (scan line/row jitter, frame-to-frame drift in a stack, or both),
-      which instruments and data, and how the correction is validated are
-      open questions for that discussion.
+- [ ] **Jitter correction** (requested 2026-10-13). Covers both kinds:
+      - scan-line jitter within one scanned image (row-to-row offsets);
+      - frame-to-frame drift across a stack or series.
+
+      Still to discuss: which instruments and data to target, and how each
+      correction is validated.
 
 ---
 
