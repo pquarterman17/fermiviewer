@@ -13,6 +13,36 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [0.9.0] - 2026-10-13
+
+Clearer EDS identification and AFM results, from the usability and
+reliability audit.
+
+### Added
+- **Multichannel AFM import.** Files with several channels (height,
+  amplitude, phase, …) offer a channel picker when opened, instead of
+  loading only the first.
+- **EDS candidate explanations.** Each auto-ID candidate shows the peaks
+  and evidence behind it, so a weak or ambiguous match is visible.
+
+### Changed
+- **ISO 25178 results.** Surface Analysis opens with a five-metric summary
+  (Sa, Sq, Sz, Ssk, Sal); all 21 parameters stay in collapsible families
+  with definitions, and the PSD, height and slope plots share one tabbed
+  area.
+- **EDS spectrum framing.** A new spectrum opens on its useful energy range,
+  capped at the beam energy, rather than the full detector range.
+- **Elemental workspace.** The window can be collapsed and expanded and
+  remembers its size.
+- **Scale readouts.** The zoom-dependent readout is labelled *Displayed
+  scale*, separate from the fixed *Image sampling* calibration.
+
+### Fixed
+- **EDS auto-ID false positives.** Negative or background-only signal no
+  longer counts as evidence for an element.
+- **Stale analysis responses.** EDS, Roughness and Noise results from an
+  earlier image or cube can no longer replace the current one.
+
 ## [0.8.1] - 2026-10-11
 
 Security updates, faster force maps, and fixes from an EDS / AFM testing audit.
