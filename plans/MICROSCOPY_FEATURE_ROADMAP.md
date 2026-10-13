@@ -1215,6 +1215,16 @@ start from the experimental workflow.
 workflow, defined reconstruction ground truth, and willingness to support the
 large-data/volume model.
 
+## Proposed — to discuss before scheduling
+
+Requests captured here are not yet scoped or prioritised. Each gets a
+numbered item, scope and activation gate once it has been discussed.
+
+- [ ] **Jitter correction** (requested 2026-10-13). Not yet scoped: which
+      jitter (scan line/row jitter, frame-to-frame drift in a stack, or both),
+      which instruments and data, and how the correction is validated are
+      open questions for that discussion.
+
 ---
 
 ## Progressive PR discipline

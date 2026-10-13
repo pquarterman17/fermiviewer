@@ -135,6 +135,8 @@ describe("Filmstrip keyboard selection", () => {
       screen.getByRole("menuitem", { name: "Compare groups side by side" }),
     ).toBeDisabled();
 
+    expect(screen.getByRole("menuitem", { name: "Add to group…" })).toBeDisabled();
+
     fireEvent.keyDown(show, { key: "ArrowDown" });
     expect(screen.getByRole("menuitem", { name: "Group selected…" })).toHaveFocus();
     fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
@@ -213,5 +215,38 @@ describe("Filmstrip grouping", () => {
       "g1",
       "g2",
     ]);
+  });
+
+  it("adds the selected images to a chosen existing group", async () => {
+    useViewer.setState({
+      imageGroups: [
+        { id: "g1", name: "Before", ids: ["c"] },
+        { id: "g2", name: "After", ids: ["d"] },
+      ],
+    });
+    vi.mocked(askParams).mockResolvedValue({ group: "After" });
+    render(<Filmstrip />);
+    // with groups the list is sectioned, so find the selected card by name
+    const card = screen
+      .getAllByRole("option")
+      .find((o) => o.textContent?.includes("a.dm4"));
+    fireEvent.contextMenu(card!);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add to group…" }));
+
+    await waitFor(() =>
+      expect(useViewer.getState().imageGroups[1].ids).toEqual(["d", "a", "b"]),
+    );
+    expect(useViewer.getState().imageGroups[0].ids).toEqual(["c"]);
+  });
+
+  it("names the group made from the header Group button", async () => {
+    vi.mocked(askParams).mockResolvedValue({ name: "Tilt series" });
+    render(<Filmstrip />);
+    fireEvent.click(screen.getByRole("button", { name: /Group 2/ }));
+    await waitFor(() =>
+      expect(useViewer.getState().imageGroups).toEqual([
+        expect.objectContaining({ name: "Tilt series", ids: ["a", "b"] }),
+      ]),
+    );
   });
 });

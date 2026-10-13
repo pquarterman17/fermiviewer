@@ -11,8 +11,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  addImagesToGroup,
+  comparableGroupIds,
+  compareGroupsSideBySide,
+  groupImages,
+} from "../../lib/groupActions";
 import { renameSingleImage } from "../../lib/rename";
-import { askParams } from "../../store/params";
 import {
   buildSampleTree,
   entryKey,
@@ -44,12 +49,10 @@ export default function Filmstrip() {
   const select = useViewer((s) => s.select);
   const reorder = useViewer((s) => s.reorder);
   const startCompare = useViewer((s) => s.startCompare);
-  const startSampleCompare = useViewer((s) => s.startSampleCompare);
   const closeImage = useViewer((s) => s.closeImage);
   const setBatchOpen = useViewer((s) => s.setBatchOpen);
   const imageGroups = useViewer((s) => s.imageGroups);
   const unavailable = useViewer((s) => s.unavailable);
-  const createGroup = useViewer((s) => s.createGroup);
   const renameGroup = useViewer((s) => s.renameGroup);
   const deleteGroup = useViewer((s) => s.deleteGroup);
   const addGroupMember = useViewer((s) => s.addGroupMember);
@@ -120,23 +123,10 @@ export default function Filmstrip() {
   };
 
   const compareIds = selected.length >= 2 ? selected : null;
-  // groups that still have an open image; each becomes one side-by-side pane
-  const comparableGroupIds = imageGroups
-    .filter((g) => g.ids.some((id) => id in images))
-    .map((g) => g.id);
-  const canCompareGroups = comparableGroupIds.length >= 2;
-
-  const groupSelected = async (ids: string[]) => {
-    const values = await askParams("New group", [
-      {
-        key: "name",
-        label: "Name",
-        type: "text",
-        default: `Group ${imageGroups.length + 1}`,
-      },
-    ]);
-    if (values) createGroup(ids, String(values.name));
-  };
+  // a context-menu action covers the selection when the clicked card is
+  // part of it, otherwise just the clicked card
+  const ctxTargets = (id: string) => (selected.includes(id) ? selected : [id]);
+  const canCompareGroups = comparableGroupIds(imageGroups, images).length >= 2;
 
   const focusCard = (index: number) => {
     requestAnimationFrame(() => cardRefs.current[index]?.focus());
@@ -305,7 +295,7 @@ export default function Filmstrip() {
           className="fvd-compare-btn"
           data-tip="Save the selection as a named, reusable compare group"
           data-tip-detail="Recall this exact set later without reselecting each image."
-          onClick={() => createGroup(compareIds)}
+          onClick={() => void groupImages(compareIds)}
         >
           <Icon name="plus" /> Group {compareIds.length}
         </button>
@@ -315,9 +305,7 @@ export default function Filmstrip() {
         <GroupsBar
           groups={imageGroups}
           onCompareGroups={
-            canCompareGroups
-              ? () => startSampleCompare(comparableGroupIds)
-              : undefined
+            canCompareGroups ? compareGroupsSideBySide : undefined
           }
           onRecall={(ids) => {
             // re-select the group's members so it's easy to act on / re-group
@@ -387,12 +375,12 @@ export default function Filmstrip() {
           at={ctx}
           canCompare={selected.length >= 2}
           canCompareGroups={canCompareGroups}
+          canAddToGroup={imageGroups.length > 0}
           onShow={() => select(ctx.id, "single")}
           onCompare={() => startCompare(selected)}
-          onGroup={() =>
-            void groupSelected(selected.includes(ctx.id) ? selected : [ctx.id])
-          }
-          onCompareGroups={() => startSampleCompare(comparableGroupIds)}
+          onGroup={() => void groupImages(ctxTargets(ctx.id))}
+          onAddToGroup={() => void addImagesToGroup(ctxTargets(ctx.id))}
+          onCompareGroups={compareGroupsSideBySide}
           onRename={() => void renameSingleImage(ctx.id)}
           onClose={() => {
             for (const id of selected.includes(ctx.id) ? selected : [ctx.id]) {

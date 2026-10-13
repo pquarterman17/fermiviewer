@@ -30,6 +30,7 @@ export function menuStoreSelector(s: ViewerState) {
     selected: s.selected,
     order: s.order,
     images: s.images,
+    imageGroups: s.imageGroups,
     measures: s.measures,
     undoStack: s.undoStack,
     redoStack: s.redoStack,

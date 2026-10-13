@@ -1,5 +1,5 @@
 // Right-click menu for a filmstrip card: show in stage, compare selected,
-// group selected, compare groups side by side, rename, close — with roving keyboard focus (ARIA menu pattern).
+// group selected, add to group, compare groups side by side, rename, close — with roving keyboard focus (ARIA menu pattern).
 //
 // Extracted verbatim from Filmstrip.tsx.
 
@@ -17,9 +17,11 @@ export default function FilmstripContextMenu({
   at,
   canCompare,
   canCompareGroups,
+  canAddToGroup,
   onShow,
   onCompare,
   onGroup,
+  onAddToGroup,
   onCompareGroups,
   onRename,
   onClose,
@@ -28,9 +30,11 @@ export default function FilmstripContextMenu({
   at: FilmstripCtxTarget;
   canCompare: boolean;
   canCompareGroups: boolean;
+  canAddToGroup: boolean;
   onShow: () => void;
   onCompare: () => void;
   onGroup: () => void;
+  onAddToGroup: () => void;
   onCompareGroups: () => void;
   onRename: () => void;
   onClose: () => void;
@@ -72,6 +76,7 @@ export default function FilmstripContextMenu({
     { label: "Show in stage", run: onShow },
     { label: "Compare selected", run: onCompare, disabled: !canCompare },
     { label: "Group selected…", run: onGroup },
+    { label: "Add to group…", run: onAddToGroup, disabled: !canAddToGroup },
     {
       label: "Compare groups side by side",
       run: onCompareGroups,

@@ -2,6 +2,12 @@
 // (repo-health #33). Entries moved verbatim; only `store`/prop references
 // now come from ctx.
 import { downloadBugReport } from "../../../lib/errlog";
+import {
+  addImagesToGroup,
+  comparableGroupIds,
+  compareGroupsSideBySide,
+  groupImages,
+} from "../../../lib/groupActions";
 import type { Entry, MenuCtx } from "./menuTypes";
 
 export function buildViewMenu(ctx: MenuCtx): Entry[] {
@@ -33,6 +39,26 @@ export function buildViewMenu(ctx: MenuCtx): Entry[] {
       label: "Side-by-side Compare",
       disabled: store.order.length === 0,
       action: store.startSideBySide,
+    },
+    {
+      label: "Groups",
+      submenu: [
+        {
+          label: `Group Selected (${store.selected.length})…`,
+          disabled: store.selected.length === 0,
+          action: () => void groupImages(store.selected),
+        },
+        {
+          label: `Add Selected to Group (${store.selected.length})…`,
+          disabled: store.selected.length === 0 || store.imageGroups.length === 0,
+          action: () => void addImagesToGroup(store.selected),
+        },
+        {
+          label: "Compare Groups Side by Side",
+          disabled: comparableGroupIds(store.imageGroups, store.images).length < 2,
+          action: compareGroupsSideBySide,
+        },
+      ],
     },
     {
       label: store.colorbar ? "Hide Colorbar" : "Show Colorbar",
