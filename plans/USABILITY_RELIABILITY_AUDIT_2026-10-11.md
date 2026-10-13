@@ -183,8 +183,10 @@ blind mechanical rewrite.
   warnings, and unexpected `console.error`/`console.warn` output fails the test
   that produced it. Tests can explicitly declare expected output through the
   shared helpers. Enabling the gate exposed and corrected nine existing React
-  `act()` warnings. Full frontend suite: 253 files and 2,043 tests passed with
-  no unexpected console output. Awaiting Claude review.
+  `act()` warnings. Review hardening extended capture across module and suite
+  hooks plus late real-timer callbacks, without masking or duplicating a test's
+  primary assertion failure. Full frontend suite: 253 files and 2,045 tests
+  passed with no unexpected console output. Awaiting Claude re-review.
 
 - 2026-10-12 — Item 8 shipped in PR #274 after review and the complete CI
   matrix. Item 9 started on the next focused branch.

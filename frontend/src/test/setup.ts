@@ -1,7 +1,7 @@
 // Vitest global setup: DOM shims, strict console handling, and cleanup.
 
 import "@testing-library/jest-dom/vitest";
-import { afterEach, beforeEach } from "vitest";
+import { afterAll, afterEach, beforeEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 
 type ConsoleLevel = "error" | "warn";
@@ -12,7 +12,19 @@ interface ExpectedConsoleMessage {
 
 let expectedConsole: ExpectedConsoleMessage[] = [];
 let observedConsole: { level: ConsoleLevel; args: unknown[] }[] = [];
+let outsideTestConsole: { level: ConsoleLevel; args: unknown[] }[] = [];
+let testRunning = false;
 const realConsole = { error: console.error, warn: console.warn };
+
+function captureConsole(level: ConsoleLevel, args: unknown[]): void {
+  (testRunning ? observedConsole : outsideTestConsole).push({ level, args });
+}
+
+// Install the capture for the lifetime of this test file, rather than only
+// between beforeEach/afterEach. This includes module evaluation, beforeAll,
+// afterAll, and output from callbacks that escape the body of a test.
+console.error = (...args: unknown[]) => captureConsole("error", args);
+console.warn = (...args: unknown[]) => captureConsole("warn", args);
 
 /** Declare console output that is part of the behavior under test. */
 export function expectConsoleMessage(
@@ -46,6 +58,34 @@ function matches(message: string, pattern: string | RegExp): boolean {
   if (typeof pattern === "string") return message.includes(pattern);
   pattern.lastIndex = 0;
   return pattern.test(message);
+}
+
+function consoleFailures(
+  observed: { level: ConsoleLevel; args: unknown[] }[],
+  expected: ExpectedConsoleMessage[],
+): string[] {
+  const missing = [...expected];
+  const unexpected: string[] = [];
+  for (const entry of observed) {
+    const message = formatConsoleArgs(entry.args);
+    const index = missing.findIndex((candidate) =>
+      candidate.level === entry.level && matches(message, candidate.pattern));
+    if (index >= 0) missing.splice(index, 1);
+    else unexpected.push(`${entry.level}: ${message}`);
+  }
+  return [
+    ...unexpected.map((message) => `Unexpected console.${message}`),
+    ...missing.map(({ level, pattern }) =>
+      `Expected console.${level} matching ${String(pattern)} was not observed`),
+  ];
+}
+
+async function flushLateConsole(): Promise<void> {
+  if (vi.isFakeTimers()) {
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    return;
+  }
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
 }
 
 // Node ≥26 + vitest 3.2 jsdom regression: window.localStorage /
@@ -138,31 +178,25 @@ Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
 beforeEach(() => {
   localStorage.clear();
   expectedConsole = [];
-  observedConsole = [];
-  console.error = (...args: unknown[]) => observedConsole.push({ level: "error", args });
-  console.warn = (...args: unknown[]) => observedConsole.push({ level: "warn", args });
+  observedConsole = outsideTestConsole.splice(0);
+  testRunning = true;
 });
 
-afterEach(() => {
+afterEach(async ({ task }) => {
   cleanup();
+  await flushLateConsole();
+  const failures = consoleFailures(observedConsole, expectedConsole);
+  testRunning = false;
+  if (failures.length && task.result?.state !== "fail") {
+    throw new Error(failures.join("\n"));
+  }
+});
+
+afterAll(async () => {
+  await flushLateConsole();
   console.error = realConsole.error;
   console.warn = realConsole.warn;
-
-  const missing = [...expectedConsole];
-  const unexpected: string[] = [];
-  for (const entry of observedConsole) {
-    const message = formatConsoleArgs(entry.args);
-    const index = missing.findIndex((expected) =>
-      expected.level === entry.level && matches(message, expected.pattern));
-    if (index >= 0) missing.splice(index, 1);
-    else unexpected.push(`${entry.level}: ${message}`);
-  }
-  if (missing.length || unexpected.length) {
-    const details = [
-      ...unexpected.map((message) => `Unexpected console.${message}`),
-      ...missing.map(({ level, pattern }) =>
-        `Expected console.${level} matching ${String(pattern)} was not observed`),
-    ];
-    throw new Error(details.join("\n"));
-  }
+  const failures = consoleFailures(outsideTestConsole, []);
+  outsideTestConsole = [];
+  if (failures.length) throw new Error(failures.join("\n"));
 });

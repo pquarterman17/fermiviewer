@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { expectConsoleError, expectConsoleWarning } from "./setup";
 
@@ -14,5 +14,18 @@ describe("shared test environment", () => {
     expectConsoleWarning(/intentional fallback/);
     console.error("intentional render failure");
     console.warn("intentional fallback");
+  });
+
+  it("captures console output from callbacks that outlive the test body", () => {
+    expectConsoleError("intentional late failure");
+    setTimeout(() => console.error("intentional late failure"), 0);
+  });
+});
+
+describe("whole-file console capture", () => {
+  beforeAll(() => console.warn("intentional suite setup warning"));
+
+  it("attributes suite-hook output to the first test", () => {
+    expectConsoleWarning("intentional suite setup warning");
   });
 });
