@@ -1,6 +1,6 @@
 # Usability and reliability audit — EDS, AFM, and analysis workflows
 
-**Status:** Active — items 1–6 shipped; item 7 implemented, awaiting review
+**Status:** Active — items 1–7 shipped; item 8 implemented, awaiting review
 
 **Owner:** Codex (lead implementation); Claude reviews each pull request
 
@@ -177,6 +177,17 @@ blind mechanical rewrite.
 - New analysis families are out of scope for this bug/usability pass.
 
 ## Progress log
+
+- 2026-10-12 — Item 8 implemented: ISO 25178 results now open with a compact
+  five-metric surface summary, keep all 21 parameters in collapsible standard
+  families with definitions, and present the PSD, height distribution, and
+  slope distribution in one keyboard-accessible tabbed plot area. CSV/JSON
+  export and measurement provenance are unchanged. Verified live against the
+  real TopoStats minicircle fixture; the test tab and server were closed after
+  verification. Awaiting Claude review.
+
+- 2026-10-12 — Item 7 shipped in PR #273 after review and the complete CI
+  matrix. Item 8 started on the next focused branch.
 
 - 2026-10-11 — Item 7 implemented: the zoom-dependent stage readout is now
   explicitly labelled **Displayed scale** and uses physical-unit/screen-pixel
