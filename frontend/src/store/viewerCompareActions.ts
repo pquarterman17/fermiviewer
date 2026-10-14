@@ -94,6 +94,22 @@ export function createCompareActions(
       let seed = 0;
       let prev: string | null = null;
       const sbsPanes = s.sbsPanes.map((p) => {
+        const bound = p.groupId
+          ? s.imageGroups.find((g) => g.id === p.groupId)
+          : null;
+        if (bound) {
+          const members = groupMembersOf(
+            s.imageGroups,
+            s.images,
+            s.order,
+            bound.id,
+          );
+          const imageId = ok(p.imageId) && members.includes(p.imageId)
+            ? p.imageId
+            : (members[0] ?? null);
+          prev = imageId;
+          return { ...p, imageId };
+        }
         if (ok(p.imageId)) {
           prev = p.imageId;
           return p;
@@ -121,6 +137,10 @@ export function createCompareActions(
       const first = s.activeId ?? s.order[0];
       const sbsPanes = s.sbsPanes.map((p, i) => {
         const members = groupMembersOf(s.imageGroups, s.images, s.order, p.groupId);
+        const bound = p.groupId
+          ? s.imageGroups.some((g) => g.id === p.groupId)
+          : false;
+        if (bound && members.length === 0) return { ...p, imageId: null };
         const start = members.indexOf(first);
         const base = start >= 0 ? start : 0;
         const id = members[(base + i) % members.length] ?? first;
@@ -199,7 +219,7 @@ export function createCompareActions(
         const imageId =
           p.imageId && members.includes(p.imageId)
             ? p.imageId
-            : (members[0] ?? p.imageId);
+            : (members[0] ?? null);
         return { imageId, groupId };
       });
       set({ sbsPanes, sbsActive: idx, compareSet: paneCompareSet(sbsPanes) });
@@ -301,13 +321,22 @@ export function createCompareActions(
       })),
 
     deleteGroup: (id) =>
-      set((s) => ({
-        imageGroups: s.imageGroups.filter((g) => g.id !== id),
-        // unbind the deleted group from every pane (image stays put)
-        sbsPanes: s.sbsPanes.map((p) =>
-          p.groupId === id ? { ...p, groupId: null } : p,
-        ),
-      })),
+      set((s) => {
+        const removed = s.imageGroups.find((g) => g.id === id);
+        if (!removed) return {};
+        const parent = removed.parent ?? null;
+        return {
+          // Preserve the subtree: direct children take the deleted group's
+          // place rather than retaining a dangling, unreachable parent id.
+          imageGroups: s.imageGroups
+            .filter((g) => g.id !== id)
+            .map((g) => g.parent === id ? { ...g, parent } : g),
+          // unbind the deleted group from every pane (image stays put)
+          sbsPanes: s.sbsPanes.map((p) =>
+            p.groupId === id ? { ...p, groupId: null } : p,
+          ),
+        };
+      }),
 
     setGroupMembers: (id, ids) =>
       set((s) => ({
@@ -366,8 +395,7 @@ export function createCompareActions(
       set((s) => {
         const group = s.imageGroups.find((g) => g.id === id);
         if (!group) return {};
-        const live = (ids: string[]) =>
-          s.order.filter((x) => ids.includes(x) && x in s.images);
+        const live = (ids: string[]) => ids.filter((x) => x in s.images);
         const before = live(group.ids);
         const after = before.filter((x) => x !== imageId);
         const at = before.indexOf(imageId);

@@ -48,10 +48,10 @@ export interface ComparePane {
 }
 
 /** Resolve a group's live member list: the group's ids pruned to ones still
- *  open (present in `images`), preserving the group's order. When groupId is
- *  null / unknown / resolves to empty, fall back to the full `order` — this
- *  mirrors the MATLAB GroupModel.membersFor semantics (a pane with no group
- *  steps through every loaded image). */
+ *  open (present in `images`), preserving the group's order. An existing but
+ *  empty group stays empty; only an unbound or unknown group falls back to the
+ *  full `order`, so a pane bound to an emptied group cannot leak unrelated
+ *  library images into that group. */
 export function groupMembers(
   groups: ImageGroup[],
   images: Record<string, unknown>,
@@ -60,10 +60,7 @@ export function groupMembers(
 ): string[] {
   if (groupId) {
     const g = groups.find((x) => x.id === groupId);
-    if (g) {
-      const live = g.ids.filter((id) => id in images);
-      if (live.length > 0) return live;
-    }
+    if (g) return g.ids.filter((id) => id in images);
   }
   return order.filter((id) => id in images);
 }

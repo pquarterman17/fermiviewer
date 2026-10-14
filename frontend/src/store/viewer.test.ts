@@ -1074,6 +1074,22 @@ describe("named image groups", () => {
     expect(useViewer.getState().sbsPanes[0].groupId).toBeNull();
   });
 
+  it("deleteGroup reparents children instead of leaving dangling ids", () => {
+    const root = useViewer.getState().createEmptyGroup("Root");
+    const middle = useViewer.getState().createEmptyGroup("Middle");
+    const child = useViewer.getState().createGroup(["a"], "Child")!;
+    useViewer.getState().setGroupParent(middle, root);
+    useViewer.getState().setGroupParent(child, middle);
+
+    useViewer.getState().deleteGroup(middle);
+    expect(useViewer.getState().imageGroups.find((g) => g.id === child)?.parent).toBe(
+      root,
+    );
+
+    useViewer.getState().deleteGroup(root);
+    expect(useViewer.getState().imageGroups.find((g) => g.id === child)?.parent).toBeNull();
+  });
+
   it("setPaneGroup snaps the pane's image to the group's first member", () => {
     useViewer.getState().createGroup(["b", "c"]); // a not in the group
     const id = useViewer.getState().imageGroups[0].id;
@@ -1094,6 +1110,32 @@ describe("named image groups", () => {
     useViewer.getState().stepPane(0, 1); // a → c (b skipped)
     expect(useViewer.getState().sbsPanes[0].imageId).toBe("c");
     useViewer.getState().stepPane(0, 1); // c → a (wrap inside the group)
+    expect(useViewer.getState().sbsPanes[0].imageId).toBe("a");
+  });
+
+  it("keeps a pane bound to an empty group blank", () => {
+    const id = useViewer.getState().createGroup(["a"], "only")!;
+    useViewer.getState().setPaneGroup(0, id);
+    useViewer.getState().removeGroupMember(id, "a");
+    expect(useViewer.getState().sbsPanes[0]).toEqual({
+      imageId: null,
+      groupId: id,
+    });
+
+    useViewer.getState().stepPane(0, 1);
+    expect(useViewer.getState().sbsPanes[0].imageId).toBeNull();
+    useViewer.getState().setCompareMode("split");
+    useViewer.getState().setCompareMode("sidebyside");
+    expect(useViewer.getState().sbsPanes[0].imageId).toBeNull();
+    useViewer.getState().startSideBySide();
+    expect(useViewer.getState().sbsPanes[0].imageId).toBeNull();
+  });
+
+  it("reseats a removed pane member using group order, not library order", () => {
+    const id = useViewer.getState().createGroup(["c", "a", "b"], "ordered")!;
+    useViewer.getState().setPaneGroup(0, id);
+    useViewer.getState().setPaneImage(0, "b");
+    useViewer.getState().removeGroupMember(id, "b");
     expect(useViewer.getState().sbsPanes[0].imageId).toBe("a");
   });
 

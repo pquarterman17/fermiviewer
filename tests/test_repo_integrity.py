@@ -223,12 +223,12 @@ def test_node_version_declarations_agree() -> None:
 
 
 def test_project_version_declarations_agree() -> None:
-    """The release version is declared in eight files; they must never drift.
+    """The release version is declared in nine files; they must never drift.
 
-    A ``chore(release): vX.Y.Z`` commit is exactly an 8-file, 2-line-each
-    diff (pyproject, the package ``__version__``, frontend/package.json,
-    tauri.conf.json, Cargo.toml, Cargo.lock, uv.lock, CHANGELOG). Lockfiles
-    record the version too and a stale one fails ``--locked`` builds; a
+    A ``chore(release): vX.Y.Z`` commit updates pyproject, the package
+    ``__version__``, frontend/package.json, frontend/package-lock.json,
+    tauri.conf.json, Cargo.toml, Cargo.lock, uv.lock, and CHANGELOG. Lockfiles
+    record the version too; stale metadata makes release sources disagree. A
     missing ``## [X.Y.Z]`` CHANGELOG section makes the GitHub Release fall
     back to an auto-generated commit list instead of the curated notes.
     Comparing every declaration to pyproject makes a partial bump fail
@@ -245,6 +245,16 @@ def test_project_version_declarations_agree() -> None:
     assert re.fullmatch(r"\d+\.\d+\.\d+", expected), expected
 
     tauri_dir = ROOT / "src-tauri"
+    frontend_lock = json.loads(
+        (ROOT / "frontend" / "package-lock.json").read_text()
+    )
+    frontend_lock_versions = {
+        frontend_lock["version"],
+        frontend_lock["packages"][""]["version"],
+    }
+    assert len(frontend_lock_versions) == 1, (
+        "frontend/package-lock.json top-level and root-package versions disagree"
+    )
     cargo_lock = tomllib.loads((tauri_dir / "Cargo.lock").read_text())
     uv_lock = tomllib.loads((ROOT / "uv.lock").read_text())
 
@@ -262,6 +272,7 @@ def test_project_version_declarations_agree() -> None:
         "frontend/package.json": json.loads(
             (ROOT / "frontend" / "package.json").read_text()
         )["version"],
+        "frontend/package-lock.json": frontend_lock_versions.pop(),
         "src-tauri/tauri.conf.json": json.loads(
             (tauri_dir / "tauri.conf.json").read_text()
         )["version"],
@@ -275,5 +286,5 @@ def test_project_version_declarations_agree() -> None:
     drift = {k: v for k, v in declared.items() if v != expected}
     assert not drift, (
         f"pyproject.toml says {expected} but these disagree: {drift} — a "
-        "release bump touches all eight files in ONE commit"
+        "release bump touches all nine files in ONE commit"
     )
