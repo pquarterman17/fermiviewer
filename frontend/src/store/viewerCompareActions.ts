@@ -104,9 +104,14 @@ export function createCompareActions(
             s.order,
             bound.id,
           );
-          const imageId = ok(p.imageId) && members.includes(p.imageId)
-            ? p.imageId
-            : (members[0] ?? null);
+          // A valid out-of-group image is an accepted transient state (the
+          // pane picker keeps it visible). Preserve it as before; only a
+          // truly empty group forces the pane blank.
+          const imageId = members.length === 0
+            ? null
+            : ok(p.imageId)
+              ? p.imageId
+              : members[0];
           prev = imageId;
           return { ...p, imageId };
         }
@@ -394,7 +399,7 @@ export function createCompareActions(
     removeGroupMember: (id, imageId) =>
       set((s) => {
         const group = s.imageGroups.find((g) => g.id === id);
-        if (!group) return {};
+        if (!group || !group.ids.includes(imageId)) return {};
         const live = (ids: string[]) => ids.filter((x) => x in s.images);
         const before = live(group.ids);
         const after = before.filter((x) => x !== imageId);

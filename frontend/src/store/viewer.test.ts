@@ -1131,6 +1131,30 @@ describe("named image groups", () => {
     expect(useViewer.getState().sbsPanes[0].imageId).toBeNull();
   });
 
+  it("preserves a valid out-of-group pane image when changing compare modes", () => {
+    const id = useViewer.getState().createGroup(["a"], "only-a")!;
+    useViewer.getState().setPaneGroup(0, id);
+    useViewer.getState().setPaneImage(0, "b");
+    useViewer.getState().setCompareMode("split");
+    useViewer.getState().setCompareMode("sidebyside");
+    expect(useViewer.getState().sbsPanes[0]).toEqual({
+      imageId: "b",
+      groupId: id,
+    });
+  });
+
+  it("does not reseat a pane when removing an image that is not a member", () => {
+    const id = useViewer.getState().createGroup(["a"], "only-a")!;
+    useViewer.getState().setPaneGroup(0, id);
+    useViewer.getState().setPaneImage(0, "b");
+    useViewer.getState().removeGroupMember(id, "b");
+    expect(useViewer.getState().sbsPanes[0]).toEqual({
+      imageId: "b",
+      groupId: id,
+    });
+    expect(useViewer.getState().imageGroups[0].ids).toEqual(["a"]);
+  });
+
   it("reseats a removed pane member using group order, not library order", () => {
     const id = useViewer.getState().createGroup(["c", "a", "b"], "ordered")!;
     useViewer.getState().setPaneGroup(0, id);
