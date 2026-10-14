@@ -169,9 +169,11 @@ describe("Filmstrip grouping", () => {
         expect.objectContaining({ name: "Annealed", ids: ["a", "b"] }),
       ]),
     );
-    expect(askParams).toHaveBeenCalledWith("New group", [
-      expect.objectContaining({ key: "name", default: "Group 1" }),
-    ]);
+    expect(askParams).toHaveBeenCalledWith(
+      "New group",
+      [expect.objectContaining({ key: "name", default: "Group 1" })],
+      "OK",
+    );
   });
 
   it("creates nothing when the name dialog is cancelled", async () => {

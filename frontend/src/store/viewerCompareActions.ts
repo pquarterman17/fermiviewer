@@ -358,11 +358,32 @@ export function createCompareActions(
 
     // NB: unlike closeImage's prune, a group emptied by hand is kept — with
     // nesting an image-less group is a legitimate project. Use deleteGroup.
+    // A side-by-side pane bound to this group and showing the removed image
+    // moves to the member now at the same position (or the last one), so it
+    // never keeps showing an image that has left its group. An emptied
+    // group leaves the pane blank rather than falling back to every image.
     removeGroupMember: (id, imageId) =>
-      set((s) => ({
-        imageGroups: s.imageGroups.map((g) =>
-          g.id === id ? { ...g, ids: g.ids.filter((x) => x !== imageId) } : g,
-        ),
-      })),
+      set((s) => {
+        const group = s.imageGroups.find((g) => g.id === id);
+        if (!group) return {};
+        const live = (ids: string[]) =>
+          s.order.filter((x) => ids.includes(x) && x in s.images);
+        const before = live(group.ids);
+        const after = before.filter((x) => x !== imageId);
+        const at = before.indexOf(imageId);
+        let moved = false;
+        const sbsPanes = s.sbsPanes.map((p) => {
+          if (p.groupId !== id || p.imageId !== imageId) return p;
+          moved = true;
+          const next = after[Math.min(Math.max(at, 0), after.length - 1)];
+          return { ...p, imageId: next ?? null };
+        });
+        return {
+          imageGroups: s.imageGroups.map((g) =>
+            g.id === id ? { ...g, ids: g.ids.filter((x) => x !== imageId) } : g,
+          ),
+          ...(moved ? { sbsPanes, compareSet: paneCompareSet(sbsPanes) } : {}),
+        };
+      }),
   };
 }

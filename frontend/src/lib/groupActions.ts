@@ -52,7 +52,7 @@ export async function groupImages(ids: string[]): Promise<void> {
       type: "text",
       default: nextGroupName(s.imageGroups),
     },
-  ]);
+  ], "OK");
   if (values) useViewer.getState().createGroup(ids, String(values.name));
 }
 
@@ -71,6 +71,7 @@ export async function addImagesToGroup(ids: string[]): Promise<void> {
         options: labels,
       },
     ],
+    "Add",
   );
   if (!values) return;
   const now = useViewer.getState();
@@ -146,7 +147,7 @@ export async function deleteGroupPicked(): Promise<void> {
   const labels = groupPickerLabels(s.imageGroups);
   const values = await askParams("Delete group (images stay open)", [
     { key: "group", label: "Group", type: "select", default: labels[0], options: labels },
-  ]);
+  ], "Delete");
   if (!values) return;
   const picked = s.imageGroups[labels.indexOf(String(values.group))];
   const now = useViewer.getState();

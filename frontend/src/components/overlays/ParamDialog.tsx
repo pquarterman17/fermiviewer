@@ -121,9 +121,13 @@ export default function ParamDialog() {
           <button
             className="fvd-btn primary"
             onClick={run}
-            title="Run the operation with these parameters (Enter)"
+            title={
+              active.submitLabel
+                ? `${active.submitLabel} (Enter)`
+                : "Run the operation with these parameters (Enter)"
+            }
           >
-            Run
+            {active.submitLabel ?? "Run"}
           </button>
         </div>
     </ModalDialog>

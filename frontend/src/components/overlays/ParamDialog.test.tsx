@@ -179,4 +179,17 @@ describe("ParamDialog queue rendering", () => {
     act(() => useParamDialog.getState().cancelAll());
     await expect(pending).resolves.toBeNull();
   });
+
+  it("shows a caller's confirm label instead of Run", async () => {
+    render(<ParamDialog />);
+    let result: Promise<unknown> = Promise.resolve();
+    act(() => {
+      result = askParams("New group", [num("a", 1)], "OK");
+    });
+    const ok = await screen.findByRole("button", { name: "OK" });
+    expect(screen.queryByRole("button", { name: /run/i })).toBeNull();
+    fireEvent.click(ok);
+    await expect(result).resolves.toEqual({ a: 1 });
+  });
 });
+
