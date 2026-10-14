@@ -13,6 +13,31 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [0.10.0] - 2026-10-14
+
+Easier image grouping, and two groups side by side.
+
+### Added
+- **Grouping from the right-click menu.** Group selected images under a
+  name, add images to an existing group, or remove them from their groups.
+- **View → Groups menu** with the same actions plus Delete Group and
+  Delete All Groups. Deleting a group never closes its images.
+- **Compare two groups side by side.** Uses the groups holding the
+  selected images first, and is also on the Groups bar as *Side by side*.
+
+### Changed
+- The library's **Group** button asks for a name, and group dialogs say
+  OK / Add / Delete instead of Run.
+- The group picker shows each sample's project path, so same-named samples
+  in different projects can be told apart.
+
+### Fixed
+- A side-by-side pane no longer keeps showing an image that has been
+  removed from its group, and a pane bound to an emptied group stays empty
+  instead of showing unrelated images.
+- Nested and empty groups keep their pane state across compare-mode
+  changes.
+
 ## [0.9.0] - 2026-10-13
 
 Clearer EDS identification and AFM results, from the usability and
