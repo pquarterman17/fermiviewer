@@ -132,7 +132,7 @@ describe("Filmstrip keyboard selection", () => {
     expect(screen.getByRole("menuitem", { name: "Compare selected" })).toBeDisabled();
 
     expect(
-      screen.getByRole("menuitem", { name: "Compare groups side by side" }),
+      screen.getByRole("menuitem", { name: "Compare two groups side by side" }),
     ).toBeDisabled();
 
     expect(screen.getByRole("menuitem", { name: "Add to group…" })).toBeDisabled();
@@ -209,7 +209,7 @@ describe("Filmstrip grouping", () => {
     render(<Filmstrip />);
     fireEvent.contextMenu(screen.getAllByRole("option")[0]);
     fireEvent.click(
-      screen.getByRole("menuitem", { name: "Compare groups side by side" }),
+      screen.getByRole("menuitem", { name: "Compare two groups side by side" }),
     );
     expect(useViewer.getState().sbsPanes.map((p) => p.groupId)).toEqual([
       "g1",
@@ -266,5 +266,40 @@ describe("Filmstrip grouping", () => {
         expect.objectContaining({ name: "Tilt series", ids: ["a", "b"] }),
       ]),
     );
+  });
+
+  it("shows only two groups side by side", () => {
+    useViewer.setState({
+      imageGroups: [
+        { id: "g1", name: "A", ids: ["a"] },
+        { id: "g2", name: "B", ids: ["b"] },
+        { id: "g3", name: "C", ids: ["c"] },
+      ],
+    });
+    render(<Filmstrip />);
+    fireEvent.click(screen.getByRole("button", { name: "Side by side" }));
+    expect(useViewer.getState().sbsPanes.map((p) => p.groupId)).toEqual([
+      "g1",
+      "g2",
+    ]);
+  });
+
+  it("removes the selected images from their groups and keeps the groups", () => {
+    useViewer.setState({
+      imageGroups: [
+        { id: "g1", name: "A", ids: ["a", "c"] },
+        { id: "g2", name: "B", ids: ["b"] },
+      ],
+    });
+    render(<Filmstrip />);
+    const card = screen
+      .getAllByRole("option")
+      .find((o) => o.textContent?.includes("a.dm4"));
+    fireEvent.contextMenu(card!);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove from group" }));
+    expect(useViewer.getState().imageGroups).toEqual([
+      expect.objectContaining({ id: "g1", ids: ["c"] }),
+      expect.objectContaining({ id: "g2", ids: [] }),
+    ]);
   });
 });

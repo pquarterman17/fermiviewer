@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   comparableGroupIds,
   groupPickerLabels,
+  groupsContaining,
   nextGroupName,
+  sideBySidePair,
 } from "./groupActions";
 
 describe("group actions", () => {
@@ -49,5 +51,28 @@ describe("group actions", () => {
         { id: "b", name: "Group 3", ids: [] },
       ]),
     ).toBe("Group 2");
+  });
+
+  it("pairs at most two groups, preferring the selection's", () => {
+    const groups = [
+      { id: "g1", name: "A", ids: ["a"] },
+      { id: "g2", name: "B", ids: ["b"] },
+      { id: "g3", name: "C", ids: ["c"] },
+    ];
+    const images = { a: {}, b: {}, c: {} };
+    expect(sideBySidePair(groups, images, [])).toEqual(["g1", "g2"]);
+    expect(sideBySidePair(groups, images, ["c"])).toEqual(["g3", "g1"]);
+    expect(sideBySidePair(groups, images, ["b", "c"])).toEqual(["g2", "g3"]);
+    expect(sideBySidePair(groups.slice(0, 1), images, [])).toEqual(["g1"]);
+  });
+
+  it("finds the groups an image belongs to", () => {
+    const groups = [
+      { id: "g1", name: "A", ids: ["a", "b"] },
+      { id: "g2", name: "B", ids: ["b"] },
+      { id: "g3", name: "C", ids: ["c"] },
+    ];
+    expect(groupsContaining(groups, ["b"]).map((g) => g.id)).toEqual(["g1", "g2"]);
+    expect(groupsContaining(groups, ["z"])).toEqual([]);
   });
 });

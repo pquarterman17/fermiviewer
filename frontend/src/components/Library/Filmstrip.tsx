@@ -16,6 +16,8 @@ import {
   comparableGroupIds,
   compareGroupsSideBySide,
   groupImages,
+  groupsContaining,
+  removeImagesFromGroups,
 } from "../../lib/groupActions";
 import { renameSingleImage } from "../../lib/rename";
 import {
@@ -376,10 +378,14 @@ export default function Filmstrip() {
           canCompare={selected.length >= 2}
           canCompareGroups={canCompareGroups}
           canAddToGroup={imageGroups.length > 0}
+          canRemoveFromGroup={
+            groupsContaining(imageGroups, ctxTargets(ctx.id)).length > 0
+          }
           onShow={() => select(ctx.id, "single")}
           onCompare={() => startCompare(selected)}
           onGroup={() => void groupImages(ctxTargets(ctx.id))}
           onAddToGroup={() => void addImagesToGroup(ctxTargets(ctx.id))}
+          onRemoveFromGroup={() => removeImagesFromGroups(ctxTargets(ctx.id))}
           onCompareGroups={compareGroupsSideBySide}
           onRename={() => void renameSingleImage(ctx.id)}
           onClose={() => {

@@ -18,7 +18,7 @@ export default function GroupsBar({
   onRecall: (ids: string[]) => void;
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
-  /** Present when at least two groups have images to compare. */
+  /** Present when two groups have images to compare. */
   onCompareGroups?: () => void;
 }) {
   return (
@@ -28,7 +28,7 @@ export default function GroupsBar({
         {onCompareGroups && (
           <button
             className="fvd-groups-sbs"
-            title="Show each group in its own side-by-side pane"
+            title="Show two groups side by side (the selected images' groups first)"
             onClick={onCompareGroups}
           >
             Side by side

@@ -1,12 +1,13 @@
 // Named-group commands shared by the filmstrip context menu and the
-// View → Groups menu: make a group from images, add images to an existing
-// group, and show every group side by side.
+// View → Groups menu: make a group, add to or remove from groups, delete
+// groups, and show two groups side by side.
 
 import { askParams } from "../store/params";
 import { useViewer } from "../store/viewer";
 import { groupAncestors, type ImageGroup } from "./groups";
 
-/** Groups that still have an open image; each becomes one side-by-side pane. */
+/** Groups that still have an open image, i.e. ones a side-by-side pane can
+ *  show. */
 export function comparableGroupIds(
   groups: ImageGroup[],
   images: Record<string, unknown>,
@@ -88,7 +89,80 @@ export async function addImagesToGroup(ids: string[]): Promise<void> {
   );
 }
 
+/** The two groups a group side-by-side shows: groups holding the selected
+ *  images come first, then the remaining comparable groups in list order.
+ *  Fewer than two means there is nothing to compare. */
+export function sideBySidePair(
+  groups: ImageGroup[],
+  images: Record<string, unknown>,
+  selected: string[],
+): string[] {
+  const comparable = comparableGroupIds(groups, images);
+  const chosen = new Set(selected);
+  const touched = comparable.filter((id) =>
+    groups.find((g) => g.id === id)?.ids.some((m) => chosen.has(m)),
+  );
+  const ordered = [...touched, ...comparable.filter((id) => !touched.includes(id))];
+  return ordered.slice(0, 2);
+}
+
 export function compareGroupsSideBySide(): void {
   const s = useViewer.getState();
-  s.startSampleCompare(comparableGroupIds(s.imageGroups, s.images));
+  const pair = sideBySidePair(s.imageGroups, s.images, s.selected);
+  if (pair.length < 2) {
+    s.setStatus("need two groups with open images to compare");
+    return;
+  }
+  s.startSampleCompare(pair);
+}
+
+/** Groups any of `ids` belongs to. */
+export function groupsContaining(groups: ImageGroup[], ids: string[]): ImageGroup[] {
+  const wanted = new Set(ids);
+  return groups.filter((g) => g.ids.some((m) => wanted.has(m)));
+}
+
+/** Take the images out of every group they are in. The groups themselves
+ *  stay, even when emptied — delete a group to remove it. */
+export function removeImagesFromGroups(ids: string[]): void {
+  const s = useViewer.getState();
+  const touched = groupsContaining(s.imageGroups, ids);
+  if (touched.length === 0) {
+    s.setStatus("not in any group");
+    return;
+  }
+  for (const g of touched) {
+    for (const id of ids) if (g.ids.includes(id)) s.removeGroupMember(g.id, id);
+  }
+  s.setStatus(
+    `removed from ${touched.length} group${touched.length === 1 ? "" : "s"}`,
+  );
+}
+
+/** Pick a group and delete it. Its images stay open. */
+export async function deleteGroupPicked(): Promise<void> {
+  const s = useViewer.getState();
+  if (s.imageGroups.length === 0) return;
+  const labels = groupPickerLabels(s.imageGroups);
+  const values = await askParams("Delete group (images stay open)", [
+    { key: "group", label: "Group", type: "select", default: labels[0], options: labels },
+  ]);
+  if (!values) return;
+  const picked = s.imageGroups[labels.indexOf(String(values.group))];
+  const now = useViewer.getState();
+  if (!picked || !now.imageGroups.some((g) => g.id === picked.id)) return;
+  now.deleteGroup(picked.id);
+  now.setStatus(`deleted group "${picked.name}"`);
+}
+
+/** Delete every group after confirming. Images stay open. */
+export function deleteAllGroups(): void {
+  const s = useViewer.getState();
+  const n = s.imageGroups.length;
+  if (n === 0) return;
+  if (!window.confirm(`Delete all ${n} group${n === 1 ? "" : "s"}? Images stay open.`)) {
+    return;
+  }
+  for (const g of s.imageGroups) s.deleteGroup(g.id);
+  s.setStatus(`deleted ${n} group${n === 1 ? "" : "s"}`);
 }

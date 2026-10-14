@@ -4,9 +4,13 @@
 import { downloadBugReport } from "../../../lib/errlog";
 import {
   addImagesToGroup,
-  comparableGroupIds,
   compareGroupsSideBySide,
+  deleteAllGroups,
+  deleteGroupPicked,
   groupImages,
+  groupsContaining,
+  removeImagesFromGroups,
+  sideBySidePair,
 } from "../../../lib/groupActions";
 import type { Entry, MenuCtx } from "./menuTypes";
 
@@ -54,9 +58,28 @@ export function buildViewMenu(ctx: MenuCtx): Entry[] {
           action: () => void addImagesToGroup(store.selected),
         },
         {
-          label: "Compare Groups Side by Side",
-          disabled: comparableGroupIds(store.imageGroups, store.images).length < 2,
+          label: `Remove Selected from Groups (${store.selected.length})`,
+          disabled:
+            groupsContaining(store.imageGroups, store.selected).length === 0,
+          action: () => removeImagesFromGroups(store.selected),
+        },
+        {
+          label: "Compare Two Groups Side by Side",
+          disabled:
+            sideBySidePair(store.imageGroups, store.images, store.selected)
+              .length < 2,
           action: compareGroupsSideBySide,
+        },
+        { kind: "sep" },
+        {
+          label: "Delete Group…",
+          disabled: store.imageGroups.length === 0,
+          action: () => void deleteGroupPicked(),
+        },
+        {
+          label: "Delete All Groups…",
+          disabled: store.imageGroups.length === 0,
+          action: deleteAllGroups,
         },
       ],
     },

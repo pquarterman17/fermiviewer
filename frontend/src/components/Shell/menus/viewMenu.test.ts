@@ -19,25 +19,45 @@ function groupsMenu(extra: Record<string, unknown>): Entry[] {
   return groups.submenu;
 }
 
+function item(menu: Entry[], startsWith: string): Entry {
+  const found = menu.find((e) => (e.label ?? "").startsWith(startsWith));
+  if (!found) throw new Error(`no entry starting "${startsWith}"`);
+  return found;
+}
+
 describe("View → Groups", () => {
-  it("needs a selection to group and a group to add to", () => {
-    const [group, add, compare] = groupsMenu({});
-    expect(group.disabled).toBe(true);
-    expect(add.disabled).toBe(true);
-    expect(compare.disabled).toBe(true);
+  it("disables every entry with no selection and no groups", () => {
+    const menu = groupsMenu({});
+    for (const label of [
+      "Group Selected",
+      "Add Selected to Group",
+      "Remove Selected from Groups",
+      "Compare Two Groups",
+      "Delete Group",
+      "Delete All Groups",
+    ]) {
+      expect(item(menu, label).disabled).toBe(true);
+    }
   });
 
   it("enables each entry once its inputs exist", () => {
-    const [group, add, compare] = groupsMenu({
+    const menu = groupsMenu({
       selected: ["a"],
       imageGroups: [
         { id: "g1", name: "A", ids: ["a"] },
         { id: "g2", name: "B", ids: ["b"] },
       ],
     });
-    expect(group.label).toBe("Group Selected (1)…");
-    expect(group.disabled).toBe(false);
-    expect(add.disabled).toBe(false);
-    expect(compare.disabled).toBe(false);
+    expect(item(menu, "Group Selected").label).toBe("Group Selected (1)…");
+    for (const label of [
+      "Group Selected",
+      "Add Selected to Group",
+      "Remove Selected from Groups",
+      "Compare Two Groups",
+      "Delete Group",
+      "Delete All Groups",
+    ]) {
+      expect(item(menu, label).disabled).toBe(false);
+    }
   });
 });
