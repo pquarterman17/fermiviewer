@@ -50,9 +50,8 @@ describe("groupMembers", () => {
     ]);
   });
 
-  it("falls back to order when the group prunes to empty (all members closed)", () => {
-    // none of g1's members are open → fall back to the loaded order
-    expect(groupMembers(groups, imagesOf("k"), ["k"], "g1")).toEqual(["k"]);
+  it("keeps an existing group empty when all of its members are closed", () => {
+    expect(groupMembers(groups, imagesOf("k"), ["k"], "g1")).toEqual([]);
   });
 
   it("the order fallback itself drops ids not present in images", () => {
@@ -159,13 +158,8 @@ describe("sample / project nesting", () => {
     const images = imagesOf("a", "b", "c");
 
     it("a parent's members are its own ids, never its children's", () => {
-      // proj holds no images directly → the null/empty fallback applies, the
-      // same as any other empty group (it does NOT roll up s1 + s2)
-      expect(groupMembers(tree, images, ["c", "b", "a"], "proj")).toEqual([
-        "c",
-        "b",
-        "a",
-      ]);
+      // proj holds no images directly and does NOT roll up s1 + s2
+      expect(groupMembers(tree, images, ["c", "b", "a"], "proj")).toEqual([]);
     });
 
     it("a nested sample resolves exactly like a flat group", () => {
