@@ -1253,6 +1253,23 @@ describe("startSampleCompare (cross-sample stepping — item 26)", () => {
   const byName = (n: string) =>
     useViewer.getState().imageGroups.find((g) => g.name === n)!;
 
+  it("moves a pane off an image removed from its group", () => {
+    const sA = byName("Sample A").id;
+    const sB = byName("Sample B").id;
+    useViewer.getState().setActive("a2");
+    useViewer.getState().startSampleCompare([sA, sB]);
+    useViewer.getState().removeGroupMember(sA, "a2");
+    // the member now at a2's position takes its place
+    expect(useViewer.getState().sbsPanes[0].imageId).toBe("a3");
+    useViewer.getState().removeGroupMember(sA, "a3");
+    expect(useViewer.getState().sbsPanes[0].imageId).toBe("a1");
+    // an emptied group leaves its pane blank, not showing an unrelated image
+    useViewer.getState().removeGroupMember(sA, "a1");
+    expect(useViewer.getState().sbsPanes[0].imageId).toBeNull();
+    // the other pane is untouched throughout
+    expect(useViewer.getState().sbsPanes[1].imageId).toBe("b2");
+  });
+
   it("seeds pane i from sample i, both at frame 0, and enters sidebyside", () => {
     const sA = byName("Sample A").id;
     const sB = byName("Sample B").id;

@@ -38,6 +38,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--url", default="http://localhost:5173")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--channel", default="msedge")
+    parser.add_argument(
+        "--executable-path",
+        default=None,
+        help="browser binary to launch instead of --channel (e.g. a "
+        "preinstalled Chromium in a Linux container)",
+    )
     parser.add_argument("--headed", action="store_true")
     parser.add_argument(
         "--no-start-server",
@@ -264,10 +270,19 @@ def run() -> None:
 
         with tempfile.TemporaryDirectory(prefix="fv-visual-") as tmp:
             with sync_playwright() as playwright:
-                browser = playwright.chromium.launch(
-                    channel=args.channel, headless=not args.headed
+                launch = (
+                    {"executable_path": args.executable_path}
+                    if args.executable_path
+                    else {"channel": args.channel}
                 )
-                page = browser.new_page(viewport=FULL)
+                browser = playwright.chromium.launch(
+                    headless=not args.headed, **launch
+                )
+                # Pin the locale: number/date formatting stays the same on
+                # every machine, and a POSIX system locale such as
+                # "en-US@posix" (common in Linux containers) is not a valid
+                # BCP 47 tag, so Intl throws and the app never renders.
+                page = browser.new_page(viewport=FULL, locale="en-US")
                 browser_errors: list[str] = []
                 page.on(
                     "console",

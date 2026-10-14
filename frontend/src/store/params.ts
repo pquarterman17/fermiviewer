@@ -9,6 +9,8 @@ export interface ParamRequest {
   title: string;
   fields: ParamField[];
   resolve: ParamResolver;
+  /** Confirm-button text; the dialog shows "Run" when absent. */
+  submitLabel?: string;
 }
 
 interface ParamDialogState {
@@ -18,6 +20,7 @@ interface ParamDialogState {
     title: string,
     fields: ParamField[],
     resolve: ParamResolver,
+    submitLabel?: string,
   ) => void;
   /** Settle the active request and show the next one, if any. */
   submit: (values: ParamValues | null) => void;
@@ -32,9 +35,12 @@ let nextId = 1;
 export const useParamDialog = create<ParamDialogState>((set, get) => ({
   queue: [],
 
-  open: (title, fields, resolve) =>
+  open: (title, fields, resolve, submitLabel) =>
     set((s) => ({
-      queue: [...s.queue, { id: nextId++, title, fields, resolve }],
+      queue: [
+        ...s.queue,
+        { id: nextId++, title, fields, resolve, submitLabel },
+      ],
     })),
 
   // Advance the queue BEFORE resolving: the awaiting caller may synchronously
@@ -63,12 +69,16 @@ export const useParamDialog = create<ParamDialogState>((set, get) => ({
  * Overlapping calls queue in FIFO order instead of clobbering each other: the
  * previous behaviour replaced the stored resolver, so the earlier promise was
  * orphaned and never settled, hanging its caller forever.
+ *
+ * `submitLabel` replaces the default "Run" button text for dialogs that
+ * don't run an operation (naming or picking something).
  */
 export function askParams(
   title: string,
   fields: ParamField[],
+  submitLabel?: string,
 ): Promise<ParamValues | null> {
   return new Promise((resolve) => {
-    useParamDialog.getState().open(title, fields, resolve);
+    useParamDialog.getState().open(title, fields, resolve, submitLabel);
   });
 }
