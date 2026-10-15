@@ -120,7 +120,7 @@ describe("AfmSurfaceWorkshop", () => {
     expect(screen.getByText("2 parameters").closest("details")).toHaveAttribute("open");
   });
 
-  it("labels the result with the region and levelling it was measured with", async () => {
+  it("keeps old provenance visible but blocks export after settings change", async () => {
     vi.mocked(afmSurface).mockResolvedValue(surface(3));
     useViewer.getState().ingest([image("a")]);
     useViewer.setState({ savedRois: { a: [savedRoi] } });
@@ -130,14 +130,15 @@ describe("AfmSurfaceWorkshop", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Analyze" }));
     });
-    // choosing another region afterwards does not relabel the old result
+    // choosing another region afterwards does not relabel the old result,
+    // but makes it visibly stale and unexportable
     act(() => useWorkshop.getState().setAnalysisRegionChoice("a", "whole"));
-    fireEvent.change(screen.getByLabelText(/level/i), { target: { value: "none" } });
+    fireEvent.change(screen.getByLabelText(/background removal/i), { target: { value: "none" } });
     expect(screen.getByText("Terrace · plane levelling")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Export JSON" }));
-    const exported = String(vi.mocked(downloadJson).mock.calls[0][1]);
-    expect(exported).toContain("Terrace");
-    expect(exported).toMatch(/"level": "plane"/);
+    expect(screen.getByRole("status")).toHaveTextContent(/out of date/i);
+    expect(screen.getByRole("button", { name: "Update analysis" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Export JSON" })).toBeDisabled();
+    expect(downloadJson).not.toHaveBeenCalled();
   });
 });
 
