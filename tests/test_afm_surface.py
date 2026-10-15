@@ -126,6 +126,22 @@ def test_step_height_refuses_a_flat_region() -> None:
         feat.step_height(np.zeros((20, 20)))
 
 
+def test_step_height_evidence_preserves_direction_and_manual_split() -> None:
+    z = 0.01 * XX + 4.0 * (XX > 100)
+    evidence = feat.step_height_evidence(z)
+    assert evidence.result.height == pytest.approx(4.0, abs=1e-6)
+    assert evidence.signed_height == pytest.approx(4.0, abs=1e-6)
+    assert evidence.axis == "x"
+    assert evidence.terraces.shape == z.shape
+    assert {1, 2}.issubset(set(np.unique(evidence.terraces)))
+    assert evidence.measured.shape == evidence.fitted.shape == evidence.residual.shape
+
+    manual = np.zeros_like(z, dtype=bool)
+    manual[:, 90:] = True
+    corrected = feat.step_height_evidence(z, n_iter=1, initial_upper=manual)
+    assert corrected.result.n_lower > 0 and corrected.result.n_upper > 0
+
+
 def test_region_heights_measure_from_the_local_substrate() -> None:
     z = np.full((40, 60), 2.0)                     # substrate at 2
     z[10:20, 10:20] += 5                           # a 5-high box
@@ -188,11 +204,21 @@ def test_step_route(client) -> None:
     img = store.add_parsed(_ds(0.05 * XX + 3 * (YY > 60)), "s.spm")
     r = client.post(f"/api/afm/{img}/step-height", json={"roi": [40, 1, 80, 256]})
     assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["signed_height"] == pytest.approx(body["height"])
+    assert body["profile_axis"] in {"x", "y"}
+    assert len(body["profile_position"]) <= 256
+    assert len(body["terrace_mask"]) <= 64
     r0 = client.post(f"/api/afm/{img}/step-height", json={"roi": [40, 1, 80, 256], "edge": 0})
     assert r0.status_code == 200 and r0.json()["height"] == pytest.approx(3.0, abs=0.01)
     assert r.json()["height"] == pytest.approx(3.0, abs=0.01) and r.json()["unit"] == "nm"
     flat = store.add_parsed(_ds(np.zeros((20, 20))), "f.spm")
     assert client.post(f"/api/afm/{flat}/step-height", json={}).status_code == 422
+    manual = client.post(f"/api/afm/{img}/step-height", json={
+        "roi": [40, 1, 80, 256], "split_axis": "y", "split_fraction": 0.5,
+    })
+    assert manual.status_code == 200 and manual.json()["split_axis"] == "y"
+    assert client.post(f"/api/afm/{img}/step-height", json={"split_axis": "x"}).status_code == 422
 
 
 def _bumps(unit: str | None) -> str:

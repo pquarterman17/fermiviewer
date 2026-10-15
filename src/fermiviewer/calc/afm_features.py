@@ -20,7 +20,10 @@ import numpy as np
 from scipy import ndimage
 from skimage.filters import threshold_otsu
 
-__all__ = ["RegionHeights", "StepHeight", "region_heights", "step_height"]
+__all__ = [
+    "RegionHeights", "StepEvidence", "StepHeight", "region_heights",
+    "step_height", "step_height_evidence",
+]
 
 
 @dataclass(frozen=True)
@@ -33,6 +36,30 @@ class StepHeight:
     upper_fraction: float
 
 
+@dataclass(frozen=True)
+class StepEvidence:
+    """Fit evidence used to audit a step-height result.
+
+    ``terraces`` is 0 outside the fitted samples, 1 for the lower terrace,
+    and 2 for the upper terrace.  The profile follows ``axis`` in increasing
+    image-coordinate order, which gives ``signed_height`` an unambiguous
+    direction without changing the historical positive ``height`` result.
+    """
+
+    result: StepHeight
+    signed_height: float
+    axis: str
+    position: np.ndarray
+    measured: np.ndarray
+    fitted: np.ndarray
+    residual: np.ndarray
+    upper_fraction_profile: np.ndarray
+    terraces: np.ndarray
+    slope_x: float
+    slope_y: float
+    fit_rms: float
+
+
 def _shrink(mask: np.ndarray, edge: int) -> np.ndarray:
     """`mask` eroded by `edge` pixels. Edge 0 must mean no erosion: SciPy
     reads iterations=0 as "erode until nothing changes", which empties it."""
@@ -43,7 +70,7 @@ def _shrink(mask: np.ndarray, edge: int) -> np.ndarray:
 
 def _fit_step(
     d: np.ndarray, finite: np.ndarray, upper: np.ndarray, edge: int, n_iter: int,
-) -> tuple[StepHeight, float] | None:
+) -> StepEvidence | None:
     """Refine one initial terrace split; None if a terrace vanishes.
     Returns the result and its residual rms (to compare starts)."""
     yy, xx = np.mgrid[0:d.shape[0], 0:d.shape[1]].astype(np.float64)
@@ -70,14 +97,42 @@ def _fit_step(
     hi, lo = (hi_res, lo_res) if h >= 0 else (lo_res, hi_res)
     frac = float(upper.sum() / finite.sum())
     rms = float(np.sqrt((np.concatenate([lo, hi]) ** 2).mean()))
-    return StepHeight(
+    result = StepHeight(
         height=float(abs(h)), lower_std=float(lo.std()), upper_std=float(hi.std()),
         n_lower=int(lo.size), n_upper=int(hi.size),
         upper_fraction=frac if h >= 0 else 1.0 - frac,
-    ), rms
+    )
+    semantic_upper = upper if h >= 0 else finite & ~upper
+    terraces = np.zeros(d.shape, dtype=np.uint8)
+    terraces[used_lo if h >= 0 else used_hi] = 1
+    terraces[used_hi if h >= 0 else used_lo] = 2
+    fitted_surface = base + h * upper
+    # Pick the profile direction in which terrace occupancy varies most.
+    row_fraction = semantic_upper.mean(axis=1)
+    col_fraction = semantic_upper.mean(axis=0)
+    axis = "y" if np.ptp(row_fraction) >= np.ptp(col_fraction) else "x"
+    reduce_axis = 1 if axis == "y" else 0
+    measured = np.nanmedian(np.where(finite, d, np.nan), axis=reduce_axis)
+    fitted = np.nanmedian(np.where(finite, fitted_surface, np.nan), axis=reduce_axis)
+    residual = np.nanmedian(np.where(finite, d - fitted_surface, np.nan), axis=reduce_axis)
+    profile_upper = row_fraction if axis == "y" else col_fraction
+    edge_n = max(1, profile_upper.size // 4)
+    direction = float(np.nanmean(profile_upper[-edge_n:]) - np.nanmean(profile_upper[:edge_n]))
+    signed = result.height if direction >= 0 else -result.height
+    return StepEvidence(
+        result=result, signed_height=signed, axis=axis,
+        position=np.arange(measured.size, dtype=np.float64), measured=measured,
+        fitted=fitted, residual=residual, upper_fraction_profile=profile_upper,
+        terraces=terraces, slope_x=float(cx), slope_y=float(cy), fit_rms=rms,
+    )
 
 
-def step_height(z: np.ndarray, edge: int = 2, n_iter: int = 6) -> StepHeight:
+def step_height_evidence(
+    z: np.ndarray,
+    edge: int = 2,
+    n_iter: int = 6,
+    initial_upper: np.ndarray | None = None,
+) -> StepEvidence:
     """Height of the step between the two terraces in `z` (e.g. a
     rectangle drawn across one step edge).
 
@@ -99,17 +154,28 @@ def step_height(z: np.ndarray, edge: int = 2, n_iter: int = 6) -> StepHeight:
     slope_x = float(np.median(sx[np.isfinite(sx)])) if np.isfinite(sx).any() else 0.0
     slope_y = float(np.median(sy[np.isfinite(sy)])) if np.isfinite(sy).any() else 0.0
     detrended = d - slope_x * xx - slope_y * yy
-    best: tuple[StepHeight, float] | None = None
-    for start in (d, detrended):
+    best: StepEvidence | None = None
+    starts = (d, detrended) if initial_upper is None else ()
+    for start in starts:
         vals = start[finite]
         if np.ptp(vals) == 0:
             continue
         fit = _fit_step(d, finite, finite & (start > threshold_otsu(vals)), edge, n_iter)
-        if fit is not None and (best is None or fit[1] < best[1]):
+        if fit is not None and (best is None or fit.fit_rms < best.fit_rms):
             best = fit
+    if initial_upper is not None:
+        supplied = np.asarray(initial_upper, dtype=bool)
+        if supplied.shape != d.shape:
+            raise ValueError("manual terrace split differs from the height-map shape")
+        best = _fit_step(d, finite, finite & supplied, edge, n_iter)
     if best is None:
         raise ValueError("one terrace is too small — draw the region across the step")
-    return best[0]
+    return best
+
+
+def step_height(z: np.ndarray, edge: int = 2, n_iter: int = 6) -> StepHeight:
+    """Return the fitted magnitude; see :func:`step_height_evidence` for diagnostics."""
+    return step_height_evidence(z, edge=edge, n_iter=n_iter).result
 
 
 @dataclass(frozen=True)

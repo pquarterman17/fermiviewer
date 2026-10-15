@@ -34,6 +34,19 @@ export interface StepHeightResult {
   upper_fraction: number;
   unit: string;
   roi: AfmRoi | null;
+  signed_height: number;
+  profile_axis: "x" | "y";
+  profile_position: (number | null)[];
+  profile_measured: (number | null)[];
+  profile_fitted: (number | null)[];
+  profile_residual: (number | null)[];
+  profile_upper_fraction: (number | null)[];
+  terrace_mask: number[][];
+  slope_x: number;
+  slope_y: number;
+  fit_rms: number;
+  split_axis: "x" | "y" | null;
+  split_fraction: number | null;
 }
 
 const path = (id: string, tail: string) => `/api/afm/${encodeURIComponent(id)}/${tail}`;
@@ -61,6 +74,13 @@ export function afmMap(
   });
 }
 
-export function afmStepHeight(id: string, roi: AfmRoi | null, edge = 2): Promise<StepHeightResult> {
-  return post(path(id, "step-height"), { roi, edge });
+export function afmStepHeight(
+  id: string,
+  roi: AfmRoi | null,
+  edge = 2,
+  manual?: { axis: "x" | "y"; fraction: number },
+): Promise<StepHeightResult> {
+  return post(path(id, "step-height"), {
+    roi, edge, split_axis: manual?.axis ?? null, split_fraction: manual?.fraction ?? null,
+  });
 }
