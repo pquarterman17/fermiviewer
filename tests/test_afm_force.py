@@ -121,3 +121,17 @@ def test_batch_parallel_matches_serial_and_marks_failures() -> None:
             assert b is not None and a.youngs_modulus == b.youngs_modulus
             assert a.contact_z == b.contact_z
     assert [round(r.contact_z) for r in serial if r] == [280, 285, 290, 295, 300, 305]
+
+
+def test_batch_reports_incremental_progress() -> None:
+    from fermiviewer.calc.afm_force_batch import analyze_curves
+
+    tip = Tip("sphere", radius_nm=20)
+    curves = [_curve(tip, zc=290.0 + i) for i in range(3)]
+    reports: list[tuple[float, str]] = []
+    analyze_curves(
+        curves, parallel=False, k=0.1, tip=tip,
+        progress=lambda fraction, message: reports.append((fraction, message)),
+    )
+    assert [fraction for fraction, _ in reports] == pytest.approx([1 / 3, 2 / 3, 1])
+    assert reports[-1][1] == "fitting curve 3/3"

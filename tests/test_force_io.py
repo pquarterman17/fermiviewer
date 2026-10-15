@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from pathlib import Path
 
 import numpy as np
@@ -204,7 +206,11 @@ def test_force_map_images(client, tmp_path: Path) -> None:
     assert fitted["n"] == 6 and fitted["failed"] == 0
     assert all(v is not None and v > 0 for v in fitted["table"]["youngs_modulus"])
     names = [m["name"] for m in fitted["images"]]
-    assert names[0].startswith("Young's modulus") and len(names) == 3
+    assert names[0].startswith("Young's modulus") and len(names) == 5
+    assert names[-2].startswith("Force fit R²")
+    assert fitted["accepted"] + fitted["rejected"] == fitted["n"]
+    assert fitted["summaries"]["youngs_modulus"]["n"] == fitted["accepted"]
+    assert np.shape(fitted["grids"]["fit_r2"]) == (2, 3)
     # without the fit the contact is the zero crossing, exact on these curves
     body = client.post(url, json={"fit": False}).json()
     height = store.get(body["images"][2]["id"])
@@ -212,6 +218,51 @@ def test_force_map_images(client, tmp_path: Path) -> None:
     np.testing.assert_allclose(height.data[1], [50, 40, 30], atol=0.6)
     np.testing.assert_allclose(height.data[0], [0, 10, 20], atol=0.6)
     assert height.metadata["value_unit"] == "nm" and height.axes[1].scale == 100.0
+
+
+def test_force_map_runs_as_a_progress_job(client, tmp_path: Path) -> None:
+    z, _ = _hertz_like(200)
+    curves = [(z, 0.02 * np.clip(z - (100 + i), 0, None) ** 1.5) for i in range(4)]
+    path = write_nid_force(tmp_path / "async.nid", curves, k=2.0, grid=(2, 2))
+    force = next(m for m in _open(client, path) if m.get("is_force"))
+    start = client.post(f"/api/afm/force/{force['id']}/maps", json={
+        "radius_nm": 20, "run_async": True,
+    })
+    assert start.status_code == 200
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        final = client.get(f"/api/jobs/{start.json()['job_id']}").json()
+        if final["status"] in {"done", "error"}:
+            break
+        time.sleep(0.02)
+    assert final["status"] == "done", final
+    assert final["progress"] == 1.0
+    assert final["result"]["accepted"] + final["result"]["rejected"] == 4
+
+
+def test_force_map_job_can_be_cancelled(client, tmp_path: Path, monkeypatch) -> None:
+    from fermiviewer.routes import afm_force
+
+    z, d = _hertz_like(200)
+    path = write_nid_force(tmp_path / "cancel.nid", [(z, d)] * 4, k=2.0, grid=(2, 2))
+    force = next(m for m in _open(client, path) if m.get("is_force"))
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow(curves, *, progress, **options):
+        started.set()
+        release.wait(timeout=30)
+        progress(0.25, "checkpoint")
+        return []
+
+    monkeypatch.setattr(afm_force, "analyze_curves", slow)
+    start = client.post(f"/api/afm/force/{force['id']}/maps", json={"run_async": True})
+    job_id = start.json()["job_id"]
+    assert started.wait(timeout=30)
+    assert client.delete(f"/api/jobs/{job_id}").status_code == 200
+    release.set()
+    final = client.get(f"/api/jobs/{job_id}").json()
+    assert final["status"] == "error" and final["error"] == "cancelled"
 
 
 def test_force_map_survives_closing_the_file_mid_run(client, tmp_path: Path,
