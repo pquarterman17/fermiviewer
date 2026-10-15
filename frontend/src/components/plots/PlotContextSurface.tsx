@@ -40,6 +40,7 @@ interface PlotContextSurfaceProps {
   style?: React.CSSProperties;
   onExportData?: () => void;
   exportLabel?: string;
+  disabled?: boolean;
 }
 
 function canvasBlob(canvas: HTMLCanvasElement): Promise<Blob> {
@@ -64,6 +65,7 @@ const PlotContextSurface = forwardRef<
     style,
     onExportData,
     exportLabel = "Export data CSV",
+    disabled = false,
   },
   hostRef,
 ) {
@@ -87,10 +89,12 @@ const PlotContextSurface = forwardRef<
   const onContextMenu = (event: MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
+    if (disabled) return;
     openAt(event.clientX, event.clientY);
   };
 
   const onKeyDown = (event: KeyboardEvent) => {
+    if (disabled) return;
     if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
       event.preventDefault();
       const rect = shellRef.current?.getBoundingClientRect();
@@ -219,8 +223,9 @@ const PlotContextSurface = forwardRef<
     <div
       ref={shellRef}
       className={`fvd-plot-context-surface${shellClassName ? ` ${shellClassName}` : ""}`}
-      tabIndex={0}
+      tabIndex={disabled ? -1 : 0}
       aria-label={`${label} plot`}
+      aria-disabled={disabled}
       onContextMenu={onContextMenu}
       onKeyDown={onKeyDown}
     >

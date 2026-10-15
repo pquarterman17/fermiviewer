@@ -21,6 +21,22 @@ function plotRef() {
 }
 
 describe("PlotContextSurface", () => {
+  it("does not open export actions while disabled", () => {
+    render(
+      <PlotContextSurface
+        ref={createRef<HTMLDivElement>()}
+        plotRef={{ current: null }}
+        label="Stale plot"
+        filename="stale.png"
+        disabled
+      />,
+    );
+    const plot = screen.getByLabelText("Stale plot plot");
+    expect(plot).toHaveAttribute("aria-disabled", "true");
+    fireEvent.contextMenu(plot, { clientX: 10, clientY: 10 });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
   it("opens from the context-menu key and resets the full x range", () => {
     const plot = plotRef();
     render(

@@ -157,6 +157,7 @@ export default function RoughnessWorkshop() {
           <RoughnessMetrics result={result} />
           <BearingPlot
             result={result}
+            disabled={resultStale}
             onExportCsv={() => exportResult("csv")}
           />
           <div className="fvd-ws-note">
@@ -206,9 +207,11 @@ function formatMetric(
 
 function BearingPlot({
   result,
+  disabled,
   onExportCsv,
 }: {
   result: RoughnessResult;
+  disabled: boolean;
   onExportCsv: () => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
@@ -255,6 +258,7 @@ function BearingPlot({
         label="Material ratio bearing curve"
         filename="material-ratio-bearing-curve.png"
         className="fvd-ws-plot"
+        disabled={disabled}
         onExportData={onExportCsv}
         exportLabel="Export roughness CSV"
       />
