@@ -154,6 +154,16 @@
 .fvd-afm-terrace-mask i[data-terrace="1"] { background: color-mix(in srgb, var(--accent) 28%, var(--surface-inset)); }
 .fvd-afm-terrace-mask i[data-terrace="2"] { background: color-mix(in srgb, var(--accent) 85%, white); }
 .fvd-chart-legend { display: flex; gap: 12px; color: var(--text-faint); font-size: 9px; margin-top: 3px; }
+
+.fvd-fieldset-reset { border: 0; margin: 0; min-width: 0; padding: 0; }
+.fvd-afm-map-panel { border-top: 1px solid var(--border-soft); margin-top: 12px; padding-top: 10px; }
+.fvd-afm-map-panel progress { accent-color: var(--accent); height: 8px; min-width: 150px; }
+.fvd-afm-map-summary { display: flex; flex-wrap: wrap; gap: 7px 16px; margin: 7px 0; color: var(--text-muted); font-size: 10px; }
+.fvd-afm-map-summary strong { color: var(--success); }
+.fvd-afm-map-grid { display: grid; gap: 2px; margin: 7px 0 10px; max-width: 420px; }
+.fvd-afm-map-grid button { aspect-ratio: 1; min-width: 10px; border: 0; border-radius: 2px; background: var(--accent); color: transparent; cursor: crosshair; opacity: var(--map-alpha); padding: 0; }
+.fvd-afm-map-grid button:hover, .fvd-afm-map-grid button:focus-visible { outline: 2px solid var(--text); outline-offset: 1px; }
+.fvd-afm-map-grid button.rejected { color: var(--warning); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 75%, transparent); font-size: 11px; font-weight: 700; opacity: 1; }
 .fvd-afm-groups { display: grid; gap: 5px; }
 .fvd-afm-group {
   border: 1px solid var(--border-soft);

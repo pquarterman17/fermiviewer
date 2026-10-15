@@ -63,11 +63,19 @@ export interface ForceAnalysis {
 export interface ForceMapsResult {
   n: number;
   failed: number;
-  table: Record<"youngs_modulus" | "adhesion" | "contact_z" | "max_force" | "fit_r2",
-    (number | null)[]>;
+  accepted: number;
+  rejected: number;
+  table: Record<ForceMapMetric, (number | null)[]> & { accepted: boolean[] };
+  grids: (Record<ForceMapMetric, (number | null)[][]> & { accepted: boolean[][] }) | null;
+  summaries: Record<ForceMapMetric, {
+    n: number; median: number | null; mad: number | null; q05: number | null; q95: number | null;
+  }>;
   units: Record<string, string>;
   images: ImageMeta[];
 }
+
+export type ForceMapMetric = "youngs_modulus" | "adhesion" | "contact_z" | "max_force" |
+  "fit_r2" | "fit_rms" | "fit_points" | "residual_lag1";
 
 const base = (id: string) => `/api/afm/force/${encodeURIComponent(id)}`;
 
@@ -89,4 +97,10 @@ export function analyzeForceCurve(
 
 export function forceMaps(id: string, settings: ForceSettings): Promise<ForceMapsResult> {
   return post(`${base(id)}/maps`, settings);
+}
+
+export function startForceMapsJob(
+  id: string, settings: ForceSettings,
+): Promise<{ job_id: string }> {
+  return post(`${base(id)}/maps`, { ...settings, run_async: true });
 }

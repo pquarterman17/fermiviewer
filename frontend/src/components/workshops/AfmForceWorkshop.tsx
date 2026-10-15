@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   analyzeForceCurve,
   DEFAULT_FORCE_SETTINGS,
-  forceMaps,
   FORCE_VALUES,
   type ForceAnalysis,
   type ForceMeta,
@@ -18,8 +17,8 @@ import {
   type Cell,
 } from "../../lib/resultsExport";
 import { useAfmForce } from "../../store/afmForce";
-import { useViewer } from "../../store/viewer";
 import ForceCurvePlot, { type ForceAxis } from "./ForceCurvePlot";
+import AfmForceMapPanel from "./AfmForceMapPanel";
 import { forceFitQuality, forceWarnings } from "./forceFitQuality";
 
 const LABELS: Record<ForceValue, string> = {
@@ -112,8 +111,6 @@ function NumberField({
 
 export default function AfmForceWorkshop() {
   const { files, selectedId, select, refresh, close } = useAfmForce();
-  const setStatus = useViewer((s) => s.setStatus);
-  const ingestDerived = useViewer((s) => s.ingestDerived);
   const meta = files.find((f) => f.id === selectedId) ?? null;
   const [index, setIndex] = useState(0);
   const [settings, setSettings] = useState<ForceSettings>(DEFAULT_FORCE_SETTINGS);
@@ -194,41 +191,6 @@ export default function AfmForceWorkshop() {
   const kSource = calibrationSource(shownSettings.spring_constant, meta.spring_constant);
   const involsSource = involsLocked ? "Already calibrated" : calibrationSource(shownSettings.invols, meta.invols);
 
-  // The run is tied to this file and these settings: the result names them,
-  // and the file can be neither switched nor closed here until it finishes.
-  const runMaps = () => {
-    const source = meta;
-    setBusyMaps(true);
-    setStatus(`${source.name}: analysing every curve…`);
-    forceMaps(source.id, settings)
-      .then((r) => {
-        if (r.images.length) ingestDerived(r.images);
-        const e = r.table.youngs_modulus.filter((v): v is number => v !== null);
-        const median = e.length ? [...e].sort((a, b) => a - b)[Math.floor(e.length / 2)] : null;
-        setStatus(
-          `${source.name}: ${r.n - r.failed}/${r.n} curves · median E ${formatModulus(median)}` +
-            (r.images.length ? ` → ${r.images.length} map images` : ""),
-        );
-        const rows: Cell[][] = r.table.youngs_modulus.map((_, i) => [
-          i + 1, r.table.youngs_modulus[i], r.table.adhesion[i], r.table.contact_z[i],
-          r.table.max_force[i], r.table.fit_r2[i],
-        ]);
-        if (!r.images.length) {
-          downloadCsv(
-            `${exportBaseName(source.name)}_force.csv`,
-            tableToCsv(
-              ["curve", "youngs_modulus_Pa", "adhesion_nN", "contact_z_nm", "max_force_nN",
-                "fit_r2"],
-              rows,
-              { analysis: "AFM force curves", imageName: source.name, params: { ...settings } },
-            ),
-          );
-        }
-      })
-      .catch((e: Error) => setStatus(`${source.name}: force maps: ${e.message}`))
-      .finally(() => setBusyMaps(false));
-  };
-
   return (
     <div className="fvd-ws">
       <div className="fvd-ws-row">
@@ -262,6 +224,7 @@ export default function AfmForceWorkshop() {
       <div className="fvd-ws-note">
         Session-only · not saved in projects · opening another project closes this file
       </div>
+      <fieldset className="fvd-fieldset-reset" disabled={busyMaps}>
       {meta.n_curves > 1 && (
         <div className="fvd-ws-row">
           <button
@@ -462,18 +425,11 @@ export default function AfmForceWorkshop() {
             >
               Export CSV
             </button>
-            {meta.n_curves > 1 && (
-              <button className="fvd-btn primary" disabled={busyMaps} onClick={runMaps}>
-                {busyMaps
-                  ? "Analysing…"
-                  : meta.grid
-                    ? "Modulus / adhesion maps"
-                    : "Analyse all → CSV"}
-              </button>
-            )}
           </div>
         </div>
       )}
+      </fieldset>
+      {meta.n_curves > 1 && <AfmForceMapPanel meta={meta} settings={settings} onBusyChange={setBusyMaps} onSelectCurve={setIndex} />}
     </div>
   );
 }

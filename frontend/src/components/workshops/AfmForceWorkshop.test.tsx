@@ -18,7 +18,8 @@ vi.mock("../../lib/api", async (importActual) => {
     ...actual,
     analyzeForceCurve: vi.fn(),
     listForceFiles: vi.fn(),
-    forceMaps: vi.fn(),
+    runJob: vi.fn(),
+    startForceMapsJob: vi.fn(),
     openSession: vi.fn(),
     uploadFiles: vi.fn(),
   };
@@ -31,9 +32,9 @@ vi.mock("uplot", () => ({
 
 import {
   analyzeForceCurve,
-  forceMaps,
   listForceFiles,
   openSession,
+  runJob,
   uploadFiles,
   type ForceMapsResult,
 } from "../../lib/api";
@@ -210,13 +211,13 @@ describe("force maps", () => {
     const map = force("m1", { n_curves: 4, grid: [2, 2] });
     vi.mocked(listForceFiles).mockResolvedValue([map, force("f2")]);
     vi.mocked(analyzeForceCurve).mockResolvedValue(analysis(2e6));
-    vi.mocked(forceMaps).mockReturnValue(new Promise((r) => { finish = r; }));
+    vi.mocked(runJob).mockReturnValue(new Promise((r) => { finish = r; }));
     useAfmForce.setState({ files: [map, force("f2")], selectedId: "m1" });
     await act(async () => {
       render(<AfmForceWorkshop />);
     });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Modulus / adhesion maps" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Analyse map" }));
     expect(screen.getByLabelText("File")).toBeDisabled();
     expect(screen.getByRole("button", { name: "close force file" })).toBeDisabled();
 
@@ -224,12 +225,16 @@ describe("force maps", () => {
     act(() => useAfmForce.getState().adopt([force("f3")]));
     const derived = image("modulus");
     await act(async () => finish({
-      n: 4, failed: 0, units: {}, images: [derived],
+      n: 4, failed: 0, accepted: 4, rejected: 0, units: {}, images: [derived], grids: null,
+      summaries: {
+        youngs_modulus: { n: 4, median: 2.5e6, mad: 1e6, q05: 1e6, q95: 4e6 },
+      } as ForceMapsResult["summaries"],
       table: { youngs_modulus: [1e6, 2e6, 3e6, 4e6], adhesion: [], contact_z: [],
-        max_force: [], fit_r2: [] },
+        max_force: [], fit_r2: [], fit_rms: [], fit_points: [], residual_lag1: [],
+        accepted: [true, true, true, true] },
     }));
     expect(useViewer.getState().images.modulus).toBeTruthy();
-    expect(useViewer.getState().status).toMatch(/^m1\.ibw: 4\/4 curves/);
+    expect(useViewer.getState().status).toMatch(/^m1\.ibw: 4\/4 accepted fits/);
     expect(screen.getByLabelText("File")).not.toBeDisabled();
   });
 });
