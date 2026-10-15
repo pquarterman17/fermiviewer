@@ -9,7 +9,7 @@ import { useWorkshop } from "../../store/workshop";
 
 vi.mock("../../lib/api", async (importActual) => {
   const actual = await importActual<typeof import("../../lib/api")>();
-  return { ...actual, afmSurface: vi.fn() };
+  return { ...actual, afmSurface: vi.fn(), afmMap: vi.fn() };
 });
 vi.mock("../../lib/resultsExport", async (importActual) => {
   const actual = await importActual<typeof import("../../lib/resultsExport")>();
@@ -22,7 +22,7 @@ vi.mock("uplot", () => ({
   },
 }));
 
-import { afmSurface } from "../../lib/api";
+import { afmMap, afmSurface } from "../../lib/api";
 import { downloadJson } from "../../lib/resultsExport";
 import AfmSurfaceWorkshop, { formatParam, ISO_GROUPS, surfaceRows } from "./AfmSurfaceWorkshop";
 
@@ -53,7 +53,10 @@ const savedRoi = {
 
 afterEach(() => {
   vi.clearAllMocks();
-  useViewer.setState({ images: {}, order: [], activeId: null, selected: [], measures: {} });
+  useViewer.setState({
+    images: {}, order: [], activeId: null, selected: [], measures: {},
+    tools: [], captureMode: "none",
+  });
 });
 
 describe("AfmSurfaceWorkshop", () => {
@@ -83,6 +86,45 @@ describe("AfmSurfaceWorkshop", () => {
     expect(screen.getAllByText("3.000 nm").length).toBeGreaterThan(0);
     expect(screen.getByRole("heading", { name: "Surface summary" })).toBeVisible();
     expect(screen.getByText(`${ISO_PARAMS.length} metrics`)).toBeVisible();
+  });
+
+  it("guides the workflow and creates maps without leaving the source", async () => {
+    vi.mocked(afmSurface).mockResolvedValue(surface(3));
+    vi.mocked(afmMap).mockResolvedValue({ ...image("psd"), name: "a 2-D PSD" });
+    useViewer.getState().ingest([image("a")]);
+    useViewer.getState().setActive("a");
+    render(<AfmSurfaceWorkshop />);
+
+    expect(screen.getByRole("heading", { name: "Analysis path" })).toBeVisible();
+    expect(screen.getByText("Not analyzed")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Draw ROI" }));
+    expect(useViewer.getState().captureMode).toBe("roi");
+
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Create 2-D PSD" })));
+    expect(afmMap).toHaveBeenCalledWith("a", "psd", { level: "plane", roi: null });
+    expect(useViewer.getState().images.psd.name).toBe("a 2-D PSD");
+    expect(useViewer.getState().activeId).toBe("a");
+    expect(screen.getByText("Ready in Library")).toBeVisible();
+
+    fireEvent.change(screen.getByLabelText(/background removal/i), { target: { value: "none" } });
+    expect(screen.getByText("Settings changed")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Step height" }));
+    expect(useViewer.getState().tools.some((tool) => tool.kind === "afmstep")).toBe(true);
+  });
+
+  it("ignores a map that finishes after the source changes", async () => {
+    let resolve!: (meta: ImageMeta) => void;
+    vi.mocked(afmMap).mockReturnValue(new Promise((done) => { resolve = done; }));
+    useViewer.getState().ingest([image("a"), image("b")]);
+    useViewer.getState().setActive("a");
+    render(<AfmSurfaceWorkshop />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Create ACF" }));
+    act(() => useViewer.getState().setActive("b"));
+    await act(async () => resolve({ ...image("acf"), name: "old ACF" }));
+
+    expect(useViewer.getState().activeId).toBe("b");
+    expect(useViewer.getState().images.acf).toBeUndefined();
   });
 
   it("groups complete results and shows one selected plot at a time", async () => {
