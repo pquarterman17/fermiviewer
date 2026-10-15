@@ -3,8 +3,7 @@
 // (calc/afm_level.py); the rest reuses the existing workshops — roughness,
 // 3-D surface, particles/grains on the height map — rather than duplicating
 // them for AFM.
-import { toAnalysisRoi, type AnalysisRoi } from "../../../hooks/useAnalysisRoi";
-import { afmMap, applyFilter, openAfmChannels } from "../../../lib/api";
+import { applyFilter, openAfmChannels } from "../../../lib/api";
 import { coerceParams } from "../../../lib/params";
 import { isSpmHeightImage } from "../../../lib/spm";
 import { runTransform } from "../../../lib/transforms";
@@ -56,26 +55,6 @@ export function buildAfmMenu(ctx: MenuCtx): Entry {
     return threePointPixels(m.pts, meta.shape);
   };
 
-  // Step height and the PSD/ACF maps use the active image's most recent
-  // rectangle (or ellipse box) ROI; the maps fall back to the whole image.
-  const lastRoi = (): AnalysisRoi | null => {
-    if (!id) return null;
-    const meta = store.images[id];
-    const m = (store.measures[id] ?? []).filter((x) => x.kind === "roi" || x.kind === "ellipse").at(-1);
-    return meta && m ? toAnalysisRoi(m, meta.shape) : null;
-  };
-  const surfaceMap = (kind: "psd" | "acf") => {
-    if (!id) return;
-    const what = kind === "psd" ? "2-D PSD" : "autocorrelation";
-    store.setStatus(`${what}…`);
-    afmMap(id, kind, { roi: lastRoi() })
-      .then((m) => {
-        store.ingestDerived([m]);
-        store.setStatus(`${what} → ${m.name}`);
-      })
-      .catch((e: Error) => store.setStatus(`${what}: ${e.message}`));
-  };
-
   return {
     label: "AFM / SPM",
     submenu: [
@@ -122,8 +101,16 @@ export function buildAfmMenu(ctx: MenuCtx): Entry {
         disabled: noHeightMap,
         action: () => store.openTool("afmsurface"),
       },
-      { label: "2-D Power Spectrum Map", disabled: noImage, action: () => surfaceMap("psd") },
-      { label: "Autocorrelation Map", disabled: noImage, action: () => surfaceMap("acf") },
+      {
+        label: "2-D Power Spectrum Map…",
+        disabled: noHeightMap,
+        action: () => store.openTool("afmsurface"),
+      },
+      {
+        label: "Autocorrelation Map…",
+        disabled: noHeightMap,
+        action: () => store.openTool("afmsurface"),
+      },
       {
         label: "Step Height…",
         disabled: noHeightMap,

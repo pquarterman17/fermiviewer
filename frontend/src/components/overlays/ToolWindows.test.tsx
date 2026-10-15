@@ -22,6 +22,9 @@ vi.mock("../workshops/DiffractionWorkshop", () => ({
 vi.mock("../workshops/RoughnessWorkshop", () => ({
   default: () => <div>Roughness workspace content</div>,
 }));
+vi.mock("../workshops/AfmSurfaceWorkshop", () => ({
+  default: () => <div>AFM surface content</div>,
+}));
 vi.mock("../workshops/NoiseWorkshop", () => ({
   default: () => <div>Noise workspace content</div>,
 }));
@@ -100,6 +103,19 @@ describe("ToolWindows", () => {
     expect(content.closest(".fvd-tool-window")).toHaveStyle({
       width: "620px",
     });
+  });
+
+  it("gives AFM surface analysis a full-workspace control", async () => {
+    useViewer.setState({ tools: [{ kind: "afmsurface", x: 10, y: 20, z: 1 }] });
+    render(<ToolWindows />);
+    const content = await screen.findByText("AFM surface content");
+    expect(content.closest(".fvd-tool-window")).toHaveStyle({
+      width: "620px",
+      height: "620px",
+    });
+    expect(
+      screen.getByRole("button", { name: "Use full workspace for Surface Analysis (ISO 25178)" }),
+    ).toBeVisible();
   });
 
   it("gives noise diagnostics room for its evidence plot", async () => {

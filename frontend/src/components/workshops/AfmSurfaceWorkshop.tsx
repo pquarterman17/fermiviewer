@@ -20,6 +20,7 @@ import {
 import { heightAnalysisKey } from "../../lib/analysisFreshness";
 import { useViewer } from "../../store/viewer";
 import AnalysisRegionSelect from "./AnalysisRegionSelect";
+import AfmWorkflowGuide from "./AfmWorkflowGuide";
 import PlotContextSurface from "../plots/PlotContextSurface";
 
 const NO_SHAPE: number[] = [];
@@ -162,6 +163,16 @@ export default function AfmSurfaceWorkshop() {
 
   return (
     <div className="fvd-ws">
+      <AfmWorkflowGuide
+        sourceId={meta.id}
+        sourceName={meta.name}
+        regionLabel={region.label}
+        roi={region.roi}
+        level={level}
+        analysisKey={controlKey}
+        analysisReady={result !== null}
+        analysisStale={resultStale}
+      />
       <AnalysisRegionSelect
         choice={region.choice}
         imageId={activeId}
