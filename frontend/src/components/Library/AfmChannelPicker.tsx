@@ -6,20 +6,8 @@ import {
   type AfmChannelInfo,
   type ImageMeta,
 } from "../../lib/api";
+import { isSpmImage } from "../../lib/spm";
 import { useViewer } from "../../store/viewer";
-
-// Keep in sync with backend io/spm_channels.py's SPM_PARSERS. The wire meta
-// intentionally exposes parser identity rather than an AFM-specific flag.
-const SPM_PARSERS = new Set([
-  "nanoscope",
-  "gwyddion",
-  "asylum",
-  "jpk",
-  "wsxm",
-  "nanosurf",
-  "ntmdt",
-  "nanonis",
-]);
 
 function channelLabel(meta: ImageMeta): string {
   const value = meta.meta.channel_label ?? meta.meta.channel;
@@ -35,8 +23,7 @@ export default function AfmChannelPicker({ meta }: { meta: ImageMeta | null }) {
   const [channels, setChannels] = useState<AfmChannelInfo[]>([]);
   const [busy, setBusy] = useState(false);
 
-  const parser = meta?.meta.parser;
-  const isSpm = typeof parser === "string" && SPM_PARSERS.has(parser);
+  const isSpm = isSpmImage(meta);
   const imageIds = Object.keys(images).sort().join(",");
 
   useEffect(() => setChannels([]), [meta?.id]);
