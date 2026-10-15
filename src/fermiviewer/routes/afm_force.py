@@ -9,6 +9,7 @@ in nm (by new / file InvOLS) and converts one given in V.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from typing import Literal
 
 import numpy as np
@@ -19,6 +20,7 @@ from fermiviewer.calc.afm_force import ForceAnalysis, Tip, analyze_curve, contac
 from fermiviewer.calc.afm_force_batch import CurveArrays, analyze_curves
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 from fermiviewer.io.force_common import ForceCurve, ForceFile
+from fermiviewer.jobs import JobQueueFullError, jobs
 from fermiviewer.models import ForceMeta, ImageMeta
 from fermiviewer.session import store
 from fermiviewer.session_force import UnknownForceError, force_store
@@ -102,6 +104,10 @@ class ForceSettings(BaseModel):
     max_indent_nm: float | None = Field(None, gt=0)
     max_force_nn: float | None = Field(None, gt=0)
     fit: bool = True
+
+
+class ForceMapSettings(ForceSettings):
+    run_async: bool = False
 
 
 def _calibration(f: ForceFile, s: ForceSettings) -> tuple[float, float, float]:
@@ -208,8 +214,31 @@ def _modulus_unit(values: np.ndarray) -> tuple[str, float]:
     return next(((u, f) for u, f in _MOD_UNITS if med >= f), ("Pa", 1.0))
 
 
-@router.post("/{force_id}/maps")
-def force_maps(force_id: str, s: ForceSettings) -> dict:
+def _accepted_fit(result: ForceAnalysis | None) -> bool:
+    return bool(
+        result is not None and math.isfinite(result.youngs_modulus)
+        and result.fit_points >= 8 and result.fit_r2 >= 0.9
+        and not result.fit_at_bounds
+        and (not math.isfinite(result.residual_lag1) or abs(result.residual_lag1) <= 0.5)
+    )
+
+
+def _robust_summary(values: np.ndarray, accepted: np.ndarray) -> dict[str, float | int | None]:
+    usable = values[accepted & np.isfinite(values)]
+    if not usable.size:
+        return {"n": 0, "median": None, "mad": None, "q05": None, "q95": None}
+    median = float(np.median(usable))
+    return {
+        "n": int(usable.size), "median": median,
+        "mad": float(np.median(np.abs(usable - median))),
+        "q05": float(np.quantile(usable, 0.05)), "q95": float(np.quantile(usable, 0.95)),
+    }
+
+
+def _force_maps(
+    force_id: str, s: ForceMapSettings,
+    progress: Callable[[float, str], None] | None = None,
+) -> dict:
     """Every curve analysed; a force map also becomes modulus, adhesion and
     contact-height images (registered in the session)."""
     try:
@@ -217,15 +246,28 @@ def force_maps(force_id: str, s: ForceSettings) -> dict:
     except UnknownForceError:
         raise HTTPException(404, f"unknown force file: {force_id}") from None
     k, _, scale = _calibration(f, s)
-    results = analyze_curves([_arrays(c, scale) for c in f.curves], **_options(s, k))
+    fit_progress = None if progress is None else (
+        lambda fraction, message: progress(0.9 * fraction, message)
+    )
+    results = analyze_curves(
+        [_arrays(c, scale) for c in f.curves], **_options(s, k), progress=fit_progress,
+    )
+    if progress:
+        progress(0.92, "building quality maps")
     failed = sum(r is None for r in results)
-    rows = [(r.youngs_modulus, r.adhesion, r.contact_z, r.max_force, r.fit_r2)
-            if r is not None else (math.nan,) * 5 for r in results]
+    rows = [(
+        r.youngs_modulus, r.adhesion, r.contact_z, r.max_force, r.fit_r2,
+        r.fit_rms, r.fit_points, r.residual_lag1,
+    ) if r is not None else (math.nan,) * 8 for r in results]
     cols = np.array(rows, dtype=np.float64).T
+    names = ("youngs_modulus", "adhesion", "contact_z", "max_force", "fit_r2",
+             "fit_rms", "fit_points", "residual_lag1")
     table = {name: [_num(v) for v in col] for name, col in
-             zip(("youngs_modulus", "adhesion", "contact_z", "max_force", "fit_r2"), cols,
-                 strict=True)}
+             zip(names, cols, strict=True)}
+    accepted = np.array([_accepted_fit(r) for r in results], dtype=bool)
+    table["accepted"] = accepted.tolist()
     images: list[ImageMeta] = []
+    grids = None
     if f.grid is not None:
         mod_unit, mod_div = _modulus_unit(cols[0])
         height = -cols[2]
@@ -237,6 +279,8 @@ def force_maps(force_id: str, s: ForceSettings) -> dict:
                     ("Young's modulus", cols[0] / mod_div, mod_unit),
                     ("Adhesion", cols[1], "nN"),
                     ("Contact height", height, "nm"),
+                    ("Force fit R²", cols[4], ""),
+                    ("Force fit rejected", (~accepted).astype(float), ""),
                 )
             ]
 
@@ -244,10 +288,37 @@ def force_maps(force_id: str, s: ForceSettings) -> dict:
         if not current:
             raise HTTPException(409, "force-map analysis cancelled: the project was replaced")
         images = registered or []
-    return {"n": len(f.curves), "failed": failed, "table": table,
+        grids = {
+            name: [[_num(v) for v in row] for row in col.reshape(f.grid)]
+            for name, col in zip(names, cols, strict=True)
+        }
+        grids["accepted"] = accepted.reshape(f.grid).tolist()
+    summaries = {
+        name: _robust_summary(col, accepted)
+        for name, col in zip(names, cols, strict=True)
+    }
+    if progress:
+        progress(0.99, "finalizing force-map results")
+    return {"n": len(f.curves), "failed": failed, "accepted": int(accepted.sum()),
+            "rejected": int((~accepted).sum()), "table": table, "grids": grids,
+            "summaries": summaries,
             "units": {"youngs_modulus": "Pa", "adhesion": "nN", "contact_z": "nm",
-                      "max_force": "nN", "fit_r2": ""},
+                      "max_force": "nN", "fit_r2": "", "fit_rms": "nN",
+                      "fit_points": "", "residual_lag1": ""},
             "images": [m.model_dump() for m in images]}
+
+
+@router.post("/{force_id}/maps")
+def force_maps(force_id: str, s: ForceMapSettings) -> dict:
+    """Analyse a force map synchronously or as a cancellable background job."""
+    if s.run_async:
+        f = _file(force_id)
+        _calibration(f, s)  # validation errors stay synchronous
+        try:
+            return {"job_id": jobs.submit(lambda p: _force_maps(force_id, s, p))}
+        except JobQueueFullError as e:
+            raise HTTPException(429, str(e)) from None
+    return _force_maps(force_id, s)
 
 
 def _register(f: ForceFile, force_id: str, source: str, label: str, data: np.ndarray,

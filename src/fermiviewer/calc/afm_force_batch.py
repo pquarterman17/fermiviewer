@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import multiprocessing
 import os
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from typing import Any
@@ -51,22 +51,51 @@ def _workers() -> int:
     return min(os.cpu_count() or 1, _MAX_WORKERS)
 
 
-def analyze_curves(curves: Sequence[CurveArrays], *, parallel: bool | None = None,
-                   **options: Any) -> list[ForceAnalysis | None]:
+def analyze_curves(
+    curves: Sequence[CurveArrays], *, parallel: bool | None = None,
+    progress: Callable[[float, str], None] | None = None, **options: Any,
+) -> list[ForceAnalysis | None]:
     """`analyze_curve` over every curve, in order; None where a curve fails.
 
     `parallel` None decides by size and CPU count; True / False force it."""
     n = _workers()
     if parallel is None:
         parallel = len(curves) >= PARALLEL_MIN and n > 1
-    if not parallel or not curves:
-        return _chunk(curves, options)
+    if not curves:
+        return []
+    if not parallel:
+        results = []
+        for index, curve in enumerate(curves):
+            results.append(_one(curve, options))
+            if progress:
+                progress((index + 1) / len(curves), f"fitting curve {index + 1}/{len(curves)}")
+        return results
     size = -(-len(curves) // (n * 4))   # ~4 chunks per worker evens out the load
     chunks = [curves[i:i + size] for i in range(0, len(curves), size)]
     try:
-        with ProcessPoolExecutor(max_workers=n,
-                                 mp_context=multiprocessing.get_context("spawn")) as pool:
-            parts = list(pool.map(_chunk, chunks, [options] * len(chunks)))
-    except (BrokenProcessPool, OSError):
-        return _chunk(curves, options)
+        pool = ProcessPoolExecutor(max_workers=n, mp_context=multiprocessing.get_context("spawn"))
+    except OSError:
+        return analyze_curves(
+            curves, parallel=False, progress=progress, **options,
+        )
+    completed = False
+    try:
+        try:
+            parts = []
+            for index, part in enumerate(pool.map(_chunk, chunks, [options] * len(chunks))):
+                parts.append(part)
+                if progress:
+                    done = min((index + 1) * size, len(curves))
+                    progress(done / len(curves), f"fitting curve {done}/{len(curves)}")
+            completed = True
+        except (BrokenProcessPool, OSError):
+            result = analyze_curves(
+                curves, parallel=False, progress=progress, **options,
+            )
+            completed = True
+            return result
+    finally:
+        # A cancellation raised by ``progress`` must release the job thread
+        # immediately; running process tasks wind down in the background.
+        pool.shutdown(wait=completed, cancel_futures=not completed)
     return [r for part in parts for r in part]
