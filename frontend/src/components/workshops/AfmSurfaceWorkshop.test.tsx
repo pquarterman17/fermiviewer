@@ -30,7 +30,8 @@ function image(id: string): ImageMeta {
   return {
     id, name: `${id}.spm`, kind: "image", shape: [64, 64], dtype: "float32",
     pixel_size: 2, pixel_unit: "nm", value_unit: "nm", n_channels: null,
-    energy_first: null, energy_last: null, energy_units: "", stage_tilt_deg: null, meta: {},
+    energy_first: null, energy_last: null, energy_units: "", stage_tilt_deg: null,
+    meta: { parser: "nanoscope", channel: "Height", spm_channel_kind: "height" },
   };
 }
 
@@ -60,6 +61,17 @@ afterEach(() => {
 });
 
 describe("AfmSurfaceWorkshop", () => {
+  it("refuses a non-height image even if the workshop remains open", () => {
+    const phase = image("phase");
+    phase.value_unit = "deg";
+    phase.meta = { parser: "nanoscope", channel: "Phase", spm_channel_kind: "other" };
+    useViewer.getState().ingest([phase]);
+    render(<AfmSurfaceWorkshop />);
+
+    expect(screen.getByText("Select a 2D height map.")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Analyze" })).toBeNull();
+  });
+
   it("drops a result that lands after the active image changed", async () => {
     let resolve!: (r: AfmSurfaceResult) => void;
     vi.mocked(afmSurface).mockReturnValue(new Promise((r) => { resolve = r; }));

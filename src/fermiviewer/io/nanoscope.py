@@ -22,6 +22,7 @@ from typing import NamedTuple
 import numpy as np
 
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
+from fermiviewer.io.spm_common import height_channel_kind
 
 __all__ = ["NanoscopeError", "is_nanoscope", "load_nanoscope", "load_nanoscope_all"]
 
@@ -276,6 +277,8 @@ def _read_channel(
             "parser": "nanoscope",
             "channel": channel,
             "channel_label": _channel_label(image),
+            "spm_source_parser": "nanoscope",
+            "spm_channel_kind": height_channel_kind(channel, z_unit),
             "line_direction": image.kv.get("Line Direction", "").strip() or None,
             "value_unit": z_unit,  # surfaced on the z-colorbar
             "z_scale_per_lsb": z_scale,

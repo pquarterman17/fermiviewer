@@ -18,6 +18,7 @@ import {
   type Cell,
 } from "../../lib/resultsExport";
 import { heightAnalysisKey } from "../../lib/analysisFreshness";
+import { isSpmHeightImage } from "../../lib/spm";
 import { useViewer } from "../../store/viewer";
 import AnalysisRegionSelect from "./AnalysisRegionSelect";
 import AfmWorkflowGuide from "./AfmWorkflowGuide";
@@ -157,7 +158,7 @@ export default function AfmSurfaceWorkshop() {
     }
   };
 
-  if (!meta || meta.kind !== "image") {
+  if (!meta || meta.kind !== "image" || !isSpmHeightImage(meta)) {
     return <div className="fvd-ws-empty">Select a 2D height map.</div>;
   }
 

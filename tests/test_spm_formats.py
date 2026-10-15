@@ -15,7 +15,7 @@ from fermiviewer.io.ibw import IbwError, load_ibw_all
 from fermiviewer.io.jpk import JpkError, load_jpk, load_jpk_all
 from fermiviewer.io.registry import load_auto, supported_extensions
 from fermiviewer.io.spm_channels import load_spm_channels
-from fermiviewer.io.spm_common import primary_channel
+from fermiviewer.io.spm_common import height_channel_kind, primary_channel
 from fermiviewer.io.wsxm import WsxmError, load_wsxm
 from fermiviewer.server import ALLOWED_HOSTS, create_app
 from fermiviewer.session import store
@@ -132,6 +132,23 @@ def test_primary_channel_prefers_an_exact_name() -> None:
     mk = [spm_channel(RAMP, parser="x", channel=n, label=n, value_unit="", dy_nm=1, dx_nm=1)
           for n in ("Height (measured)", "Phase", "Height")]
     assert primary_channel(mk).metadata["channel"] == "Height"
+
+
+def test_spm_channel_records_structured_height_semantics() -> None:
+    assert height_channel_kind("Height Sensor", "nm") == "height"
+    assert height_channel_kind("Height Error", "nm") == "other"
+    assert height_channel_kind("Deformation", "nm") == "other"
+
+
+def test_primary_channel_never_promotes_height_error() -> None:
+    from fermiviewer.io.spm_common import spm_channel
+
+    channels = [
+        spm_channel(RAMP, parser="x", channel=name, label=name,
+                    value_unit="nm", dy_nm=1, dx_nm=1)
+        for name in ("Height Error", "Phase", "Height (measured)")
+    ]
+    assert primary_channel(channels).metadata["channel"] == "Height (measured)"
 
 
 @pytest.fixture()

@@ -38,9 +38,12 @@ __all__ = ["raster_of"]
 
 
 def carried_units(ds: DataStruct) -> dict[str, Any]:
-    """The source's value unit and channel, for a derived image whose pixels
-    still mean the same physical quantity."""
-    return {k: ds.metadata[k] for k in ("value_unit", "channel") if k in ds.metadata}
+    """Physical quantity and SPM provenance for a compatible derived image."""
+    keys = (
+        "value_unit", "channel", "channel_label", "spm_source_parser",
+        "spm_channel_kind",
+    )
+    return {k: ds.metadata[k] for k in keys if k in ds.metadata}
 
 
 def _scaled_axes(ds: DataStruct, fr: float, fc: float) -> tuple[AxisCal, AxisCal]:
