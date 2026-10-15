@@ -89,6 +89,60 @@ describe("DesktopMenus keyboard navigation", () => {
     expect(screen.queryByRole("menu", { name: "Analysis" })).toBeNull();
   });
 
+  it("supports a second submenu level with pointer and keyboard navigation", async () => {
+    const nestedAction = vi.fn();
+    render(
+      <DesktopMenus
+        menus={{
+          Analysis: [{
+            label: "AFM / SPM",
+            submenu: [{
+              label: "Surface Analysis",
+              submenu: [{ label: "ISO 25178 & Surface Maps…", action: nestedAction }],
+            }],
+          }],
+        }}
+      />,
+    );
+
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: "Analysis" }), {
+      key: "ArrowDown",
+    });
+    const afm = await screen.findByRole("menuitem", { name: "AFM / SPM" });
+    await waitFor(() => expect(afm).toHaveFocus());
+    fireEvent.keyDown(afm, { key: "ArrowRight" });
+    const surface = await screen.findByRole("menuitem", { name: "Surface Analysis" });
+    await waitFor(() => expect(surface).toHaveFocus());
+    fireEvent.keyDown(surface, { key: "ArrowRight" });
+    const iso = await screen.findByRole("menuitem", { name: "ISO 25178 & Surface Maps…" });
+    await waitFor(() => expect(iso).toHaveFocus());
+
+    fireEvent.keyDown(iso, { key: "ArrowLeft" });
+    expect(surface).toHaveFocus();
+    fireEvent.click(surface);
+    fireEvent.click(screen.getByRole("menuitem", { name: "ISO 25178 & Surface Maps…" }));
+    expect(nestedAction).toHaveBeenCalledOnce();
+  });
+
+  it("does not open a disabled nested category on hover", () => {
+    render(
+      <DesktopMenus menus={{
+        Analysis: [{
+          label: "AFM / SPM",
+          submenu: [{
+            label: "Surface Analysis",
+            disabled: true,
+            submenu: [{ label: "ISO 25178", action }],
+          }],
+        }],
+      }} />,
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Analysis" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "AFM / SPM" }));
+    fireEvent.mouseEnter(screen.getByRole("menuitem", { name: "Surface Analysis" }).parentElement!);
+    expect(screen.queryByRole("menuitem", { name: "ISO 25178" })).toBeNull();
+  });
+
   it("still wraps to the last item after entries become disabled", async () => {
     // Ref slots are keyed by enabled-entry position and never truncated, so a
     // menu reopened with fewer enabled entries leaves stale null slots at the

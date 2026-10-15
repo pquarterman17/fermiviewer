@@ -5,7 +5,7 @@
 // them for AFM.
 import { applyFilter, openAfmChannels } from "../../../lib/api";
 import { coerceParams } from "../../../lib/params";
-import { isSpmHeightImage } from "../../../lib/spm";
+import { isSpmHeightImage, isSpmImage } from "../../../lib/spm";
 import { runTransform } from "../../../lib/transforms";
 import { TRANSFORM_TOOLS } from "../../../lib/transformTools";
 import { askParams } from "../../../store/params";
@@ -40,8 +40,9 @@ async function levelWith(kind: string): Promise<void> {
 export function buildAfmMenu(ctx: MenuCtx): Entry {
   const { store } = ctx;
   const id = store.activeId;
-  const noImage = !id;
-  const noHeightMap = !id || !isSpmHeightImage(store.images[id]);
+  const meta = id ? store.images[id] : undefined;
+  const noSpmImage = !id || !isSpmImage(meta);
+  const noHeightMap = !id || !isSpmHeightImage(meta);
 
   // Three-point levelling takes its points from the active image's most
   // recent angle measure (3 clicks) or 3-vertex polygon.
@@ -58,71 +59,93 @@ export function buildAfmMenu(ctx: MenuCtx): Entry {
   return {
     label: "AFM / SPM",
     submenu: [
-      { label: "Plane Level…", disabled: noImage, action: () => void levelWith("plane_level") },
-      { label: "Level Rows…", disabled: noImage, action: () => void levelWith("row_level") },
-      { label: "Remove Scars…", disabled: noImage, action: () => void levelWith("scar_removal") },
       {
-        label: "Three-Point Level (last angle / triangle)",
-        disabled: noImage || threePoints() === null,
-        action: () => {
-          const pts = threePoints();
-          if (!id || !pts) return;
-          store.setStatus("three-point level…");
-          applyFilter(id, "three_point_level", { points: pts })
-            .then((m) => {
-              store.ingestDerived([m]);
-              store.setStatus(`three-point level → ${m.name}`);
-            })
-            .catch((e: Error) => store.setStatus(`three-point level: ${e.message}`));
-        },
-      },
-      { label: "Fix Zero…", disabled: noImage, action: () => void levelWith("zero_level") },
-      { kind: "sep" },
-      {
-        label: "Open Other Channels",
-        disabled: noImage,
-        action: () => {
-          if (!id) return;
-          openAfmChannels(id)
-            .then((metas) => {
-              if (metas.length) store.ingestDerived(metas);
-              store.setStatus(
-                metas.length
-                  ? `opened ${metas.length} channel${metas.length === 1 ? "" : "s"}`
-                  : "all channels of this scan are already open",
-              );
-            })
-            .catch((e: Error) => store.setStatus(`channels: ${e.message}`));
-        },
-      },
-      { kind: "sep" },
-      {
-        label: "Surface Analysis (ISO 25178)…",
+        label: "Prepare",
         disabled: noHeightMap,
-        action: () => store.openTool("afmsurface"),
+        submenu: [
+          { label: "Plane Level…", disabled: noHeightMap, action: () => void levelWith("plane_level") },
+          { label: "Level Rows…", disabled: noHeightMap, action: () => void levelWith("row_level") },
+          {
+            label: "Three-Point Level (last angle / triangle)",
+            disabled: noHeightMap || threePoints() === null,
+            action: () => {
+              const pts = threePoints();
+              if (!id || !pts) return;
+              store.setStatus("three-point level…");
+              applyFilter(id, "three_point_level", { points: pts })
+                .then((m) => {
+                  store.ingestDerived([m]);
+                  store.setStatus(`three-point level → ${m.name}`);
+                })
+                .catch((e: Error) => store.setStatus(`three-point level: ${e.message}`));
+            },
+          },
+          { label: "Remove Scars…", disabled: noHeightMap, action: () => void levelWith("scar_removal") },
+          { label: "Fix Zero…", disabled: noHeightMap, action: () => void levelWith("zero_level") },
+        ],
       },
       {
-        label: "2-D Power Spectrum Map…",
-        disabled: noHeightMap,
-        action: () => store.openTool("afmsurface"),
+        label: "Channels",
+        disabled: noSpmImage,
+        submenu: [{
+          label: "Open Other Channels",
+          disabled: noSpmImage,
+          action: () => {
+            if (!id) return;
+            openAfmChannels(id)
+              .then((metas) => {
+                if (metas.length) store.ingestDerived(metas);
+                store.setStatus(
+                  metas.length
+                    ? `opened ${metas.length} channel${metas.length === 1 ? "" : "s"}`
+                    : "all channels of this scan are already open",
+                );
+              })
+              .catch((e: Error) => store.setStatus(`channels: ${e.message}`));
+          },
+        }],
       },
       {
-        label: "Autocorrelation Map…",
+        label: "Surface Analysis",
         disabled: noHeightMap,
-        action: () => store.openTool("afmsurface"),
+        submenu: [
+          {
+            label: "ISO 25178 & Surface Maps…",
+            disabled: noHeightMap,
+            action: () => store.openTool("afmsurface"),
+          },
+          {
+            label: "2-D Power Spectrum…",
+            disabled: noHeightMap,
+            action: () => store.openTool("afmsurface"),
+          },
+          {
+            label: "Autocorrelation…",
+            disabled: noHeightMap,
+            action: () => store.openTool("afmsurface"),
+          },
+          {
+            label: "Step Height…",
+            disabled: noHeightMap,
+            action: () => store.openTool("afmstep"),
+          },
+        ],
       },
       {
-        label: "Step Height…",
-        disabled: noHeightMap,
-        action: () => store.openTool("afmstep"),
+        label: "Mechanical",
+        submenu: [
+          { label: "Force Curves & Maps…", action: () => store.openTool("afmforce") },
+        ],
       },
-      { kind: "sep" },
-      // force files open with File ▸ Open like any other; this shows them
-      { label: "Force Curves…", action: () => store.openTool("afmforce") },
-      { kind: "sep" },
-      { label: "3-D Surface", disabled: noImage, action: () => store.openTool("surface") },
-      { label: "Particles…", disabled: noImage, action: () => openStructureWorkshop("Particles") },
-      { label: "Grains…", disabled: noImage, action: () => openStructureWorkshop("Grains") },
+      {
+        label: "Visualize & Segment",
+        disabled: noHeightMap,
+        submenu: [
+          { label: "3-D Surface", disabled: noHeightMap, action: () => store.openTool("surface") },
+          { label: "Particles…", disabled: noHeightMap, action: () => openStructureWorkshop("Particles") },
+          { label: "Grains…", disabled: noHeightMap, action: () => openStructureWorkshop("Grains") },
+        ],
+      },
     ],
   };
 }

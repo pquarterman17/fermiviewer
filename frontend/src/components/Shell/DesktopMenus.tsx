@@ -118,8 +118,10 @@ export default function DesktopMenus({
     e: React.KeyboardEvent,
     name: string,
     subKey: string,
+    parentKey: string | null,
     parentIndex: number,
     index: number,
+    entry: MenuEntry,
   ) => {
     const refs = (subRefs.current.get(subKey) ?? []).filter(
       (node): node is HTMLButtonElement => node != null,
@@ -131,9 +133,16 @@ export default function DesktopMenus({
     else if (e.key === "Home") refs[0]?.focus();
     else if (e.key === "End") refs[refs.length - 1]?.focus();
     else if (e.key === "Escape" || e.key === "ArrowLeft") {
-      setOpenSub(null);
-      liveItems(name)[parentIndex]?.focus();
-    } else if (e.key === "ArrowRight") switchMenu(name, 1);
+      setOpenSub(parentKey);
+      const parent = parentKey
+        ? subRefs.current.get(parentKey)?.[parentIndex]
+        : liveItems(name)[parentIndex];
+      parent?.focus();
+    } else if (e.key === "ArrowRight" && entry.submenu) {
+      const childKey = `${subKey}:${entry.label}`;
+      setOpenSub(childKey);
+      requestAnimationFrame(() => subRefs.current.get(childKey)?.[0]?.focus());
+    } else if (e.key === "ArrowRight" && parentKey === null) switchMenu(name, 1);
     else return;
     e.preventDefault();
     e.stopPropagation();
@@ -197,7 +206,9 @@ export default function DesktopMenus({
                       // Keeps role="menu" -> role="menuitem" ownership intact
                       // across this layout wrapper.
                       role="presentation"
-                      onMouseEnter={() => setOpenSub(entry.submenu ? subKey : null)}
+                      onMouseEnter={() => (
+                        setOpenSub(!entry.disabled && entry.submenu ? subKey : null)
+                      )}
                     >
                       <button
                         ref={(node) => {
@@ -224,13 +235,16 @@ export default function DesktopMenus({
                           )
                         )}
                       </button>
-                      {entry.submenu && openSub === subKey && (
+                      {entry.submenu && openSub?.startsWith(subKey) && (
                         <Submenu
                           entries={entry.submenu}
                           name={name}
                           subKey={subKey}
+                          parentKey={null}
                           parentIndex={focusIndex}
                           refs={subRefs}
+                          openSub={openSub}
+                          setOpenSub={setOpenSub}
                           onRun={run}
                           onKeyDown={subKeyDown}
                         />
@@ -251,23 +265,31 @@ function Submenu({
   entries,
   name,
   subKey,
+  parentKey,
   parentIndex,
   refs,
+  openSub,
+  setOpenSub,
   onRun,
   onKeyDown,
 }: {
   entries: MenuEntry[];
   name: string;
   subKey: string;
+  parentKey: string | null;
   parentIndex: number;
   refs: React.RefObject<Map<string, HTMLButtonElement[]>>;
+  openSub: string | null;
+  setOpenSub: React.Dispatch<React.SetStateAction<string | null>>;
   onRun: (entry: MenuEntry) => void;
   onKeyDown: (
     e: React.KeyboardEvent,
     name: string,
     subKey: string,
+    parentKey: string | null,
     parentIndex: number,
     index: number,
+    entry: MenuEntry,
   ) => void;
 }) {
   let focusIndex = 0;
@@ -277,28 +299,60 @@ function Submenu({
         if (entry.kind === "sep")
           return <span key={entryIndex} className="fvd-menu-sep" role="separator" />;
         const index = entry.disabled ? -1 : focusIndex++;
+        const childKey = `${subKey}:${entry.label}`;
         return (
-          <button
+          <div
             key={entryIndex}
-            ref={(node) => {
-              if (index < 0) return;
-              const current = refs.current.get(subKey) ?? [];
-              current[index] = node as HTMLButtonElement;
-              refs.current.set(subKey, current);
-            }}
-            type="button"
-            role="menuitem"
-            className="fvd-menu-entry"
-            disabled={entry.disabled}
-            onClick={(e) => {
-              e.stopPropagation();
-              onRun(entry);
-            }}
-            onKeyDown={(e) => onKeyDown(e, name, subKey, parentIndex, index)}
+            className="fvd-menu-entry-wrap"
+            role="presentation"
+            onMouseEnter={() => (
+              setOpenSub(!entry.disabled && entry.submenu ? childKey : subKey)
+            )}
           >
-            <span>{entry.label}</span>
-            {entry.shortcut && <span className="fvd-shortcut">{entry.shortcut}</span>}
-          </button>
+            <button
+              ref={(node) => {
+                if (index < 0) return;
+                const current = refs.current.get(subKey) ?? [];
+                current[index] = node as HTMLButtonElement;
+                refs.current.set(subKey, current);
+              }}
+              type="button"
+              role="menuitem"
+              className={`fvd-menu-entry${entry.submenu ? " has-sub" : ""}`}
+              disabled={entry.disabled}
+              aria-haspopup={entry.submenu ? "menu" : undefined}
+              aria-expanded={entry.submenu ? openSub?.startsWith(childKey) : undefined}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (entry.submenu) setOpenSub(childKey);
+                else onRun(entry);
+              }}
+              onKeyDown={(e) => (
+                onKeyDown(e, name, subKey, parentKey, parentIndex, index, entry)
+              )}
+            >
+              <span>{entry.label}</span>
+              {entry.submenu ? (
+                <Icon name="chevron-right" size={14} className="fvd-submenu-arrow" />
+              ) : (
+                entry.shortcut && <span className="fvd-shortcut">{entry.shortcut}</span>
+              )}
+            </button>
+            {entry.submenu && openSub?.startsWith(childKey) && (
+              <Submenu
+                entries={entry.submenu}
+                name={name}
+                subKey={childKey}
+                parentKey={subKey}
+                parentIndex={index}
+                refs={refs}
+                openSub={openSub}
+                setOpenSub={setOpenSub}
+                onRun={onRun}
+                onKeyDown={onKeyDown}
+              />
+            )}
+          </div>
         );
       })}
     </div>
