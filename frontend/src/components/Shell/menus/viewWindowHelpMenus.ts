@@ -12,6 +12,7 @@ import {
   removeImagesFromGroups,
   sideBySidePair,
 } from "../../../lib/groupActions";
+import { isSpmHeightImage } from "../../../lib/spm";
 import type { Entry, MenuCtx } from "./menuTypes";
 
 export function buildViewMenu(ctx: MenuCtx): Entry[] {
@@ -107,6 +108,8 @@ export function buildViewMenu(ctx: MenuCtx): Entry[] {
 
 export function buildWindowMenu(ctx: MenuCtx): Entry[] {
   const { store } = ctx;
+  const activeMeta = store.activeId ? store.images[store.activeId] : undefined;
+  const afmHeight = isSpmHeightImage(activeMeta);
   return [
     {
       label: "Analysis Workspaces",
@@ -132,8 +135,9 @@ export function buildWindowMenu(ctx: MenuCtx): Entry[] {
           action: () => store.openTool("layers"),
         },
         {
-          label: "Surface Roughness",
-          action: () => store.openTool("roughness"),
+          label: afmHeight ? "AFM Surface Analysis" : "Surface Roughness",
+          disabled: !store.activeId,
+          action: () => store.openTool(afmHeight ? "afmsurface" : "roughness"),
         },
         {
           label: "4D-STEM Viewer",
