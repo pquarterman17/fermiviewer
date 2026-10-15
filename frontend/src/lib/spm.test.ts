@@ -39,4 +39,27 @@ describe("isSpmImage", () => {
     "does not classify the length-valued %s channel as topography",
     (channel) => expect(isSpmHeightImage(meta("nanoscope", "nm", channel))).toBe(false),
   );
+
+  it("does not mistake a height-error signal for topography", () => {
+    expect(isSpmHeightImage(meta("nanoscope", "nm", "Height Error"))).toBe(false);
+  });
+
+  it("recognizes structured height provenance on a derived image", () => {
+    const derived = meta("derived", "nm", "Height");
+    derived.meta = {
+      parser: "derived",
+      channel: "Height",
+      spm_source_parser: "nanoscope",
+      spm_channel_kind: "height",
+    };
+    expect(isSpmImage(derived)).toBe(true);
+    expect(isSpmHeightImage(derived)).toBe(true);
+  });
+
+  it("rejects structured non-height SPM channels even when their unit is length", () => {
+    const error = meta("derived", "nm", "Height");
+    error.meta = { parser: "derived", spm_channel_kind: "other" };
+    expect(isSpmImage(error)).toBe(true);
+    expect(isSpmHeightImage(error)).toBe(false);
+  });
 });

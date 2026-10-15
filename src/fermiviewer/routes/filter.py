@@ -200,11 +200,14 @@ _SWAPS_AXES = {"rotate90", "rotate270"}  # row/col cal swap
 
 
 def _carried_units(ds: DataStruct, kind: str) -> dict[str, Any]:
-    """Value unit and channel of the source, unless the filter changes
-    what the pixel values mean."""
+    """Physical quantity and SPM provenance when the filter preserves it."""
     if kind in _UNITLESS:
         return {}
-    return {k: ds.metadata[k] for k in ("value_unit", "channel") if k in ds.metadata}
+    keys = (
+        "value_unit", "channel", "channel_label", "spm_source_parser",
+        "spm_channel_kind",
+    )
+    return {k: ds.metadata[k] for k in keys if k in ds.metadata}
 
 
 @router.post("/filter")

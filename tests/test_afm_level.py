@@ -117,11 +117,16 @@ def test_ops_keep_the_height_unit() -> None:
     img, _ = _scan()
     ds = DataStruct(data=img, kind=DataKind.IMAGE,
                     axes=(AxisCal(2.0, 0, "nm"), AxisCal(2.0, 0, "nm")),
-                    metadata={"value_unit": "nm", "channel": "Height"})
+                    metadata={"value_unit": "nm", "channel": "Height",
+                              "channel_label": "Height", "spm_source_parser": "nanoscope",
+                              "spm_channel_kind": "height"})
     for name, params in [("plane_level", {"order": 3, "fit_percentile": 50}),
                          ("row_level", {"method": "mdiff"}), ("scar_removal", {}),
                          ("zero_level", {"mode": "mean"}), ("gaussian", {})]:
-        assert ops.run(name, ds, params).derived.metadata["value_unit"] == "nm"
+        derived = ops.run(name, ds, params).derived
+        assert derived.metadata["value_unit"] == "nm"
+        assert derived.metadata["spm_channel_kind"] == "height"
+        assert derived.metadata["spm_source_parser"] == "nanoscope"
     assert "value_unit" not in ops.run("multiotsu", ds, {}).derived.metadata
     assert ops.run("roughness", ds, {}).value["unit"] == "nm"
 
@@ -149,7 +154,9 @@ def _height_image(client: TestClient) -> str:
     img, _ = _scan()
     ds = DataStruct(data=img, kind=DataKind.IMAGE,
                     axes=(AxisCal(2.0, 0, "nm"), AxisCal(2.0, 0, "nm")),
-                    metadata={"value_unit": "nm"})
+                    metadata={"value_unit": "nm", "channel": "Height",
+                              "channel_label": "Height", "spm_source_parser": "nanoscope",
+                              "spm_channel_kind": "height"})
     return store.add_parsed(ds, "scan.spm")
 
 
@@ -165,6 +172,8 @@ def test_filter_kinds_keep_nm(client, kind, params) -> None:
                                          "kind": kind, "params": params})
     assert r.status_code == 200, r.text
     assert r.json()["value_unit"] == "nm"
+    assert r.json()["meta"]["spm_channel_kind"] == "height"
+    assert r.json()["meta"]["spm_source_parser"] == "nanoscope"
 
 
 def test_three_point_level_accepts_the_bottom_right_edge_pixels(client) -> None:

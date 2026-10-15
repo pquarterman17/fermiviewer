@@ -14,7 +14,10 @@ import numpy as np
 
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
 
-__all__ = ["length_to_nm_factor", "primary_channel", "spm_channel", "to_nm", "unique_labels"]
+__all__ = [
+    "height_channel_kind", "length_to_nm_factor", "primary_channel", "spm_channel",
+    "to_nm", "unique_labels",
+]
 
 # case-sensitive on purpose: "A" is an ampere, never an ångström
 _TO_NM = {
@@ -24,6 +27,7 @@ _TO_NM = {
 
 # the channel a plain open shows: topography first, in this order
 _PRIMARY = ("height", "topography", "z-axis", "zsensor", "z sensor", "z-sensor", "z")
+_HEIGHT_QUALIFIERS = ("measured", "sensor", "trace", "retrace", "forward", "backward")
 
 
 def length_to_nm_factor(unit: str) -> float | None:
@@ -37,6 +41,25 @@ def to_nm(values: np.ndarray, unit: str) -> tuple[np.ndarray, str]:
     if f is None:
         return values, unit
     return values * f, "nm"
+
+
+def height_channel_kind(channel: str, value_unit: str) -> str:
+    """Classify a physical-height channel without unsafe prefix matching.
+
+    ``Height Error`` is a feedback-error signal, not topography. Known
+    acquisition qualifiers remain valid height channels; everything else is
+    explicitly marked ``other`` for downstream consumers.
+    """
+    if length_to_nm_factor(value_unit) is None:
+        return "other"
+    name = " ".join(channel.strip().lower().replace("_", " ").split())
+    if name in _PRIMARY:
+        return "height"
+    for base in _PRIMARY:
+        for qualifier in _HEIGHT_QUALIFIERS:
+            if name in (f"{base} {qualifier}", f"{base} ({qualifier})"):
+                return "height"
+    return "other"
 
 
 def spm_channel(
@@ -57,7 +80,8 @@ def spm_channel(
         kind=DataKind.IMAGE,
         axes=(axis(dy_nm), axis(dx_nm)),
         metadata={"parser": parser, "channel": channel, "channel_label": label,
-                  "value_unit": unit, **extra},
+                  "value_unit": unit, "spm_source_parser": parser,
+                  "spm_channel_kind": height_channel_kind(channel, value_unit), **extra},
     )
 
 
@@ -66,11 +90,15 @@ def primary_channel(channels: list[DataStruct]) -> DataStruct:
     if not channels:
         raise ValueError("the file holds no image channels")
     names = [str(ds.metadata.get("channel", "")).strip().lower() for ds in channels]
-    for exact in (True, False):              # "Height" beats "Height (measured)"
-        for key in _PRIMARY:
-            for ds, name in zip(channels, names, strict=True):
-                if name == key or (not exact and len(key) > 1 and name.startswith(key)):
-                    return ds
+    for key in _PRIMARY:                     # exact "Height" wins
+        for ds, name in zip(channels, names, strict=True):
+            if name == key:
+                return ds
+    # Then accept only channels the structured classifier identified as
+    # physical height. Prefix matching used to select "Height Error" here.
+    for ds in channels:
+        if ds.metadata.get("spm_channel_kind") == "height":
+            return ds
     return channels[0]
 
 
