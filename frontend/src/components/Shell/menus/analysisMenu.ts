@@ -1,6 +1,7 @@
 // Analysis menu builder, split out of MenuBar.tsx (repo-health #33).
 // Entries moved verbatim; only `store`/helper references now come from ctx.
-import { analyzeBackProject } from "../../../lib/api";
+import { analyzeBackProject, type ImageMeta } from "../../../lib/api";
+import { isSpmHeightImage } from "../../../lib/spm";
 import { askParams } from "../../../store/params";
 import {
   openCrossSectionGuide,
@@ -9,6 +10,10 @@ import {
 import { buildAfmMenu } from "./afmMenu";
 import type { Entry, MenuCtx } from "./menuTypes";
 import { num } from "./menuTypes";
+
+export function roughnessToolFor(meta: ImageMeta | null | undefined): "afmsurface" | "roughness" {
+  return isSpmHeightImage(meta) ? "afmsurface" : "roughness";
+}
 
 export function buildAnalysisMenu(ctx: MenuCtx): Entry[] {
   const { store, lastProfileMeasure, runBatchProfile } = ctx;
@@ -102,7 +107,10 @@ export function buildAnalysisMenu(ctx: MenuCtx): Entry[] {
         {
           label: "Surface Roughness",
           disabled: !store.activeId,
-          action: () => store.openTool("roughness"),
+          action: () => {
+            const meta = store.activeId ? store.images[store.activeId] : null;
+            store.openTool(roughnessToolFor(meta));
+          },
         },
         {
           label: "Interface Width…",

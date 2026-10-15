@@ -22,7 +22,7 @@ import AnalysisRegionSelect from "./AnalysisRegionSelect";
 import PlotContextSurface from "../plots/PlotContextSurface";
 
 const NO_SHAPE: number[] = [];
-const SUMMARY_PARAMS: IsoParam[] = ["Sa", "Sq", "Sz", "Ssk", "Sal"];
+const SUMMARY_PARAMS: IsoParam[] = ["Sq", "Sa", "Sz", "Ssk", "Sal"];
 type SurfacePlot = "psd" | "height" | "slope";
 
 /** ISO 25178-2 parameter families, in the order the standard lists them. */
@@ -55,6 +55,14 @@ const DESCRIPTIONS: Record<IsoParam, string> = {
   Vmc: "core material volume (10–80 %), per area",
   Vvc: "core void volume (10–80 %), per area",
   Vvv: "valley void volume (mr = 80 %), per area",
+};
+
+const SUMMARY_NAMES: Partial<Record<IsoParam, string>> = {
+  Sq: "Area RMS roughness",
+  Sa: "Area average roughness",
+  Sz: "Maximum surface height",
+  Ssk: "Surface skewness",
+  Sal: "Autocorrelation length",
 };
 
 export function surfaceRows(result: AfmSurfaceResult): Cell[][] {
@@ -185,8 +193,8 @@ export default function AfmSurfaceWorkshop() {
               <span className="fvd-afm-count">{result.n_pixels.toLocaleString()} px</span>
             </div>
             <div className="fvd-afm-summary-grid">
-              {SUMMARY_PARAMS.map((key) => (
-                <Metric key={key} name={key} result={result} featured />
+              {SUMMARY_PARAMS.map((key, index) => (
+                <Metric key={key} name={key} result={result} featured primary={index === 0} />
               ))}
             </div>
           </section>
@@ -293,19 +301,24 @@ export default function AfmSurfaceWorkshop() {
 }
 
 function Metric({
-  name, result, featured = false,
+  name, result, featured = false, primary = false,
 }: {
   name: IsoParam;
   result: AfmSurfaceResult;
   featured?: boolean;
+  primary?: boolean;
 }) {
   const value = formatParam(result.params[name], result.units[name]);
   if (featured) {
     return (
-      <div className="fvd-afm-summary-metric">
-        <span className="k">{name}</span>
+      <div className={`fvd-afm-summary-metric${primary ? " primary" : ""}`}>
+        <span className="k">{SUMMARY_NAMES[name] ?? DESCRIPTIONS[name]} ({name})</span>
         <span className="v">{value}</span>
-        <span className="d">{DESCRIPTIONS[name]}</span>
+        <span className="d">
+          {name === "Sq"
+            ? "Root mean square of height across the analyzed area"
+            : DESCRIPTIONS[name]}
+        </span>
       </div>
     );
   }

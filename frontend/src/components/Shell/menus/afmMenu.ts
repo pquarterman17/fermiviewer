@@ -6,6 +6,7 @@
 import { toAnalysisRoi, type AnalysisRoi } from "../../../hooks/useAnalysisRoi";
 import { afmMap, afmStepHeight, applyFilter, openAfmChannels } from "../../../lib/api";
 import { coerceParams } from "../../../lib/params";
+import { isSpmHeightImage } from "../../../lib/spm";
 import { runTransform } from "../../../lib/transforms";
 import { TRANSFORM_TOOLS } from "../../../lib/transformTools";
 import { askParams } from "../../../store/params";
@@ -41,6 +42,7 @@ export function buildAfmMenu(ctx: MenuCtx): Entry {
   const { store } = ctx;
   const id = store.activeId;
   const noImage = !id;
+  const noHeightMap = !id || !isSpmHeightImage(store.images[id]);
 
   // Three-point levelling takes its points from the active image's most
   // recent angle measure (3 clicks) or 3-vertex polygon.
@@ -117,14 +119,14 @@ export function buildAfmMenu(ctx: MenuCtx): Entry {
       { kind: "sep" },
       {
         label: "Surface Analysis (ISO 25178)…",
-        disabled: noImage,
+        disabled: noHeightMap,
         action: () => store.openTool("afmsurface"),
       },
       { label: "2-D Power Spectrum Map", disabled: noImage, action: () => surfaceMap("psd") },
       { label: "Autocorrelation Map", disabled: noImage, action: () => surfaceMap("acf") },
       {
         label: "Step Height (last ROI across the step)",
-        disabled: noImage || lastRoi() === null,
+        disabled: noHeightMap || lastRoi() === null,
         action: () => {
           const roi = lastRoi();
           if (!id || !roi) return;
@@ -142,7 +144,6 @@ export function buildAfmMenu(ctx: MenuCtx): Entry {
       // force files open with File ▸ Open like any other; this shows them
       { label: "Force Curves…", action: () => store.openTool("afmforce") },
       { kind: "sep" },
-      { label: "Surface Roughness", disabled: noImage, action: () => store.openTool("roughness") },
       { label: "3-D Surface", disabled: noImage, action: () => store.openTool("surface") },
       { label: "Particles…", disabled: noImage, action: () => openStructureWorkshop("Particles") },
       { label: "Grains…", disabled: noImage, action: () => openStructureWorkshop("Grains") },
