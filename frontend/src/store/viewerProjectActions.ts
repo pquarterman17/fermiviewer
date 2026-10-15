@@ -24,6 +24,7 @@ import {
   sessionSlice,
 } from "./viewerSession";
 import type { ViewerState } from "./viewerState";
+import { useAfmForce } from "./afmForce";
 
 type Set = Parameters<StateCreator<ViewerState>>[0];
 type Get = Parameters<StateCreator<ViewerState>>[1];
@@ -80,6 +81,9 @@ export function createProjectActions(
 
     openProject: async (path) => {
       const r = await apiOpenProject(path);
+      // Force files are session-only, not .fvp content. The server clears
+      // them only after a replacement project has loaded successfully.
+      useAfmForce.getState().reset();
       const missing = r.unavailable.length
         ? ` · ${r.unavailable.length} unavailable — File ▸ Locate Data Folder…`
         : "";

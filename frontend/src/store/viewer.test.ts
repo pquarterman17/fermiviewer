@@ -11,6 +11,7 @@ import type { ImageMeta } from "../lib/api";
 import type { ImageGroup } from "../lib/groups";
 import { regionRows } from "../lib/regionTable";
 import { useBrowseScale } from "./browseScale";
+import { useAfmForce } from "./afmForce";
 import type { Measure } from "./viewerTypes";
 import { useViewer } from "./viewer";
 
@@ -95,6 +96,7 @@ function meta(id: string, extra: Partial<ImageMeta> = {}): ImageMeta {
 beforeEach(() => {
   useViewer.setState(initialState, true);
   useBrowseScale.setState({ locked: false, scale: null });
+  useAfmForce.getState().reset();
   localStorage.clear();
 });
 
@@ -535,6 +537,11 @@ describe("named workspaces (WS4b)", () => {
   it("loadWorkspaceNamed replaces the session and tags it", async () => {
     const s0 = useViewer.getState();
     s0.ingest([meta("old1"), meta("old2")]);
+    useAfmForce.getState().adopt([{
+      id: "force1", name: "old.001", is_force: true, parser: "nanoscope",
+      n_curves: 1, grid: null, map_pitch_nm: null, spring_constant: null,
+      invols: null, deflection_unit: "nm", z_source: "piezo",
+    }]);
     s0.setView("old1", { z: 2, px: 0.5, py: 0.5 }); // pre-load per-image state
     await useViewer.getState().loadWorkspaceNamed("study");
     const s = useViewer.getState();
@@ -543,6 +550,7 @@ describe("named workspaces (WS4b)", () => {
     expect(s.currentWorkspace).toEqual({ slug: "study", name: "Study" });
     expect(s.undoStack).toEqual([]); // a load is a fresh session
     expect(s.views["old1"]).toBeUndefined(); // stale per-image state cleared
+    expect(useAfmForce.getState().files).toEqual([]); // session-only, absent from .fvp
   });
 
   // item 11: browseScale lives in its own store, so this named-workspace

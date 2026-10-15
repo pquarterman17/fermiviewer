@@ -45,6 +45,7 @@ from fermiviewer.io.regions_model import regions_to_manifest
 from fermiviewer.models import ImageMeta
 from fermiviewer.project_session import OpenProject, project
 from fermiviewer.session import store
+from fermiviewer.session_force import force_store
 
 __all__ = [
     "load_into_session",
@@ -67,6 +68,10 @@ def restore_into_store(
 ) -> list[dict[str, Any]]:
     """Push loaded entries back into the session store; return their metas."""
     if replace:
+        # Force curves are intentionally session-only and are not represented
+        # in .fvp. Keeping them here would make a newly opened project expose
+        # measurements from the project it replaced.
+        force_store.clear()
         store.clear()
         from fermiviewer.routes.images import clear_level_cache
 

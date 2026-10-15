@@ -15,6 +15,8 @@ interface AfmForceState {
   adopt: (metas: ForceMeta[]) => void;
   select: (id: string) => void;
   close: (id: string) => Promise<void>;
+  /** Project replacement closes session-only force files on the server. */
+  reset: () => void;
 }
 
 export const useAfmForce = create<AfmForceState>((set, get) => ({
@@ -51,4 +53,5 @@ export const useAfmForce = create<AfmForceState>((set, get) => ({
       selectedId: get().selectedId === id ? (files.at(-1)?.id ?? null) : get().selectedId,
     });
   },
+  reset: () => set({ files: [], selectedId: null, error: null }),
 }));

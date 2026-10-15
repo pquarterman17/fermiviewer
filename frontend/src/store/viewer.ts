@@ -255,6 +255,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
 
   loadWorkspaceNamed: async (slug) => {
     const r = await apiLoadWorkspaceNamed(slug);
+    useAfmForce.getState().reset();
     // a workspace is a light-mode project, so its sources can be missing too
     const missing = r.unavailable.length
       ? ` · ${r.unavailable.length} unavailable — File ▸ Locate Data Folder…`
