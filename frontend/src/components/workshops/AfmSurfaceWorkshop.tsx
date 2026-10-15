@@ -17,6 +17,7 @@ import {
   tableToJson,
   type Cell,
 } from "../../lib/resultsExport";
+import { heightAnalysisKey } from "../../lib/analysisFreshness";
 import { useViewer } from "../../store/viewer";
 import AnalysisRegionSelect from "./AnalysisRegionSelect";
 import PlotContextSurface from "../plots/PlotContextSurface";
@@ -92,9 +93,12 @@ export default function AfmSurfaceWorkshop() {
   const [result, setResult] = useState<AfmSurfaceResult | null>(null);
   // the region the result was measured on, not the one selected now
   const [resultRegion, setResultRegion] = useState("");
+  const [resultKey, setResultKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [activePlot, setActivePlot] = useState<SurfacePlot>("psd");
   const [openGroups, setOpenGroups] = useState<string[]>(["Height"]);
+  const controlKey = heightAnalysisKey(region.choice, region.roi, level);
+  const resultStale = result !== null && resultKey !== controlKey;
 
   // Each run gets a number; switching image or closing the panel bumps it,
   // so a request still in flight for the previous image is ignored when it
@@ -124,6 +128,7 @@ export default function AfmSurfaceWorkshop() {
         ));
         setResult(next);
         setResultRegion(runRegion);
+        setResultKey(controlKey);
         setStatus(`surface: Sa ${formatParam(next.params.Sa, next.z_unit)} · ` +
           `Sq ${formatParam(next.params.Sq, next.z_unit)}`);
       })
@@ -166,24 +171,30 @@ export default function AfmSurfaceWorkshop() {
         onChange={region.setChoice}
       />
       <div className="fvd-ws-row">
-        <label className="k" htmlFor="afm-surface-level">Level</label>
+        <label className="k" htmlFor="afm-surface-level">Background removal</label>
         <select
           id="afm-surface-level"
           value={level}
           disabled={busy}
           onChange={(e) => setLevel(e.target.value as AfmLevel)}
         >
-          <option value="none">None (already levelled)</option>
-          <option value="plane">Plane</option>
-          <option value="quadratic">Quadratic</option>
+          <option value="none">None — already levelled</option>
+          <option value="plane">Plane — recommended</option>
+          <option value="quadratic">Quadratic — curved background</option>
         </select>
         <button className="fvd-btn primary" disabled={busy} onClick={run}>
-          {busy ? "Analyzing…" : "Analyze"}
+          {busy ? "Analyzing…" : resultStale ? "Update analysis" : "Analyze"}
         </button>
       </div>
 
+      {resultStale && (
+        <div className="fvd-ws-note" role="status">
+          Settings changed — the results below are out of date. Update the analysis before export.
+        </div>
+      )}
+
       {result && (
-        <>
+        <div aria-disabled={resultStale} style={resultStale ? { opacity: 0.62 } : undefined}>
           <section className="fvd-afm-summary" aria-labelledby="afm-summary-title">
             <div className="fvd-afm-section-head">
               <div>
@@ -262,6 +273,7 @@ export default function AfmSurfaceWorkshop() {
                 xLabel={`spatial frequency (1/${result.lateral_unit})`}
                 yLabel={`PSD (${result.z_unit}²·${result.lateral_unit}²)`}
                 log
+                disabled={resultStale}
               />
             )}
             {activePlot === "height" && (
@@ -273,6 +285,7 @@ export default function AfmSurfaceWorkshop() {
                 y={result.height_hist.percent}
                 xLabel={`height (${result.z_unit})`}
                 yLabel="% of pixels"
+                disabled={resultStale}
               />
             )}
             {activePlot === "slope" && result.slope_hist.angle.length > 0 && (
@@ -284,6 +297,7 @@ export default function AfmSurfaceWorkshop() {
                 y={result.slope_hist.percent}
                 xLabel="slope (°)"
                 yLabel="% of pixels"
+                disabled={resultStale}
               />
             )}
           </section>
@@ -291,10 +305,10 @@ export default function AfmSurfaceWorkshop() {
             {resultRegion} · {result.level} levelling
           </div>
           <div className="fvd-ws-row">
-            <button className="fvd-btn" onClick={() => exportResult("csv")}>Export CSV</button>
-            <button className="fvd-btn" onClick={() => exportResult("json")}>Export JSON</button>
+            <button className="fvd-btn" disabled={resultStale} onClick={() => exportResult("csv")}>Export CSV</button>
+            <button className="fvd-btn" disabled={resultStale} onClick={() => exportResult("json")}>Export JSON</button>
           </div>
-        </>
+        </div>
       )}
     </div>
   );
@@ -369,7 +383,7 @@ function PlotTab({
 }
 
 function CurvePlot({
-  id, labelledBy, title, x, y, xLabel, yLabel, log = false,
+  id, labelledBy, title, x, y, xLabel, yLabel, log = false, disabled = false,
 }: {
   id: string;
   labelledBy: string;
@@ -379,6 +393,7 @@ function CurvePlot({
   xLabel: string;
   yLabel: string;
   log?: boolean;
+  disabled?: boolean;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
@@ -425,6 +440,7 @@ function CurvePlot({
         label={title}
         filename={`${slug}.png`}
         className="fvd-ws-plot"
+        disabled={disabled}
       />
     </section>
   );
