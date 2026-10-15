@@ -4,7 +4,7 @@
 // 3-D surface, particles/grains on the height map — rather than duplicating
 // them for AFM.
 import { toAnalysisRoi, type AnalysisRoi } from "../../../hooks/useAnalysisRoi";
-import { afmMap, afmStepHeight, applyFilter, openAfmChannels } from "../../../lib/api";
+import { afmMap, applyFilter, openAfmChannels } from "../../../lib/api";
 import { coerceParams } from "../../../lib/params";
 import { isSpmHeightImage } from "../../../lib/spm";
 import { runTransform } from "../../../lib/transforms";
@@ -125,20 +125,9 @@ export function buildAfmMenu(ctx: MenuCtx): Entry {
       { label: "2-D Power Spectrum Map", disabled: noImage, action: () => surfaceMap("psd") },
       { label: "Autocorrelation Map", disabled: noImage, action: () => surfaceMap("acf") },
       {
-        label: "Step Height (last ROI across the step)",
-        disabled: noHeightMap || lastRoi() === null,
-        action: () => {
-          const roi = lastRoi();
-          if (!id || !roi) return;
-          afmStepHeight(id, roi)
-            .then((r) =>
-              store.setStatus(
-                `step height ${r.height.toPrecision(4)} ${r.unit} ` +
-                  `(terrace rms ${r.lower_std.toPrecision(2)} / ${r.upper_std.toPrecision(2)} ${r.unit})`,
-              ),
-            )
-            .catch((e: Error) => store.setStatus(`step height: ${e.message}`));
-        },
+        label: "Step Height…",
+        disabled: noHeightMap,
+        action: () => store.openTool("afmstep"),
       },
       { kind: "sep" },
       // force files open with File ▸ Open like any other; this shows them

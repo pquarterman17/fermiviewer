@@ -61,6 +61,6 @@ export function afmMap(
   });
 }
 
-export function afmStepHeight(id: string, roi: AfmRoi | null): Promise<StepHeightResult> {
-  return post(path(id, "step-height"), { roi });
+export function afmStepHeight(id: string, roi: AfmRoi | null, edge = 2): Promise<StepHeightResult> {
+  return post(path(id, "step-height"), { roi, edge });
 }
