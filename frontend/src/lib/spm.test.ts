@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ImageMeta } from "./api";
-import { isSpmHeightImage, isSpmImage } from "./spm";
+import { isSpmHeightImage, isSpmImage, supportsSpmChannels } from "./spm";
 
 function meta(parser: string, valueUnit = "nm", channel = "Height"): ImageMeta {
   return {
@@ -21,6 +21,14 @@ describe("isSpmImage", () => {
   it("does not classify unrelated or absent parser metadata as SPM", () => {
     expect(isSpmImage(meta("dm4"))).toBe(false);
     expect(isSpmImage(null)).toBe(false);
+  });
+
+  it("keeps TIFF-backed Park data in SPM UI without promising sibling channels", () => {
+    const park = meta("park", "", "AFM image");
+    expect(isSpmImage(park)).toBe(true);
+    expect(isSpmHeightImage(park)).toBe(false);
+    expect(supportsSpmChannels(park)).toBe(false);
+    expect(supportsSpmChannels(meta("nanoscope"))).toBe(true);
   });
 
   it("distinguishes height channels from other measurements in an SPM file", () => {

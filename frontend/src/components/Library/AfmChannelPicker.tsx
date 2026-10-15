@@ -6,7 +6,8 @@ import {
   type AfmChannelInfo,
   type ImageMeta,
 } from "../../lib/api";
-import { isSpmImage } from "../../lib/spm";
+import { supportsSpmChannels } from "../../lib/spm";
+import { useLatestRequest } from "../../hooks/useLatestRequest";
 import { useViewer } from "../../store/viewer";
 
 function channelLabel(meta: ImageMeta): string {
@@ -22,11 +23,17 @@ export default function AfmChannelPicker({ meta }: { meta: ImageMeta | null }) {
   const images = useViewer((s) => s.images);
   const [channels, setChannels] = useState<AfmChannelInfo[]>([]);
   const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ error: boolean; text: string } | null>(null);
+  const channelRequest = useLatestRequest(meta?.id);
 
-  const isSpm = isSpmImage(meta);
+  const isSpm = supportsSpmChannels(meta);
   const imageIds = Object.keys(images).sort().join(",");
 
-  useEffect(() => setChannels([]), [meta?.id]);
+  useEffect(() => {
+    setChannels([]);
+    setBusy(false);
+    setMessage(null);
+  }, [meta?.id]);
 
   useEffect(() => {
     if (!meta || !isSpm) {
@@ -54,34 +61,51 @@ export default function AfmChannelPicker({ meta }: { meta: ImageMeta | null }) {
   const choose = async (label: string) => {
     const known = channels.find((item) => item.label === label);
     if (known && isLive(known)) {
+      channelRequest.invalidate();
       select(known.image_id, "single");
       return;
     }
+    const request = channelRequest.begin();
     setBusy(true);
+    setMessage({ error: false, text: `Opening ${label}…` });
     try {
-      const opened = await openAfmChannels(meta.id, [label]);
+      const opened = await openAfmChannels(meta.id, [label], { signal: request.signal });
+      if (!request.isCurrent()) return;
       if (opened.length) {
         ingest(opened);
         select(opened[0].id, "single");
         setStatus(`opened ${label}`);
+        setMessage({ error: false, text: `${label} opened` });
       } else {
         // Another surface may have opened it since this inventory response.
-        const refreshed = await listAfmChannels(meta.id);
+        const refreshed = await listAfmChannels(meta.id, { signal: request.signal });
+        if (!request.isCurrent()) return;
         setChannels(refreshed);
         const nowOpen = refreshed.find((item) => item.label === label);
         if (nowOpen && isLive(nowOpen)) select(nowOpen.image_id, "single");
       }
     } catch (error) {
-      setStatus(`channels: ${(error as Error).message}`);
+      if (request.isCurrent()) {
+        const text = `${label}: ${(error as Error).message}`;
+        setMessage({ error: true, text });
+        setStatus(`channels: ${text}`);
+      }
     } finally {
-      setBusy(false);
+      if (request.isCurrent()) setBusy(false);
     }
   };
 
   const openRemaining = async () => {
+    const request = channelRequest.begin();
+    const remaining = channels.filter((item) => !isLive(item)).map((item) => item.label);
     setBusy(true);
+    setMessage({
+      error: false,
+      text: `Opening ${remaining.length} remaining channel${remaining.length === 1 ? "" : "s"}…`,
+    });
     try {
-      const opened = await openAfmChannels(meta.id);
+      const opened = await openAfmChannels(meta.id, remaining, { signal: request.signal });
+      if (!request.isCurrent()) return;
       if (opened.length) {
         ingest(opened);
         // Bulk discovery should not pull the stage away from the channel the
@@ -93,11 +117,22 @@ export default function AfmChannelPicker({ meta }: { meta: ImageMeta | null }) {
           ? `opened ${opened.length} channel${opened.length === 1 ? "" : "s"}`
           : "all channels of this scan are already open",
       );
-      setChannels(await listAfmChannels(meta.id));
+      setMessage({
+        error: false,
+        text: opened.length
+          ? `${opened.length} channel${opened.length === 1 ? "" : "s"} opened`
+          : "All channels are already open",
+      });
+      const refreshed = await listAfmChannels(meta.id, { signal: request.signal });
+      if (request.isCurrent()) setChannels(refreshed);
     } catch (error) {
-      setStatus(`channels: ${(error as Error).message}`);
+      if (request.isCurrent()) {
+        const text = `Remaining channels: ${(error as Error).message}`;
+        setMessage({ error: true, text });
+        setStatus(`channels: ${text}`);
+      }
     } finally {
-      setBusy(false);
+      if (request.isCurrent()) setBusy(false);
     }
   };
 
@@ -109,7 +144,6 @@ export default function AfmChannelPicker({ meta }: { meta: ImageMeta | null }) {
         <select
           id="fvd-afm-channel-select"
           value={current}
-          disabled={busy}
           onChange={(event) => void choose(event.target.value)}
         >
           {channels.map((item) => (
@@ -123,6 +157,11 @@ export default function AfmChannelPicker({ meta }: { meta: ImageMeta | null }) {
         <button type="button" disabled={busy} onClick={() => void openRemaining()}>
           Open remaining {closed}
         </button>
+      )}
+      {message && (
+        <span className={message.error ? "error" : ""} role={message.error ? "alert" : "status"}>
+          {message.text}
+        </span>
       )}
     </section>
   );

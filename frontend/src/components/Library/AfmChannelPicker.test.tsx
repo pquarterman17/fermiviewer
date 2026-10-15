@@ -44,6 +44,10 @@ const phase: ImageMeta = {
 };
 
 const reopenedPhase: ImageMeta = { ...phase, id: "phase-reopened" };
+const amplitude: ImageMeta = {
+  ...phase, id: "amplitude", name: "scan.spm · Amplitude", value_unit: "nm",
+  meta: { ...root.meta, channel_label: "Amplitude" },
+};
 
 beforeEach(() => {
   vi.mocked(listAfmChannels).mockReset();
@@ -79,7 +83,9 @@ describe("AFM channel picker", () => {
     fireEvent.change(selector, { target: { value: "Phase (retrace)" } });
 
     await waitFor(() => {
-      expect(openAfmChannels).toHaveBeenCalledWith("height", ["Phase (retrace)"]);
+      expect(openAfmChannels).toHaveBeenCalledWith(
+        "height", ["Phase (retrace)"], expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
       expect(useViewer.getState().activeId).toBe("phase");
     });
     expect(useViewer.getState().images.phase).toEqual(phase);
@@ -100,7 +106,9 @@ describe("AFM channel picker", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Open remaining 1" }));
     await waitFor(() => expect(useViewer.getState().images.phase).toEqual(phase));
-    expect(openAfmChannels).toHaveBeenCalledWith("height");
+    expect(openAfmChannels).toHaveBeenCalledWith(
+      "height", ["Phase (retrace)"], expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
     expect(useViewer.getState().activeId).toBe("height");
   });
 
@@ -126,9 +134,36 @@ describe("AFM channel picker", () => {
     fireEvent.change(selector, { target: { value: "Phase (retrace)" } });
 
     await waitFor(() => {
-      expect(openAfmChannels).toHaveBeenCalledWith("height", ["Phase (retrace)"]);
+      expect(openAfmChannels).toHaveBeenCalledWith(
+        "height", ["Phase (retrace)"], expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
       expect(useViewer.getState().activeId).toBe("phase-reopened");
     });
     expect(useViewer.getState().images["phase-reopened"]).toEqual(reopenedPhase);
+  });
+
+  it("keeps only the newest channel choice when responses finish out of order", async () => {
+    let finishPhase!: (value: ImageMeta[]) => void;
+    let finishAmplitude!: (value: ImageMeta[]) => void;
+    vi.mocked(listAfmChannels).mockResolvedValue([
+      { label: "Height (retrace)", image_id: "height" },
+      { label: "Phase (retrace)", image_id: null },
+      { label: "Amplitude", image_id: null },
+    ]);
+    vi.mocked(openAfmChannels)
+      .mockImplementationOnce(() => new Promise((resolve) => { finishPhase = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { finishAmplitude = resolve; }));
+    render(<AfmChannelPicker meta={root} />);
+
+    const selector = await screen.findByRole("combobox");
+    fireEvent.change(selector, { target: { value: "Phase (retrace)" } });
+    fireEvent.change(selector, { target: { value: "Amplitude" } });
+    await act(async () => finishAmplitude([amplitude]));
+    await waitFor(() => expect(useViewer.getState().activeId).toBe("amplitude"));
+    await act(async () => finishPhase([phase]));
+
+    expect(useViewer.getState().activeId).toBe("amplitude");
+    expect(useViewer.getState().images.phase).toBeUndefined();
+    expect(screen.getByRole("status")).toHaveTextContent("Amplitude opened");
   });
 });

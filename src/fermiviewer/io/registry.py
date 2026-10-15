@@ -153,6 +153,30 @@ def supported_extensions() -> tuple[str, ...]:
     return tuple(sorted({*_LOADERS, ".spm"}))
 
 
+def _load_park_spm(path: Path) -> DataStruct:
+    """Load a TIFF-backed Park-style ``.spm`` without erasing its modality.
+
+    The generic TIFF reader can recover the preview raster and lateral
+    calibration, but Park's private height encoding is not public. Mark the
+    channel as SPM/non-height rather than inventing a Z unit; this keeps it in
+    the AFM workflow while correctly withholding height-only metrology.
+    """
+    parsed = load_tiff(path)
+    return DataStruct(
+        data=parsed.data,
+        kind=parsed.kind,
+        axes=parsed.axes,
+        metadata={
+            **parsed.metadata,
+            "parser": "park",
+            "spm_source_parser": "park",
+            "spm_channel_kind": "other",
+            "channel": "AFM image",
+            "channel_label": "AFM image",
+        },
+    )
+
+
 def load_auto(path: str | Path) -> DataStruct:
     p = Path(path)
     ext = p.suffix.lower()
@@ -164,7 +188,7 @@ def load_auto(path: str | Path) -> DataStruct:
         if is_nanoscope(head):
             return load_nanoscope(p)
         if ext == ".spm":
-            return load_tiff(p)  # Park/JPK .spm is a TIFF variant
+            return _load_park_spm(p)  # Park-style TIFF container
         raise UnsupportedFormatError(
             f"'{p.name}' has a numeric extension but is not a Nanoscope file"
         )

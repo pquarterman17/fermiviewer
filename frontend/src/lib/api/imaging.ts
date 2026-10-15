@@ -454,6 +454,11 @@ export async function listAfmChannels(
 export function openAfmChannels(
   id: string,
   labels?: string[],
+  options: { signal?: AbortSignal } = {},
 ): Promise<ImageMeta[]> {
-  return post(`/api/afm/${encodeURIComponent(id)}/channels`, { labels });
+  return post(
+    `/api/afm/${encodeURIComponent(id)}/channels`,
+    { labels },
+    { signal: options.signal },
+  );
 }
