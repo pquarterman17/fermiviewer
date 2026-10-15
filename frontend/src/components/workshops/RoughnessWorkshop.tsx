@@ -21,6 +21,16 @@ import PlotContextSurface from "../plots/PlotContextSurface";
 
 const NO_SHAPE: number[] = [];
 const METRICS = ["Ra", "Rq", "Rz", "Rp", "Rv", "Rsk", "Rku", "SAR"] as const;
+const METRIC_NAMES: Record<(typeof METRICS)[number], string> = {
+  Ra: "Average roughness (Ra)",
+  Rq: "RMS roughness (Rq)",
+  Rz: "Maximum height (Rz)",
+  Rp: "Maximum peak height (Rp)",
+  Rv: "Maximum valley depth (Rv)",
+  Rsk: "Skewness (Rsk)",
+  Rku: "Kurtosis (Rku)",
+  SAR: "Surface area ratio (SAR)",
+};
 
 export function roughnessRows(result: RoughnessResult): Cell[][] {
   return METRICS.map((key) => [
@@ -170,9 +180,9 @@ function RoughnessMetrics({ result }: { result: RoughnessResult }) {
   return (
     <div className="fvd-metrics">
       {METRICS.map((key) => (
-        <div className="fvd-metric" key={key}>
+        <div className={`fvd-metric${key === "Rq" ? " primary" : ""}`} key={key}>
           <span className="v">{formatMetric(key, result[key], result.unit)}</span>
-          <span className="k">{key}</span>
+          <span className="k">{METRIC_NAMES[key]}</span>
         </div>
       ))}
     </div>

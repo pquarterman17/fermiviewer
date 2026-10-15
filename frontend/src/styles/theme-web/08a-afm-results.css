@@ -47,6 +47,15 @@
   background: var(--surface-2);
 }
 
+.fvd-afm-summary-metric.primary {
+  grid-column: span 2;
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--border-soft));
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface-2));
+}
+
+.fvd-afm-summary-metric.primary .k { font-size: 11px; }
+.fvd-afm-summary-metric.primary .v { font-size: 18px; font-weight: var(--weight-semibold); }
+
 .fvd-afm-summary-metric .k {
   color: var(--accent-text);
   font-size: 10px;
@@ -118,6 +127,7 @@
 
 @media (max-width: 520px) {
   .fvd-afm-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fvd-afm-summary-metric.primary { grid-column: 1 / -1; }
   .fvd-afm-metric-row { grid-template-columns: 38px minmax(0, 1fr); }
   .fvd-afm-metric-row .v { grid-column: 2; }
 }
