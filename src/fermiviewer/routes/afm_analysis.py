@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from fermiviewer.calc import afm_surface as surf
-from fermiviewer.calc.afm_features import step_height
+from fermiviewer.calc.afm_features import step_height_evidence
 from fermiviewer.calc.raster import NoRasterError, raster_of
 from fermiviewer.calc.roi import extract_rect_roi
 from fermiviewer.datastruct import DataStruct
@@ -133,6 +133,20 @@ def surface_map(image_id: str, req: MapRequest) -> ImageMeta:
 class StepRequest(BaseModel):
     roi: Roi | None = None
     edge: int = 2
+    split_axis: Literal["x", "y"] | None = None
+    split_fraction: float | None = None
+
+
+def _sample_curve(values: np.ndarray, limit: int = 256) -> list[float | None]:
+    idx = np.linspace(0, max(values.size - 1, 0), min(values.size, limit), dtype=int)
+    return [float(v) if np.isfinite(v) else None for v in values[idx]]
+
+
+def _sample_mask(values: np.ndarray, limit: int = 64) -> list[list[int]]:
+    rows = np.linspace(0, values.shape[0] - 1, min(values.shape[0], limit), dtype=int)
+    cols = np.linspace(0, values.shape[1] - 1, min(values.shape[1], limit), dtype=int)
+    sampled = values[np.ix_(rows, cols)]
+    return [[int(value) for value in row] for row in sampled]
 
 
 @router.post("/{image_id}/step-height")
@@ -140,14 +154,39 @@ def measure_step(image_id: str, req: StepRequest) -> dict:
     """Step between two terraces inside the ROI (draw it across the edge)."""
     if not 0 <= req.edge <= 20:
         raise HTTPException(422, "edge exclusion must be 0–20 pixels")
+    if (req.split_axis is None) != (req.split_fraction is None):
+        raise HTTPException(422, "manual split requires both an axis and a position")
+    if req.split_fraction is not None and not 0.05 <= req.split_fraction <= 0.95:
+        raise HTTPException(422, "manual split position must be 5–95%")
     ds, z = _load(image_id, req.roi, "none")
+    initial_upper: np.ndarray | None = None
+    if req.split_axis is not None and req.split_fraction is not None:
+        split = int(round(req.split_fraction * z.shape[1 if req.split_axis == "x" else 0]))
+        yy, xx = np.indices(z.shape)
+        initial_upper = np.asarray(
+            (xx >= split) if req.split_axis == "x" else (yy >= split), dtype=bool,
+        )
     try:
-        s = step_height(z, edge=req.edge)
+        evidence = step_height_evidence(
+            z, edge=req.edge, n_iter=1 if initial_upper is not None else 6,
+            initial_upper=initial_upper,
+        )
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
+    s = evidence.result
     return {
         "height": s.height, "lower_std": s.lower_std, "upper_std": s.upper_std,
         "n_lower": s.n_lower, "n_upper": s.n_upper, "upper_fraction": s.upper_fraction,
         "unit": str(ds.metadata.get("value_unit") or "") or "a.u.",
         "roi": list(req.roi) if req.roi is not None else None,
+        "signed_height": evidence.signed_height, "profile_axis": evidence.axis,
+        "profile_position": _sample_curve(evidence.position),
+        "profile_measured": _sample_curve(evidence.measured),
+        "profile_fitted": _sample_curve(evidence.fitted),
+        "profile_residual": _sample_curve(evidence.residual),
+        "profile_upper_fraction": _sample_curve(evidence.upper_fraction_profile),
+        "terrace_mask": _sample_mask(evidence.terraces),
+        "slope_x": evidence.slope_x, "slope_y": evidence.slope_y,
+        "fit_rms": evidence.fit_rms,
+        "split_axis": req.split_axis, "split_fraction": req.split_fraction,
     }

@@ -4,16 +4,19 @@ import { useAnalysisRoi } from "../../hooks/useAnalysisRoi";
 import { afmStepHeight, type StepHeightResult } from "../../lib/api";
 import { isSpmHeightImage } from "../../lib/spm";
 import {
-  downloadCsv, downloadJson, exportBaseName, tableToCsv, tableToJson, type Cell,
+  downloadCsv, downloadJson, exportBaseName, tableToCsv, type Cell,
 } from "../../lib/resultsExport";
 import { useViewer } from "../../store/viewer";
 import AnalysisRegionSelect from "./AnalysisRegionSelect";
+import AfmStepEvidence from "./AfmStepEvidence";
 
 const NO_SHAPE: number[] = [];
 
 export function stepHeightRows(result: StepHeightResult): Cell[][] {
   return [
     ["Step height", result.height, result.unit],
+    ["Signed step height", result.signed_height, result.unit],
+    ["Fit RMS", result.fit_rms, result.unit],
     ["Lower terrace RMS residual", result.lower_std, result.unit],
     ["Upper terrace RMS residual", result.upper_std, result.unit],
     ["Lower terrace pixels", result.n_lower, "px"],
@@ -39,15 +42,21 @@ export default function AfmStepHeightWorkshop() {
   const [resultRegion, setResultRegion] = useState("");
   const [resultEdge, setResultEdge] = useState(2);
   const [busy, setBusy] = useState(false);
+  const [manual, setManual] = useState(false);
+  const [splitAxis, setSplitAxis] = useState<"x" | "y">("x");
+  const [splitPercent, setSplitPercent] = useState(50);
+  const [wholeConfirmed, setWholeConfirmed] = useState(false);
   const request = useRef(0);
-  const controlKey = JSON.stringify([region.choice, region.roi, edge]);
+  const controlKey = JSON.stringify([region.choice, region.roi, edge, manual, splitAxis, splitPercent]);
   const stale = result !== null && resultKey !== controlKey;
 
   useEffect(() => {
     request.current += 1;
     setResult(null);
     setBusy(false);
+    setWholeConfirmed(false);
   }, [activeId]);
+  useEffect(() => { setWholeConfirmed(false); }, [region.choice]);
   useEffect(() => () => { request.current += 1; }, []);
 
   const run = () => {
@@ -56,7 +65,8 @@ export default function AfmStepHeightWorkshop() {
     const runRegion = region.label;
     setBusy(true);
     setStatus("measuring step height…");
-    afmStepHeight(activeId, region.roi, edge)
+    const split = manual ? { axis: splitAxis, fraction: splitPercent / 100 } : undefined;
+    (split ? afmStepHeight(activeId, region.roi, edge, split) : afmStepHeight(activeId, region.roi, edge))
       .then((next) => {
         if (token !== request.current) return;
         setResult(next);
@@ -83,7 +93,7 @@ export default function AfmStepHeightWorkshop() {
     };
     const base = `${exportBaseName(meta?.name)}_step_height`;
     if (kind === "csv") downloadCsv(`${base}.csv`, tableToCsv(columns, stepHeightRows(result), provenance));
-    else downloadJson(`${base}.json`, tableToJson(columns, stepHeightRows(result), provenance));
+    else downloadJson(`${base}.json`, `${JSON.stringify({ ...provenance, result }, null, 2)}\n`);
   };
 
   if (!meta || meta.kind !== "image" || !isSpmHeightImage(meta)) {
@@ -99,6 +109,11 @@ export default function AfmStepHeightWorkshop() {
         choice={region.choice} imageId={activeId} roi={region.roi}
         options={region.options} disabled={busy} onChange={region.setChoice}
       />
+      {region.choice === "whole" && <label className="fvd-ws-check"><input type="checkbox" checked={wholeConfirmed} onChange={(event) => setWholeConfirmed(event.target.checked)} /> Use the whole image deliberately</label>}
+      <div className="fvd-ws-row">
+        <label className="fvd-ws-check"><input type="checkbox" checked={manual} disabled={busy} onChange={(event) => setManual(event.target.checked)} /> Correct terrace split manually</label>
+        {manual && <><label className="k" htmlFor="afm-step-axis">Direction</label><select id="afm-step-axis" value={splitAxis} disabled={busy} onChange={(event) => setSplitAxis(event.target.value as "x" | "y")}><option value="x">Left → right</option><option value="y">Top → bottom</option></select><label className="k" htmlFor="afm-step-split">Split</label><input id="afm-step-split" type="range" min={5} max={95} value={splitPercent} disabled={busy} onChange={(event) => setSplitPercent(Number(event.target.value))} /><span className="v">{splitPercent}%</span></>}
+      </div>
       <div className="fvd-ws-row">
         <label className="k" htmlFor="afm-step-edge">Ignore step edge</label>
         <input
@@ -110,7 +125,7 @@ export default function AfmStepHeightWorkshop() {
           }}
         />
         <span className="d">px</span>
-        <button className="fvd-btn primary" disabled={busy} onClick={run}>
+        <button className="fvd-btn primary" disabled={busy || (region.choice === "whole" && !wholeConfirmed)} onClick={run}>
           {busy ? "Measuring…" : stale ? "Update measurement" : "Measure"}
         </button>
       </div>
@@ -124,9 +139,9 @@ export default function AfmStepHeightWorkshop() {
             </div>
             <div className="fvd-afm-summary-grid">
               <div className="fvd-afm-summary-metric primary">
-                <span className="k">Step height</span>
+                <span className="k">Step magnitude</span>
                 <span className="v">{format(result.height, result.unit)}</span>
-                <span className="d">Absolute fitted separation between terraces</span>
+                <span className="d">Signed: {format(result.signed_height, result.unit)} along +{result.profile_axis.toUpperCase()}</span>
               </div>
               <div className="fvd-afm-summary-metric">
                 <span className="k">Lower terrace scatter</span>
@@ -140,6 +155,7 @@ export default function AfmStepHeightWorkshop() {
               </div>
             </div>
           </section>
+          <AfmStepEvidence result={result} />
           <div className="fvd-afm-metric-list">
             <div className="fvd-afm-metric-row"><span className="k">Terrace pixels</span><span className="d">lower / upper</span><span className="v">{result.n_lower.toLocaleString()} / {result.n_upper.toLocaleString()}</span></div>
             <div className="fvd-afm-metric-row"><span className="k">Upper terrace</span><span className="d">region balance</span><span className="v">{(result.upper_fraction * 100).toFixed(1)}%</span></div>
