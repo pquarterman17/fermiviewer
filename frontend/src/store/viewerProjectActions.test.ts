@@ -16,6 +16,7 @@ import {
   type RelocateResponse,
 } from "../lib/api";
 import { useBrowseScale } from "./browseScale";
+import { useAfmForce } from "./afmForce";
 import { useViewer } from "./viewer";
 import { relocateStatus } from "./viewerProjectActions";
 
@@ -31,6 +32,7 @@ const initialState = useViewer.getState();
 beforeEach(() => {
   useViewer.setState(initialState, true);
   useBrowseScale.setState({ locked: false, scale: null });
+  useAfmForce.getState().reset();
   vi.clearAllMocks();
 });
 
@@ -109,6 +111,32 @@ const PARTIAL_LOAD: ProjectLoadResponse = {
 };
 
 describe("openProject", () => {
+  it("clears session-only force files after a successful replacement load", async () => {
+    useAfmForce.getState().adopt([{
+      id: "force1", name: "old.001", is_force: true, parser: "nanoscope",
+      n_curves: 1, grid: null, map_pitch_nm: null, spring_constant: null,
+      invols: null, deflection_unit: "nm", z_source: "piezo",
+    }]);
+    vi.mocked(apiOpenProject).mockResolvedValueOnce(PARTIAL_LOAD);
+
+    await useViewer.getState().openProject("/p/study.fvp");
+
+    expect(useAfmForce.getState().files).toEqual([]);
+    expect(useAfmForce.getState().selectedId).toBeNull();
+  });
+
+  it("keeps force files when project loading fails", async () => {
+    useAfmForce.getState().adopt([{
+      id: "force1", name: "old.001", is_force: true, parser: "nanoscope",
+      n_curves: 1, grid: null, map_pitch_nm: null, spring_constant: null,
+      invols: null, deflection_unit: "nm", z_source: "piezo",
+    }]);
+    vi.mocked(apiOpenProject).mockRejectedValueOnce(new Error("bad project"));
+
+    await expect(useViewer.getState().openProject("/p/bad.fvp")).rejects.toThrow("bad project");
+    expect(useAfmForce.getState().files.map((file) => file.id)).toEqual(["force1"]);
+  });
+
   it("keeps an unavailable image's membership, params and measures", async () => {
     vi.mocked(apiOpenProject).mockResolvedValueOnce(PARTIAL_LOAD);
     await useViewer.getState().openProject("/p/study.fvp");

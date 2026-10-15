@@ -27,9 +27,11 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from fermiviewer.datastruct import AxisCal, DataKind, DataStruct
+from fermiviewer.io.force_common import ForceCurve, ForceFile, ForceSegment
 from fermiviewer.project_session import project
 from fermiviewer.server import create_app
 from fermiviewer.session import store
+from fermiviewer.session_force import force_store
 from fixtures.minidm4 import write_mini_dm4
 from fixtures.v1_session import write_v1_session
 
@@ -39,9 +41,11 @@ pytestmark = pytest.mark.api
 @pytest.fixture(autouse=True)
 def _clean_session():
     store.clear()
+    force_store.clear()
     project.clear()
     yield
     store.clear()
+    force_store.clear()
     project.clear()
 
 
@@ -63,6 +67,12 @@ def _open_dm4(client: TestClient, path: Path) -> str:
 def _open_tiff(client: TestClient, path: Path, *, description: str = "") -> str:
     tifffile.imwrite(path, np.full((6, 8), 11, dtype=np.uint16), description=description)
     return client.post("/api/session/open", json={"paths": [str(path)]}).json()[0]["id"]
+
+
+def _add_force(name: str = "curve.001") -> str:
+    z = np.linspace(0.0, 10.0, 10)
+    curve = ForceCurve([ForceSegment("approach", z, np.zeros_like(z))])
+    return force_store.add(ForceFile([curve], parser="test"), name)
 
 
 def _manifest(path: Path) -> dict[str, Any]:
@@ -146,6 +156,38 @@ def test_save_writes_one_fvp_and_load_restores_everything(client, tmp_path) -> N
     assert metas[img_id]["pixel_size"] == pytest.approx(0.25)
     assert store.get(fft_id).metadata.get("derived_from") == img_id
     assert client.get(f"/api/image/{img_id}/render").status_code == 200
+
+
+def test_replacing_project_clears_session_only_force_files(client, tmp_path) -> None:
+    _open_dm4(client, tmp_path / "img.dm4")
+    saved = client.post(
+        "/api/project/save", json={"path": str(tmp_path / "study.fvp")}
+    )
+    assert saved.status_code == 200, saved.text
+    _add_force()
+
+    loaded = client.post(
+        "/api/project/load", json={"path": str(tmp_path / "study.fvp")}
+    )
+    assert loaded.status_code == 200, loaded.text
+    assert force_store.ids() == []
+    assert client.get("/api/afm/force").json() == []
+
+
+def test_append_project_keeps_session_force_files(client, tmp_path) -> None:
+    _open_dm4(client, tmp_path / "img.dm4")
+    saved = client.post(
+        "/api/project/save", json={"path": str(tmp_path / "study.fvp")}
+    )
+    assert saved.status_code == 200, saved.text
+    force_id = _add_force()
+
+    loaded = client.post(
+        "/api/project/load",
+        json={"path": str(tmp_path / "study.fvp"), "replace": False},
+    )
+    assert loaded.status_code == 200, loaded.text
+    assert force_store.ids() == [force_id]
 
 
 def test_promoted_sections_are_schema_validated_not_opaque(client, tmp_path) -> None:

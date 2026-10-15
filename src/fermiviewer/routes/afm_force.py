@@ -55,14 +55,17 @@ def _num(v: float) -> float | None:
 
 @router.get("")
 def list_force() -> list[ForceMeta]:
-    return [ForceMeta.from_file(i, force_store.name(i), force_store.get(i))
-            for i in force_store.ids()]
+    return [ForceMeta.from_file(force_id, name, force_file)
+            for force_id, name, force_file in force_store.entries()]
 
 
 @router.get("/{force_id}")
 def force_meta(force_id: str) -> ForceMeta:
-    f = _file(force_id)
-    return ForceMeta.from_file(force_id, force_store.name(force_id), f)
+    try:
+        f, name, _ = force_store.entry(force_id)
+    except UnknownForceError:
+        raise HTTPException(404, f"unknown force file: {force_id}") from None
+    return ForceMeta.from_file(force_id, name, f)
 
 
 @router.delete("/{force_id}")
@@ -194,8 +197,10 @@ def _modulus_unit(values: np.ndarray) -> tuple[str, float]:
 def force_maps(force_id: str, s: ForceSettings) -> dict:
     """Every curve analysed; a force map also becomes modulus, adhesion and
     contact-height images (registered in the session)."""
-    f = _file(force_id)
-    name = force_store.name(force_id)    # taken now: the file may be closed mid-run
+    try:
+        f, name, generation = force_store.entry(force_id)
+    except UnknownForceError:
+        raise HTTPException(404, f"unknown force file: {force_id}") from None
     k, _, scale = _calibration(f, s)
     results = analyze_curves([_arrays(c, scale) for c in f.curves], **_options(s, k))
     failed = sum(r is None for r in results)
@@ -210,9 +215,20 @@ def force_maps(force_id: str, s: ForceSettings) -> dict:
         mod_unit, mod_div = _modulus_unit(cols[0])
         height = -cols[2]
         height = height - np.nanmin(height) if np.isfinite(height).any() else height
-        for label, data, unit in (("Young's modulus", cols[0] / mod_div, mod_unit),
-                                  ("Adhesion", cols[1], "nN"), ("Contact height", height, "nm")):
-            images.append(_register(f, force_id, name, label, data.reshape(f.grid), unit))
+        def register_maps() -> list[ImageMeta]:
+            return [
+                _register(f, force_id, name, label, data.reshape(f.grid), unit)
+                for label, data, unit in (
+                    ("Young's modulus", cols[0] / mod_div, mod_unit),
+                    ("Adhesion", cols[1], "nN"),
+                    ("Contact height", height, "nm"),
+                )
+            ]
+
+        current, registered = force_store.if_generation(generation, register_maps)
+        if not current:
+            raise HTTPException(409, "force-map analysis cancelled: the project was replaced")
+        images = registered or []
     return {"n": len(f.curves), "failed": failed, "table": table,
             "units": {"youngs_modulus": "Pa", "adhesion": "nN", "contact_z": "nm",
                       "max_force": "nN", "fit_r2": ""},

@@ -138,6 +138,7 @@ describe("AfmForceWorkshop", () => {
       render(<AfmForceWorkshop />);
     });
     expect(screen.getByText(/Open a force-curve file/)).toBeTruthy();
+    expect(screen.getByText(/session-only and are not saved in projects/i)).toBeVisible();
   });
 
   it("shows the latest analysis only", async () => {
@@ -179,6 +180,7 @@ describe("AfmForceWorkshop", () => {
       await act(async () => { vi.advanceTimersByTime(200); });
 
       expect(screen.getAllByText("File")).toHaveLength(3);
+      expect(screen.getByText(/opening another project closes this file/i)).toBeVisible();
       expect(screen.getByText("Excellent")).toBeVisible();
       expect(screen.getByLabelText("Force plot annotations")).toHaveTextContent("Contact:");
 

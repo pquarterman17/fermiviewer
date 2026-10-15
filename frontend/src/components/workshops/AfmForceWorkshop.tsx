@@ -200,7 +200,7 @@ export default function AfmForceWorkshop() {
     return (
       <div className="fvd-ws-empty">
         Open a force-curve file (Bruker .000–.nnn force, Asylum .ibw, Nanosurf .nid) with
-        File ▸ Open.
+        File ▸ Open. Force files are session-only and are not saved in projects.
       </div>
     );
   }
@@ -282,6 +282,9 @@ export default function AfmForceWorkshop() {
         {meta.parser} · {meta.n_curves} curve{meta.n_curves === 1 ? "" : "s"}
         {meta.grid ? ` (${meta.grid[0]} × ${meta.grid[1]} map)` : ""} · Z from{" "}
         {meta.z_source || "the file"}
+      </div>
+      <div className="fvd-ws-note">
+        Session-only · not saved in projects · opening another project closes this file
       </div>
       {meta.n_curves > 1 && (
         <div className="fvd-ws-row">

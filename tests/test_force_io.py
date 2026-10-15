@@ -229,6 +229,32 @@ def test_force_map_survives_closing_the_file_mid_run(client, tmp_path: Path,
     assert [m["name"] for m in r.json()["images"]][0] == "Young's modulus(c.nid)"
 
 
+def test_force_map_does_not_register_after_project_replacement(
+    client, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from fermiviewer.routes import afm_force
+
+    z, _ = _hertz_like(200)
+    curves = [(z, 0.02 * np.clip(z - 100, 0, None) ** 1.5)] * 4
+    path = write_nid_force(
+        tmp_path / "c.nid", curves, k=2.0, grid=(2, 2), image=np.zeros((3, 3))
+    )
+    force = next(m for m in _open(client, path) if m.get("is_force"))
+    analyze = afm_force.analyze_curves
+
+    def replace_project(*args, **kwargs):
+        force_store.clear()
+        store.clear()
+        return analyze(*args, **kwargs)
+
+    monkeypatch.setattr(afm_force, "analyze_curves", replace_project)
+    response = client.post(f"/api/afm/force/{force['id']}/maps", json={"fit": False})
+
+    assert response.status_code == 409
+    assert "project was replaced" in response.json()["detail"]
+    assert store.ids() == []
+
+
 def test_upload_routes_force_files(client, tmp_path: Path) -> None:
     z, d = _hertz_like()
     f = write_bruker_force(tmp_path / "u.001", z, d, z[::-1], d[::-1])
