@@ -5,7 +5,7 @@
 // them for AFM.
 import { applyFilter, openAfmChannels } from "../../../lib/api";
 import { coerceParams } from "../../../lib/params";
-import { isSpmHeightImage, isSpmImage } from "../../../lib/spm";
+import { isSpmHeightImage, supportsSpmChannels } from "../../../lib/spm";
 import { runTransform } from "../../../lib/transforms";
 import { TRANSFORM_TOOLS } from "../../../lib/transformTools";
 import { askParams } from "../../../store/params";
@@ -41,7 +41,7 @@ export function buildAfmMenu(ctx: MenuCtx): Entry {
   const { store } = ctx;
   const id = store.activeId;
   const meta = id ? store.images[id] : undefined;
-  const noSpmImage = !id || !isSpmImage(meta);
+  const noChannelSource = !id || !supportsSpmChannels(meta);
   const noHeightMap = !id || !isSpmHeightImage(meta);
 
   // Three-point levelling takes its points from the active image's most
@@ -86,10 +86,10 @@ export function buildAfmMenu(ctx: MenuCtx): Entry {
       },
       {
         label: "Channels",
-        disabled: noSpmImage,
+        disabled: noChannelSource,
         submenu: [{
           label: "Open Other Channels",
-          disabled: noSpmImage,
+          disabled: noChannelSource,
           action: () => {
             if (!id) return;
             openAfmChannels(id)

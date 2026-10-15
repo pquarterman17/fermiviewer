@@ -85,6 +85,18 @@ def test_registry_routes_spm(spm):
     assert ".spm" in supported_extensions()
 
 
+def test_registry_preserves_tiff_backed_spm_identity(tmp_path):
+    import tifffile
+
+    p = tmp_path / "park.spm"
+    tifffile.imwrite(p, np.arange(20, dtype=np.uint16).reshape(4, 5))
+    ds = load_auto(p)
+    assert ds.metadata["parser"] == "park"
+    assert ds.metadata["spm_source_parser"] == "park"
+    assert ds.metadata["spm_channel_kind"] == "other"
+    assert ds.metadata["channel"] == "AFM image"
+
+
 def test_registry_routes_numeric_extension(tmp_path):
     p = tmp_path / "capture.000"
     write_nanoscope(p)

@@ -11,6 +11,12 @@ export const SPM_PARSERS = new Set([
   "nanosurf",
   "ntmdt",
   "nanonis",
+  "park",
+]);
+
+/** Parsers whose source container can be reopened for sibling channels. */
+export const MULTICHANNEL_SPM_PARSERS = new Set([
+  "nanoscope", "gwyddion", "asylum", "jpk", "wsxm", "nanosurf", "ntmdt", "nanonis",
 ]);
 
 // Keep aligned with io/spm_common.py's primary-channel vocabulary. A length
@@ -27,6 +33,11 @@ export function isSpmImage(meta: ImageMeta | null | undefined): boolean {
   }
   const parser = meta?.meta.parser;
   return typeof parser === "string" && SPM_PARSERS.has(parser);
+}
+
+export function supportsSpmChannels(meta: ImageMeta | null | undefined): boolean {
+  const parser = meta?.meta.parser;
+  return typeof parser === "string" && MULTICHANNEL_SPM_PARSERS.has(parser);
 }
 
 /** True only for an SPM channel whose measured values are physical heights.
