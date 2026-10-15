@@ -38,8 +38,11 @@ import {
   type ForceMapsResult,
 } from "../../lib/api";
 import AfmForceWorkshop, {
+  calibrationSource,
   calibratedInvols,
   curveLabel,
+  forceFitQuality,
+  forceWarnings,
   formatModulus,
   formatValue,
 } from "./AfmForceWorkshop";
@@ -65,6 +68,13 @@ function analysis(e: number): ForceAnalysis {
   const values = Object.fromEntries(FORCE_VALUES.map((k) => [k, 1])) as ForceAnalysis["values"];
   const units = Object.fromEntries(FORCE_VALUES.map((k) => [k, ""])) as ForceAnalysis["units"];
   values.youngs_modulus = e;
+  values.fit_r2 = 0.99;
+  values.fit_rms = 0.05;
+  values.fit_points = 50;
+  values.contact_slope = 1;
+  values.noise_nm = 0.01;
+  values.max_force = 10;
+  units.fit_rms = "nN";
   return {
     values, units, fit: null, spring_constant: 0.1, invols: 50,
     baseline: { slope: 0, offset_nm: 0 },
@@ -99,6 +109,20 @@ describe("AfmForceWorkshop helpers", () => {
     expect(calibratedInvols(100, 3.36)).toBeCloseTo(29.76, 2);
     expect(calibratedInvols(null, 2)).toBeNull();
     expect(calibratedInvols(100, 0)).toBeNull();
+  });
+
+  it("labels calibration provenance and grades fit evidence", () => {
+    const good = analysis(2e6);
+    expect(calibrationSource(null, 0.1)).toBe("File");
+    expect(calibrationSource(0.2, 0.1)).toBe("Override");
+    expect(calibrationSource(null, null)).toBe("Unavailable");
+    expect(forceFitQuality(good)).toBe("Excellent");
+
+    good.values.fit_r2 = 0.82;
+    good.values.fit_points = 7;
+    good.values.contact_slope = 1.3;
+    expect(forceFitQuality(good)).toBe("Poor");
+    expect(forceWarnings(good)).toHaveLength(3);
   });
 
   it("sorts each trace along the chosen axis", () => {
@@ -140,6 +164,29 @@ describe("AfmForceWorkshop", () => {
       expect(screen.getByText("2.00 MPa")).toBeTruthy();
       expect(screen.queryByText("9.00 GPa")).toBeNull();
       expect(vi.mocked(analyzeForceCurve).mock.calls.at(-1)?.[2].poisson).toBe(0.3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows calibration sources and fit-quality context", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(listForceFiles).mockResolvedValue([force("f1")]);
+      vi.mocked(analyzeForceCurve).mockResolvedValue(analysis(2e6));
+      useAfmForce.setState({ files: [force("f1")], selectedId: "f1" });
+      await act(async () => { render(<AfmForceWorkshop />); });
+      await act(async () => { vi.advanceTimersByTime(200); });
+
+      expect(screen.getAllByText("File")).toHaveLength(3);
+      expect(screen.getByText("Excellent")).toBeVisible();
+      expect(screen.getByLabelText("Force plot annotations")).toHaveTextContent("Contact:");
+
+      fireEvent.change(screen.getByLabelText("k (N/m)"), { target: { value: "0.2" } });
+      expect(screen.getByRole("button", { name: "Export CSV" })).toBeDisabled();
+      await act(async () => { vi.advanceTimersByTime(200); });
+      expect(screen.getByText("Override")).toBeVisible();
+      expect(screen.getByRole("button", { name: "Export CSV" })).toBeEnabled();
     } finally {
       vi.useRealTimers();
     }

@@ -74,6 +74,35 @@ export function calibratedInvols(used: number | null, slope: number | null): num
   return used / slope;
 }
 
+export type FitQuality = "Excellent" | "Good" | "Review" | "Poor" | "Not fitted";
+
+export function forceFitQuality(result: ForceAnalysis): FitQuality {
+  const r2 = result.values.fit_r2;
+  if (r2 === null || result.values.fit_points === null || result.values.fit_points < 5) return "Not fitted";
+  if (r2 >= 0.98) return "Excellent";
+  if (r2 >= 0.95) return "Good";
+  if (r2 >= 0.9) return "Review";
+  return "Poor";
+}
+
+export function forceWarnings(result: ForceAnalysis): string[] {
+  const warnings: string[] = [];
+  const { fit_r2: r2, fit_points: points, contact_slope: slope,
+    noise_nm: noise, max_force: maxForce } = result.values;
+  if (r2 !== null && r2 < 0.9) warnings.push("The contact model explains less than 90% of the fitted force variation.");
+  if (points !== null && points > 0 && points < 10) warnings.push("The modulus fit uses fewer than 10 points; widen the fit range if appropriate.");
+  if (slope !== null && Math.abs(slope - 1) > 0.15) warnings.push("Contact slope differs substantially from 1; verify InvOLS before trusting modulus.");
+  if (noise !== null && maxForce !== null && maxForce > 0 &&
+      noise * result.spring_constant > 0.1 * maxForce) {
+    warnings.push("Baseline force noise exceeds 10% of the maximum force.");
+  }
+  return warnings;
+}
+
+export function calibrationSource(override: number | null | undefined, fileValue: number | null): string {
+  return override !== null && override !== undefined ? "Override" : fileValue !== null ? "File" : "Unavailable";
+}
+
 /** A number field: empty (null) means "use the file's / no limit". */
 function NumberField({
   id, label, value, placeholder, onChange, step = "any", disabled = false,
@@ -114,7 +143,10 @@ export default function AfmForceWorkshop() {
   const [settings, setSettings] = useState<ForceSettings>(DEFAULT_FORCE_SETTINGS);
   const [axis, setAxis] = useState<ForceAxis>("z");
   const [result, setResult] = useState<ForceAnalysis | null>(null);
+  const [resultKey, setResultKey] = useState("");
+  const [resultSettings, setResultSettings] = useState<ForceSettings>(DEFAULT_FORCE_SETTINGS);
   const [error, setError] = useState<string | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
   const [busyMaps, setBusyMaps] = useState(false);
   const patch = (p: Partial<ForceSettings>) => setSettings((s) => ({ ...s, ...p }));
 
@@ -123,6 +155,8 @@ export default function AfmForceWorkshop() {
   }, [refresh]);
   useEffect(() => {
     setIndex(0);
+    setResult(null);
+    setResultKey("");
     setSettings((s) => ({ ...s, spring_constant: null, invols: null }));
   }, [selectedId]);
 
@@ -132,19 +166,28 @@ export default function AfmForceWorkshop() {
     const token = ++request.current;
     if (!meta) {
       setResult(null);
+      setAnalyzing(false);
       return;
     }
+    const runSettings = settings;
+    const runKey = JSON.stringify([meta.id, index, runSettings]);
     const timer = window.setTimeout(() => {
+      setAnalyzing(true);
       analyzeForceCurve(meta.id, index, settings)
         .then((r) => {
           if (token !== request.current) return;
           setResult(r);
+          setResultKey(runKey);
+          setResultSettings(runSettings);
           setError(null);
         })
         .catch((e: Error) => {
           if (token !== request.current) return;
           setResult(null);
           setError(e.message);
+        })
+        .finally(() => {
+          if (token === request.current) setAnalyzing(false);
         });
     }, 150);
     return () => window.clearTimeout(timer);
@@ -167,6 +210,13 @@ export default function AfmForceWorkshop() {
   const suggested = result
     ? calibratedInvols(result.invols, result.values.contact_slope)
     : null;
+  const controlKey = meta ? JSON.stringify([meta.id, index, settings]) : "";
+  const resultStale = result !== null && resultKey !== controlKey;
+  const quality = result ? forceFitQuality(result) : "Not fitted";
+  const warnings = result ? forceWarnings(result) : [];
+  const shownSettings = result ? resultSettings : settings;
+  const kSource = calibrationSource(shownSettings.spring_constant, meta.spring_constant);
+  const involsSource = involsLocked ? "Already calibrated" : calibrationSource(shownSettings.invols, meta.invols);
 
   // The run is tied to this file and these settings: the result names them,
   // and the file can be neither switched nor closed here until it finishes.
@@ -276,6 +326,26 @@ export default function AfmForceWorkshop() {
           onChange={(v) => patch({ invols: v })}
         />
       </div>
+      <div className="fvd-afm-calibration" aria-label="Force calibration">
+        <div className="fvd-afm-calibration-item">
+          <span className="k">Spring constant</span>
+          <span className="v">
+            {result
+              ? `${result.spring_constant.toPrecision(4)} N/m`
+              : meta.spring_constant !== null ? `${meta.spring_constant.toPrecision(4)} N/m` : "Required"}
+          </span>
+          <span className="fvd-afm-source">{kSource}</span>
+        </div>
+        <div className="fvd-afm-calibration-item">
+          <span className="k">InvOLS</span>
+          <span className="v">
+            {result?.invols !== null && result?.invols !== undefined
+              ? `${result.invols.toPrecision(4)} nm/V`
+              : involsLocked ? "Deflection already in nm" : "Required"}
+          </span>
+          <span className="fvd-afm-source">{involsSource}</span>
+        </div>
+      </div>
       <div className="fvd-ws-row">
         <label className="k" htmlFor="force-tip">Tip</label>
         <select
@@ -339,9 +409,27 @@ export default function AfmForceWorkshop() {
       </div>
 
       {error && <div className="fvd-ws-note" role="alert">{error}</div>}
+      {analyzing && <div className="fvd-ws-note" role="status">Updating analysis…</div>}
+      {resultStale && <div className="fvd-ws-note">Controls changed — the results below are being updated.</div>}
       {result && (
-        <>
-          <ForceCurvePlot result={result} axis={axis} />
+        <div aria-disabled={resultStale} style={resultStale ? { opacity: 0.62 } : undefined}>
+          <div className={`fvd-afm-fit-quality ${quality.toLowerCase().replace(" ", "-")}`}>
+            <div><span className="k">Fit quality</span><strong>{quality}</strong></div>
+            <div><span className="k">R²</span><strong>{formatValue("fit_r2", result.values.fit_r2, "")}</strong></div>
+            <div><span className="k">Residual RMS</span><strong>{formatValue("fit_rms", result.values.fit_rms, result.units.fit_rms)}</strong></div>
+            <div><span className="k">Fit points</span><strong>{formatValue("fit_points", result.values.fit_points, "")}</strong></div>
+          </div>
+          {warnings.length > 0 && (
+            <div className="fvd-afm-fit-warnings" role="alert">
+              {warnings.map((warning) => <div key={warning}>{warning}</div>)}
+            </div>
+          )}
+          <ForceCurvePlot result={result} axis={axis} settings={resultSettings} />
+          <div className="fvd-afm-plot-key" aria-label="Force plot annotations">
+            <span><i className="contact" />Contact: {formatValue("contact_z", result.values.contact_z, result.units.contact_z)}</span>
+            <span><i className="baseline" />Baseline: {(resultSettings.baseline_from * 100).toFixed(0)}–{(resultSettings.baseline_to * 100).toFixed(0)}% of approach</span>
+            <span><i className="fit" />Model fit{resultSettings.max_indent_nm ? ` to ${resultSettings.max_indent_nm} nm` : " over all indentation"}{resultSettings.max_force_nn ? `, ≤ ${resultSettings.max_force_nn} nN` : ""}</span>
+          </div>
           <div className="fvd-metrics">
             {SHOWN.map((key) => (
               <div className="fvd-metric" key={key} title={LABELS[key]}>
@@ -371,6 +459,7 @@ export default function AfmForceWorkshop() {
           <div className="fvd-ws-row">
             <button
               className="fvd-btn"
+              disabled={resultStale}
               onClick={() =>
                 downloadCsv(
                   `${exportBaseName(meta.name)}_curve${index + 1}.csv`,
@@ -378,7 +467,7 @@ export default function AfmForceWorkshop() {
                     ["quantity", "value", "unit"],
                     FORCE_VALUES.map((k) => [LABELS[k], result.values[k], result.units[k]]),
                     { analysis: "AFM force curve", imageName: meta.name,
-                      params: { curve: index + 1, ...settings } },
+                      params: { curve: index + 1, ...resultSettings } },
                   ),
                 )
               }
@@ -395,7 +484,7 @@ export default function AfmForceWorkshop() {
               </button>
             )}
           </div>
-        </>
+        </div>
       )}
     </div>
   );

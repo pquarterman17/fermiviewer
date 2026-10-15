@@ -125,9 +125,58 @@
   color: var(--accent-text);
 }
 
+.fvd-afm-calibration,
+.fvd-afm-fit-quality {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0;
+}
+.fvd-afm-calibration-item,
+.fvd-afm-fit-quality > div {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+}
+.fvd-afm-calibration-item .v,
+.fvd-afm-fit-quality strong { font-variant-numeric: tabular-nums; }
+.fvd-afm-source { color: var(--accent); font-size: 11px; font-weight: 650; }
+.fvd-afm-fit-quality { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.fvd-afm-fit-quality > div { border-top: 3px solid var(--success); }
+.fvd-afm-fit-quality.review > div { border-top-color: var(--warning); }
+.fvd-afm-fit-quality.poor > div,
+.fvd-afm-fit-quality.not-fitted > div { border-top-color: var(--danger); }
+.fvd-afm-fit-quality .k { font-size: 11px; }
+.fvd-afm-fit-warnings {
+  display: grid;
+  gap: 5px;
+  margin: 8px 0;
+  padding: 9px 11px;
+  border-left: 3px solid var(--warning);
+  background: color-mix(in srgb, var(--warning) 9%, transparent);
+  font-size: 12px;
+}
+.fvd-afm-plot-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: 5px 0 10px;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+.fvd-afm-plot-key span { display: inline-flex; align-items: center; gap: 5px; }
+.fvd-afm-plot-key i { width: 15px; height: 0; border-top: 2px solid; }
+.fvd-afm-plot-key .contact { border-color: #d95f59; border-top-style: dashed; }
+.fvd-afm-plot-key .baseline { width: 15px; height: 8px; border: 0; background: rgba(120, 130, 150, 0.25); }
+.fvd-afm-plot-key .fit { border-color: #2a9d8f; border-top-style: dashed; }
+
 @media (max-width: 520px) {
   .fvd-afm-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .fvd-afm-summary-metric.primary { grid-column: 1 / -1; }
   .fvd-afm-metric-row { grid-template-columns: 38px minmax(0, 1fr); }
   .fvd-afm-metric-row .v { grid-column: 2; }
+  .fvd-afm-fit-quality { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
