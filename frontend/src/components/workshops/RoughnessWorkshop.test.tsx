@@ -121,7 +121,7 @@ describe("RoughnessWorkshop", () => {
     ]);
   });
 
-  it("labels the result with the region it was measured on", async () => {
+  it("keeps old provenance visible but blocks export after the region changes", async () => {
     vi.mocked(analyzeRoughness).mockResolvedValue(result);
     useViewer.getState().ingest([imageMeta()]);
     useViewer.setState({ savedRois: { surface: [savedRoi] } });
@@ -131,11 +131,14 @@ describe("RoughnessWorkshop", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Analyze" }));
     });
-    // choosing another region afterwards does not relabel the old result
+    // choosing another region afterwards does not relabel the old result,
+    // but makes it visibly stale and unexportable
     act(() => useWorkshop.getState().setAnalysisRegionChoice("surface", "whole"));
     expect(screen.getByText(/· Terrace ·/)).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Export JSON" }));
-    expect(JSON.stringify(vi.mocked(downloadJson).mock.calls[0][1])).toContain("Terrace");
+    expect(screen.getByRole("status")).toHaveTextContent(/out of date/i);
+    expect(screen.getByRole("button", { name: "Update analysis" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Export JSON" })).toBeDisabled();
+    expect(downloadJson).not.toHaveBeenCalled();
   });
 
   it("aborts and drops a result after the active image changes", async () => {

@@ -15,6 +15,7 @@ import {
   tableToJson,
   type Cell,
 } from "../../lib/resultsExport";
+import { heightAnalysisKey } from "../../lib/analysisFreshness";
 import { useViewer } from "../../store/viewer";
 import AnalysisRegionSelect from "./AnalysisRegionSelect";
 import PlotContextSurface from "../plots/PlotContextSurface";
@@ -41,8 +42,11 @@ export default function RoughnessWorkshop() {
   const [result, setResult] = useState<RoughnessResult | null>(null);
   // the region the result was measured on, not the one selected now
   const [resultRegion, setResultRegion] = useState("");
+  const [resultKey, setResultKey] = useState("");
   const [busy, setBusy] = useState(false);
   const analysisRequest = useLatestRequest(activeId);
+  const controlKey = heightAnalysisKey(region.choice, region.roi, level);
+  const resultStale = result !== null && resultKey !== controlKey;
 
   useEffect(() => {
     setResult(null);
@@ -67,6 +71,7 @@ export default function RoughnessWorkshop() {
         if (!current()) return;
         setResult(next);
         setResultRegion(runRegion);
+        setResultKey(controlKey);
         setStatus(
           `roughness: Ra ${next.Ra.toPrecision(4)} · Rq ${next.Rq.toPrecision(4)} ${next.unit}`,
         );
@@ -119,7 +124,7 @@ export default function RoughnessWorkshop() {
         onChange={region.setChoice}
       />
       <div className="fvd-ws-row">
-        <label className="k" htmlFor="roughness-level">Level</label>
+        <label className="k" htmlFor="roughness-level">Background removal</label>
         <select
           id="roughness-level"
           value={level}
@@ -128,21 +133,27 @@ export default function RoughnessWorkshop() {
             setLevel(event.target.value as RoughnessResult["level"])
           }
         >
-          <option value="none">None</option>
-          <option value="plane">Plane</option>
-          <option value="quadratic">Quadratic</option>
+          <option value="none">None — already levelled</option>
+          <option value="plane">Plane — recommended</option>
+          <option value="quadratic">Quadratic — curved background</option>
         </select>
         <button
           className="fvd-btn primary"
           disabled={busy}
           onClick={run}
         >
-          {busy ? "Analyzing…" : "Analyze"}
+          {busy ? "Analyzing…" : resultStale ? "Update analysis" : "Analyze"}
         </button>
       </div>
 
+      {resultStale && (
+        <div className="fvd-ws-note" role="status">
+          Settings changed — the results below are out of date. Update the analysis before export.
+        </div>
+      )}
+
       {result && (
-        <>
+        <div aria-disabled={resultStale} style={resultStale ? { opacity: 0.62 } : undefined}>
           <RoughnessMetrics result={result} />
           <BearingPlot
             result={result}
@@ -153,14 +164,14 @@ export default function RoughnessWorkshop() {
             {result.level} leveling
           </div>
           <div className="fvd-ws-row">
-            <button className="fvd-btn" onClick={() => exportResult("csv")}>
+            <button className="fvd-btn" disabled={resultStale} onClick={() => exportResult("csv")}>
               Export CSV
             </button>
-            <button className="fvd-btn" onClick={() => exportResult("json")}>
+            <button className="fvd-btn" disabled={resultStale} onClick={() => exportResult("json")}>
               Export JSON
             </button>
           </div>
-        </>
+        </div>
       )}
     </div>
   );
