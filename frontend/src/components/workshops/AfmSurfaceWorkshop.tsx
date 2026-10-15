@@ -273,6 +273,7 @@ export default function AfmSurfaceWorkshop() {
                 xLabel={`spatial frequency (1/${result.lateral_unit})`}
                 yLabel={`PSD (${result.z_unit}²·${result.lateral_unit}²)`}
                 log
+                disabled={resultStale}
               />
             )}
             {activePlot === "height" && (
@@ -284,6 +285,7 @@ export default function AfmSurfaceWorkshop() {
                 y={result.height_hist.percent}
                 xLabel={`height (${result.z_unit})`}
                 yLabel="% of pixels"
+                disabled={resultStale}
               />
             )}
             {activePlot === "slope" && result.slope_hist.angle.length > 0 && (
@@ -295,6 +297,7 @@ export default function AfmSurfaceWorkshop() {
                 y={result.slope_hist.percent}
                 xLabel="slope (°)"
                 yLabel="% of pixels"
+                disabled={resultStale}
               />
             )}
           </section>
@@ -380,7 +383,7 @@ function PlotTab({
 }
 
 function CurvePlot({
-  id, labelledBy, title, x, y, xLabel, yLabel, log = false,
+  id, labelledBy, title, x, y, xLabel, yLabel, log = false, disabled = false,
 }: {
   id: string;
   labelledBy: string;
@@ -390,6 +393,7 @@ function CurvePlot({
   xLabel: string;
   yLabel: string;
   log?: boolean;
+  disabled?: boolean;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
@@ -436,6 +440,7 @@ function CurvePlot({
         label={title}
         filename={`${slug}.png`}
         className="fvd-ws-plot"
+        disabled={disabled}
       />
     </section>
   );
