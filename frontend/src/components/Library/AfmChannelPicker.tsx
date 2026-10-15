@@ -62,6 +62,8 @@ export default function AfmChannelPicker({ meta }: { meta: ImageMeta | null }) {
     const known = channels.find((item) => item.label === label);
     if (known && isLive(known)) {
       channelRequest.invalidate();
+      setBusy(false);
+      setMessage(null);
       select(known.image_id, "single");
       return;
     }

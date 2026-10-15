@@ -166,4 +166,28 @@ describe("AFM channel picker", () => {
     expect(useViewer.getState().images.phase).toBeUndefined();
     expect(screen.getByRole("status")).toHaveTextContent("Amplitude opened");
   });
+
+  it("clears pending state when navigating to an already-open channel", async () => {
+    vi.mocked(listAfmChannels).mockResolvedValue([
+      { label: "Height (retrace)", image_id: "height" },
+      { label: "Phase (retrace)", image_id: "phase" },
+      { label: "Amplitude", image_id: null },
+    ]);
+    vi.mocked(openAfmChannels).mockImplementation(() => new Promise(() => undefined));
+    useViewer.setState({
+      order: [root.id, phase.id],
+      images: { [root.id]: root, [phase.id]: phase },
+    });
+    render(<AfmChannelPicker meta={root} />);
+
+    const selector = await screen.findByRole("combobox");
+    fireEvent.change(selector, { target: { value: "Amplitude" } });
+    expect(await screen.findByRole("status")).toHaveTextContent("Opening Amplitude");
+    expect(screen.getByRole("button", { name: "Open remaining 1" })).toBeDisabled();
+
+    fireEvent.change(selector, { target: { value: "Phase (retrace)" } });
+    expect(useViewer.getState().activeId).toBe("phase");
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("button", { name: "Open remaining 1" })).toBeEnabled();
+  });
 });
