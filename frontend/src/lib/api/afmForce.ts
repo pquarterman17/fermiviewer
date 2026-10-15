@@ -50,6 +50,14 @@ export interface ForceAnalysis {
   spring_constant: number;
   invols: number | null;
   baseline: { slope: number; offset_nm: number };
+  evidence: {
+    baseline_range_z: [number, number] | null;
+    fit_range_z: [number, number] | null;
+    residual: ForceTrace | null;
+    residual_lag1: number | null;
+    fit_at_bounds: boolean;
+    calibration_complete: boolean;
+  };
 }
 
 export interface ForceMapsResult {

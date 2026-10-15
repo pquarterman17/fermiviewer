@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import uPlot from "uplot";
 
-import type { ForceAnalysis, ForceSettings, ForceTrace } from "../../lib/api";
+import type { ForceAnalysis, ForceTrace } from "../../lib/api";
 import PlotContextSurface from "../plots/PlotContextSurface";
 
 export type ForceAxis = "z" | "separation";
@@ -28,14 +28,15 @@ export function forceTables(result: ForceAnalysis, axis: ForceAxis) {
 }
 
 export default function ForceCurvePlot({
-  result, axis, settings,
+  result, axis,
 }: {
   result: ForceAnalysis;
   axis: ForceAxis;
-  settings: ForceSettings;
 }) {
   const host = useRef<HTMLDivElement>(null);
+  const residualHost = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
+  const residualRef = useRef<uPlot | null>(null);
 
   useEffect(() => {
     const element = host.current;
@@ -45,12 +46,8 @@ export default function ForceCurvePlot({
       getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() ||
       "#7c5ce7";
     const data = uPlot.join(parts.map((p) => p.table as uPlot.AlignedData));
-    const approach = result.plot.approach;
-    const baseline = approach && approach.z.length > 1 && axis === "z" ? (() => {
-      const start = Math.min(approach.z.length - 1, Math.floor(approach.z.length * settings.baseline_from));
-      const end = Math.min(approach.z.length - 1, Math.floor(approach.z.length * settings.baseline_to));
-      return [Math.min(approach.z[start], approach.z[end]), Math.max(approach.z[start], approach.z[end])] as const;
-    })() : null;
+    const baseline = axis === "z" ? result.evidence.baseline_range_z : null;
+    const fitRange = axis === "z" ? result.evidence.fit_range_z : null;
     const contact = axis === "z" ? result.values.contact_z : 0;
     plotRef.current = new uPlot(
       {
@@ -86,6 +83,13 @@ export default function ForceCurvePlot({
               ctx.fillStyle = "rgba(120, 130, 150, 0.14)";
               ctx.fillRect(Math.min(left, right), bbox.top, Math.abs(right - left), bbox.height);
             }
+            if (fitRange) {
+              const left = plot.valToPos(fitRange[0], "x", true);
+              const right = plot.valToPos(fitRange[1], "x", true);
+              ctx.strokeStyle = "rgba(42, 157, 143, 0.55)";
+              ctx.lineWidth = 1;
+              ctx.strokeRect(Math.min(left, right), bbox.top, Math.abs(right - left), bbox.height);
+            }
             if (contact !== null && Number.isFinite(contact)) {
               const x = plot.valToPos(contact, "x", true);
               ctx.strokeStyle = "#d95f59";
@@ -103,19 +107,38 @@ export default function ForceCurvePlot({
       data,
       element,
     );
+    const residual = result.evidence.residual;
+    const residualElement = residualHost.current;
+    if (residual && residualElement) {
+      const residualData = sorted(residual, axis);
+      residualRef.current = new uPlot({
+        width: residualElement.clientWidth || 600, height: 115,
+        scales: { x: { time: false } },
+        series: [{}, { label: "residual", stroke: "#d98f39", width: 1.25, spanGaps: true }],
+        axes: [{ label: axis === "z" ? "Z (nm)" : "separation (nm)", stroke: "#888" },
+          { label: "residual (nN)", stroke: "#888" }],
+        legend: { show: false }, cursor: { y: false },
+        hooks: { draw: [(plot) => {
+          const y = plot.valToPos(0, "y", true);
+          plot.ctx.save(); plot.ctx.strokeStyle = "rgba(150,150,150,.55)";
+          plot.ctx.setLineDash([3, 3]); plot.ctx.beginPath();
+          plot.ctx.moveTo(plot.bbox.left, y); plot.ctx.lineTo(plot.bbox.left + plot.bbox.width, y);
+          plot.ctx.stroke(); plot.ctx.restore();
+        }] },
+      }, residualData, residualElement);
+    }
     return () => {
       plotRef.current?.destroy();
       plotRef.current = null;
+      residualRef.current?.destroy();
+      residualRef.current = null;
     };
-  }, [result, axis, settings.baseline_from, settings.baseline_to]);
+  }, [result, axis]);
 
   return (
-    <PlotContextSurface
-      ref={host}
-      plotRef={plotRef}
-      label="Force curve"
-      filename="force-curve.png"
-      className="fvd-ws-plot"
-    />
+    <>
+      <PlotContextSurface ref={host} plotRef={plotRef} label="Force curve" filename="force-curve.png" className="fvd-ws-plot" />
+      {result.evidence.residual && <PlotContextSurface ref={residualHost} plotRef={residualRef} label="Force fit residuals" filename="force-residuals.png" className="fvd-ws-plot compact" />}
+    </>
   );
 }
