@@ -167,6 +167,11 @@ def test_open_analyze_and_close(client, tmp_path: Path) -> None:
     assert body["values"]["contact_z"] == pytest.approx(150.0, abs=2.0)
     assert body["units"]["youngs_modulus"] == "Pa" and body["fit"] is not None
     assert set(body["plot"]) == {"approach", "retract"}
+    assert body["evidence"]["baseline_range_z"] is not None
+    assert body["evidence"]["fit_range_z"] is not None
+    assert body["evidence"]["residual"] is not None
+    assert len(body["evidence"]["residual"]["force"]) == body["values"]["fit_points"]
+    assert body["evidence"]["calibration_complete"] is True
     # a new InvOLS rescales the nm deflection by new / file
     r2 = client.post(f"/api/afm/force/{fid}/curve/0/analyze", json={"invols": 100}).json()
     assert r2["values"]["max_force"] == pytest.approx(2 * body["values"]["max_force"], rel=1e-6)

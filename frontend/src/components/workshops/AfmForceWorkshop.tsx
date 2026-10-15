@@ -20,6 +20,7 @@ import {
 import { useAfmForce } from "../../store/afmForce";
 import { useViewer } from "../../store/viewer";
 import ForceCurvePlot, { type ForceAxis } from "./ForceCurvePlot";
+import { forceFitQuality, forceWarnings } from "./forceFitQuality";
 
 const LABELS: Record<ForceValue, string> = {
   youngs_modulus: "Young's modulus",
@@ -72,31 +73,6 @@ export function curveLabel(meta: ForceMeta, index: number): string {
 export function calibratedInvols(used: number | null, slope: number | null): number | null {
   if (used === null || slope === null || !(slope > 0) || !Number.isFinite(slope)) return null;
   return used / slope;
-}
-
-export type FitQuality = "Excellent" | "Good" | "Review" | "Poor" | "Not fitted";
-
-export function forceFitQuality(result: ForceAnalysis): FitQuality {
-  const r2 = result.values.fit_r2;
-  if (r2 === null || result.values.fit_points === null || result.values.fit_points < 5) return "Not fitted";
-  if (r2 >= 0.98) return "Excellent";
-  if (r2 >= 0.95) return "Good";
-  if (r2 >= 0.9) return "Review";
-  return "Poor";
-}
-
-export function forceWarnings(result: ForceAnalysis): string[] {
-  const warnings: string[] = [];
-  const { fit_r2: r2, fit_points: points, contact_slope: slope,
-    noise_nm: noise, max_force: maxForce } = result.values;
-  if (r2 !== null && r2 < 0.9) warnings.push("The contact model explains less than 90% of the fitted force variation.");
-  if (points !== null && points > 0 && points < 10) warnings.push("The modulus fit uses fewer than 10 points; widen the fit range if appropriate.");
-  if (slope !== null && Math.abs(slope - 1) > 0.15) warnings.push("Contact slope differs substantially from 1; verify InvOLS before trusting modulus.");
-  if (noise !== null && maxForce !== null && maxForce > 0 &&
-      noise * result.spring_constant > 0.1 * maxForce) {
-    warnings.push("Baseline force noise exceeds 10% of the maximum force.");
-  }
-  return warnings;
 }
 
 export function calibrationSource(override: number | null | undefined, fileValue: number | null): string {
@@ -427,11 +403,12 @@ export default function AfmForceWorkshop() {
               {warnings.map((warning) => <div key={warning}>{warning}</div>)}
             </div>
           )}
-          <ForceCurvePlot result={result} axis={axis} settings={resultSettings} />
+          <ForceCurvePlot result={result} axis={axis} />
           <div className="fvd-afm-plot-key" aria-label="Force plot annotations">
             <span><i className="contact" />Contact: {formatValue("contact_z", result.values.contact_z, result.units.contact_z)}</span>
             <span><i className="baseline" />Baseline: {(resultSettings.baseline_from * 100).toFixed(0)}–{(resultSettings.baseline_to * 100).toFixed(0)}% of approach</span>
             <span><i className="fit" />Model fit{resultSettings.max_indent_nm ? ` to ${resultSettings.max_indent_nm} nm` : " over all indentation"}{resultSettings.max_force_nn ? `, ≤ ${resultSettings.max_force_nn} nN` : ""}</span>
+            <span>In Z view, points outside the outlined fit region are excluded · residual lag-1 {result.evidence.residual_lag1?.toFixed(2) ?? "—"}</span>
           </div>
           <div className="fvd-metrics">
             {SHOWN.map((key) => (
@@ -468,7 +445,15 @@ export default function AfmForceWorkshop() {
                   `${exportBaseName(meta.name)}_curve${index + 1}.csv`,
                   tableToCsv(
                     ["quantity", "value", "unit"],
-                    FORCE_VALUES.map((k) => [LABELS[k], result.values[k], result.units[k]]),
+                    [
+                      ...FORCE_VALUES.map((k) => [LABELS[k], result.values[k], result.units[k]]),
+                      ["fit quality", quality, ""],
+                      ["residual lag-1", result.evidence.residual_lag1, ""],
+                      ["fit reached parameter bound", result.evidence.fit_at_bounds ? "yes" : "no", ""],
+                      ["calibration complete", result.evidence.calibration_complete ? "yes" : "no", ""],
+                      ["baseline Z range", result.evidence.baseline_range_z?.join(" to ") ?? null, "nm"],
+                      ["fit Z range", result.evidence.fit_range_z?.join(" to ") ?? null, "nm"],
+                    ] as Cell[][],
                     { analysis: "AFM force curve", imageName: meta.name,
                       params: { curve: index + 1, ...resultSettings } },
                   ),

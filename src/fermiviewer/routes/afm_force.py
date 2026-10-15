@@ -137,8 +137,10 @@ def _arrays(c: ForceCurve, scale: float) -> CurveArrays:
             r.deflection * scale if r else None)
 
 
-def _analyze(c: ForceCurve, s: ForceSettings, k: float, scale: float) -> ForceAnalysis:
-    return analyze_curve(*_arrays(c, scale), **_options(s, k))
+def _analyze(
+    c: ForceCurve, s: ForceSettings, k: float, scale: float, *, evidence: bool = False,
+) -> ForceAnalysis:
+    return analyze_curve(*_arrays(c, scale), **_options(s, k), evidence=evidence)
 
 
 _UNITS = {"youngs_modulus": "Pa", "e_r": "GPa", "contact_z": "nm", "max_force": "nN",
@@ -154,7 +156,7 @@ def analyze(force_id: str, index: int, s: ForceSettings) -> dict:
     c = _curve(f, index)
     k, invols, scale = _calibration(f, s)
     try:
-        res = _analyze(c, s, k, scale)
+        res = _analyze(c, s, k, scale, evidence=True)
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
     slope, offset = res.baseline
@@ -164,23 +166,36 @@ def analyze(force_id: str, index: int, s: ForceSettings) -> dict:
         d = seg.deflection * scale - (slope * seg.z + offset)
         z, force, sep = _thin(seg.z, k * d, (zc - seg.z) + d)
         plot[seg.kind] = {"z": z, "force": force, "separation": sep}
-    fit = None
-    if math.isfinite(res.e_r):
+    fit = residual = None
+    baseline_range_z = fit_range_z = None
+    if res.baseline_mask is not None and res.baseline_mask.any():
+        a = c.approach
+        assert a is not None
+        baseline_z = a.z[res.baseline_mask]
+        baseline_range_z = [float(baseline_z.min()), float(baseline_z.max())]
+    if math.isfinite(res.e_r) and res.fit_mask is not None and res.fit_mask.any():
         a = c.approach
         assert a is not None
         d = a.deflection * scale - (slope * a.z + offset)
-        in_contact = (a.z >= zc) & (k * d <= (s.max_force_nn or np.inf))
-        if s.max_indent_nm is not None:
-            in_contact &= (a.z - zc) - d <= s.max_indent_nm
+        used = res.fit_mask
         tip = Tip(s.tip, s.radius_nm, s.half_angle_deg)
         model = contact_force((a.z - zc) - d, res.e_r, tip)
-        z, force, sep = _thin(a.z[in_contact], model[in_contact], ((zc - a.z) + d)[in_contact])
+        z, force, sep = _thin(a.z[used], model[used], ((zc - a.z) + d)[used])
         fit = {"z": z, "force": force, "separation": sep}
+        rz, rf, rsep = _thin(a.z[used], k * d[used] - model[used], ((zc - a.z) + d)[used])
+        residual = {"z": rz, "force": rf, "separation": rsep}
+        fit_range_z = [float(a.z[used].min()), float(a.z[used].max())]
     values = {key: _num(float(getattr(res, key))) for key in _UNITS}
     return {
         "values": values, "units": _UNITS, "plot": plot, "fit": fit,
         "spring_constant": k, "invols": _num(invols),
         "baseline": {"slope": slope, "offset_nm": offset},
+        "evidence": {
+            "baseline_range_z": baseline_range_z, "fit_range_z": fit_range_z,
+            "residual": residual, "residual_lag1": _num(res.residual_lag1),
+            "fit_at_bounds": res.fit_at_bounds,
+            "calibration_complete": f.deflection_unit == "nm" or math.isfinite(invols),
+        },
     }
 
 

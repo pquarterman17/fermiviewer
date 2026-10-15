@@ -114,6 +114,10 @@ class ForceAnalysis:
     fit_points: int
     max_indentation: float              # nm, at the maximum force
     contact_slope: float                # d(deflection)/dZ at the top of the approach
+    residual_lag1: float = float("nan")
+    fit_at_bounds: bool = False
+    baseline_mask: np.ndarray | None = None
+    fit_mask: np.ndarray | None = None
 
 
 def _window(z: np.ndarray, d: np.ndarray, zc: float, max_indent: float | None,
@@ -129,7 +133,7 @@ def _window(z: np.ndarray, d: np.ndarray, zc: float, max_indent: float | None,
 
 
 def _fit(z: np.ndarray, d: np.ndarray, zc0: float, k: float, tip: Tip,
-         sel: np.ndarray) -> tuple[float, float, np.ndarray]:
+         sel: np.ndarray) -> tuple[float, float, np.ndarray, bool]:
     zs, ds = z[sel], d[sel]
     f = k * ds
 
@@ -152,7 +156,7 @@ def _fit(z: np.ndarray, d: np.ndarray, zc0: float, k: float, tip: Tip,
     res = least_squares(resid, x0=[max(e0, 1e-9), zc0], jac=jac,
                         x_scale=[max(e0, 1e-6), span / 10],
                         bounds=([0.0, zs.min() - span], [np.inf, zs.max()]))
-    return float(res.x[0]), float(res.x[1]), res.fun
+    return float(res.x[0]), float(res.x[1]), res.fun, bool(np.any(res.active_mask != 0))
 
 
 def _adhesion(z: np.ndarray, d: np.ndarray, zc: float, k: float) -> tuple[float, float, float]:
@@ -175,11 +179,14 @@ def analyze_curve(z_app: np.ndarray, d_app: np.ndarray, z_ret: np.ndarray | None
                   d_ret: np.ndarray | None, *, k: float, tip: Tip, poisson: float = 0.5,
                   baseline: tuple[float, float] = (0.0, 0.5),
                   max_indent: float | None = None, max_force: float | None = None,
-                  fit: bool = True) -> ForceAnalysis:
+                  fit: bool = True, evidence: bool = False) -> ForceAnalysis:
     """Analyse one curve (deflection already in nm). `max_force` is in nN."""
     if not np.isfinite(k) or k <= 0:
         raise ValueError("a positive spring constant is needed")
     coef, sigma = fit_baseline(z_app, d_app, *baseline)
+    zmin, span = float(z_app.min()), float(np.ptp(z_app))
+    baseline_sel = ((z_app >= zmin + baseline[0] * span)
+                    & (z_app <= zmin + baseline[1] * span))
     da = d_app - np.polyval(coef, z_app)
     zc = find_contact(z_app, da)
     fa = k * da
@@ -188,14 +195,19 @@ def analyze_curve(z_app: np.ndarray, d_app: np.ndarray, z_ret: np.ndarray | None
 
     e_r = r2 = rms = float("nan")
     n_fit = 0
+    fit_sel: np.ndarray | None = None
+    residual_lag1 = float("nan")
+    fit_at_bounds = False
     if fit:
-        sel = _window(z_app, da, zc, max_indent, max_force, k)
-        if sel.sum() >= 5:
-            e_r, zc, resid = _fit(z_app, da, zc, k, tip, sel)
-            f = fa[sel]
+        fit_sel = _window(z_app, da, zc, max_indent, max_force, k)
+        if fit_sel.sum() >= 5:
+            e_r, zc, resid, fit_at_bounds = _fit(z_app, da, zc, k, tip, fit_sel)
+            f = fa[fit_sel]
             ss = float(((f - f.mean()) ** 2).sum())
             r2 = 1.0 - float(resid @ resid) / ss if ss > 0 else float("nan")
-            rms, n_fit = float(np.sqrt(np.mean(resid ** 2))), int(sel.sum())
+            rms, n_fit = float(np.sqrt(np.mean(resid ** 2))), int(fit_sel.sum())
+            if resid.size >= 3 and np.std(resid[:-1]) > 0 and np.std(resid[1:]) > 0:
+                residual_lag1 = float(np.corrcoef(resid[:-1], resid[1:])[0, 1])
 
     top = da >= da.max() - 0.2 * np.ptp(da)
     slope = float(np.polyfit(z_app[top], da[top], 1)[0]) if top.sum() >= 3 else float("nan")
@@ -210,4 +222,7 @@ def analyze_curve(z_app: np.ndarray, d_app: np.ndarray, z_ret: np.ndarray | None
         e_r=e_r, youngs_modulus=e_r * (1.0 - poisson ** 2) * 1e9,
         fit_r2=r2, fit_rms=rms, fit_points=n_fit,
         max_indentation=float((z_app[imax] - zc) - da[imax]), contact_slope=slope,
+        residual_lag1=residual_lag1, fit_at_bounds=fit_at_bounds,
+        baseline_mask=baseline_sel if evidence else None,
+        fit_mask=fit_sel if evidence else None,
     )

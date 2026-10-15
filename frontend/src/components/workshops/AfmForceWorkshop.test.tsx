@@ -41,12 +41,11 @@ import AfmForceWorkshop, {
   calibrationSource,
   calibratedInvols,
   curveLabel,
-  forceFitQuality,
-  forceWarnings,
   formatModulus,
   formatValue,
 } from "./AfmForceWorkshop";
 import { forceTables } from "./ForceCurvePlot";
+import { forceFitQuality, forceWarnings } from "./forceFitQuality";
 
 function force(id: string, extra: Partial<ForceMeta> = {}): ForceMeta {
   return {
@@ -78,6 +77,8 @@ function analysis(e: number): ForceAnalysis {
   return {
     values, units, fit: null, spring_constant: 0.1, invols: 50,
     baseline: { slope: 0, offset_nm: 0 },
+    evidence: { baseline_range_z: [1, 2], fit_range_z: [2, 3], residual: null,
+      residual_lag1: 0.1, fit_at_bounds: false, calibration_complete: true },
     plot: { approach: { z: [2, 1, 3], force: [20, 10, 30], separation: [0, 1, 2] } },
   };
 }
@@ -123,6 +124,14 @@ describe("AfmForceWorkshop helpers", () => {
     good.values.contact_slope = 1.3;
     expect(forceFitQuality(good)).toBe("Poor");
     expect(forceWarnings(good)).toHaveLength(3);
+
+    const structured = analysis(2e6);
+    structured.evidence.residual_lag1 = 0.7;
+    expect(forceFitQuality(structured)).toBe("Review");
+    expect(forceWarnings(structured).join(" ")).toMatch(/strongly structured/);
+    structured.evidence.fit_at_bounds = true;
+    expect(forceFitQuality(structured)).toBe("Poor");
+    expect(forceWarnings(structured).join(" ")).toMatch(/allowed bound/);
   });
 
   it("sorts each trace along the chosen axis", () => {

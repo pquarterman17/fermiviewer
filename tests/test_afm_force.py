@@ -57,6 +57,21 @@ def test_fit_window_limits_the_indentation() -> None:
     assert part.e_r == pytest.approx(0.002, rel=0.02)
 
 
+def test_evidence_preserves_the_exact_baseline_and_fit_masks() -> None:
+    tip = Tip("sphere", radius_nm=20)
+    z, da, zr, dr = _curve(tip, noise=0.02)
+    result = analyze_curve(
+        z, da, zr, dr, k=0.1, tip=tip, baseline=(0.1, 0.35),
+        max_indent=20.0, evidence=True,
+    )
+    assert result.baseline_mask is not None and result.fit_mask is not None
+    span = np.ptp(z)
+    expected = (z >= z.min() + 0.1 * span) & (z <= z.min() + 0.35 * span)
+    np.testing.assert_array_equal(result.baseline_mask, expected)
+    assert int(result.fit_mask.sum()) == result.fit_points
+    assert np.isfinite(result.residual_lag1)
+
+
 def test_adhesion_and_work() -> None:
     tip = Tip("sphere", radius_nm=20)
     z, da, zr, dr = _curve(tip, adhesion=2.0)
