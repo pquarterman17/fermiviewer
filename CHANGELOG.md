@@ -13,6 +13,45 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [0.10.1] - 2026-10-15
+
+Clearer, safer AFM analysis from file import through force-map review.
+
+### Added
+- **Inspectable force maps.** Map calculations now show progress and can be
+  cancelled; every property or quality-map pixel links back to its source
+  force curve and fit evidence.
+- **Force-fit evidence.** Force curves show the fitted interval, residuals,
+  fit quality, accepted/rejected status, and the calibration used.
+- **Step-height evidence.** Terrace assignments, measured and fitted profiles,
+  residuals, and fit quality make the reported height visually auditable.
+- **Complete force-map exports.** CSV and JSON exports include calibrated map
+  coordinates, fit-quality fields, acceptance status, grids, and provenance.
+
+### Changed
+- AFM analysis commands are organized by Surface, Mechanical, and Image tools,
+  with one consistent route into each workflow.
+- RMS roughness is prominently identified as **Sq**, with standard symbols and
+  plain-language definitions throughout the surface workflow.
+- AFM height channels and derived images retain their physical height semantics,
+  so downstream tools continue to recognize valid surface data.
+
+### Fixed
+- Multichannel AFM files classify channels more reliably and cannot apply a
+  delayed channel response to a different file.
+- Force-curve state no longer leaks across project loads.
+- Poor or failed force fits are excluded from aggregate map summaries by
+  default and reported separately instead of silently biasing the result.
+- Force-map work uses cancellable background jobs rather than blocking a
+  request until every curve has been fitted.
+
+### Security
+- **Pillow 13.0** on Python 3.11 and later fixes ten image-decoder advisories
+  (CVE-2026-96636 and related). Python 3.10 has no fixed Pillow release and
+  stays on 12.3; the installers use Python 3.13 and ship Pillow 13.
+- certifi, setuptools and the desktop shell's TLS stack (rustls,
+  rustls-webpki, webpki-root-certs) are updated for their advisories.
+
 ## [0.10.0] - 2026-10-14
 
 Easier image grouping, and two groups side by side.
