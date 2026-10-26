@@ -45,6 +45,13 @@ Clearer, safer AFM analysis from file import through force-map review.
 - Force-map work uses cancellable background jobs rather than blocking a
   request until every curve has been fitted.
 
+### Security
+- **Pillow 13.0** on Python 3.11 and later fixes ten image-decoder advisories
+  (CVE-2026-96636 and related). Python 3.10 has no fixed Pillow release and
+  stays on 12.3; the installers use Python 3.13 and ship Pillow 13.
+- certifi, setuptools and the desktop shell's TLS stack (rustls,
+  rustls-webpki, webpki-root-certs) are updated for their advisories.
+
 ## [0.10.0] - 2026-10-14
 
 Easier image grouping, and two groups side by side.
