@@ -15,7 +15,11 @@ dependencies = [
     "numpy>=2.1",
     "scipy>=1.14",
     "scikit-image>=0.24",
-    "pillow>=11",
+    # SECURITY floor: Pillow 12.x carries the 2026-10 decoder advisories
+    # (CVE-2026-96636 et al.), fixed only in 13.0, which needs Python 3.11+.
+    # 3.10 has no fixed release, so it keeps the old floor.
+    "pillow>=13; python_version >= '3.11'",
+    "pillow>=11; python_version < '3.11'",
     "tifffile>=2024.8",
     "orjson>=3.10",
     # SECURITY floor: < 0.0.18 carries the multipart ReDoS (CVE-2024-53981)
