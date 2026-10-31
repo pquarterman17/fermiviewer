@@ -1,8 +1,9 @@
-import { lazy, Suspense, type ReactNode } from "react";
+import { lazy, type ReactNode } from "react";
 import { useShallow } from "zustand/react/shallow";
 
 import { useParamDialog } from "../../store/params";
-import { useViewer } from "../../store/viewer";
+import { useViewer, type ViewerState } from "../../store/viewer";
+import ChunkBoundary from "../ChunkBoundary";
 
 const BatchDialog = lazy(() => import("./BatchDialog"));
 const CalibrationManager = lazy(() => import("./CalibrationManager"));
@@ -33,22 +34,55 @@ export default function LazyOverlays() {
   // One boundary PER overlay, never a shared one. Overlays stack (BatchDialog
   // awaits askParams -> ParamDialog), and a shared boundary re-suspends on the
   // second chunk: React hides the already-committed dialog and tears down its
-  // effects, so the open dialog blanks and its focus state is lost.
+  // effects, so the open dialog blanks and its focus state is lost. Each
+  // boundary mounts with its overlay, so a failed load resets on close.
   return (
     <>
-      <Boundary>{open.batch && <BatchDialog />}</Boundary>
-      <Boundary>{open.calibrations && <CalibrationManager />}</Boundary>
-      <Boundary>{open.export && <ExportDialog />}</Boundary>
-      <Boundary>{open.folder && <FolderOpenDialog />}</Boundary>
-      <Boundary>{open.gallery && <GalleryGrid />}</Boundary>
-      <Boundary>{open.metadata && <MetadataDialog />}</Boundary>
-      <Boundary>{params && <ParamDialog />}</Boundary>
-      <Boundary>{open.preferences && <PrefsWindow />}</Boundary>
-      <Boundary>{open.shortcuts && <ShortcutsOverlay />}</Boundary>
+      {open.batch && <Boundary label="Batch" flag="batchOpen"><BatchDialog /></Boundary>}
+      {open.calibrations && (
+        <Boundary label="Calibrations" flag="calibOpen"><CalibrationManager /></Boundary>
+      )}
+      {open.export && <Boundary label="Export" flag="exportOpen"><ExportDialog /></Boundary>}
+      {open.folder && <Boundary label="Open Folder" flag="folderOpen"><FolderOpenDialog /></Boundary>}
+      {open.gallery && <Boundary label="Gallery" flag="galleryOpen"><GalleryGrid /></Boundary>}
+      {open.metadata && <Boundary label="Metadata" flag="metaOpen"><MetadataDialog /></Boundary>}
+      {params && (
+        <ChunkBoundary
+          label="Parameters"
+          className="fvd-glass floating"
+          onDismiss={() => useParamDialog.getState().close()}
+        >
+          <ParamDialog />
+        </ChunkBoundary>
+      )}
+      {open.preferences && <Boundary label="Preferences" flag="prefsOpen"><PrefsWindow /></Boundary>}
+      {open.shortcuts && <Boundary label="Shortcuts" flag="shorts"><ShortcutsOverlay /></Boundary>}
     </>
   );
 }
 
-function Boundary({ children }: { children: ReactNode }) {
-  return <Suspense fallback={null}>{children}</Suspense>;
+type OverlayFlag = {
+  [K in keyof ViewerState]: ViewerState[K] extends boolean ? K : never;
+}[keyof ViewerState];
+
+/** A failed overlay has no dialog of its own to close, so the notice floats
+ *  and its Close clears the open flag that requested it. */
+function Boundary({
+  label,
+  flag,
+  children,
+}: {
+  label: string;
+  flag: OverlayFlag;
+  children: ReactNode;
+}) {
+  return (
+    <ChunkBoundary
+      label={label}
+      className="fvd-glass floating"
+      onDismiss={() => useViewer.setState({ [flag]: false })}
+    >
+      {children}
+    </ChunkBoundary>
+  );
 }

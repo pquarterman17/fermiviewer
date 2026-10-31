@@ -6,6 +6,9 @@ import AppErrorBoundary from "./components/AppErrorBoundary";
 import { connectLifecycle } from "./lib/lifecycle";
 import { useScribble } from "./store/scribble";
 import { useViewer } from "./store/viewer";
+// Global so every chart is styled however its (lazy) chunk arrives; it used
+// to ride in with the dock plot, which now loads on the first profile.
+import "uplot/dist/uPlot.min.css";
 import "./theme.css";
 import "./theme-web.css";
 

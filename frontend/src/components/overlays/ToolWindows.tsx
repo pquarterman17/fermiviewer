@@ -1,6 +1,7 @@
-import { lazy, Suspense } from "react";
+import { lazy } from "react";
 
 import { useViewer, type ToolKind } from "../../store/viewer";
+import ChunkBoundary from "../ChunkBoundary";
 import ToolWindow from "./ToolWindow";
 
 const DiffractionWorkshop = lazy(() => import("../workshops/DiffractionWorkshop"));
@@ -88,7 +89,8 @@ export default function ToolWindows() {
         : tool.kind === "afmsurface" ? "afm-surface" : undefined}
       workspaceControls={["eds", "eels", "afmsurface"].includes(tool.kind)}
     >
-      <Suspense
+      <ChunkBoundary
+        label={titles[tool.kind]}
         fallback={
           <div className="fvd-tool-loading" role="status">
             Loading {titles[tool.kind]}…
@@ -96,7 +98,7 @@ export default function ToolWindows() {
         }
       >
         <Workshop kind={tool.kind} />
-      </Suspense>
+      </ChunkBoundary>
     </ToolWindow>
   ));
 }

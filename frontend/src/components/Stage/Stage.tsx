@@ -26,10 +26,10 @@ import {
   type View,
 } from "../../store/viewer";
 import CaptureBanner from "./CaptureBanner";
-import DockPlot from "./DockPlot";
 import EmptyStage from "./EmptyStage";
 import { FloatTools, ZoomChip } from "./FloatTools";
 import FourDProbeMarker from "./FourDProbeMarker";
+import ProfileDock from "./ProfileDock";
 import LayersOverlay from "./LayersOverlay";
 import MaskPreviewOverlay from "./MaskPreviewOverlay";
 import MeasureOverlay from "./MeasureOverlay";
@@ -570,7 +570,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
               barRef={scaleBarRef}
             />
           )}
-          <DockPlot />
+          <ProfileDock />
         </>
       )}
 

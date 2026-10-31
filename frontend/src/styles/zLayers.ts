@@ -16,7 +16,8 @@
 //               context, so it must sit above tool windows or an open menu
 //               renders under them and clicks land on the window)
 //   300         modal dialog backdrop            (MODAL_BACKDROP, this file;
-//               mirrored in 06-overlays-export.css's .fvd-overlay-backdrop)
+//               mirrored in 06-overlays-export.css's .fvd-overlay-backdrop;
+//               a floating .fvd-chunk-error shares it, later in the DOM)
 //   400 / 401   context-menu backdrop / menu     (02-stage.css)
 //   2000        hover tooltip                    (01-shell-library.css)
 //

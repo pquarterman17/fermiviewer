@@ -143,6 +143,33 @@
   background: color-mix(in oklab, var(--capture-soft), var(--glass) 55%);
 }
 
+/* A code-split panel whose chunk failed to load (ChunkBoundary.tsx). In
+   place it fills the panel that asked for it; .floating is for overlays
+   with no host panel, at the modal layer so it is never hidden behind one. */
+.fvd-chunk-error {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: var(--pad-lg);
+  color: var(--text-faint);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+.fvd-chunk-error strong { color: var(--danger); }
+
+.fvd-chunk-error.floating {
+  position: fixed;
+  top: 54px;
+  left: 50%;
+  z-index: 300;
+  transform: translateX(-50%);
+  max-width: min(420px, 80vw);
+}
+
 .fvd-cmdk {
   position: absolute;
   top: 15%;

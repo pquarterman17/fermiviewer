@@ -2,17 +2,15 @@
 // StatusBar grid + the global keyboard map (§9) + command palette / shortcuts /
 // radial overlays. (The standalone title bar was folded into the menubar.)
 
-import { useEffect, useRef } from "react";
+import { lazy, useEffect, useRef } from "react";
 
-import CompareInspector from "./components/Inspector/CompareInspector";
+import ChunkBoundary from "./components/ChunkBoundary";
 import Inspector from "./components/Inspector/Inspector";
 import Filmstrip from "./components/Library/Filmstrip";
 import CompactLayout from "./components/Shell/CompactLayout";
 import MenuBar from "./components/Shell/MenuBar";
 import StatusBar from "./components/Shell/StatusBar";
 import ColorbarChip from "./components/Stage/ColorbarChip";
-import CompareStage from "./components/Stage/CompareStage";
-import SideBySideStage from "./components/Stage/SideBySideStage";
 import Stage, { type StageHandle } from "./components/Stage/Stage";
 import CommandPalette from "./components/overlays/CommandPalette";
 import FolderImportBanner from "./components/overlays/FolderImportBanner";
@@ -31,6 +29,11 @@ import { droppedDirectoryEntries, importDroppedFolders } from "./lib/folderDrop"
 import { useViewer } from "./store/viewer";
 
 installErrLog(); // module scope: catch errors from the very first render
+
+// Compare mode is opt-in; its stages and inspector load when it is entered.
+const CompareInspector = lazy(() => import("./components/Inspector/CompareInspector"));
+const CompareStage = lazy(() => import("./components/Stage/CompareStage"));
+const SideBySideStage = lazy(() => import("./components/Stage/SideBySideStage"));
 
 export default function App() {
   const stageRef = useRef<StageHandle>(null);
@@ -177,18 +180,38 @@ export default function App() {
         <div className="fvd-stage-cell" style={{ flexDirection: (colorbar && colorbarSide === "bottom") ? "column" : undefined }}>
           {colorbar && colorbarSide === "left" && <ColorbarChip />}
           {comparing ? (
-            compareMode === "sidebyside" ? (
-              <SideBySideStage />
-            ) : (
-              <CompareStage />
-            )
+            <ChunkBoundary
+              label="Compare view"
+              className="fvd-stage"
+              fallback={
+                <div className="fvd-stage">
+                  <div className="fvd-stage-empty" role="status">Loading compare view…</div>
+                </div>
+              }
+            >
+              {compareMode === "sidebyside" ? <SideBySideStage /> : <CompareStage />}
+            </ChunkBoundary>
           ) : (
             <Stage ref={stageRef} />
           )}
           {colorbar && colorbarSide === "right" && <ColorbarChip />}
           {colorbar && colorbarSide === "bottom" && <ColorbarChip />}
         </div>
-        {comparing ? <CompareInspector /> : <Inspector />}
+        {comparing ? (
+          <ChunkBoundary
+            label="Compare inspector"
+            className="fvd-inspector"
+            fallback={
+              <aside className="fvd-inspector">
+                <div className="fvd-inspector-loading" role="status">Loading…</div>
+              </aside>
+            }
+          >
+            <CompareInspector />
+          </ChunkBoundary>
+        ) : (
+          <Inspector />
+        )}
       </div>
       <StatusBar />
       <TooltipLayer />
