@@ -23,6 +23,7 @@ from fermiviewer.ops import (
     catalogue_grains_edit,  # noqa: F401  (grain label editing)
     catalogue_grains_layers,  # noqa: F401  (wave A: grain + layer ops)
     catalogue_grains_trained,  # noqa: F401  (scribble-trained segmentation)
+    catalogue_jitter,  # noqa: F401  (scan-line jitter + frame drift)
     catalogue_layers_multi,  # noqa: F401  (multi-map layers + layer grains)
     catalogue_measure,  # noqa: F401  (wave D: profile/ROI/box/distance ops)
     catalogue_measure_reads,  # noqa: F401  (wave D: spectrum/histogram/scalebar)
