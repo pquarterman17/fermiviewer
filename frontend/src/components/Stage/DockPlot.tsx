@@ -3,7 +3,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import uPlot from "uplot";
-import "uplot/dist/uPlot.min.css";
 
 import { sigmaBand } from "../../lib/charts/sigmaBand";
 import {

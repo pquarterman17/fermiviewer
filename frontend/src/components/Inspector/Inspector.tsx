@@ -1,7 +1,7 @@
 // Right inspector (handoff §4/§5). Phase 1 skeleton: scene-switched shell
 // with the Image metadata card. Phase 2 fills Adjust/Measure/OverlayStyle…
 
-import { lazy, Suspense, useRef, useState } from "react";
+import { lazy, useRef, useState } from "react";
 
 import type { ImageMeta } from "../../lib/api";
 import {
@@ -11,6 +11,7 @@ import {
   type SpectralModality,
 } from "../../lib/spectralModality";
 import { useViewer } from "../../store/viewer";
+import ChunkBoundary from "../ChunkBoundary";
 import AdjustPanel from "./AdjustPanel";
 import CalibrationCard from "./CalibrationCard";
 import Card from "./Card";
@@ -232,7 +233,8 @@ export default function Inspector() {
           ))}
         </div>
       </div>
-      <Suspense
+      <ChunkBoundary
+        label="Diffraction"
         fallback={<div className="fvd-inspector-loading" role="status">Loading analysis…</div>}
       >
         {tab === "Elemental" && <ElementalWorkspaceLauncher meta={meta} />}
@@ -241,7 +243,7 @@ export default function Inspector() {
             <DiffractionWorkshop />
           </Card>
         )}
-      </Suspense>
+      </ChunkBoundary>
       {tab === "Image" && unified && <ToolsBrowser />}
       {tab === "Image" && <MeasurePanel toolList={!unified} />}
       {tab === "Image" && meta.kind !== "spectrum" && <RegionWorkspaceCard />}

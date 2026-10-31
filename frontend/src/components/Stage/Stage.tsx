@@ -4,6 +4,7 @@
 
 import {
   forwardRef,
+  lazy,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -25,8 +26,8 @@ import {
   type Measure,
   type View,
 } from "../../store/viewer";
+import ChunkBoundary from "../ChunkBoundary";
 import CaptureBanner from "./CaptureBanner";
-import DockPlot from "./DockPlot";
 import EmptyStage from "./EmptyStage";
 import { FloatTools, ZoomChip } from "./FloatTools";
 import FourDProbeMarker from "./FourDProbeMarker";
@@ -56,6 +57,20 @@ import { defaultStageView, fitAndReseedScale } from "./stageScaleLock";
 import { transformU16, WHEEL_K, type Pt } from "./stageUtils";
 import { useStageImageLoad } from "./useStageImageLoad";
 import { useStagePointers, type StagePointersCtx } from "./useStagePointers";
+
+// The profile chart carries uPlot; fetch it with the first profile drawn
+// rather than on first paint.
+const DockPlot = lazy(() => import("./DockPlot"));
+
+function ProfileDock() {
+  const hasProfile = useStageInfo((s) => s.profile !== null);
+  if (!hasProfile) return null;
+  return (
+    <ChunkBoundary label="Profile plot" className="fvd-glass floating">
+      <DockPlot />
+    </ChunkBoundary>
+  );
+}
 
 export interface StageHandle {
   fit: () => void;
@@ -570,7 +585,7 @@ const Stage = forwardRef<StageHandle>(function Stage(_props, handle) {
               barRef={scaleBarRef}
             />
           )}
-          <DockPlot />
+          <ProfileDock />
         </>
       )}
 
