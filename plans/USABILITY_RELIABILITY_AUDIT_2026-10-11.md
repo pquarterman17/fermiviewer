@@ -1,6 +1,6 @@
 # Usability and reliability audit — EDS, AFM, and analysis workflows
 
-**Status:** Active — items 1–8 shipped; item 9 implemented, awaiting review
+**Status:** Complete — items 1–12 shipped
 
 **Owner:** Codex (lead implementation); Claude reviews each pull request
 
@@ -177,6 +177,20 @@ blind mechanical rewrite.
 - New analysis families are out of scope for this bug/usability pass.
 
 ## Progress log
+
+- 2026-10-31 — Items 10–12 shipped. Item 10 (PR #306): compare mode, the
+  profile dock plot and the React runtime load as separate chunks, and a
+  failed chunk load is contained by a retryable boundary instead of blanking
+  the app. Item 11 (PR #305): Ctrl+C shuts the server down quietly with exit
+  status 0. Item 12 (PR #308): diffraction, layers, defects, particles, atom
+  columns, grains, template/GPA/CTF/lattice, EELS Advanced and interface width
+  now drop results whose image, region or profile changed while they ran, and
+  cancel in-flight requests on image switch; the other async panels were
+  checked and are already safe or not image-scoped. Follow-up outside this
+  audit: Stage measure-tool profiles are not image-scoped, so a late profile
+  can still become active after an image switch.
+
+- 2026-10-12 — Item 9 shipped in PR #275 after re-review.
 
 - 2026-10-12 — Item 9 implemented: frontend tests now share an intentional
   no-context canvas default instead of emitting jsdom's repeated unimplemented
