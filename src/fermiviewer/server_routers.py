@@ -50,6 +50,7 @@ def include_all_routers(app: FastAPI) -> None:
     from fermiviewer.routes.grains_trained import router as grains_trained_router
     from fermiviewer.routes.images import router as images_router
     from fermiviewer.routes.imaging_ops import router as imaging_ops_router
+    from fermiviewer.routes.jitter import router as jitter_router
     from fermiviewer.routes.jobs_api import router as jobs_router
     from fermiviewer.routes.layers import router as layers_router
     from fermiviewer.routes.measure import router as measure_router
@@ -77,7 +78,7 @@ def include_all_routers(app: FastAPI) -> None:
         filter_router, export_router, export_batch_router, export_table_router, session_io_router,
         imaging_ops_router, defect_ops_router, structure_router, structure_grains_router,
         structure_particles_router,
-        grains_trained_router,
+        grains_trained_router, jitter_router,
         jobs_router, calibration_router, profiles_router, composite_router, dev_router,
         profile_roughness_router,
         standards_router, factors_router, factors_store_router, factors_eels_router,

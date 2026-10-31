@@ -1224,8 +1224,15 @@ numbered item, scope and activation gate once it has been discussed.
       - scan-line jitter within one scanned image (row-to-row offsets);
       - frame-to-frame drift across a stack or series.
 
-      Still to discuss: which instruments and data to target, and how each
-      correction is validated.
+      First increment implemented (2026-10-31): Image › Distortion menu,
+      `/api/analyze/line-jitter` and `/api/analyze/frame-drift`, ops
+      `line_jitter` and `frame_drift` (calc/jitter.py). Validated against
+      synthetic lattices with injected offsets and on a real HAADF image.
+      Known limit: on amorphous or featureless areas the row estimate is
+      uncertain to about 0.5 px; the reported RMS shows this.
+
+      Still open: per-instrument tuning, fast-scan-direction (column)
+      jitter, and non-rigid drift.
 
 ---
 

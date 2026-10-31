@@ -9,8 +9,8 @@ Route and op inventories are read live from the app and registry at generation t
 
 ## Summary
 
-- **191** HTTP endpoints; **88** perform analysis, 3 are physics-table lookups, and 100 are allowlisted infrastructure.
-- **78 of 88** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **97** ops in total.
+- **193** HTTP endpoints; **90** perform analysis, 3 are physics-table lookups, and 100 are allowlisted infrastructure.
+- **80 of 90** analysis endpoints are backed by a registered op (the `/api/filter` row alone carries 14); the registry holds **99** ops in total.
 - Registered-op reach IS headless reach: batch recipes, folder watch, `fv --script`, and the Python API all resolve steps through the same registry and cannot call anything else.
 - Remaining item-3 work: wave A (0), wave B (0), wave C (0), wave D (0) endpoints; 10 are parked behind the item-8/9 activation gates. Item 3 does not close while any analysis row lacks a wave or a named gate — every endpoint is assigned, none is silently deferred.
 
@@ -72,6 +72,8 @@ Route and op inventories are read live from the app and registry at generation t
 |---|---|---|---|---|
 | `POST /api/analyze/align-stack` | Image menu. *a gap-1 exemplar: subject = reference frame, `others` is a variadic input (ADR 0005 §8). The N-1 aligned rasters inline as `map` envelopes; the route registers session images* | `align_stack` | map ×N + table | shipped |
 | `POST /api/analyze/mip` | Image menu. *a gap-1 exemplar: subject = first frame, `others` is a variadic input (ADR 0005 §8)* | `mip` | map | shipped |
+| `POST /api/analyze/line-jitter` | Image menu. *per-row offsets ride the derived image's metadata; the route also returns them* | `line_jitter` | map | shipped |
+| `POST /api/analyze/frame-drift` | Image menu. *subject = frame 0 (the shift origin), rest variadic (ADR 0005 §8). The op returns the drift-corrected average; the route can also register every aligned frame* | `frame_drift` | map | shipped |
 | `POST /api/analyze/stitch` | CTF/Stitch mode. *subject = first tile, rest variadic (ADR 0005 §8). The equal-size precondition is reproduced in the op: `stitch_images` sizes its canvas from the first tile, so unequal tiles would silently crop* | `stitch` | map + table | shipped |
 | `POST /api/analyze/image-math` | Image menu. *the gap-1 exemplar: the subject is a_id and `other` is a named input the CALLER resolves (ADR 0005 §8), so the op still never reads the session store* | `image_math` | map | shipped |
 | `POST /api/analyze/back-project` | Analysis menu. *tomography — parked with roadmap item 9* | — | map | parked (item 8/9) |

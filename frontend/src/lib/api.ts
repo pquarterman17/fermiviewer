@@ -7,6 +7,7 @@ export * from "./api/diffraction-export";
 export * from "./api/imaging";
 export * from "./api/metadata-export";
 export * from "./api/structure";
+export * from "./api/jitter";
 export * from "./api/workspace";
 export * from "./api/layers";
 export * from "./api/diagnostics";

@@ -501,6 +501,27 @@ DOMAINS: tuple[Domain, ...] = (
             ),
             Row(
                 "POST",
+                "/api/analyze/line-jitter",
+                "Image menu",
+                ("line_jitter",),
+                "map",
+                "shipped",
+                "per-row offsets ride the derived image's metadata; the route "
+                "also returns them",
+            ),
+            Row(
+                "POST",
+                "/api/analyze/frame-drift",
+                "Image menu",
+                ("frame_drift",),
+                "map",
+                "shipped",
+                "subject = frame 0 (the shift origin), rest variadic (ADR 0005 "
+                "§8). The op returns the drift-corrected average; the route can "
+                "also register every aligned frame",
+            ),
+            Row(
+                "POST",
                 "/api/analyze/stitch",
                 "CTF/Stitch mode",
                 ("stitch",),

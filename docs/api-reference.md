@@ -283,7 +283,7 @@ The registered operation catalogue: name, category, summary, params.
 
 ## Operation catalogue
 
-97 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
+99 registered operations, grouped by category. Every one is callable as `img.<name>(**params) -> Result` and via `img.run(name, **params)` / a recipe step `{'op': name, 'params': {...}}`.
 
 ### analysis
 
@@ -1047,6 +1047,21 @@ The registered operation catalogue: name, category, summary, params.
 | `masks` | `list[3 x row/col/radius]` |  | yes |  |  | circular masks on the fftshifted spectrum, 1-based; each radius must be > 0 (calc rejects a flat mask, as for the route — no OpParam bound, which would also constrain the row/col columns) |
 | `mode` | `str` | pass | no | 'pass', 'reject' |  | 'pass' keeps only the masked regions (mirrored through DC so the result stays real); 'reject' suppresses them |
 
+#### `frame_drift` — Sub-pixel drift correction across a series: frames are registered by phase correlation, resampled onto frame 0 and averaged; with crop, only the area every frame covers is kept (calc/jitter)
+
+*category: `filter` · produces: derived image*
+
+| Input | Datasets | Required | Description |
+|---|---|---|---|
+| `others` | 1+ | yes | the remaining frames, in order; the subject is frame 0 |
+
+*Auxiliary inputs are passed as resolved datasets (`ops.run(..., inputs={...})`, or `Image` keyword arguments in the Python API). Recipes map each op input to a portable symbolic name and bind that name to dataset(s) when they run.*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `reference` | `str` | mean | no | 'mean', 'first' |  | register to the first frame, or (mean) re-register to the average of a first alignment — better for noisy frames |
+| `crop` | `bool` | True | no |  |  | cut to the region every frame covers, so the average has no padded edges |
+
 #### `gaussian` — Gaussian blur
 
 *category: `filter` · produces: derived image*
@@ -1068,6 +1083,15 @@ The registered operation catalogue: name, category, summary, params.
 | Param | Type | Default | Required | Choices | Bounds | Description |
 |---|---|---|---|---|---|---|
 | `op` | `str` | subtract | no | 'subtract', 'divide', 'ratio', 'add' |  | divide and ratio clamp their denominators at 1 (count-data convention) |
+
+#### `line_jitter` — Correct row-to-row horizontal jitter in a scanned image: each row's sub-pixel offset is solved from its correlation with the rows above it, then rows are resampled (calc/jitter)
+
+*category: `filter` · produces: derived image*
+
+| Param | Type | Default | Required | Choices | Bounds | Description |
+|---|---|---|---|---|---|---|
+| `max_shift` | `float` | 5.0 | no |  | [1.0, 64.0] | largest row offset searched (px); keep below half the period of any strong horizontal lattice |
+| `trend_rows` | `float` | 20.0 | no |  | [0.0, 1000.0] | slow trends over about this many rows (Gaussian sigma) are kept as genuine structure; 0 keeps none |
 
 #### `median` — Median denoise
 

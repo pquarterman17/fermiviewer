@@ -12,6 +12,7 @@ import {
   imageFft,
 } from "../../../lib/api";
 import { loadMacro, replayMacro, startRecording, stopRecording } from "../../../lib/macro";
+import { correctFrameDrift, correctLineJitter } from "../../../lib/scanCorrection";
 import { applyGeometry, cropToRoi, databarRows, stripDatabar } from "../../../lib/stageOps";
 import { askParams } from "../../../store/params";
 import { useViewer } from "../../../store/viewer";
@@ -71,6 +72,18 @@ export function buildImageMenu(ctx: MenuCtx): Entry[] {
       label: "Strip Vendor Databar",
       disabled: databarRows(activeMeta) == null,
       action: () => stripDatabar(),
+    },
+    ] },
+    { label: "Distortion", submenu: [
+    {
+      label: "Correct Scan-Line Jitter…",
+      disabled: activeMeta?.kind !== "image",
+      action: () => void correctLineJitter(),
+    },
+    {
+      label: `Correct Frame Drift (${store.selected.length} selected)…`,
+      disabled: store.selected.length < 2,
+      action: () => void correctFrameDrift(store.selected),
     },
     ] },
     { label: "Combine & Stack", submenu: [
