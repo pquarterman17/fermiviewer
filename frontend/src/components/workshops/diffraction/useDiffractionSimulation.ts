@@ -4,6 +4,9 @@
 // kinematic-simulation call. Bodies are unchanged — only the closures now
 // live in a hook instead of the component, and `simPhase` is threaded back
 // to the caller since Calibrate reads it as a fallback standard phase.
+// Simulation depends only on the phase and zone axis, not on the active
+// pattern, so it keeps its own busy flag instead of sharing the
+// image-scoped detect/index/calibrate request.
 
 import {
   type Dispatch,
@@ -38,13 +41,14 @@ export interface DiffractionSimulationState {
   onCifFile: (file: File) => void;
   deletePhase: () => void;
   simulate: () => void;
+  simBusy: boolean;
 }
 
 export function useDiffractionSimulation(
   activeId: string | null,
   setStatus: (msg: string) => void,
-  setBusy: Dispatch<SetStateAction<boolean>>,
 ): DiffractionSimulationState {
+  const [simBusy, setBusy] = useState(false);
   const [phases, setPhases] = useState<PhaseInfo[]>([]);
   const [simPhase, setSimPhase] = useState("");
   const [simZa, setSimZa] = useState("0 0 1");
@@ -86,7 +90,7 @@ export function useDiffractionSimulation(
       })
       .catch((e: Error) => setStatus(`simulate: ${e.message}`))
       .finally(() => setBusy(false));
-  }, [simPhase, simZa, activeId, scatModel, setStatus, setBusy]);
+  }, [simPhase, simZa, activeId, scatModel, setStatus]);
 
   // ── custom-phase import / delete (Diffraction #2) ─────────────────
   const onCifFile = useCallback(
@@ -124,5 +128,6 @@ export function useDiffractionSimulation(
   return {
     phases, simPhase, setSimPhase, simZa, setSimZa, simResult,
     scatModel, setScatModel, cifInputRef, onCifFile, deletePhase, simulate,
+    simBusy,
   };
 }

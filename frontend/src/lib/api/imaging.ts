@@ -152,6 +152,7 @@ export function analyzeParticles(
     minMarkerDistance?: number;
     classThresholds?: Record<string, number>;
     record?: boolean;
+    signal?: AbortSignal;
   },
 ): Promise<{
   n_particles: number;
@@ -173,7 +174,7 @@ export function analyzeParticles(
     min_marker_distance: opts.minMarkerDistance ?? 3,
     class_thresholds: opts.classThresholds ?? null,
     ...(opts.record ? { record: true } : {}),
-  });
+  }, { signal: opts.signal });
 }
 
 /** One ranked result from `/analyze/efd-similarity`: another particle's id
@@ -365,6 +366,7 @@ export interface TrainSegmentOpts {
   boundaryClass?: number[];
   /** "softmax" (linear, default) or "forest" (nonlinear random forest, #8) */
   classifier?: "softmax" | "forest";
+  signal?: AbortSignal;
 }
 
 /** Scribble-trained grain segmentation (parity #8): fit a pixel classifier
@@ -384,7 +386,7 @@ export function grainsTrainSegment(
     min_area: opts.minArea ?? 25,
     boundary_class: opts.boundaryClass ?? [],
     classifier: opts.classifier ?? "softmax",
-  });
+  }, { signal: opts.signal });
 }
 
 /** One predicted class in a trained-grain preview: its id, the fraction of the
@@ -417,6 +419,7 @@ export function grainsTrainPreview(
     gradientSigma?: number;
     boundaryClass?: number[];
     classifier?: "softmax" | "forest";
+    signal?: AbortSignal;
   } = {},
 ): Promise<GrainPreview> {
   return post("/api/grains/train-preview", {
@@ -427,7 +430,7 @@ export function grainsTrainPreview(
     gradient_sigma: opts.gradientSigma ?? 0,
     boundary_class: opts.boundaryClass ?? [],
     classifier: opts.classifier ?? "softmax",
-  });
+  }, { signal: opts.signal });
 }
 
 // ── AFM / SPM ────────────────────────────────────────────────────────

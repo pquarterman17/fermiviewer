@@ -26,6 +26,7 @@ import {
   grainResultsTable,
   grainSourceId,
 } from "../../../lib/grainWorkflow";
+import { useLatestRequest } from "../../../hooks/useLatestRequest";
 import { assessGrainQuality } from "../../../lib/analysisQuality";
 import { pickSizeValues } from "../../../lib/populationHistogram";
 import { useAnalysisRoi } from "../../../hooks/useAnalysisRoi";
@@ -43,55 +44,10 @@ import {
   grainMeanDiameter,
 } from "../AnalysisQualityCard";
 import Preview from "../StructurePreview";
+import { baseGrainMethod, GRAIN_METHODS } from "./grainMethods";
 import { TrainedGrainControls } from "./TrainedGrainControls";
 
-/** A stored result's method can carry an edit suffix ("gradient+merge" from
- *  /grains/edit) or come from an older build — map it back to a method
- *  this panel knows, so the knob/when lookups below can't come back empty. */
-function baseGrainMethod(m: unknown): GrainMethod {
-  const base = String(m ?? "").split("+")[0];
-  return GRAIN_METHODS.some((g) => g.value === base) ? (base as GrainMethod) : "gradient";
-}
-
-// method → the one tuning knob it exposes; higher coarseness / merge / K
-// is fewer, larger grains. Classic k-means is the ported MATLAB path.
-export const GRAIN_METHODS: {
-  value: GrainMethod;
-  label: string;
-  knob: string;
-  when: string;
-}[] = [
-  {
-    value: "gradient",
-    label: "Gradient — visible boundaries",
-    knob: "coarseness",
-    when: "Visible grain boundaries in the image. Fast watershed on the gradient.",
-  },
-  {
-    value: "rag",
-    label: "Superpixel — diffraction contrast",
-    knob: "merge thr",
-    when: "Diffraction-contrast grains. Over-segments, then merges similar regions.",
-  },
-  {
-    value: "orientation",
-    label: "Orientation — atomic-res",
-    knob: "coarseness",
-    when: "Atomic-resolution lattices. Segments by local crystal orientation.",
-  },
-  {
-    value: "kmeans",
-    label: "Classic k-means",
-    knob: "classes",
-    when: "Simple intensity classes. The ported MATLAB path.",
-  },
-  {
-    value: "trained",
-    label: "Trained — paint examples",
-    knob: "",
-    when: "Anything the others miss. You teach it by painting a few examples.",
-  },
-];
+export { GRAIN_METHODS } from "./grainMethods";
 
 export function GrainsMode({ id }: { id: string }) {
   const setStatus = useViewer((s) => s.setStatus);
@@ -123,6 +79,11 @@ export function GrainsMode({ id }: { id: string }) {
   const [preview, setPreview] = useState<GrainPreview | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
   const [qualityAccepted, setQualityAccepted] = useState(savedGrains?.qualityAccepted ?? false);
+  // Segmentation and preview describe one source image and analysis region;
+  // a response that lands after either changes is dropped.
+  const requestScope = `${sourceId}|${roiKey}`;
+  const segmentRequest = useLatestRequest(requestScope);
+  const previewRequest = useLatestRequest(requestScope);
 
   // trained-mode scribble state (paint examples directly on the stage)
   const numClasses = useScribble((s) => s.numClasses);
@@ -144,6 +105,9 @@ export function GrainsMode({ id }: { id: string }) {
     setNote("");
     setPreview(null);
     setQualityAccepted(restored?.qualityAccepted ?? false);
+    setBusy(false);
+    setProgress("");
+    setPreviewBusy(false);
   }, [sourceId, roiKey]);
 
   // Adopt a stage merge/split's new label map — same source/ROI, so restore won't.
@@ -191,23 +155,30 @@ export function GrainsMode({ id }: { id: string }) {
       setStatus("trained grains: paint at least 2 different classes");
       return;
     }
+    const reqId = sourceId;
+    const request = previewRequest.begin();
+    // ignore a response that arrives after the user switched images
+    const current = () => {
+      const state = useViewer.getState();
+      const active = state.activeId;
+      return request.isCurrent()
+        && !!active && grainSourceId(active, state.images) === reqId;
+    };
     setPreviewBusy(true);
     const payload: TrainStroke[] = strokes.map((s) => ({
       class_id: s.classId,
       radius: s.radius,
       points: s.points,
     }));
-    const reqId = sourceId;
     grainsTrainPreview(sourceId, payload, {
       roi: analysisRoi.roi,
       boundaryClass: bnd,
       classifier,
+      signal: request.signal,
     })
       .then((r) => {
-        // ignore a response that arrives after the user switched images
+        if (!current()) return;
         const state = useViewer.getState();
-        const active = state.activeId;
-        if (!active || grainSourceId(active, state.images) !== reqId) return;
         const oldPreview = preview;
         if (oldPreview) {
           state.closeImage(oldPreview.class_map.id).catch(() => {});
@@ -227,8 +198,12 @@ export function GrainsMode({ id }: { id: string }) {
           `trained grains: preview — ${phases} phase(s), ${Math.round(r.mean_confidence * 100)}% mean confidence`,
         );
       })
-      .catch((e: Error) => setStatus(`trained grains preview: ${e.message}`))
-      .finally(() => setPreviewBusy(false));
+      .catch((e: Error) => {
+        if (current()) setStatus(`trained grains preview: ${e.message}`);
+      })
+      .finally(() => {
+        if (current()) setPreviewBusy(false);
+      });
   };
 
   const trainRun = () => {
@@ -237,6 +212,14 @@ export function GrainsMode({ id }: { id: string }) {
       setStatus("trained grains: paint at least 2 different classes");
       return;
     }
+    const runSourceId = sourceId;
+    const request = segmentRequest.begin();
+    const current = () => {
+      const state = useViewer.getState();
+      const active = state.activeId;
+      return request.isCurrent()
+        && !!active && grainSourceId(active, state.images) === runSourceId;
+    };
     setBusy(true);
     setProgress("training…");
     const payload: TrainStroke[] = strokes.map((s) => ({
@@ -249,8 +232,10 @@ export function GrainsMode({ id }: { id: string }) {
       minArea: Number(minArea) || 25,
       boundaryClass: bnd,
       classifier,
+      signal: request.signal,
     })
       .then((r) => {
+        if (!current()) return;
         const s = useViewer.getState();
         s.ingestDerived([r.labels]);
         s.setActive(r.labels.id);
@@ -262,8 +247,11 @@ export function GrainsMode({ id }: { id: string }) {
         setNote("click a grain then another to merge · right-click to split");
         useResults.getState().show(grainResultsTable(r, "trained"));
       })
-      .catch((e: Error) => setStatus(`trained grains: ${e.message}`))
+      .catch((e: Error) => {
+        if (current()) setStatus(`trained grains: ${e.message}`);
+      })
       .finally(() => {
+        if (!current()) return;
         setBusy(false);
         setProgress("");
       });
@@ -279,10 +267,21 @@ export function GrainsMode({ id }: { id: string }) {
       setStatus(`grains: ${invalid}`);
       return;
     }
+    const runSourceId = sourceId;
+    const request = segmentRequest.begin();
+    const current = () => {
+      const state = useViewer.getState();
+      const active = state.activeId;
+      return request.isCurrent()
+        && !!active && grainSourceId(active, state.images) === runSourceId;
+    };
     setBusy(true);
     setProgress("starting…");
+    // Cancel stops only this run; leaving the source or region also cancels
+    // the server job, but its late outcome is then ignored.
     const abort = new AbortController();
     abortRef.current = abort;
+    request.signal.addEventListener("abort", () => abort.abort(), { once: true });
     const params = buildClassicGrainParams(
       method as Exclude<GrainMethod, "trained">,
       analysisRoi.roi,
@@ -297,6 +296,7 @@ export function GrainsMode({ id }: { id: string }) {
       abort.signal,
     )
       .then((r) => {
+        if (!current()) return;
         ingestDerived([r.labels]);
         setLabelsId(r.labels.id);
         setGrainResult(r);
@@ -315,9 +315,12 @@ export function GrainsMode({ id }: { id: string }) {
         setNote("");
         useResults.getState().show(grainResultsTable(r, r.method));
       })
-      .catch((e: Error) => setStatus(`grains: ${e.message}`))
+      .catch((e: Error) => {
+        if (current()) setStatus(`grains: ${e.message}`);
+      })
       .finally(() => {
-        abortRef.current = null;
+        if (abortRef.current === abort) abortRef.current = null;
+        if (!current()) return;
         setBusy(false);
         setProgress("");
       });

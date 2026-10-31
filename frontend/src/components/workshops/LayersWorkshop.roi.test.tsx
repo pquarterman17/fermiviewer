@@ -1,8 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ImageMeta, LayersResult } from "../../lib/api";
+import { useCrossSection } from "../../store/crossSection";
 import { useViewer } from "../../store/viewer";
+import { useWorkshop } from "../../store/workshop";
 
 vi.mock("../../lib/api", async (importActual) => {
   const actual = await importActual<typeof import("../../lib/api")>();
@@ -32,8 +34,17 @@ const result: LayersResult = {
   }],
 };
 
+function deferredLayers() {
+  let resolve!: (value: LayersResult) => void;
+  vi.mocked(analyzeLayers).mockReturnValue(
+    new Promise((next) => { resolve = next; }),
+  );
+  return (value: LayersResult) => resolve(value);
+}
+
 afterEach(() => {
   vi.clearAllMocks();
+  useCrossSection.getState().clear();
   useViewer.setState({
     images: {}, order: [], activeId: null, selected: [], savedRois: {},
     layersOverlay: null,
@@ -78,5 +89,48 @@ describe("LayersWorkshop ROI", () => {
     expect(screen.getByText("Export CSV")).toBeDisabled();
     fireEvent.click(screen.getByText("Use anyway"));
     expect(screen.getByText("Export CSV")).not.toBeDisabled();
+  });
+
+  it("drops a layer analysis that lands after the image changes", async () => {
+    const resolve = deferredLayers();
+    useViewer.getState().ingest([image, { ...image, id: "other", name: "other" }]);
+    useViewer.getState().setActive("src");
+    render(<LayersWorkshop />);
+
+    fireEvent.click(screen.getByText("Analyze"));
+    const signal = vi.mocked(analyzeLayers).mock.calls[0]![1]!.signal!;
+    act(() => useViewer.getState().setActive("other"));
+    await act(async () => resolve(result));
+
+    expect(signal.aborted).toBe(true);
+    expect(screen.queryByText("Export CSV")).toBeNull();
+    expect(useViewer.getState().layersOverlay).toBeNull();
+    expect(useCrossSection.getState().layers).toBeNull();
+    expect(screen.getByText("Analyze")).not.toBeDisabled();
+  });
+
+  it("drops a whole-image analysis that lands after the region changes", async () => {
+    const resolve = deferredLayers();
+    useViewer.getState().ingest([image]);
+    useViewer.setState({
+      savedRois: {
+        src: [{
+          id: "film", name: "Film only", kind: "roi",
+          pts: [{ x: 0.1, y: 0.2 }, { x: 0.9, y: 0.8 }],
+          createdAt: "2026-07-19T00:00:00Z",
+        }],
+      },
+    });
+    useWorkshop.getState().setAnalysisRegionChoice("src", "whole");
+    render(<LayersWorkshop />);
+
+    fireEvent.click(screen.getByText("Analyze"));
+    expect(vi.mocked(analyzeLayers).mock.calls[0]![1]!.roi).toBeNull();
+    act(() => useWorkshop.getState().setAnalysisRegionChoice("src", "saved:film"));
+    await act(async () => resolve(result));
+
+    expect(screen.queryByText("Export CSV")).toBeNull();
+    expect(useCrossSection.getState().layers).toBeNull();
+    expect(screen.getByText("Analyze")).not.toBeDisabled();
   });
 });

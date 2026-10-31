@@ -21,6 +21,7 @@ import {
   type AtomsResult,
   type PpaStrain,
 } from "../../lib/api";
+import { useLatestRequest } from "../../hooks/useLatestRequest";
 import { useViewer } from "../../store/viewer";
 
 // ── colour palette for sublattices (matches MATLAB subColors) ────────
@@ -180,11 +181,16 @@ export default function AtomColumnPanel({ id }: { id: string }) {
   const [busy, setBusy] = useState(false);
   const [strainBusy, setStrainBusy] = useState(false);
   const [nat, setNat] = useState<{ w: number; h: number } | null>(null);
+  // detection belongs to this image; strain belongs to one detection run
+  const detectRequest = useLatestRequest(id);
+  const strainRequest = useLatestRequest(id);
 
   useEffect(() => {
     setRes(null);
     setStrain(null);
     setOverlay("markers");
+    setBusy(false);
+    setStrainBusy(false);
   }, [id]);
 
   const scale = nat ? VIEW_W / nat.w : 0;
@@ -192,6 +198,9 @@ export default function AtomColumnPanel({ id }: { id: string }) {
 
   // ── detect + fit ─────────────────────────────────────────────────
   const runDetect = () => {
+    const request = detectRequest.begin();
+    strainRequest.invalidate();
+    setStrainBusy(false);
     setBusy(true);
     setStrain(null);
     if (overlay !== "markers" && overlay !== "sublattice") setOverlay("markers");
@@ -202,13 +211,19 @@ export default function AtomColumnPanel({ id }: { id: string }) {
       winRadius: Number(winRadius) || 6,
       polarity,
       sublattices,
+      signal: request.signal,
     })
       .then((r) => {
+        if (!request.isCurrent()) return;
         setRes(r);
         setStatus(`atoms: ${r.n_columns} columns detected`);
       })
-      .catch((e: Error) => setStatus(`atoms: ${e.message}`))
-      .finally(() => setBusy(false));
+      .catch((e: Error) => {
+        if (request.isCurrent()) setStatus(`atoms: ${e.message}`);
+      })
+      .finally(() => {
+        if (request.isCurrent()) setBusy(false);
+      });
   };
 
   // ── PPA strain ───────────────────────────────────────────────────
@@ -217,6 +232,7 @@ export default function AtomColumnPanel({ id }: { id: string }) {
       setStatus("atoms: detect columns first");
       return;
     }
+    const request = strainRequest.begin();
     setStrainBusy(true);
     const lv = res.lattice;
     analyzeAtomsStrain(res.positions, {
@@ -226,6 +242,7 @@ export default function AtomColumnPanel({ id }: { id: string }) {
       origin: undefined,
     })
       .then((st) => {
+        if (!request.isCurrent()) return;
         setStrain(st);
         setOverlay("exx");
         if (st.valid) {
@@ -236,8 +253,12 @@ export default function AtomColumnPanel({ id }: { id: string }) {
           setStatus("atoms: PPA strain failed (need a cleaner column set)");
         }
       })
-      .catch((e: Error) => setStatus(`atoms strain: ${e.message}`))
-      .finally(() => setStrainBusy(false));
+      .catch((e: Error) => {
+        if (request.isCurrent()) setStatus(`atoms strain: ${e.message}`);
+      })
+      .finally(() => {
+        if (request.isCurrent()) setStrainBusy(false);
+      });
   };
 
   // ── CSV export ────────────────────────────────────────────────────

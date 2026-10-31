@@ -12,7 +12,6 @@ import {
 } from "./DiffractionPanels";
 
 import {
-  diffractionDetect,
   diffractionDetectWithRoi,
   diffractionIndex,
   renderUrl,
@@ -42,6 +41,7 @@ import {
   tableToJson,
   type Cell,
 } from "../../lib/resultsExport";
+import { useLatestRequest } from "../../hooks/useLatestRequest";
 import { useViewer } from "../../store/viewer";
 import { useResultWorkflow } from "../../store/resultWorkflow";
 import { refreshPersistedResults } from "../../lib/persistedResultActions";
@@ -73,16 +73,21 @@ export default function DiffractionWorkshop() {
   const [selectedCandIdx, setSelectedCandIdx] = useState(0);
   const [rings, setRings] = useState(false);
   const [labels, setLabels] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [analysisBusy, setBusy] = useState(false);
+  // detect, index and calibrate all describe the active pattern; one
+  // image-scoped channel drops a response that lands after it changes
+  const analysisRequest = useLatestRequest(activeId);
   const [saveResult, setSaveResult] = useState(false);
   // A8 simulate
   const {
     phases, simPhase, setSimPhase, simZa, setSimZa, simResult,
     scatModel, setScatModel, cifInputRef, onCifFile, deletePhase, simulate,
-  } = useDiffractionSimulation(activeId, setStatus, setBusy);
+    simBusy,
+  } = useDiffractionSimulation(activeId, setStatus);
+  const busy = analysisBusy || simBusy;
   // calibration sub-panel
   const { calKnownD, setCalKnownD, calib, calibrate } = useDiffractionCalibration(
-    activeId, simPhase, minRadius, setStatus, setBusy,
+    activeId, simPhase, minRadius, setStatus, setBusy, analysisRequest.begin,
   );
   // A7 manual click-spots
   const [clickMode, setClickMode] = useState(false);
@@ -109,6 +114,7 @@ export default function DiffractionWorkshop() {
     setCommittedRoi(null);
     setRoiDraw({ mode: "none", p1: null, p2: null });
     setRoiMode("none");
+    setBusy(false);
     // a simulated pattern states the geometry it was drawn with — default
     // Index to it instead of px = 1 (which ranked other phases above it)
     const m = activeId ? useViewer.getState().images[activeId]?.meta : undefined;
@@ -148,42 +154,35 @@ export default function DiffractionWorkshop() {
   // ── detect ────────────────────────────────────────────────────────
   const detect = useCallback(() => {
     if (!activeId) return;
+    const sourceId = activeId;
+    const request = analysisRequest.begin();
+    const current = () =>
+      request.isCurrent() && useViewer.getState().activeId === sourceId;
     setBusy(true);
-    diffractionDetectWithRoi(activeId, {
+    diffractionDetectWithRoi(sourceId, {
       minRadius: Number(minRadius) || 10,
       threshold: Number(threshold) || 0.05,
       roi: committedRoi ?? undefined,
+      signal: request.signal,
     })
       .then((r) => {
+        if (!current()) return;
         setSpots(r.spots);
         setStatus(`diffraction: ${r.n} spots${committedRoi ? " (ROI)" : ""}`);
       })
-      .catch((e: Error) => setStatus(`detect: ${e.message}`))
-      .finally(() => setBusy(false));
-  }, [activeId, minRadius, threshold, committedRoi, setStatus]);
-
-  // ── detect (legacy no-ROI, kept so the old diffractionDetect import doesn't break) ──
-  const detectLegacy = useCallback(() => {
-    if (!activeId) return;
-    setBusy(true);
-    diffractionDetect(activeId, {
-      minRadius: Number(minRadius) || 10,
-      threshold: Number(threshold) || 0.05,
-    })
-      .then((r) => {
-        setSpots(r.spots);
-        setStatus(`diffraction: ${r.n} spots`);
-      })
-      .catch((e: Error) => setStatus(`detect: ${e.message}`))
-      .finally(() => setBusy(false));
-  }, [activeId, minRadius, threshold, setStatus]);
-  void detectLegacy; // retained for compatibility, detect() is the primary path
+      .catch((e: Error) => current() && setStatus(`detect: ${e.message}`))
+      .finally(() => current() && setBusy(false));
+  }, [activeId, minRadius, threshold, committedRoi, setStatus, analysisRequest]);
 
   // ── index ─────────────────────────────────────────────────────────
   const index = useCallback(() => {
     if (!activeId || spots.length === 0) return;
+    const sourceId = activeId;
+    const request = analysisRequest.begin();
+    const current = () =>
+      request.isCurrent() && useViewer.getState().activeId === sourceId;
     setBusy(true);
-    diffractionIndex(activeId, spots, {
+    diffractionIndex(sourceId, spots, {
       pixelSizeMm: Number(pixelSize) || 1.0,
       cameraLengthMm: cameraLen ? Number(cameraLen) : undefined,
       accKv: Number(accKv) || 200,
@@ -191,17 +190,19 @@ export default function DiffractionWorkshop() {
       tolerance: Number(tolerance) || 0.05,
       topN: Number(topN) || 5,
       record: saveResult,
+      signal: request.signal,
     })
       .then((r) => {
+        if (!current()) return;
         setIndexResult(r);
         setCandidates(r.candidates);
         setSelectedCandIdx(0);
         if (r.warnings?.length) setStatus(`index: ${r.warnings[0]}`);
         if (r.result) void refreshPersistedResults();
       })
-      .catch((e: Error) => setStatus(`index: ${e.message}`))
-      .finally(() => setBusy(false));
-  }, [activeId, spots, pixelSize, cameraLen, accKv, tolerance, topN, committedRoi, saveResult, setStatus]);
+      .catch((e: Error) => current() && setStatus(`index: ${e.message}`))
+      .finally(() => current() && setBusy(false));
+  }, [activeId, spots, pixelSize, cameraLen, accKv, tolerance, topN, committedRoi, saveResult, setStatus, analysisRequest]);
 
   if (!isImage) {
     return (

@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 
+import { useLatestRequest } from "../../../hooks/useLatestRequest";
 import { analyzeGpa, analyzeTemplate, imageFft } from "../../../lib/api";
 import { useViewer, type Measure } from "../../../store/viewer";
 import Preview from "../StructurePreview";
@@ -27,10 +28,12 @@ export function TemplateMode({ id }: { id: string }) {
   const [matches, setMatches] = useState<[number, number][]>([]);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const matchRequest = useLatestRequest(id);
 
   useEffect(() => {
     setMatches([]);
     setNote("");
+    setBusy(false);
   }, [id]);
 
   const run = () => {
@@ -53,15 +56,21 @@ export function TemplateMode({ id }: { id: string }) {
       1,
       Math.round(Math.abs(roi.pts[1].x - roi.pts[0].x) * w),
     );
+    const request = matchRequest.begin();
     setBusy(true);
     analyzeTemplate(id, [r0, c0, th, tw], Number(thresh) || 0.7)
       .then((r) => {
+        if (!request.isCurrent()) return;
         setMatches(r.locations);
         const top = r.scores.length ? Math.max(...r.scores) : 0;
         setNote(`${r.n_matches} matches · top score ${top.toFixed(3)}`);
       })
-      .catch((e: Error) => setStatus(`template: ${e.message}`))
-      .finally(() => setBusy(false));
+      .catch((e: Error) => {
+        if (request.isCurrent()) setStatus(`template: ${e.message}`);
+      })
+      .finally(() => {
+        if (request.isCurrent()) setBusy(false);
+      });
   };
 
   return (
@@ -110,11 +119,13 @@ export function GpaMode({ id }: { id: string }) {
   const [spots, setSpots] = useState<[number, number][]>([]);
   const [mean, setMean] = useState<Record<string, number> | null>(null);
   const [busy, setBusy] = useState(false);
+  const gpaRequest = useLatestRequest(id);
 
   useEffect(() => {
     setFftId(null);
     setSpots([]);
     setMean(null);
+    setBusy(false);
     let stale = false;
     imageFft(id)
       .then((m) => {
@@ -130,6 +141,9 @@ export function GpaMode({ id }: { id: string }) {
     const next = [...spots, rc].slice(-2) as [number, number][];
     setSpots(next);
     setMean(null);
+    // a new spot pair supersedes any GPA still running on the old one
+    gpaRequest.invalidate();
+    setBusy(false);
     if (next.length === 2 && meta) {
       // FFT centre at floor(N/2)+1 (1-based, the pinned convention)
       const cr = Math.floor(meta.shape[0] / 2) + 1;
@@ -138,15 +152,21 @@ export function GpaMode({ id }: { id: string }) {
         s[1] - cc, // gx (cols)
         s[0] - cr, // gy (rows)
       ];
+      const request = gpaRequest.begin();
       setBusy(true);
       analyzeGpa(id, g(next[0]), g(next[1]))
         .then((r) => {
+          if (!request.isCurrent()) return;
           ingestDerived(r.maps);
           setMean(r.mean);
           setStatus(`GPA: εxx, εyy, εxy, ω maps registered`);
         })
-        .catch((e: Error) => setStatus(`gpa: ${e.message}`))
-        .finally(() => setBusy(false));
+        .catch((e: Error) => {
+          if (request.isCurrent()) setStatus(`gpa: ${e.message}`);
+        })
+        .finally(() => {
+          if (request.isCurrent()) setBusy(false);
+        });
     }
   };
 

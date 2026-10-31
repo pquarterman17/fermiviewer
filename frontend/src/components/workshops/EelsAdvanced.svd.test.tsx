@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ImageMeta } from "../../lib/api";
@@ -41,5 +41,29 @@ describe("EelsAdvanced SVD", () => {
     // the score maps are in the library, but the cube is still the subject
     expect(useViewer.getState().order).toEqual(["cube", "pc1", "pc2"]);
     expect(useViewer.getState().activeId).toBe("cube");
+  });
+
+  it("drops an SVD that lands after the cube changes", async () => {
+    useViewer.getState().ingest([
+      meta("cube", "spectrum_image"),
+      meta("other", "spectrum_image"),
+    ]);
+    useViewer.getState().setActive("cube");
+    let resolve!: (value: Awaited<ReturnType<typeof eelsSvd>>) => void;
+    vi.mocked(eelsSvd).mockReturnValue(new Promise((next) => { resolve = next; }));
+
+    const view = render(<EelsAdvanced activeId="cube" isCube units="eV" tabbed visible />);
+    fireEvent.click(screen.getByRole("button", { name: "SVD" }));
+    act(() => useViewer.getState().setActive("other"));
+    view.rerender(<EelsAdvanced activeId="other" isCube units="eV" tabbed visible />);
+    await act(async () => resolve({
+      explained: [61.5, 20.25],
+      score_maps: [meta("pc1", "image"), meta("pc2", "image")],
+    } as unknown as Awaited<ReturnType<typeof eelsSvd>>));
+
+    expect(screen.queryByText(/PC1 61\.5%/)).toBeNull();
+    expect(useViewer.getState().order).toEqual(["cube", "other"]);
+    expect(useViewer.getState().activeId).toBe("other");
+    expect(screen.getByRole("button", { name: "SVD" })).not.toBeDisabled();
   });
 });

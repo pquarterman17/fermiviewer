@@ -108,6 +108,7 @@ export function analyzeDefects(
     gridSpacing?: number;
     roi?: [number, number, number, number] | null;
     foilThickness?: number | null;
+    signal?: AbortSignal;
   } = {},
 ): Promise<DefectResult> {
   return post("/api/analyze/defects", {
@@ -117,5 +118,5 @@ export function analyzeDefects(
     grid_spacing: opts.gridSpacing ?? 50,
     roi: opts.roi ?? null,
     foil_thickness: opts.foilThickness ?? null,
-  });
+  }, { signal: opts.signal });
 }

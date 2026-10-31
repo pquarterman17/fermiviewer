@@ -17,6 +17,7 @@ import {
   pickParticleMetricValues,
   type ParticleMetric,
 } from "../../lib/populationHistogram";
+import { useLatestRequest } from "../../hooks/useLatestRequest";
 import { particlesTable } from "../../lib/particlesTable";
 import { refreshPersistedResults } from "../../lib/persistedResultActions";
 import { useViewer } from "../../store/viewer";
@@ -100,12 +101,18 @@ export default function ParticlesMode({ id }: { id: string }) {
   const [saveResult, setSaveResult] = useState(false);
   const workflow = useResultWorkflow((s) => s.request);
   const clearWorkflow = useResultWorkflow((s) => s.clear);
+  // Count and Find similar each own one channel scoped to this image, so a
+  // response that lands after the image changes is dropped.
+  const countRequest = useLatestRequest(id);
+  const similarRequest = useLatestRequest(id);
 
   // fetch the raw raster once per image
   useEffect(() => {
     rasterRef.current = null;
     setDims(null);
     setParticles([]);
+    setBusy(false);
+    setSimBusyId(null);
     // A new image invalidates any similarity ranking from the old one —
     // stale distances against a different segmentation are wrong data.
     setSimilarity(null);
@@ -169,6 +176,12 @@ export default function ParticlesMode({ id }: { id: string }) {
   const count = () => {
     const r = rasterRef.current;
     if (!r) return;
+    const sourceId = id;
+    const request = countRequest.begin();
+    // a new count makes any pending ranking of the old run meaningless
+    similarRequest.invalidate();
+    setSimBusyId(null);
+    const current = request.isCurrent;
     setBusy(true);
     // Re-running the analysis exits similarity mode immediately (not just
     // on success) — even a failed re-run means the on-screen params no
@@ -182,8 +195,13 @@ export default function ParticlesMode({ id }: { id: string }) {
       minArea: Number(minArea) || 1,
       watershed,
     };
-    analyzeParticles(id, { ...params, record: saveResult })
+    analyzeParticles(sourceId, {
+      ...params,
+      record: saveResult,
+      signal: request.signal,
+    })
       .then((res) => {
+        if (!current()) return;
         const s = useViewer.getState();
         s.ingestDerived([res.labels]);
         s.setStatus(`particles: ${res.n_particles} found`);
@@ -193,8 +211,12 @@ export default function ParticlesMode({ id }: { id: string }) {
         if (res.result) void refreshPersistedResults();
         useResults.getState().show(particlesTable(res.particles, res.unit, res));
       })
-      .catch((e: Error) => setStatus(`particles: ${e.message}`))
-      .finally(() => setBusy(false));
+      .catch((e: Error) => {
+        if (current()) setStatus(`particles: ${e.message}`);
+      })
+      .finally(() => {
+        if (current()) setBusy(false);
+      });
   };
 
   // Rank every particle from the displayed run by EFD shape distance to
@@ -204,8 +226,11 @@ export default function ParticlesMode({ id }: { id: string }) {
   // idiom as every other failure here; the table stays exactly as it was.
   const findSimilar = (refId: number) => {
     if (!runParams) return;
+    const sourceId = id;
+    const request = similarRequest.begin();
+    const current = request.isCurrent;
     setSimBusyId(refId);
-    efdSimilarity(id, {
+    efdSimilarity(sourceId, {
       threshold: runParams.threshold,
       polarity: runParams.polarity,
       minArea: runParams.minArea,
@@ -213,13 +238,18 @@ export default function ParticlesMode({ id }: { id: string }) {
       refId,
     })
       .then((res) => {
+        if (!current()) return;
         setSimilarity({ refId, ranked: res.ranked, skipped: res.skipped });
         setStatus(
           `find similar: ranked ${res.ranked.length} · skipped ${res.skipped.length}`,
         );
       })
-      .catch((e: Error) => setStatus(`find similar: ${e.message}`))
-      .finally(() => setSimBusyId(null));
+      .catch((e: Error) => {
+        if (current()) setStatus(`find similar: ${e.message}`);
+      })
+      .finally(() => {
+        if (current()) setSimBusyId(null);
+      });
   };
 
   const clearSimilarity = () => setSimilarity(null);

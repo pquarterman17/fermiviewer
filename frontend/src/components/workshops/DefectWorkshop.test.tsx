@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DefectResult, ImageMeta } from "../../lib/api";
@@ -98,6 +98,7 @@ describe("DefectWorkshop", () => {
         gridSpacing: 20,
         roi: null,
         foilThickness: 30,
+        signal: expect.any(AbortSignal),
       }),
     );
     expect(await screen.findByText("14")).toBeVisible();
@@ -118,6 +119,27 @@ describe("DefectWorkshop", () => {
     fireEvent.click(screen.getByRole("button", { name: "Export JSON" }));
     expect(downloadCsv).toHaveBeenCalledOnce();
     expect(downloadJson).toHaveBeenCalledOnce();
+  });
+
+  it("drops a late result instead of switching back to the old source", async () => {
+    let resolve!: (value: DefectResult) => void;
+    vi.mocked(analyzeDefects).mockReturnValue(
+      new Promise((next) => { resolve = next; }),
+    );
+    useViewer.getState().ingest([imageMeta("source"), imageMeta("other")]);
+    useViewer.getState().setActive("source");
+    render(<DefectWorkshop />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Analyze" }));
+    const signal = vi.mocked(analyzeDefects).mock.calls[0]![1]!.signal!;
+    act(() => useViewer.getState().setActive("other"));
+    await act(async () => resolve(result));
+
+    expect(signal.aborted).toBe(true);
+    expect(useViewer.getState().activeId).toBe("other");
+    expect(useViewer.getState().images.mask).toBeUndefined();
+    expect(screen.queryByText("14")).toBeNull();
+    expect(screen.getByRole("button", { name: "Analyze" })).not.toBeDisabled();
   });
 
   it("exports counts, sampled length, and calibrated density", () => {

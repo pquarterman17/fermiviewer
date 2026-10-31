@@ -13,6 +13,7 @@ import {
   tableToJson,
   type Cell,
 } from "../../lib/resultsExport";
+import { useLatestRequest } from "../../hooks/useLatestRequest";
 import { useStageInfo } from "../../store/stage";
 import { useViewer } from "../../store/viewer";
 
@@ -55,8 +56,11 @@ export default function InterfaceWidthWorkshop() {
   const [run, setRun] = useState<FitRun | null>(null);
   const [busy, setBusy] = useState(false);
   const [stale, setStale] = useState(false);
+  // a fit belongs to the profile it was sent; a new profile supersedes it
+  const fitRequest = useLatestRequest(profile);
 
   useEffect(() => {
+    setBusy(false);
     if (run) setStale(true);
     // A profile object changes only when its measurement is recomputed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -69,10 +73,12 @@ export default function InterfaceWidthWorkshop() {
       setStatus("interface width: profile needs at least four finite samples");
       return;
     }
+    const request = fitRequest.begin();
     setBusy(true);
     setStatus("fitting interface width…");
     analyzeInterfaceWidth(profile.dist, profile.intensity, model)
       .then((result) => {
+        if (!request.isCurrent()) return;
         setRun({
           result,
           sourceName: meta?.name ?? "profile",
@@ -85,8 +91,12 @@ export default function InterfaceWidthWorkshop() {
           `interface: 10–90% ${fmt(result.width_10_90)} ${profile.unit} · R² ${result.r_squared.toFixed(3)}`,
         );
       })
-      .catch((error: Error) => setStatus(`interface width: ${error.message}`))
-      .finally(() => setBusy(false));
+      .catch((error: Error) => {
+        if (request.isCurrent()) setStatus(`interface width: ${error.message}`);
+      })
+      .finally(() => {
+        if (request.isCurrent()) setBusy(false);
+      });
   };
 
   const exportResult = (format: "csv" | "json") => {
