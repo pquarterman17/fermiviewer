@@ -27,6 +27,7 @@ resumes as soon as the watch is stopped.
 from __future__ import annotations
 
 import asyncio
+import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -45,6 +46,8 @@ from fermiviewer.netprobe import (
 )
 
 if TYPE_CHECKING:
+    import socket
+
     import uvicorn
 
 _HOST = "127.0.0.1"
@@ -463,7 +466,27 @@ def main() -> None:
     _auto_shutdown = dist is not None and not args.no_auto_shutdown
     server = uvicorn.Server(uvicorn.Config(app, host=host, port=port))
     _server = server
-    server.run(sockets=[sock])
+    _serve_until_interrupted(server, sock)
+
+
+def _serve_until_interrupted(server: uvicorn.Server, sock: socket.socket) -> None:
+    """Run ``server`` and treat Ctrl+C as an orderly stop, not a crash.
+
+    uvicorn catches SIGINT itself, shuts down gracefully (lifespan exit,
+    jobs cancelled, watch joined) and only then re-raises the captured
+    signal, which asyncio surfaces as a CancelledError/KeyboardInterrupt
+    traceback. ``uvicorn.run()`` swallows that re-raise; ``Server.run()``
+    (needed here to hand over the pre-bound socket) does not, so do it
+    here: one Ctrl+C exits 0 with a one-line note. A second Ctrl+C during
+    shutdown sets ``force_exit`` (skipping the graceful steps), so that
+    case keeps the conventional interrupted status, 130."""
+    try:
+        server.run(sockets=[sock])
+    except KeyboardInterrupt:
+        if server.force_exit:
+            print("FermiViewer stopped (forced).", file=sys.stderr)
+            raise SystemExit(130) from None
+        print("FermiViewer stopped.", file=sys.stderr)
 
 
 if __name__ == "__main__":
