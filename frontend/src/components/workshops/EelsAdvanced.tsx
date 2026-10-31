@@ -15,6 +15,7 @@ import {
   eelsThickness,
   type KKResult,
 } from "../../lib/api";
+import { useLatestRequest } from "../../hooks/useLatestRequest";
 import { useViewer } from "../../store/viewer";
 import PlotContextSurface from "../plots/PlotContextSurface";
 
@@ -51,12 +52,14 @@ export default function EelsAdvanced({
   const [busy, setBusy] = useState(false);
   const host = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
+  const toolRequest = useLatestRequest(activeId);
 
   const zlp = (): [number, number] => [Number(zlpLo) || -5, Number(zlpHi) || 5];
 
   useEffect(() => {
     setPlot(null);
     setNote("");
+    setBusy(false);
   }, [activeId]);
 
   // render the SSD / KK plot
@@ -109,16 +112,27 @@ export default function EelsAdvanced({
 
   if (!activeId) return null;
 
-  const guard = (p: Promise<void>) => {
+  // Every tool reads the active cube; its result is dropped once a newer
+  // tool run starts or the cube changes.
+  const guard = (start: (current: () => boolean) => Promise<void>) => {
+    const sourceId = activeId;
+    const request = toolRequest.begin();
+    const current = () =>
+      request.isCurrent() && useViewer.getState().activeId === sourceId;
     setBusy(true);
-    p.catch((e: Error) => setStatus(`EELS adv: ${e.message}`)).finally(() =>
-      setBusy(false),
-    );
+    start(current)
+      .catch((e: Error) => {
+        if (current()) setStatus(`EELS adv: ${e.message}`);
+      })
+      .finally(() => {
+        if (current()) setBusy(false);
+      });
   };
 
   const runThickness = () =>
-    guard(
+    guard((current) =>
       eelsThickness(activeId, zlp()).then((r) => {
+        if (!current()) return;
         ingestDerived([r.map]);
         setNote(
           `t/λ map — mean ${r.mean_t_over_lambda.toFixed(3)}, ` +
@@ -128,9 +142,10 @@ export default function EelsAdvanced({
     );
 
   const runAlign = () =>
-    guard(
+    guard((current) =>
       (subpixel ? eelsSubpixelAlign(activeId) : eelsAlignZlp(activeId)).then(
         (r) => {
+          if (!current()) return;
           ingestDerived([r.aligned]);
           setNote(
             `aligned${subpixel ? " (sub-pixel)" : ""} — max shift ` +
@@ -142,8 +157,9 @@ export default function EelsAdvanced({
     );
 
   const runRichardsonLucy = () =>
-    guard(
+    guard((current) =>
       eelsRichardsonLucy(activeId, zlp(), Number(rlIters) || 15).then((r) => {
+        if (!current()) return;
         setPlot({
           kind: "ssd",
           energy: r.energy,
@@ -155,8 +171,9 @@ export default function EelsAdvanced({
     );
 
   const runFourierLog = () =>
-    guard(
+    guard((current) =>
       eelsFourierLog(activeId, zlp()).then((r) => {
+        if (!current()) return;
         setPlot({
           kind: "ssd",
           energy: r.energy,
@@ -168,11 +185,12 @@ export default function EelsAdvanced({
     );
 
   const runKK = () =>
-    guard(
+    guard((current) =>
       eelsKK(activeId, {
         zlpWindow: zlp(),
         refractiveIndex: nIndex ? Number(nIndex) : undefined,
       }).then((r) => {
+        if (!current()) return;
         setPlot({ kind: "kk", r });
         setNote(
           `KK — t ≈ ${r.thickness_nm.toFixed(1)} nm, ` +
@@ -182,11 +200,12 @@ export default function EelsAdvanced({
     );
 
   const runSvd = () =>
-    guard(
+    guard((current) =>
       eelsSvd(activeId, {
         nComponents: Number(nComp) || 0,
         denoise,
       }).then((r) => {
+        if (!current()) return;
         const metas = [...r.score_maps, ...(r.denoised ? [r.denoised] : [])];
         if (metas.length) {
           ingestDerived(metas);

@@ -9,6 +9,7 @@ import {
   analyzeStitch,
   type CtfResult,
 } from "../../../lib/api";
+import { useLatestRequest } from "../../../hooks/useLatestRequest";
 import { useViewer } from "../../../store/viewer";
 import PlotContextSurface from "../../plots/PlotContextSurface";
 
@@ -23,8 +24,12 @@ export function CtfMode({ id }: { id: string }) {
   const [busy, setBusy] = useState(false);
   const host = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
+  const ctfRequest = useLatestRequest(id);
 
-  useEffect(() => setRes(null), [id]);
+  useEffect(() => {
+    setRes(null);
+    setBusy(false);
+  }, [id]);
 
   useEffect(() => {
     const el = host.current;
@@ -62,15 +67,22 @@ export function CtfMode({ id }: { id: string }) {
   }, [res]);
 
   const run = () => {
+    const request = ctfRequest.begin();
     setBusy(true);
     analyzeCtf(id, {
       voltageKv: Number(kv) || 200,
       csMm: Number(cs) || 1.2,
       pixelSizeA: Number(pxA) || 1,
     })
-      .then(setRes)
-      .catch((e: Error) => setStatus(`ctf: ${e.message}`))
-      .finally(() => setBusy(false));
+      .then((next) => {
+        if (request.isCurrent()) setRes(next);
+      })
+      .catch((e: Error) => {
+        if (request.isCurrent()) setStatus(`ctf: ${e.message}`);
+      })
+      .finally(() => {
+        if (request.isCurrent()) setBusy(false);
+      });
   };
 
   return (

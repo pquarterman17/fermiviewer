@@ -44,6 +44,7 @@ export function analyzeAtoms(
     refine?: boolean;
     sublattices?: number;
     strain?: boolean;
+    signal?: AbortSignal;
   } = {},
 ): Promise<AtomsResult> {
   return post("/api/analyze/atoms", {
@@ -56,7 +57,7 @@ export function analyzeAtoms(
     refine: opts.refine ?? true,
     sublattices: opts.sublattices ?? 1,
     strain: opts.strain ?? false,
-  });
+  }, { signal: opts.signal });
 }
 
 export function analyzeAtomsStrain(
@@ -346,6 +347,7 @@ export function diffractionCalibrate(
     hkl?: [number, number, number];
     rMin?: number;
     rMax?: number;
+    signal?: AbortSignal;
   } = {},
 ): Promise<CalibrationResult> {
   return post("/api/diffraction/calibrate", {
@@ -355,7 +357,7 @@ export function diffractionCalibrate(
     hkl: opts.hkl ?? null,
     r_min: opts.rMin ?? 5,
     r_max: opts.rMax ?? null,
-  });
+  }, { signal: opts.signal });
 }
 
 export interface SimSpot {

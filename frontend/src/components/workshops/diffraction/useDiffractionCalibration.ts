@@ -4,10 +4,20 @@
 // calibrate shares the workshop's single busy flag with detect/index/
 // simulate, and `simPhase` is threaded in because calibrate falls back to
 // the Simulate tab's selected phase when no known d-spacing is typed.
+// `beginRequest` is the workshop's image-scoped request channel, so a fit
+// that lands after the pattern changed is dropped like detect/index.
 
-import { type Dispatch, type SetStateAction, useCallback, useState } from "react";
+import {
+  type Dispatch,
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 
+import type { RequestLease } from "../../../hooks/useLatestRequest";
 import { diffractionCalibrate, type CalibrationResult } from "../../../lib/api";
+import { useViewer } from "../../../store/viewer";
 
 export interface DiffractionCalibrationState {
   calKnownD: string;
@@ -22,22 +32,32 @@ export function useDiffractionCalibration(
   minRadius: string,
   setStatus: (msg: string) => void,
   setBusy: Dispatch<SetStateAction<boolean>>,
+  beginRequest: () => RequestLease,
 ): DiffractionCalibrationState {
   const [calKnownD, setCalKnownD] = useState("");
   const [calib, setCalib] = useState<CalibrationResult | null>(null);
 
+  // a fit describes one pattern's ring geometry
+  useEffect(() => setCalib(null), [activeId]);
+
   // ── elliptical-distortion calibration (Diffraction #1) ────────────
   const calibrate = useCallback(() => {
     if (!activeId) return;
+    const sourceId = activeId;
+    const request = beginRequest();
+    const current = () =>
+      request.isCurrent() && useViewer.getState().activeId === sourceId;
     const dKnown = Number(calKnownD);
     setBusy(true);
-    diffractionCalibrate(activeId, {
+    diffractionCalibrate(sourceId, {
       dKnownAng: dKnown > 0 ? dKnown : undefined,
       standardPhase: dKnown > 0 ? undefined : simPhase || undefined,
       hkl: dKnown > 0 ? undefined : [1, 1, 1],
       rMin: Number(minRadius) || 5,
+      signal: request.signal,
     })
       .then((r) => {
+        if (!current()) return;
         setCalib(r);
         const e = r.ellipse;
         setStatus(
@@ -49,9 +69,13 @@ export function useDiffractionCalibration(
               : ""),
         );
       })
-      .catch((e: Error) => setStatus(`calibrate: ${e.message}`))
-      .finally(() => setBusy(false));
-  }, [activeId, calKnownD, simPhase, minRadius, setStatus, setBusy]);
+      .catch((e: Error) => {
+        if (current()) setStatus(`calibrate: ${e.message}`);
+      })
+      .finally(() => {
+        if (current()) setBusy(false);
+      });
+  }, [activeId, calKnownD, simPhase, minRadius, setStatus, setBusy, beginRequest]);
 
   return { calKnownD, setCalKnownD, calib, calibrate };
 }

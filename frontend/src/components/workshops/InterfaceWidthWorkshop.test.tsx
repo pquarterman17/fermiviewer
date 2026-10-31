@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ImageMeta, InterfaceWidthResult } from "../../lib/api";
@@ -126,6 +126,31 @@ describe("InterfaceWidthWorkshop", () => {
       target: { value: "sigmoid" },
     });
     expect(screen.getByRole("status")).toHaveTextContent("rerun");
+  });
+
+  it("drops a fit that lands after the profile is replaced", async () => {
+    let resolve!: (value: InterfaceWidthResult) => void;
+    vi.mocked(analyzeInterfaceWidth).mockReturnValue(
+      new Promise((next) => { resolve = next; }),
+    );
+    const profile = {
+      dist: [0, 1, 2, 3],
+      intensity: [0, 1, 2, 3],
+      length: 3,
+      unit: "px",
+      reduce: "mean" as const,
+      measureId: "m1",
+    };
+    useStageInfo.getState().setProfile(profile);
+    render(<InterfaceWidthWorkshop />);
+    fireEvent.click(screen.getByRole("button", { name: "Fit profile" }));
+
+    act(() => useStageInfo.getState().setProfile({ ...profile, measureId: "m2" }));
+    await act(async () => resolve(result));
+
+    expect(screen.queryByText("3.080 px")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Export CSV" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Fit profile" })).not.toBeDisabled();
   });
 
   it("exports all fitted scalars and units", () => {

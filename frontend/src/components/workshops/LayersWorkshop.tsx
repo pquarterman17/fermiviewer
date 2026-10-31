@@ -10,12 +10,7 @@
 
 import { useEffect, useState } from "react";
 
-import {
-  analyzeLayers,
-  applyFilter,
-  editLayers,
-  type LayersResult,
-} from "../../lib/api";
+import type { LayersResult } from "../../lib/api";
 import {
   layerOverlayCoordinates,
   roiLocalDepths,
@@ -33,6 +28,7 @@ import LayersMultiCompare from "./LayersMultiCompare";
 import { LayerStack, exportCsv } from "./layers/LayerStack";
 import { LayersControls } from "./layers/LayersControls";
 import { LayersMode } from "./layers/LayersMode";
+import { useLayersRuns } from "./layers/useLayersRuns";
 import { useLayersStageEdits } from "./layers/useLayersStageEdits";
 
 export { LayerStack } from "./layers/LayerStack";
@@ -42,8 +38,6 @@ export default function LayersWorkshop() {
   const meta = useViewer((s) => (s.activeId ? (s.images[s.activeId] ?? null) : null));
   const setStatus = useViewer((s) => s.setStatus);
   const setLayersOverlay = useViewer((s) => s.setLayersOverlay);
-  const ingestDerived = useViewer((s) => s.ingestDerived);
-  const setActive = useViewer((s) => s.setActive);
   const layersEdit = useViewer((s) => s.layersEdit);
   const setLayersEdit = useViewer((s) => s.setLayersEdit);
   const setLayersEditReq = useViewer((s) => s.setLayersEditReq);
@@ -120,52 +114,17 @@ export default function LayersWorkshop() {
     );
   };
 
-  // rotate the image so layers become axis-aligned, then re-analyze it
-  const levelImage = () => {
-    if (!activeId || !result || result.tilt_deg == null) return;
-    const angle = result.tilt_deg;     // + tilt levels (verified by the route test)
-    setBusy(true);
-    applyFilter(activeId, "rotate", { angle })
-      .then((meta) => {
-        ingestDerived([meta]);
-        setActive(meta.id);
-        return analyzeLayers(meta.id, {
-          axis,
-          modality,
-          sensitivity: Number(sensitivity) || 0.3,
-          nLayers: Number(nLayers) || 0,
-          waviness,
-          reduce: decurtain ? "median" : "mean",
-          destripe: decurtain,
-        }).then((r) => applyResult(r, meta.id, null));
-      })
-      .catch((e: Error) => setStatus(`Level: ${e.message}`))
-      .finally(() => setBusy(false));
-  };
-
-  // recompute from an edited interface list (add / remove)
-  const recompute = (positions: number[]) => {
-    if (!activeId || !result) return;
-    setBusy(true);
-    editLayers(activeId, positions, {
-      // the SAME tilt this result was collapsed along: the positions are
-      // depths in that profile, so re-measuring under another angle would
-      // read them against a different frame and move every one of them
-      tiltDeg: result.applied_tilt_deg ?? null,
-      roi: analysisRoi.roi,
-      axis: result.axis === "x" ? "x" : "y",
-      waviness,
-      reduce: decurtain ? "median" : "mean",
-      destripe: decurtain,
-      // An edited run saves as its own record when saving is on, rather
-      // than replacing the detected one: the distance between the two is
-      // the finding (see routes/_layers_result.py).
-      record: saveResult,
-    })
-      .then(applyResult)
-      .catch((e: Error) => setStatus(`Layers edit: ${e.message}`))
-      .finally(() => setBusy(false));
-  };
+  const { run, recompute, levelImage } = useLayersRuns({
+    activeId,
+    roi: analysisRoi.roi,
+    roiKey,
+    result,
+    tiltDeg,
+    params: { axis, modality, sensitivity, nLayers, waviness, decurtain, saveResult },
+    setBusy,
+    setStatus,
+    applyResult,
+  });
 
   // clear any prior overlay + edit state when the image changes / unmounts
   useEffect(() => {
@@ -175,6 +134,7 @@ export default function LayersWorkshop() {
     setLayersEditReq(null);
     setDetailIdx(null);
     setQualityAccepted(false);
+    setBusy(false);
   }, [activeId, roiKey, setLayersOverlay, setLayersEdit, setLayersEditReq]);
 
   // a stage click on an interface line focuses its roughness detail card
@@ -202,26 +162,6 @@ export default function LayersWorkshop() {
       run(deg);
     },
   });
-
-  const run = (tilt: number | null = tiltDeg) => {
-    if (!activeId) return;
-    setBusy(true);
-    analyzeLayers(activeId, {
-      tiltDeg: tilt,
-      roi: analysisRoi.roi,
-      axis,
-      modality,
-      sensitivity: Number(sensitivity) || 0.3,
-      nLayers: Number(nLayers) || 0,
-      waviness,
-      reduce: decurtain ? "median" : "mean",
-      destripe: decurtain,
-      record: saveResult,
-    })
-      .then(applyResult)
-      .catch((e: Error) => setStatus(`Layers: ${e.message}`))
-      .finally(() => setBusy(false));
-  };
 
   if (!isImage) {
     return (

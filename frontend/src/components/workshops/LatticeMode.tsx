@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { useLatestRequest } from "../../hooks/useLatestRequest";
 import { analyzeLattice, imageFft } from "../../lib/api";
 import { useViewer } from "../../store/viewer";
 import StructurePreview from "./StructurePreview";
@@ -9,6 +10,7 @@ export default function LatticeMode({ id }: { id: string }) {
   const [fftId, setFftId] = useState<string | null>(null);
   const [spots, setSpots] = useState<[number, number][]>([]);
   const [table, setTable] = useState<Record<string, string> | null>(null);
+  const latticeRequest = useLatestRequest(id);
 
   useEffect(() => {
     setFftId(null);
@@ -29,10 +31,14 @@ export default function LatticeMode({ id }: { id: string }) {
     const next = [...spots, rowCol].slice(-2) as [number, number][];
     setSpots(next);
     setTable(null);
+    // a new spot pair supersedes a fit still running on the old one
+    latticeRequest.invalidate();
     if (next.length !== 2) return;
 
+    const request = latticeRequest.begin();
     analyzeLattice(id, next[0], next[1])
-      .then((result) =>
+      .then((result) => {
+        if (!request.isCurrent()) return;
         setTable({
           a: `${result.a.toFixed(3)} ${result.unit}`,
           b: `${result.b.toFixed(3)} ${result.unit}`,
@@ -40,9 +46,11 @@ export default function LatticeMode({ id }: { id: string }) {
           "d₁": `${result.d_spacing1.toFixed(3)} ${result.unit}`,
           "d₂": `${result.d_spacing2.toFixed(3)} ${result.unit}`,
           A_cell: `${result.unit_cell_area.toFixed(4)} ${result.unit}²`,
-        }),
-      )
-      .catch((error: Error) => setStatus(`lattice: ${error.message}`));
+        });
+      })
+      .catch((error: Error) => {
+        if (request.isCurrent()) setStatus(`lattice: ${error.message}`);
+      });
   };
 
   return (

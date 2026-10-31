@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../lib/api", async (importActual) => {
@@ -151,6 +151,33 @@ describe("ParticlesMode", () => {
     const view = render(<ParticlesMode id="original" />);
     view.rerender(<ParticlesMode id="other" />);
     await waitFor(() => expect(useResultWorkflow.getState().request).toBeNull());
+  });
+
+  it("drops a count that lands after the image changes", async () => {
+    vi.mocked(fetchData16).mockResolvedValue(raster());
+    let resolve!: (value: Awaited<ReturnType<typeof analyzeParticles>>) => void;
+    vi.mocked(analyzeParticles).mockReturnValue(
+      new Promise((next) => { resolve = next; }),
+    );
+    const view = render(<ParticlesMode id="img" />);
+    await waitFor(() => expect(fetchData16).toHaveBeenCalledWith("img"));
+    fireEvent.click(screen.getByRole("button", { name: "Count" }));
+    const signal = vi.mocked(analyzeParticles).mock.calls[0]![1].signal!;
+
+    view.rerender(<ParticlesMode id="other" />);
+    await waitFor(() => expect(fetchData16).toHaveBeenCalledWith("other"));
+    await act(async () => resolve({
+      n_particles: 4,
+      threshold: 0.5,
+      labels: { id: "labels", meta: {} } as never,
+      particles: particleRows(),
+      unit: "nm",
+    }));
+
+    expect(signal.aborted).toBe(true);
+    expect(useResults.getState().table).toBeNull();
+    expect(screen.queryByTestId("population-histogram")).toBeNull();
+    expect(screen.getByRole("button", { name: "Count" })).not.toBeDisabled();
   });
 
   it("forwards the watershed split option to the endpoint", async () => {

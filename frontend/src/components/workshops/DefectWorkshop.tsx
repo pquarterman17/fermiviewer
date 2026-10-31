@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   analyzeDefects,
@@ -6,6 +6,7 @@ import {
   type ImageMeta,
 } from "../../lib/api";
 import { useAnalysisRoi } from "../../hooks/useAnalysisRoi";
+import { useLatestRequest } from "../../hooks/useLatestRequest";
 import {
   downloadCsv,
   downloadJson,
@@ -58,6 +59,11 @@ export default function DefectWorkshop() {
   const [foilThickness, setFoilThickness] = useState("");
   const [run, setRun] = useState<DefectRun | null>(null);
   const [busy, setBusy] = useState(false);
+  const analysisRequest = useLatestRequest(activeId);
+
+  useEffect(() => {
+    setBusy(false);
+  }, [activeId]);
 
   const analyze = () => {
     if (!activeId || !meta || meta.kind !== "image") return;
@@ -67,6 +73,9 @@ export default function DefectWorkshop() {
     const kernel = Math.max(1, Math.round(Number(kernelLength) || 15));
     const spacing = Math.max(1, Math.round(Number(gridSpacing) || 50));
     const foil = Number(foilThickness) > 0 ? Number(foilThickness) : null;
+    const request = analysisRequest.begin();
+    const current = () =>
+      request.isCurrent() && useViewer.getState().activeId === sourceId;
     setBusy(true);
     setStatus("analyzing defect lines…");
     analyzeDefects(sourceId, {
@@ -75,8 +84,10 @@ export default function DefectWorkshop() {
       gridSpacing: spacing,
       roi: region.roi,
       foilThickness: foil,
+      signal: request.signal,
     })
       .then((result) => {
+        if (!current()) return;
         ingestDerived([result.enhanced, result.mask]);
         setActive(sourceId);
         setRun({
@@ -92,8 +103,12 @@ export default function DefectWorkshop() {
           `defects: ${result.intersections} intercepts · ρ ${result.density.toExponential(2)} ${result.density_unit}`,
         );
       })
-      .catch((error: Error) => setStatus(`defects: ${error.message}`))
-      .finally(() => setBusy(false));
+      .catch((error: Error) => {
+        if (current()) setStatus(`defects: ${error.message}`);
+      })
+      .finally(() => {
+        if (current()) setBusy(false);
+      });
   };
 
   const exportResult = (format: "csv" | "json") => {

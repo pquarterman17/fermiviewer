@@ -12,6 +12,7 @@ import {
   tableToJson,
   type Cell,
 } from "../../lib/resultsExport";
+import { useLatestRequest } from "../../hooks/useLatestRequest";
 import { useViewer } from "../../store/viewer";
 
 const COLORS = [
@@ -116,12 +117,19 @@ export default function LayersMultiCompare({
   const [waviness, setWaviness] = useState(true);
   const [result, setResult] = useState<LayersMultiResult | null>(null);
   const [busy, setBusy] = useState(false);
+  // a comparison belongs to one reference map and analysis region
+  const requestScope = `${activeId}|${referenceId}|${roi?.join(":") ?? "whole"}`;
+  const compareRequest = useLatestRequest(requestScope);
 
   useEffect(() => {
     setReferenceId(activeId);
     setSelected([]);
     setResult(null);
   }, [activeId]);
+
+  useEffect(() => {
+    setBusy(false);
+  }, [requestScope]);
 
   const reference = images[referenceId];
   const candidates = mapIds.filter((id) => id !== referenceId);
@@ -140,6 +148,7 @@ export default function LayersMultiCompare({
   const run = () => {
     if (!reference || selected.length === 0) return;
     const ids = [referenceId, ...selected];
+    const request = compareRequest.begin();
     setBusy(true);
     setStatus("comparing interfaces across maps…");
     analyzeLayersMulti(ids, {
@@ -150,17 +159,21 @@ export default function LayersMultiCompare({
       nLayers: Number(nLayers) || 0,
       modality,
       waviness,
+      signal: request.signal,
     })
       .then((next) => {
+        if (!request.isCurrent()) return;
         setResult(next);
         setStatus(
           `layers comparison: ${next.maps.length} maps · ${next.reference_positions.length} interfaces`,
         );
       })
-      .catch((error: Error) =>
-        setStatus(`layers comparison: ${error.message}`),
-      )
-      .finally(() => setBusy(false));
+      .catch((error: Error) => {
+        if (request.isCurrent()) setStatus(`layers comparison: ${error.message}`);
+      })
+      .finally(() => {
+        if (request.isCurrent()) setBusy(false);
+      });
   };
 
   const exportResult = (format: "csv" | "json") => {

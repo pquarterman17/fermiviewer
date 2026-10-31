@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -91,6 +91,30 @@ afterEach(() => {
 });
 
 describe("LayersMultiCompare", () => {
+  it("drops a comparison that lands after the analysis region changes", async () => {
+    let resolve!: (value: LayersMultiResult) => void;
+    vi.mocked(analyzeLayersMulti).mockReturnValue(
+      new Promise((next) => { resolve = next; }),
+    );
+    const props = {
+      activeId: "reference",
+      mapIds: Object.keys(images),
+      images,
+      regionLabel: "Film only",
+    };
+    const view = render(<LayersMultiCompare {...props} roi={[11, 1, 110, 80]} />);
+    fireEvent.click(screen.getByLabelText("diffuse.dm4"));
+    fireEvent.click(screen.getByRole("button", { name: "Compare 2 maps" }));
+    const signal = vi.mocked(analyzeLayersMulti).mock.calls[0]![1]!.signal!;
+
+    view.rerender(<LayersMultiCompare {...props} roi={null} />);
+    await act(async () => resolve(result));
+
+    expect(signal.aborted).toBe(true);
+    expect(screen.queryByRole("button", { name: "Export CSV" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Compare 2 maps" })).not.toBeDisabled();
+  });
+
   it("disables incompatible maps and submits all comparison controls", async () => {
     vi.mocked(analyzeLayersMulti).mockResolvedValue(result);
     render(
@@ -125,6 +149,7 @@ describe("LayersMultiCompare", () => {
           nLayers: 3,
           modality: "haadf",
           waviness: true,
+          signal: expect.any(AbortSignal),
         },
       ),
     );

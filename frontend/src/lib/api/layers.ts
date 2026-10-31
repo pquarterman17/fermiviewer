@@ -79,6 +79,7 @@ export function analyzeLayers(
     /** collapse along an axis rotated by this many degrees; null leaves the
         profile along the image axes */
     tiltDeg?: number | null;
+    signal?: AbortSignal;
   } = {},
 ): Promise<LayersResult> {
   return post("/api/analyze/layers", {
@@ -95,7 +96,7 @@ export function analyzeLayers(
     destripe: opts.destripe ?? false,
     record: opts.record ?? false,
     tilt_deg: opts.tiltDeg ?? null,
-  });
+  }, { signal: opts.signal });
 }
 
 export interface LayersMultiMap {
@@ -126,6 +127,7 @@ export function analyzeLayersMulti(
     nLayers?: number;
     modality?: "haadf" | "eels" | "bf" | "df";
     waviness?: boolean;
+    signal?: AbortSignal;
   } = {},
 ): Promise<LayersMultiResult> {
   return post("/api/analyze/layers/multi", {
@@ -137,7 +139,7 @@ export function analyzeLayersMulti(
     n_layers: opts.nLayers ?? 0,
     modality: opts.modality ?? "haadf",
     waviness: opts.waviness ?? true,
-  });
+  }, { signal: opts.signal });
 }
 
 /** Re-measure layers from a user-edited interface list (Tier 3 #6). */
@@ -152,6 +154,7 @@ export function editLayers(
     destripe?: boolean;
     record?: boolean;
     tiltDeg?: number | null;
+    signal?: AbortSignal;
   } = {},
 ): Promise<LayersResult> {
   return post("/api/analyze/layers/edit", {
@@ -164,7 +167,7 @@ export function editLayers(
     destripe: opts.destripe ?? false,
     record: opts.record ?? false,
     tilt_deg: opts.tiltDeg ?? null,
-  });
+  }, { signal: opts.signal });
 }
 
 export interface GrainLayerSlice {

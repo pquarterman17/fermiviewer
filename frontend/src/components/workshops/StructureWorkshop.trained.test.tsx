@@ -244,6 +244,32 @@ describe("StructureWorkshop trained flow", () => {
     await waitFor(() => expect(screen.queryByText("34")).toBeNull());
   });
 
+  it("drops a classic segmentation that lands after the source changes", async () => {
+    useViewer.getState().ingest([imageMeta("src")]);
+    useViewer.getState().setActive("src");
+    let resolve!: (value: GrainResult) => void;
+    vi.mocked(runJob).mockReturnValue(
+      new Promise<GrainResult>((next) => { resolve = next; }),
+    );
+
+    render(<StructureWorkshop />);
+    fireEvent.click(screen.getByText("Grains"));
+    fireEvent.click(screen.getByText("Identify grains"));
+    const signal = vi.mocked(runJob).mock.calls[0]![3]!;
+
+    act(() => {
+      useViewer.getState().ingest([imageMeta("other")]);
+    });
+    await act(async () => resolve(grainResult("late-grains")));
+
+    expect(signal.aborted).toBe(true);
+    expect(screen.queryByText("34")).toBeNull();
+    expect(useViewer.getState().images["late-grains"]).toBeUndefined();
+    expect(useViewer.getState().activeId).toBe("other");
+    expect(useCrossSection.getState().grains).toBeNull();
+    expect(screen.getByText("Identify grains")).not.toBeDisabled();
+  });
+
   it("reruns a classic method against the original source, not its label map", async () => {
     // classic methods never call setActive, but ingestDerived([labels]) makes
     // the derived grain map active via _ingest — the same reset race

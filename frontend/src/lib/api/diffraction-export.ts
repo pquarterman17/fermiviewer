@@ -62,6 +62,7 @@ export function diffractionIndex(
     /** Persist this run as a result record. Off by default — recording is
      *  a user decision, not a side effect of every indexing pass. */
     record?: boolean;
+    signal?: AbortSignal;
   } = {},
 ): Promise<IndexResult> {
   return post("/api/diffraction/index", {
@@ -74,7 +75,7 @@ export function diffractionIndex(
     tolerance: opts.tolerance ?? 0.05,
     top_n: opts.topN ?? 5,
     ...(opts.record ? { record: true } : {}),
-  });
+  }, { signal: opts.signal });
 }
 
 export function diffractionDetectWithRoi(
@@ -85,6 +86,7 @@ export function diffractionDetectWithRoi(
     minSeparation?: number;
     maxSpots?: number;
     roi?: AnalysisRoi;
+    signal?: AbortSignal;
   } = {},
 ): Promise<DetectResult> {
   return post("/api/diffraction/detect", {
@@ -94,7 +96,7 @@ export function diffractionDetectWithRoi(
     min_separation: opts.minSeparation ?? 8,
     max_spots: opts.maxSpots ?? 50,
     roi: opts.roi ?? null,
-  });
+  }, { signal: opts.signal });
 }
 
 export interface ExportOptions {
