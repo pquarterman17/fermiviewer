@@ -190,7 +190,7 @@ blind mechanical rewrite.
   audit: Stage measure-tool profiles are not image-scoped, so a late profile
   can still become active after an image switch.
 
-- 2026-10-13 — Item 9 shipped after re-review.
+- 2026-10-12 — Item 9 shipped in PR #275 after re-review.
 
 - 2026-10-12 — Item 9 implemented: frontend tests now share an intentional
   no-context canvas default instead of emitting jsdom's repeated unimplemented
