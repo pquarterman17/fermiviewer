@@ -13,6 +13,32 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [0.11.0] - 2026-11-01
+
+Scan distortion correction, and steadier analysis when switching images.
+
+### Added
+- **Scan-line jitter correction.** Image › Distortion › Correct Scan-Line
+  Jitter… measures each row's sub-pixel horizontal offset and resamples the
+  rows. Genuine slow shear is kept, and the result reports the RMS and
+  maximum correction. On featureless or amorphous areas the estimate is
+  uncertain to about 0.5 px.
+- **Frame drift correction.** Image › Distortion › Correct Frame Drift…
+  registers a selected series with sub-pixel accuracy and produces the
+  drift-corrected average, optionally cropped to the area every frame covers.
+
+### Fixed
+- Analysis results that finish after you switch image, region or profile no
+  longer land on the new one. This covers diffraction, layers, defects,
+  particles, atom columns, grains, template/GPA/CTF/lattice, EELS Advanced
+  and interface width. Switching image also cancels the request in flight.
+- Ctrl+C now shuts the server down quietly and exits successfully.
+
+### Changed
+- The app starts faster: compare mode, the profile plot and the React runtime
+  load on demand. If one of these parts fails to load, it shows a retry
+  button instead of blanking the app.
+
 ## [0.10.1] - 2026-10-15
 
 Clearer, safer AFM analysis from file import through force-map review.
