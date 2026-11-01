@@ -124,7 +124,7 @@ from a terminal, for example `Run-FermiViewer.bat --dev`.
 
 FermiViewer is [on PyPI](https://pypi.org/project/fermiviewer/) with the
 web UI already baked into the wheel — no Node, no checkout, no release
-download; any 64-bit Python 3.10+ works. Install once, then launch from
+download; any 64-bit Python 3.11+ works. Install once, then launch from
 any terminal — including from a folder of images:
 
 ```powershell
@@ -149,7 +149,7 @@ For machines with no internet access — or where IT policy rules out
 running downloaded executables — each release ships per-OS
 `fv-offline-*.zip` bundles: the FermiViewer wheel (web UI already baked
 in) plus every dependency as pre-built wheels and a standard-library-only
-installer. The only requirement on the target is a 64-bit Python 3.10+.
+installer. The only requirement on the target is a 64-bit Python 3.11+.
 
 1. Download `fv-offline-win64.zip` (or `-macos-arm64` / `-linux-x64`)
    from the [latest release](../../releases/latest) and carry it over.

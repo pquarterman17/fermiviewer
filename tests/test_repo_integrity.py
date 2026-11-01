@@ -18,13 +18,8 @@ Four invariants, checked forward so they never need retrofitting:
 
 from __future__ import annotations
 
-import sys
+import tomllib
 from pathlib import Path
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:  # py<3.11 — backport (dev dep guarded by the same marker)
-    import tomli as tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "fermiviewer"

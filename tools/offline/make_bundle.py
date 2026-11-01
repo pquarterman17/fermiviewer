@@ -12,7 +12,7 @@ and run FermiViewer from source — no internet, Node, or compiler there:
 
 Usage, from the repo root (needs uv on PATH; uv fetches each covered
 Python and runs pip natively under it, so requirement markers like
-`numpy==2.2.6 ; python_full_version < '3.11'` resolve exactly as they
+`pkg==X ; python_full_version < '3.12'` resolve exactly as they
 will on the target — `pip download --python-version` can't do that, it
 retargets wheel tags but evaluates markers against the running Python):
 
@@ -49,7 +49,7 @@ for _stream in (sys.stdout, sys.stderr):
 # supported CPython minor versions to cover in the wheelhouse; must stay
 # within pyproject's requires-python. More versions = bigger bundle but
 # fewer "wrong Python" surprises on the target machine.
-DEFAULT_PY_VERSIONS = ("3.10", "3.11", "3.12", "3.13", "3.14")
+DEFAULT_PY_VERSIONS = ("3.11", "3.12", "3.13", "3.14")
 
 
 def _run(cmd: list[str], **kw: object) -> None:

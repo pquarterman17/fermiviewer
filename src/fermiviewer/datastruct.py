@@ -10,23 +10,11 @@ Pure-library module: numpy only (layering guard applies).
 
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Any
 
 import numpy as np
-
-if sys.version_info >= (3, 11):
-    from enum import StrEnum
-else:  # py<3.11 shim — delete when 3.10 support is dropped
-    from enum import Enum
-
-    class StrEnum(str, Enum):
-        """Minimal backport of 3.11's enum.StrEnum: str-valued members whose
-        str()/format() yield the value (e.g. "image", not "DataKind.IMAGE")."""
-
-        __str__ = str.__str__
-        __format__ = str.__format__
 
 __all__ = ["SPECTRAL_KINDS", "AxisCal", "DataKind", "DataStruct"]
 
@@ -34,7 +22,7 @@ __all__ = ["SPECTRAL_KINDS", "AxisCal", "DataKind", "DataStruct"]
 class DataKind(StrEnum):
     # Membership: use DataKind(x) or `is` checks, never `x in DataKind` —
     # value membership (`"image" in DataKind`) only works on CPython 3.12+;
-    # on the supported 3.10/3.11 floor it raises TypeError.
+    # on the supported 3.11 floor it raises TypeError.
     IMAGE = "image"                    # 2D [H, W]
     RGB_IMAGE = "rgb_image"            # 3D [H, W, 3] uint8 colour (ADR 0003)
     SPECTRUM = "spectrum"              # 1D [n_channels]

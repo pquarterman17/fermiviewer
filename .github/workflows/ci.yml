@@ -17,9 +17,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        # 3.10 = supported floor, 3.14 = latest; the floor catches accidental
+        # 3.11 = supported floor, 3.14 = latest; the floor catches accidental
         # use of newer-Python stdlib features outside a version guard
-        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -29,7 +29,7 @@ jobs:
         run: uv sync --group dev
       # Lint + type-check ONCE, pinned to 3.13: matches local dev, and the
       # numpy stubs are known-good there. They are OS-independent, and mypy
-      # against the floor's older numpy stubs (numpy 2.2 on 3.10) reports
+      # against the floor's older numpy stubs (on the 3.11 floor) reports
       # stub-version differences, not real issues.
       - name: Lint
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.13'
