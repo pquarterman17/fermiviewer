@@ -13,6 +13,23 @@ commit list.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/).
 
+## [0.11.1] - 2026-11-01
+
+Security update for the desktop updater and image decoding.
+
+### Security
+- **Image decoding:** Pillow 13 is now the minimum version, fixing the
+  October 2026 decoder advisories (CVE-2026-96636 and others).
+- **Desktop updater:** the updater now uses zip 9, fixing the extraction
+  advisories RUSTSEC-2026-0367, 0368 and 0369 (symlink targets and file
+  permissions during unpacking).
+
+### Removed
+- **Python 3.10 support.** FermiViewer now requires Python 3.11 or newer.
+  Pillow's security fixes are not available for 3.10, and Python 3.10
+  reached end of life in October 2026. Desktop installer users are
+  unaffected; offline bundles now cover Python 3.11–3.14.
+
 ## [0.11.0] - 2026-11-01
 
 Scan distortion correction, and steadier analysis when switching images.
