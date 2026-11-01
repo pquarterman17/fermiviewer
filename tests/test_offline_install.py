@@ -3,7 +3,7 @@
 The wheel is the deliverable for air-gapped machines, so the SPA must
 ride inside it — and the two tools/offline scripts must at least parse
 and answer --help on every supported interpreter (the CI matrix runs
-this file on the 3.10 floor, which catches accidental new-Python
+this file on the 3.11 floor, which catches accidental new-Python
 syntax in scripts that ship to arbitrary target machines).
 """
 
@@ -62,7 +62,7 @@ def test_bundle_default_python_versions_match_floor() -> None:
         import make_bundle
     finally:
         sys.path.pop(0)
-    assert make_bundle.DEFAULT_PY_VERSIONS[0] == "3.10"
+    assert make_bundle.DEFAULT_PY_VERSIONS[0] == "3.11"
     assert list(make_bundle.DEFAULT_PY_VERSIONS) == sorted(
         make_bundle.DEFAULT_PY_VERSIONS, key=lambda v: tuple(map(int, v.split(".")))
     )

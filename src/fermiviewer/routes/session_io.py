@@ -59,7 +59,7 @@ def workspace_save(req: SaveNamedRequest) -> dict[str, Any]:
         raise HTTPException(422, str(e)) from None
     except OSError as e:
         raise HTTPException(422, f"cannot write workspace: {e}") from None
-    saved_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    saved_at = datetime.datetime.now(datetime.UTC).isoformat()
     n_images = int(result["n_images"])
     workspaces.register(slug, name, n_images, saved_at)
     return {"slug": slug, "name": name, "n_images": n_images}

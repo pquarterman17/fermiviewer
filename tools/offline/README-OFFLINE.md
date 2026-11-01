@@ -24,7 +24,7 @@ on the system is touched.
 - The OS and CPU this bundle was built for — see `bundle-info.json`
   (the file name also says, e.g. `fv-offline-windows-x64`).
 - A 64-bit **Python** matching one of the versions in `bundle-info.json`
-  (typically 3.10–3.14). No Python on the machine? The full installer
+  (typically 3.11–3.14). No Python on the machine? The full installer
   from python.org runs fine without internet — a per-user install
   (no admin) is enough.
 

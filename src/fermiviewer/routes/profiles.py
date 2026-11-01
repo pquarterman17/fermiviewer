@@ -70,7 +70,7 @@ def _today() -> str:
 
 
 def _now() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+    return datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds")
 
 
 # ── store ────────────────────────────────────────────────────────────

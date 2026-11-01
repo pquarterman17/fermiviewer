@@ -93,7 +93,7 @@ def utc_now() -> str:
     pure and importable from anywhere. Injectable via `build_report`'s
     `clock` so tests are deterministic.
     """
-    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+    return datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds")
 
 
 @dataclass(frozen=True)

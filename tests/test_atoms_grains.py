@@ -68,7 +68,7 @@ def test_synthetic_and_detect(atom_img, fitted) -> None:
     det, _ = fitted
     assert det.positions.shape[0] == g["detectN"]
     # peak localization is library-version sensitive: across the supported
-    # numpy/scipy range (py3.10 → numpy 2.2, py3.13 → numpy 2.4) one of the
+    # numpy/scipy range one of the
     # 120 atoms can localize 1 px differently, so the position SUM gets a
     # realistic tolerance while the count + intensity sum stay strict.
     assert det.positions.sum() == pytest.approx(g["detectPosSum"], rel=1e-3)

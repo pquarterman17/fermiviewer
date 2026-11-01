@@ -52,7 +52,7 @@ __all__ = ["capture_result", "utc_now"]
 
 def utc_now() -> str:
     """ISO-8601 UTC, seconds precision — the provenance-log convention."""
-    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+    return datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds")
 
 
 def capture_result(

@@ -173,7 +173,7 @@ def save_project(
         "format": FORMAT_MAGIC,
         "version": VERSION,
         "generation": generation,
-        "saved_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "saved_at": datetime.datetime.now(datetime.UTC).isoformat(),
         "app_version": __version__,
         "name": name,
         "payload_mode": mode,
