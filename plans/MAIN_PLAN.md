@@ -6,11 +6,13 @@ plan in `plans/` declares this file as its parent.
 
 **Status:** Active
 **Created:** 2026-08-09
-**Updated:** 2026-11-28 — QUANTIZED_GUI_PORT_PLAN adopted as a live
-sub-plan: five GUI defects that sibling app quantized fixed in November
-2026 (draft-field first-commit race, per-keystroke number commits, outside
-click discarding dialog edits, tool-window focus and resize, unreachable
-disabled menu rows), plus two owner-gated behaviours. Previous update
+**Updated:** 2026-11-28 — QUANTIZED_PORT_PLAN adopted as a live sub-plan
+(booked as QUANTIZED_GUI_PORT_PLAN, then widened and renamed the same day):
+22 fixes that sibling app quantized already shipped, in a GUI workstream
+(number fields, dialog discard guard, tool windows, menus, shortcuts, lazy
+panels, stale profile results) and a Platform workstream (API origin check,
+CSV safety, preference persistence, Windows shell, release and CI), with
+seven owner gates. Previous update
 2026-09-04 — MICROSCOPY_FEATURE_ROADMAP's plan-tree row
 refreshed (it still said "planning only" after two weeks of shipping) and
 BACKLOG.md regenerated to include it. Previous update 2026-08-22 —
@@ -66,7 +68,7 @@ residue of five archived legacy plans (items 6–14).
 | ~~SPECTRAL_WORKSPACE_PLAN.md~~ | EDS+EELS shared spectrum core, species lists, batch maps, composites, synthetic-SI verification | **Complete 2026-08-13** → `plans/archive/` | All 23 items shipped across four workstreams. Closed by #11: Explore tabs species-connected (window edits write the store, live net ± σ rows, shared bg/E₀), single-element flow's duplicate controls deleted. Kept for ADR 0003's rationale and the overlap-advisory measurement record |
 | PLAN_4DSTEM.md | Lazy 4D-STEM dataset model (`FourDDataset`), MIB/HyperSpy-4D ingest, virtual-detector imaging (Phase 1 shipped 2026-08-02); COM/DPC/iDPC (Tier 2 shipped 2026-08-14, v0.1.28); parked strain/ptychography/ACOM | Active (4 open items, all parked Tier 3) | Independent lifecycle and its own architectural decision (Option B: 4D data is a source, not a `DataStruct`) with memory-streaming constraints the other two plans don't share |
 | ANALYSIS_PRESENTATION_PLAN.md | Presenting/quantifying the app's own results: peak shapes (Voigt), fit residuals + R², σ bands on charts, vector chart export, Savitzky–Golay, population histograms, fit reports, batch/scripting reach | Active, Tier 3 residue only (ALL eight engineering items shipped 2026-08-12 in four same-day waves; 4 build-on-demand items remain) | Coherent campaign with its own scope rule (image-derived results only; general graphing/statistics DECLINED per the audit) and its own sequencing |
-| QUANTIZED_GUI_PORT_PLAN.md | GUI fixes ported from sibling app quantized: draft fields that lose first input, number fields that commit per keystroke, outside click discarding dialog edits, tool-window focus return and edge resize, keyboard-reachable disabled menu rows; sticky tools and toolbar labels behind owner gates | Active (7 open items, booked 2026-11-28; 2 gated) | A port campaign with its own source of truth (the linked quantized PRs) and a reproduce-first rule; each item maps to one quantized fix |
+| QUANTIZED_PORT_PLAN.md | Fixes ported from sibling app quantized. GUI: number fields that apply half-typed values, outside click discarding dialog edits, tool windows lost off-screen, unreachable disabled menu rows, double-fired shortcuts, lazy panels that never recover, off-screen context menus, stale profile results. Platform: localhost origin check, CSV formula and BOM safety, preference persistence, Windows drops and upgrades, release checksums, CI | Active (22 open items, booked 2026-11-28; 5 gated) | A port campaign with its own source of truth (the named quantized files and PRs) and a reproduce-first rule; each item maps to one quantized fix |
 | ~~SHAPE_ANALYSIS_PLAN.md~~ | Shape identity for segmented objects: particle shape descriptors, advisory classes + aggregate flag, orientation rose, elliptic-Fourier similarity, circle/ellipse fitting | **Complete 2026-08-15** → `plans/archive/` | All five items shipped end-to-end in two days by six parallel agents against a frozen wire contract (Wave 1 + backends released in v0.1.30, GUI wiring completing the plan the next day). Kept for the Crofton-circularity measurement record (square ≈0.874, not π/4) and the conventions section that carried a three-agent parallel build with zero contract drift |
 | ~~LASSO_EDITING_PLAN.md~~ | Lasso-measure adjustment UX: true Douglas–Peucker at lasso close, retroactive Simplify, vertex delete + alt-drag edge insert, round ring handles | **Complete 2026-08-16** → `plans/archive/` (same day) | Five items, three waves, each on its assigned model tier (4× sonnet, 1× haiku). MeasureOverlay graduated off the legacy-cap list (533→472). Kept for the conventions record: two implementer-surfaced spec corrections (normalized-pts units, render-derived labels) and the 600-pts→16-vertices/2.55%-drift measurement |
 | ~~PROJECT_WORKFLOW_PLAN.md~~ | Folder import, constant-physical-scale browsing, area measurement, project/sample hierarchy + comparison deliverables, and the `.fvp` project file format | **Complete 2026-08-10** → `plans/archive/` | 27 items shipped, 6 gates resolved. Kept for the decision record: ADR 0002's rationale, the `py/path-injection` triage, and the ratchet outcomes (`store/viewer.ts` graduated 575→444) |

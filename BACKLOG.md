@@ -4,7 +4,7 @@
 Regenerate it from `plans/MAIN_PLAN.md`,
 `plans/MICROSCOPY_FEATURE_ROADMAP.md`, `plans/PLAN_4DSTEM.md`,
 `plans/ANALYSIS_PRESENTATION_PLAN.md` and
-`plans/QUANTIZED_GUI_PORT_PLAN.md` whenever an
+`plans/QUANTIZED_PORT_PLAN.md` whenever an
 item opens, closes, or moves (see the
 plan-hygiene rules). When this file and a plan disagree, the plan is
 authoritative — fix this file to match it, never the reverse. A plan that
@@ -124,32 +124,56 @@ only Tier 3 (build-on-demand by rule) remains.*
 
 ---
 
-## QUANTIZED_GUI_PORT_PLAN.md
+## QUANTIZED_PORT_PLAN.md
 
-*Parent: MAIN_PLAN.md. Status: Active — booked 2026-11-28 from a code read
-of main `51bff4d` against quantized `a1b85ad65`; each item links the
-quantized PR that fixed the same defect, and each starts with a failing
-test (none reproduced here yet).*
+*Parent: MAIN_PLAN.md. Status: Active — booked 2026-11-28 and widened the
+same day from a code read of main `e94c5f5` against quantized `a1b85ad6`
+(renamed from QUANTIZED_GUI_PORT_PLAN.md). Each item names the quantized
+files to reuse and starts with a failing test (none reproduced here yet).*
 
-**Tier 1 — High Impact**
-1. **Text fields can lose the user's first input** — `SpectrumZoomBar`,
-   `AdjustPanel` `NumField` (quantized #1228/#1229)
-2. **Number fields apply every keystroke** — `AdjustPanel` `NumField`
-   (quantized #966)
-3. **A click outside a dialog throws away the user's edits** — `ModalDialog`
+**GUI — Tier 1**
+1. **Number fields apply half-typed values and snap back** — `NumField`,
+   `SpectrumZoomBar`, sweep (quantized #966, #1228/#1229)
+2. **A click outside a dialog throws away edits** — `ModalDialog`
    (quantized #1187)
+3. **Tool windows lost off-screen; focus not returned; one resize corner** —
+   `ToolWindow` (quantized #1032, #974)
 
-**Tier 2 — Medium Impact**
-4. **Tool windows: focus return and edge resize** — `ToolWindow`
-   (quantized #974, #1032)
-5. **Greyed-out menu items cannot be reached from the keyboard** —
-   `DesktopMenus` (quantized #987)
+**GUI — Tier 2**
+4. **Greyed-out menu items unreachable and give no reason** — `DesktopMenus`
+   (quantized #987)
+5. **Handled keys also fire global shortcuts; Alt/Shift chords** —
+   `useAppHotkeys`
+6. **Failed lazy panel never recovers; render bugs mislabelled** —
+   `ChunkBoundary`
+7. **Context menus open off-screen, no keyboard** — stage, measure, filmstrip
+8. **Slow profile response lands on the wrong image** — `useMeasureRefresh`
 
-**Tier 3 — Nice-to-Have**
-6. **Keep a capture tool armed after use** — gated on G1
-7. **Text labels on the floating toolbar's buttons** — gated on G2
+**GUI — Tier 3**
+9. **Unguarded `localStorage` writes**
+10. **Shell screen-reader and keyboard gaps** — status region, tool-window
+    role, Inspector grip
+11. **One Esc, one layer** — gated on G4
+12. **Keep a capture tool armed after use** — gated on G1
+13. **Toolbar text labels** — gated on G2
 
-**Open items: 7** *(items 6–7 owner-gated)*
+**Platform — Tier 1**
+14. **Any localhost port accepted as API origin** — `server.py`
+15. **CSV formula injection and missing BOM** — every CSV writer
+16. **Preferences vanish between launches** — pywebview private mode, port
+    changes
+17. **Windows shell: file drops and installer upgrade**
+
+**Platform — Tier 2**
+18. **Release checksums, deeper smoke, vulnerability sweep**
+19. **CI concurrency, caches, xdist, eslint** — matrix trim gated on G5
+20. **Per-launch API token, CSP, body cap** — gated on G6
+
+**Platform — Tier 3**
+21. **Test determinism** — weak-wait ratchet, timeouts
+22. **Cross-instance `.fvp` lock** — gated on G7
+
+**Open items: 22** *(items 11–13, 20, 22 owner-gated)*
 
 ---
 
@@ -161,19 +185,19 @@ test (none reproduced here yet).*
 | MICROSCOPY_FEATURE_ROADMAP.md | Active (priority spine; items 5–7 live, 8–9 parked) | 5 |
 | PLAN_4DSTEM.md | Active (Tier 3 residue only) | 4 |
 | ANALYSIS_PRESENTATION_PLAN.md | Active (Tier 3 residue only) | 4 |
-| QUANTIZED_GUI_PORT_PLAN.md | Active (booked 2026-11-28; items 6–7 gated) | 7 |
+| QUANTIZED_PORT_PLAN.md | Active (booked 2026-11-28; 5 items gated) | 22 |
 
-**Total open items:** 29
+**Total open items:** 44
 
 **Counting method:** top-level numbered items (the plan-format.md unit of a
 tracked work item) — not nested `- [ ]` sub-task checkboxes. Nested-checkbox
 counts by plan, for reference: MAIN_PLAN 5, MICROSCOPY_FEATURE_ROADMAP 35,
-PLAN_4DSTEM 0, ANALYSIS_PRESENTATION_PLAN 0, QUANTIZED_GUI_PORT_PLAN 14 (54 total). A checkbox-based
+PLAN_4DSTEM 0, ANALYSIS_PRESENTATION_PLAN 0, QUANTIZED_PORT_PLAN 39 (79 total). A checkbox-based
 count would disagree with the open-items count above — pick one convention
 when reading this table and don't mix the two.
 
-**Last regenerated:** 2026-11-28 (QUANTIZED_GUI_PORT_PLAN added +7; the
-other four plans unchanged). Previous: 2026-09-04 (MICROSCOPY_FEATURE_ROADMAP added +6 — the
+**Last regenerated:** 2026-11-28 (QUANTIZED_PORT_PLAN widened and renamed
+from QUANTIZED_GUI_PORT_PLAN: 7 → 22; the other four plans unchanged). Previous: 2026-09-04 (MICROSCOPY_FEATURE_ROADMAP added +6 — the
 plan was adopted 2026-08-22 and had shipped its Tier 1 items 1–3 and most
 of item 4 without ever appearing here; the other three plans re-verified
 against their files, unchanged at 9 / 4 / 4)
