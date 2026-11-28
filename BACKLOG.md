@@ -2,8 +2,9 @@
 
 **Derived from the plans in `plans/` — never edit this file in isolation.**
 Regenerate it from `plans/MAIN_PLAN.md`,
-`plans/MICROSCOPY_FEATURE_ROADMAP.md`, `plans/PLAN_4DSTEM.md` and
-`plans/ANALYSIS_PRESENTATION_PLAN.md` whenever an
+`plans/MICROSCOPY_FEATURE_ROADMAP.md`, `plans/PLAN_4DSTEM.md`,
+`plans/ANALYSIS_PRESENTATION_PLAN.md` and
+`plans/QUANTIZED_GUI_PORT_PLAN.md` whenever an
 item opens, closes, or moves (see the
 plan-hygiene rules). When this file and a plan disagree, the plan is
 authoritative — fix this file to match it, never the reverse. A plan that
@@ -123,6 +124,35 @@ only Tier 3 (build-on-demand by rule) remains.*
 
 ---
 
+## QUANTIZED_GUI_PORT_PLAN.md
+
+*Parent: MAIN_PLAN.md. Status: Active — booked 2026-11-28 from a code read
+of main `51bff4d` against quantized `a1b85ad65`; each item links the
+quantized PR that fixed the same defect, and each starts with a failing
+test (none reproduced here yet).*
+
+**Tier 1 — High Impact**
+1. **Text fields can lose the user's first input** — `SpectrumZoomBar`,
+   `AdjustPanel` `NumField` (quantized #1228/#1229)
+2. **Number fields apply every keystroke** — `AdjustPanel` `NumField`
+   (quantized #966)
+3. **A click outside a dialog throws away the user's edits** — `ModalDialog`
+   (quantized #1187)
+
+**Tier 2 — Medium Impact**
+4. **Tool windows: focus return and edge resize** — `ToolWindow`
+   (quantized #974, #1032)
+5. **Greyed-out menu items cannot be reached from the keyboard** —
+   `DesktopMenus` (quantized #987)
+
+**Tier 3 — Nice-to-Have**
+6. **Keep a capture tool armed after use** — gated on G1
+7. **Text labels on the floating toolbar's buttons** — gated on G2
+
+**Open items: 7** *(items 6–7 owner-gated)*
+
+---
+
 ## Dashboard
 
 | Plan | Status | Open items |
@@ -131,17 +161,19 @@ only Tier 3 (build-on-demand by rule) remains.*
 | MICROSCOPY_FEATURE_ROADMAP.md | Active (priority spine; items 5–7 live, 8–9 parked) | 5 |
 | PLAN_4DSTEM.md | Active (Tier 3 residue only) | 4 |
 | ANALYSIS_PRESENTATION_PLAN.md | Active (Tier 3 residue only) | 4 |
+| QUANTIZED_GUI_PORT_PLAN.md | Active (booked 2026-11-28; items 6–7 gated) | 7 |
 
-**Total open items:** 22
+**Total open items:** 29
 
 **Counting method:** top-level numbered items (the plan-format.md unit of a
 tracked work item) — not nested `- [ ]` sub-task checkboxes. Nested-checkbox
 counts by plan, for reference: MAIN_PLAN 5, MICROSCOPY_FEATURE_ROADMAP 35,
-PLAN_4DSTEM 0, ANALYSIS_PRESENTATION_PLAN 0 (40 total). A checkbox-based
+PLAN_4DSTEM 0, ANALYSIS_PRESENTATION_PLAN 0, QUANTIZED_GUI_PORT_PLAN 14 (54 total). A checkbox-based
 count would disagree with the open-items count above — pick one convention
 when reading this table and don't mix the two.
 
-**Last regenerated:** 2026-09-04 (MICROSCOPY_FEATURE_ROADMAP added +6 — the
+**Last regenerated:** 2026-11-28 (QUANTIZED_GUI_PORT_PLAN added +7; the
+other four plans unchanged). Previous: 2026-09-04 (MICROSCOPY_FEATURE_ROADMAP added +6 — the
 plan was adopted 2026-08-22 and had shipped its Tier 1 items 1–3 and most
 of item 4 without ever appearing here; the other three plans re-verified
 against their files, unchanged at 9 / 4 / 4)
